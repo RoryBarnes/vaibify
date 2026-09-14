@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
+from vaibify.gui import environmentDeletionRoutes
 from vaibify.gui import pinnedEnvironmentConversion
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
@@ -212,6 +213,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterGetRegistry(app, dictCtx)
     _fnRegisterAddProject(app, dictCtx)
     _fnRegisterRemoveProject(app, dictCtx)
+    environmentDeletionRoutes.fnRegisterAll(app, dictCtx)
     buildRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
@@ -1604,10 +1606,10 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         # Every validator runs BEFORE the caller's own session is
         # released: a refused name must never cost the researcher the
         # project view they are converting from.
-        await _fnReleaseCallerOwnedSessionForConversion(
+        await _fnReleaseCallerOwnedSession(
             app, sName, requestHttp,
         )
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
+        _fnRefuseBusyProject(app, sName, dictCtx)
         # A container IS a Project, so containerizing has to bring one
         # into being exactly as promotion does -- otherwise the
         # researcher waits out an image build and arrives at a Project
@@ -1680,22 +1682,25 @@ def _fnRegisterPinnedEnvironment(app, dictCtx):
         )
 
 
-async def _fnReleaseCallerOwnedSessionForConversion(app, sName, requestHttp):
+async def _fnReleaseCallerOwnedSession(app, sName, requestHttp):
     """Release the caller's own open session on the project, if any.
 
-    Conversion renames the lock/lease/journal key, so it must run only
-    when nobody holds the project. Refusing the researcher's OWN open
-    tab made promoting from inside the browser impossible -- the toast
-    said "close it, then convert it", which only the command line could
-    finish. Instead, when the presenting lease and browser session are
-    the very ones holding the project, the session is released through
-    the single lifecycle authority (terminals drained and proven,
-    channels closed, flock freed) before the conversion proceeds; the
-    frontend then re-enters under the new name. A caller presenting no
-    lease, or a lease a DIFFERENT session bound, releases nothing and
-    falls through to the busy refusal. A busy own session -- a live
-    run, a live guarded mutation, a live in-container agent -- is
-    refused with the lifecycle's own reason, session retained.
+    The three actions that must run with NOBODY holding the project --
+    conversion and promotion (which rename the lock/lease/journal key)
+    and permanent deletion (which destroys what the key names) -- share
+    this step. Refusing the researcher's OWN open tab made promoting
+    from inside the browser impossible: the toast said "close it, then
+    convert it", which only the command line could finish, and the same
+    dead end would meet anyone deleting an environment they had just
+    looked inside. Instead, when the presenting lease and browser
+    session are the very ones holding the project, the session is
+    released through the single lifecycle authority (terminals drained
+    and proven, channels closed, flock freed) before the action
+    proceeds. A caller presenting no lease, or a lease a DIFFERENT
+    session bound, releases nothing and falls through to the busy
+    refusal. A busy own session -- a live run, a live guarded mutation,
+    a live in-container agent -- is refused with the lifecycle's own
+    reason, session retained.
     """
     from vaibify.gui import browserSession, sessionLifecycle
     if not app.state.dictContainerOwners.get(sName):
@@ -1714,30 +1719,37 @@ async def _fnReleaseCallerOwnedSessionForConversion(app, sName, requestHttp):
         raise HTTPException(409, detail={"sMessage": dictPayload["sMessage"]})
 
 
-def _fnRefuseBusyProjectForConversion(app, sName, dictCtx):
+def _fnRefuseBusyProject(app, sName, dictCtx, sVerb="convert"):
     """409 when the project is open, locked, or has unsettled operations.
 
-    Conversion renames the lock/lease/journal key, so it must run only
-    when nobody holds the project. The caller's own open session has
-    already been released by
-    :func:`_fnReleaseCallerOwnedSessionForConversion`, so an owner
+    Conversion renames the lock/lease/journal key and deletion destroys
+    what the key names, so both must run only when nobody holds the
+    project. For conversion the caller's own open session has already
+    been released by
+    :func:`_fnReleaseCallerOwnedSession`, so an owner
     record surviving to this check belongs to some OTHER session -- the
     refusal tells the researcher to close it there. All three axes are
     checked: the in-process owner map (this hub's live session), the
     host flock (another vaibify process), and the operation journal (an
     unsettled or quarantined operation on the current name).
+
+    ``sVerb`` names the action being refused. It is a parameter rather
+    than a hard-coded "convert" because the third caller made the
+    single wording wrong for two of them: a researcher told to close a
+    tab "then convert it" when they asked to delete has been answered
+    about a different action than the one they took.
     """
     from vaibify.config import operationJournal
     from vaibify.config.containerLock import fdictReadLockHolder
     if app.state.dictContainerOwners.get(sName):
         raise HTTPException(409, detail={"sMessage": (
             f"'{sName}' is open in a browser session right now. Close "
-            "it, then convert it."
+            f"it, then {sVerb} it."
         )})
     if fdictReadLockHolder(sName):
         raise HTTPException(409, detail={"sMessage": (
             f"'{sName}' is in use by another vaibify session. Close it "
-            "there, then convert it."
+            f"there, then {sVerb} it."
         )})
     dictResolution = operationJournal.fdictResolveContainerJournal(
         sName, dictCtx.get("docker"), bPersistResolution=False,
@@ -1746,8 +1758,8 @@ def _fnRefuseBusyProjectForConversion(app, sName, dictCtx):
         operationJournal.S_RESOLUTION_SETTLED
     ):
         raise HTTPException(409, detail={"sMessage": (
-            f"'{sName}' has operations that are not settled and cannot "
-            "be converted until it is reconciled."
+            f"'{sName}' has operations that are not settled; reconcile "
+            f"it before you {sVerb} it."
         )})
 
 
@@ -1867,10 +1879,10 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
         # Every validator runs BEFORE the caller's own session is
         # released: a refused name must never cost the researcher the
         # project view they are promoting from.
-        await _fnReleaseCallerOwnedSessionForConversion(
+        await _fnReleaseCallerOwnedSession(
             app, sName, requestHttp,
         )
-        _fnRefuseBusyProjectForConversion(app, sName, dictCtx)
+        _fnRefuseBusyProject(app, sName, dictCtx, sVerb="promote")
         # Workflow scaffold FIRST: if it fails, nothing has been
         # renamed and the sandbox is untouched; if a later write fails,
         # a sandbox carrying a workflow file re-runs safely because the

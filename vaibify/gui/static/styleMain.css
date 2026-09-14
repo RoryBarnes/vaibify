@@ -218,6 +218,22 @@ html, body {
     color: var(--color-red, #e74c3c);
 }
 
+/* The one menu item nothing can undo. Red alone no longer separates
+   it: it sits directly beneath "Remove from list", which is
+   reversible, and a pair of identically-painted controls with
+   opposite consequences is exactly the defect the Determinism row
+   shipped. So this one is also WEIGHTED, and it hovers filled rather
+   than tinted -- the colour says "destructive", the weight says "and
+   this is the one you cannot take back". */
+.container-menu-item--irreversible {
+    font-weight: 600;
+}
+
+.container-menu-item--irreversible:hover {
+    background: var(--color-red, #e74c3c);
+    color: white;
+}
+
 /* Destructive row actions ("Delete rules...", "Remove package...").
    RED, matching .container-menu-item.danger, and deliberately NOT
    orange: orange already means "not checked yet" on every badge and
@@ -5206,6 +5222,41 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     letter-spacing: 0.04em;
     color: var(--text-muted, var(--text-secondary));
 }
+
+/* The bullet list of what a destructive action actually destroys.
+   Deliberately a list rather than a paragraph: a researcher scanning a
+   modal reads items and skips prose, and every line here is a thing
+   they cannot get back. */
+.confirm-consequences {
+    margin: 0 0 14px 0;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.confirm-details-label code {
+    background: var(--bg-input);
+    color: var(--color-pale-blue);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* A destructive button the researcher has not yet earned: visibly
+   present so the outcome is never a surprise, visibly inert so the
+   typed confirmation reads as the thing standing between them. */
+.btn-danger:disabled,
+.btn-danger:disabled:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: transparent;
+    color: var(--error-color, #c62828);
+    border-color: var(--error-color, #c62828);
+}
+
 .confirm-checkbox-row {
     display: flex;
     align-items: center;

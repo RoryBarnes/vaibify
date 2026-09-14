@@ -207,6 +207,15 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/containers/{sName}/start/cancel"):
         S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/stop"): S_SCOPE_CONTAINER_LIFECYCLE,
+    # Permanent deletion is container-lifecycle for the same two
+    # reasons the stop is: it ends the container's existence, and it
+    # must stay answerable for an UNOWNED one -- a container nobody can
+    # claim is a common reason to want the environment gone, so a
+    # lease-enforced scope would lock the researcher out of the remedy.
+    # Lease-enforced whenever the container IS owned, so one browser
+    # session cannot delete an environment another is working in.
+    ("POST", "/api/registry/{sName}/delete-environment"):
+        S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/settings"):
         S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/host-directories/create"): S_SCOPE_BROWSER_HUB,

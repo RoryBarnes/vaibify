@@ -270,7 +270,27 @@ I_UNCLASSIFIED_ROW_BUDGET = 283
 # three queries are read-only, every argument is quoted, and the row
 # is classified on arrival. A typed-read migration of these three
 # queries would lower this again and is the candidate the row names.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 214
+# +2 (2026-09-13): permanent environment deletion stops and removes the
+# container it is deleting, through the same two lifecycle-gateway
+# primitives, in the same shape, as `registryRoutes._fnExecuteStop` --
+# which is already here, also mutation-capable and also outside. That
+# is the point worth reading: these two rows are not a new kind of
+# reach, they are a SECOND CALLER of an existing one, and both were
+# classified on arrival rather than deferred. The site is governed by
+# the route above it (a server-validated typed confirmation, a
+# host-project refusal, the caller's own session released through the
+# lifecycle authority, and the three-axis busy refusal), so no
+# container another session holds or whose journal is unsettled
+# reaches it. The candidate these rows name is the one that would
+# lower this by three rather than two: homing "retire this container"
+# -- the stop-or-remove branch plus the keep-alive stop, which both
+# callers now spell out for themselves -- inside containerManager, so
+# the primitives are reached from within the gateway and both call
+# sites become one. It was not done here because `_fnExecuteStop` is
+# patched and source-inspected by name from four test modules, so the
+# move is its own change with its own reconfirmation, not a rider on
+# a feature.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 216
 
 
 # Every acquisition of a declared capability that still has no reviewed

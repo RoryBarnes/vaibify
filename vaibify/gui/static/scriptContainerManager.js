@@ -262,9 +262,36 @@ var VaibifyContainerManager = (function () {
                 bHost, _fbImageObtained(dictContainer),
                 dictContainer.bPinnedImageObtainable === true) +
             _fsRenderHostConvertMenuItem(bHost) +
-            '<div class="container-menu-item danger" ' +
+            /* "Remove from list" stopped being the destructive item
+               here the moment a permanent Delete joined the menu
+               beneath it. It deletes nothing -- the container, the
+               image and every file survive it, and re-adding the
+               directory brings the tile back -- so it no longer wears
+               the red the irreversible action needs to own. Two
+               controls with opposite consequences, one line apart and
+               painted identically, is the same defect the Determinism
+               row shipped: the researcher reads a pair and cannot see
+               which one they cannot undo. */
+            '<div class="container-menu-item" ' +
             'data-action="remove">Remove from list</div>' +
+            _fsRenderDeleteMenuItem(bHost) +
             "</div></div>"
+        );
+    }
+
+    function _fsRenderDeleteMenuItem(bHost) {
+        /* Container tiles only. A host project owns no container, no
+           volume and no image -- the only thing vaibify holds for it is
+           the registry entry, which "Remove from list" above already
+           removes in full. Offering "Delete" there could only mean
+           deleting the researcher's own directory, which no dashboard
+           button will ever do. */
+        if (bHost) return "";
+        return (
+            '<div class="container-menu-separator"></div>' +
+            '<div class="container-menu-item danger ' +
+            'container-menu-item--irreversible" ' +
+            'data-action="delete-environment">Delete environment…</div>'
         );
     }
 
@@ -965,6 +992,8 @@ var VaibifyContainerManager = (function () {
             await fnForceRebuildContainer(sName);
         else if (sAction === "convert") _fnStartConversion(sName);
         else if (sAction === "remove") await fnRemoveContainer(sName);
+        else if (sAction === "delete-environment")
+            fnDeleteEnvironment(sName);
     }
 
     function _fnStartConversion(sName) {
@@ -1860,12 +1889,95 @@ var VaibifyContainerManager = (function () {
                     "This removes the container from vaibify's " +
                     "dashboard list only. It does not run `docker " +
                     "rm`, does not delete the image, and does not " +
-                    "touch any files in your workspace. To fully " +
-                    "delete the environment, use `vaibify destroy` " +
-                    "from a terminal.",
+                    "touch any files in your workspace. To delete the " +
+                    "environment for good, cancel this and choose " +
+                    "“Delete environment…” from the same " +
+                    "menu.",
                 bNoCommand: true,
             }
         );
+    }
+
+    function fnDeleteEnvironment(sName) {
+        /* The irreversible sibling of "Remove from list", behind a
+           phrase the researcher has to write out. The phrase carries
+           the NAME so a modal opened on the wrong tile cannot be
+           confirmed by muscle memory, and the backend validates the
+           same sentence -- this dialog is the courtesy, not the gate.
+
+           The consequences are listed rather than summarised because
+           the set is wider than a researcher expects: a project's
+           image is several tags, and its state is two volumes, not
+           one. */
+        VaibifyModals.fnShowTypedConfirmModal({
+            sTitle: "Delete environment",
+            sMessage:
+                "This permanently deletes the environment '" + sName +
+                "'. It cannot be undone.",
+            saConsequences: [
+                "The container and everything inside it",
+                "The workspace volume — every file the container " +
+                    "holds that you have not pulled out to the host",
+                "The credentials volume — any tokens stored in the " +
+                    "container's keyring",
+                "Every Docker image built or obtained for it",
+                "Its entry in the Environments hub",
+                "Your project directory on this machine is NOT " +
+                    "touched, and neither is anything you have already " +
+                    "pushed or published",
+            ],
+            sPhrase: _fsDeletionPhraseFor(sName),
+            sConfirmLabel: "Delete permanently",
+            fnOnConfirm: function () {
+                _fnRequestEnvironmentDeletion(sName);
+            },
+        });
+    }
+
+    function _fsDeletionPhraseFor(sName) {
+        /* Display-only mirror of environmentDeletion's
+           fsConfirmationPhraseFor. The backend is the authority: it
+           composes the same sentence and refuses the request when what
+           arrives does not match, so a drift here costs a confusing
+           400, never an unconfirmed deletion. */
+        return "permanently delete " + sName;
+    }
+
+    async function _fnRequestEnvironmentDeletion(sName) {
+        VaibifyApp.fnShowToast("Deleting '" + sName + "'…", "info");
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/delete-environment",
+                {sConfirmation: _fsDeletionPhraseFor(sName)}
+            );
+            /* AFTER the server agreed, never before. This route
+               refuses routinely -- a busy container, another session,
+               an unsettled journal -- and forgetting the mirror first
+               would destroy the researcher's Overleaf association for
+               an environment that is still there. "Remove from list"
+               can forget first because un-registering effectively
+               cannot fail; this cannot. Best-effort even here: a lost
+               mirror record is not worth reporting a completed
+               deletion as a failure. */
+            try {
+                await VaibifyOverleafMirror.fnForgetContainer(sName);
+            } catch (errorMirror) {
+                /* mirror deletion is best-effort */
+            }
+            VaibifyApp.fnShowToast(
+                "'" + sName + "' was deleted", "success");
+        } catch (error) {
+            /* A part-completed delete answers 500 with the server's own
+               account of what did and did not go, and leaves the tile
+               listed. Show that sentence rather than a generic
+               failure: it is the difference between "nothing happened"
+               and "the container is gone but the image is not". */
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+        }
+        fnLoadContainers();
     }
 
     function _fsRegistryUrl() {

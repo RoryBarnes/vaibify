@@ -317,7 +317,7 @@ def testACopiedLeaseFromAnotherSessionStillRefuses(tclient):
     flock held, registry unchanged.
 
     Kills: authorizing the self-release on the lease value alone in
-    ``_fnReleaseCallerOwnedSessionForConversion``.
+    ``_fnReleaseCallerOwnedSession``.
     """
     from vaibify.gui import browserSession
     client, app = tclient
