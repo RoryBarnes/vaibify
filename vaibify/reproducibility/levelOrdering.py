@@ -197,17 +197,18 @@ def fdictJudgeOrderedRequirements(
     because the row payload is assembled in a route module this one
     may not import.
 
-    ``dependencyLock`` is the ONE named exception, and it is a ruling
-    rather than an oversight (2026-09-15). The ROW's criterion is
-    about the repository's envelope -- the lock is present and hashed,
-    which stays true -- while a lock the container does not satisfy is
-    a fact about the CONTAINER, carried in an amber note beside the
-    row rather than in its colour, exactly as ``dictImageCurrency``
-    warns on the Environment snapshot row without moving it. The arrow
-    still has to name it, because the rerun refuses before it starts.
-    ``testOnlyTheDependencyLockRowDivergesFromTheArrow`` asserts it is
-    the only such row, so the carve-out cannot be mistaken for the bug
-    it looks like.
+    The agreement is TOTAL. ``dependencyLock`` was briefly a named
+    exception -- the row kept its state on a mismatch and warned in an
+    amber note, on the reasoning that the row speaks for the
+    repository's envelope while the container is a different question.
+    Seen on a live project that read as nonsense: every applicable
+    level showing a check, this arrow pointing at that row, and a note
+    underneath saying a rerun would refuse. The researcher reversed it
+    the same day -- a row nothing can be done about is not green -- so
+    the row now carries this conjunct too and resolves to PARTIAL,
+    which the artifact vocabulary already had.
+    ``test_no_row_diverges_from_the_arrow_at_all`` states the
+    invariant with no carve-out left in it.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictPermanence = levelGates.fdictArchivePermanenceState(

@@ -2347,8 +2347,10 @@ def _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesRepo, bHasRepo,
         ),
         "dictArtifacts": (
-            _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
-            if bHasRepo else {}
+            _fdictEnvelopeArtifacts(
+                dictWorkflow, filesRepo, dictLockSatisfaction,
+                dictImageCurrency,
+            ) if bHasRepo else {}
         ),
         # The one blocked requirement that must be fixed BEFORE the
         # others, or None when order does not matter -- which is the
@@ -2773,11 +2775,14 @@ def _fdictEnvelopeBinaryEntry(dictDeclared, dictCapture):
     }
 
 
-def _fdictEnvelopeArtifacts(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifacts(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Pair on-disk presence with the L3 verdict for each artifact."""
     dictPresence = _fdictEnvelopeArtifactPresence(filesRepo)
     dictSatisfaction = _fdictEnvelopeArtifactSatisfaction(
-        dictWorkflow, filesRepo,
+        dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
     )
     return {
         sName: {
@@ -2810,7 +2815,10 @@ def _fdictEnvelopeArtifactPresence(filesRepo):
     }
 
 
-def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifactSatisfaction(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Return the L3 readiness verdict for the five envelope artifacts.
 
     A row is satisfied only when EVERY Level 3 criterion naming its
@@ -2819,22 +2827,39 @@ def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
     paints a green mark on a file the ladder is blocking on; that
     shipped once, for ``reproduce-script-stale``.
 
-    Lock SATISFACTION is deliberately absent (ruling of 2026-09-15).
-    Whether the container satisfies the lock is a fact about the
-    CONTAINER; this row's criterion is about the repository's
-    envelope, and the warning rides in an amber note beside the row
-    instead -- the same shape as the image-currency warning on the
-    Environment snapshot row. The "Do this next" arrow still judges
-    that row unsatisfied, which is the one permitted divergence
-    between the two, and ``levelOrdering`` documents it beside the
-    sentence it qualifies.
+    Lock satisfaction is one of those criteria (researcher-ruled
+    2026-09-15, REVERSING the same day's earlier ruling that the row
+    should keep its state and warn only in an amber note). Seen on a
+    live project, that combination read as nonsense: every applicable
+    level showing a check, an arrow pointing at the row saying "do
+    this next", and a note underneath explaining that a rerun would
+    refuse. A row nothing can be done about is not green.
+
+    It resolves to ORANGE rather than red, and the existing artifact
+    vocabulary does that without a new state: the file is PRESENT and
+    it is hashed, so ``_fsArtifactStateFromDetail`` renders
+    present-but-unsatisfied as partial. Red would say the envelope is
+    broken, and it is not -- what disagrees is the image.
+
+    The conjunct is the POLICY, never the raw measurement: unknown
+    keeps the row green (nobody asked), and so does a mismatch
+    measured against a container nobody has shown to be the pinned
+    image. One truth table, shared with the arrow and with the
+    verification route, so all three now agree and the row has no
+    exception left to document.
     """
+    from vaibify.reproducibility import lockSatisfaction
     from vaibify.reproducibility import levelGates
     return {
         "manifest": levelGates.fbVerifyManifestComplete(
             filesRepo, dictWorkflow,
         ),
-        "dependencyLock": levelGates.fbVerifyDependencyLock(filesRepo),
+        "dependencyLock": (
+            levelGates.fbVerifyDependencyLock(filesRepo)
+            and not lockSatisfaction.fbLockBlocksVerification(
+                dictLockSatisfaction, dictImageCurrency,
+            )
+        ),
         "environmentSnapshot": levelGates.fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),

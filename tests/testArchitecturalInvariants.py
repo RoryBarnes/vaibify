@@ -4973,7 +4973,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # docstring that says why. Every line is the poll payload's one
     # responsibility: assemble what the dashboard renders, from
     # verdicts it never re-derives.
-    "routes/pipelineRoutes.py": 3659,
+    # +25 the same day: the Dependency-lock row takes the lock
+    # conjunct back after the researcher reversed the amber-note
+    # ruling on sight. The lines are the conjunct, the two threaded
+    # parameters, and the paragraph recording why the row resolves to
+    # partial rather than to red -- the file is present and hashed;
+    # what disagrees is the image.
+    "routes/pipelineRoutes.py": 3684,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

@@ -526,23 +526,30 @@ def test_the_environment_archive_orders_everything_the_manifest_does(
 
 
 @pytest.mark.falsification
-def test_the_dependency_lock_is_the_only_row_allowed_to_diverge(
-    sProjectRepo,
-):
-    """The named exception, asserted as an exception rather than believed.
+def test_no_row_diverges_from_the_arrow_at_all(sProjectRepo):
+    """There is no permitted divergence any more, and that is a ruling.
 
-    The Dependency-lock ROW stays green over a lock the container does
-    not satisfy (ruled 2026-09-15: the row's criterion is about the
-    repository's envelope, and the container is a different question),
-    while the ARROW must still name it, because the rerun refuses
-    before it starts. That divergence is indistinguishable from the bug
-    the agreement invariant exists to catch -- so it is pinned as the
-    ONLY one, and the next agent to notice it finds this test rather
-    than a reason to "fix" the ruling away.
+    The Dependency-lock row used to be one: it stayed green over a
+    lock the container did not satisfy, on the reasoning that the
+    row's criterion is about the repository's envelope while the
+    container is a different question, with the warning in an amber
+    note beside it.
 
-    Kills: adding the lock-satisfaction conjunct back to the row (the
-    divergence disappears), and adding a second row-vs-arrow
-    divergence anywhere else.
+    Seen on a live project the combination read as nonsense -- every
+    applicable level showing a check, the "Do this next" arrow
+    pointing at that very row, and a note underneath saying a rerun
+    would refuse. The researcher reversed it on 2026-09-15: a row
+    nothing can be done about is not green, so the row now carries the
+    same conjunct the arrow does and resolves to PARTIAL (the file is
+    present and hashed; what disagrees is the image).
+
+    So the invariant is now total, and this test is its whole
+    statement: for the state in which the lock blocks, EVERY shared
+    row agrees with the arrow.
+
+    Kills: dropping the lock conjunct back off the row, which
+    restores the green-row-with-an-arrow-on-it the researcher
+    rejected.
     """
     from vaibify.gui.routes.pipelineRoutes import (
         _fdictEnvelopeArtifactSatisfaction,
@@ -553,22 +560,65 @@ def test_the_dependency_lock_is_the_only_row_allowed_to_diverge(
         os.path.join(sProjectRepo, "requirements.lock"), "w",
     ) as fileLock:
         fileLock.write("numpy==2.5.2 \\\n    --hash=sha256:00\n")
+    dictBlocked = {"sState": lockSatisfaction.S_LOCK_MISMATCH}
+    dictPinIsLive = {"bPinnedImageIsLive": True}
     dictRows = _fdictEnvelopeArtifactSatisfaction(
-        dictWorkflow, sProjectRepo,
+        dictWorkflow, sProjectRepo, dictBlocked, dictPinIsLive,
     )
     dictArrow = levelOrdering.fdictJudgeOrderedRequirements(
-        dictWorkflow, sProjectRepo,
-        {"sState": lockSatisfaction.S_LOCK_MISMATCH},
-        {"bPinnedImageIsLive": True},
+        dictWorkflow, sProjectRepo, dictBlocked, dictPinIsLive,
+    )
+    assert dictArrow["dependencyLock"] is False, (
+        "the fixture is meant to hold a lock the pinned image fails"
     )
     listDiverged = sorted(
         sRow for sRow in dictRows
         if sRow in dictArrow
         and bool(dictRows[sRow]) != bool(dictArrow[sRow])
     )
-    assert listDiverged == ["dependencyLock"], (
-        "the set of rows whose rendered state disagrees with the "
-        f"arrow's verdict changed: {listDiverged}. Exactly one row is "
-        "permitted to diverge, and only because a ruling put the "
-        "warning in an amber note rather than in the row's colour"
+    assert listDiverged == [], (
+        "these rows render a state the arrow disagrees with, so the "
+        "arrow can point at a row the researcher sees as green: "
+        + str(listDiverged)
     )
+
+
+@pytest.mark.falsification
+def test_an_unasked_lock_leaves_the_row_and_the_arrow_green(sProjectRepo):
+    """Unknown is not a failure, on the row as well as on the arrow.
+
+    The row gained the POLICY conjunct, not the raw measurement. The
+    poll may not exec, so on most ticks nobody has asked -- and a row
+    that went amber on silence would be amber on every project
+    between hub restarts, which is the inverse of the defect the
+    reversal fixed.
+
+    Kills: giving the row the measurement (``sState != mismatch``)
+    instead of ``fbLockBlocksVerification``, which reddens every
+    unasked project and every project whose running container is not
+    the pinned image.
+    """
+    from vaibify.gui.routes.pipelineRoutes import (
+        _fdictEnvelopeArtifactSatisfaction,
+    )
+    from vaibify.reproducibility import lockSatisfaction
+    dictWorkflow = {"sWorkflowName": "project", "listSteps": []}
+    with open(
+        os.path.join(sProjectRepo, "requirements.lock"), "w",
+    ) as fileLock:
+        fileLock.write("numpy==2.5.2 \\\n    --hash=sha256:00\n")
+    for sLabel, dictVerdict, dictCurrency in (
+        ("never asked", None, None),
+        ("unknown", {"sState": lockSatisfaction.S_LOCK_UNKNOWN},
+         {"bPinnedImageIsLive": True}),
+        ("mismatch against a different image",
+         {"sState": lockSatisfaction.S_LOCK_MISMATCH},
+         {"bPinnedImageIsLive": False}),
+        ("mismatch against an undetermined image",
+         {"sState": lockSatisfaction.S_LOCK_MISMATCH},
+         {"bPinnedImageIsLive": None}),
+    ):
+        dictRows = _fdictEnvelopeArtifactSatisfaction(
+            dictWorkflow, sProjectRepo, dictVerdict, dictCurrency,
+        )
+        assert dictRows["dependencyLock"] is True, sLabel

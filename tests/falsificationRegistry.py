@@ -20830,23 +20830,38 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
-            'test_the_dependency_lock_is_the_only_row_allowed_to_diverge'
+            'test_no_row_diverges_from_the_arrow_at_all'
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
-        # The lock-satisfaction conjunct put back on the ROW, which
-        # erases the one permitted divergence -- and with it the
-        # ruling that the warning belongs in an amber note rather than
-        # in the row's colour.
+        # The conjunct dropped back OFF the row, restoring the
+        # green-row-with-an-arrow-on-it the researcher rejected on
+        # sight: every applicable level showing a check, the arrow
+        # pointing at it, and a note underneath saying a rerun refuses.
         old=(
-            '        "dependencyLock": levelGates.fbVerifyDependencyLock('
-            'filesRepo),\n'
+            '            and not lockSatisfaction.fbLockBlocksVerification(\n'
+            '                dictLockSatisfaction, dictImageCurrency,\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unasked_lock_leaves_the_row_and_the_arrow_green'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The row given the raw MEASUREMENT instead of the policy,
+        # which is the tempting simplification: it turns every
+        # unasked project amber between hub restarts, and every
+        # project whose running container is not the pinned image.
+        old=(
+            '            and not lockSatisfaction.fbLockBlocksVerification(\n'
+            '                dictLockSatisfaction, dictImageCurrency,\n'
+            '            )\n'
         ),
         new=(
-            '        "dependencyLock": (\n'
-            '            levelGates.fbVerifyDependencyLock(filesRepo)\n'
             '            and (dictLockSatisfaction or {}).get("sState")\n'
             '            != lockSatisfaction.S_LOCK_MISMATCH\n'
-            '        ),\n'
         ),
     ),
     Falsification(
@@ -20927,7 +20942,7 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testTheLockRowKeepsItsStateAndSaysWhy.py::'
-            'test_a_lock_the_container_fails_keeps_its_row_and_gains_a_note'
+            'test_a_lock_the_container_fails_turns_its_row_amber_and_says_why'
         ),
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         # The note silenced. The row stays green -- correctly, by the

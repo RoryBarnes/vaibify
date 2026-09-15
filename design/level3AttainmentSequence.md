@@ -129,15 +129,35 @@ disappears, and that is correct.
 
 ## Rulings — settled, do not re-litigate
 
-1. **The Dependency-lock row keeps its state on a mismatch.** The
-   warning lives in an amber note, not in the row's color. The row's
-   criterion is about the *repository's envelope* (the lock is present
-   and hashed, which is true); a lock the container does not satisfy
-   is a fact about the *container*. Precedent: `dictImageCurrency`
-   warns on the Environment snapshot row without changing its state.
-2. **That row is a named single-row exception** to the arrow/row
-   agreement invariant — documented in the docstring, pinned by a test
-   asserting it is the only one.
+1. ~~**The Dependency-lock row keeps its state on a mismatch.**~~
+   **REVERSED 2026-09-15, on sight, by the researcher who made the
+   original ruling.** It said the warning lives in an amber note and
+   not in the row's color, because the row's criterion is about the
+   *repository's envelope* (the lock is present and hashed, which is
+   true) while a lock the container does not satisfy is a fact about
+   the *container* — with `dictImageCurrency` as precedent.
+
+   Rendered on a live project the combination read as nonsense: every
+   applicable level showing a check, the "Do this next" arrow pointing
+   at that row, and a note underneath saying a rerun would refuse
+   before it starts. *"A row nothing can be done about is not green."*
+
+   The row now carries the same conjunct the arrow does and resolves
+   to **partial** — the artifact vocabulary already had that state,
+   and it is the honest one, because the file IS present and IS
+   hashed and what disagrees is the image. It is the POLICY conjunct,
+   never the raw measurement, so `unknown` and a mismatch against a
+   container nobody has shown to be the pin both keep the row green.
+2. ~~**That row is a named single-row exception.**~~ **GONE with
+   ruling 1.** The arrow and the rows now agree with no carve-out, and
+   `test_no_row_diverges_from_the_arrow_at_all` states the invariant
+   in that form.
+
+   Worth keeping for the next reader: the original pair was reasoned
+   from a real precedent and was internally consistent, and it still
+   took one look at the rendered page to reject. A ruling about what a
+   screen should say is not settled until somebody has seen the
+   screen.
 3. **Host projects are denied Level 3 by construction**, in the scalar
    gate — not incidentally by failing the published-artifact
    conjuncts.

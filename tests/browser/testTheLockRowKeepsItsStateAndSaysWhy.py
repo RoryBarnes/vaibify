@@ -1,31 +1,32 @@
-"""The Dependency-lock row stays green, warns in amber, and gets the arrow.
+"""A row nothing can be done about is not green.
 
-Three claims that only a rendered page can hold together, and each one
-would look like a bug on its own.
+The Dependency-lock row used to keep its state on a mismatch and warn
+only in an amber note, on the reasoning that the row speaks for the
+repository's envelope -- the lock is present and hashed, which stays
+true -- while a lock the container does not satisfy is a fact about the
+CONTAINER. It had a precedent: the image-currency warning has always
+warned on the Environment snapshot row without moving it.
 
-The ROW keeps its state on a mismatch (ruled 2026-09-15). Its criterion
-is about the repository's envelope -- the lock is present and hashed,
-which stays true -- while a lock the container does not satisfy is a
-fact about the CONTAINER. The precedent is the image-currency warning,
-which has always warned on the Environment snapshot row without moving
-it.
+Seen on a live project, the combination read as nonsense. Every
+applicable level showed a check, the "Do this next" arrow pointed at
+that very row, and a note underneath explained that a rerun would
+refuse before it started. The researcher reversed the ruling on sight
+(2026-09-15): "if I ruled this was OK before it was because I didn't
+see it."
 
-The NOTE says so in amber, and says it about *the container you are
-working in*, never about the pinned image: the measurement is taken
-against the running container, because asking the pin means launching
-it, which is the cost the check exists to avoid.
+So the row now carries the same conjunct the arrow does, and resolves
+to PARTIAL rather than to red -- the artifact vocabulary already had
+that state, and it is the honest one: the file IS present and IS
+hashed, and what disagrees is the image. F stays green, R goes red,
+the row's level cell and the Artifacts banner go amber.
 
-The ARROW still names the row, because the rerun refuses before it
-starts. That divergence between a green row and an arrow pointing at it
-is the ONE permitted one, pinned on the Python side by
-``test_the_dependency_lock_is_the_only_row_allowed_to_diverge``; here it
-is pinned as a thing a researcher actually sees.
-
-And the arrow appears only when the running container is PROVEN to be
-the pinned image. The backend decides that (one truth table, shared with
-the verification pre-flight) and ships the answer; what this file holds
-is that the page renders the three states apart rather than deriving a
-fourth of its own.
+What survives the reversal, and is asserted here because only a
+rendered page can hold it together: the note still says *the container
+you are working in* rather than the pinned image, because that is what
+was measured; and NONE of it fires unless the running container is
+PROVEN to be the image the envelope pins. The backend decides that from
+one truth table shared with the arrow and the verification route, so
+the three cannot disagree.
 """
 
 import pytest
@@ -46,7 +47,10 @@ _S_RENDER_LOCK_ROW = """(dictArgs) => {
             dictNextOrderedStep: dictArgs.dictNextOrderedStep,
             dictArtifacts: {
                 manifest: {bPresent: true, bSatisfied: true},
-                dependencyLock: {bPresent: true, bSatisfied: true},
+                dependencyLock: {
+                    bPresent: true,
+                    bSatisfied: dictArgs.bLockSatisfied,
+                },
                 environmentSnapshot: {bPresent: true, bSatisfied: true},
                 dockerfile: {bPresent: true, bSatisfied: true},
                 reproduceScript: {bPresent: true, bSatisfied: true},
@@ -82,27 +86,40 @@ def _fsSelectRow(sHtml, sKey):
 
 
 @pytest.mark.falsification
-def test_a_lock_the_container_fails_keeps_its_row_and_gains_a_note(
+def test_a_lock_the_container_fails_turns_its_row_amber_and_says_why(
     pageDashboard, serverHub,
 ):
     """ONE open, every state: the seeded project is leased.
 
     Kills: silencing ``_fsRenderLockMismatchNote``. The row is then
-    green, the arrow still points at it, and nothing on the page says
-    why -- which is the state the researcher was in before any of
-    this existed, reached from the opposite direction.
+    amber with an arrow on it and nothing on the page saying which
+    packages disagree or what to click -- a researcher told they are
+    blocked and not told by what, which is the state this whole
+    feature exists to end.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # --- mismatch, and the running container IS the pin. The row is
     # green, the note is there, and the arrow names the row.
+    # bSatisfied is what the BACKEND computes -- false here, because
+    # the policy blocks. That the backend computes it that way is
+    # pinned in Python by test_no_row_diverges_from_the_arrow_at_all;
+    # what this file pins is what the page does with it.
     sHtml = pageDashboard.evaluate(_S_RENDER_LOCK_ROW, {
         "dictImageCurrency": {"bPinnedImageIsLive": True},
         "dictLockSatisfaction": _DICT_MISMATCH,
         "dictNextOrderedStep": _DICT_ARROW,
+        "bLockSatisfied": False,
     })
     sRow = _fsSelectRow(sHtml, "dependencyLock")
-    assert "Level 3: met" in sRow, sRow[:1500]
+    # PARTIAL, not met and not failed. The envelope is coherent --
+    # the file is there and it is hashed -- and the image is what
+    # disagrees, so red would name the wrong thing as broken.
+    assert "Level 3: partially met" in sRow, sRow[:1500]
+    assert "Level 3: met" not in sRow, (
+        "a row the arrow is pointing at, that a rerun would refuse "
+        "on, still shows a check"
+    )
     assert "lock-mismatch-warning" in sRow
     assert "numpy==2.4.6 (image has 2.5.2)" in sRow
     assert "container you are working in" in sRow, (
@@ -127,9 +144,13 @@ def test_a_lock_the_container_fails_keeps_its_row_and_gains_a_note(
         "dictImageCurrency": {"bPinnedImageIsLive": None},
         "dictLockSatisfaction": _DICT_MISMATCH,
         "dictNextOrderedStep": None,
+        "bLockSatisfied": True,
     })
-    assert "lock-mismatch-warning" in _fsSelectRow(
-        sUnproven, "dependencyLock",
+    sUnprovenRow = _fsSelectRow(sUnproven, "dependencyLock")
+    assert "lock-mismatch-warning" in sUnprovenRow
+    assert "Level 3: met" in sUnprovenRow, (
+        "a rerun of the PINNED image was marked down over a "
+        "measurement of a container nobody has shown to be it"
     )
     assert "ordering-arrow" not in sUnproven, (
         "an arrow pointed at a row on the strength of a measurement "
@@ -145,6 +166,7 @@ def test_a_lock_the_container_fails_keeps_its_row_and_gains_a_note(
                 "dictImageCurrency": {"bPinnedImageIsLive": True},
                 "dictLockSatisfaction": objVerdict,
                 "dictNextOrderedStep": None,
+                "bLockSatisfied": True,
             }),
             "dependencyLock",
         )
