@@ -275,6 +275,14 @@ var VaibifyWorkflowManager = (function () {
             _fnAttachDirtyBannerActions(elBanner);
             return;
         }
+        if (dictRefusal &&
+                dictRefusal.sRefusal === "diverged-branches") {
+            elBanner.classList.add("dirty");
+            elBanner.innerHTML = _fsBuildDivergedMarkup(dictRefusal);
+            elBanner.hidden = false;
+            _fnAttachDivergedBannerActions(elBanner, dictRefusal);
+            return;
+        }
         var iBehind = (dictStatus && dictStatus.iBehind) || 0;
         if (!iBehind) {
             _fnHideDriftBanner();
@@ -328,6 +336,149 @@ var VaibifyWorkflowManager = (function () {
         var elDismiss = elBanner.querySelector(".drift-banner-dismiss");
         if (elDismiss) {
             elDismiss.addEventListener("click", _fnHideDriftBanner);
+        }
+    }
+
+    function _fsBuildDivergedMarkup(dictRefusal) {
+        /* Its own banner, because the remedy is the OPPOSITE of the
+           dirty one's. A researcher who is behind and dirty meets the
+           dirty refusal, clicks "Commit state & Pull", and the commit
+           lands them HERE -- so repeating "commit and pull" would be
+           a loop the button walked them into
+           (researcher-reported, 2026-09-15). */
+        var sBranch = VaibifyUtilities.fnEscapeHtml(
+            dictRefusal.sBranch || "main");
+        var iAhead = dictRefusal.iAhead || 0;
+        var iBehind = dictRefusal.iBehind || 0;
+        return '<div class="drift-banner-message">' +
+            'Your branch and origin/' + sBranch + ' have each moved ' +
+            'on: ' + iAhead + ' commit' + (iAhead === 1 ? '' : 's') +
+            ' here, ' + iBehind + ' there. A fast-forward is not ' +
+            'possible, so the two histories have to be joined.' +
+            '</div><div class="drift-banner-actions">' +
+            '<button type="button" class="drift-banner-merge">' +
+            'Merge origin/' + sBranch + '…</button>' +
+            '<button type="button" class="drift-banner-dismiss" ' +
+            'aria-label="Dismiss drift banner">×</button>' +
+            '</div>';
+    }
+
+    function _fsDescribeMergePreview(dictPreview) {
+        /* Three answers, never two. "vaibify could not ask" must not
+           render as "this is clean": the whole value of previewing is
+           that the researcher learns what the merge does BEFORE
+           agreeing, and a preview that guesses is worse than none. */
+        var dict = dictPreview || {};
+        if (dict.sState === "clean") {
+            return '<p class="merge-preview merge-preview-clean">' +
+                'Checked: this merges cleanly. No file needs a ' +
+                'decision from you.</p>';
+        }
+        if (dict.sState === "conflicts") {
+            var listPaths = (dict.listConflictPaths || []).slice(0, 8);
+            return '<p class="merge-preview merge-preview-conflict">' +
+                'Checked: this conflicts, so vaibify will not do it. ' +
+                'These files differ on both sides and need you:</p>' +
+                '<ul class="merge-preview-list">' +
+                listPaths.map(function (sPath) {
+                    return "<li>" +
+                        VaibifyUtilities.fnEscapeHtml(sPath) + "</li>";
+                }).join("") + '</ul>';
+        }
+        return '<p class="merge-preview merge-preview-unknown">' +
+            'Vaibify could not check whether this merges cleanly, so ' +
+            'it is not promising either way. The merge below may stop ' +
+            'and ask you to resolve files by hand.</p>';
+    }
+
+    function _fsBuildMergeModalMarkup(dictRefusal) {
+        var sBranch = VaibifyUtilities.fnEscapeHtml(
+            dictRefusal.sBranch || "main");
+        var bConflicts = (dictRefusal.dictMergePreview || {})
+            .sState === "conflicts";
+        return '<div class="modal merge-modal">' +
+            '<h3>Join your history with origin/' + sBranch + '</h3>' +
+            '<p>This writes a merge commit keeping both sides: your ' +
+            'work and what is on GitHub. Nothing you have done is ' +
+            'rewritten or discarded.</p>' +
+            _fsDescribeMergePreview(dictRefusal.dictMergePreview) +
+            /* Rebase is not offered, and saying so is better than a
+               silence the researcher reads as an oversight. */
+            '<p class="merge-modal-note">Vaibify does not offer a ' +
+            'rebase here. Rebasing rewrites your commit IDs, and ' +
+            'vaibify records them \u2014 the GitHub verify stores the ' +
+            'commit it compared, and a reproduction stages the commit ' +
+            'it ran \u2014 so rewriting them strands the references ' +
+            'that make a published claim checkable.</p>' +
+            '<div class="modal-actions">' +
+            '<button type="button" class="btn merge-modal-cancel">' +
+            'Cancel</button>' +
+            '<button type="button" class="btn merge-modal-confirm"' +
+            (bConflicts ? ' disabled' : '') + '>Merge</button>' +
+            '</div></div>';
+    }
+
+    function _fnAttachDivergedBannerActions(elBanner, dictRefusal) {
+        var elMerge = elBanner.querySelector(".drift-banner-merge");
+        if (elMerge) {
+            elMerge.addEventListener("click", function () {
+                _fnOpenMergeModal(dictRefusal);
+            });
+        }
+        _fnAttachDriftBannerDismiss(elBanner);
+    }
+
+    function _fnOpenMergeModal(dictRefusal) {
+        /* The house shape: an OUTER .modal-overlay, which is
+           display:none until it carries .active, wrapping an INNER
+           .modal. Built the other way round the dialog is appended to
+           the end of <body> as an unstyled block below the fold, and
+           the button reads as doing nothing at all -- which is how
+           this shipped to the researcher first time (2026-09-15). */
+        var elOverlay = document.createElement("div");
+        elOverlay.className = "modal-overlay merge-modal-overlay active";
+        elOverlay.innerHTML = _fsBuildMergeModalMarkup(dictRefusal);
+        document.body.appendChild(elOverlay);
+
+        function _fnClose() { elOverlay.remove(); }
+
+        elOverlay.querySelector(".merge-modal-cancel")
+            .addEventListener("click", _fnClose);
+        // Clicking the backdrop dismisses, as every other overlay
+        // here does; clicking the dialog itself must not.
+        elOverlay.addEventListener("click", function (event) {
+            if (event.target === elOverlay) _fnClose();
+        });
+        var elConfirm = elOverlay.querySelector(".merge-modal-confirm");
+        if (!elConfirm.disabled) {
+            elConfirm.addEventListener("click", function () {
+                _fnClose();
+                fdictMergeUpstream();
+            });
+        }
+    }
+
+    async function fdictMergeUpstream() {
+        var sId = VaibifyApp.fsGetContainerId();
+        if (!sId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/git/" + sId + "/merge-upstream", {});
+            if (dictResult && dictResult.sRefusal) {
+                _fnRenderDriftBanner(sId, null, dictResult);
+                VaibifyApp.fnShowToast(
+                    "The merge was refused; nothing changed.", "error");
+                return;
+            }
+            VaibifyApp.fnShowToast(
+                "Merged to " +
+                (dictResult.sNewHeadSha || "").slice(0, 7), "success");
+            _fnHideDriftBanner();
+            await fnRefreshWorkflow();
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                VaibifyUtilities.fsSanitizeErrorForUser(
+                    error.message), "error");
         }
     }
 
@@ -2779,6 +2930,15 @@ var VaibifyWorkflowManager = (function () {
         fnRefreshWorkflow: fnRefreshWorkflow,
         fnCheckOriginDrift: fnCheckOriginDrift,
         fdictPullProjectRepo: fdictPullProjectRepo,
+        fdictMergeUpstream: fdictMergeUpstream,
+        // Exported for the browser lane ONLY, which has to drive the
+        // real banner to find out whether the dialog it opens is
+        // actually laid out. Asserting on the markup string cannot
+        // see a display:none overlay, which is the whole defect.
+        _fnRenderDriftBannerForTest: function (dictRefusal) {
+            _fnRenderDriftBanner(
+                VaibifyApp.fsGetContainerId(), null, dictRefusal);
+        },
         fnToggleWorkflowDropdown: fnToggleWorkflowDropdown,
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,

@@ -1612,6 +1612,13 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     # audit-determinism could only echo the readiness card. These are
     # the issues the verdict is computed FROM.
     dictResult["listDeterminismIssues"] = flistAuditWorkflow(dictWorkflow)
+    # What the steps last took, so the confirmation can say this
+    # project's actual cost instead of warning about "hours" at a
+    # workflow that finishes in seconds.
+    from vaibify.reproducibility import rerunEstimate
+    dictResult["dictRerunCost"] = rerunEstimate.fdictEstimateRerunCost(
+        dictWorkflow,
+    )
     dictResult["bL3ReadinessOK"] = bool(bAllReadiness)
     dictResult["sManifestDigest"] = (
         fsCurrentManifestDigest(filesRepo) if bRepo else ""

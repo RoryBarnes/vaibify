@@ -155,14 +155,36 @@ def test_an_untracked_file_refuses_the_clone_naming_the_path(sPublishedRepo):
 
 
 @pytest.mark.falsification
-def test_an_ignored_file_refuses_the_clone_too(sPublishedRepo):
-    """Kills: dropping ``--ignored`` from the status query."""
+def test_an_ignored_file_does_not_refuse_the_clone(sPublishedRepo):
+    """An ignored file cannot reach the rerun, so it must not block it.
+
+    This test previously asserted the OPPOSITE, and pinned ``--ignored``
+    on the status query. Reversed by the researcher's ruling on
+    2026-09-15, after that strictness stopped a live verification
+    twice: staging CLONES the source, a clone never carries ignored
+    files, and so an ignored file cannot change what is reproduced.
+    Demanding ``git clean -fdX`` before every attestation bought
+    nothing and stood between the researcher and their own result.
+
+    The untracked half is asserted in the same breath, because THAT is
+    what the rule is for: an untracked file really can differ from the
+    published state a reader would clone, and it still refuses.
+
+    Kills: putting ``--ignored`` back on the status query.
+    """
     fnWriteText(sPublishedRepo, ".gitignore", "*.cache\n")
     fnCommitEverything(sPublishedRepo, "ignore caches")
     fnWriteText(sPublishedRepo, "results.cache", "stale\n")
+    dictStaged = fdictStageSource(sPublishedRepo)
+    assert dictStaged["sWorkflowName"] == "Demo"
+
+    fnWriteText(sPublishedRepo, "notIgnored.txt", "unpublished\n")
     with pytest.raises(ReproductionSourceRefusedError) as excinfo:
         fdictStageSource(sPublishedRepo)
-    assert "results.cache" in str(excinfo.value)
+    assert "notIgnored.txt" in str(excinfo.value)
+    assert "results.cache" not in str(excinfo.value), (
+        "an ignored file must not even be NAMED as a blocker"
+    )
 
 
 @pytest.mark.falsification

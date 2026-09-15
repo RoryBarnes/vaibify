@@ -807,6 +807,12 @@ const VaibifyApp = (function () {
         // Badges first so the first paint is never an empty map; the
         // remote checks follow, and their own completion bumps the
         // sync epoch, which repaints the badges with what they found.
+        //
+        // The lock check rides along on the same open-time trigger,
+        // for the same reason the remote checks do: it needs an exec,
+        // the poll may add none, and a question nobody asks stays
+        // unknown forever.
+        fnWarmLockSatisfactionCheck();
         if (typeof VaibifyGitBadges === "undefined") {
             VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
             return;
@@ -4965,6 +4971,26 @@ const VaibifyApp = (function () {
         }
     }
 
+    async function fnWarmLockSatisfactionCheck() {
+        /* One readiness GET on project open. Reading the installed
+           packages needs an exec and the poll may add none, so the
+           Dependency-lock row and the "Do this next" arrow would
+           otherwise stay UNKNOWN until the researcher opened the
+           PROOF tab or clicked Verify -- which is how a stale lock
+           went unnoticed until it refused a rerun
+           (researcher-reported, 2026-09-15).
+
+           Failure is swallowed on purpose: the answer is an
+           optimization, every surface renders unknown exactly as it
+           did before, and a toast about a background warm-up is
+           noise about something nobody asked for. */
+        try {
+            await _fdictFetchL3Readiness();
+        } catch (error) {
+            return;
+        }
+    }
+
     async function _fdictFetchL3Readiness() {
         /* Returns the GAPS DICT, not the envelope around it. The
            route answers {iProofLevel, dictL3ReadinessGaps}, and
@@ -5327,13 +5353,53 @@ const VaibifyApp = (function () {
             "reporting a result you could not trust.",
             fnOnConfirm,
             {
-                sDetails: "The rerun takes about as long as running " +
-                    "the workflow yourself.",
+                sDetails: _fsDescribeRerunCost(dictReady),
                 sCommand: "vaibify reproduce --rerun",
                 sConfirmLabel: "Copy and verify",
                 sCancelLabel: "Not now",
             }
         );
+    }
+
+    function _fsDescribeRerunCost(dictReady) {
+        /* Vaibify records fWallClock for every step it has run, so it
+           can state THIS project's cost rather than warn about "hours"
+           at a workflow that finishes in ten seconds -- noise in a
+           safety notice is how researchers learn to click through
+           safety notices (researcher-reported, 2026-09-15).
+
+           Always a FLOOR, and it says so: untimed steps contribute
+           nothing, and the rerun also exports the project, acquires
+           the pinned image (which can mean loading a multi-gigabyte
+           archive) and hashes every pinned file. */
+        var dictCost = (dictReady || {}).dictRerunCost || {};
+        var sTail = " The whole pipeline is re-run, and this does not " +
+            "count exporting the project, fetching the pinned image, " +
+            "or hashing the results \u2014 so allow more.";
+        if (dictCost.bAnyStepTimed !== true) {
+            return "\u26a0 The whole pipeline is re-run. None of " +
+                "these steps has been timed yet, so vaibify cannot " +
+                "say how long that will take.";
+        }
+        var sTotal = _fsHumanizeDuration(dictCost.fRecordedSeconds);
+        if (dictCost.iStepsUntimed) {
+            return "\u26a0 Last time, the timed steps took " + sTotal +
+                " \u2014 but " + dictCost.iStepsUntimed + " step" +
+                (dictCost.iStepsUntimed === 1 ? " has" : "s have") +
+                " never been timed and are not in that figure." + sTail;
+        }
+        return "\u26a0 Last time, these steps took " + sTotal + "." +
+            sTail;
+    }
+
+    function _fsHumanizeDuration(fSeconds) {
+        // Coarse on purpose: a recorded wall-clock is evidence of an
+        // order of magnitude, not a stopwatch for the next run.
+        var f = Number(fSeconds) || 0;
+        if (f < 90) return Math.round(f) + " seconds";
+        if (f < 5400) return Math.round(f / 60) + " minutes";
+        if (f < 172800) return (f / 3600).toFixed(1) + " hours";
+        return (f / 86400).toFixed(1) + " days";
     }
     var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
@@ -5415,71 +5481,16 @@ const VaibifyApp = (function () {
         );
         fnRecolorVisibleDagEdges();
         _dictWorkflowState.iLastRenderedProofLevel = iLevel;
-        _fnRefreshAttestationBanner(iLevel);
-    }
-
-    function _fnRefreshAttestationBanner(iLevel) {
-        /* Show #proofAttestationBanner when an L3 attestation exists
-           but its recorded manifest digest no longer matches the live
-           manifest. Loud failure: clicking opens the PROOF tab so the
-           researcher can re-verify. The poll is light (single GET)
-           and only fires when the workflow is at least L2 so we never
-           query an envelope-free repo. */
-        if (iLevel < 2) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        var sId = VaibifyContainerManager.fsGetSelectedContainerId();
-        if (!sId) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        VaibifyApi.fdictGet(
-            "/api/workflow/" + sId + "/level3/attestation"
-        ).then(function (dictResp) {
-            _fnRenderAttestationBannerFromResponse(dictResp);
-        }).catch(function () {
-            _fnHideAttestationBanner();
-        });
-    }
-
-    function _fnRenderAttestationBannerFromResponse(dictResp) {
-        var elBanner = document.getElementById(
-            "proofAttestationBanner"
-        );
-        if (!elBanner) return;
-        var dictCurrent = dictResp && dictResp.dictCurrentAttestation;
-        var sLive = (dictResp && dictResp.sLiveManifestDigest) || "";
-        if (!dictCurrent) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        var sRecorded = dictCurrent.sManifestDigestAtAttestation ||
-            "";
-        if (!sRecorded || !sLive || sRecorded === sLive) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        elBanner.innerHTML = 'L3 attestation expired because the ' +
-            'manifest changed. Click to open the PROOF tab and ' +
-            're-run reproduction verification.';
-        elBanner.hidden = false;
-        elBanner.onclick = function () {
-            var elTab = document.querySelector(
-                '.left-tab[data-panel="proof"]'
-            );
-            if (elTab) elTab.click();
-        };
-    }
-
-    function _fnHideAttestationBanner() {
-        var elBanner = document.getElementById(
-            "proofAttestationBanner"
-        );
-        if (!elBanner) return;
-        elBanner.hidden = true;
-        elBanner.innerHTML = "";
-        elBanner.onclick = null;
+        /* No attestation banner. It fetched
+           /level3/attestation on every level render to say one thing
+           -- "your attestation no longer covers the manifest" -- that
+           the Attestation row already says, and it said it while
+           sending the researcher to a different tab than the "Do this
+           first" arrow was pointing at. Two destinations for one
+           action, neither wrong, which is what made it confusing
+           (researcher's ruling, 2026-09-15: the Main tab is where the
+           researcher should stay). The row carries the state and the
+           button; the arrow carries the order. */
     }
 
     function fnRecolorVisibleDagEdges() {

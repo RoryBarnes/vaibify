@@ -17513,14 +17513,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_an_untracked_file_refuses_the_clone_naming_the_path',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
-        new='        ["status", "--porcelain", "--untracked-files=no", "--ignored"],\n',
+        old='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        new='        ["status", "--porcelain", "--untracked-files=no"],\n',
     ),
     Falsification(
-        nodeid='tests/testReproductionSource.py::test_an_ignored_file_refuses_the_clone_too',
+        nodeid='tests/testReproductionSource.py::test_an_ignored_file_does_not_refuse_the_clone',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
-        new='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        # INVERTED on 2026-09-15 with the rule it pins. The mutation is
+        # now putting --ignored BACK: a clone never carries ignored
+        # files, so blocking on them stopped verifications for a
+        # difference that cannot reach the rerun.
+        old='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        new='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_a_clean_clone_stages_the_checked_out_commit',
@@ -20419,6 +20423,135 @@ def _fdictEntry(sRel):
             '        ".requirement-group-header": '
             '_fnHandleRequirementGroupToggle,\n'
             '        ".ordering-arrow": _fnHandleOrderingArrow,\n'
+        ),
+    ),
+    # --- 2026-09-15: a diverged branch is offered a merge ---
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_a_diverged_branch_is_named_before_git_is_asked_to_try'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The pull is sent to git, which answers with hint text and
+        # no action the researcher can take.
+        old=(
+            '    if int(dictGit.get("iAhead") or 0) > 0 and int(\n'
+            '        dictGit.get("iBehind") or 0\n'
+            '    ) > 0:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_a_conflicting_merge_is_refused_rather_than_half_applied'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The merge runs without consulting the preview, leaving
+        # conflict markers and an unfinished MERGE_HEAD behind.
+        old=(
+            '    if dictPreview["sState"] != '
+            'containerGit.S_MERGE_PREVIEW_CLEAN:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_an_unaskable_preview_refuses_rather_than_assuming_clean'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # Unchecked read as clean: the merge runs on exactly the
+        # machines where nothing could verify it was safe.
+        old=(
+            '    if dictPreview["sState"] != '
+            'containerGit.S_MERGE_PREVIEW_CLEAN:\n'
+        ),
+        new=(
+            '    if dictPreview["sState"] == '
+            'containerGit.S_MERGE_PREVIEW_CONFLICTS:\n'
+        ),
+    ),
+    # --- 2026-09-15: the rerun says what it costs ---
+    Falsification(
+        nodeid=(
+            'tests/testTheRerunSaysWhatItCosts.py::'
+            'test_an_untimed_step_is_counted_as_unknown_not_as_zero'
+        ),
+        source='vaibify/reproducibility/rerunEstimate.py',
+        # "Never run" absorbed as "took no time": the total looks
+        # precise and is confidently too small. Anchored on the
+        # MISSING-key branch, which is the one a step that never ran
+        # actually takes -- the malformed-value branch below it is a
+        # different path, and mutating that one survives.
+        old=(
+            '    if not isinstance(dictRunStats, dict):\n'
+            '        return None\n'
+        ),
+        new=(
+            '    if not isinstance(dictRunStats, dict):\n'
+            '        return 0.0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheMergeModalIsActuallyVisible.py::'
+            'test_the_merge_modal_is_visible_when_the_button_is_clicked'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # The overlay is built without .active, so it stays
+        # display:none and the button reads as doing nothing.
+        old=(
+            '        elOverlay.className = '
+            '"modal-overlay merge-modal-overlay active";\n'
+        ),
+        new=(
+            '        elOverlay.className = '
+            '"modal-overlay merge-modal-overlay";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheRerunSaysWhatItCosts.py::'
+            'test_a_project_with_no_timings_reports_no_figure'
+        ),
+        source='vaibify/reproducibility/rerunEstimate.py',
+        # A project nobody has run presents a measured-looking zero.
+        old='        "bAnyStepTimed": bool(listSeconds),\n',
+        new='        "bAnyStepTimed": bool(listSteps),\n',
+    ),
+    # --- 2026-09-15: the lock is checked before a rerun is spent ---
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_an_unreadable_image_is_unknown_not_an_empty_one'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # "Could not look" arrives as "the image has nothing", which
+        # mismatches every line of the lock and reddens the row of any
+        # project whose container was briefly unreachable.
+        old='    if dictInstalled is None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_the_shadow_and_the_preflight_share_one_diff'
+        ),
+        source='vaibify/reproducibility/shadowRerun.py',
+        # A private diff inside the shadow again: two authorities on
+        # one question, which is how the mismatch reached a rerun.
+        old=(
+            '    listMismatched = flistDescribeLockMismatch('
+            'dictLocked, dictInstalled)\n'
+        ),
+        new=(
+            '    listMismatched = [\n'
+            '        f"{sName}=={sVersion} (image has "\n'
+            '        f"{dictInstalled.get(sName) or \'nothing\'})"\n'
+            '        for sName, sVersion in sorted(dictLocked.items())\n'
+            '        if dictInstalled.get(sName) != sVersion\n'
+            '    ]\n'
         ),
     ),
 ]

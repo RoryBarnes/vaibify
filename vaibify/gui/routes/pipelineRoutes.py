@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 
 from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
-from ...reproducibility import remoteCheckState
+from ...reproducibility import lockSatisfaction, remoteCheckState
 from ...reproducibility.manifestPaths import (
     fdictWorkflowTemplateValues,
     flistStepOutputRepoPaths,
@@ -1135,6 +1135,15 @@ async def _fdictFetchOutputStatus(
             dictWorkflow, filesPoll, sContainerId,
             fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
         ),
+        # Computed where the container id lives and threaded as a
+        # value, exactly as dictImageCurrency is: the payload builder
+        # has no other business with a container id.
+        dictLastNoVerdict=verificationProgress.fdictReadNoVerdict(
+            sContainerId,
+        ),
+        dictLockSatisfaction=lockSatisfaction.fdictReadLockSatisfaction(
+            sContainerId,
+        ),
     )
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
@@ -1939,7 +1948,8 @@ def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
     bHostProject=False, *, bVerificationRunning, dictImageCurrency,
-    dictImageArchive,
+    dictImageArchive, dictLastNoVerdict=None,
+    dictLockSatisfaction=None,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1976,6 +1986,8 @@ def _fdictBuildPollResponseRest(
         bVerificationRunning=bVerificationRunning,
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=dictImageArchive,
+        dictLastNoVerdict=dictLastNoVerdict,
+        dictLockSatisfaction=dictLockSatisfaction,
     )
 
 
@@ -2028,6 +2040,7 @@ def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
     *, bVerificationRunning, dictImageCurrency, dictImageArchive,
+    dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
@@ -2053,6 +2066,8 @@ def _fdictAssemblePollResponse(
             bVerificationRunning=bVerificationRunning,
             dictImageCurrency=dictImageCurrency,
             dictImageArchive=dictImageArchive,
+            dictLastNoVerdict=dictLastNoVerdict,
+            dictLockSatisfaction=dictLockSatisfaction,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
@@ -2259,6 +2274,7 @@ def _fdictSummarizeAttestation(filesRepo):
 def _fdictBuildWorkflowEnvelopeDetail(
     dictWorkflow, filesPoll, bVerificationRunning=False,
     dictImageCurrency=None, *, dictImageArchive,
+    dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
@@ -2320,8 +2336,9 @@ def _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesRepo, bHasRepo,
         ),
         "dictArtifacts": (
-            _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
-            if bHasRepo else {}
+            _fdictEnvelopeArtifacts(
+                dictWorkflow, filesRepo, dictLockSatisfaction,
+            ) if bHasRepo else {}
         ),
         # The one blocked requirement that must be fixed BEFORE the
         # others, or None when order does not matter -- which is the
@@ -2329,9 +2346,23 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # side so the dashboard renders a verdict it never re-derives;
         # a mirrored ordering in JavaScript would be a second
         # authority on a question that has one.
+        # WHY the last verification established nothing. It was
+        # recorded all along and rendered only on the PROOF tab, so a
+        # researcher working in the Project block watched the marker
+        # pulse, stop, and say nothing -- twice, before they asked
+        # (researcher-reported, 2026-09-15). The Attestation row is
+        # where the arrow points and where the button lives, so the
+        # explanation belongs beside them.
+        "dictLastNoVerdict": dictLastNoVerdict if bHasRepo else None,
+        # Whether the pinned image satisfies requirements.lock,
+        # from the last time a surface that MAY exec asked. Absent
+        # is unknown and renders as it always has.
+        "dictLockSatisfaction": (
+            dictLockSatisfaction if bHasRepo else None
+        ),
         "dictNextOrderedStep": (
             levelOrdering.fdictDescribeNextOrderedStep(
-                dictWorkflow, filesRepo,
+                dictWorkflow, filesRepo, dictLockSatisfaction,
             ) if bHasRepo else None
         ),
         # THREE-state: True (envelope pins the image this container is
@@ -2722,11 +2753,13 @@ def _fdictEnvelopeBinaryEntry(dictDeclared, dictCapture):
     }
 
 
-def _fdictEnvelopeArtifacts(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifacts(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+):
     """Pair on-disk presence with the L3 verdict for each artifact."""
     dictPresence = _fdictEnvelopeArtifactPresence(filesRepo)
     dictSatisfaction = _fdictEnvelopeArtifactSatisfaction(
-        dictWorkflow, filesRepo,
+        dictWorkflow, filesRepo, dictLockSatisfaction,
     )
     return {
         sName: {
@@ -2759,7 +2792,9 @@ def _fdictEnvelopeArtifactPresence(filesRepo):
     }
 
 
-def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifactSatisfaction(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+):
     """Return the L3 readiness verdict for the five envelope artifacts.
 
     A row is satisfied only when EVERY Level 3 criterion naming its
@@ -2773,7 +2808,16 @@ def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
         "manifest": levelGates.fbVerifyManifestComplete(
             filesRepo, dictWorkflow,
         ),
-        "dependencyLock": levelGates.fbVerifyDependencyLock(filesRepo),
+        # Hashed entries AND entries the image actually satisfies.
+        # Hashing alone left this row green while the pinned image
+        # disagreed with every line of the lock, and the only surface
+        # that said so was a refused rerun. A verdict of unknown --
+        # nobody has been able to exec yet -- keeps the old answer.
+        "dependencyLock": (
+            levelGates.fbVerifyDependencyLock(filesRepo)
+            and (dictLockSatisfaction or {}).get("sState")
+            != lockSatisfaction.S_LOCK_MISMATCH
+        ),
         "environmentSnapshot": levelGates.fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),

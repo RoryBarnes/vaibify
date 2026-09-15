@@ -18,12 +18,22 @@ module is that representation.
 WHAT AN EDGE MEANS, AND WHAT IT DOES NOT
 ----------------------------------------
 
-``(A, B)`` means: **doing B first gets UNDONE by doing A.** Not "A is
-more logical first", not "A is cheaper first" -- undone. That is the
-only claim worth interrupting a researcher with, and it is the reason
-there is no edge from the rebuild attestation to the GitHub mirror:
-pushing before attesting costs a second push, which is a nuisance, not
-a retraction.
+``(A, B)`` means: **doing B first is work you will do again.**
+Almost always because doing A UNDOES it -- regenerating the manifest
+stales the attestation keyed to it, and an immutable Zenodo version
+published before the attestation cannot be corrected without minting
+another. That is the claim worth interrupting a researcher with, and
+it is why there is no edge from the rebuild attestation to the GitHub
+mirror: pushing before attesting costs a second push, which is a
+nuisance, not a retraction.
+
+One edge is weaker and says so in its own reason: generating
+``reproduce.sh`` re-pins the manifest in the same action, so a manifest
+regenerated first is not undone, merely repeated. It stays because the
+researcher still wants the cheaper order (found live, 2026-09-15,
+where following it turned two clicks into one) -- but a reason that
+claimed an undo there would have been false, and the arrow's whole
+value is that its claims hold.
 
 WHY IT ANSWERS ONE ROW AND NOT A PLAN
 -------------------------------------
@@ -56,7 +66,7 @@ __all__ = [
     "fdictJudgeOrderedRequirements",
 ]
 
-from vaibify.reproducibility import levelGates
+from vaibify.reproducibility import levelGates, lockSatisfaction
 from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
@@ -66,10 +76,40 @@ from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 # researcher verbatim, so it says what gets undone rather than naming
 # the criterion that would go red.
 T_LEVEL3_ORDERING_EDGES = (
+    # The one edge that is NOT an undo. Kept, and marked, because the
+    # ordering is still real and the researcher still wants it -- but
+    # calling it an undo would have been false: regenerating the
+    # manifest first costs a wasted click, not lost work.
     (
         "reproduceScript", "manifest",
-        "MANIFEST.sha256 pins reproduce.sh, so a manifest written "
-        "now would pin the script you are about to replace.",
+        "Generating reproduce.sh re-pins MANIFEST.sha256 in the same "
+        "action, so doing the script first settles both. Regenerating "
+        "the manifest now only means doing it twice.",
+    ),
+    # The lock comes before everything the rerun touches. A lock the
+    # pinned image does not satisfy makes the shadow REFUSE, so an
+    # attestation attempted first is a verification spent to be told
+    # this -- which is how the gap was found (2026-09-15). Regenerating
+    # the envelope also rewrites the manifest, so a push or an archive
+    # made first publishes files about to change.
+    (
+        "dependencyLock", "rebuildAttestation",
+        "The pinned image does not satisfy requirements.lock, so the "
+        "rerun will refuse before it starts. Regenerate the envelope "
+        "first \u2014 it rewrites the lock from what the image "
+        "actually has.",
+    ),
+    (
+        "dependencyLock", "envelopeMirror",
+        "Regenerating the envelope rewrites requirements.lock and "
+        "the manifest, so a push now publishes files you are about "
+        "to change.",
+    ),
+    (
+        "dependencyLock", "envelopeArchive",
+        "Regenerating the envelope rewrites requirements.lock and "
+        "the manifest, and Zenodo versions are immutable \u2014 "
+        "publishing now would cost a second version to correct.",
     ),
     (
         "manifest", "rebuildAttestation",
@@ -97,7 +137,9 @@ T_LEVEL3_ORDERING_EDGES = (
 )
 
 
-def fdictJudgeOrderedRequirements(dictWorkflow, filesRepo):
+def fdictJudgeOrderedRequirements(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+):
     """Return ``{sRowKey: bSatisfied}`` for every row an edge names.
 
     These verdicts MUST agree with what the rows themselves render,
@@ -108,6 +150,16 @@ def fdictJudgeOrderedRequirements(dictWorkflow, filesRepo):
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     return {
+        # UNKNOWN counts as satisfied. The state is unknown wherever
+        # the installed list could not be read -- the poll may not
+        # exec, by contract -- and pointing an arrow at a row on the
+        # strength of a question nobody answered is the inverse of
+        # what this module is for.
+        "dependencyLock": (
+            levelGates.fbVerifyDependencyLock(filesRepo)
+            and (dictLockSatisfaction or {}).get("sState")
+            != lockSatisfaction.S_LOCK_MISMATCH
+        ),
         "manifest": levelGates.fbVerifyManifestComplete(
             filesRepo, dictWorkflow,
         ),
@@ -147,14 +199,18 @@ def _flistSelectLiveEdges(dictSatisfied):
     ]
 
 
-def fdictDescribeNextOrderedStep(dictWorkflow, filesRepo):
+def fdictDescribeNextOrderedStep(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+):
     """Return the one requirement to fix first, or ``None``.
 
     ``None`` means "order does not matter here", which is the answer
     on most projects most of the time -- see the module docstring for
     why that is information rather than a gap.
     """
-    dictSatisfied = fdictJudgeOrderedRequirements(dictWorkflow, filesRepo)
+    dictSatisfied = fdictJudgeOrderedRequirements(
+        dictWorkflow, filesRepo, dictLockSatisfaction,
+    )
     listLive = _flistSelectLiveEdges(dictSatisfied)
     if not listLive:
         return None

@@ -4957,7 +4957,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # blocked requirement that must be fixed first. One key on a
     # payload this module already builds; the ORDERING itself lives in
     # reproducibility/levelOrdering.py, which is the new concern.
-    "routes/pipelineRoutes.py": 3598,
+    # +18 (2026-09-15): the no-verdict record, threaded as a VALUE
+    # through the three poll layers the way dictImageCurrency already
+    # is, so the payload builder needs no container id. One key; the
+    # rest is the threading those layers already do.
+    # +26 (2026-09-15, second): the lock-satisfaction verdict, threaded
+    # as a value like the two above it, feeding the Dependency-lock row
+    # and the ordering arrow. The judging lives in
+    # reproducibility/lockSatisfaction.py; this is the wiring.
+    "routes/pipelineRoutes.py": 3642,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5385,7 +5393,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # root-layout repo (no .vaibify/ yet) bootstraps its first state
     # save instead of crashing the load. One helper beside the
     # checkpoint and install steps it precedes.
-    "stateManager.py": 1208,
+    # +13 (2026-09-15): two entries in the auto-managed .gitignore
+    # body, with the comments recording why each is machine-local.
+    # No new concern; both are the same produced-bookkeeping rule the
+    # file already states for state.json.
+    # +19 (2026-09-15, second): the auto-managed .gitignore now
+    # REFRESHES a stale copy instead of only creating a missing one --
+    # write-when-missing left every established project on the old
+    # list, which is where the blocked verifications were.
+    "stateManager.py": 1240,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -6613,7 +6629,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +63 (2026-09-14, second batch): the project-deposit promotion,
     # start-new-concept, and the four recovery actions -- six rows in
     # a list, all bAgentSafe False.
-    "actionCatalog.py": 1323,
+    # +11 (2026-09-15): merge-upstream, one row, bAgentSafe False --
+    # it writes a merge commit into the researcher's history.
+    "actionCatalog.py": 1334,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6663,7 +6681,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a named function beside the collector, matching the arXiv loader
     # directly above it -- the two answer the same question for two
     # remotes and a reader who finds one expects the other.
-    "routes/gitRoutes.py": 1141,
+    # +125 (2026-09-15): reconciling a DIVERGED branch. A refusal
+    # builder, a preview helper, one route, its check-then-act worker
+    # and its fail-raiser -- the same five pieces the fast-forward
+    # above it is made of, for the case the fast-forward cannot
+    # handle. Not split out: this module owns every project-repo git
+    # endpoint, and a sibling module holding one endpoint of the same
+    # concern would put "which file is the pull in?" between a reader
+    # and the answer. The judgement-free half (preview classification,
+    # the merge command) already lives in containerGit.
+    "routes/gitRoutes.py": 1266,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
@@ -6898,7 +6925,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reproduce.sh skipping a foreign manifest). The ownership
     # question is reproductionRecord's; what grew here is the HTTP
     # shape of the refusal and the consent it carries.
-    "routes/reproducibilityRoutes.py": 1995,
+    # +71 (2026-09-15): asking whether the container satisfies
+    # requirements.lock, where it costs one exec rather than a
+    # container launch. The question the SHADOW already asked when it
+    # refused a rerun -- this module is where the readiness pre-flight
+    # lives, so it is where the cheap copy of that question belongs;
+    # the diff itself is shared, in lockSatisfaction.py.
+    "routes/reproducibilityRoutes.py": 2066,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

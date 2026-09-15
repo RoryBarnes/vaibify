@@ -876,20 +876,26 @@ def _fdictRefusalFromLockDiff(dictLocked, dictInstalled):
         S_DIVERGENCE_LOCK_UNSATISFIED,
         fdictUnrunOutcome,
     )
-    listMismatched = [
-        f"{sName}=={sVersion} (image has "
-        f"{dictInstalled.get(sName) or 'nothing'})"
-        for sName, sVersion in sorted(dictLocked.items())
-        if dictInstalled.get(sName) != sVersion
-    ]
+    # The diff comes from lockSatisfaction, which the row and the
+    # pre-flight also read. Two derivations of "which packages
+    # disagree" would be two authorities on one question, and this
+    # refusal being the ONLY place the question was asked is what let
+    # a five-day-old lock reach a researcher's verification.
+    from vaibify.reproducibility.lockSatisfaction import (
+        flistDescribeLockMismatch,
+    )
+    listMismatched = flistDescribeLockMismatch(dictLocked, dictInstalled)
     if not listMismatched:
         return None
     dictOutcome = fdictUnrunOutcome(
         S_DIVERGENCE_LOCK_UNSATISFIED
         + " — reproduce.sh would install these before running, so a "
         "hermetic rerun of this image would test an environment "
-        "neither procedure describes. Rebuild the image, regenerate "
-        "the environment snapshot, then verify again."
+        "neither procedure describes. Usually the lock is simply "
+        "older than the image: regenerate the envelope to rewrite "
+        "requirements.lock from what the image actually has. Rebuild "
+        "the image instead only if the LOCK is the version you mean "
+        "to keep — that downgrades the image to match it."
     )
     dictOutcome["listDivergedHashes"].extend(listMismatched[:15])
     if len(listMismatched) > 15:

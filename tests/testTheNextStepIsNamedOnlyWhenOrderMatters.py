@@ -24,8 +24,11 @@ from vaibify.reproducibility import levelOrdering
 
 
 _T_ROWS = (
-    "manifest", "reproduceScript", "rebuildAttestation",
-    "envelopeMirror", "envelopeArchive",
+    # dependencyLock joined on 2026-09-15: a lock the pinned image
+    # does not satisfy makes the rerun refuse, and until it was a row
+    # here the arrow sent researchers at the attestation instead.
+    "dependencyLock", "manifest", "reproduceScript",
+    "rebuildAttestation", "envelopeMirror", "envelopeArchive",
 )
 
 
@@ -46,7 +49,7 @@ def _fdictNextFrom(dictSatisfied, monkeypatch):
     """
     monkeypatch.setattr(
         levelOrdering, "fdictJudgeOrderedRequirements",
-        lambda dictWorkflow, filesRepo: dictSatisfied,
+        lambda dictWorkflow, filesRepo, dictLock=None: dictSatisfied,
     )
     return levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere")
 
@@ -67,7 +70,12 @@ def test_the_script_comes_before_the_manifest_that_pins_it(monkeypatch):
         monkeypatch,
     )
     assert dictNext["sRowKey"] == "reproduceScript"
-    assert "MANIFEST.sha256 pins reproduce.sh" in dictNext["sReason"]
+    # The reason must not claim an UNDO here. Generating the script
+    # re-pins the manifest in the same action, so a manifest done
+    # first is repeated rather than lost, and the first wording said
+    # otherwise (corrected 2026-09-15 after a live run).
+    assert "re-pins MANIFEST.sha256" in dictNext["sReason"]
+    assert "doing it twice" in dictNext["sReason"]
 
 
 def test_the_manifest_comes_before_the_attestation_keyed_to_it(
@@ -249,3 +257,50 @@ def test_the_arrow_precedes_the_banner_it_sits_inside():
     assert iArrow < iBanner, (
         "the arrow must be registered before the banner it sits inside"
     )
+
+
+def test_a_lock_the_image_does_not_satisfy_is_named_first(monkeypatch):
+    """The live gap: the rerun refuses, so everything after it is wasted.
+
+    Found on 2026-09-15 by a researcher who spent a verification to be
+    told their lock was five days older than their image. The
+    Dependency-lock row was green throughout -- it asked only whether
+    every entry carried a hash -- and no arrow pointed there.
+    """
+    from vaibify.reproducibility import lockSatisfaction
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None: (
+            _fdictAllSatisfiedExcept(
+                "dependencyLock", "rebuildAttestation",
+                "envelopeMirror", "envelopeArchive",
+            )
+        ),
+    )
+    dictNext = levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere")
+    assert dictNext["sRowKey"] == "dependencyLock"
+    assert "refuse before it starts" in dictNext["sReason"]
+    assert sorted(dictNext["listBlockedRowKeys"]) == [
+        "envelopeArchive", "envelopeMirror", "rebuildAttestation",
+    ]
+    assert lockSatisfaction.S_LOCK_MISMATCH == "mismatch"
+
+
+def test_an_unchecked_lock_points_no_arrow_at_it(sProjectRepo):
+    """Unknown is not a mismatch.
+
+    The poll may not exec, so on most ticks nobody has asked whether
+    the image satisfies the lock. Treating that silence as a fault
+    would put an arrow on the Dependency-lock row of every project
+    between restarts.
+    """
+    dictWorkflow = {"listSteps": [], "sWorkflowName": "p"}
+    dictJudged = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo, None,
+    )
+    dictJudgedUnknown = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo, {"sState": "unknown"},
+    )
+    assert dictJudged["dependencyLock"] == (
+        dictJudgedUnknown["dependencyLock"]
+    ), "an unknown verdict must read exactly as an unasked one"

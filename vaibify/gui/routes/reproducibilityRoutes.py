@@ -35,6 +35,7 @@ from pydantic import BaseModel
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import gitEvidence, reproductionRecord
+from ...reproducibility.shadowRerun import S_SHADOW_PIP_ENUMERATE_COMMAND
 from ...reproducibility.manifestWriter import (
     S_REPRODUCED_MANIFEST_FILENAME,
     fdictCompareManifestEntries,
@@ -183,6 +184,61 @@ def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):
     return fdictComparePackageDeclarations(listDeclared, sMirror)
 
 
+def fdictCheckLockSatisfiedByContainer(
+    connectionDocker, sContainerId, filesRepo,
+):
+    """Ask whether the container's packages satisfy ``requirements.lock``.
+
+    The question the SHADOW asks when it refuses a rerun, asked here
+    where it costs one exec instead of a container launch. Until this
+    existed the only way to learn the answer was to spend a
+    verification and be told (researcher-reported, 2026-09-15).
+
+    Answered against the RUNNING container rather than the pinned
+    image: the two are the same on any project whose snapshot is
+    current, and the alternative -- launching the pinned image to ask
+    -- is the very cost this exists to avoid. Where they differ,
+    ``dictImageCurrency`` already says so on its own row, so the
+    dashboard is not silent about the gap.
+
+    Never raises. Every failure to read is UNKNOWN, which renders as
+    it always has; a row reddened because an exec failed would be a
+    fault reported against the researcher's envelope.
+    """
+    from vaibify.reproducibility.dependencyPinning import (
+        fdictParsePinnedVersions,
+    )
+    from vaibify.reproducibility import lockSatisfaction
+    try:
+        if not filesRepo.fbIsFile("requirements.lock"):
+            return None
+        dictLocked = fdictParsePinnedVersions(
+            filesRepo.fsReadText("requirements.lock"),
+        )
+    except (OSError, ValueError, KeyError) as errorRead:
+        return lockSatisfaction.fdictDescribeLockSatisfaction(
+            {}, None, f"requirements.lock could not be read: {errorRead}",
+        )
+    if not dictLocked:
+        return None
+    try:
+        tExecResult = connectionDocker.ftRunInContainerStreamed(
+            sContainerId, S_SHADOW_PIP_ENUMERATE_COMMAND,
+        )
+    except Exception as errorExec:  # noqa: BLE001 -- unknown, not a fault
+        return lockSatisfaction.fdictDescribeLockSatisfaction(
+            dictLocked, None, f"the packages could not be listed: {errorExec}",
+        )
+    if tExecResult.iExitCode != 0:
+        return lockSatisfaction.fdictDescribeLockSatisfaction(
+            dictLocked, None,
+            f"pip list exited {tExecResult.iExitCode}",
+        )
+    return lockSatisfaction.fdictDescribeLockSatisfaction(
+        dictLocked, fdictParsePinnedVersions(tExecResult.sStdout),
+    )
+
+
 def fdictDescribeImageOrigin(sContainerName):
     """Whether the image was BUILT, and whether the clone pins one to obtain.
 
@@ -288,6 +344,21 @@ def _fnRegisterReadiness(app, dictCtx):
         dictGaps = dict(dictGaps)
         dictGaps["bImageMatchesDeclaredPackages"] = (
             not dictPackageCheck["bChecked"] or dictPackageCheck["bMatches"]
+        )
+        # Asked here because this route may exec and the poll may
+        # not. The answer is cached so the Dependency-lock row and the
+        # "Do this next" arrow can report it without one.
+        from vaibify.reproducibility import lockSatisfaction
+        dictLockVerdict = fdictCheckLockSatisfiedByContainer(
+            dictCtx["docker"], sContainerId, filesRepo,
+        )
+        lockSatisfaction.fnRecordLockSatisfaction(
+            sContainerId, dictLockVerdict,
+        )
+        dictGaps["dictLockSatisfaction"] = dictLockVerdict
+        dictGaps["bLockSatisfiedByImage"] = (
+            (dictLockVerdict or {}).get("sState")
+            != lockSatisfaction.S_LOCK_MISMATCH
         )
         dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
         # None (undetermined) reads as passing here: only a PROVEN

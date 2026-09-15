@@ -935,6 +935,37 @@ def _fdictDirtyRefusalResponse(dictGit, listDirty):
     }
 
 
+def _fdictDivergedRefusalResponse(dictGit, dictPreview):
+    """Build the pull refusal sent when the branch and its upstream both moved.
+
+    Its own refusal, not a variant of the dirty one, because the
+    remedies are opposites: a dirty tree is resolved by committing,
+    and committing is precisely what CREATES this state. A researcher
+    who is behind and dirty meets the dirty refusal, commits, and
+    lands here -- so telling them to commit again would be a loop the
+    button walks them into (researcher-reported, 2026-09-15).
+
+    The preview rides along so the offer can say what the merge would
+    do before it is accepted, rather than after.
+    """
+    return {
+        "bSuccess": False,
+        "sRefusal": "diverged-branches",
+        "sBranch": dictGit.get("sBranch", ""),
+        "iAhead": dictGit.get("iAhead", 0),
+        "iBehind": dictGit.get("iBehind", 0),
+        "dictMergePreview": dictPreview,
+    }
+
+
+def _fdictPreviewTheMerge(docker, sContainerId, sRepo):
+    """Return the merge preview for this repository, asking git itself."""
+    iExit, sOut = containerGit.ftResultMergePreviewInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    return containerGit.fdictDescribeMergePreview(iExit, sOut)
+
+
 def _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo):
     """Run ``git pull --ff-only`` in the container, raising HTTP 502 on failure."""
     iExit, sOut = containerGit.ftResultGitPullFastForwardInContainer(
@@ -987,6 +1018,17 @@ def _fdictCheckCleanThenFastForward(dictCtx, sContainerId, sRepo):
     listDirty = _flistTrackedDirtyPaths(dictGit)
     if listDirty:
         return _fdictDirtyRefusalResponse(dictGit, listDirty)
+    # Named BEFORE the attempt. Left to git, a diverged branch comes
+    # back as a 502 carrying nine lines of "hint:" about merge and
+    # rebase -- correct, unreadable, and offering no button. Asking
+    # ahead/behind first costs nothing: the status was already read
+    # for the dirty check.
+    if int(dictGit.get("iAhead") or 0) > 0 and int(
+        dictGit.get("iBehind") or 0
+    ) > 0:
+        return _fdictDivergedRefusalResponse(
+            dictGit, _fdictPreviewTheMerge(docker, sContainerId, sRepo),
+        )
     _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo)
     _fnRecordFetchTime(sContainerId)
     fnBumpSyncEpoch(dictCtx, sContainerId)
@@ -1003,6 +1045,88 @@ def _fdictCheckCleanThenFastForward(dictCtx, sContainerId, sRepo):
         "iBehind": dictGitAfter.get("iBehind", 0),
         "iAhead": dictGitAfter.get("iAhead", 0),
     }
+
+
+def _fnRegisterMergeUpstream(app, dictCtx):
+    """Register POST /api/git/{sContainerId}/merge-upstream."""
+
+    @ffnAgentAction("merge-upstream")
+    @app.post("/api/git/{sContainerId}/merge-upstream")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleMergeUpstream(
+        sContainerId: str, requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
+        return await _fgenericRunGitWorkerUnderTheDrain(
+            sContainerId,
+            lambda: _fdictCheckCleanThenMerge(
+                dictCtx, sContainerId, sRepo,
+            ),
+            "git-merge", requestHttp,
+        )
+
+
+def _fdictCheckCleanThenMerge(dictCtx, sContainerId, sRepo):
+    """Refuse a dirty tree, then merge the upstream and re-read the state.
+
+    Check-then-act under ONE held drain, exactly as the fast-forward
+    is: with the lock dropped between them a write lands in the gap
+    and the merge runs against a tree the check called clean.
+
+    A conflicting merge is REFUSED rather than left half-applied. Git
+    would otherwise stop with conflict markers in the working tree and
+    an unfinished MERGE_HEAD, which is a state the dashboard has no
+    vocabulary for and a researcher did not ask for -- the abort puts
+    the repository back and names the files, so the choice to resolve
+    them by hand stays theirs.
+    """
+    docker = dictCtx["docker"]
+    dictGit = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    listDirty = _flistTrackedDirtyPaths(dictGit)
+    if listDirty:
+        return _fdictDirtyRefusalResponse(dictGit, listDirty)
+    dictPreview = _fdictPreviewTheMerge(docker, sContainerId, sRepo)
+    if dictPreview["sState"] != containerGit.S_MERGE_PREVIEW_CLEAN:
+        return {
+            "bSuccess": False,
+            "sRefusal": "merge-would-conflict",
+            "sBranch": dictGit.get("sBranch", ""),
+            "dictMergePreview": dictPreview,
+        }
+    _fnRunGitMergeOrFail(docker, sContainerId, sRepo)
+    _fnRecordFetchTime(sContainerId)
+    fnBumpSyncEpoch(dictCtx, sContainerId)
+    dictGitAfter = containerGit.fdictGitStatusInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    return {
+        "bSuccess": True,
+        "sNewHeadSha": containerGit.fsGitHeadShaInContainer(
+            docker, sContainerId, sWorkspace=sRepo,
+        ),
+        "sBranch": dictGitAfter.get("sBranch", ""),
+        "iBehind": dictGitAfter.get("iBehind", 0),
+        "iAhead": dictGitAfter.get("iAhead", 0),
+    }
+
+
+def _fnRunGitMergeOrFail(docker, sContainerId, sRepo):
+    """Run the merge in the container, raising HTTP 502 on failure."""
+    iExit, sOut = containerGit.ftResultGitMergeUpstreamInContainer(
+        docker, sContainerId, sWorkspace=sRepo,
+    )
+    if iExit != 0:
+        raise HTTPException(
+            status_code=502,
+            detail="git merge failed: "
+            + containerGit._fsStripUrlUserinfo((sOut or "").strip()),
+        )
 
 
 def _flistProvenGithubSyncedPaths(dictWorkflow, dictStatus):
@@ -1137,5 +1261,6 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterUntrackAiDeclaration(app, dictCtx)
     _fnRegisterFetchProjectRepo(app, dictCtx)
     _fnRegisterPullProjectRepo(app, dictCtx)
+    _fnRegisterMergeUpstream(app, dictCtx)
     _fnRegisterRefreshRemotes(app, dictCtx)
     _fnRegisterReconcileRemoteState(app, dictCtx)

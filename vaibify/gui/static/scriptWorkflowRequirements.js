@@ -831,7 +831,8 @@ var VaibifyWorkflowRequirements = (function () {
         return Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS).map(
             function (sKey) {
                 return _fdictArtifactRow(
-                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency);
+                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency,
+                    dictDetail);
             });
     }
 
@@ -1991,6 +1992,7 @@ var VaibifyWorkflowRequirements = (function () {
                      fnEscapeHtml(_fsDescribeAttestation(
                          dictDetail, bRunning)) + '</div>' +
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
+                     _fsRenderNoVerdictNote(dictDetail) +
                      _fsRenderAttestationPermanenceNote(dictPermanence) +
                      (bRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
@@ -2004,6 +2006,30 @@ var VaibifyWorkflowRequirements = (function () {
                      '</div>';
              }},
         ];
+    }
+
+    function _fsRenderNoVerdictNote(dictDetail) {
+        /* WHY the last attempt established nothing. The backend has
+           recorded this all along and only the PROOF tab rendered it,
+           so a researcher working here watched the marker pulse, stop,
+           and say nothing -- twice, before they asked
+           (researcher-reported, 2026-09-15).
+
+           Deliberately NOT a failure: nothing was attested and the
+           Level 3 state is unchanged, so the row's own colour must not
+           move. This is the missing sentence, not a new verdict. */
+        var dictNoVerdict = dictDetail.dictLastNoVerdict || null;
+        if (!dictNoVerdict) return "";
+        var listReasons = dictNoVerdict.listReasons || [];
+        if (!listReasons.length) return "";
+        return '<div class="attestation-no-verdict">' +
+            '<strong>' + fnEscapeHtml(
+                "The last attempt reached no verdict, so nothing was "
+                + "attested and your Level 3 status is unchanged.") +
+            '</strong><ul>' +
+            listReasons.map(function (sReason) {
+                return "<li>" + fnEscapeHtml(sReason) + "</li>";
+            }).join("") + '</ul></div>';
     }
 
     function _fsRenderAttestationPermanenceNote(dictPermanence) {
@@ -2378,6 +2404,32 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
+    function _fsRenderLockMismatchNote(sKey, dictDetail) {
+        /* Which packages the pinned image does not satisfy. The row
+           was green through all of this, because its check asks
+           whether every entry carries a HASH and nothing about
+           whether the entries are TRUE -- so a lock five days older
+           than the image passed, and the only surface that said
+           otherwise was a refused rerun (researcher-reported,
+           2026-09-15).
+
+           Unknown paints nothing: the poll may not exec, so on most
+           ticks nobody has asked, and a note built from an unasked
+           question would appear on every project between restarts. */
+        if (sKey !== "dependencyLock") return "";
+        var dictLock = dictDetail.dictLockSatisfaction || {};
+        if (dictLock.sState !== "mismatch") return "";
+        var listPaths = (dictLock.listMismatches || []).slice(0, 10);
+        return '<div class="lock-mismatch-warning">' +
+            'The pinned image does not satisfy this lock, so a rerun ' +
+            'refuses before it starts. Usually the lock is simply ' +
+            'older than the image \u2014 Regenerate now rewrites it ' +
+            'from what the image actually has:' +
+            '<ul>' + listPaths.map(function (sLine) {
+                return "<li>" + fnEscapeHtml(sLine) + "</li>";
+            }).join("") + '</ul></div>';
+    }
+
     function _fsRenderImageCurrencyWarning(sKey, dictImageCurrency) {
         /* Rendered only on the Environment snapshot row, and only on a
            determined MISMATCH (bPinnedImageIsLive === false). null is
@@ -2408,7 +2460,9 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
-    function _fdictArtifactRow(sKey, dictArtifact, dictImageCurrency) {
+    function _fdictArtifactRow(
+        sKey, dictArtifact, dictImageCurrency, dictDetailForLock
+    ) {
         return {
             sKey: sKey,
             iLevel: 3,
@@ -2418,7 +2472,8 @@ var VaibifyWorkflowRequirements = (function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,
                     _DICT_ARTIFACT_HOWTO[sKey] || "",
-                    dictImageCurrency || {});
+                    dictImageCurrency || {}) +
+                    _fsRenderLockMismatchNote(sKey, dictDetailForLock);
             }};
     }
 
@@ -2525,7 +2580,7 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(dictNextStep.sRowKey) + '" title="' +
             fnEscapeHtml(dictNextStep.sReason || "") + '">' +
             '<span class="ordering-arrow-glyph">\u2192</span>' +
-            'Do this first</button>';
+            'Do this next</button>';
     }
 
     function _fbGroupHoldsTheNextRow(listRows, dictNextStep) {

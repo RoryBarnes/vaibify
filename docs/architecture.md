@@ -2607,7 +2607,7 @@ second push, which is a nuisance, not a retraction.
 ways to be subtly wrong and reads authoritatively while being so; one
 answer is wrong in one way, and the researcher finds out in seconds
 because they do the thing and nothing improves. So the dashboard shows
-a single "Do this first" arrow, and the row it names carries the
+a single "Do this next" arrow, and the row it names carries the
 reason.
 
 The arrow rides the banner of the **section** holding that row, not

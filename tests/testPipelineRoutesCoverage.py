@@ -1892,6 +1892,15 @@ class TestPollLevelStatePayload:
             # matter. Computed here so the dashboard renders a verdict
             # it never re-derives.
             "dictNextOrderedStep",
+            # Added 2026-09-15: why the last verification established
+            # nothing. Recorded all along and rendered only on the
+            # PROOF tab, so a researcher in the Project block saw the
+            # marker stop and heard nothing.
+            "dictLastNoVerdict",
+            # Added 2026-09-15: whether the pinned image satisfies
+            # requirements.lock, from the last surface that could
+            # exec. Absent reads as unknown, never as a fault.
+            "dictLockSatisfaction",
             # Added 2026-09-01: whether the envelope pins the image
             # this container is RUNNING, so a rebuild without a
             # snapshot regeneration is announced instead of every

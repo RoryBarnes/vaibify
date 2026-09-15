@@ -30,6 +30,12 @@ from . import gitStatus
 from ..docker.execArgumentBudget import flistBatchPathsForOneExec
 
 __all__ = [
+    "S_MERGE_PREVIEW_CLEAN",
+    "S_MERGE_PREVIEW_CONFLICTS",
+    "S_MERGE_PREVIEW_UNKNOWN",
+    "fdictDescribeMergePreview",
+    "ftResultMergePreviewInContainer",
+    "ftResultGitMergeUpstreamInContainer",
     "S_CONTAINER_WORKSPACE",
     "fdictGitStatusInContainer",
     "fdictComputeBlobShasInContainer",
@@ -51,6 +57,14 @@ __all__ = [
 
 
 S_CONTAINER_WORKSPACE = "/workspace"
+
+# The merge preview's three answers. UNKNOWN is a first-class state,
+# not a failure to report: an older git cannot answer the question,
+# and a surface that rendered silence as "clean" would promise
+# something nothing checked.
+S_MERGE_PREVIEW_CLEAN = "clean"
+S_MERGE_PREVIEW_CONFLICTS = "conflicts"
+S_MERGE_PREVIEW_UNKNOWN = "unknown"
 
 
 def fsDetectProjectRepoInContainer(
@@ -614,6 +628,91 @@ def fdictRemoteHeadsInContainer(
     if iExit != 0:
         return {"bSuccess": False, "sReason": (sOutput or "").strip()}
     return _fdictParseRemoteHeads(sOutput)
+
+
+def ftResultMergePreviewInContainer(
+    connectionDocker, sContainerId,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """Ask git whether merging the upstream would conflict; change nothing.
+
+    ``git merge-tree --write-tree`` computes the merge in the object
+    database and touches neither the index nor the working tree, so a
+    researcher can be told what a merge would do BEFORE agreeing to
+    it. Exit 0 means the merge is clean, 1 means it conflicts and the
+    conflicted paths follow the tree OID, and anything else means the
+    question could not be asked -- an older git (the flag arrived in
+    2.38), no upstream, an unreadable repository.
+
+    Returns ``(iExitCode, sOutput)`` and judges nothing; the caller
+    turns that into a state so that "could not ask" stays separable
+    from "would conflict".
+    """
+    sHardening = _fsHardeningPrefix()
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git " + sHardening
+        + " merge-tree --write-tree --name-only HEAD '@{upstream}' 2>&1"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+
+
+def fdictDescribeMergePreview(iExitCode, sOutput):
+    """Return the merge preview as a state, never as a bare boolean.
+
+    Three states, because "this merges cleanly", "this conflicts in
+    these files" and "git could not answer" lead a researcher to three
+    different decisions. Collapsing the third into either of the
+    others is the failure this whole surface exists to avoid: telling
+    someone a merge is clean when nothing checked is how they find out
+    by having it break.
+
+    The first line of a conflicted answer is the tree OID; the
+    conflicted paths follow it, one per line.
+    """
+    listLines = [
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.strip()
+    ]
+    if iExitCode == 0:
+        return {"sState": S_MERGE_PREVIEW_CLEAN, "listConflictPaths": []}
+    if iExitCode == 1:
+        return {
+            "sState": S_MERGE_PREVIEW_CONFLICTS,
+            "listConflictPaths": listLines[1:],
+        }
+    return {"sState": S_MERGE_PREVIEW_UNKNOWN, "listConflictPaths": []}
+
+
+def ftResultGitMergeUpstreamInContainer(
+    connectionDocker, sContainerId,
+    sWorkspace=S_CONTAINER_WORKSPACE,
+):
+    """Merge the tracked upstream into the checked-out branch.
+
+    ``--no-ff`` is deliberate even though a fast-forward is impossible
+    on a diverged branch: it states the intent, and it keeps the
+    command honest if it is ever reached from a merely-behind branch.
+
+    ``--no-edit`` because there is no editor in a container exec and
+    git would otherwise block forever waiting for one.
+
+    NOT a rebase, and there is no rebase path here. Vaibify records
+    commit SHAs -- the GitHub verify cache keeps the sha it compared,
+    and the reproduction source stages the checked-out commit -- so
+    rewriting them orphans the references that make a published claim
+    checkable.
+    """
+    sHardening = _fsHardeningPrefix()
+    sCommand = (
+        "cd " + shlex.quote(sWorkspace) + " && "
+        "git " + sHardening + " merge --no-ff --no-edit '@{upstream}' 2>&1"
+    )
+    return connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
 
 
 def ftResultGitPullFastForwardInContainer(
