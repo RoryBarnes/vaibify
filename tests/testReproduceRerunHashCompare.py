@@ -56,11 +56,6 @@ def fixtureReadyRepo(tmp_path):
     pathReproduce = tmp_path / "reproduce.sh"
     pathReproduce.write_text("#!/usr/bin/env bash\nset -e\n")
     pathReproduce.chmod(0o755)
-    (tmp_path / "MANIFEST.sha256").write_text("".join(
-        f"{hashlib.sha256(pathFile.read_bytes()).hexdigest()}  "
-        f"{pathFile.name}\n"
-        for pathFile in (pathOutput, pathReproduce, pathDocker)
-    ))
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n    --hash=sha256:" + "a" * 64 + "\n"
     )
@@ -71,6 +66,20 @@ def fixtureReadyRepo(tmp_path):
         "dictContainer": {"sImageDigest": "img@sha256:" + "c" * 64},
         "sSchemaVersion": "1",
     }))
+    # Written LAST, and covering the envelope: the manifest's scope
+    # widened on 2026-09-14, so one pinning only the outputs describes
+    # a project vaibify would no longer produce and tier 4 reports it
+    # incomplete. Repo-RELATIVE names, or .vaibify/environment.json
+    # would enter as a root file that does not exist.
+    (tmp_path / "MANIFEST.sha256").write_text("".join(
+        f"{hashlib.sha256(pathFile.read_bytes()).hexdigest()}  "
+        f"{pathFile.relative_to(tmp_path).as_posix()}\n"
+        for pathFile in (
+            pathOutput, pathReproduce, pathDocker,
+            tmp_path / "requirements.lock",
+            pathVaibify / "environment.json",
+        )
+    ))
     pathWorkflows = pathVaibify / "workflows"
     pathWorkflows.mkdir(parents=True, exist_ok=True)
     (pathWorkflows / "wf.json").write_text(json.dumps({
@@ -152,13 +161,18 @@ def test_divergent_rerun_attestation_names_the_diverged_file(
 def test_divergent_rerun_attestation_counts_matched_below_total(
     fixtureReadyRepo,
 ):
-    """Two of the three pinned artefacts still match; the record says so."""
+    """Four of the five pinned artefacts still match; the record says so.
+
+    Five since 2026-09-14: the manifest pins the dependency lock and
+    the environment snapshot alongside the three artifacts, so a
+    reproducer verifies what PRODUCED the results too.
+    """
     _resultClick, dictAttestation = _fdictInvokeRerunWithDivergentStep(
         fixtureReadyRepo, "answer = 43\n",
     )
     assert dictAttestation is not None, "no attestation was written"
-    assert dictAttestation["iOutputHashesTotal"] == 3
-    assert dictAttestation["iOutputHashesMatched"] == 2, (
+    assert dictAttestation["iOutputHashesTotal"] == 5
+    assert dictAttestation["iOutputHashesMatched"] == 4, (
         "matched must be derived from the re-hash, not asserted from "
         "the pipeline exit code"
     )
@@ -172,5 +186,5 @@ def test_faithful_rerun_still_attests_pass(fixtureReadyRepo):
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
     assert dictAttestation["listDivergedHashes"] == []
-    assert dictAttestation["iOutputHashesMatched"] == 3
-    assert dictAttestation["iOutputHashesTotal"] == 3
+    assert dictAttestation["iOutputHashesMatched"] == 5
+    assert dictAttestation["iOutputHashesTotal"] == 5

@@ -329,6 +329,43 @@ var VaibifyProofTab = (function () {
                  "does not block this — deposit later and it opens.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bReproduceScriptCurrent",
+             sLabel: "Reproduce script is current",
+             sWhat: "reproduce.sh on disk is byte-identical to what " +
+                 "vaibify would generate for this workflow now. The " +
+                 "row above asks whether a script exists and is " +
+                 "pinned; this asks whether it still matches the " +
+                 "generator that made it, which is a different " +
+                 "question with a different fix. A script written " +
+                 "before the environment archive existed pulls the " +
+                 "pinned image and stops — and for a locally built " +
+                 "image no registry serves that digest, so a reader " +
+                 "fails on the first line while your own deposit " +
+                 "holds the image they needed.",
+             sHow: "Regenerate reproduce.sh from the Project block, " +
+                 "then commit and publish it. Expect the " +
+                 "published-copy rows to go red until you push: " +
+                 "regenerating changes a file Level 2 compares.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
+            {sStateKey: "bNoArchiveKnownSandbox",
+             sLabel: "Archives are permanent",
+             sWhat: "Neither the environment archive nor this " +
+                 "project's own deposit is on Zenodo's SANDBOX. The " +
+                 "sandbox mints test DOIs, promises no preservation, " +
+                 "and Zenodo may clear it at any time — so a deposit " +
+                 "there holds matching bytes in a place that has " +
+                 "promised nothing, and cannot carry a Level 3 " +
+                 "claim. A deposit whose instance vaibify cannot " +
+                 "read passes: this blocks only on positive evidence " +
+                 "of a test instance.",
+             sHow: "Sandbox and production are separate systems and " +
+                 "nothing transfers between them, so use Make " +
+                 "Permanent on the affected row in the Project " +
+                 "block. It deposits again on zenodo.org and records " +
+                 "the new DOI; the sandbox record stays where it is.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
             {sStateKey: "bImagePublished",
              sLabel: "Image on a registry (optional)",
              bOptional: true,

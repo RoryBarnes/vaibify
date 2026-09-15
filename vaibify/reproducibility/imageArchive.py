@@ -166,6 +166,7 @@ def fdictBuildArchiveRecord(
     sVersionDoi, sConceptDoi, sTarballSha256, iTarballBytes,
     sDepositedIso, sProvenance, sImageDigest, sArchitecture,
     sTarballName, sImageStreamSha256="", sZenodoService="",
+    sTarballMd5="",
 ):
     """Assemble the deposit record written into the environment snapshot.
 
@@ -182,6 +183,16 @@ def fdictBuildArchiveRecord(
     value; nothing in the record is ever fetched as a URL. Records
     written before the field existed carry ``""`` and are classified
     by their DOI prefix.
+
+    ``sTarballMd5`` is recorded because MD5 is the only checksum
+    ZENODO publishes for a deposition's files. Without it the archive
+    can be asked what it holds but the answer cannot be compared to
+    anything, so a re-check months later could compare sizes and
+    nothing else. It is never the integrity claim -- ``sTarballSha256``
+    is -- it is the vocabulary needed to hold the archive to that
+    claim. Optional, and its absence is never a mismatch: records
+    predating the field are legal, and making absence a fault would
+    turn every existing green row red.
     """
     return {
         "sVersionDoi": sVersionDoi,
@@ -189,6 +200,7 @@ def fdictBuildArchiveRecord(
         "sZenodoService": sZenodoService,
         "sTarballName": sTarballName,
         "sTarballSha256": sTarballSha256,
+        "sTarballMd5": sTarballMd5,
         "sImageStreamSha256": sImageStreamSha256,
         "iTarballBytes": int(iTarballBytes),
         "sDepositedIso": sDepositedIso,

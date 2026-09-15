@@ -356,11 +356,24 @@ var VaibifyWorkflowManager = (function () {
             listItems.push("<li>(+" +
                 (listFiles.length - 5) + " more)</li>");
         }
+        /* No enumeration of the canonical kinds. The sentence that
+           stood here listed "test markers, MANIFEST.sha256,
+           requirements.lock, project.json" -- a hand-written
+           restatement of TUPLE_ROOT_CONFIG_FILES that had drifted
+           from it, omitting .vaibify/environment.json and
+           .vaibify/l3_attestation.json. Those two are exactly the
+           files a researcher mid-publication finds dirty, so the
+           banner listed the blocking file and then named a set that
+           excluded it: the only reasonable reading was that the
+           button would not help (researcher-reported, 2026-09-15).
+           A list in prose cannot track a tuple in Python; describing
+           what the button DOES can. */
         return '<div class="drift-banner-message">' +
-            'Cannot fast-forward: working tree has uncommitted ' +
-            'changes. Commit canonical state files (test markers, ' +
-            'MANIFEST.sha256, requirements.lock, project.json) and ' +
-            'pull, or handle them yourself first.' +
+            'Cannot fast-forward: the working tree has uncommitted ' +
+            'changes. &quot;Commit state &amp; Pull&quot; commits ' +
+            'the files vaibify manages itself from among those ' +
+            'below, then pulls. Any other file you must commit or ' +
+            'stash yourself.' +
             '<ul class="drift-banner-dirty-list">' +
             listItems.join("") + '</ul></div>' +
             '<div class="drift-banner-actions">' +

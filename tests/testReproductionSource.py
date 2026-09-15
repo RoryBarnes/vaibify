@@ -357,6 +357,10 @@ def test_rule_6_a_deposit_for_another_build_refuses(sPublishedRepo):
         sPublishedRepo, ".vaibify/environment.json",
         fdictBuildEnvelope(dictArchiveRecord=dictRecord),
     )
+    # The manifest pins .vaibify/environment.json since 2026-09-14, so
+    # rewriting the envelope without rewriting the manifest trips rule
+    # 4 and this test would never reach the rule it names.
+    fnWriteManifest(sPublishedRepo, [S_FIXTURE_SCRIPT, S_FIXTURE_OUTPUT])
     fnCommitEverything(sPublishedRepo, "deposit of the other build")
     with pytest.raises(ReproductionSourceRefusedError) as excinfo:
         fdictStageSource(sPublishedRepo)
@@ -378,6 +382,7 @@ def test_a_matching_deposit_is_recorded_with_its_version_doi(sPublishedRepo):
         sPublishedRepo, ".vaibify/environment.json",
         fdictBuildEnvelope(dictArchiveRecord=dictRecord),
     )
+    fnWriteManifest(sPublishedRepo, [S_FIXTURE_SCRIPT, S_FIXTURE_OUTPUT])
     fnCommitEverything(sPublishedRepo, "deposit on record")
     dictStaged = fdictStageSource(sPublishedRepo)
     assert dictStaged["bDepositOnRecord"] is True
@@ -389,7 +394,9 @@ def test_a_valid_project_stages_with_no_deposit_on_record(sPublishedRepo):
     dictStaged = fdictStageSource(sPublishedRepo)
     assert dictStaged["bDepositOnRecord"] is False
     assert dictStaged["sPinnedImageReference"] == S_FIXTURE_IMAGE_DIGEST
-    assert dictStaged["iManifestEntries"] == 2
+    # Three: the script, its output, and the envelope the manifest
+    # has pinned since the scope widened on 2026-09-14.
+    assert dictStaged["iManifestEntries"] == 3
     assert dictStaged["sWorkflowName"] == "Demo"
     assert dictStaged["sManifestDigest"].startswith("sha256:")
 

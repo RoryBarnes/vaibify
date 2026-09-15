@@ -269,6 +269,14 @@ class SyncSetupRequest(BaseModel):
     sProjectId: Optional[str] = None
     sToken: Optional[str] = None
     sZenodoInstance: Optional[str] = None
+    # Store and validate the credential; do NOT record the instance as
+    # where this project publishes. A promotion needs a production
+    # token for one deposit, and its success path must leave
+    # `sZenodoService` alone -- that field lives in project.json,
+    # which Level 2 compares, and it is shared with every declared
+    # record. Writing it would stale the deposit just minted and send
+    # every retained sandbox record to the wrong host.
+    bCredentialOnly: bool = False
 
 
 class SyncTrackingRequest(BaseModel):
@@ -2399,7 +2407,9 @@ def fdictBuildImageArchiveDetail(
     """
     from vaibify.gui import archiveProgress
     from vaibify.config.registryManager import fbIsHostProject
-    from vaibify.reproducibility import imageArchive, levelGates
+    from vaibify.reproducibility import (
+        archivePermanence, imageArchive, levelGates,
+    )
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson,
     )
@@ -2445,6 +2455,14 @@ def fdictBuildImageArchiveDetail(
         # never read as a difference that was found.
         "sUncheckedReason": sUncheckedReason,
         "dictDeposit": dictDeposit,
+        # A sandbox deposit really does hold matching bytes, so this
+        # rides BESIDE the state rather than replacing it: the row
+        # keeps its computed colour and gains a warning. Classified
+        # from the deposit record, whose own sZenodoService says where
+        # those bytes went; "unknown" renders exactly as today.
+        "sPermanence": archivePermanence.fsClassifyDepositRecord(
+            imageArchive.fdictReadArchiveRecord(dictEnvironment),
+        ),
     }
 
 
@@ -3226,6 +3244,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
     routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
+    routes.promotionRecoveryRoutes.fnRegisterAll(app, dictCtx)
     routes.reproductionRoutes.fnRegisterAll(app, dictCtx)
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)

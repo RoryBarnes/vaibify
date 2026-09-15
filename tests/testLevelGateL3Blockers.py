@@ -85,9 +85,14 @@ def fixtureL3Repo(tmp_path):
     _fnWriteEnvironment(tmp_path)
     _fnWriteDockerfile(tmp_path)
     _fnWriteReproduceScript(tmp_path)
+    # Every envelope file present: the manifest's scope widened on
+    # 2026-09-14, so a manifest covering only the script and the
+    # Dockerfile is one vaibify would no longer write, and readiness
+    # reads it for completeness.
     _fnWriteManifestCoveringPaths(
         tmp_path,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME],
+        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
+         "requirements.lock", ".vaibify/environment.json"],
     )
     return tmp_path
 

@@ -29,9 +29,11 @@ from pathlib import Path
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 
+from . import archivePermanence
 from . import imageArchive
 from . import replayGate
 from . import scheduledReverify
+from . import syncBookkeeping
 from .aiDeclarationStep import fbStepIsAiDeclaration
 from .dependencyPinning import (
     S_LOCK_TOOL_INSTALL_HINT,
@@ -1287,6 +1289,15 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo):
         return False
     if not fbImageArchiveDeposited(filesRepo):
         return False
+    # Enumerated BY HAND, so a criterion added to the checks dict
+    # alone would leave this scalar reporting Level 3 attained while
+    # the rows blocked -- the header outranking its own rows, which
+    # is the defect testProjectHeaderNeverOutranksItsRows.py exists
+    # to catch.
+    if not fbNoArchiveIsKnownSandbox(dictWorkflow, filesRepo):
+        return False
+    if not fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
+        return False
     return True
 
 
@@ -1434,6 +1445,50 @@ def fbVerifyReproduceScript(filesRepo, dictWorkflow):
     return S_REPRODUCE_SCRIPT_FILENAME in setPaths
 
 
+def fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
+    """Return True iff ``reproduce.sh`` is what vaibify would write now.
+
+    A SEPARATE criterion from ``fbVerifyReproduceScript``, because the
+    two name different problems with different remedies: that one asks
+    whether a script exists, is pinned, and carries no unresolved
+    tokens; this one asks whether the script on disk still matches the
+    generator that made it. A script can satisfy every part of the
+    first and still be unrunnable by a stranger.
+
+    That is not hypothetical. A script generated before the image
+    archive existed opens with a bare ``docker pull`` of the pinned
+    digest and stops. For a locally built image no registry serves
+    that digest, so the reproduction dies on its first line -- while
+    the project's own Zenodo deposit holds the image the script needed
+    and it never learns to ask. Nothing in the older checks can see
+    this: the file exists, it is hashed, it carries no tokens.
+
+    The comparison is exact because the renderer is pure and
+    idempotent (``fsRenderReproduceScript``): the generator IS the
+    rule, so there is no second description of "current" to drift.
+
+    ABSENCE passes, because ``reproduce-script-missing`` owns it --
+    two red criteria over one missing file would charge the header
+    count twice for a single remedy. A render that RAISES passes too:
+    refusing to render means the workflow cannot produce a script at
+    all, which is a different failure owned by different gates, and
+    naming it staleness would send the researcher at the wrong fix.
+    """
+    from vaibify.reproducibility.reproduceScriptGenerator import (
+        fsRenderReproduceScript,
+    )
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.fbIsFile(S_REPRODUCE_SCRIPT_FILENAME):
+        return True
+    try:
+        sOnDisk = filesRepo.fsReadText(S_REPRODUCE_SCRIPT_FILENAME)
+        sCurrent = fsRenderReproduceScript(dictWorkflow)
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return True
+    return sOnDisk == sCurrent
+
+
 def fbVerifyDeterminismDeclared(filesRepo, dictWorkflow):
     """Return True iff no step warns about unseeded RNG and BLAS is declared.
 
@@ -1527,6 +1582,29 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     )
     dictResult["listImageArchiveIssues"] = (
         flistDescribeImageArchiveIssues(filesRepo) if bRepo else []
+    )
+    # Whether either archive is a SANDBOX deposit. Its own criterion
+    # and its own row: a blocker with no row is one the researcher
+    # meets as an unexplained dash, and this one blocks for a reason
+    # nothing else on the card states -- the bytes match, and the
+    # place holding them promises nothing. The issue list travels
+    # with the verdict so the row can name WHICH archive.
+    # Whether reproduce.sh still matches its generator. Its own
+    # readiness flag and its own row: "there is no script" and "the
+    # script predates the archive fallback" are different problems
+    # with different remedies, and a researcher meeting the second as
+    # the first would write a script that already exists.
+    dictResult["bReproduceScriptCurrent"] = (
+        fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow)
+        if bRepo else True
+    )
+    dictResult["bNoArchiveKnownSandbox"] = (
+        fbNoArchiveIsKnownSandbox(dictWorkflow, filesRepo)
+        if bRepo else True
+    )
+    dictResult["listPermanenceIssues"] = (
+        flistDescribeSandboxArchives(dictWorkflow, filesRepo)
+        if bRepo else []
     )
     # The determinism row's own detail. bDeterminismDeclared is a
     # verdict with no subject: an agent asked "what is wrong with
@@ -1751,10 +1829,8 @@ def _fbZenodoEndpointMatches(dictWorkflow, dictStatus):
     sVerifiedEndpoint = (
         dictStatus.get("sEndpointVerified") or ""
     )
-    dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
-    dictZenodo = dictRemotes.get("zenodo") or {}
-    sLiveEndpoint = dictZenodo.get("sService") or (
-        dictWorkflow.get("sZenodoService") or "sandbox"
+    sLiveEndpoint = syncBookkeeping.fsResolveRecordedZenodoService(
+        dictWorkflow,
     )
     if not sVerifiedEndpoint:
         return False
@@ -2747,6 +2823,12 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "attestation-not-in-zenodo-archive":
             fbAttestationIsPubliclyArchived(filesRepo),
         "image-not-archived": fbImageArchiveDeposited(filesRepo),
+        "an-archive-is-a-sandbox-deposit": fbNoArchiveIsKnownSandbox(
+            dictWorkflow, filesRepo,
+        ),
+        "reproduce-script-stale": fbVerifyReproduceScriptCurrent(
+            filesRepo, dictWorkflow,
+        ),
     }
 
 
@@ -2761,6 +2843,84 @@ def fbImageArchiveDeposited(filesRepo):
     return imageArchive.fbImageArchiveMatchesEnvelope(
         fdictReadEnvironmentJson(filesRepo),
     )
+
+
+def fbNoArchiveIsKnownSandbox(dictWorkflow, filesRepo):
+    """Return False iff an archive is KNOWN to be a sandbox deposit.
+
+    Zenodo's sandbox mints test DOIs under no preservation
+    commitment and may be cleaned at any time, so a deposit there is
+    not an archive however exactly its bytes match. A rebuild
+    attestation carried by one proves the rebuild happened and proves
+    nothing about permanence, which is why the credit is withheld
+    rather than the attestation disbelieved.
+
+    Fails CLOSED in the researcher's favour: ``unknown`` passes. Only
+    positive evidence of a test instance blocks, because a gate that
+    blocked on silence would refuse every deposit vaibify cannot
+    classify -- and there is no harm this criterion prevents that an
+    abstention causes.
+    """
+    return not flistDescribeSandboxArchives(dictWorkflow, filesRepo)
+
+
+def flistDescribeSandboxArchives(dictWorkflow, filesRepo):
+    """Return one sentence per archive known to be a sandbox deposit.
+
+    Empty means nothing is known to be one -- which is not the same
+    as "both are permanent", and no caller may render it as such. The
+    row states the positive from the per-archive verdicts instead.
+    """
+    listIssues = []
+    dictRecord = imageArchive.fdictReadArchiveRecord(
+        fdictReadEnvironmentJson(filesRepo),
+    )
+    if archivePermanence.fsClassifyDepositRecord(dictRecord) == (
+        archivePermanence.S_PERMANENCE_SANDBOX
+    ):
+        listIssues.append(
+            "The environment archive is a Zenodo SANDBOX deposit."
+        )
+    if archivePermanence.fsClassifyDepositRecord(
+        _fdictPrimaryZenodoRecord(dictWorkflow),
+    ) == archivePermanence.S_PERMANENCE_SANDBOX:
+        listIssues.append(
+            "This project's Zenodo deposit is a SANDBOX deposit."
+        )
+    return listIssues
+
+
+def fdictArchivePermanenceState(dictWorkflow, filesRepo):
+    """Return the permanence payload the attestation row renders.
+
+    Ships the per-archive verdicts alongside the gate's answer
+    deliberately: the row must be able to say WHICH archive is a
+    sandbox deposit, and where it states the positive it reads a
+    verdict rather than inferring permanence from a gate that also
+    passes on ``unknown``.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    listIssues = flistDescribeSandboxArchives(dictWorkflow, filesRepo)
+    return {
+        "bNoArchiveKnownSandbox": not listIssues,
+        "listPermanenceIssues": listIssues,
+        "sImageArchivePermanence":
+            archivePermanence.fsClassifyDepositRecord(
+                imageArchive.fdictReadArchiveRecord(
+                    fdictReadEnvironmentJson(filesRepo),
+                ),
+            ),
+        "sProjectArchivePermanence":
+            archivePermanence.fsClassifyDepositRecord(
+                _fdictPrimaryZenodoRecord(dictWorkflow),
+            ),
+    }
+
+
+def _fdictPrimaryZenodoRecord(dictWorkflow):
+    """Return the CURRENT primary Zenodo deposit record, or ``None``."""
+    dictRemotes = (dictWorkflow or {}).get("dictRemotes") or {}
+    return dictRemotes.get("zenodo")
 
 
 def fbAttestationIsPubliclyArchived(filesRepo):
@@ -2980,6 +3140,23 @@ _DICT_L3_REMEDIATION_HINTS = {
         "version containing the envelope (or declare the Zenodo "
         "record that already holds it), then click Verify now on the "
         "Zenodo row.",
+    "reproduce-script-stale":
+        "reproduce.sh on disk is not what vaibify would generate for "
+        "this workflow now, so it predates the machinery it needs. A "
+        "script written before the environment archive existed opens "
+        "with a bare 'docker pull' and stops -- and for a locally "
+        "built image no registry serves that digest, so a stranger's "
+        "reproduction dies on its first line while your own Zenodo "
+        "deposit holds the image it wanted. Regenerate reproduce.sh, "
+        "then commit and publish it.",
+    "an-archive-is-a-sandbox-deposit":
+        "An archive backing this project is a Zenodo SANDBOX deposit. "
+        "The sandbox mints test DOIs, promises no preservation, and "
+        "may be cleared at any time, so it cannot carry a Level 3 "
+        "claim. Sandbox and production are separate systems and "
+        "nothing transfers between them: use Make Permanent on the "
+        "affected row to deposit again on zenodo.org and record the "
+        "new DOI.",
     "image-not-archived":
         "The container image that produced these results is not in a "
         "permanent archive, or the deposit on record covers a "
@@ -3602,6 +3779,8 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
     "l3-attestation-stale", "binaries-not-declared-or-waived",
     "envelope-not-in-github-mirror", "envelope-not-in-zenodo-archive",
     "attestation-not-in-zenodo-archive", "image-not-archived",
+    "an-archive-is-a-sandbox-deposit",
+    "reproduce-script-stale",
 )
 
 

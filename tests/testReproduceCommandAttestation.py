@@ -65,13 +65,6 @@ def fixtureRepo(tmp_path):
     pathRepro.write_text("#!/usr/bin/env bash\nset -e\n")
     pathRepro.chmod(0o755)
     sReproHash = hashlib.sha256(pathRepro.read_bytes()).hexdigest()
-    # Manifest covers all three files.
-    pathManifest = tmp_path / "MANIFEST.sha256"
-    pathManifest.write_text(
-        f"{sHash}  result.txt\n"
-        f"{sReproHash}  reproduce.sh\n"
-        f"{sDockerHash}  Dockerfile\n"
-    )
     # requirements.lock with one hash-pinned dependency.
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n"
@@ -106,7 +99,26 @@ def fixtureRepo(tmp_path):
         "bNoStandaloneBinaries": True,
         "listDeclaredBinaries": [],
     }))
+    # The manifest is written LAST and covers the envelope as well as
+    # the result: its scope widened on 2026-09-14, so one pinning only
+    # the outputs is a project vaibify would no longer produce and
+    # tier 4 reports it incomplete.
+    _fnWriteManifestOver(tmp_path, [
+        "result.txt", "reproduce.sh", "Dockerfile",
+        "requirements.lock", ".vaibify/environment.json",
+    ])
     return tmp_path
+
+
+def _fnWriteManifestOver(pathRepo, listRelativePaths):
+    """Write MANIFEST.sha256 pinning each repo-relative path's bytes."""
+    listLines = []
+    for sRelative in listRelativePaths:
+        baBytes = (pathRepo / sRelative).read_bytes()
+        listLines.append(
+            f"{hashlib.sha256(baBytes).hexdigest()}  {sRelative}\n"
+        )
+    (pathRepo / "MANIFEST.sha256").write_text("".join(listLines))
 
 
 # ============================================================================
@@ -270,15 +282,17 @@ def test_write_attestation_from_run_writes_passed_record(fixtureRepo):
     assert dictPayload["sStatus"] == "passed"
     assert dictPayload["listDivergedHashes"] == []
     assert dictPayload["fDurationSeconds"] == 2.5
-    assert dictPayload["iOutputHashesMatched"] == 3
-    assert dictPayload["iOutputHashesTotal"] == 3
+    # Five since 2026-09-14: the three artifacts plus the dependency
+    # lock and the environment snapshot the manifest now pins.
+    assert dictPayload["iOutputHashesMatched"] == 5
+    assert dictPayload["iOutputHashesTotal"] == 5
 
 
 def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     """A non-zero pipeline exit is named in listDivergedHashes.
 
     The artefacts on disk are untouched here, so the re-hash honestly
-    reports 3 of 3 matching; the rerun itself is what failed, and that
+    reports 5 of 5 matching; the rerun itself is what failed, and that
     fact is the first diverged entry rather than a zeroed count.
     """
     dictOutcome = fdictVerifyRerunOutputs(str(fixtureRepo), False)
@@ -294,7 +308,7 @@ def test_write_attestation_from_run_writes_failed_record(fixtureRepo):
     assert dictPayload["listDivergedHashes"] == [
         S_DIVERGENCE_PIPELINE_FAILED
     ]
-    assert dictPayload["iOutputHashesMatched"] == 3
+    assert dictPayload["iOutputHashesMatched"] == 5
 
 
 def test_a_rerun_that_reached_no_verdict_writes_nothing(fixtureRepo):

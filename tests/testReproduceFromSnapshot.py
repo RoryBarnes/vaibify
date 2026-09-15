@@ -197,7 +197,9 @@ def test_an_untouched_shadow_reproduces(sSourceRepo):
         sSourceRepo, _fdictAcquired(), _fnLeaveTheShadowAlone,
     )
     assert dictRun["dictOutcome"]["bPassed"] is True
-    assert dictRun["dictOutcome"]["iOutputHashesTotal"] == 2
+    # Three since 2026-09-14: the manifest pins the environment
+    # snapshot alongside the results.
+    assert dictRun["dictOutcome"]["iOutputHashesTotal"] == 3
     assert dictRun["dictOutcome"]["sShadowTeardown"] == "destroyed"
     assert dictRun["dictOutcome"]["sImageDigest"] == _fdictAcquired()["sImageReference"]
 

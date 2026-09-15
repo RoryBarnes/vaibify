@@ -2964,6 +2964,33 @@ const VaibifyApp = (function () {
                 "Project block",
             sClass: "step-blocker-glyph-l3-workflow-image-archive",
         },
+        /* A sandbox deposit really does hold matching bytes, so this
+           blocker withholds the CREDIT rather than disputing the
+           rebuild: the attestation row keeps saying the rerun
+           happened, and says the attestation does not count while an
+           archive is a test deposit. */
+        /* The script exists, is hashed, and carries no tokens -- and
+           still cannot run on a stranger's machine, because it
+           predates the archive fallback it needs. Its own blocker,
+           because "write a reproduce script" is the wrong remedy for
+           a project that already has one. */
+        "reproduce-script-stale": {
+            sIcon: "⚠",
+            sLabel: "reproduce.sh predates the machinery it needs — " +
+                "it pulls the image and has no way to fall back to " +
+                "your archived copy, so a stranger's reproduction " +
+                "fails on its first line; regenerate it, then commit " +
+                "and publish",
+            sClass: "step-blocker-glyph-l3-workflow-reproduce-stale",
+        },
+        "an-archive-is-a-sandbox-deposit": {
+            sIcon: "⚠",
+            sLabel: "An archive backing this project is a Zenodo " +
+                "SANDBOX deposit, which promises no preservation and " +
+                "may be cleared at any time — use Make Permanent to " +
+                "deposit again on zenodo.org",
+            sClass: "step-blocker-glyph-l3-workflow-sandbox-archive",
+        },
         "attestation-not-in-zenodo-archive": {
             sIcon: "⚠",
             sLabel: "The Zenodo archive carries no rebuild " +
@@ -3812,8 +3839,10 @@ const VaibifyApp = (function () {
                 sTitle: "Deposit the container image",
                 sMessage: "Vaibify will save this project's " +
                     "container image, compress it, and publish it to " +
-                    "Zenodo under a new DOI. Zenodo deposits are " +
-                    "PERMANENT and cannot be deleted. The image is " +
+                    "Zenodo under a new DOI. Deleting a Zenodo " +
+                    "deposit later requires contacting Zenodo, and " +
+                    "the DOI is tombstoned rather than removed. The " +
+                    "image is " +
                     "usually several gigabytes, so this takes " +
                     "minutes and needs that much free disk space " +
                     "while it runs.",
@@ -3821,6 +3850,140 @@ const VaibifyApp = (function () {
             sToast: "Depositing the container image. Progress " +
                 "appears on the Environment archive row; the DOI is " +
                 "recorded when it finishes.",
+        },
+        "reconcile-promotion": {
+            sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
+                "{sPromotionId}/reconcile",
+            fdictAfterResponse: function (dictResult, sArg) {
+                /* Zenodo's own verdict, held for the row to render.
+                   The row offers nothing until this lands: vaibify
+                   does not know what a draft holds, and offering an
+                   action on a guess is how a real DOI gets thrown
+                   away. */
+                VaibifyWorkflowRequirements.fnRecordPromotionOutcome(
+                    sArg, dictResult);
+                return {
+                    sMessage: dictResult.sMessage || "",
+                    sType: dictResult.listActions &&
+                        dictResult.listActions.length
+                        ? "info" : "warning",
+                };
+            },
+        },
+        "resume-promotion": {
+            sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
+                "{sPromotionId}/resume",
+            dictConfirm: {
+                sTitle: "Finish publishing this deposit",
+                sMessage: "Zenodo already holds every file this " +
+                    "promotion intended; only the publish is left. " +
+                    "Publishing MINTS the permanent DOI — deleting " +
+                    "the record later requires contacting Zenodo, " +
+                    "and the DOI is tombstoned rather than removed.",
+            },
+            sToast: "Published. The DOI is recorded on the row.",
+        },
+        "adopt-promotion": {
+            sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
+                "{sPromotionId}/adopt",
+            dictConfirm: {
+                sTitle: "Record this published DOI",
+                sMessage: "This promotion finished on Zenodo while " +
+                    "vaibify was not watching: the record is " +
+                    "published and holds the intended files. " +
+                    "Recording it writes the new DOI into this " +
+                    "project, replacing the deposit currently on " +
+                    "file — which keeps resolving to exactly what it " +
+                    "already holds.",
+            },
+            sToast: "The published DOI was recorded.",
+        },
+        "discard-promotion": {
+            sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
+                "{sPromotionId}",
+            sMethod: "DELETE",
+            dictConfirm: {
+                sTitle: "Discard this interrupted promotion",
+                sMessage: "Vaibify will delete the unpublished draft " +
+                    "on Zenodo and forget this record. Nothing " +
+                    "published is touched and no DOI is lost — a " +
+                    "draft has none. You can promote again " +
+                    "afterwards.",
+            },
+            sToast: "The interrupted promotion was discarded.",
+        },
+        "promote-project-deposit": {
+            /* Not under /api/workflow/{id}: the project deposit's
+               routes live under /api/zenodo/{id}, beside the archive
+               flow it reuses. */
+            sAbsolutePath: "/api/zenodo/{sContainerId}/promote",
+            fdictBody: function () {
+                return {listFilePaths: []};
+            },
+            dictConfirm: {
+                sTitle: "Publish this project on production Zenodo",
+                sMessage: "This is NOT a copy of your sandbox " +
+                    "deposit. Zenodo's sandbox and production are " +
+                    "separate systems and nothing transfers between " +
+                    "them, so vaibify publishes your project's " +
+                    "current files on zenodo.org as a NEW record " +
+                    "with its own permanent DOI — the DOI will name " +
+                    "your tree as it is now, not as it was when you " +
+                    "deposited to the sandbox. This IS the " +
+                    "publication: there is nothing to republish " +
+                    "afterwards. Deleting a production deposit later " +
+                    "requires contacting Zenodo, and the DOI is " +
+                    "tombstoned rather than removed. Your sandbox " +
+                    "record stays where it is.",
+            },
+            sToast: "Publishing on production Zenodo. The new DOI is " +
+                "recorded when it finishes.",
+        },
+        "start-new-zenodo-concept": {
+            sAbsolutePath:
+                "/api/zenodo/{sContainerId}/start-new-concept",
+            dictConfirm: {
+                sTitle: "Start a new Zenodo concept",
+                sMessage: "Your next Zenodo publish will create a " +
+                    "FRESH record rather than a new version of the " +
+                    "one on file, so the two will not be linked as a " +
+                    "version chain. The existing deposit is " +
+                    "untouched and its DOI keeps resolving to " +
+                    "exactly what it already holds; vaibify moves " +
+                    "its identifiers into a superseded note so you " +
+                    "can still see them. Use this when your recorded " +
+                    "deposit and the instance you want to publish to " +
+                    "are on different Zenodo sites.",
+            },
+            sToast: "The recorded deposit was retired. Your next " +
+                "publish starts a new concept.",
+        },
+        "promote-environment-archive": {
+            sPath: "/environment-archive/promote",
+            dictConfirm: {
+                sTitle: "Deposit this image on production Zenodo",
+                sMessage: "Zenodo's sandbox and production are " +
+                    "separate systems and nothing transfers between " +
+                    "them, so this publishes the image AGAIN on " +
+                    "zenodo.org under a NEW permanent DOI. The " +
+                    "sandbox record stays where it is until Zenodo " +
+                    "clears it. Deleting a production deposit later " +
+                    "requires contacting Zenodo, and the DOI is " +
+                    "tombstoned rather than removed. This is a step " +
+                    "on the way, not the last one: it rewrites " +
+                    ".vaibify/environment.json, so push the envelope " +
+                    "and publish your project deposit afterwards. " +
+                    "The image is usually several gigabytes, so this " +
+                    "takes minutes and needs that much free disk " +
+                    "space while it runs.",
+            },
+            dictCredentialPrompt: {
+                sError: "PRODUCTION-TOKEN-MISSING",
+                sInstance: "production",
+            },
+            sToast: "Depositing the image on production Zenodo. " +
+                "Progress appears on the Environment archive row; " +
+                "the new DOI is recorded when it finishes.",
         },
         "remove-ai-model": {
             sPath: "/ai-models/remove",
@@ -4030,7 +4193,16 @@ const VaibifyApp = (function () {
         } else if (dictAction.fdictBody) {
             oBody = dictAction.fdictBody(sArg);
         }
-        var sUrl = "/api/workflow/" + sContainerId + dictAction.sPath;
+        /* Most project actions hang off /api/workflow/{id}; a few
+           live under the service prefix their flow already owns. An
+           entry declares one or the other, never both. */
+        var sUrl = dictAction.sAbsolutePath
+            ? dictAction.sAbsolutePath
+                .replace("{sContainerId}",
+                    encodeURIComponent(sContainerId))
+                .replace("{sPromotionId}",
+                    encodeURIComponent(sArg || ""))
+            : "/api/workflow/" + sContainerId + dictAction.sPath;
         try {
             var dictResult;
             if (dictAction.sMethod === "DELETE") {
@@ -4063,6 +4235,11 @@ const VaibifyApp = (function () {
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
             }
+            if (_fbRefusalNeedsACredential(dictAction, error)) {
+                await _fnAskForCredentialThenRetry(
+                    dictAction, error, sContainerId, sArg, elButton);
+                return;
+            }
             fnShowToast(
                 "Action failed: " +
                 ((error && error.message) ? error.message : error),
@@ -4074,6 +4251,35 @@ const VaibifyApp = (function () {
         // connect payload — calling it bare threw and silently
         // skipped this refresh.)
         VaibifyPolling.fnStartFilePolling(sContainerId);
+    }
+
+    function _fbRefusalNeedsACredential(dictAction, error) {
+        /* A 409 naming a credential this host does not hold. Distinct
+           from a retry-with-consent: nothing is being reconsidered,
+           a token is simply missing, and the prompt must not record
+           the instance as where this project publishes. */
+        var dictPrompt = dictAction.dictCredentialPrompt;
+        return Boolean(dictPrompt && error && error.iStatus === 409 &&
+            error.dictDetail &&
+            error.dictDetail.sError === dictPrompt.sError);
+    }
+
+    async function _fnAskForCredentialThenRetry(
+        dictAction, error, sContainerId, sArg, elButton) {
+        /* The server's own sentence says which credential is missing;
+           the opener resolves once the researcher has stored one (or
+           declined), and only then is the action retried. A second
+           refusal is reported rather than asked again. */
+        fnShowToast(
+            error.dictDetail.sMessage || error.message || "", "warning");
+        var bStored = await VaibifySyncManager
+            .fpromiseConnectZenodoCredentialOnly(
+                dictAction.dictCredentialPrompt.sInstance);
+        if (!bStored) return;
+        var dictOnce = Object.assign({}, dictAction);
+        delete dictOnce.dictCredentialPrompt;
+        await _fnExecuteProjectAction(
+            dictOnce, sContainerId, sArg, elButton);
     }
 
     function _fbRefusalNamesARetry(dictAction, error) {

@@ -30,6 +30,7 @@ from vaibify.reproducibility.levelGates import (
 )
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
+    fsRenderReproduceScript,
 )
 
 
@@ -92,7 +93,14 @@ def _fnWriteSyncStatus(tmp_path):
             "sLastVerified": _fsIsoNow(0.5),
             "dictComparedHashes": dictComparedHashes,
             "sZenodoDoi": "10.1000/example",
-            "sEndpointVerified": "sandbox",
+            # PRODUCTION since 2026-09-14. This fixture means "every
+            # L3 criterion satisfied", and a sandbox deposit is now
+            # one it fails: the sandbox mints test DOIs under no
+            # preservation commitment, so an archive there cannot
+            # carry a Level 3 claim however exactly its bytes match.
+            # The verified endpoint moves with the recorded one, which
+            # is the field the endpoint check compares against.
+            "sEndpointVerified": "zenodo",
         },
     }
     (pathDir / "syncStatus.json").write_text(
@@ -105,8 +113,15 @@ def _fnWriteL3EnvelopeFiles(tmp_path):
         "FROM python@sha256:" + "a" * 64 + "\n"
         "ENV SOURCE_DATE_EPOCH=1700000000\n"
     )
+    # The script the CURRENT generator writes, not a stub. This
+    # fixture means "every L3 criterion satisfied", and since
+    # 2026-09-14 that includes `reproduce-script-stale`: a script that
+    # predates its generator is pinned, token-free and unrunnable by a
+    # stranger, which is exactly what a two-line stub is.
     pathScript = tmp_path / S_REPRODUCE_SCRIPT_FILENAME
-    pathScript.write_text("#!/usr/bin/env bash\nset -e\n")
+    pathScript.write_text(
+        fsRenderReproduceScript(_fdictBuildLevel3Workflow()),
+    )
     pathScript.chmod(0o755)
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n    --hash=sha256:" + "b" * 64 + "\n"
@@ -180,7 +195,7 @@ def _fdictBuildLevel3Workflow():
                 "sCommittedSha": "abc123",
             },
             "zenodo": {
-                "sRecordId": "1234", "sService": "sandbox",
+                "sRecordId": "1234", "sService": "zenodo",
                 "sDoi": "10.1000/example",
             },
         },
@@ -220,9 +235,15 @@ def fixtureLevel3Repo(tmp_path):
     # (dictComparedHashes), and a cache written before the files exist
     # would honestly read as unproven — which is a different fixture.
     _fnWriteL3EnvelopeFiles(tmp_path)
-    _fnWriteManifest(
-        tmp_path, [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME],
-    )
+    # Every envelope file, because the manifest's scope widened on
+    # 2026-09-14: reproduce.sh ends with `sha256sum -c
+    # MANIFEST.sha256`, so a manifest covering the results and not the
+    # environment let a reproducer verify everything except what
+    # produced it.
+    _fnWriteManifest(tmp_path, [
+        S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
+        "requirements.lock", ".vaibify/environment.json",
+    ])
     _fnWriteSyncStatus(tmp_path)
     return tmp_path
 
@@ -240,6 +261,39 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     ))
     assert fbAtLeastLevel3(dictWorkflow, sRepo)
     assert fiProofLevel(dictWorkflow, sRepo) == 3
+    # A SANDBOX deposit takes the level back, with nothing else
+    # changed. Asserted in this direction because the fixture flipping
+    # to production is what made the test pass again, and a fixture
+    # edit that merely stops a criterion from firing proves nothing
+    # about the criterion. Both fields move together: the recorded
+    # instance is what the permanence criterion reads, and the
+    # verified endpoint is what the freshness check compares against.
+    # A script that predates its generator takes the level back too,
+    # with nothing else changed -- the shape found on a live project,
+    # where the file existed, was pinned, carried no tokens, and could
+    # not run on any machine but the author's.
+    (fixtureLevel3Repo / S_REPRODUCE_SCRIPT_FILENAME).write_text(
+        "#!/usr/bin/env bash\nset -e\n",
+    )
+    assert not fbAtLeastLevel3(dictWorkflow, sRepo)
+    (fixtureLevel3Repo / S_REPRODUCE_SCRIPT_FILENAME).write_text(
+        fsRenderReproduceScript(dictWorkflow),
+    )
+    assert fbAtLeastLevel3(dictWorkflow, sRepo), (
+        "restoring the current script must restore the level; if it "
+        "does not, the manifest hash moved and something else broke"
+    )
+
+    dictSandbox = _fdictBuildLevel3Workflow()
+    dictSandbox["dictRemotes"]["zenodo"]["sService"] = "sandbox"
+    assert not fbAtLeastLevel3(dictSandbox, sRepo)
+    # It lands at 1, not 2, and that is the OTHER half of the same
+    # fact: the cached verify was run against production, so a record
+    # that now says sandbox also fails the Level 2 endpoint check --
+    # the evidence on file compared a different instance from the one
+    # the record names. Both drops are correct; asserting the exact
+    # level rather than "< 3" is what keeps this honest about which.
+    assert fiProofLevel(dictSandbox, sRepo) == 1
     # Mutate the manifest — attestation goes stale, gate falls to L2.
     (fixtureLevel3Repo / "MANIFEST.sha256").write_text(
         "# changed\n"

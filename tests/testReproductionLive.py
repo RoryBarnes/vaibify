@@ -201,7 +201,9 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     )
     assert dictReport["dictPlatform"]["bEmulated"] is False
     assert dictReport["sShadowTeardown"] == "destroyed"
-    assert dictReport["iOutputHashesTotal"] == 2
+    # Three since 2026-09-14: the manifest pins the environment
+    # snapshot alongside the two results.
+    assert dictReport["iOutputHashesTotal"] == 3
     assert not os.path.isdir(reproductionSource._fsStagingRoot()) or (
         os.listdir(reproductionSource._fsStagingRoot()) == []
     )

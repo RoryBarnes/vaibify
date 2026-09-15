@@ -255,9 +255,6 @@ def _fnSeedEnvelope(pathRepo):
     pathReproduce = pathRepo / "reproduce.sh"
     pathReproduce.write_text("#!/usr/bin/env bash\nset -e\n")
     pathReproduce.chmod(0o755)
-    _fnWriteManifestFor(
-        pathRepo, (pathOutput, pathReproduce, pathDocker),
-    )
     # Pinned to a package the LOCAL python3 actually has, at the
     # version it actually has, read through the same enumeration the
     # lock-satisfaction gate runs. This harness executes real commands
@@ -276,6 +273,15 @@ def _fnSeedEnvelope(pathRepo):
         "dictContainer": {"sImageDigest": "img@sha256:" + "c" * 64},
         "sSchemaVersion": "1",
     }))
+    # Written LAST, because the manifest now pins the envelope: the
+    # lock and environment.json did not exist when this call sat above
+    # them, so tier 4 reported an incomplete manifest on a fixture
+    # meant to pass every tier.
+    _fnWriteManifestFor(pathRepo, (
+        pathOutput, pathReproduce, pathDocker,
+        pathRepo / "requirements.lock",
+        pathVaibify / "environment.json",
+    ))
     pathWorkflows = pathVaibify / "workflows"
     pathWorkflows.mkdir(parents=True, exist_ok=True)
     (pathWorkflows / "project.json").write_text(json.dumps({
@@ -354,10 +360,17 @@ def _fsOneTruePinnedRequirement():
 
 
 def _fnWriteManifestFor(pathRepo, tPaths):
-    """(Re)write MANIFEST.sha256 pinning the current bytes of tPaths."""
+    """(Re)write MANIFEST.sha256 pinning the current bytes of tPaths.
+
+    Repo-RELATIVE paths, not basenames: the manifest has pinned
+    ``.vaibify/environment.json`` since the scope widened on
+    2026-09-14, and a basename would enter it as ``environment.json``
+    -- an entry naming a file at the repository root that does not
+    exist, which every reader would report as a divergence.
+    """
     (pathRepo / "MANIFEST.sha256").write_text("".join(
         f"{hashlib.sha256(pathFile.read_bytes()).hexdigest()}  "
-        f"{pathFile.name}\n"
+        f"{pathFile.relative_to(pathRepo).as_posix()}\n"
         for pathFile in tPaths
     ))
 
@@ -670,8 +683,11 @@ def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):
 
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
-    assert dictAttestation["iOutputHashesMatched"] == 3
-    assert dictAttestation["iOutputHashesTotal"] == 3
+    # Five since 2026-09-14: the three artifacts plus the dependency
+    # lock and the environment snapshot, which the manifest now pins
+    # so a reproducer verifies what PRODUCED the results too.
+    assert dictAttestation["iOutputHashesMatched"] == 5
+    assert dictAttestation["iOutputHashesTotal"] == 5
 
 
 def test_attestation_names_the_manifest_it_actually_compared_against(
