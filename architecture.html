@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev11 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev14 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e8ec84cf"></script>
+      <script src="_static/documentation_options.js?v=b0e51a71"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -130,6 +130,11 @@
 <li class="toctree-l3"><a class="reference internal" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction">A clone carrying someone else’s attestation records a reproduction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#containerizing-from-the-author-s-pinned-image">Containerizing from the author’s pinned image</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#one-image-n-papers">One image, N papers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-deposit-is-not-an-archive-until-somebody-promises-to-keep-it">A deposit is not an archive until somebody promises to keep it</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#three-questions-about-which-zenodo-and-three-answers">Three questions about “which Zenodo”, and three answers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-promotion-is-bracketed-because-a-lost-doi-cannot-be-guessed">The promotion is bracketed, because a lost DOI cannot be guessed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-deposit-is-finished-when-the-archive-agrees-not-when-the-upload-returns">A deposit is finished when the archive agrees, not when the upload returns</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#most-of-the-ladder-is-order-free-and-the-exceptions-were-never-said">Most of the ladder is order-free, and the exceptions were never said</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-replay-axis-ai-provenance">The Replay axis (AI provenance)</a></li>
@@ -2589,6 +2594,196 @@ existing record” answer is the normal path for papers 2..N, and it is
 verified rather than trusted — vaibify stamps a machine-readable
 fingerprint into the deposit’s description, and a record it cannot read
 that fingerprint out of is refused.</p>
+</section>
+<section id="a-deposit-is-not-an-archive-until-somebody-promises-to-keep-it">
+<h3>A deposit is not an archive until somebody promises to keep it<a class="headerlink" href="#a-deposit-is-not-an-archive-until-somebody-promises-to-keep-it" title="Link to this heading"></a></h3>
+<p>Zenodo’s sandbox and its production instance are <strong>separate systems,
+and nothing transfers between them</strong>. The sandbox mints test DOIs
+under DataCite’s <code class="docutils literal notranslate"><span class="pre">10.5072/</span></code> prefix, authenticates with its own token,
+and — in Zenodo’s own words — may be cleaned at any time. So a project
+can hold a deposit whose bytes match the envelope exactly, in a place
+that has promised nothing. That is why permanence is a criterion of
+its own (<code class="docutils literal notranslate"><span class="pre">an-archive-is-a-sandbox-deposit</span></code>) rather than a stricter
+reading of the archive criteria: the bytes really do match, and what a
+sandbox deposit withholds is the <em>credit</em>, not the comparison. The
+rebuild-attestation row keeps saying the rerun happened; the two
+archive rows keep their computed color and gain a warning beside it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">reproducibility/archivePermanence.py</span></code> answers the one question, in
+three states and never a boolean. <code class="docutils literal notranslate"><span class="pre">unknown</span></code> renders exactly as today
+and passes every gate, which is what makes abstaining free: a wrong
+<code class="docutils literal notranslate"><span class="pre">sandbox</span></code> costs a researcher a warning they did not need, and a wrong
+<code class="docutils literal notranslate"><span class="pre">permanent</span></code> costs them the warning the feature exists to show. The
+classifier therefore believes <code class="docutils literal notranslate"><span class="pre">zenodoClient.fsServiceForDoi</span></code>’s
+<em>sandbox</em> answer and requires independent positive evidence for the
+permanent one — that function is total by design, because its caller
+must pick a host, so deferring to it wholesale would turn “this string
+is not recognizably a sandbox DOI” into “this deposit is permanently
+archived”.</p>
+<p><strong>Making an archive permanent means depositing again.</strong> There is no
+migration to perform, so “Make Permanent” re-deposits on zenodo.org
+under a production token and records the new DOI; the sandbox record
+stays where it is until Zenodo clears it, which vaibify neither causes
+nor observes. The environment archive copies bytes (a fresh <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code>, or — only when the image is <em>positively absent</em> from the daemon
+— the sandbox tarball, downloaded and hash-checked against the record).
+The project deposit does not: it is a new production release of the
+current publication union, which is a different thing from a byte copy
+whenever a local file has changed, and the confirmation says so.</p>
+</section>
+<section id="three-questions-about-which-zenodo-and-three-answers">
+<h3>Three questions about “which Zenodo”, and three answers<a class="headerlink" href="#three-questions-about-which-zenodo-and-three-answers" title="Link to this heading"></a></h3>
+<p>Reading the wrong one is invisible until something moves, because for
+a project that has never changed instance they all agree:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Question</p></th>
+<th class="head"><p>Authority</p></th>
+<th class="head"><p>Storage</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Where does the recorded primary deposit live?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.sService</span></code></p></td>
+<td><p>the sync sidecar (produced)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Where should the next project publish go?</p></td>
+<td><p>top-level <code class="docutils literal notranslate"><span class="pre">sZenodoService</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">project.json</span></code> (declaration)</p></td>
+</tr>
+<tr class="row-even"><td><p>Where does the environment deposit live?</p></td>
+<td><p>that record’s own <code class="docutils literal notranslate"><span class="pre">sZenodoService</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">environment.json</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>A promotion advances only the first, by publishing. It never writes a
+declaration on the researcher’s behalf: top-level <code class="docutils literal notranslate"><span class="pre">sZenodoService</span></code> is
+compared by Level 2 and is shared with <em>every</em> declared record, so
+flipping it would stale the deposit just minted and send retained
+sandbox records to a host that has never heard of them — aborting the
+whole Zenodo verify over a promotion that had nothing to do with them.</p>
+<p>The consequence is a guard: Zenodo’s <code class="docutils literal notranslate"><span class="pre">newversion</span></code> flow asks ONE
+instance for a new version of a record it holds, so a publish whose
+recorded deposit and declared target disagree is refused locally and by
+name, rather than sent out to come back as a bare 404. The remedy it
+names exists — <code class="docutils literal notranslate"><span class="pre">start-new-concept</span></code> retires the recorded identifiers
+into a superseded note so the next publish creates a fresh concept —
+because a refusal pointing at a remedy that does not exist is worse
+than no refusal at all.</p>
+</section>
+<section id="the-promotion-is-bracketed-because-a-lost-doi-cannot-be-guessed">
+<h3>The promotion is bracketed, because a lost DOI cannot be guessed<a class="headerlink" href="#the-promotion-is-bracketed-because-a-lost-doi-cannot-be-guessed" title="Link to this heading"></a></h3>
+<p>A promotion mints a permanent DOI in the middle of a long upload. So
+intent is written to the sidecar before anything starts, and the
+deposit id is made durable the moment the draft exists — <em>before</em> the
+first byte goes up, not after the publish returns. The record carries
+each file’s SHA-256, MD5 and size, because Zenodo reports a
+deposition file’s checksum as MD5 and reconciliation has to compare in
+the vocabulary the archive speaks.</p>
+<p>Recovery never decides what happened; it asks. Seven outcomes, each
+offering only its own actions, and the pair that matters most is
+<code class="docutils literal notranslate"><span class="pre">gone</span></code> versus <code class="docutils literal notranslate"><span class="pre">unknown</span></code>: a positive 404 is an answer and licenses a
+discard, an unreadable Zenodo is not one and keeps the record. Every
+mutating action additionally re-checks that the remote deposit’s
+description names this promotion — without that, a writable local file
+would be the only thing binding a mutation of a public archive to the
+intent that started it.</p>
+</section>
+<section id="a-deposit-is-finished-when-the-archive-agrees-not-when-the-upload-returns">
+<h3>A deposit is finished when the archive agrees, not when the upload returns<a class="headerlink" href="#a-deposit-is-finished-when-the-archive-agrees-not-when-the-upload-returns" title="Link to this heading"></a></h3>
+<p>Everything before that point is vaibify reporting on vaibify. The
+digest in the record is what the local file hashed to, and a truncated
+upload, a dropped byte range, or a stored object that is not the one
+sent would leave that record saying exactly what it says now — with
+the L2/L3 cells green over an archive that cannot satisfy them.</p>
+<p>So both deposit lanes ask the draft what it holds and compare, on the
+deposit key, the checksum and the size together. The name alone is
+meaningless, because a Zenodo deposit is flat; the size alone would
+pass a same-length substitution. It costs one small request rather
+than a re-download, because Zenodo computes each file’s <strong>MD5
+server-side</strong> as the bucket receives it — which is also why the
+records carry an MD5 beside their SHA-256. MD5 is the vocabulary the
+archive speaks, not the integrity claim; the claim stays SHA-256, and
+a checksum the comparison cannot parse reads as <em>unchecked</em>, never as
+mismatched, so a format change at Zenodo cannot turn verification into
+an outage.</p>
+<p><strong>Before the publish, and the ordering is the whole safety property.</strong>
+Verifying afterwards would mean failing with a DOI already minted: an
+orphan the researcher owns, that vaibify refused to record, and that
+nothing can clean up, because a published record cannot be discarded.
+Checked in front of the publish, the same disagreement costs a
+discardable draft and mints nothing.</p>
+<p>What this does <em>not</em> prove is retrievability — that the file can still
+be fetched and arrives intact. That needs a real download and takes
+minutes; conflating the two would let a seconds-long check wear a
+claim it has not earned.</p>
+<p>The two lanes run on opposite sides of the container wall: the
+environment archive uploads from the host, the project deposit from a
+script inside the container. They share one implementation because
+<code class="docutils literal notranslate"><span class="pre">zenodoClient</span></code> is the only module staged on both sides — two copies of
+this comparison would announce their divergence as a deposit that
+passed on one lane and failed on the other. The lanes differ in one
+check only: the project deposit also refuses a draft serving a file it
+did not upload, because <code class="docutils literal notranslate"><span class="pre">newversion</span></code> <em>inherits</em> the parent’s file list
+and a clear that quietly did not happen publishes this version’s files
+mixed with the last one’s while every per-file comparison still
+passes. A fresh draft cannot reach that state, so the environment lane
+does not ask.</p>
+</section>
+<section id="most-of-the-ladder-is-order-free-and-the-exceptions-were-never-said">
+<h3>Most of the ladder is order-free, and the exceptions were never said<a class="headerlink" href="#most-of-the-ladder-is-order-free-and-the-exceptions-were-never-said" title="Link to this heading"></a></h3>
+<p>A researcher can declare their binaries, answer the determinism
+questions and pin a Dockerfile in any sequence; nothing they do undoes
+anything else. A handful of remedies are not like that. Regenerating
+<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> before <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> pins the hash of the script
+about to be replaced, and publishing to Zenodo before attesting puts
+an attestation in the archive that does not cover the archived
+manifest — which, because deposits are immutable, costs a whole new
+version to correct.</p>
+<p>Vaibify always <em>knew</em> this: it falls out of <code class="docutils literal notranslate"><span class="pre">flistManifestPathsToPin</span></code>,
+of the manifest digest <code class="docutils literal notranslate"><span class="pre">fbL3AttestationCurrent</span></code> compares against, and
+of <code class="docutils literal notranslate"><span class="pre">fbAttestationIsPubliclyArchived</span></code>. It was stated only as prose,
+ten times over, inside <code class="docutils literal notranslate"><span class="pre">_DICT_L3_REMEDIATION_HINTS</span></code> (“push the current
+envelope, <strong>then</strong> click Verify now”) — a concept the domain kept
+naming that the code had no representation for.
+<code class="docutils literal notranslate"><span class="pre">reproducibility/levelOrdering.py</span></code> is that representation.</p>
+<p><strong>An edge means one thing: doing the later one first gets UNDONE by
+doing the earlier one.</strong> Not “more logical first”, not “cheaper
+first” — undone. That is the only claim worth interrupting a
+researcher with, and it is why there is no edge from the rebuild
+attestation to the GitHub mirror: pushing before attesting costs a
+second push, which is a nuisance, not a retraction.</p>
+<p><strong>It answers one row, never a plan.</strong> A rendered N-step path has N
+ways to be subtly wrong and reads authoritatively while being so; one
+answer is wrong in one way, and the researcher finds out in seconds
+because they do the thing and nothing improves. So the dashboard shows
+a single “Do this first” arrow, and the row it names carries the
+reason.</p>
+<p>The arrow rides the banner of the <strong>section</strong> holding that row, not
+the Project banner (researcher’s ruling, 2026-09-14): Artifacts is
+where the work is, and the marker travels to Published envelope and
+then Attestation as the answer moves down the ladder — on the project
+banner it would have been a fixed label about a moving target. Only
+the section whose own rows contain the target may render it, so the
+arrow cannot point outside the section it sits on. It also sits inside
+a banner whose handler toggles that section, which makes its position
+in the delegated-click registry load-bearing: the dispatcher returns
+on its first match, so an entry after <code class="docutils literal notranslate"><span class="pre">.requirement-group-header</span></code>
+collapses the section over the row it just named.</p>
+<p><strong>Silence is the usual answer and is information.</strong> Two situations
+produce it: no edge has both ends live (every remaining blocker is
+independent), or more than one root remains (two chains, so there is
+no single next step and pointing at one would imply the other is not
+ready). The fork at the end of the ladder resolves itself this way —
+once the attestation is current, the GitHub and Zenodo envelope rows
+are genuinely independent and the arrow disappears exactly when order
+stops mattering. An arrow on the wrong row is worse than no arrow,
+because it carries more authority than the row it points at.</p>
+<p>The order ships in the poll payload. Re-deriving it in JavaScript
+would be a second authority on a question that has one — the mistake
+the determinism row made. The arrow’s own verdicts must also agree
+with what the rows render, which lives in a route module
+<code class="docutils literal notranslate"><span class="pre">levelOrdering</span></code> may not import; a test pins the two together, because
+that exact drift has already happened once.</p>
 </section>
 </section>
 <section id="the-replay-axis-ai-provenance">

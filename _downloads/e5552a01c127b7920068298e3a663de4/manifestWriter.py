@@ -93,6 +93,7 @@ __all__ = [
     "flistParseManifestLines",
     "fdictCompareManifestEntries",
     "flistDeclaredButMissingFromManifest",
+    "flistManifestPathsToPin",
     "fiCountManifestEntries",
     "fbWorkflowArchivesTests",
     "flistStepTestFileRepoPaths",
@@ -142,6 +143,59 @@ def flistCollectCanonicalRepoPaths(dictWorkflow):
     return _flistCollectManifestPaths(dictWorkflow)
 
 
+def flistManifestPathsToPin(filesRepo, dictWorkflow):
+    """Return every repo-relative path the manifest is meant to cover.
+
+    THE one definition of "should be in the manifest", because the
+    writer and the completeness check had two and they disagreed: the
+    writer unions in ``reproduce.sh`` when it exists, and the check
+    asked only for the declared artefacts. A manifest written before
+    the script existed and never rewritten therefore reported COMPLETE
+    while omitting the one file a stranger runs -- the writer pinning
+    something the checker does not ask about is a gap that can only
+    ever be found by reading both.
+
+    The set is the declared artefacts PLUS the reproducibility
+    envelope -- the environment snapshot, the dependency lock, the
+    Dockerfile, ``reproduce.sh`` and the other recipe files. The
+    envelope belonged here from the start and did not arrive until
+    2026-09-14: ``reproduce.sh`` ends with ``sha256sum -c
+    MANIFEST.sha256``, so a reproducer ran an integrity check that
+    covered the results and NOT the environment that produced them.
+    The digest a reader most needs to trust -- the one in
+    ``environment.json`` naming the image -- was the one nothing
+    pinned.
+
+    Every envelope path is PRESENCE-GATED, for the same reason
+    ``reproduce.sh`` always was: they are generated at different
+    moments, and a project that has not produced one yet is not
+    incomplete for lacking it. Requiring an absent file would make the
+    completeness check unsatisfiable rather than informative.
+
+    Two deliberate exclusions, both of which would be circular.
+    ``MANIFEST.sha256`` cannot record its own hash. The rebuild
+    attestation is written AFTER the manifest and records the
+    manifest's digest inside itself, so pinning it would mean the
+    manifest and the attestation each claiming to know the other --
+    which is why it lives in ``TUPLE_COMPARED_NOT_REQUIRED_PATHS``
+    and is compared against the remotes instead.
+
+    The envelope vocabulary is READ from ``publicationScope`` rather
+    than restated, so "what the envelope is" keeps one definition
+    across the manifest, the Level 3 rows and the remote verifies.
+    """
+    from vaibify.reproducibility.publicationScope import (
+        TUPLE_LEVEL3_ENVELOPE_PATHS,
+    )
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    setPaths = set(_flistCollectManifestPaths(dictWorkflow))
+    setPaths.update(
+        sPath for sPath in TUPLE_LEVEL3_ENVELOPE_PATHS
+        if sPath != _MANIFEST_FILENAME and filesRepo.fbIsFile(sPath)
+    )
+    return sorted(setPaths)
+
+
 def fnWriteManifest(filesRepo, dictWorkflow):
     """Write a sorted SHA-256 manifest of every declared workflow artefact.
 
@@ -165,16 +219,7 @@ def fnWriteManifest(filesRepo, dictWorkflow):
     snapshot adapters keep their existing semantics.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    listRelativePaths = _flistCollectManifestPaths(dictWorkflow)
-    if filesRepo.fbIsFile(_S_REPRODUCE_SCRIPT):
-        # The reproduce script must be pinned once it exists —
-        # ``fbVerifyReproduceScript`` requires its hash in the
-        # manifest, and a writer that never pins it makes that check
-        # unsatisfiable. It is presence-gated (not declared) because
-        # the script is generated after the first manifest write.
-        listRelativePaths = sorted(
-            set(listRelativePaths) | {_S_REPRODUCE_SCRIPT},
-        )
+    listRelativePaths = flistManifestPathsToPin(filesRepo, dictWorkflow)
     listEntries = _flistBuildManifestEntries(filesRepo, listRelativePaths)
     if _fbCanStreamWrite(filesRepo):
         _fnStreamWriteManifest(filesRepo, listEntries)
@@ -374,11 +419,18 @@ def flistDeclaredButMissingFromManifest(filesRepo, dictWorkflow):
     only; without this query the GUI cannot tell them their manifest
     is silently weaker than the new envelope guarantees. Raises
     ``FileNotFoundError`` when the manifest is absent.
+
+    Asks :func:`flistManifestPathsToPin` what the WRITER would pin
+    rather than keeping its own copy of the rule. The two had drifted:
+    this query omitted ``reproduce.sh``, so a manifest lacking the one
+    file a stranger executes reported complete.
     """
     listEntries = flistParseManifestLines(filesRepo)
     setManifestPaths = {dictEntry["sPath"] for dictEntry in listEntries}
-    listDeclared = _flistCollectManifestPaths(dictWorkflow)
-    return [sPath for sPath in listDeclared if sPath not in setManifestPaths]
+    return [
+        sPath for sPath in flistManifestPathsToPin(filesRepo, dictWorkflow)
+        if sPath not in setManifestPaths
+    ]
 
 
 def fdictCompareManifestEntries(listBefore, listAfter):

@@ -20,7 +20,10 @@ from .. import containerGit, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..routeContext import (
+    S_ISOLATION_BLOCK_ERROR,
     fdictCarryARefusalBackInsteadOfRaising,
+    fdictIsolationBlockedResponse,
+    fnRequireNetworkAccess,
     fdictRequireLaneTupleForCommit,
     fdictRunRemoteVerifyBlocking,
     ffilesForWorkflow,
@@ -53,6 +56,10 @@ from ..pipelineServer import (
     fsValidatePathWithinRoot,
 )
 from ..projectRoots import fsResolveProjectRoot
+from ...reproducibility import syncBookkeeping
+from ...reproducibility.syncBookkeeping import (
+    fnRecordZenodoPublish as _fnPersistZenodoPublishRecord,
+)
 from .scriptRoutes import _fnStoreCommitHash
 
 logger = logging.getLogger("vaibify")
@@ -108,46 +115,14 @@ def _fnRecordRecentPush(tKey, dictResult, fNow):
         )
 
 
-_S_ISOLATION_BLOCK_ERROR = "isolation-mode-blocks-network"
-_S_ISOLATION_BLOCK_MESSAGE = (
-    "Container is in isolation mode (no network). "
-    "Disable in vaibify.yml: networkIsolation: false, then rebuild."
-)
-
-
-def _fdictIsolationBlockedResponse():
-    """Return the structured response for an isolation-blocked call."""
-    return {
-        "sError": _S_ISOLATION_BLOCK_ERROR,
-        "sMessage": _S_ISOLATION_BLOCK_MESSAGE,
-    }
-
-
-def _fnRequireNetworkAccess(sContainerId):
-    """Raise HTTP 409 when the container is running with --network none.
-
-    Network-isolated containers cannot reach Overleaf, Zenodo, or any
-    other external API. Without this guard, the user clicks a sync
-    button and waits 30 seconds for a DNS timeout before seeing a
-    generic error. Audit finding F-R-08.
-    """
-    from vaibify.config.registryManager import fbIsHostProject
-    from vaibify.docker.containerManager import (
-        fbContainerIsNetworkIsolated,
-    )
-    # A host project has no container, so nothing can have sealed one.
-    # Asking anyway is not merely wasted: the probe is a `docker
-    # inspect` subprocess about a name Docker never heard of, started
-    # on the researcher's own machine outside the gated primitive
-    # every host subprocess is supposed to go through, and it costs up
-    # to its five-second timeout on every push.
-    if fbIsHostProject(sContainerId):
-        return
-    if fbContainerIsNetworkIsolated(sContainerId):
-        raise HTTPException(
-            status_code=409,
-            detail=_fdictIsolationBlockedResponse(),
-        )
+# The network guard moved to routeContext when a SECOND route module
+# needed it: the environment-archive promotion is a Zenodo publish
+# like every other one here, and a route module may not import a
+# sibling. The aliases keep this module's call sites reading as they
+# did.
+_S_ISOLATION_BLOCK_ERROR = S_ISOLATION_BLOCK_ERROR
+_fnRequireNetworkAccess = fnRequireNetworkAccess
+_fdictIsolationBlockedResponse = fdictIsolationBlockedResponse
 
 
 def _fnValidateOverleafFilePaths(listFilePaths, sContainerId):
@@ -852,6 +827,7 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictWorkflow.get("sProjectRepoPath") or "",
         )
         _fnRefuseBasenameCollisions(request.listFilePaths)
+        _fnRefuseCrossInstanceParent(dictWorkflow)
         dictResult, sZenodoService = await _ftPerformZenodoArchive(
             syncDispatcher, dictCtx, sContainerId, dictWorkflow,
             request, requestHttp,
@@ -863,6 +839,217 @@ def _fnRegisterZenodoArchive(app, dictCtx):
             dictResult, sZenodoService, requestHttp,
         )
         return dictResult
+
+
+def _fnRegisterZenodoPromote(app, dictCtx):
+    """Register POST /api/zenodo/{id}/promote endpoint."""
+    from .. import syncDispatcher
+
+    @ffnAgentAction("promote-project-deposit")
+    @app.post("/api/zenodo/{sContainerId}/promote")
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
+    async def fdictPromoteZenodoDeposit(
+        sContainerId: str, request: SyncPushRequest,
+        requestHttp: Request,
+    ):
+        """Publish this project on production Zenodo as a NEW concept.
+
+        Not a byte copy of the sandbox deposit: it publishes the
+        CURRENT canonical publication union through the same archive
+        flow, with the same existence pre-flight and basename-
+        collision refusal. Parent 0 because sandbox and production are
+        separate systems -- a sandbox deposit id sent to production's
+        ``newversion`` flow names a record that does not exist there.
+        """
+        dictCtx["require"](sContainerId)
+        _fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fnRequireSandboxProjectDeposit(dictWorkflow)
+        _fnRefuseWhileOtherRecordsAreDeclared(dictWorkflow)
+        # The union is collected HERE when the caller names no files.
+        # A promotion publishes what the gates compare, and the
+        # frontend deriving that set would be a second authority on
+        # the publication scope.
+        request.listFilePaths = request.listFilePaths or [
+            dictCandidate.get("sPath")
+            for dictCandidate in _flistZenodoArchiveCandidates(
+                dictCtx, sContainerId, dictWorkflow,
+            )
+        ]
+        request.listFilePaths = _flistResolveArchivePaths(
+            request.listFilePaths,
+            dictWorkflow.get("sProjectRepoPath") or "",
+        )
+        _fnRefuseMissingPushFiles(
+            dictCtx["docker"], sContainerId, request.listFilePaths,
+            dictWorkflow.get("sProjectRepoPath") or "",
+        )
+        _fnRefuseBasenameCollisions(request.listFilePaths)
+        dictResult, sZenodoService = await _ftPerformZenodoArchive(
+            syncDispatcher, dictCtx, sContainerId, dictWorkflow,
+            request, requestHttp,
+            sServiceOverride="zenodo", iParentOverride=0,
+        )
+        if not dictResult["bSuccess"]:
+            return dictResult
+        _fnRetireSupersededZenodoRecord(dictWorkflow)
+        await _fnPersistZenodoArchiveSuccess(
+            dictCtx, sContainerId, dictWorkflow, request,
+            dictResult, sZenodoService, requestHttp,
+        )
+        return dictResult
+
+
+def _flistZenodoArchiveCandidates(dictCtx, sContainerId, dictWorkflow):
+    """Return the canonical publication union for this workflow.
+
+    The same collector the push modal offers, so a promotion publishes
+    exactly the set the L2 and L3 Zenodo gates compare.
+    """
+    from .. import syncDispatcher as moduleSyncDispatcher
+    return moduleSyncDispatcher.flistCollectZenodoArchiveCandidates(
+        dictWorkflow,
+        workflowManager.fdictGetSyncStatus(dictWorkflow),
+        dictCtx["variables"](sContainerId),
+        dictCtx["workflowDir"](sContainerId),
+        ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+        fnPathsExist=lambda listPaths: (
+            dictCtx["docker"].flistContainerPathsExist(
+                sContainerId, listPaths,
+            )
+        ),
+    )
+
+
+def _fnRequireSandboxProjectDeposit(dictWorkflow):
+    """Raise 409 unless the recorded project deposit is a sandbox one."""
+    from ...reproducibility import archivePromotion
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo")
+    try:
+        archivePromotion.fnRefuseUnlessSandboxDeposit(
+            dictZenodo, "This project's Zenodo deposit",
+        )
+    except archivePromotion.PromotionRefusedError as errorRefused:
+        raise HTTPException(409, str(errorRefused)) from None
+
+
+def _fnRefuseWhileOtherRecordsAreDeclared(dictWorkflow):
+    """Raise 409 when additional Zenodo records are declared.
+
+    ALL of them, not only those classifying as sandbox. A declared
+    record carries no service of its own -- ``_fdictFetchZenodoHashes``
+    reads ONE ``sService`` off the primary and applies it to every
+    declared record, and a fetch failure on any of them aborts the
+    whole verify. So advancing the primary to production while these
+    remain declared would send them to zenodo.org, 404 them, and break
+    Zenodo verification entirely.
+    """
+    listExtra = [
+        dictRecord for dictRecord in
+        ((dictWorkflow or {}).get("dictRemotes") or {})
+        .get("zenodo", {}).get("listRecords") or []
+        if isinstance(dictRecord, dict) and dictRecord.get("sRecordId")
+    ]
+    if not listExtra:
+        return
+    sNames = ", ".join(
+        str(dictRecord.get("sRecordId")) for dictRecord in listExtra
+    )
+    raise HTTPException(409, (
+        "This project declares additional Zenodo records (" + sNames +
+        ") that were declared against the sandbox. A declared record "
+        "carries no instance of its own -- the verify reads one "
+        "instance off the primary deposit and applies it to all of "
+        "them -- so promoting the primary to production would send "
+        "these to zenodo.org, where they do not exist, and break "
+        "Zenodo verification for this project. Remove them from the "
+        "Zenodo records list, promote, then declare their production "
+        "equivalents. Nothing was published."
+    ))
+
+
+def _fnRetireSupersededZenodoRecord(dictWorkflow):
+    """Move the sandbox identifiers into the superseded note.
+
+    Called BEFORE the publish record overwrites them, and written into
+    ``dictRemotes.zenodo.dictSuperseded`` -- a produced field, so it
+    lands in the uncompared sidecar. Writing it into project.json
+    would make the production deposit stale the moment it was minted.
+    """
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo")
+    if not isinstance(dictZenodo, dict) or not dictZenodo.get("sRecordId"):
+        return
+    dictZenodo["dictSuperseded"] = {
+        "sRecordId": dictZenodo.get("sRecordId") or "",
+        "sDoi": dictZenodo.get("sDoi") or "",
+        "sService": dictZenodo.get("sService") or "",
+        "sUrl": dictWorkflow.get("sZenodoLatestUrl") or "",
+    }
+
+
+def _fnRegisterZenodoStartNewConcept(app, dictCtx):
+    """Register POST /api/zenodo/{id}/start-new-concept."""
+
+    @ffnAgentAction("start-new-zenodo-concept")
+    @app.post("/api/zenodo/{sContainerId}/start-new-concept")
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
+    async def fdictStartNewZenodoConcept(
+        sContainerId: str, requestHttp: Request,
+    ):
+        """Retire the recorded deposit so the next publish starts fresh.
+
+        The remedy the cross-instance refusal names. Without it a
+        promoted project is locked to production forever: changing the
+        target back leaves the production parent id in place and hits
+        the same refusal, and ``remove-zenodo-record`` refuses the
+        primary by design -- correctly, since the primary is
+        bookkeeping and must not be hand-edited away.
+
+        Sidecar-only. The identifiers move into the superseded note
+        rather than being deleted: the old DOI keeps resolving to
+        exactly what it already holds, and a researcher must still be
+        able to see it.
+        """
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fnRetireSupersededZenodoRecord(dictWorkflow)
+        _fnClearPrimaryZenodoRecord(dictWorkflow)
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Starting a new Zenodo concept",
+        )
+        return {
+            "bCleared": True,
+            "sTargetService": dictWorkflow.get("sZenodoService")
+            or "sandbox",
+        }
+
+
+def _fnClearPrimaryZenodoRecord(dictWorkflow):
+    """Clear the recorded deposit's identifiers; keep the declaration."""
+    dictZenodo = (
+        (dictWorkflow or {}).get("dictRemotes") or {}
+    ).get("zenodo")
+    if isinstance(dictZenodo, dict):
+        for sField in ("sRecordId", "sDoi", "sService"):
+            dictZenodo.pop(sField, None)
+    for sKey in (
+        "sZenodoDepositionId", "sZenodoLatestDoi",
+        "sZenodoConceptDoi", "sZenodoLatestUrl",
+    ):
+        dictWorkflow.pop(sKey, None)
 
 
 def _flistResolveArchivePaths(listFilePaths, sProjectRepoPath):
@@ -881,6 +1068,21 @@ def _flistResolveArchivePaths(listFilePaths, sProjectRepoPath):
         else posixpath.join(sProjectRepoPath, sPath)
         for sPath in listFilePaths or []
     ]
+
+
+def _fnRefuseCrossInstanceParent(dictWorkflow):
+    """Refuse a publish that would version another instance's record.
+
+    Locally, and by name. Sent to Zenodo, the same request comes back
+    as a 404 on the ``newversion`` endpoint, which the sync layer
+    reports as "the deposit was not found" -- true, unhelpful, and
+    indistinguishable from a deleted record.
+    """
+    sRefusal = syncBookkeeping.fsDescribeCrossInstanceParent(
+        dictWorkflow, dictWorkflow.get("sZenodoService") or "sandbox",
+    )
+    if sRefusal:
+        raise HTTPException(status_code=409, detail=sRefusal)
 
 
 def _fnRefuseBasenameCollisions(listFilePaths):
@@ -923,7 +1125,7 @@ def _fnRefuseBasenameCollisions(listFilePaths):
 
 async def _ftPerformZenodoArchive(
     syncDispatcher, dictCtx, sContainerId, dictWorkflow, request,
-    requestHttp,
+    requestHttp, sServiceOverride="", iParentOverride=None,
 ):
     """Upload to Zenodo under the drain and parse the deposit response.
 
@@ -943,9 +1145,20 @@ async def _ftPerformZenodoArchive(
     exit code, the route turns it into ``bSuccess: False``, and a worker
     that raised would quarantine the container over a rejected token.
     """
-    sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
+    # OVERRIDES, not pre-writes. A promotion publishes to production
+    # by passing "zenodo" and parent 0 through this same flow and
+    # persists nothing until the publish succeeds -- writing the
+    # instance first would stale the deposit it is about to mint, and
+    # a sandbox deposit id sent to production's `newversion` flow
+    # names a record that does not exist there.
+    sZenodoService = sServiceOverride or dictWorkflow.get(
+        "sZenodoService", "sandbox",
+    )
     dictMetadata = _fdictResolveZenodoMetadataForArchive(dictWorkflow)
-    iParentDepositId = _fiReadParentDepositId(dictWorkflow)
+    iParentDepositId = (
+        _fiReadParentDepositId(dictWorkflow)
+        if iParentOverride is None else int(iParentOverride)
+    )
 
     def fdictArchiveToZenodo(supervisor=None):
         del supervisor
@@ -2373,7 +2586,7 @@ def _fnRegisterSyncRoutes(app, dictCtx):
                 "The Overleaf project binding",
             )
             return
-        if request.sService == "zenodo":
+        if request.sService == "zenodo" and not request.bCredentialOnly:
             _fnPersistZenodoService(
                 dictCtx, sContainerId, request, requestHttp,
             )
@@ -2464,39 +2677,6 @@ def _fdictParseZenodoResult(sOut):
     return {}
 
 
-def _fnPersistZenodoPublishRecord(
-    dictWorkflow, dictResult, sZenodoService,
-):
-    """Store deposit id + DOIs + HTML URL on the workflow.
-
-    Also advances ``dictRemotes.zenodo`` — the record every verify
-    consults. The legacy-remotes migration deliberately never
-    overwrites an existing entry, so after a SECOND publish the
-    legacy keys advanced while ``dictRemotes.zenodo.sRecordId`` kept
-    the first deposit's id, and the post-archive auto-verify compared
-    the fresh files against the old immutable version — "9 of 24
-    matching" about a deposit that had just been published complete
-    (live, 2026-08-27). A publish is new ground truth, not a
-    derivation; declared ``listRecords`` are preserved untouched.
-    """
-    if dictResult.get("iDepositId"):
-        dictWorkflow["sZenodoDepositionId"] = str(
-            dictResult["iDepositId"]
-        )
-        dictRemotes = dictWorkflow.setdefault("dictRemotes", {})
-        dictZenodo = dictRemotes.setdefault("zenodo", {})
-        dictZenodo["sRecordId"] = str(dictResult["iDepositId"])
-        dictZenodo["sService"] = sZenodoService
-        if dictResult.get("sDoi"):
-            dictZenodo["sDoi"] = dictResult["sDoi"]
-    if dictResult.get("sDoi"):
-        dictWorkflow["sZenodoLatestDoi"] = dictResult["sDoi"]
-    if dictResult.get("sConceptDoi"):
-        dictWorkflow["sZenodoConceptDoi"] = dictResult["sConceptDoi"]
-    if dictResult.get("sHtmlUrl"):
-        dictWorkflow["sZenodoLatestUrl"] = dictResult["sHtmlUrl"]
-
-
 def _fsReadHostGitUserName():
     """Read the host user's global git user.name.
 
@@ -2539,18 +2719,11 @@ def _fsBuildZenodoTitle(dictWorkflow):
 def _fiReadParentDepositId(dictWorkflow):
     """Return the previous deposit id as an int, or 0 if none.
 
-    Triggers the Zenodo ``newversion`` flow in the dispatcher when
-    positive. Non-numeric or absent values fall back to 0 (first
-    publish) rather than raising, so workflows with corrupted state
-    can still publish -- the next push chains off the resulting new
-    deposit.
+    Delegates: the auto-archive path and the cross-instance refusal
+    ask the same question, and three readings of one field is how two
+    of them drift.
     """
-    sRaw = dictWorkflow.get("sZenodoDepositionId") or ""
-    try:
-        iParent = int(sRaw)
-    except (TypeError, ValueError):
-        return 0
-    return iParent if iParent > 0 else 0
+    return syncBookkeeping.fiResolveZenodoParentDepositId(dictWorkflow)
 
 
 def _fdictResolveZenodoMetadataForArchive(dictWorkflow):
@@ -3367,6 +3540,8 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterOverleafDiff(app, dictCtx)
     _fnRegisterOverleafMirrorDelete(app, dictCtx)
     _fnRegisterZenodoArchive(app, dictCtx)
+    _fnRegisterZenodoPromote(app, dictCtx)
+    _fnRegisterZenodoStartNewConcept(app, dictCtx)
     _fnRegisterZenodoMetadata(app, dictCtx)
     _fnRegisterZenodoDeposit(app, dictCtx)
     _fnRegisterZenodoRecords(app, dictCtx)

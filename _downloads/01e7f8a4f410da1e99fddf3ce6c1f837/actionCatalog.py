@@ -744,6 +744,83 @@ LIST_AGENT_ACTIONS = [
                      "researcher's credentials is outward-facing and "
                      "irreversible, so a compromised container agent "
                      "must not be able to trigger it."},
+    {"sName": "reconcile-promotion", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/promotions/"
+              "{sPromotionId}/reconcile",
+     "bAgentSafe": False,
+     "sDescription": "Ask Zenodo what really happened to an "
+                     "interrupted promotion and report one of seven "
+                     "outcomes, with only the actions that outcome "
+                     "licenses. A 404 is an answer ('gone'); an "
+                     "unreadable Zenodo is not ('unknown'), and keeps "
+                     "the record. User-only, and a security decision rather than a preference: it acts on a live deposit in a public archive under the researcher's production credential."},
+    {"sName": "resume-promotion", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/promotions/"
+              "{sPromotionId}/resume",
+     "bAgentSafe": False,
+     "sDescription": "Publish a promotion's draft that already holds "
+                     "every intended file -- an upload that finished "
+                     "and a publish call that never returned. Mints "
+                     "the permanent DOI. User-only, and a security decision rather than a preference: it acts on a live deposit in a public archive under the researcher's production credential."},
+    {"sName": "adopt-promotion", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/promotions/"
+              "{sPromotionId}/adopt",
+     "bAgentSafe": False,
+     "sDescription": "Record a DOI that was minted while vaibify was "
+                     "not watching, into the envelope (image lane) or "
+                     "the sync sidecar (project lane). Matches on the "
+                     "recorded hashes, never filenames, and is "
+                     "idempotent. User-only, and a security decision rather than a preference: it acts on a live deposit in a public archive under the researcher's production credential."},
+    {"sName": "discard-promotion", "sCategory": "sync",
+     "sMethod": "DELETE",
+     "sPath": "/api/workflow/{sContainerId}/promotions/"
+              "{sPromotionId}",
+     "bAgentSafe": False,
+     "sDescription": "Delete an interrupted promotion's unpublished "
+                     "draft and forget its record. Refuses on a "
+                     "published record and on one Zenodo could not be "
+                     "asked about. User-only, and a security decision rather than a preference: it acts on a live deposit in a public archive under the researcher's production credential."},
+    {"sName": "promote-project-deposit", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo/{sContainerId}/promote",
+     "bAgentSafe": False,
+     "sDescription": "Publish this project on PRODUCTION Zenodo as a "
+                     "new concept, retiring the sandbox record to a "
+                     "superseded note. Not a byte copy: it publishes "
+                     "the current publication union, so the DOI names "
+                     "the tree as it is now. User-only, and a "
+                     "security decision rather than a preference: it "
+                     "spends the researcher's production credential "
+                     "and mints a public DOI."},
+    {"sName": "start-new-zenodo-concept", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo/{sContainerId}/start-new-concept",
+     "bAgentSafe": False,
+     "sDescription": "Retire the recorded Zenodo deposit's "
+                     "identifiers into a superseded note so the next "
+                     "publish creates a FRESH concept on the declared "
+                     "instance. The remedy for a project whose "
+                     "recorded deposit and declared target are on "
+                     "different Zenodo instances. User-only: it gives "
+                     "up a version chain, which is not a judgement an "
+                     "agent should make."},
+    {"sName": "promote-environment-archive",
+     "sCategory": "verification", "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/environment-archive/promote",
+     "bAgentSafe": False,
+     "sDescription": "Re-deposit the archived container image on "
+                     "PRODUCTION Zenodo and record the new version "
+                     "DOI, retiring the sandbox record to a "
+                     "superseded note. Zenodo's sandbox and "
+                     "production are separate systems and nothing "
+                     "transfers, so this mints a NEW permanent DOI. "
+                     "User-only, and a security decision rather than "
+                     "a preference: it spends the researcher's "
+                     "production credential and publishes in a public "
+                     "archive."},
     {"sName": "declare-ai-model", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/ai-models/declare",

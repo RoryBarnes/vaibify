@@ -27,6 +27,7 @@ implementing every HTTP path. That deployment has two consequences:
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -87,6 +88,15 @@ S_DOI_RESOLVER_BASE = "https://doi.org/"
 # that looked for it sent every sandbox deposit to production Zenodo.
 _S_SANDBOX_DOI_PREFIX = "10.5072/"
 
+# The one Zenodo DOI grammar. A Zenodo DOI is a DataCite prefix and a
+# ``zenodo.<id>`` suffix; a foreign DOI whose suffix merely ends in
+# ``zenodo.NNN`` (``10.9999/notzenodo.123``) must not have a record id
+# invented from it, and a bare string must not be read as a DOI at all.
+# Both questions -- "which record is this" and "is this recognizably a
+# Zenodo DOI" -- are answered from this one pattern so a second copy
+# cannot drift from it.
+_matchZenodoDoiGrammar = re.compile(r"(?:^|/)10\.\d{4,9}/zenodo\.(\d+)$")
+
 # How many redirects a hand-followed fetch will take before refusing.
 # Zenodo answers its API and file links directly (measured against
 # both instances on 2026-09-11); the loop exists for the doi.org
@@ -120,8 +130,14 @@ __all__ = [
     "fsOriginOfUrl",
     "fsResolveServiceBaseUrl",
     "fsServiceForDoi",
+    "fsExtractRecordIdFromDoi",
+    "fbIsWellFormedZenodoDoi",
     "fsZenodoTokenName",
     "fdictFetchRemoteHashes",
+    "fdictDescribeLocalFileForDeposit",
+    "flistDescribeDepositDisagreement",
+    "flistDescribeUnexpectedDepositFiles",
+    "fsReadPlainMd5",
     "fdictRevokeZenodoToken",
 ]
 
@@ -428,6 +444,28 @@ def fsServiceForDoi(sDoi):
     if str(sDoi or "").strip().startswith(_S_SANDBOX_DOI_PREFIX):
         return "sandbox"
     return "zenodo"
+
+
+def fsExtractRecordIdFromDoi(sDoi):
+    """Return the record id embedded in a genuine Zenodo DOI, or ``""``.
+
+    The DOI may carry a resolver prefix (``https://doi.org/10.5281/
+    zenodo.1``); anything whose shape is not a Zenodo DOI answers
+    empty rather than having an id invented from it.
+    """
+    matchDoi = _matchZenodoDoiGrammar.search(str(sDoi or "").strip())
+    return matchDoi.group(1) if matchDoi else ""
+
+
+def fbIsWellFormedZenodoDoi(sDoi):
+    """Return True when a string is recognizably a Zenodo DOI.
+
+    Distinct from :func:`fsServiceForDoi`, which is total because its
+    caller must pick a host: this one may answer no. It is the
+    positive evidence a permanence claim needs, so an empty or
+    malformed string must not pass it.
+    """
+    return bool(fsExtractRecordIdFromDoi(sDoi))
 
 
 def fsOriginOfUrl(sUrl):
@@ -923,6 +961,155 @@ def _fsRedactToken(sMessage):
         fsRedactUrlCredentials(sPart) for sPart in sMessage.split()
     ]
     return fsRedactCredentials(" ".join(listParts))
+
+
+def fsReadPlainMd5(sChecksum):
+    """Return the archive's md5 hex, or ``""`` when it is not one.
+
+    UNCHECKED is not mismatched, and this is the one place the
+    distinction could have been lost. Zenodo publishes ``md5:<hex>``
+    today; an object store reporting a composite checksum (S3's
+    multipart ETag is ``<hex>-<partcount>``), or Zenodo moving to a
+    different algorithm, would otherwise make every deposit REFUSE --
+    the check turning into an outage over a format it merely failed
+    to recognize. Answering empty leaves the size comparison standing
+    and lets the sha256, which is the real integrity claim, remain
+    the thing a download verifies.
+    """
+    sText = str(sChecksum or "").strip().lower()
+    sDigest = sText.split(":")[-1] if sText.startswith("md5:") else ""
+    if len(sDigest) != 32:
+        return ""
+    return sDigest if all(
+        sCharacter in "0123456789abcdef" for sCharacter in sDigest
+    ) else ""
+
+
+def fdictDescribeLocalFileForDeposit(sFilePath):
+    """Return the deposit key, md5 and byte count of a file to upload.
+
+    MD5 because it is the vocabulary the ARCHIVE speaks: Zenodo
+    computes and publishes each file's md5 server-side, so this is the
+    only digest an agreement can be stated in. It is not the integrity
+    claim -- that stays sha256, wherever the lane records one.
+
+    Duplicated against ``_hashing.ftHashFileSha256AndMd5`` on purpose:
+    this module is staged flat into the container at
+    ``/usr/share/vaibify``, where no vaibify package exists to import
+    from, and the deposit script runs there.
+    """
+    pathFile = Path(sFilePath)
+    hasherMd5 = hashlib.md5(usedforsecurity=False)
+    with open(pathFile, "rb") as fileHandle:
+        for baChunk in iter(
+            lambda: fileHandle.read(_HASH_CHUNK_SIZE), b"",
+        ):
+            hasherMd5.update(baChunk)
+    return {
+        "sKey": pathFile.name,
+        "sMd5": hasherMd5.hexdigest(),
+        "iBytes": pathFile.stat().st_size,
+    }
+
+
+def _fdictIndexDepositFilesByKey(dictDeposit):
+    """Return the deposit's file entries keyed by the name it serves."""
+    return {
+        str(dictFile.get("key") or dictFile.get("filename") or ""):
+        dictFile
+        for dictFile in dictDeposit.get("files") or []
+        if isinstance(dictFile, dict)
+    }
+
+
+def _fiReadDepositFileSize(dictFile):
+    """Return the byte count the archive reports, or -1 when it gives none."""
+    iReported = dictFile.get("filesize")
+    if iReported is None:
+        iReported = dictFile.get("size")
+    return int(-1 if iReported is None else iReported)
+
+
+def _flistDescribeOneFileDisagreement(dictServed, dictExpected):
+    """Return every way the archive's report of one file contradicts ours.
+
+    Compared on the deposit KEY, the md5 and the size together. The
+    name alone is meaningless -- a Zenodo deposit is flat, so a file
+    of the right name is easy to have and says nothing about its
+    bytes -- and the size alone would pass a same-length
+    substitution.
+    """
+    sKey = str(dictExpected.get("sKey") or "")
+    dictFile = dictServed.get(sKey)
+    if dictFile is None:
+        return ["it serves no file named " + (sKey or "(unnamed)") + "."]
+    listProblems = []
+    sReported = fsReadPlainMd5(dictFile.get("checksum"))
+    sSent = str(dictExpected.get("sMd5") or "")
+    if sReported and sReported != sSent:
+        listProblems.append(
+            sKey + ": the archive reports md5 " + sReported
+            + " and vaibify uploaded " + sSent + "."
+        )
+    iReported = _fiReadDepositFileSize(dictFile)
+    if iReported != int(dictExpected.get("iBytes") or 0):
+        listProblems.append(
+            sKey + ": the archive reports " + str(iReported)
+            + " bytes and vaibify uploaded "
+            + str(dictExpected.get("iBytes")) + "."
+        )
+    return listProblems
+
+
+def flistDescribeDepositDisagreement(dictDeposit, listExpected):
+    """Return every way a deposit's own report contradicts what we sent.
+
+    ``listExpected`` holds one
+    :func:`fdictDescribeLocalFileForDeposit` dict per uploaded file.
+    Asking the draft costs one small request, not a re-download,
+    because Zenodo computes each file's md5 when the bucket receives
+    it -- so agreement is a statement about the bytes Zenodo holds,
+    made by Zenodo.
+
+    Both deposit lanes call this. They cannot share an implementation
+    any other way: the environment archive is uploaded from the host
+    and the project files from inside the container, and only this
+    module is staged on both sides.
+    """
+    dictServed = _fdictIndexDepositFilesByKey(dictDeposit)
+    listProblems = []
+    for dictExpected in listExpected:
+        listProblems.extend(
+            _flistDescribeOneFileDisagreement(dictServed, dictExpected),
+        )
+    return listProblems
+
+
+def flistDescribeUnexpectedDepositFiles(dictDeposit, listExpected):
+    """Return a lone problem naming files the archive holds and we did not send.
+
+    Separate from the disagreement list because only the versioning
+    lane can produce one. A ``newversion`` draft INHERITS the parent's
+    file list and vaibify clears it before uploading; a delete that
+    quietly did not happen publishes a record mixing this version's
+    files with the last one's, and every per-file comparison still
+    passes. A fresh draft cannot reach this state, which is why the
+    environment-archive lane does not ask.
+    """
+    setSent = {
+        str(dictExpected.get("sKey") or "")
+        for dictExpected in listExpected
+    }
+    listExtra = sorted(
+        sKey for sKey in _fdictIndexDepositFilesByKey(dictDeposit)
+        if sKey not in setSent
+    )
+    if not listExtra:
+        return []
+    return [
+        "it also serves " + ", ".join(listExtra)
+        + ", which vaibify did not upload."
+    ]
 
 
 def fdictRevokeZenodoToken(sService="sandbox"):

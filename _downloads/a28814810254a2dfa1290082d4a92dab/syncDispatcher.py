@@ -464,7 +464,10 @@ def _fnValidateArchiveFilePaths(listFilePaths):
 _S_ARCHIVE_SCRIPT_TEMPLATE = '''import json, sys
 import keyring
 sys.path.insert(0, %(clientdir)s)
-from zenodoClient import ZenodoClient, ZenodoError
+from zenodoClient import (ZenodoClient, ZenodoError,
+                          fdictDescribeLocalFileForDeposit,
+                          flistDescribeDepositDisagreement,
+                          flistDescribeUnexpectedDepositFiles)
 
 _SLOT = %(slot)s
 _BASE = %(base)s
@@ -490,6 +493,10 @@ else:
     sBucket = _draft['links']['bucket']
 
 
+class _ArchiveMismatch(Exception):
+    """The draft does not hold what was just uploaded to it."""
+
+
 def _cleanup_draft():
     try:
         client.fnDeleteDraft(iDid)
@@ -507,11 +514,30 @@ def _abort(sOrig):
 
 
 try:
+    _expected = []
     for _p in _PATHS:
+        # Hashed immediately before its own upload, so the digest
+        # describes the bytes this call is about to send.
+        _expected.append(fdictDescribeLocalFileForDeposit(_p))
         client.fnUploadToBucket(sBucket, _p)
+    # BEFORE the publish, while the deposit is still discardable.
+    # Zenodo computes each file's md5 as the bucket receives it,
+    # so the draft can be asked what it holds for the cost of one
+    # small request. Verifying after the publish would mean
+    # failing with a DOI already minted -- an orphan nothing on
+    # this path can clean up.
+    _draftNow = client.fdictGetDeposit(iDid)
+    _problems = (flistDescribeDepositDisagreement(_draftNow, _expected)
+                 + flistDescribeUnexpectedDepositFiles(_draftNow,
+                                                       _expected))
+    if _problems:
+        raise _ArchiveMismatch(' '.join(_problems))
     _r = client.fdictPublishDraft(iDid)
 except SystemExit as _se:
     _abort(_se.code)
+except _ArchiveMismatch as _am:
+    _abort('ARCHIVE-MISMATCH (nothing was published): Zenodo does '
+           'not hold what vaibify uploaded: ' + str(_am))
 except (FileNotFoundError, PermissionError, IsADirectoryError) as _fe:
     # A local file problem, marked as one. Without the marker the
     # FileNotFoundError text ("No such file or directory") matched the
