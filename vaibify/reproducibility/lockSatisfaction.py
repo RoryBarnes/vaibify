@@ -38,6 +38,7 @@ __all__ = [
     "fdictReadLockSatisfaction",
     "fnForgetLockSatisfaction",
     "fnRecordLockSatisfaction",
+    "fsFingerprintLockBytes",
     "fsFingerprintLockState",
     "S_LOCK_CLEAN",
     "S_LOCK_MISMATCH",
@@ -46,6 +47,9 @@ __all__ = [
     "fdictDescribeLockSatisfaction",
     "flistDescribeLockMismatch",
 ]
+
+
+import hashlib
 
 
 S_LOCK_CLEAN = "clean"
@@ -81,7 +85,7 @@ def flistDescribeLockMismatch(dictLocked, dictInstalled):
 
 
 def fdictDescribeLockSatisfaction(
-    dictLocked, dictInstalled, sUnknownReason="",
+    dictLocked, dictInstalled, sUnknownReason="", sFingerprint="",
 ):
     """Return the three-state verdict the row and the pre-flight share.
 
@@ -90,6 +94,16 @@ def fdictDescribeLockSatisfaction(
     which would be a mismatch against any non-empty lock. Collapsing
     the two would let "vaibify could not look" arrive as "the image has
     nothing", the loudest possible wrong answer.
+
+    ``sFingerprint`` names the state this verdict was MEASURED
+    against, and it belongs here rather than on the recording call so
+    that a caller cannot stamp a verdict with a fingerprint it did not
+    measure. It was on the recording call, and the gap was real: the
+    probe read the lock inside the carrier and the fingerprint was
+    hashed from a SECOND read after the admission had been released,
+    so a lock rewritten in between produced a verdict about one state
+    wearing another state's identity -- which never invalidates,
+    because it matches whatever replaced it.
     """
     if dictInstalled is None:
         return {
@@ -97,12 +111,14 @@ def fdictDescribeLockSatisfaction(
             "listMismatches": [],
             "sReason": sUnknownReason or "the installed packages "
                                          "could not be read",
+            "sFingerprint": sFingerprint,
         }
     listMismatches = flistDescribeLockMismatch(dictLocked, dictInstalled)
     return {
         "sState": S_LOCK_MISMATCH if listMismatches else S_LOCK_CLEAN,
         "listMismatches": listMismatches,
         "sReason": "",
+        "sFingerprint": sFingerprint,
     }
 
 
@@ -141,8 +157,26 @@ def fbLockBlocksVerification(dictVerdict, dictImageCurrency):
 DICT_LAST_LOCK_SATISFACTION = {}
 
 
+def fsFingerprintLockBytes(baLockContent, sRunningImageIdentity):
+    """Fingerprint the EXACT bytes a probe read, beside the image it asked.
+
+    The measuring side's half of the pair. Hashing the bytes the probe
+    actually parsed -- rather than re-reading the file afterwards --
+    is what makes the verdict and its identity one observation: there
+    is no window between them for the lock to change.
+
+    It must agree with :func:`fsFingerprintLockState` for an unchanged
+    file, because the poll computes the comparison side that way and a
+    disagreement would downgrade every verdict on the next tick.
+    ``testTheTwoFingerprintsAgreeOnAnUnchangedLock`` drives both over
+    one file rather than leaving that to inspection.
+    """
+    sDigest = hashlib.sha256(baLockContent or b"").hexdigest()
+    return f"{sDigest}|{sRunningImageIdentity or ''}"
+
+
 def fsFingerprintLockState(filesRepo, sRunningImageIdentity):
-    """Return the identity a cached verdict was measured against.
+    """Return the identity a cached verdict is COMPARED against.
 
     BOTH halves are load-bearing, because the answer is a comparison
     of two things and either can move on its own: the lock is rewritten
@@ -168,16 +202,22 @@ def fsFingerprintLockState(filesRepo, sRunningImageIdentity):
     return f"{sDigest}|{sRunningImageIdentity or ''}"
 
 
-def fnRecordLockSatisfaction(sContainerId, dictVerdict, sFingerprint=""):
-    """Remember the last answer, stamped with the state it describes."""
+def fnRecordLockSatisfaction(sContainerId, dictVerdict):
+    """Remember the last answer, with the stamp the MEASUREMENT carries.
+
+    The fingerprint is not a parameter, deliberately. It used to be,
+    and that let the stamp be computed from a second read taken after
+    the probe's admission had been released -- so a verdict about one
+    state could be recorded wearing another's identity. A verdict
+    carries its own fingerprint or it has none, and one with none can
+    only ever read back as unknown, which is the safe direction.
+    """
     if not sContainerId:
         return
     if dictVerdict is None:
         DICT_LAST_LOCK_SATISFACTION.pop(sContainerId, None)
         return
-    DICT_LAST_LOCK_SATISFACTION[sContainerId] = dict(
-        dictVerdict, sFingerprint=sFingerprint,
-    )
+    DICT_LAST_LOCK_SATISFACTION[sContainerId] = dict(dictVerdict)
 
 
 def fdictReadLockSatisfaction(sContainerId, sFingerprint=""):

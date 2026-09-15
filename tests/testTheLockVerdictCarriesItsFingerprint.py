@@ -56,25 +56,36 @@ def fnForgetIsGone(monkeypatch):
     lockSatisfaction.DICT_LAST_LOCK_SATISFACTION.pop(S_CONTAINER, None)
 
 
-def _fnRecordCleanAgainst(filesRepo, sImageIdentity):
-    """Record a CLEAN verdict stamped with the state it was measured on."""
+def _fnRecordCleanAgainst(baLock, sImageIdentity):
+    """Record a CLEAN verdict stamped by the MEASUREMENT itself.
+
+    Stamped from the bytes and the image identity a probe would have
+    had in hand, never from a second read: the fingerprint rides in
+    the verdict, and ``fnRecordLockSatisfaction`` takes no stamp of
+    its own, so a caller cannot attach one it did not measure.
+    """
     lockSatisfaction.fnRecordLockSatisfaction(
         S_CONTAINER,
         lockSatisfaction.fdictDescribeLockSatisfaction(
-            {"numpy": "2.5.2"}, {"numpy": "2.5.2"},
+            {"numpy": "2.5.2"}, {"numpy": "2.5.2"}, "",
+            lockSatisfaction.fsFingerprintLockBytes(
+                baLock, sImageIdentity,
+            ),
         ),
-        lockSatisfaction.fsFingerprintLockState(filesRepo, sImageIdentity),
     )
+
+
+_BA_LOCK = b"numpy==2.5.2 \\\n    --hash=sha256:00\n"
+_BA_LOCK_REWRITTEN = b"numpy==2.6.0 \\\n    --hash=sha256:11\n"
 
 
 def test_an_unmoved_state_reads_back_the_answer(fnForgetIsGone):
     """The control: without this, every test below passes vacuously."""
-    filesRepo = _FakeRepoFilesHoldingOneLock("aaa")
-    _fnRecordCleanAgainst(filesRepo, "sha256:image-one")
+    _fnRecordCleanAgainst(_BA_LOCK, "sha256:image-one")
     dictRead = lockSatisfaction.fdictReadLockSatisfaction(
         S_CONTAINER,
-        lockSatisfaction.fsFingerprintLockState(
-            filesRepo, "sha256:image-one",
+        lockSatisfaction.fsFingerprintLockBytes(
+            _BA_LOCK, "sha256:image-one",
         ),
     )
     assert dictRead["sState"] == lockSatisfaction.S_LOCK_CLEAN
@@ -87,13 +98,11 @@ def test_a_rewritten_lock_downgrades_the_answer_to_unknown(fnForgetIsGone):
     Kills: dropping the lock digest from the fingerprint, which leaves
     a "clean" verdict standing over a lock nobody has compared.
     """
-    _fnRecordCleanAgainst(
-        _FakeRepoFilesHoldingOneLock("aaa"), "sha256:image-one",
-    )
+    _fnRecordCleanAgainst(_BA_LOCK, "sha256:image-one")
     dictRead = lockSatisfaction.fdictReadLockSatisfaction(
         S_CONTAINER,
-        lockSatisfaction.fsFingerprintLockState(
-            _FakeRepoFilesHoldingOneLock("bbb"), "sha256:image-one",
+        lockSatisfaction.fsFingerprintLockBytes(
+            _BA_LOCK_REWRITTEN, "sha256:image-one",
         ),
     )
     assert dictRead["sState"] == lockSatisfaction.S_LOCK_UNKNOWN
@@ -113,12 +122,11 @@ def test_a_replaced_running_image_downgrades_the_answer_too(fnForgetIsGone):
 
     Kills: dropping the running-image identity from the fingerprint.
     """
-    filesRepo = _FakeRepoFilesHoldingOneLock("aaa")
-    _fnRecordCleanAgainst(filesRepo, "sha256:image-one")
+    _fnRecordCleanAgainst(_BA_LOCK, "sha256:image-one")
     dictRead = lockSatisfaction.fdictReadLockSatisfaction(
         S_CONTAINER,
-        lockSatisfaction.fsFingerprintLockState(
-            filesRepo, "sha256:image-two",
+        lockSatisfaction.fsFingerprintLockBytes(
+            _BA_LOCK, "sha256:image-two",
         ),
     )
     assert dictRead["sState"] == lockSatisfaction.S_LOCK_UNKNOWN
@@ -145,10 +153,48 @@ def test_a_probe_with_no_lock_file_stores_nothing(fnForgetIsGone):
     asked" -- two absences that render identically and would not stay
     that way.
     """
-    lockSatisfaction.fnRecordLockSatisfaction(S_CONTAINER, None, "fp")
+    lockSatisfaction.fnRecordLockSatisfaction(S_CONTAINER, None)
     assert lockSatisfaction.fdictReadLockSatisfaction(
         S_CONTAINER, "fp",
     ) is None
+
+
+@pytest.mark.falsification
+def test_the_two_fingerprints_agree_on_an_unchanged_lock(tmp_path):
+    """The measuring side and the comparing side must compute the same thing.
+
+    The probe hashes the BYTES it read inside its carrier; the poll
+    hashes the file through the repo adapter, because it may not exec
+    and the lock is already in its snapshot. Those are two different
+    code paths over one file, and the entire invalidation rests on
+    them agreeing: if they disagree, every verdict is downgraded to
+    unknown on the very next tick and the row never says anything
+    again -- silently, because unknown is also what "nobody asked"
+    looks like.
+
+    Driven over a REAL file through the real host adapter rather than
+    reasoned about. The equivalence is a claim about utf-8 round trips
+    and about what the adapter hashes, and neither is self-evident.
+
+    Kills: hashing the decoded TEXT in fsFingerprintLockBytes, which
+    differs from the file's own sha256 for any content whose bytes do
+    not survive a decode/encode round trip.
+    """
+    import os
+    from vaibify.reproducibility.repoFiles import HostRepoFiles
+    baLock = b"numpy==2.5.2 \\\n    --hash=sha256:00\n"
+    with open(
+        os.path.join(str(tmp_path), "requirements.lock"), "wb",
+    ) as fileLock:
+        fileLock.write(baLock)
+    assert lockSatisfaction.fsFingerprintLockBytes(
+        baLock, "sha256:image-one",
+    ) == lockSatisfaction.fsFingerprintLockState(
+        HostRepoFiles(str(tmp_path)), "sha256:image-one",
+    ), (
+        "the probe and the poll fingerprint the same unchanged lock "
+        "differently, so every verdict is downgraded on the next tick"
+    )
 
 
 def test_an_unreadable_lock_fingerprints_differently_from_a_read_one():

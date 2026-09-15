@@ -6964,7 +6964,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # delayed the remote badge refresh past ten seconds. The lines are
     # the paused branch and the paragraph explaining why paused is a
     # result rather than an error.
-    "routes/reproducibilityRoutes.py": 2183,
+    # +68 the same day, after review: the verification POST did not
+    # enforce the lock policy at all -- it lived only in the browser
+    # pre-flight, which proceeds deliberately when its readiness GET
+    # fails and which the agent lane never runs. The lines are the
+    # measurement under the verify route's own drain, the shared
+    # refusal sentence, and the paragraphs saying why a precondition
+    # that reads a cache which may be cold is not a precondition.
+    "routes/reproducibilityRoutes.py": 2251,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

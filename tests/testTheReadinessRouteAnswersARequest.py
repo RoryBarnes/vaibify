@@ -175,3 +175,86 @@ def test_a_busy_container_pauses_the_probe_instead_of_queuing(
         "a paused probe overwrote the cached verdict with its own "
         "silence, so the row lost an answer it had already earned"
     )
+
+
+@pytest.mark.falsification
+def test_the_verify_route_refuses_a_lock_the_pinned_image_fails(
+    tclientReadinessRequest, monkeypatch,
+):
+    """The policy is enforced on the side that cannot be skipped.
+
+    The JavaScript pre-flight checks the same thing and is not a
+    control: ``_fdictFetchL3Readiness`` swallows a failed readiness GET
+    and returns ``null``, and the caller then proceeds deliberately --
+    so an ordinary click during a failed fetch launched the rerun, as
+    did any direct API call and the whole agent lane. The shadow does
+    catch the mismatch, but only after exporting the repository and
+    building a container, which is exactly the cost the check exists
+    to avoid (found by review, 2026-09-15).
+
+    The refusal is asserted by MEANING and by ORDER -- the cheap
+    remedy before the expensive one -- never by sentence, because the
+    wording will be edited and the advice must not.
+
+    Kills: dropping the ``fbLockBlocksVerification`` conjunct from
+    ``_fsRequireReadinessThenDigest``, which returns the route to
+    answering 202 and spending a container export on a rerun that is
+    going to refuse.
+    """
+    from vaibify.gui.routes import reproducibilityRoutes
+    client, _connectionDocker = tclientReadinessRequest
+    monkeypatch.setattr(
+        reproducibilityRoutes, "fdictAssessEnvelopeImageCurrency",
+        lambda *args, **kwargs: {
+            "bPinnedImageIsLive": True,
+            "sPinnedImageDigest": "sha256:pinned",
+            "sLiveImageDigest": "sha256:pinned",
+        },
+    )
+    responseHttp = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
+    )
+    assert responseHttp.status_code == 409, (
+        "a rerun was launched against an image that does not satisfy "
+        f"the lock: {responseHttp.status_code} {responseHttp.text[:300]}"
+    )
+    sDetail = responseHttp.json()["detail"].lower()
+    assert "requirements.lock" in sDetail, sDetail
+    assert sDetail.index("regenerate") < sDetail.index("rebuilding"), (
+        f"the expensive remedy is named before the cheap one: {sDetail}"
+    )
+
+
+def test_the_verify_route_proceeds_when_the_pin_is_not_the_container(
+    tclientReadinessRequest, monkeypatch,
+):
+    """The complement, and it is the half that keeps the gate honest.
+
+    The rerun grades the PINNED image. A mismatch measured against a
+    container nobody has shown to be that image is no evidence about
+    it, so it must not block -- blocking on any running-container
+    mismatch refuses reruns whose pinned image is perfectly fine,
+    which is the failure this route would trade for the other one.
+
+    Asserted by the ABSENCE of the lock sentence rather than by a 202:
+    this fixture has an incomplete envelope, so the route refuses for
+    real readiness reasons either way, and a status assertion would
+    pass without ever reaching the question.
+    """
+    from vaibify.gui.routes import reproducibilityRoutes
+    client, _connectionDocker = tclientReadinessRequest
+    monkeypatch.setattr(
+        reproducibilityRoutes, "fdictAssessEnvelopeImageCurrency",
+        lambda *args, **kwargs: {
+            "bPinnedImageIsLive": None,
+            "sPinnedImageDigest": "",
+            "sLiveImageDigest": "sha256:whatever",
+        },
+    )
+    sDetail = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/verify",
+    ).json()["detail"].lower()
+    assert "requirements.lock" not in sDetail, (
+        "a rerun of the pinned image was refused over a measurement "
+        f"of a container nobody showed to be it: {sDetail}"
+    )

@@ -20648,16 +20648,16 @@ def _fdictEntry(sRel):
         # very function was green throughout.
         old=(
             '    from vaibify.reproducibility import lockSatisfaction\n'
-            '    try:\n'
-            '        if not filesRepo.fbIsFile("requirements.lock"):\n'
+            '    # The BYTES, not the text, and hashed here rather than '
+            're-read\n'
         ),
         new=(
             '    from vaibify.reproducibility.dependencyPinning import (\n'
             '        fdictParsePinnedVersions,\n'
             '    )\n'
             '    from vaibify.reproducibility import lockSatisfaction\n'
-            '    try:\n'
-            '        if not filesRepo.fbIsFile("requirements.lock"):\n'
+            '    # The BYTES, not the text, and hashed here rather than '
+            're-read\n'
         ),
     ),
     Falsification(
@@ -20716,8 +20716,20 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/lockSatisfaction.py',
         # The lock digest dropped: a regenerated envelope leaves the
         # old verdict standing over a lock nobody compared.
-        old="""    return f"{sDigest}|{sRunningImageIdentity or ''}"\n""",
-        new="""    return f"|{sRunningImageIdentity or ''}"\n""",
+        # Anchored on the MEASURING side. The same line now exists
+        # on the comparing side too, and dropping the digest from both
+        # would leave them agreeing -- a different defect, caught by a
+        # different test.
+        old=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"{sDigest}|{sRunningImageIdentity or ''}"\n"""
+        ),
+        new=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"|{sRunningImageIdentity or ''}"\n"""
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20728,8 +20740,16 @@ def _fdictEntry(sRel):
         # The running-image identity dropped -- the half a lock-only
         # fingerprint misses, and the one ruling 5 makes load-bearing,
         # because the measurement is OF that container.
-        old="""    return f"{sDigest}|{sRunningImageIdentity or ''}"\n""",
-        new='    return f"{sDigest}|"\n',
+        old=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"{sDigest}|{sRunningImageIdentity or ''}"\n"""
+        ),
+        new=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            '    return f"{sDigest}|"\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20950,5 +20970,43 @@ def _fdictEntry(sRel):
         # seconds and would hold a Run Step just the same.
         old='    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(\n',
         new='    dictOutcome = await fgenericRunWorkerUnderTheDrain(\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_verify_route_refuses_a_lock_the_pinned_image_fails'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The policy left to the browser alone, which is where it was:
+        # the JS pre-flight proceeds deliberately when its readiness
+        # GET fails, and the agent lane never runs it at all, so the
+        # route answered 202 and spent a container export on a rerun
+        # the shadow was going to refuse.
+        old=(
+            '    if lockSatisfaction.fbLockBlocksVerification(\n'
+            '        dictLockSatisfaction, dictImageCurrency,\n'
+            '    ):\n'
+            '        listUnmet.append(_S_LOCK_BLOCKS_THE_RERUN)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_the_two_fingerprints_agree_on_an_unchanged_lock'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The measuring side normalizing what it hashes. Plausible as
+        # tidiness, and it makes the probe's stamp differ from the
+        # poll's for any file ending in a newline -- so every verdict
+        # is downgraded to unknown on the next tick, silently, because
+        # unknown is also what "nobody asked" looks like.
+        old='    sDigest = hashlib.sha256(baLockContent or b"").hexdigest()\n',
+        new=(
+            '    sDigest = hashlib.sha256(\n'
+            '        (baLockContent or b"").strip(),\n'
+            '    ).hexdigest()\n'
+        ),
     ),
 ]

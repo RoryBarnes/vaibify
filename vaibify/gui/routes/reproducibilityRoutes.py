@@ -188,7 +188,7 @@ def fdictCheckImageMatchesDeclaration(sContainerName, filesRepo):
 
 
 def fdictCheckLockSatisfiedByContainer(
-    connectionDocker, sContainerId, filesRepo,
+    connectionDocker, sContainerId, filesRepo, sRunningImageIdentity="",
 ):
     """Ask whether the container's packages satisfy ``requirements.lock``.
 
@@ -213,16 +213,23 @@ def fdictCheckLockSatisfiedByContainer(
     as a scientific verdict.
     """
     from vaibify.reproducibility import lockSatisfaction
+    # The BYTES, not the text, and hashed here rather than re-read
+    # later: the verdict and the fingerprint that identifies what it
+    # measured have to be one observation, or a lock rewritten between
+    # them produces an answer about one state wearing another's
+    # identity -- which then matches forever and never invalidates.
     try:
         if not filesRepo.fbIsFile("requirements.lock"):
             return None
-        dictLocked = fdictParsePinnedVersions(
-            filesRepo.fsReadText("requirements.lock"),
-        )
+        baLock = filesRepo.fbaReadBytes("requirements.lock")
     except (OSError, ValueError, KeyError) as errorRead:
         return lockSatisfaction.fdictDescribeLockSatisfaction(
             {}, None, f"requirements.lock could not be read: {errorRead}",
         )
+    sFingerprint = lockSatisfaction.fsFingerprintLockBytes(
+        baLock, sRunningImageIdentity,
+    )
+    dictLocked = fdictParsePinnedVersions(baLock.decode("utf-8"))
     if not dictLocked:
         return None
     try:
@@ -232,15 +239,18 @@ def fdictCheckLockSatisfiedByContainer(
     except Exception as errorExec:  # noqa: BLE001 -- unknown, not a fault
         fnReRaiseControlPlaneRefusal(errorExec)
         return lockSatisfaction.fdictDescribeLockSatisfaction(
-            dictLocked, None, f"the packages could not be listed: {errorExec}",
+            dictLocked, None,
+            f"the packages could not be listed: {errorExec}",
+            sFingerprint,
         )
     if tExecResult.iExitCode != 0:
         return lockSatisfaction.fdictDescribeLockSatisfaction(
             dictLocked, None,
-            f"pip list exited {tExecResult.iExitCode}",
+            f"pip list exited {tExecResult.iExitCode}", sFingerprint,
         )
     return lockSatisfaction.fdictDescribeLockSatisfaction(
         dictLocked, fdictParsePinnedVersions(tExecResult.sStdout),
+        "", sFingerprint,
     )
 
 
@@ -335,16 +345,25 @@ def _fnRegisterReadiness(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        # Resolved BEFORE the probe, because the probe stamps its
+        # verdict with the image it was measured against and cannot do
+        # that from a value read afterwards.
+        dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+            dictCtx, sContainerId, filesRepo,
+        )
         dictProbed = await _fdictProbeTheContainerOnce(
             dictCtx, sContainerId, dictWorkflow, filesRepo, requestHttp,
+            dictImageCurrency.get("sLiveImageDigest") or "",
         )
         return _fdictBuildReadinessPayload(
             dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
+            dictImageCurrency,
         )
 
 
 async def _fdictProbeTheContainerOnce(
     dictCtx, sContainerId, dictWorkflow, filesRepo, requestHttp,
+    sRunningImageIdentity,
 ):
     """Run BOTH of this route's execs under ONE mode-(b) admission.
 
@@ -381,6 +400,7 @@ async def _fdictProbeTheContainerOnce(
         return {
             "dictLockSatisfaction": fdictCheckLockSatisfiedByContainer(
                 dictCtx["docker"], sContainerId, filesRepo,
+                sRunningImageIdentity,
             ),
             "sRecordKind": _fsRecordKindOrUndetermined(
                 dictCtx["docker"], sContainerId, dictWorkflow,
@@ -409,11 +429,9 @@ async def _fdictProbeTheContainerOnce(
 
 def _fdictBuildReadinessPayload(
     dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
+    dictImageCurrency,
 ):
     """Assemble the readiness answer around the container probe."""
-    dictImageCurrency = fdictAssessEnvelopeImageCurrency(
-        dictCtx, sContainerId, filesRepo,
-    )
     dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
     dictPackageCheck = fdictCheckImageMatchesDeclaration(
         fsContainerNameForId(dictCtx["docker"], sContainerId),
@@ -479,15 +497,11 @@ def _fdictReadinessGapsWithContainerFacts(
     )
     dictLockVerdict = dictProbed["dictLockSatisfaction"]
     if not dictProbed["bProbePaused"]:
-        # Recorded ONLY when the probe actually ran. A paused probe
-        # measured nothing, and writing its silence into the cache
-        # would replace a perfectly good answer with an unknown one
-        # because the container happened to be busy.
+        # Recorded ONLY when the probe actually ran, and recorded with
+        # the stamp the probe itself measured -- never one hashed from
+        # a second read out here, which is a different moment.
         lockSatisfaction.fnRecordLockSatisfaction(
             sContainerId, dictLockVerdict,
-            lockSatisfaction.fsFingerprintLockState(
-                filesRepo, dictImageCurrency.get("sLiveImageDigest") or "",
-            ),
         )
     # TWO fields, because they answer two questions. The MEASUREMENT
     # is three-state and is about the container the researcher is
@@ -594,8 +608,8 @@ def _fnRegisterVerify(app, dictCtx):
             dictCtx["docker"], sContainerId,
         )
         sManifestDigest = await _fsGateReadinessAndSnapshotDigest(
-            sContainerId, sContainerName, dictWorkflow, filesRepo,
-            requestHttp,
+            dictCtx, sContainerId, sContainerName, dictWorkflow,
+            filesRepo, requestHttp,
         )
         return await _fdictLaunchVerificationDurably(
             sContainerId, filesRepo, sManifestDigest, dictWorkflow,
@@ -604,17 +618,30 @@ def _fnRegisterVerify(app, dictCtx):
 
 
 async def _fsGateReadinessAndSnapshotDigest(
-    sContainerId, sContainerName, dictWorkflow, filesRepo, requestHttp,
+    dictCtx, sContainerId, sContainerName, dictWorkflow, filesRepo,
+    requestHttp,
 ):
     """Check L3 readiness and snapshot the manifest digest under one drain.
 
-    Both reach the container and both look like reads: the readiness
-    gate and the digest snapshot each hash the repository through the
-    GENERAL exec primitive, which the gate must treat as mutating. They
-    share ONE mode-(b) drain because they must agree -- the attestation
-    is keyed to the digest snapshotted here, and a digest taken from a
-    tree that changed after the readiness check passed would attest a
-    state nobody verified.
+    Three things reach the container here and all three look like
+    reads: the readiness gate and the digest snapshot each hash the
+    repository through the GENERAL exec primitive, and the lock probe
+    enumerates the container's packages. They share ONE mode-(b) drain
+    because they must agree -- the attestation is keyed to the digest
+    snapshotted here, and a digest taken from a tree that changed
+    after the readiness check passed would attest a state nobody
+    verified.
+
+    The lock probe runs INSIDE that drain rather than being read from
+    the cache the poll uses. The cached answer may be absent (nobody
+    has asked yet), stale-fingerprinted, or paused, and a precondition
+    that silently passes whenever the cache is cold is not a
+    precondition -- this is the request that is about to spend a
+    container export and a multi-hour rerun, so it asks.
+
+    This one WAITS for the drain, unlike the readiness GET: a
+    researcher clicked Verify, so queuing behind live work is the
+    honest behaviour rather than an unasked-for stall.
 
     The 409 is carried back rather than raised: readiness failing is a
     decision made with the container untouched, and quarantining it
@@ -626,13 +653,25 @@ async def _fsGateReadinessAndSnapshotDigest(
     )
     dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
     dictImageOrigin = fdictDescribeImageOrigin(sContainerName)
+    dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+        dictCtx, sContainerId, filesRepo,
+    )
 
     def fsGateThenSnapshot(supervisor=None):
         del supervisor
+        from vaibify.reproducibility import lockSatisfaction
+        dictLockVerdict = fdictCheckLockSatisfiedByContainer(
+            dictCtx["docker"], sContainerId, filesRepo,
+            dictImageCurrency.get("sLiveImageDigest") or "",
+        )
+        lockSatisfaction.fnRecordLockSatisfaction(
+            sContainerId, dictLockVerdict,
+        )
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fsRequireReadinessThenDigest(
                 dictWorkflow, filesRepo, dictPackageCheck,
-                dictProvenance, dictImageOrigin,
+                dictProvenance, dictImageOrigin, dictLockVerdict,
+                dictImageCurrency,
             ),
         )
 
@@ -710,9 +749,23 @@ def _fsDescribePackageMismatch(dictPackageCheck):
     return " ".join(listParts)
 
 
+# The cheap remedy first, and the expensive one with its cost --
+# the same order and the same instruction the amber note on the
+# Dependency-lock row and the shadow's own refusal give. One cause
+# must not produce three different sets of advice.
+_S_LOCK_BLOCKS_THE_RERUN = (
+    "the image your envelope pins does not satisfy requirements.lock, "
+    "so the rerun would refuse before it starts — click 'Regenerate "
+    "now' on the Dependency lock row to rewrite the lock from what the "
+    "image actually has; rebuilding the image instead also settles it, "
+    "at the cost of downgrading the image to match the older lock"
+)
+
+
 def _fsRequireReadinessThenDigest(
     dictWorkflow, filesRepo, dictPackageCheck, dictProvenance,
-    dictImageOrigin=None,
+    dictImageOrigin=None, dictLockSatisfaction=None,
+    dictImageCurrency=None,
 ):
     """Return the manifest digest, or raise ONE 409 naming everything.
 
@@ -726,6 +779,16 @@ def _fsRequireReadinessThenDigest(
     image was built while the clone pins an obtainable one: on a
     published clone that is the one cause of both, and the rewrites
     they otherwise prescribe would overwrite the author's files.
+
+    THE LOCK IS ENFORCED HERE, not only in the browser. The JavaScript
+    pre-flight checks the same policy, and deliberately proceeds when
+    its readiness GET fails -- so with the check living only there, a
+    direct API call, the agent lane, or an ordinary click during a
+    failed readiness fetch all reached 202 and launched the durable
+    rerun. The shadow does catch it, but only after exporting the
+    repository and building a container, which is the whole cost this
+    check exists to avoid. One truth table, enforced on the side that
+    cannot be skipped.
     """
     from vaibify.gui.pinnedEnvironmentConversion import (
         S_REMEDY_SWITCH_TO_PINNED_IMAGE,
@@ -751,6 +814,11 @@ def _fsRequireReadinessThenDigest(
             "'Copy image Dockerfile into repo' on the Dockerfile row "
             "to re-export it"
         )
+    from vaibify.reproducibility import lockSatisfaction
+    if lockSatisfaction.fbLockBlocksVerification(
+        dictLockSatisfaction, dictImageCurrency,
+    ):
+        listUnmet.append(_S_LOCK_BLOCKS_THE_RERUN)
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         listUnmet.extend(_fsNameTheReadinessGaps(dictWorkflow, filesRepo))
     if listUnmet:
