@@ -100,13 +100,14 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=(
+            '        # 2026-08-27, project.json).\n'
             '        request.listFilePaths = _flistResolveArchivePaths('
             '\n'
             '            request.listFilePaths,\n'
             '            dictWorkflow.get("sProjectRepoPath") or "",\n'
             '        )\n'
         ),
-        new='',
+        new="        # 2026-08-27, project.json).\n",
     ),
     # --- 2026-08-27: AI provenance counts in the workflow L2 header
     # cell; the AI Declaration is homed on its step only ---
@@ -162,7 +163,9 @@ LIST_FALSIFICATIONS = [
             'tests/testSyncRoutesCoverage.py::'
             'test_a_new_publish_advances_the_verify_record'
         ),
-        source='vaibify/gui/routes/syncRoutes.py',
+        # Moved to syncBookkeeping on 2026-09-14: two lanes now write
+        # it, an ordinary archive and the recovery lane's adoption.
+        source='vaibify/reproducibility/syncBookkeeping.py',
         old=('        dictRemotes = dictWorkflow.setdefault('
              '"dictRemotes", {})\n'
              '        dictZenodo = dictRemotes.setdefault('
@@ -205,8 +208,9 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/routes/syncRoutes.py',
         old=('        _fnRefuseBasenameCollisions('
-             'request.listFilePaths)\n'),
-        new='',
+             'request.listFilePaths)\n'
+             '        _fnRefuseCrossInstanceParent(dictWorkflow)\n'),
+        new='        _fnRefuseCrossInstanceParent(dictWorkflow)\n',
     ),
     Falsification(
         nodeid=(
@@ -258,8 +262,13 @@ LIST_FALSIFICATIONS = [
              '            dictCtx["docker"], sContainerId, '
              'request.listFilePaths,\n'
              '            dictWorkflow.get("sProjectRepoPath") or "",\n'
-             '        )\n'),
-        new='',
+             '        )\n'
+             '        _fnRefuseBasenameCollisions('
+             'request.listFilePaths)\n'
+             '        _fnRefuseCrossInstanceParent(dictWorkflow)\n'),
+        new=('        _fnRefuseBasenameCollisions('
+             'request.listFilePaths)\n'
+             '        _fnRefuseCrossInstanceParent(dictWorkflow)\n'),
     ),
     Falsification(
         nodeid=(
@@ -9569,7 +9578,10 @@ def _fdictEntry(sRel):
             'tests/testHostGitAndReposPanel.py::'
             'testAHostProjectsPushNeverAsksDockerAboutIsolation'
         ),
-        source='vaibify/gui/routes/syncRoutes.py',
+        # Moved to routeContext on 2026-09-14: the environment-archive
+        # promotion is a Zenodo publish too, and a route module may
+        # not import a sibling.
+        source='vaibify/gui/routeContext.py',
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if False:\n        return\n',
     ),
@@ -9578,7 +9590,7 @@ def _fdictEntry(sRel):
             'tests/testHostGitAndReposPanel.py::'
             'testAContainerProjectsPushStillChecksIsolation'
         ),
-        source='vaibify/gui/routes/syncRoutes.py',
+        source='vaibify/gui/routeContext.py',
         old='    if fbIsHostProject(sContainerId):\n        return\n',
         new='    if True:\n        return\n',
     ),
@@ -17440,10 +17452,10 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/environmentSnapshot.py',
         old=(
             '    dictCarried = dict(dictFresh)\n'
-            '    dictCarried["dictImageArchive"] = dictRecord\n'
-            '    return dictCarried\n'
+            '    for sKey in ("dictImageArchive", '
+            'S_SUPERSEDED_ARCHIVE_KEY):\n'
         ),
-        new='    return dictFresh\n',
+        new='    dictCarried = dict(dictFresh)\n    for sKey in ():\n',
     ),
     Falsification(
         nodeid=(
@@ -18117,8 +18129,16 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/environmentArchiveRoutes.py',
         # Satisfying a Level 3 requirement diverging a Level 2 file,
         # for a field no gate reads.
-        old='        archiveProgress.fnSettleDeposit(sContainerId)',
+        old=(
+            '            _fdictStampArchiveRecord, filesRepo, '
+            'dictWorkflow, dictRecord,\n'
+            '        )\n'
+            '        archiveProgress.fnSettleDeposit(sContainerId)'
+        ),
         new=(
+            '            _fdictStampArchiveRecord, filesRepo, '
+            'dictWorkflow, dictRecord,\n'
+            '        )\n'
             '        _fnRecordArchivedAnswer(dictWorkflow)\n'
             '        archiveProgress.fnSettleDeposit(sContainerId)'
         ),
@@ -18151,8 +18171,16 @@ def _fdictEntry(sRel):
         # than through the deleted helper because this guard reads the
         # AST, and a call to a helper that no longer exists is not the
         # write that did the damage.
-        old='        archiveProgress.fnSettleDeposit(sContainerId)',
+        old=(
+            '            _fdictStampArchiveRecord, filesRepo, '
+            'dictWorkflow, dictRecord,\n'
+            '        )\n'
+            '        archiveProgress.fnSettleDeposit(sContainerId)'
+        ),
         new=(
+            '            _fdictStampArchiveRecord, filesRepo, '
+            'dictWorkflow, dictRecord,\n'
+            '        )\n'
             '        dictWorkflow[imageArchive.S_IMAGE_ARCHIVE_KEY] = {\n'
             '            "sAnswer": imageArchive.S_ANSWER_ARCHIVED,\n'
             '        }\n'
@@ -19912,7 +19940,10 @@ def _fdictEntry(sRel):
             'tests/testForeignManifestGuard.py::'
             'test_the_archive_repin_skips_a_foreign_manifest'
         ),
-        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # Moved to imageDeposit on 2026-09-14: the recovery lane's
+        # image adoption writes the same record, and a route module
+        # may not import a sibling.
+        source='vaibify/reproducibility/imageDeposit.py',
         # the archive record re-pins the author's manifest on a clone
         old=(
             '    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n'
@@ -20065,6 +20096,326 @@ def _fdictEntry(sRel):
             '    if False and (iExitCode != 0 or len(listFields) != 3):\n'
             '        raise subprocess.CalledProcessError(\n'
             '            iExitCode or 1, ["python3", "-c", _S_PROBE_INTERPRETER],\n'
+        ),
+    ),
+    # --- 2026-09-14: promoting a sandbox archive to a permanent one ---
+    Falsification(
+        nodeid=(
+            'tests/testSandboxArchiveWithholdsLevel3.py::'
+            'test_a_sandbox_archive_blocks_the_scalar_gate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The criterion registered in the checks dict and the tuple but
+        # NOT in the scalar gate, which enumerates its conjuncts by
+        # hand: the header reports Level 3 attained above rows that
+        # block.
+        old=(
+            '    if not fbNoArchiveIsKnownSandbox(dictWorkflow, '
+            'filesRepo):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSyncRoutesCoverage.py::'
+            'test_zenodo_archive_refuses_a_parent_on_the_other_instance'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        # Zenodo is asked for a new version of a record held on the
+        # other instance, and answers a bare 404.
+        old='        _fnRefuseCrossInstanceParent(dictWorkflow)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDepositSeams.py::'
+            'test_the_deposit_id_is_reported_before_any_byte_goes_up'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # The id becomes durable AFTER the upload rather than before
+        # it, so the window recovery exists to cover is the one window
+        # it cannot see.
+        old=(
+            '    if fnReportDraftCreated is not None:\n'
+            '        fnReportDraftCreated(iDepositId)\n'
+            '    try:\n'
+        ),
+        new='    try:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromotionRecovery.py::'
+            'test_an_unreadable_zenodo_keeps_the_record_and_offers_nothing'
+        ),
+        source='vaibify/reproducibility/archivePromotion.py',
+        # Any fetch failure read as absence: a timeout then licenses
+        # discarding the only handle on a DOI that may exist.
+        old=(
+            '    except Exception as errorAsked:  '
+            '# noqa: BLE001 — unreadable, not absent\n'
+            '        return _fdictOutcome(\n'
+            '            S_OUTCOME_UNKNOWN,\n'
+        ),
+        new=(
+            '    except Exception as errorAsked:  '
+            '# noqa: BLE001 — unreadable, not absent\n'
+            '        return _fdictOutcome(\n'
+            '            S_OUTCOME_GONE,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromotionRecovery.py::'
+            'test_discard_refuses_a_published_record_and_an_unreadable_one'
+        ),
+        source='vaibify/gui/routes/promotionRecoveryRoutes.py',
+        # Discard widened to every outcome: a real DOI's record is
+        # thrown away, and an unanswered question is answered "no".
+        old=(
+            '            (archivePromotion.S_OUTCOME_RESUMABLE,\n'
+            '             archivePromotion.S_OUTCOME_PUBLISHABLE,\n'
+            '             archivePromotion.S_OUTCOME_GONE),\n'
+        ),
+        new=(
+            '            (archivePromotion.S_OUTCOME_RESUMABLE,\n'
+            '             archivePromotion.S_OUTCOME_PUBLISHABLE,\n'
+            '             archivePromotion.S_OUTCOME_PUBLISHED,\n'
+            '             archivePromotion.S_OUTCOME_UNKNOWN,\n'
+            '             archivePromotion.S_OUTCOME_GONE),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testASandboxDepositIsNamedOnTheRow.py::'
+            'test_a_sandbox_deposit_is_named_beside_every_row_it_touches'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The warning fires on any state that is not "permanent", so
+        # "unknown" -- every deposit made before the recorded-instance
+        # field existed -- is treated as a soft sandbox and warned
+        # about.
+        old='        return sPermanence === "sandbox";\n',
+        new='        return sPermanence !== "permanent";\n',
+    ),
+    # --- 2026-09-14: a stale reproduce.sh, and the manifest rule
+    # that lived in two places ---
+    Falsification(
+        nodeid=(
+            'tests/testStaleReproduceScriptIsNotRunnable.py::'
+            'test_a_script_that_predates_its_generator_is_caught'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The comparison weakened to "there is some text in the file",
+        # which the 29-line stale script satisfies.
+        old='    return sOnDisk == sCurrent\n',
+        new='    return bool(sOnDisk)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleReproduceScriptIsNotRunnable.py::'
+            'test_a_stale_script_blocks_the_scalar_gate'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Registered in the checks dict and the tuple but not in the
+        # scalar gate: the header reports Level 3 above a blocking row.
+        old=(
+            '    if not fbVerifyReproduceScriptCurrent(filesRepo, '
+            'dictWorkflow):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testManifestCompletenessAsksTheWriter.py::'
+            'test_a_manifest_missing_the_reproduce_script_is_incomplete'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        # The checker keeps its own copy of the rule again, and stops
+        # asking about the file the writer pins.
+        old=(
+            '        sPath for sPath in flistManifestPathsToPin('
+            'filesRepo, dictWorkflow)\n'
+        ),
+        new=(
+            '        sPath for sPath in _flistCollectManifestPaths('
+            'dictWorkflow)\n'
+        ),
+    ),
+    # --- 2026-09-14: the archive is asked what it stored ---
+    Falsification(
+        nodeid=(
+            'tests/testTheArchiveIsAskedWhatItStored.py::'
+            'test_a_same_size_different_file_is_caught'
+        ),
+        # Moved to zenodoClient on 2026-09-14: the comparison is
+        # now shared with the container-side project deposit, which
+        # cannot import the host package.
+        source='vaibify/reproducibility/zenodoClient.py',
+        # Size-only comparison: the archive agrees with the record
+        # over an object of the right length and the wrong bytes.
+        old='    if sReported and sReported != sSent:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheArchiveIsAskedWhatItStored.py::'
+            'test_a_disagreeing_archive_costs_a_draft_and_never_a_doi'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # The deposit hands back a record over an archive nobody
+        # asked, which is the state this feature exists to end.
+        old=(
+            '        fnRefuseUnlessArchiveHoldsWhatWeSent(\n'
+            '            clientZenodo, iDepositId, dictRecord,\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    # --- 2026-09-14: the project deposit is asked what it stored ---
+    Falsification(
+        nodeid=(
+            'tests/testTheProjectDepositIsAskedWhatItStored.py::'
+            'test_a_disagreeing_draft_costs_a_draft_and_never_a_doi'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The container script publishes over an archive nobody
+        # asked -- the state the environment lane had already left.
+        old=(
+            "    _draftNow = client.fdictGetDeposit(iDid)\n"
+            "    _problems = (flistDescribeDepositDisagreement("
+            "_draftNow, _expected)\n"
+            "                 + flistDescribeUnexpectedDepositFiles("
+            "_draftNow,\n"
+            "                                                       "
+            "_expected))\n"
+            "    if _problems:\n"
+            "        raise _ArchiveMismatch(' '.join(_problems))\n"
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheProjectDepositIsAskedWhatItStored.py::'
+            'test_a_file_the_clear_missed_is_caught'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # Per-file comparison only: every uploaded file agrees while
+        # the record also serves the previous version's leftovers.
+        old=(
+            "    _problems = (flistDescribeDepositDisagreement("
+            "_draftNow, _expected)\n"
+            "                 + flistDescribeUnexpectedDepositFiles("
+            "_draftNow,\n"
+            "                                                       "
+            "_expected))\n"
+        ),
+        new=(
+            "    _problems = flistDescribeDepositDisagreement("
+            "_draftNow, _expected)\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleReproduceScriptIsNotRunnable.py::'
+            'test_the_artifact_row_goes_red_with_the_criterion'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The row asks the older gate alone, so it paints a green
+        # Requirement mark on a file the ladder is blocking on.
+        old=(
+            '        "reproduceScript": (\n'
+            '            levelGates.fbVerifyReproduceScript('
+            'filesRepo, dictWorkflow)\n'
+            '            and levelGates.fbVerifyReproduceScriptCurrent(\n'
+            '                filesRepo, dictWorkflow,\n'
+            '            )\n'
+            '        ),\n'
+        ),
+        new=(
+            '        "reproduceScript": '
+            'levelGates.fbVerifyReproduceScript(\n'
+            '            filesRepo, dictWorkflow,\n'
+            '        ),\n'
+        ),
+    ),
+    # --- 2026-09-14: the next step is named only when order matters ---
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_independent_blockers_are_named_in_no_order_at_all'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # Roots taken from the FULL edge set rather than the live one:
+        # an arrow appears over two rows that do not order each other.
+        old='    listLive = _flistSelectLiveEdges(dictSatisfied)\n',
+        new='    listLive = list(T_LEVEL3_ORDERING_EDGES)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_two_independent_chains_are_answered_with_silence'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # Naming a real root out of several: the answer looks right
+        # and quietly asserts the other chain is not ready to start.
+        old=(
+            '    if len(listRoots) != 1:\n'
+            '        return None\n'
+        ),
+        new=(
+            '    if not listRoots:\n'
+            '        return None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_the_arrow_judges_rows_exactly_as_the_rows_do'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The arrow judges a stale script satisfied, so it never names
+        # the row the researcher has to fix first.
+        old=(
+            '        "reproduceScript": (\n'
+            '            levelGates.fbVerifyReproduceScript('
+            'filesRepo, dictWorkflow)\n'
+            '            and levelGates.fbVerifyReproduceScriptCurrent(\n'
+            '                filesRepo, dictWorkflow,\n'
+            '            )\n'
+            '        ),\n'
+        ),
+        new=(
+            '        "reproduceScript": '
+            'levelGates.fbVerifyReproduceScript(\n'
+            '            filesRepo, dictWorkflow,\n'
+            '        ),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheNextStepArrowPointsAtARealRow.py::'
+            'test_the_arrow_points_at_a_row_that_is_really_there'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        # Registered AFTER the section banner it sits inside. The
+        # dispatcher returns on its first match, so the group handler
+        # wins and the click TOGGLES the section holding the row the
+        # arrow just named.
+        old=(
+            '        ".ordering-arrow": _fnHandleOrderingArrow,\n'
+            '        ".project-block-header": '
+            '_fnHandleProjectBlockToggle,\n'
+            '        ".requirement-group-header": '
+            '_fnHandleRequirementGroupToggle,\n'
+        ),
+        new=(
+            '        ".project-block-header": '
+            '_fnHandleProjectBlockToggle,\n'
+            '        ".requirement-group-header": '
+            '_fnHandleRequirementGroupToggle,\n'
+            '        ".ordering-arrow": _fnHandleOrderingArrow,\n'
         ),
     ),
 ]

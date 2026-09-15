@@ -70,9 +70,30 @@ def fdictBuildEnvelope(dictArchiveRecord=None):
 
 
 def fnWriteManifest(sRepoPath, listRelativePaths):
-    """Write MANIFEST.sha256 over the named files' current bytes."""
+    """Write MANIFEST.sha256 over the named files' current bytes.
+
+    Every Level 3 envelope file PRESENT in the repository is pinned as
+    well, because that is what a manifest vaibify wrote contains: the
+    scope widened on 2026-09-14 so a reproducer running ``sha256sum -c
+    MANIFEST.sha256`` verifies what produced the results and not only
+    the results. A fixture that pinned less would be a project vaibify
+    could not have produced, and every reproduction rule reading the
+    manifest would be exercised against a shape that no longer occurs.
+
+    The envelope list is taken from ``publicationScope`` rather than
+    restated, so the fixture follows the rule instead of racing it.
+    Callers keep full control of the non-envelope paths, which is what
+    the rule-5 negative tests vary.
+    """
+    from vaibify.reproducibility import publicationScope
+    listAll = list(listRelativePaths) + [
+        sPath for sPath in publicationScope.TUPLE_LEVEL3_ENVELOPE_PATHS
+        if sPath != "MANIFEST.sha256"
+        and sPath not in listRelativePaths
+        and os.path.isfile(os.path.join(sRepoPath, sPath))
+    ]
     listLines = ["# SHA-256 manifest of workflow artefacts\n"]
-    for sRelative in listRelativePaths:
+    for sRelative in listAll:
         with open(os.path.join(sRepoPath, sRelative), "rb") as fileHandle:
             sHash = hashlib.sha256(fileHandle.read()).hexdigest()
         listLines.append(f"{sHash}  {sRelative}\n")

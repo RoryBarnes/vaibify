@@ -2969,6 +2969,74 @@ def test_zenodo_archive_refuses_basename_collisions(clientHttp):
     assert listArchiveCommands == []
 
 
+@pytest.mark.falsification
+def test_zenodo_archive_refuses_a_parent_on_the_other_instance(clientHttp):
+    """A promoted project set back to sandbox is refused locally.
+
+    Zenodo's ``newversion`` flow asks ONE instance for a new version
+    of a record it holds. Sending a production deposit id to
+    sandbox.zenodo.org returns a bare 404 the sync layer reports as
+    "deposit not found" — true, and indistinguishable from a deleted
+    record. The two service fields are made to DISAGREE here on
+    purpose; equal, this passes against the bug.
+
+    Kills: dropping the ``_fnRefuseCrossInstanceParent`` call from
+    the archive route.
+    """
+    _fnConnectToContainer(clientHttp)
+    listArchiveCommands = []
+
+    def _ftRecordArchive(sContainerId, sCommand):
+        listArchiveCommands.append(sCommand)
+        return (0, "")
+
+    with patch.object(
+        _mockDockerInstance, "ftResultExecuteCommand", _ftRecordArchive,
+    ), patch(
+        "vaibify.gui.routes.syncRoutes.fdictRequireWorkflow",
+        return_value={
+            "sZenodoService": "sandbox",
+            "sZenodoDepositionId": "991",
+            "dictRemotes": {"zenodo": {
+                "sRecordId": "991", "sService": "zenodo",
+            }},
+        },
+    ):
+        responseHttp = clientHttp.post(
+            f"/api/zenodo/{S_CONTAINER_ID}/archive",
+            json={"listFilePaths": ["/workspace/data.npy"]},
+        )
+    assert responseHttp.status_code == 409
+    sDetail = responseHttp.json()["detail"]
+    assert "sandbox" in sDetail and "zenodo" in sDetail
+    assert listArchiveCommands == []
+
+
+def test_the_auto_archive_refuses_the_same_cross_instance_parent():
+    """Unattended, the refusal is a False and a named warning."""
+    from vaibify.gui.fileStatusManager import _fbArchiveZenodoForAutoArchive
+    listCalls = []
+
+    def _ftNeverCalled(*args, **kwargs):
+        listCalls.append(args)
+        return (0, "")
+
+    with patch(
+        "vaibify.gui.syncDispatcher.ftResultArchiveToZenodo", _ftNeverCalled,
+    ):
+        bArchived = _fbArchiveZenodoForAutoArchive(
+            None, S_CONTAINER_ID,
+            {
+                "sZenodoService": "sandbox",
+                "sZenodoDepositionId": "991",
+                "dictRemotes": {"zenodo": {"sService": "zenodo"}},
+            },
+            ["/workspace/data.npy"],
+        )
+    assert bArchived is False
+    assert listCalls == []
+
+
 # ── The publish record advances, and the modal offers the union ──
 
 

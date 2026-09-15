@@ -177,6 +177,16 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     "docker": {"DockerClient"},
     "features": {"FeaturesConfig"},
     "repro": {"ReproducibilityConfig"},
+    # Approved 2026-09-14, on the `node` and `client` precedent: a
+    # hashlib hash object. `hasher` is already the codebase's live
+    # spelling in eight places -- _hashing.py, provenanceTracker.py,
+    # repoFiles.py, overleafMirror.py, personalLayerManager.py -- all
+    # sitting in the frozen seed, so registering it makes existing
+    # practice official rather than introducing a spelling. The
+    # promotion record hashes each file twice: SHA-256 for vaibify,
+    # MD5 because that is the checksum Zenodo reports for a
+    # deposition's files.
+    "hasher": {"_Hash", "HASH"},
     "overleaf": {"OverleafConfig"},
 }
 
@@ -208,7 +218,12 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # 362 -> 361 (2026-09-09): the Zenodo metadata translator moved to
 # the client boundary so both deposit paths share it, and its
 # keyword comprehension bound `k`.
-I_LEGACY_VARIABLE_BUDGET = 354
+# 354 -> 346 (2026-09-14): registering `hasher` retired eight seeded
+# bindings at a stroke, the same shape as the `node` and `client`
+# burn-downs above -- they were debt only because the vocabulary had
+# no word for a hashlib hash object, not because they were badly
+# named. The burn-down is the registry entry, not a rename.
+I_LEGACY_VARIABLE_BUDGET = 346
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

@@ -174,6 +174,16 @@ DICT_TIER_TWO_REGISTRY = {
     "docker": {"DockerClient"},
     "features": {"FeaturesConfig"},
     "repro": {"ReproducibilityConfig"},
+    # Approved 2026-09-14, on the `node` and `client` precedent: a
+    # hashlib hash object. `hasher` is already the codebase's live
+    # spelling in eight places -- _hashing.py, provenanceTracker.py,
+    # repoFiles.py, overleafMirror.py, personalLayerManager.py -- all
+    # sitting in the frozen seed, so registering it makes existing
+    # practice official rather than introducing a spelling. The
+    # promotion record hashes each file twice: SHA-256 for vaibify,
+    # MD5 because that is the checksum Zenodo reports for a
+    # deposition's files.
+    "hasher": {"_Hash", "HASH"},
     "overleaf": {"OverleafConfig"},
 }
 

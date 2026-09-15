@@ -312,6 +312,30 @@ var VaibifyEventBindings = (function () {
         VaibifyApp.fnToggleProjectBlockExpand();
     }
 
+    function _fnHandleOrderingArrow(event, elMatch) {
+        // The arrow sits INSIDE a requirement-group banner, whose
+        // own handler TOGGLES that group. What keeps the click off it
+        // is this entry's POSITION in the registry -- the dispatcher
+        // returns after its first match -- not the stopPropagation
+        // below, which only keeps the click away from listeners
+        // outside the steps panel. Confirmed by mutation: removing
+        // stopPropagation alone changes nothing observable.
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyApp.fnExpandRequirementRow(
+            elMatch.dataset.orderingGroup || "",
+            elMatch.dataset.orderingRow || "");
+        window.requestAnimationFrame(function () {
+            var elRow = document.querySelector(
+                '.requirement-row-header[data-req="' +
+                (elMatch.dataset.orderingRow || "") + '"]');
+            if (elRow) {
+                elRow.scrollIntoView({
+                    behavior: "smooth", block: "center"});
+            }
+        });
+    }
+
     function _fnHandleRequirementGroupToggle(event, elMatch) {
         VaibifyApp.fnToggleRequirementGroup(elMatch.dataset.group);
     }
@@ -541,6 +565,11 @@ var VaibifyEventBindings = (function () {
         // dispatch collapses the block instead.
         ".wf-align-directories": _fnHandleAlignDirectories,
         ".steps-block-header": _fnHandleStepsBlockToggle,
+        // BEFORE the SECTION banner it sits inside: the dispatcher
+        // matches with closest(), which walks ancestors, so the group
+        // entry below would win and collapse the very section holding
+        // the row the arrow names (the Align-button trap).
+        ".ordering-arrow": _fnHandleOrderingArrow,
         ".project-block-header": _fnHandleProjectBlockToggle,
         ".requirement-group-header": _fnHandleRequirementGroupToggle,
         // Order is not load-bearing here, unlike the Align button

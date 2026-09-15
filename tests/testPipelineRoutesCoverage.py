@@ -1887,6 +1887,11 @@ class TestPollLevelStatePayload:
         dictDetail = dictResult["dictWorkflowEnvelopeDetail"]
         assert set(dictDetail.keys()) == {
             "listBinaries", "dictArtifacts",
+            # Added 2026-09-14: the one blocked requirement that must
+            # be fixed BEFORE the others, or None when order does not
+            # matter. Computed here so the dashboard renders a verdict
+            # it never re-derives.
+            "dictNextOrderedStep",
             # Added 2026-09-01: whether the envelope pins the image
             # this container is RUNNING, so a rebuild without a
             # snapshot regeneration is announced instead of every
@@ -1953,6 +1958,25 @@ class TestPollLevelStatePayload:
             # Added 2026-08-30: which maths library the dependency
             # lock names, so the MKL question is answerable at all.
             "dictMathsLibrary",
+            # Added 2026-09-14. Whether either archive is a Zenodo
+            # SANDBOX deposit: the gate's verdict plus the two
+            # per-archive verdicts, because the attestation row must
+            # name WHICH archive and must read the positive off a
+            # verdict rather than off a gate that also passes on
+            # "unknown".
+            "dictArchivePermanence",
+            # The recorded deposit and the declared target on
+            # DIFFERENT Zenodo instances, as the backend's own refusal
+            # sentence. The row renders it beside the control that
+            # resolves it; a refusal naming a remedy the screen does
+            # not offer is the "name the cause" rule failing in its
+            # worst direction.
+            "sZenodoCrossInstanceRefusal",
+            # In-flight promotions, so an interrupted one is surfaced
+            # on LOAD. The browser that started it may be gone, and a
+            # minted DOI nobody wrote down cannot be recovered by
+            # guessing.
+            "listPendingPromotions",
         }
         assert dictDetail["listBinaries"] == []
         assert dictDetail["dictDeterminism"] is None
@@ -2231,6 +2255,14 @@ class TestBuildWorkflowEnvelopeDetail:
             # complete for the question that verify asked, and the
             # flag says that is no longer the question.
             "bScopeStale": True,
+            # WHAT the verify compared against, so the Zenodo row can
+            # show the DOI beside the counts it produced. Empty here
+            # because this is the GitHub summary and a GitHub cache
+            # records neither -- a pure projection of the cache, which
+            # is what keeps a record the verify never saw from being
+            # displayed as the one it checked.
+            "sZenodoDoiVerified": "",
+            "sEndpointVerified": "",
         }
         assert dictSyncs["zenodo"] is None
         assert dictSyncs["overleaf"] is None

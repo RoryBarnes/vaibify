@@ -23,6 +23,7 @@ __all__ = [
     "S_PHASE_SETTLED",
     "S_PHASE_STARTING",
     "S_PHASE_UPLOADING",
+    "S_PHASE_VERIFYING",
     "fbDepositIsLive",
     "fdictReadDeposit",
     "fnForgetDeposit",
@@ -38,13 +39,21 @@ import threading
 S_PHASE_STARTING = "starting"
 S_PHASE_SAVING = "saving"
 S_PHASE_UPLOADING = "uploading"
+# Asking the archive what it stored, after the upload and before the
+# record is called good. Seconds, not minutes: Zenodo reports the MD5
+# it computed server-side, so the check is one small request rather
+# than a re-download.
+S_PHASE_VERIFYING = "verifying"
 S_PHASE_SETTLED = "settled"
 S_PHASE_FAILED = "failed"
 
 # The phases during which the row pulses. A phase outside this set is
 # a settled one, so a caller cannot make the row pulse forever by
 # inventing a name.
-_T_LIVE_PHASES = (S_PHASE_STARTING, S_PHASE_SAVING, S_PHASE_UPLOADING)
+_T_LIVE_PHASES = (
+    S_PHASE_STARTING, S_PHASE_SAVING, S_PHASE_UPLOADING,
+    S_PHASE_VERIFYING,
+)
 
 DICT_DEPOSITS = {}
 _LOCK_DEPOSITS = threading.Lock()

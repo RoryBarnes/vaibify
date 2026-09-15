@@ -1093,6 +1093,52 @@ var VaibifySyncManager = (function () {
     }
 
 
+    /* A credential-only open: the promotion needs a PRODUCTION token
+       and must NOT record production as where this project publishes.
+       That instance lives in project.json, which Level 2 compares, and
+       it is shared with every declared record — writing it would stale
+       the deposit just minted and send retained sandbox records to the
+       wrong host. So this opener preselects the instance, sets the
+       credential-only flag the backend honours, and resolves a promise
+       the caller awaits rather than dropping the researcher into the
+       push modal. */
+    var _fnResolveCredentialOnly = null;
+
+    function fpromiseConnectZenodoCredentialOnly(sInstance) {
+        var elModal = document.getElementById("modalConnectionSetup");
+        return new Promise(function (fnResolve) {
+            _fnResolveCredentialOnly = fnResolve;
+            fnShowConnectionSetup("zenodo").then(function () {
+                elModal.dataset.credentialOnly = "1";
+                _fnPreselectZenodoInstance(sInstance);
+            });
+        });
+    }
+
+    function _fnPreselectZenodoInstance(sInstance) {
+        var listRadios = document.querySelectorAll(
+            'input[name="zenodoInstance"]');
+        for (var iRadio = 0; iRadio < listRadios.length; iRadio += 1) {
+            if (listRadios[iRadio].value === sInstance) {
+                listRadios[iRadio].checked = true;
+            }
+        }
+        _fnUpdateZenodoTokenLink(sInstance);
+    }
+
+    function _fnSettleCredentialOnly(bConnected) {
+        /* Cancelling resolves FALSE rather than leaving the caller
+           awaiting forever: a promotion that was declined a token has
+           to report that, not hang. */
+        var elModal = document.getElementById("modalConnectionSetup");
+        delete elModal.dataset.credentialOnly;
+        if (!_fnResolveCredentialOnly) return;
+        var fnResolve = _fnResolveCredentialOnly;
+        _fnResolveCredentialOnly = null;
+        fnResolve(Boolean(bConnected));
+    }
+
+
     var _fnConnectionSetupEscapeHandler = null;
 
 
@@ -1120,6 +1166,7 @@ var VaibifySyncManager = (function () {
         document.getElementById("modalConnectionSetup")
             .style.display = "none";
         _fnDetachConnectionSetupEscape();
+        _fnSettleCredentialOnly(false);
     }
 
 
@@ -1341,8 +1388,10 @@ var VaibifySyncManager = (function () {
             "inputSetupToken").value.trim();
         if (sProjectId) dictBody.sProjectId = sProjectId;
         if (sToken) dictBody.sToken = sToken;
+        var bCredentialOnly = elModal.dataset.credentialOnly === "1";
         if (sService === "zenodo") {
             dictBody.sZenodoInstance = _fsReadZenodoInstance();
+            if (bCredentialOnly) dictBody.bCredentialOnly = true;
         }
         var sContainerId = VaibifyApp.fsGetContainerId();
         try {
@@ -1350,6 +1399,18 @@ var VaibifySyncManager = (function () {
                 "/api/sync/" + sContainerId + "/setup",
                 dictBody
             );
+            if (bCredentialOnly) {
+                document.getElementById("modalConnectionSetup")
+                    .style.display = "none";
+                _fnDetachConnectionSetupEscape();
+                _fnSettleCredentialOnly(dictResult.bConnected);
+                if (!dictResult.bConnected) {
+                    VaibifyApp.fnShowToast(
+                        dictResult.sMessage || "Connection failed",
+                        "error");
+                }
+                return;
+            }
             _fnHideConnectionSetup();
             if (dictResult.bConnected) {
                 VaibifyApp.fnShowToast("Connected!", "success");
@@ -1503,7 +1564,18 @@ var VaibifySyncManager = (function () {
         if (sExisting) return sExisting;
         var sId = dictWorkflow.sZenodoDepositionId || "";
         if (!_RE_DIGITS.test(String(sId))) return "";
-        var sService = dictWorkflow.sZenodoService === "production"
+        /* Where the RECORDED deposit lives, not where the next
+           publish would go: the link addresses a deposit id that was
+           minted on one instance, and after a promotion the two
+           disagree. The comparison is against the SERVICE key
+           ("zenodo"), never the UI instance name ("production") --
+           sZenodoService never holds the latter, so the old test
+           never fired and every link pointed at sandbox. */
+        var dictRemotes = dictWorkflow.dictRemotes || {};
+        var dictZenodo = dictRemotes.zenodo || {};
+        var sRecorded = dictZenodo.sService ||
+            dictWorkflow.sZenodoService || "sandbox";
+        var sService = sRecorded === "zenodo"
             ? "zenodo.org"
             : "sandbox.zenodo.org";
         return _fsValidateLinkUrl(
@@ -3178,6 +3250,8 @@ var VaibifySyncManager = (function () {
 
     return {
         fnOpenPushModal: fnOpenPushModal,
+        fpromiseConnectZenodoCredentialOnly:
+            fpromiseConnectZenodoCredentialOnly,
         fnVerifyRemoteFromDashboard: fnVerifyRemoteFromDashboard,
         fnPushEnvelopeFromDashboard: fnPushEnvelopeFromDashboard,
         fnRefreshConfiguredRemotes: fnRefreshConfiguredRemotes,

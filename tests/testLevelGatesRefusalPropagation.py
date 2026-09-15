@@ -155,6 +155,12 @@ LIST_SWALLOWING_GATES = [
         ),
     ),
     (
+        "fbVerifyReproduceScriptCurrent",
+        lambda files: levelGates.fbVerifyReproduceScriptCurrent(
+            files, DICT_WORKFLOW,
+        ),
+    ),
+    (
         "_fdictLiveHashesOrNone",
         lambda files: levelGates._fdictLiveHashesOrNone(
             files, ["stepA/run.py"],

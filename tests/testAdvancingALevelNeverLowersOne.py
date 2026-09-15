@@ -138,6 +138,20 @@ DICT_LADDER_ACTION_RUNGS = {
     "answer-environment-archive": 2,
     "clear-environment-archive-answer": 0,
     "deposit-environment-archive": 3,
+    # The two promotions reach for Level 3: a sandbox deposit cannot
+    # carry the permanence claim that rung asks for.
+    "promote-environment-archive": 3,
+    "promote-project-deposit": 3,
+    # The recovery actions inherit the rung of the promotion they
+    # settle -- each one finishes, records or abandons a reach for
+    # Level 3, and none of them is a separate reach of its own.
+    "reconcile-promotion": 3,
+    "resume-promotion": 3,
+    "adopt-promotion": 3,
+    "discard-promotion": 3,
+    # Level 2: it changes what the published-copies rows compare
+    # against, by retiring the deposit those rows are checked against.
+    "start-new-zenodo-concept": 2,
     "remove-ai-model": 0,
 }
 
@@ -185,6 +199,31 @@ DICT_ACCEPTED_CROSSINGS = {
         "the push and Zenodo version that restores it. Surfaced by "
         "this test on 2026-09-09; the remedy is a confirmation naming "
         "the cost, and the decision is the researcher's.",
+    ),
+    "promote-project-deposit": (
+        S_DISPOSITION_WARNED,
+        "The scanner sees this route call the general workflow saver, "
+        "which serializes the project definition Level 2 compares. "
+        "What it writes is entirely BOOKKEEPING -- the four "
+        "top-level sZenodo* keys and the produced dictRemotes.zenodo "
+        "fields, every one of which syncBookkeeping extracts into "
+        "the uncompared sidecar -- so the serialized bytes are "
+        "identical before and after, which "
+        "testProjectDepositPromotion.py asserts directly rather than "
+        "leaving to this reading. The researcher confirms before the "
+        "publish either way.",
+    ),
+    "resume-promotion": (
+        S_DISPOSITION_WARNED,
+        "Same save, same bookkeeping-only write: it records the DOI "
+        "of the deposit it has just published. The researcher "
+        "confirms before the publish.",
+    ),
+    "adopt-promotion": (
+        S_DISPOSITION_WARNED,
+        "Same save, same bookkeeping-only write: it records a DOI "
+        "Zenodo says is already published. The researcher confirms "
+        "before it is recorded.",
     ),
     "declare-determinism": (
         S_DISPOSITION_UNWARNED,
@@ -241,10 +280,23 @@ def _fdictReadLadderActions():
     dictActions = {}
     for iIndex, sAction in enumerate(listKeys):
         sBody = _fsSelectActionBody(sBlock, listKeys, iIndex)
+        # Most entries hang off /api/workflow/{id} and declare the
+        # tail in `sPath`; a few live under the service prefix their
+        # flow already owns and declare the whole route in
+        # `sAbsolutePath`. Reading only the first form makes those
+        # actions' writes silently invisible here.
         matchPath = re.search(r'sPath: "([^"]+)"', sBody)
+        matchAbsolute = re.search(
+            r'sAbsolutePath:\s*"([^"]+)"(?:\s*\+\s*\n?\s*"([^"]+)")?',
+            sBody,
+        )
         matchMethod = re.search(r'sMethod: "(\w+)"', sBody)
         dictActions[sAction] = {
             "sPath": matchPath.group(1) if matchPath else "",
+            "sAbsolutePath": (
+                "".join(sPart or "" for sPart in matchAbsolute.groups())
+                if matchAbsolute else ""
+            ),
             "sMethod": (
                 matchMethod.group(1) if matchMethod else "POST"
             ),
@@ -270,7 +322,8 @@ def _tRouteKeyOf(dictAction):
     """Return the ``(sMethod, sRouteTemplate)`` an action posts to."""
     return (
         dictAction["sMethod"].upper(),
-        _S_WORKFLOW_ROUTE_PREFIX + dictAction["sPath"],
+        dictAction.get("sAbsolutePath")
+        or _S_WORKFLOW_ROUTE_PREFIX + dictAction["sPath"],
     )
 
 

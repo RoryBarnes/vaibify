@@ -495,12 +495,12 @@ def _fsLegacyZenodoRecordId(dictWorkflow, sDoi):
 def fsZenodoRecordIdFromDoi(sDoi):
     """Return the record id embedded in a genuine Zenodo DOI, or ``""``.
 
-    Zenodo DOI suffixes are always ``/zenodo.NNN``; a foreign DOI whose
-    suffix merely ends in ``zenodo.NNN`` must not have a record id
-    invented from it.
+    Delegates to the one Zenodo DOI grammar, which lives beside the
+    rest of the Zenodo DOI vocabulary in ``zenodoClient``; a copy
+    here would be a second grammar to keep in step.
     """
-    matchDoi = re.search(r"/zenodo\.(\d+)$", str(sDoi or "").strip())
-    return matchDoi.group(1) if matchDoi else ""
+    from vaibify.reproducibility import zenodoClient
+    return zenodoClient.fsExtractRecordIdFromDoi(sDoi)
 
 
 def fbDeclareZenodoRecord(dictWorkflow, sRecordId, sDoi=""):

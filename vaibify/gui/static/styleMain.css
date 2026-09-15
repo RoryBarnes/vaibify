@@ -6416,6 +6416,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .step-blocker-glyph-l3-workflow-attestation,
 .step-blocker-glyph-l3-workflow-attestation-archive,
 .step-blocker-glyph-l3-workflow-image-archive,
+.step-blocker-glyph-l3-workflow-sandbox-archive,
+.step-blocker-glyph-l3-workflow-reproduce-stale,
 .step-blocker-glyph-l3-workflow-envelope,
 .step-blocker-glyph-l3-workflow-envelope-zenodo,
 .step-blocker-glyph-l3-workflow-binaries {
@@ -7173,6 +7175,24 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 /* The Level 3 consequence of declining, beside the decline option
    itself. Orange rather than muted grey: it is a consequence the
    researcher is choosing, not a footnote about one. */
+/* A deposit whose bytes match the envelope but whose host promises
+   nothing. It rides BESIDE the row's state: the glyph in the banner,
+   the explanation and the offer in the expanded detail. Orange, never
+   red — red would say the deposit diverges, which it does not. */
+.requirement-row-warning {
+    color: var(--color-orange);
+    margin-left: 6px;
+    font-weight: bold;
+    cursor: help;
+}
+
+.permanence-warning {
+    padding: 4px 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--color-orange);
+}
+
 .environment-archive-decline-warning {
     padding-left: 22px;
     font-size: 10px;
@@ -8485,4 +8505,57 @@ body.council-workspace-open #mainLayout {
     opacity: 0.85;
     font-size: 12px;
     line-height: 1.45;
+}
+
+/* ── The "do this one first" arrow ───────────────────────────────
+   Shown only when one blocked requirement must be fixed BEFORE the
+   others; its PRESENCE is the message, so it must not become
+   decoration that is always there. The travel animation says "go
+   here", deliberately unlike the badge pulse, which says "vaibify is
+   asking" -- two different statements must not share a motion. */
+.ordering-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    margin-left: 0.6em;
+    padding: 0.1em 0.5em;
+    border: 1px solid var(--highlight-color);
+    border-radius: 10px;
+    font-size: 0.82em;
+    color: var(--highlight-color);
+    background: transparent;
+    cursor: pointer;
+}
+
+.ordering-arrow:hover {
+    background: var(--highlight-color);
+    color: var(--bg-color);
+}
+
+.ordering-arrow-glyph {
+    animation: orderingArrowTravel 1.4s ease-in-out infinite;
+}
+
+@keyframes orderingArrowTravel {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(0.35em); }
+}
+
+/* The row the arrow names. Outlined rather than filled: the row's own
+   level cells still have to read as themselves, and a fill would
+   compete with the state colour that says WHY it is blocked. */
+.requirement-row-next > .requirement-row-header {
+    outline: 2px solid var(--highlight-color);
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+.requirement-row-next-reason {
+    margin: 0.35em 0 0.2em 1.6em;
+    font-size: 0.85em;
+    color: var(--highlight-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ordering-arrow-glyph { animation: none; }
 }

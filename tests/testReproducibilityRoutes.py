@@ -174,12 +174,21 @@ def _fnSeedReadyL3Repo(sProjectRepo):
     sReproBody = "#!/usr/bin/env bash\nset -e\n"
     with open(os.path.join(sProjectRepo, "reproduce.sh"), "w") as fh:
         fh.write(sReproBody)
-    # Manifest listing reproduce.sh + Dockerfile.
+    # Manifest listing the whole envelope: its scope widened on
+    # 2026-09-14, so one naming only reproduce.sh and the Dockerfile
+    # reads as incomplete and the readiness route refuses.
     sReproHash = hashlib.sha256(sReproBody.encode()).hexdigest()
     sDockerHash = hashlib.sha256(sDockerBody.encode()).hexdigest()
+    sLockHash = hashlib.sha256(sLockBody.encode()).hexdigest()
+    with open(
+        os.path.join(pathDir, "environment.json"), "rb",
+    ) as fileEnvelope:
+        sEnvelopeHash = hashlib.sha256(fileEnvelope.read()).hexdigest()
     sManifestBody = (
         f"{sReproHash}  reproduce.sh\n"
         f"{sDockerHash}  Dockerfile\n"
+        f"{sLockHash}  requirements.lock\n"
+        f"{sEnvelopeHash}  .vaibify/environment.json\n"
     )
     with open(os.path.join(sProjectRepo, "MANIFEST.sha256"), "w") as fh:
         fh.write(sManifestBody)

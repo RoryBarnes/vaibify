@@ -1918,11 +1918,23 @@ def _fbArchiveZenodoForAutoArchive(
 ):
     """Archive files to Zenodo for the auto-archive flow."""
     from . import syncDispatcher
+    from ..reproducibility import syncBookkeeping
     if not listFiles:
         return False
     sZenodoService = dictWorkflow.get("sZenodoService", "sandbox")
-    iParentDepositId = int(
-        dictWorkflow.get("sZenodoDepositionId", "0") or 0
+    # The same local refusal the manual archive raises. Unattended,
+    # the remote 404 would land in a log nobody reads and the
+    # auto-archive would report a failure with no cause attached.
+    sRefusal = syncBookkeeping.fsDescribeCrossInstanceParent(
+        dictWorkflow, sZenodoService,
+    )
+    if sRefusal:
+        logging.getLogger("vaibify").warning(
+            "Auto Archive: Zenodo archive refused: %s", sRefusal,
+        )
+        return False
+    iParentDepositId = syncBookkeeping.fiResolveZenodoParentDepositId(
+        dictWorkflow,
     )
     iExit, _sOut = syncDispatcher.ftResultArchiveToZenodo(
         connectionDocker, sContainerId,

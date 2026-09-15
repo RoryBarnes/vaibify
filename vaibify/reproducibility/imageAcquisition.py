@@ -55,6 +55,7 @@ from vaibify.reproducibility.reproductionSource import (
 
 __all__ = [
     "ImageAcquisitionRefusedError",
+    "fsDownloadVerifiedTarball",
     "S_OBTAINED_ARCHIVE",
     "S_OBTAINED_LOCAL",
     "S_OBTAINED_REGISTRY",
@@ -282,7 +283,7 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
         return ""
     sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
     try:
-        sTarballPath = _fsDownloadVerifiedTarball(
+        sTarballPath = fsDownloadVerifiedTarball(
             dictRecord, sScratchDirectory, fnStatus,
         )
         sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)
@@ -297,12 +298,18 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
     return sLoadedId
 
 
-def _fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
+def fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
     """Stream the deposit into scratch and refuse it unless it hashes right.
 
     The hash and the size come from the ENVELOPE's record, never from
     the record page: the page is what a download is being checked
     against, not the authority on what it should contain.
+
+    Shared with the promotion lane, which falls back to the sandbox
+    copy when the image is positively absent from the daemon. The
+    alternative there -- ``ZenodoClient.fnDownloadFile`` -- writes
+    with no size ceiling and computes no digest, so a promotion built
+    on it would upload whatever the sandbox served.
     """
     sDoi = str(dictRecord.get("sVersionDoi") or "")
     sName = str(dictRecord.get("sTarballName") or "")

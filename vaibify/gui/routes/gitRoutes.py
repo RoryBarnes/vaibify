@@ -62,6 +62,7 @@ from ..routeScope import (
 )
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility.manifestPaths import flistStepDeclarationRepoPaths
+from ...reproducibility import syncBookkeeping
 
 logger = logging.getLogger("vaibify")
 
@@ -385,9 +386,8 @@ def _fnRegisterGitBadges(app, dictCtx):
             dictWorkflow.get("dictSyncStatus", {}) or {},
             dictHashes, setMissing,
             sProjectRepoPath=sRepo,
-            sZenodoService=dictWorkflow.get(
-                "sZenodoService", "sandbox",
-            ),
+            sZenodoService=syncBookkeeping
+            .fsResolveRecordedZenodoService(dictWorkflow),
             dictArxivStatus=dictArxivStatus,
             bArxivConfigured=_fbArxivConfiguredFor(dictWorkflow),
             dictGithubStatus=dictGithubStatus,

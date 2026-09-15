@@ -684,6 +684,41 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(sLabel) + '</button></div>';
     }
 
+    var S_SANDBOX_WARNING_TOOLTIP = "Not a permanent archive";
+
+    function _fbIsSandboxDeposit(sPermanence) {
+        /* The BACKEND classifies permanence, from the deposit record's
+           own recorded instance. Re-deriving it here from the DOI
+           string would make the frontend a second authority on a
+           question that has one — and the string alone cannot answer
+           it: a DOI that is not recognizably a sandbox DOI is not
+           thereby a production one. "unknown" renders as today. */
+        return sPermanence === "sandbox";
+    }
+
+    function _fsRenderPermanenceNote(sPermanence, sWhat, sAction) {
+        /* The explanation and the offer, in the expanded detail.
+           Sandbox and production are separate systems: nothing
+           transfers, so "make permanent" can only mean depositing
+           again on zenodo.org and recording the new DOI. Saying so
+           here is what stops the button reading as "move my
+           archive". */
+        if (!_fbIsSandboxDeposit(sPermanence)) return "";
+        return '<div class="permanence-warning">\u26a0 ' +
+            fnEscapeHtml(
+                sWhat + " is on Zenodo's SANDBOX, which mints test " +
+                "DOIs and makes no preservation promise \u2014 " +
+                "Zenodo may clear it at any time. Sandbox and " +
+                "production are separate systems and nothing " +
+                "transfers between them, so making this permanent " +
+                "means depositing again on zenodo.org under a " +
+                "production token and recording the new DOI. The " +
+                "sandbox record stays where it is.") +
+            '</div>' +
+            _fsRenderActionButton(sAction, "", "Make Permanent",
+                false, true);
+    }
+
     function _fsRenderPlainDetail(sStatusText, sHowto) {
         return '<div class="requirement-row-detail">' +
             '<div class="requirement-row-status">' +
@@ -920,6 +955,8 @@ var VaibifyWorkflowRequirements = (function () {
                 dictArchive, sState),
             sTitle: _DICT_ARCHIVE_STATE_TITLES[sState] ||
                 "Environment archive",
+            sWarning: _fbIsSandboxDeposit(dictArchive.sPermanence)
+                ? S_SANDBOX_WARNING_TOOLTIP : "",
             sState: _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown",
             fsDetail: function () {
                 return _fsRenderEnvironmentArchiveDetail(dictArchive);
@@ -935,15 +972,27 @@ var VaibifyWorkflowRequirements = (function () {
         sHtml += _fsRenderArchiveDepositProgress(dictArchive);
         sHtml += _fsRenderArchiveRecord(dictArchive);
         sHtml += _fsRenderDepositedDoiRow(dictArchive);
+        sHtml += _fsRenderPermanenceNote(
+            dictArchive.sPermanence, "This image deposit",
+            "promote-environment-archive");
         return sHtml + _fsRenderArchiveForm(dictArchive) + '</div>';
     }
 
     function _fsDescribeArchiveState(dictArchive) {
         var sState = dictArchive.sState || "unknown";
         if (sState === "attained") {
+            /* "a permanent archive" is a CLAIM, and it is false for a
+               sandbox deposit — which is exactly the state that made
+               this sentence worth splitting. The bytes really do
+               match either way; what changes is whether anyone has
+               promised to keep them. */
             return "The container image these results were produced " +
-                "in is deposited in a permanent archive, and the " +
-                "deposit covers the image and platform this " +
+                "in is deposited " +
+                (_fbIsSandboxDeposit(dictArchive.sPermanence)
+                    ? "on Zenodo's SANDBOX, which is not a permanent " +
+                      "archive, and the deposit"
+                    : "in a permanent archive, and the deposit") +
+                " covers the image and platform this " +
                 "project's envelope pins.";
         }
         if (sState === "running") {
@@ -1153,7 +1202,7 @@ var VaibifyWorkflowRequirements = (function () {
                 "envelopeMirror", "GitHub mirror", "github",
                 "sGithub", listEnvelope,
                 dictDetail.bEnvelopeInGithubMirror === true,
-                _fdictCheckForService(dictChecks, "github"),
+                _fdictCheckForService(dictChecks, "github"), null,
                 'The published reproduce script, manifest, ' +
                 'dependency lock, environment snapshot and ' +
                 'Dockerfile match the copies in this repository.',
@@ -1167,6 +1216,7 @@ var VaibifyWorkflowRequirements = (function () {
                 "sZenodo", listEnvelope,
                 dictDetail.bEnvelopeInZenodoArchive === true,
                 _fdictCheckForService(dictChecks, "zenodo"),
+                _fdictProjectArchiveInfo(dictDetail),
                 'The envelope files are in the Zenodo archive under ' +
                 'a DOI. Zenodo versions are immutable, so this row ' +
                 'goes red after any envelope change and comes back ' +
@@ -1249,17 +1299,69 @@ var VaibifyWorkflowRequirements = (function () {
         return dictHealth;
     }
 
+    function _fdictProjectArchiveInfo(dictDetail) {
+        /* The two halves of the Zenodo row, from two authorities on
+           purpose. The DOI is the one the VERIFY compared against, so
+           it must come from the cache that verify wrote; permanence
+           and the button come from the CURRENT primary record, which
+           the cache lags — the post-archive verify is best-effort, so
+           a successful promotion can leave a sandbox cache in place
+           and a button driven off it would offer a promotion the
+           route then refuses. */
+        var dictSyncs = dictDetail.dictRemoteSyncs || {};
+        var dictZenodo = dictSyncs.zenodo || {};
+        return {
+            sPermanence: (dictDetail.dictArchivePermanence || {})
+                .sProjectArchivePermanence || "",
+            sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
+            sCrossInstance:
+                dictDetail.sZenodoCrossInstanceRefusal || "",
+        };
+    }
+
+    function _fsRenderCrossInstanceRemedy(sRefusal) {
+        /* A refusal naming a remedy that has no control is the "name
+           the cause" rule failing in its worst direction: the
+           researcher follows the instruction and finds nothing to
+           press. The backend's own sentence is the explanation. */
+        if (!sRefusal) return "";
+        return '<div class="permanence-warning">\u26a0 ' +
+            fnEscapeHtml(sRefusal) + '</div>' +
+            _fsRenderActionButton("start-new-zenodo-concept", "",
+                "Start a new concept\u2026", false, true);
+    }
+
+    function _fsRenderArchivedDoiRow(sDoi) {
+        /* Read-only and selectable, like the environment archive's
+           Deposited DOI beneath its record: this row reported a DOI
+           nowhere at all, so the one string a researcher needs to
+           cite was on the screen that names it and not on the row
+           that checks it. */
+        if (!sDoi) return "";
+        return '<label class="determinism-form-row ' +
+            'envelope-archived-doi">' +
+            '<span class="environment-archive-doi-label">' +
+            'Archived DOI</span>' +
+            '<input type="text" readonly ' +
+            'class="input-modal-field environment-archive-doi-value" ' +
+            'value="' + fnEscapeHtml(sDoi) + '">' +
+            '</label>';
+    }
+
     function _fdictEnvelopeRemoteRow(
         sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
-        dictCheck, sMatchedNote, sDivergedNote,
+        dictCheck, dictArchiveInfo, sMatchedNote, sDivergedNote,
     ) {
         var dictHealth = _fdictEnvelopeRemoteRowHealth(
             bMatched, sBadgeKey, listEnvelope);
         var sState = dictHealth.sState;
+        var dictArchive = dictArchiveInfo || {};
         return {
             sKey: sKey, iLevel: 3,
             sTitle: sTitle,
             sState: sState,
+            sWarning: _fbIsSandboxDeposit(dictArchive.sPermanence)
+                ? S_SANDBOX_WARNING_TOOLTIP : "",
             // One verify answers both scopes, so the Level 3 row
             // pulses on the same service's check as its Level 2 twin.
             bChecking: _fbCheckIsRunning(dictCheck),
@@ -1341,7 +1443,15 @@ var VaibifyWorkflowRequirements = (function () {
                           fnEscapeHtml(sCheck) + '</div>'
                         : '') +
                     sFiles + '<div class="detail-note">' + sNote +
-                    '</div>' + sVerify + '</div>';
+                    '</div>' +
+                    _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
+                    _fsRenderCrossInstanceRemedy(
+                        dictArchive.sCrossInstance) +
+                    _fsRenderPermanenceNote(
+                        dictArchive.sPermanence,
+                        "This project's Zenodo deposit",
+                        "promote-project-deposit") +
+                    sVerify + '</div>';
             }};
     }
 
@@ -1741,6 +1851,102 @@ var VaibifyWorkflowRequirements = (function () {
         ];
     }
 
+    var _DICT_PROMOTION_ACTION_LABELS = {
+        resume: "Finish publishing",
+        adopt: "Record the published DOI",
+        discard: "Discard this promotion\u2026",
+    };
+
+    var _DICT_PROMOTION_ACTION_NAMES = {
+        resume: "resume-promotion",
+        adopt: "adopt-promotion",
+        discard: "discard-promotion",
+    };
+
+    function _flistPendingPromotionRows(dictDetail) {
+        /* One row per interrupted promotion, surfaced on LOAD. A
+           promotion mints a permanent DOI in the middle of a long
+           upload, and a minted DOI nobody wrote down cannot be
+           recovered by guessing — so this must not depend on the
+           researcher having kept a failed request's toast.
+
+           The row offers NOTHING until a reconcile has asked Zenodo.
+           Vaibify does not know whether the draft holds two files or
+           five, nor whether a publish that never returned
+           nevertheless succeeded; the actions come from Zenodo's
+           answer, never from the local record. */
+        var listPending = dictDetail.listPendingPromotions || [];
+        return listPending.map(function (dictPending) {
+            return {
+                sKey: "promotion-" + dictPending.sPromotionId,
+                iLevel: 3,
+                sTitle: "Interrupted promotion (" +
+                    (dictPending.sLane === "project"
+                        ? "project deposit" : "environment archive") +
+                    ")",
+                sState: "orange",
+                sWarning: "A promotion did not finish",
+                fsDetail: function () {
+                    return _fsRenderPendingPromotionDetail(dictPending);
+                }};
+        });
+    }
+
+    function _fsRenderPendingPromotionDetail(dictPending) {
+        var dictOutcome = _DICT_PROMOTION_OUTCOMES[
+            dictPending.sPromotionId] || null;
+        var sHtml = '<div class="requirement-row-detail">' +
+            '<div class="requirement-row-status">' +
+            fnEscapeHtml(
+                "A promotion to production Zenodo started on " +
+                (dictPending.sStartedIso || "an unrecorded date") +
+                " and did not finish. " +
+                (dictPending.iDepositId
+                    ? "It had created deposit " +
+                      dictPending.iDepositId + " on Zenodo, so only " +
+                      "Zenodo can say what became of it."
+                    : "No deposit was created, so nothing on Zenodo " +
+                      "was touched.")) +
+            '</div>';
+        if (!dictOutcome) {
+            return sHtml + _fsRenderActionButton(
+                "reconcile-promotion", dictPending.sPromotionId,
+                "Ask Zenodo what happened") + '</div>';
+        }
+        sHtml += '<div class="detail-note">' +
+            fnEscapeHtml(dictOutcome.sMessage) + '</div>';
+        var listActions = dictOutcome.listActions || [];
+        if (!listActions.length) {
+            /* Every outcome that offers nothing says so out loud.
+               `unknown` in particular KEEPS the record: a question
+               nobody answered is not a "no", and discarding on it
+               would throw away the only handle on a DOI that may
+               exist. */
+            return sHtml + '<div class="permanence-warning">' +
+                fnEscapeHtml(
+                    "Vaibify offers no action on this outcome. The " +
+                    "record is kept.") + '</div></div>';
+        }
+        for (var i = 0; i < listActions.length; i++) {
+            sHtml += _fsRenderActionButton(
+                _DICT_PROMOTION_ACTION_NAMES[listActions[i]],
+                dictPending.sPromotionId,
+                _DICT_PROMOTION_ACTION_LABELS[listActions[i]],
+                listActions[i] === "discard");
+        }
+        return sHtml + '</div>';
+    }
+
+    /* Reconcile answers are held here rather than on the poll payload:
+       they are the result of ASKING Zenodo, which costs a network
+       call, so the poll must not imply one happened. Cleared on
+       workflow reset like every other view state. */
+    var _DICT_PROMOTION_OUTCOMES = {};
+
+    function fnRecordPromotionOutcome(sPromotionId, dictOutcome) {
+        _DICT_PROMOTION_OUTCOMES[sPromotionId] = dictOutcome;
+    }
+
     function _flistAttestationRows(dictDetail, dictContext) {
         // A rerun takes as long as the workflow does, so while one is
         // live the row PULSES and goes orange. That is a claim about
@@ -1752,11 +1958,22 @@ var VaibifyWorkflowRequirements = (function () {
         // colour is never the only signal. Do not "make these
         // consistent" in either direction.
         var bRunning = dictDetail.bRebuildAttestationRunning === true;
+        /* The rerun DID happen, and the row keeps saying so —
+           bRebuildAttestationCurrent stays honest. What a sandbox
+           deposit withholds is the CREDIT: the attestation cannot
+           carry a Level 3 claim while the archive it sits in promises
+           no preservation. Read from the gate's own verdict, never
+           re-derived: absent (an older hub) is TRUE, so a payload
+           that predates the criterion cannot silently redden a row. */
+        var dictPermanence = dictDetail.dictArchivePermanence || {};
+        var bNoSandbox = dictPermanence.bNoArchiveKnownSandbox !== false;
         return [
             {sKey: "rebuildAttestation", iLevel: 3,
              sTitle: "Rebuild attestation",
              sState: bRunning ? "running" : _fsLightStateFromBoolean(
-                 dictDetail.bRebuildAttestationCurrent === true),
+                 dictDetail.bRebuildAttestationCurrent === true &&
+                 bNoSandbox),
+             sWarning: bNoSandbox ? "" : S_SANDBOX_WARNING_TOOLTIP,
              bChecking: bRunning,
              fsDetail: function () {
                  /* "On file" earns a way to OPEN the file: the row
@@ -1774,6 +1991,7 @@ var VaibifyWorkflowRequirements = (function () {
                      fnEscapeHtml(_fsDescribeAttestation(
                          dictDetail, bRunning)) + '</div>' +
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
+                     _fsRenderAttestationPermanenceNote(dictPermanence) +
                      (bRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
                          "Verify Level 3 reproducibility")) +
@@ -1786,6 +2004,20 @@ var VaibifyWorkflowRequirements = (function () {
                      '</div>';
              }},
         ];
+    }
+
+    function _fsRenderAttestationPermanenceNote(dictPermanence) {
+        /* Names WHICH archive, from the backend's own issue list.
+           The row never states the positive from this — a gate that
+           passes on "unknown" cannot license "both are permanent". */
+        var listIssues = dictPermanence.listPermanenceIssues || [];
+        if (!listIssues.length) return "";
+        return '<div class="permanence-warning">\u26a0 ' +
+            fnEscapeHtml(
+                "This attestation does not count while an archive is " +
+                "a sandbox deposit. " + listIssues.join(" ") +
+                " Use Make Permanent on the affected row.") +
+            '</div>';
     }
 
     /* GitHub's mark, inline so the nudge needs no network and no
@@ -2001,7 +2233,12 @@ var VaibifyWorkflowRequirements = (function () {
     var _DICT_ARTIFACT_HOWTO = {
         manifest: "The list of every pinned file and its SHA-256 " +
             "hash. Regenerated automatically at each Level 1 pass, " +
-            "or on demand with the button below.",
+            "or on demand with the button below. When this row is " +
+            "red the manifest does not list every file the " +
+            "workflow declares \u2014 click Regenerate now to " +
+            "rewrite it. Regenerating changes the file, so the " +
+            "published copies stop matching until you push and " +
+            "archive them again.",
         dependencyLock: "Every Python dependency (when the project " +
             "uses Python) pinned by exact version and hash. " +
             "Regenerated automatically at each Level 1 pass, or on " +
@@ -2021,9 +2258,13 @@ var VaibifyWorkflowRequirements = (function () {
             "pinned image digest, not from a rebuild.",
         reproduceScript: "One script, at the repository " +
             "root, that reruns the whole project. It must match " +
-            "the current manifest; Generate rewrites it and makes " +
-            "this row's check pass. (This is one Level 3 " +
-            "requirement — the full Level 3 badge also needs the " +
+            "the current manifest AND be what vaibify's generator " +
+            "writes today \u2014 a script from an older vaibify can " +
+            "be perfectly valid and still unable to fetch the " +
+            "archived image, so a stranger's reproduction dies on " +
+            "its first line. Generate rewrites it and makes this " +
+            "row's check pass. (This is one Level 3 " +
+            "requirement \u2014 the full Level 3 badge also needs the " +
             "other rows here plus a passing rebuild attestation.)",
     };
 
@@ -2266,7 +2507,50 @@ var VaibifyWorkflowRequirements = (function () {
         return dictStateByLevel;
     }
 
-    function _fsRenderRequirementRow(dictRow, setExpandedRows) {
+    function _fsRenderOrderingArrow(dictNextStep, sGroupKey) {
+        /* Rendered ONLY when one blocked requirement has to be fixed
+           before the others. Its presence is the message -- no arrow
+           means the remaining work can be done in any order -- so it
+           must never become furniture that is always on screen. The
+           verdict is computed by the gates and shipped in the poll;
+           re-deriving an order here would be a second authority on a
+           question that has one. A row this cannot locate gets no
+           arrow: pointing at nothing is worse than pointing at all. */
+        if (!dictNextStep || !dictNextStep.sRowKey || !sGroupKey) {
+            return "";
+        }
+        return '<button type="button" class="ordering-arrow" ' +
+            'data-ordering-group="' + fnEscapeHtml(sGroupKey) + '" ' +
+            'data-ordering-row="' +
+            fnEscapeHtml(dictNextStep.sRowKey) + '" title="' +
+            fnEscapeHtml(dictNextStep.sReason || "") + '">' +
+            '<span class="ordering-arrow-glyph">\u2192</span>' +
+            'Do this first</button>';
+    }
+
+    function _fbGroupHoldsTheNextRow(listRows, dictNextStep) {
+        // Asked of the rows actually being rendered, so the arrow can
+        // only ever appear on the section that really contains its
+        // target -- there is no lookup table to drift from them.
+        if (!dictNextStep || !dictNextStep.sRowKey) return false;
+        return (listRows || []).some(function (dictRow) {
+            return dictRow.sKey === dictNextStep.sRowKey;
+        });
+    }
+
+    function _fsRenderNextStepReason(dictRow, dictNextStep) {
+        // Beside the row itself, because the arrow's tooltip is not
+        // reachable on a touch screen and the reason is the whole
+        // content of the claim.
+        if (!dictNextStep || dictNextStep.sRowKey !== dictRow.sKey) {
+            return "";
+        }
+        return '<div class="requirement-row-next-reason">' +
+            fnEscapeHtml(dictNextStep.sReason || "") + '</div>';
+    }
+
+    function _fsRenderRequirementRow(dictRow, setExpandedRows,
+                                     dictNextStep) {
         // Mirrors a step row's banner: triangle and title on the left,
         // the L1-L3 level strip on the right; the banner is the
         // expand control.
@@ -2278,19 +2562,31 @@ var VaibifyWorkflowRequirements = (function () {
         // claim still renders the n/a dash.
         var dictStateByLevel = dictRow.dictStateByLevel ||
             _fdictSingleLevelState(dictRow);
+        var bIsNext = Boolean(dictNextStep) &&
+            dictNextStep.sRowKey === dictRow.sKey;
         var sHtml = '<div class="requirement-row' +
             (bOpen ? ' expanded' : '') +
+            (bIsNext ? ' requirement-row-next' : '') +
             (dictRow.bChecking === true
                 ? ' requirement-row-checking' : '') + '">' +
             '<div class="requirement-row-header" data-req="' +
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
             _fsExpandTriangle(bOpen) +
-            fnEscapeHtml(dictRow.sTitle) + '</span>' +
+            fnEscapeHtml(dictRow.sTitle) +
+            // BESIDE the state, never replacing it. A sandbox deposit
+            // really does hold matching bytes, so moving the row's
+            // colour would be a claim nobody earned; the glyph says
+            // the bytes are somewhere that promises nothing.
+            (dictRow.sWarning
+                ? '<span class="requirement-row-warning" title="' +
+                  fnEscapeHtml(dictRow.sWarning) + '">\u26a0</span>'
+                : '') + '</span>' +
             _fsRenderLevelStrip(
                 dictStateByLevel, dictRow.sTitle,
                 dictRow.dictReasonByLevel) +
-            '</div>';
+            '</div>' +
+            _fsRenderNextStepReason(dictRow, dictNextStep);
         if (bOpen) {
             sHtml += dictRow.fsDetail();
         }
@@ -2309,6 +2605,7 @@ var VaibifyWorkflowRequirements = (function () {
         publishedEnvelope: "Published envelope",
         ai: "AI",
         attestation: "Attestation",
+        promotions: "Interrupted promotions",
     };
 
     function _flistRepositoryRows(dictContext) {
@@ -2449,7 +2746,7 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsRenderRequirementGroup(
         sGroupKey, listRows, setExpandedGroups, setExpandedRows,
-        sFooterHtml
+        sFooterHtml, dictNextStep
     ) {
         var bOpen = setExpandedGroups &&
             setExpandedGroups.has(sGroupKey);
@@ -2467,6 +2764,10 @@ var VaibifyWorkflowRequirements = (function () {
             '<span class="requirement-group-title">' +
             _fsExpandTriangle(bOpen) +
             _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
+            _fsRenderOrderingArrow(
+                dictNextStep,
+                _fbGroupHoldsTheNextRow(listRows, dictNextStep)
+                    ? sGroupKey : "") +
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
                 _DICT_GROUP_TITLES[sGroupKey]) + '</div>';
@@ -2474,7 +2775,7 @@ var VaibifyWorkflowRequirements = (function () {
             sHtml += '<div class="requirement-group-body">';
             for (var i = 0; i < listRows.length; i++) {
                 sHtml += _fsRenderRequirementRow(
-                    listRows[i], setExpandedRows);
+                    listRows[i], setExpandedRows, dictNextStep);
             }
             sHtml += (sFooterHtml || '') + '</div>';
         }
@@ -2517,16 +2818,6 @@ var VaibifyWorkflowRequirements = (function () {
         var dictChecks = dictContext.dictRemoteChecks || {};
         var setToggled = dictContext.setToggledFileGroups;
         var bOpen = dictContext.bProjectBlockCollapsed !== true;
-        var sHtml = '<div class="project-block-header">' +
-            '<span class="project-block-title" ' +
-            'title="Requirements that apply to the project as a ' +
-            'whole rather than to any single step. Click the banner ' +
-            'to collapse or expand.">' +
-            _fsExpandTriangle(bOpen) + 'Project' +
-            '</span>' +
-            VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
-            '</div>';
-        if (!bOpen) return sHtml;
         var listSections = [
             ["repository",
              _flistRepositoryRows(dictContext).concat(
@@ -2557,19 +2848,54 @@ var VaibifyWorkflowRequirements = (function () {
             ["ai", _flistAiRows(dictDetail), ""],
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],
+            // Last, and present only when there IS one: a section
+            // that renders empty on every healthy project would be a
+            // permanent heading about a situation nobody is in.
+            ["promotions", _flistPendingPromotionRows(dictDetail), ""],
         ];
+        /* The arrow lives on the SECTION banner, not this one
+           (researcher's ruling, 2026-09-14): "Artifacts" is where the
+           work is, and as the answer moves down the ladder the marker
+           travels with it to Published envelope and then Attestation.
+           On the project banner it would have been a fixed label
+           about a moving target. */
+        var dictNextStep = dictDetail.dictNextOrderedStep || null;
+        var sHtml = '<div class="project-block-header">' +
+            '<span class="project-block-title" ' +
+            'title="Requirements that apply to the project as a ' +
+            'whole rather than to any single step. Click the banner ' +
+            'to collapse or expand.">' +
+            _fsExpandTriangle(bOpen) + 'Project' +
+            '</span>' +
+            VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
+            '</div>';
+        if (!bOpen) return sHtml;
         var sBody = '<div class="project-block-body">';
         for (var i = 0; i < listSections.length; i++) {
+            /* The promotions section renders only when there IS an
+               interrupted promotion. Every other section is a
+               standing part of the ladder and shows its heading even
+               when it has nothing to report; this one would be a
+               permanent heading about a situation nobody is in. */
+            if (listSections[i][0] === "promotions" &&
+                    !listSections[i][1].length) {
+                continue;
+            }
             sBody += _fsRenderRequirementGroup(
                 listSections[i][0], listSections[i][1],
                 dictContext.setExpandedRequirementGroups,
                 dictContext.setExpandedRequirementRows,
-                listSections[i][2]);
+                listSections[i][2], dictNextStep);
         }
         return sHtml + sBody + '</div>';
     }
 
     return {
         fsRenderProjectBlock: fsRenderProjectBlock,
+        // The reconcile handler hands Zenodo's answer back here; the
+        // poll must not carry it, because the poll asking Zenodo on
+        // every tick is exactly what the row's explicit "Ask Zenodo"
+        // button exists to avoid.
+        fnRecordPromotionOutcome: fnRecordPromotionOutcome,
     };
 })();

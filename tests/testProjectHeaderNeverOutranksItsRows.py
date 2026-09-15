@@ -33,8 +33,12 @@ import pytest
 from tests.syncStatusFixtures import fdictBuildCachedVerify
 from vaibify.reproducibility.levelGates import (
     _fbComputeLevel2,
+    _fdictL3WorkflowChecks,
+    _T_WORKFLOW_LEVEL3_CRITERIA,
+    fbAtLeastLevel3,
     fdictComputeWorkflowScopeLevelStates,
     flistLevel2Blockers,
+    flistLevel3Blockers,
 )
 
 
@@ -182,3 +186,57 @@ def testStalenessAndDivergenceNeverChargeTheSameServiceTwice(
         "two unhappy services cost other than two criteria: "
         f"{dictCell}"
     )
+
+
+# ── The same asymmetry one level up ──
+
+
+def testEveryLevel3CriterionTheGatesEmitIsCountedByTheHeader(
+    fixtureProjectRepo,
+):
+    """A criterion the checks dict emits and the tuple omits is invisible.
+
+    The header intersects the live blocker list against a fixed
+    tuple, so an omission does not under-count — it silently drops the
+    criterion and the cell paints a check above the row that blocks.
+    This is the generalization of the reported bug: it asserts the two
+    sets agree rather than naming one criterion at a time.
+    """
+    setEmitted = set(_fdictL3WorkflowChecks({}, fixtureProjectRepo))
+    setCounted = set(_T_WORKFLOW_LEVEL3_CRITERIA)
+    assert setEmitted - setCounted == set(), (
+        "these criteria block the rows and are dropped from the "
+        f"header count: {sorted(setEmitted - setCounted)}"
+    )
+
+
+def testASandboxArchiveBlocksTheScalarGateAndTheRowsTogether(
+    fixtureProjectRepo,
+):
+    """The header must not outrank its rows over the permanence criterion.
+
+    ``fbAtLeastLevel3`` enumerates its conjuncts by hand, so a
+    criterion registered only in the dict and the tuple leaves the
+    scalar gate reporting attainment while the row blocks — the
+    display disagreeing with itself, which is the shape of the 2026-
+    08-30 defect this module exists for.
+    """
+    os.makedirs(os.path.join(fixtureProjectRepo, ".vaibify"), exist_ok=True)
+    with open(
+        os.path.join(fixtureProjectRepo, ".vaibify", "environment.json"),
+        "w",
+    ) as fileOut:
+        json.dump({"dictContainer": {
+            "sImageDigest": "registry.example/p@sha256:" + "a" * 64,
+            "sArchitecture": "arm64",
+            "dictImageArchive": {"sZenodoService": "sandbox"},
+        }}, fileOut)
+    dictWorkflow = _fdictBuildWorkflow(fixtureProjectRepo)
+    listCriteria = [
+        dictEntry["sCriterion"]
+        for dictEntry in flistLevel3Blockers(
+            dictWorkflow, fixtureProjectRepo, False,
+        )
+    ]
+    assert "an-archive-is-a-sandbox-deposit" in listCriteria
+    assert fbAtLeastLevel3(dictWorkflow, fixtureProjectRepo) is False

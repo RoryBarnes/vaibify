@@ -46,9 +46,14 @@ nothing infers it.
 """
 
 __all__ = [
+    "ArchiveVerificationError",
     "I_PROGRESS_CHUNK_BYTES",
+    "flistDescribeArchiveDisagreement",
+    "fnRefuseUnlessArchiveHoldsWhatWeSent",
     "fdictDepositImageArchive",
     "fdictRecheckArchiveAgainstLocalImage",
+    "fdictStampArchiveRecord",
+    "fdictUploadAndPublishImageArchive",
     "fiReadImageSizeBytes",
     "fsJudgeDepositProvenance",
     "fsRecomputeImageStreamSha256",
@@ -66,8 +71,13 @@ from datetime import datetime, timezone
 from vaibify.reproducibility import _hashing, imageArchive, zenodoClient
 from vaibify.reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
+    fnWriteEnvironmentJson,
 )
 from vaibify.reproducibility.l3Attestation import S_STATUS_PASSED
+
+
+class ArchiveVerificationError(Exception):
+    """The published deposit disagrees with the record describing it."""
 
 
 logger = logging.getLogger(__name__)
@@ -186,8 +196,9 @@ def ftSaveAndCompressImage(
     """Save one image to a compressed tarball; return its four facts.
 
     Returns ``(sTarballPath, sTarballSha256, iTarballBytes,
-    sImageStreamSha256)``. TWO hashes, over one artefact, because they
-    answer different questions and neither can stand in for the other.
+    sImageStreamSha256, sTarballMd5)``. THREE hashes, over one
+    artefact, because they answer different questions and none can
+    stand in for another.
     The TARBALL hash covers the bytes actually uploaded, so a
     downloader can verify what they fetched. The IMAGE STREAM hash
     covers ``docker save``'s uncompressed output, so a later re-check
@@ -195,6 +206,15 @@ def ftSaveAndCompressImage(
     compressor: zstd and gzip give different bytes for one image, and
     so can two builds of one codec, which would report an identical
     image as diverged.
+
+    The TARBALL md5 is the same bytes again in Zenodo's vocabulary
+    -- the only checksum that archive publishes, so it is what lets a
+    deposit be asked whether it holds what was sent. It is taken in
+    the SAME read as the sha256, never a second pass: a file that
+    changed between two reads would be recorded with a sha256 of the
+    old bytes and an md5 of the new, and the archive would then
+    confirm the md5 while the integrity claim named bytes nobody
+    uploaded.
 
     The stream hash is taken by DECOMPRESSING the finished tarball
     rather than by tapping the save. That costs one pass and buys a
@@ -215,13 +235,15 @@ def ftSaveAndCompressImage(
         sImageReference, sTarballPath, ffnOpenWriter, iImageBytes,
         fnReportProgress,
     )
+    sSha256, sMd5 = _hashing.ftHashFileSha256AndMd5(sTarballPath)
     return (
         sTarballPath,
-        "sha256:" + _hashing.fsHashFileSha256(sTarballPath),
+        "sha256:" + sSha256,
         os.path.getsize(sTarballPath),
         "sha256:" + _fsHashDecompressedTarball(
             sTarballPath, ffnOpenReader,
         ),
+        sMd5,
     )
 
 
@@ -344,7 +366,7 @@ S_IMAGE_UPLOAD_TYPE = "software"
 def fdictDepositImageArchive(
     clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
     dictMetadata, fnReportProgress=None, dictAttestation=None,
-    fnReportUploadStarted=None,
+    fnReportUploadStarted=None, fnReportVerifying=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
@@ -363,13 +385,48 @@ def fdictDepositImageArchive(
     moving at that moment and the upload of those bytes is the longer
     half from a laptop.
     """
-    sTarballPath, sSha256, iBytes, sStreamSha256 = ftSaveAndCompressImage(
+    tTarball = ftSaveAndCompressImage(
         sImageReference, sScratchDirectory, fnReportProgress,
     )
+    return fdictUploadAndPublishImageArchive(
+        clientZenodo, sImageReference, sArchitecture, dictMetadata,
+        tTarball, dictAttestation=dictAttestation,
+        fnReportUploadStarted=fnReportUploadStarted,
+        fnReportVerifying=fnReportVerifying,
+    )
+
+
+def fdictUploadAndPublishImageArchive(
+    clientZenodo, sImageReference, sArchitecture, dictMetadata,
+    tTarball, dictAttestation=None, fnReportUploadStarted=None,
+    fnReportDraftCreated=None, sProvenance="", fnReportVerifying=None,
+):
+    """Upload one already-written tarball, publish it, return its record.
+
+    Split from the save so a PROMOTION can re-deposit bytes it did not
+    just produce -- either a fresh ``docker save`` of the image the
+    envelope pins, or the sandbox tarball downloaded and hash-checked
+    against the record. ``tTarball`` is exactly what
+    :func:`ftSaveAndCompressImage` returns: path, sha256, size, the
+    sha256 of the uncompressed stream, and the md5.
+
+    ``sProvenance`` overrides the judgement for a re-deposit, which
+    establishes neither ``original`` nor ``verified-equivalent`` and
+    must therefore carry the old record's claim forward verbatim
+    rather than form a new one.
+
+    ``fnReportDraftCreated`` is called with the deposit id the moment
+    the draft exists and BEFORE any byte is uploaded. A promotion
+    mints a permanent DOI, and a lost one cannot be recovered by
+    guessing -- so the id must be durable before the long operation
+    that can be interrupted, not after it returns.
+    """
+    sTarballPath, sSha256, iBytes, sStreamSha256, sMd5 = tTarball
     dictRecord = imageArchive.fdictBuildArchiveRecord(
+        sTarballMd5=sMd5,
         sVersionDoi="", sConceptDoi="", sTarballSha256=sSha256,
         iTarballBytes=iBytes, sDepositedIso="",
-        sProvenance=fsJudgeDepositProvenance(
+        sProvenance=sProvenance or fsJudgeDepositProvenance(
             sImageReference, dictAttestation,
         ),
         sImageDigest=sImageReference, sArchitecture=sArchitecture,
@@ -394,11 +451,26 @@ def fdictDepositImageArchive(
         ),
     )
     iDepositId = dictDraft["id"]
+    if fnReportDraftCreated is not None:
+        fnReportDraftCreated(iDepositId)
     try:
         if fnReportUploadStarted is not None:
             fnReportUploadStarted(iBytes)
         clientZenodo.fnUploadToBucket(
             dictDraft["links"]["bucket"], sTarballPath,
+        )
+        # BEFORE the publish, not after, and the ordering is the whole
+        # safety property. Zenodo computes each file's checksum when
+        # the bucket receives it, so the draft can be asked what it
+        # holds while the deposit is still DISCARDABLE. Verifying
+        # afterwards would mean raising with a DOI already minted --
+        # an orphan the researcher owns, that vaibify refused to
+        # record, and that no lane on this path could clean up,
+        # because a published record cannot be discarded.
+        if fnReportVerifying is not None:
+            fnReportVerifying()
+        fnRefuseUnlessArchiveHoldsWhatWeSent(
+            clientZenodo, iDepositId, dictRecord,
         )
         dictPublished = clientZenodo.fdictPublishDraft(iDepositId)
     except Exception:
@@ -408,6 +480,83 @@ def fdictDepositImageArchive(
     dictRecord["sConceptDoi"] = dictPublished.get("conceptdoi") or ""
     dictRecord["sDepositedIso"] = datetime.now(timezone.utc).isoformat()
     return dictRecord
+
+
+def fnRefuseUnlessArchiveHoldsWhatWeSent(
+    clientZenodo, iDepositId, dictRecord,
+):
+    """Ask the archive what it stored, and raise unless it agrees.
+
+    The deposit is not finished when the upload returns; it is
+    finished when the archive can be asked what it holds and answers
+    correctly. Everything before this point is vaibify reporting on
+    vaibify: the sha256 in the record is what the local file hashed
+    to, and a truncated upload, a silently dropped byte range, or a
+    publish that stored a different object would leave that record
+    saying exactly what it says now.
+
+    It costs one small request, not a re-download, because Zenodo
+    computes and publishes each file's MD5 SERVER-SIDE -- so agreement
+    is a statement about the bytes Zenodo holds, made by Zenodo, in
+    the one checksum vocabulary it speaks. This is why the record
+    carries an MD5 beside its sha256.
+
+    What this does NOT prove is retrievability: that the file can
+    still be fetched and arrives intact through the download path. A
+    deep verify that re-downloads and re-hashes is a separate,
+    minutes-long operation, and conflating the two would let a
+    seconds-long check wear a claim it has not earned.
+
+    Raises rather than warns. A deposit whose contents disagree with
+    its record is worse than no deposit: the row would go green over
+    an archive that cannot satisfy it, which is the one outcome the
+    whole ladder exists to prevent.
+
+    Called on the DRAFT, before the publish. That is what makes
+    raising safe: the caller's handler discards the draft, so a
+    disagreement costs nothing and mints nothing. The deposit id is
+    named in the message anyway, because a refusal a researcher
+    cannot trace to a thing on Zenodo is one they cannot act on.
+    """
+    sExpectedMd5 = str(dictRecord.get("sTarballMd5") or "")
+    if not sExpectedMd5:
+        # Nothing to compare in Zenodo's vocabulary. Silence rather
+        # than a refusal: this is the upgrade path, and a record with
+        # no MD5 is legal.
+        return
+    dictDeposit = clientZenodo.fdictGetDeposit(iDepositId)
+    listProblems = flistDescribeArchiveDisagreement(
+        dictDeposit, dictRecord,
+    )
+    if listProblems:
+        raise ArchiveVerificationError(
+            "Zenodo deposit " + str(iDepositId) + " does not hold "
+            "what vaibify uploaded: " + " ".join(listProblems)
+            + " The draft was discarded; nothing was published."
+        )
+
+
+def flistDescribeArchiveDisagreement(dictDeposit, dictRecord):
+    """Return every way the archive's own report contradicts the record.
+
+    The environment archive is a single file, so this states the
+    record in the shared per-file vocabulary and asks the Zenodo
+    boundary to do the comparing. That module is the only one staged
+    on BOTH sides of the container wall, which makes it the only
+    place the two deposit lanes can share this check instead of
+    drifting apart on it.
+
+    No unexpected-file check: this lane always uploads into a FRESH
+    draft, so a file it did not send cannot be there.
+    """
+    return zenodoClient.flistDescribeDepositDisagreement(
+        dictDeposit,
+        [{
+            "sKey": str(dictRecord.get("sTarballName") or ""),
+            "sMd5": str(dictRecord.get("sTarballMd5") or ""),
+            "iBytes": int(dictRecord.get("iTarballBytes") or 0),
+        }],
+    )
 
 
 def _fnDiscardDraft(clientZenodo, iDepositId):
@@ -466,3 +615,86 @@ def fdictRecheckArchiveAgainstLocalImage(
         ),
         False,
     )
+
+
+def fdictStampArchiveRecord(
+    filesRepo, dictWorkflow, dictRecord, dictExtraContainerFields=None,
+):
+    """Merge the deposit record into ``.vaibify/environment.json``.
+
+    Read-modify-write rather than a rebuild, so the capture beside it
+    is untouched. The envelope's own regeneration is what later
+    decides whether this record still applies -- it carries the record
+    forward only while the fresh capture names the same image and
+    platform.
+
+    THE MANIFEST IS RE-PINNED IN THE SAME BREATH, and forgetting that
+    would make depositing an image DROP the project out of Level 3:
+    ``.vaibify/environment.json`` is pinned in ``MANIFEST.sha256``, so
+    writing the record changes a file the manifest claims to know the
+    hash of. The researcher would have archived their environment and
+    watched the ladder fall, with the two events looking unrelated.
+    Every other envelope writer on this ladder re-pins for the same
+    reason.
+
+    That justification DEPENDS on the manifest covering the envelope,
+    and for a while it did not: until 2026-09-14 the manifest pinned
+    the declared artefacts and ``reproduce.sh`` only, so this
+    paragraph described a consequence that could not occur. A comment
+    asserting a code fact it does not own is how a reader comes to
+    distrust the ones they cannot check, so the two are now tied
+    together by a test rather than by this sentence --
+    ``testManifestCompletenessAsksTheWriter`` fails if
+    ``environment.json`` ever leaves the pinned set.
+
+    ``dictExtraContainerFields`` carries the superseded note a
+    promotion retires, written in the SAME read-modify-write as the
+    record that replaces it: two passes would leave a window in which
+    the new DOI is on file and the old identifiers are gone.
+    """
+    dictPayload = fdictReadEnvironmentJson(filesRepo) or {}
+    dictContainer = dict(dictPayload.get("dictContainer") or {})
+    dictContainer[imageArchive.S_IMAGE_ARCHIVE_KEY] = dictRecord
+    dictContainer.update(dictExtraContainerFields or {})
+    dictPayload["dictContainer"] = dictContainer
+    fnWriteEnvironmentJson(filesRepo, dictPayload)
+    return {
+        "dictImageArchive": dictRecord,
+        "bManifestRefreshed": _fbRepinManifestOrWarn(
+            filesRepo, dictWorkflow,
+        ),
+    }
+
+
+def _fbRepinManifestOrWarn(filesRepo, dictWorkflow):
+    """Re-pin MANIFEST.sha256; return False (never raise) on failure.
+
+    A failed re-pin degrades to a flag because the record itself did
+    land and the researcher can regenerate the envelope. A carrier
+    REFUSAL is not that: it means this lane's carrier call was
+    forgotten, and answering with a soft flag would hide the
+    migration's only proof behind a checkbox.
+    """
+    from vaibify.config.mutationAdmission import (
+        fnReRaiseControlPlaneRefusal,
+    )
+    from vaibify.reproducibility import gitEvidence, manifestWriter
+    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        # Never over somebody else's manifest; the flag says so, and
+        # Regenerate is the lane that can ask for consent.
+        logger.warning(
+            "archive record written but the manifest was not re-pinned: "
+            "it is %s at HEAD", sOwnership,
+        )
+        return False
+    try:
+        manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
+    except Exception as errorCaught:  # noqa: BLE001 — reported as a flag
+        fnReRaiseControlPlaneRefusal(errorCaught)
+        logger.warning(
+            "The environment-archive record landed but the manifest "
+            "re-pin failed: %s", errorCaught,
+        )
+        return False
+    return True

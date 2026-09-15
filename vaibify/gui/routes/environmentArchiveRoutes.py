@@ -32,6 +32,7 @@ from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
+    fnRequireNetworkAccess,
     fdictCommitWorkflowSave,
     fdictRequireLaneTupleForCommit,
     ffilesForWorkflow,
@@ -44,6 +45,10 @@ from ..routeScope import (
     ffnDeclareCarrierMode,
 )
 from ...reproducibility import imageArchive, imageDeposit
+from ...reproducibility.imageDeposit import (
+    _fbRepinManifestOrWarn,
+    fdictStampArchiveRecord as _fdictStampArchiveRecord,
+)
 from ...reproducibility.environmentSnapshot import (
     fdictReadEnvironmentJson,
     fnWriteEnvironmentJson,
@@ -53,6 +58,12 @@ from ...reproducibility.l3Attestation import fdictReadAttestation
 import logging
 
 logger = logging.getLogger(__name__)
+
+# The refusal the dashboard turns into a credential prompt rather than
+# a toast. Named rather than matched on prose: the prompt must ask for
+# a PRODUCTION token without recording the instance as where this
+# project publishes.
+_S_PRODUCTION_TOKEN_MISSING = "PRODUCTION-TOKEN-MISSING"
 
 
 def _fsRequireProjectRepo(dictWorkflow):
@@ -321,69 +332,6 @@ async def _fdictWriteArchiveRecordUnderTheDrain(
     )
 
 
-def _fdictStampArchiveRecord(filesRepo, dictWorkflow, dictRecord):
-    """Merge the deposit record into ``.vaibify/environment.json``.
-
-    Read-modify-write rather than a rebuild, so the capture beside it
-    is untouched. The envelope's own regeneration is what later
-    decides whether this record still applies -- it carries the record
-    forward only while the fresh capture names the same image and
-    platform.
-
-    THE MANIFEST IS RE-PINNED IN THE SAME BREATH, and forgetting that
-    would make depositing an image DROP the project out of Level 3:
-    ``.vaibify/environment.json`` is pinned in ``MANIFEST.sha256``, so
-    writing the record changes a file the manifest claims to know the
-    hash of. The researcher would have archived their environment and
-    watched the ladder fall, with the two events looking unrelated.
-    Every other envelope writer on this ladder re-pins for the same
-    reason.
-    """
-    dictPayload = fdictReadEnvironmentJson(filesRepo) or {}
-    dictContainer = dict(dictPayload.get("dictContainer") or {})
-    dictContainer[imageArchive.S_IMAGE_ARCHIVE_KEY] = dictRecord
-    dictPayload["dictContainer"] = dictContainer
-    fnWriteEnvironmentJson(filesRepo, dictPayload)
-    return {
-        "dictImageArchive": dictRecord,
-        "bManifestRefreshed": _fbRepinManifestOrWarn(
-            filesRepo, dictWorkflow,
-        ),
-    }
-
-
-def _fbRepinManifestOrWarn(filesRepo, dictWorkflow):
-    """Re-pin MANIFEST.sha256; return False (never raise) on failure.
-
-    A failed re-pin degrades to a flag because the record itself did
-    land and the researcher can regenerate the envelope. A carrier
-    REFUSAL is not that: it means this lane's carrier call was
-    forgotten, and answering with a soft flag would hide the
-    migration's only proof behind a checkbox.
-    """
-    from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
-    from ...reproducibility import gitEvidence, manifestWriter
-    sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
-    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
-        # Never over somebody else's manifest; the flag says so, and
-        # Regenerate is the lane that can ask for consent.
-        logger.warning(
-            "archive record written but the manifest was not re-pinned: "
-            "it is %s at HEAD", sOwnership,
-        )
-        return False
-    try:
-        manifestWriter.fnWriteManifest(filesRepo, dictWorkflow)
-    except Exception as errorCaught:  # noqa: BLE001 — reported as a flag
-        fnReRaiseControlPlaneRefusal(errorCaught)
-        logger.warning(
-            "The environment-archive record landed but the manifest "
-            "re-pin failed: %s", errorCaught,
-        )
-        return False
-    return True
-
-
 def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
     """Register POST /api/workflow/{id}/environment-archive/deposit."""
 
@@ -576,6 +524,9 @@ def _fdictDepositSynchronously(
             fnReportSaveProgress,
             dictAttestation,
             fnReportUploadStarted=fnReportUploadStarted,
+            fnReportVerifying=lambda: archiveProgress.fnRecordProgress(
+                sContainerId, archiveProgress.S_PHASE_VERIFYING, 0, 0,
+            ),
         )
     finally:
         # 800 MB must not survive the operation that made it, whether
@@ -629,7 +580,256 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
 # `environment.json` is the durable evidence, and the row renders the
 # DOI from it.
 
+def _fnRegisterPromoteEnvironmentArchive(app, dictCtx):
+    """Register POST /api/workflow/{id}/environment-archive/promote."""
+
+    @ffnAgentAction("promote-environment-archive")
+    @app.post(
+        "/api/workflow/{sContainerId}/environment-archive/promote"
+    )
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
+    )
+    async def fdictPromoteEnvironmentArchive(
+        sContainerId: str, requestHttp: Request,
+    ):
+        """Re-deposit this image on production Zenodo under a new DOI.
+
+        Preflight order is POLICY before CREDENTIALS before BYTES.
+        Every refusal vaibify can reach on information it already
+        holds runs before the production token is read across the
+        container boundary, and the token is validated long before a
+        multi-gigabyte ``docker save`` begins -- discovering a missing
+        token after the save is exactly the failure the envelope
+        pre-check exists to prevent.
+        """
+        dictCtx["require"](sContainerId)
+        fnRequireNetworkAccess(sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        _fsRequireProjectRepo(dictWorkflow)
+        _fnRefuseIfDepositInFlight(sContainerId)
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
+        _fnRequireSandboxImageDeposit(dictContainer)
+        sToken = await asyncio.to_thread(
+            _fsReadProductionTokenFromContainer,
+            dictCtx["docker"], sContainerId,
+        )
+        await asyncio.to_thread(_fnValidateProductionToken, sToken)
+        return await _fdictLaunchPromotionDurably(
+            dictCtx, sContainerId, dictWorkflow, dictContainer,
+            sToken, requestHttp,
+        )
+
+
+def _fnValidateProductionToken(sToken):
+    """Raise 409 when the stored production token does not work."""
+    from ...reproducibility import archivePromotion
+    from ...reproducibility.zenodoClient import ZenodoClient
+    try:
+        archivePromotion.fnRefuseUnlessTokenValidates(
+            ZenodoClient("zenodo", sToken=sToken),
+        )
+    except archivePromotion.PromotionRefusedError as errorRefused:
+        raise HTTPException(409, str(errorRefused)) from None
+
+
+def _fnRequireSandboxImageDeposit(dictContainer):
+    """Raise 409 unless the recorded image deposit is a sandbox one."""
+    from ...reproducibility import archivePromotion
+    try:
+        archivePromotion.fnRefuseUnlessSandboxDeposit(
+            dictContainer.get(imageArchive.S_IMAGE_ARCHIVE_KEY),
+            "The environment archive on record",
+        )
+    except archivePromotion.PromotionRefusedError as errorRefused:
+        raise HTTPException(409, str(errorRefused)) from None
+
+
+def _fsReadProductionTokenFromContainer(connectionDocker, sContainerId):
+    """Return the PRODUCTION Zenodo token, or raise HTTP 409 by name.
+
+    A distinct refusal from the deposit route's, and deliberately so:
+    a researcher who has only ever connected the sandbox has a token,
+    just not this one. The response names the missing credential so
+    the dashboard can ask for it WITHOUT recording the instance as
+    where this project publishes -- that field lives in project.json,
+    which Level 2 compares.
+    """
+    from ...reproducibility.zenodoClient import fsZenodoTokenName
+    try:
+        sToken = connectionDocker.fsFetchKeyringSecret(
+            sContainerId, fsZenodoTokenName("zenodo"),
+        )
+    except LookupError:
+        sToken = ""
+    if not sToken:
+        raise HTTPException(409, {
+            "sError": _S_PRODUCTION_TOKEN_MISSING,
+            "sMessage": (
+                "No PRODUCTION Zenodo token is stored for this "
+                "project, so vaibify cannot deposit on zenodo.org. "
+                "Add one and try again; your sandbox connection is "
+                "unchanged and this project still publishes where it "
+                "did."
+            ),
+        })
+    return sToken
+
+
+async def _fdictLaunchPromotionDurably(
+    dictCtx, sContainerId, dictWorkflow, dictContainer, sToken,
+    requestHttp,
+):
+    """Launch the promotion as registered durable work, like a deposit."""
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "The environment-archive promotion",
+    )
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sSidecarKey = _fsResolveSidecarKey(dictCtx, sContainerId, dictWorkflow)
+
+    def ftaskStartPromotion():
+        taskWorker = asyncio.create_task(_fnRunPromotionWorker(
+            sContainerId, dictWorkflow, dictContainer, sToken,
+            filesRepo, sSidecarKey,
+        ))
+        archiveProgress.fnRegisterDeposit(sContainerId, taskWorker)
+        return taskWorker
+
+    dictLaunched = await commitCarrier.fdictLaunchDurableTask(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, ftaskStartPromotion,
+        sOperation="the environment-archive promotion",
+    )
+    if not dictLaunched["bLaunched"]:
+        raise HTTPException(
+            409,
+            "This container is busy: " + dictLaunched["sReason"] + ".",
+        )
+    return {"bAccepted": True, "sPhase": archiveProgress.S_PHASE_STARTING}
+
+
+def _fsResolveSidecarKey(dictCtx, sContainerId, dictWorkflow):
+    """Return the syncStatus.json section key for this workflow."""
+    from .. import stateManager
+    return stateManager.fsWorkflowKeyFromPath(
+        (dictCtx.get("paths") or {}).get(sContainerId, ""),
+        dictWorkflow.get("sProjectRepoPath") or "",
+    )
+
+
+async def _fnRunPromotionWorker(
+    sContainerId, dictWorkflow, dictContainer, sToken, filesRepo,
+    sSidecarKey,
+):
+    """Re-deposit on production, then stamp the record and settle."""
+    from ...reproducibility import syncBookkeeping
+    try:
+        from ...reproducibility import archivePromotion
+        dictRecord, sPromotionId = await asyncio.to_thread(
+            archivePromotion.ftPromoteImageArchive,
+            dictContainer, sToken, filesRepo, sSidecarKey,
+            _fdictBuildArchiveDepositMetadata(dictWorkflow),
+            _fdictBuildPromotionProgressHooks(sContainerId),
+        )
+        syncBookkeeping.fnMirrorPendingPromotions(
+            filesRepo, sSidecarKey, dictWorkflow,
+        )
+        dictStamped = await asyncio.to_thread(
+            _fdictStampPromotedRecord, filesRepo, dictWorkflow,
+            dictRecord, dictContainer,
+        )
+        if dictStamped.get("bManifestRefreshed"):
+            await asyncio.to_thread(
+                syncBookkeeping.fnRemovePendingPromotion,
+                filesRepo, sSidecarKey, sPromotionId,
+            )
+            syncBookkeeping.fnMirrorPendingPromotions(
+                filesRepo, sSidecarKey, dictWorkflow,
+            )
+        archiveProgress.fnSettleDeposit(sContainerId)
+    except Exception as errorPromotion:  # noqa: BLE001 — reported
+        # The mirror is refreshed on the failure path too: the whole
+        # point of the record is that it survives an interruption, and
+        # a card the researcher cannot see until the next reload is
+        # the toast they already missed.
+        syncBookkeeping.fnMirrorPendingPromotions(
+            filesRepo, sSidecarKey, dictWorkflow,
+        )
+        logger.warning(
+            "Environment-archive promotion failed for %s",
+            sContainerId, exc_info=True,
+        )
+        archiveProgress.fnRecordFailure(
+            sContainerId, _fsDescribeDepositFailure(errorPromotion),
+        )
+
+
+def _fdictBuildPromotionProgressHooks(sContainerId):
+    """Return the progress callbacks the promotion reports through.
+
+    The same row the deposit reports on, so a researcher watching a
+    promotion sees the save and the upload advance exactly as they do
+    for a first deposit. Passed in rather than imported inside the
+    promotion module, which owns policy and knows nothing about this
+    hub's per-container progress record.
+    """
+    return {
+        "fnReportVerifying": lambda: archiveProgress.fnRecordProgress(
+            sContainerId, archiveProgress.S_PHASE_VERIFYING, 0, 0,
+        ),
+        "fnReportSaveProgress": lambda iRead, iTotal: (
+            archiveProgress.fnRecordProgress(
+                sContainerId, archiveProgress.S_PHASE_SAVING,
+                iRead, iTotal,
+            )
+        ),
+        "fnReportUploadStarted": lambda iBytes: (
+            archiveProgress.fnRecordProgress(
+                sContainerId, archiveProgress.S_PHASE_UPLOADING,
+                0, iBytes,
+            )
+        ),
+    }
+
+
+def _fdictStampPromotedRecord(
+    filesRepo, dictWorkflow, dictRecord, dictContainer,
+):
+    """Write the new record and retire the old one, in one pass.
+
+    Through ``_fdictStampArchiveRecord``, which re-pins the manifest
+    in the same breath -- ``.vaibify/environment.json`` is itself
+    pinned in ``MANIFEST.sha256``, so a second writer beside it would
+    make promoting an image DROP the project out of Level 3.
+
+    NO project configuration is touched. The deposit record carries
+    its own ``sZenodoService``, ``reproduce.sh`` reads the service out
+    of ``environment.json`` at run time, and the promotion built its
+    production client explicitly. Flipping top-level
+    ``sZenodoService`` would send every retained sandbox record in
+    ``listRecords`` to zenodo.org, 404 them, and abort the whole
+    Zenodo verify -- over a promotion that had nothing to do with them.
+    """
+    from ...reproducibility.environmentSnapshot import (
+        S_SUPERSEDED_ARCHIVE_KEY,
+    )
+    dictOld = dictContainer.get(imageArchive.S_IMAGE_ARCHIVE_KEY)
+    dictStamped = _fdictStampArchiveRecord(
+        filesRepo, dictWorkflow, dictRecord,
+        dictExtraContainerFields=(
+            {S_SUPERSEDED_ARCHIVE_KEY: dictOld}
+            if isinstance(dictOld, dict) else None
+        ),
+    )
+    return dictStamped
+
+
 def fnRegisterAll(app, dictCtx):
     """Register every environment-archive endpoint."""
     _fnRegisterAnswerEnvironmentArchive(app, dictCtx)
     _fnRegisterDepositEnvironmentArchive(app, dictCtx)
+    _fnRegisterPromoteEnvironmentArchive(app, dictCtx)

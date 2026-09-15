@@ -2448,6 +2448,198 @@ verified rather than trusted — vaibify stamps a machine-readable
 fingerprint into the deposit's description, and a record it cannot read
 that fingerprint out of is refused.
 
+### A deposit is not an archive until somebody promises to keep it
+
+Zenodo's sandbox and its production instance are **separate systems,
+and nothing transfers between them**. The sandbox mints test DOIs
+under DataCite's `10.5072/` prefix, authenticates with its own token,
+and — in Zenodo's own words — may be cleaned at any time. So a project
+can hold a deposit whose bytes match the envelope exactly, in a place
+that has promised nothing. That is why permanence is a criterion of
+its own (`an-archive-is-a-sandbox-deposit`) rather than a stricter
+reading of the archive criteria: the bytes really do match, and what a
+sandbox deposit withholds is the *credit*, not the comparison. The
+rebuild-attestation row keeps saying the rerun happened; the two
+archive rows keep their computed color and gain a warning beside it.
+
+`reproducibility/archivePermanence.py` answers the one question, in
+three states and never a boolean. `unknown` renders exactly as today
+and passes every gate, which is what makes abstaining free: a wrong
+`sandbox` costs a researcher a warning they did not need, and a wrong
+`permanent` costs them the warning the feature exists to show. The
+classifier therefore believes `zenodoClient.fsServiceForDoi`'s
+*sandbox* answer and requires independent positive evidence for the
+permanent one — that function is total by design, because its caller
+must pick a host, so deferring to it wholesale would turn "this string
+is not recognizably a sandbox DOI" into "this deposit is permanently
+archived".
+
+**Making an archive permanent means depositing again.** There is no
+migration to perform, so "Make Permanent" re-deposits on zenodo.org
+under a production token and records the new DOI; the sandbox record
+stays where it is until Zenodo clears it, which vaibify neither causes
+nor observes. The environment archive copies bytes (a fresh `docker
+save`, or — only when the image is *positively absent* from the daemon
+— the sandbox tarball, downloaded and hash-checked against the record).
+The project deposit does not: it is a new production release of the
+current publication union, which is a different thing from a byte copy
+whenever a local file has changed, and the confirmation says so.
+
+### Three questions about "which Zenodo", and three answers
+
+Reading the wrong one is invisible until something moves, because for
+a project that has never changed instance they all agree:
+
+| Question | Authority | Storage |
+|---|---|---|
+| Where does the recorded primary deposit live? | `dictRemotes.zenodo.sService` | the sync sidecar (produced) |
+| Where should the next project publish go? | top-level `sZenodoService` | `project.json` (declaration) |
+| Where does the environment deposit live? | that record's own `sZenodoService` | `environment.json` |
+
+A promotion advances only the first, by publishing. It never writes a
+declaration on the researcher's behalf: top-level `sZenodoService` is
+compared by Level 2 and is shared with *every* declared record, so
+flipping it would stale the deposit just minted and send retained
+sandbox records to a host that has never heard of them — aborting the
+whole Zenodo verify over a promotion that had nothing to do with them.
+
+The consequence is a guard: Zenodo's `newversion` flow asks ONE
+instance for a new version of a record it holds, so a publish whose
+recorded deposit and declared target disagree is refused locally and by
+name, rather than sent out to come back as a bare 404. The remedy it
+names exists — `start-new-concept` retires the recorded identifiers
+into a superseded note so the next publish creates a fresh concept —
+because a refusal pointing at a remedy that does not exist is worse
+than no refusal at all.
+
+### The promotion is bracketed, because a lost DOI cannot be guessed
+
+A promotion mints a permanent DOI in the middle of a long upload. So
+intent is written to the sidecar before anything starts, and the
+deposit id is made durable the moment the draft exists — *before* the
+first byte goes up, not after the publish returns. The record carries
+each file's SHA-256, MD5 and size, because Zenodo reports a
+deposition file's checksum as MD5 and reconciliation has to compare in
+the vocabulary the archive speaks.
+
+Recovery never decides what happened; it asks. Seven outcomes, each
+offering only its own actions, and the pair that matters most is
+`gone` versus `unknown`: a positive 404 is an answer and licenses a
+discard, an unreadable Zenodo is not one and keeps the record. Every
+mutating action additionally re-checks that the remote deposit's
+description names this promotion — without that, a writable local file
+would be the only thing binding a mutation of a public archive to the
+intent that started it.
+
+### A deposit is finished when the archive agrees, not when the upload returns
+
+Everything before that point is vaibify reporting on vaibify. The
+digest in the record is what the local file hashed to, and a truncated
+upload, a dropped byte range, or a stored object that is not the one
+sent would leave that record saying exactly what it says now — with
+the L2/L3 cells green over an archive that cannot satisfy them.
+
+So both deposit lanes ask the draft what it holds and compare, on the
+deposit key, the checksum and the size together. The name alone is
+meaningless, because a Zenodo deposit is flat; the size alone would
+pass a same-length substitution. It costs one small request rather
+than a re-download, because Zenodo computes each file's **MD5
+server-side** as the bucket receives it — which is also why the
+records carry an MD5 beside their SHA-256. MD5 is the vocabulary the
+archive speaks, not the integrity claim; the claim stays SHA-256, and
+a checksum the comparison cannot parse reads as *unchecked*, never as
+mismatched, so a format change at Zenodo cannot turn verification into
+an outage.
+
+**Before the publish, and the ordering is the whole safety property.**
+Verifying afterwards would mean failing with a DOI already minted: an
+orphan the researcher owns, that vaibify refused to record, and that
+nothing can clean up, because a published record cannot be discarded.
+Checked in front of the publish, the same disagreement costs a
+discardable draft and mints nothing.
+
+What this does *not* prove is retrievability — that the file can still
+be fetched and arrives intact. That needs a real download and takes
+minutes; conflating the two would let a seconds-long check wear a
+claim it has not earned.
+
+The two lanes run on opposite sides of the container wall: the
+environment archive uploads from the host, the project deposit from a
+script inside the container. They share one implementation because
+`zenodoClient` is the only module staged on both sides — two copies of
+this comparison would announce their divergence as a deposit that
+passed on one lane and failed on the other. The lanes differ in one
+check only: the project deposit also refuses a draft serving a file it
+did not upload, because `newversion` *inherits* the parent's file list
+and a clear that quietly did not happen publishes this version's files
+mixed with the last one's while every per-file comparison still
+passes. A fresh draft cannot reach that state, so the environment lane
+does not ask.
+
+
+### Most of the ladder is order-free, and the exceptions were never said
+
+A researcher can declare their binaries, answer the determinism
+questions and pin a Dockerfile in any sequence; nothing they do undoes
+anything else. A handful of remedies are not like that. Regenerating
+`MANIFEST.sha256` before `reproduce.sh` pins the hash of the script
+about to be replaced, and publishing to Zenodo before attesting puts
+an attestation in the archive that does not cover the archived
+manifest — which, because deposits are immutable, costs a whole new
+version to correct.
+
+Vaibify always *knew* this: it falls out of `flistManifestPathsToPin`,
+of the manifest digest `fbL3AttestationCurrent` compares against, and
+of `fbAttestationIsPubliclyArchived`. It was stated only as prose,
+ten times over, inside `_DICT_L3_REMEDIATION_HINTS` ("push the current
+envelope, **then** click Verify now") — a concept the domain kept
+naming that the code had no representation for.
+`reproducibility/levelOrdering.py` is that representation.
+
+**An edge means one thing: doing the later one first gets UNDONE by
+doing the earlier one.** Not "more logical first", not "cheaper
+first" — undone. That is the only claim worth interrupting a
+researcher with, and it is why there is no edge from the rebuild
+attestation to the GitHub mirror: pushing before attesting costs a
+second push, which is a nuisance, not a retraction.
+
+**It answers one row, never a plan.** A rendered N-step path has N
+ways to be subtly wrong and reads authoritatively while being so; one
+answer is wrong in one way, and the researcher finds out in seconds
+because they do the thing and nothing improves. So the dashboard shows
+a single "Do this first" arrow, and the row it names carries the
+reason.
+
+The arrow rides the banner of the **section** holding that row, not
+the Project banner (researcher's ruling, 2026-09-14): Artifacts is
+where the work is, and the marker travels to Published envelope and
+then Attestation as the answer moves down the ladder — on the project
+banner it would have been a fixed label about a moving target. Only
+the section whose own rows contain the target may render it, so the
+arrow cannot point outside the section it sits on. It also sits inside
+a banner whose handler toggles that section, which makes its position
+in the delegated-click registry load-bearing: the dispatcher returns
+on its first match, so an entry after `.requirement-group-header`
+collapses the section over the row it just named.
+
+**Silence is the usual answer and is information.** Two situations
+produce it: no edge has both ends live (every remaining blocker is
+independent), or more than one root remains (two chains, so there is
+no single next step and pointing at one would imply the other is not
+ready). The fork at the end of the ladder resolves itself this way —
+once the attestation is current, the GitHub and Zenodo envelope rows
+are genuinely independent and the arrow disappears exactly when order
+stops mattering. An arrow on the wrong row is worse than no arrow,
+because it carries more authority than the row it points at.
+
+The order ships in the poll payload. Re-deriving it in JavaScript
+would be a second authority on a question that has one — the mistake
+the determinism row made. The arrow's own verdicts must also agree
+with what the rows render, which lives in a route module
+`levelOrdering` may not import; a test pins the two together, because
+that exact drift has already happened once.
+
+
 ## The Replay axis (AI provenance)
 
 The PROOF ladder measures the state of the artifact; the Replay axis

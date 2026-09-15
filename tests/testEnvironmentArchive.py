@@ -663,17 +663,37 @@ def test_the_upload_phase_is_reported_before_the_bytes_go_up(
             listEvents.append(("upload", sTarballPath))
 
         def fdictPublishDraft(self, iDepositId):
+            listEvents.append(("publish", None))
             del iDepositId
             return {
                 "doi": "10.5281/zenodo.7000001",
                 "conceptdoi": "10.5281/zenodo.7000000",
             }
 
+        def fdictGetDeposit(self, iDepositId):
+            """What the pre-publish check asks the DRAFT.
+
+            A double that cannot say what the archive holds stopped
+            modelling the deposit when the check moved in front of the
+            publish -- and the deposit is not finished until that
+            question has an answer.
+            """
+            del iDepositId
+            listEvents.append(("verify", None))
+            return {"files": [{
+                "filename": "environment-image.tar.zst",
+                "checksum": "md5:" + "b" * 32,
+                "filesize": 4096,
+            }]}
+
     sTarballPath = str(tmp_path / "environment-image.tar.zst")
 
     def ftSaveWithoutADaemon(sReference, sScratch, fnReportProgress=None):
         del sReference, sScratch, fnReportProgress
-        return (sTarballPath, "sha256:" + "b" * 64, 4096, "sha256:" + "c" * 64)
+        return (
+            sTarballPath, "sha256:" + "b" * 64, 4096,
+            "sha256:" + "c" * 64, "b" * 32,
+        )
 
     monkeypatch.setattr(
         imageDeposit, "ftSaveAndCompressImage", ftSaveWithoutADaemon,
@@ -685,7 +705,12 @@ def test_the_upload_phase_is_reported_before_the_bytes_go_up(
             ("upload-started", iBytes),
         ),
     )
-    assert listEvents == [("upload-started", 4096), ("upload", sTarballPath)]
+    assert listEvents == [
+        ("upload-started", 4096), ("upload", sTarballPath),
+        # The archive is asked what it holds BEFORE the publish, so a
+        # disagreement discards a draft instead of orphaning a DOI.
+        ("verify", None), ("publish", None),
+    ]
     assert dictRecord["sVersionDoi"] == "10.5281/zenodo.7000001"
 
 
@@ -1003,9 +1028,15 @@ def test_the_deposit_sends_the_fields_zenodo_requires(tmp_path):
         def fdictPublishDraft(self, iDepositId):
             return {"doi": "10.5281/zenodo.1", "conceptdoi": "10.5281/z.0"}
 
+        def fdictGetDeposit(self, iDepositId):
+            return {"files": [{
+                "filename": "image.tar.zst",
+                "checksum": "md5:" + "d" * 32, "filesize": 123,
+            }]}
+
     def _ftFakeSave(sImage, sScratch, fnProgress=None):
         return (str(tmp_path / "image.tar.zst"), "sha256:" + "d" * 64,
-                123, "sha256:" + "e" * 64)
+                123, "sha256:" + "e" * 64, "d" * 32)
 
     with patch.object(imageDeposit, "ftSaveAndCompressImage", _ftFakeSave):
         imageDeposit.fdictDepositImageArchive(

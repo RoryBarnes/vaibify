@@ -15,6 +15,9 @@ lives here, beneath them.
 
 __all__ = [
     "I_REJECT_CONTAINER_ONLY",
+    "S_ISOLATION_BLOCK_ERROR",
+    "fdictIsolationBlockedResponse",
+    "fnRequireNetworkAccess",
     "S_UNAVAILABLE_IN_HOST_MODE",
     "S_UNAVAILABLE_IN_CONTAINER_MODE",
     "S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE",
@@ -654,3 +657,51 @@ class RouteContext:
     def pop(self, sKey, *args):
         """Dict-compatible pop."""
         return self._dictRaw.pop(sKey, *args)
+
+
+S_ISOLATION_BLOCK_ERROR = "isolation-mode-blocks-network"
+_S_ISOLATION_BLOCK_MESSAGE = (
+    "Container is in isolation mode (no network). "
+    "Disable in vaibify.yml: networkIsolation: false, then rebuild."
+)
+
+
+def fdictIsolationBlockedResponse():
+    """Return the structured response for an isolation-blocked call."""
+    return {
+        "sError": S_ISOLATION_BLOCK_ERROR,
+        "sMessage": _S_ISOLATION_BLOCK_MESSAGE,
+    }
+
+
+def fnRequireNetworkAccess(sContainerId):
+    """Raise HTTP 409 when the container is running with --network none.
+
+    Network-isolated containers cannot reach Overleaf, Zenodo, or any
+    other external API. Without this guard, the user clicks a sync
+    button and waits 30 seconds for a DNS timeout before seeing a
+    generic error. Audit finding F-R-08.
+
+    Lives here rather than in ``syncRoutes`` because more than one
+    route module publishes to a remote: the environment-archive
+    promotion is a Zenodo publish too, and a route module may not
+    import a sibling.
+    """
+    from fastapi import HTTPException
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.docker.containerManager import (
+        fbContainerIsNetworkIsolated,
+    )
+    # A host project has no container, so nothing can have sealed one.
+    # Asking anyway is not merely wasted: the probe is a `docker
+    # inspect` subprocess about a name Docker never heard of, started
+    # on the researcher's own machine outside the gated primitive
+    # every host subprocess is supposed to go through, and it costs up
+    # to its five-second timeout on every push.
+    if fbIsHostProject(sContainerId):
+        return
+    if fbContainerIsNetworkIsolated(sContainerId):
+        raise HTTPException(
+            status_code=409,
+            detail=fdictIsolationBlockedResponse(),
+        )

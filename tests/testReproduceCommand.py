@@ -88,10 +88,18 @@ def _fnWriteL3EnvelopeExtras(pathRepo):
     sReproduceHash = _fsHashFile(pathReproduce)
     sFixtureHash = _fsHashFile(pathRepo / _S_FIXTURE_FILE_NAME)
     sDockerfileHash = _fsHashFile(pathRepo / "Dockerfile")
+    # The lock and the envelope too, since the manifest's scope
+    # widened on 2026-09-14: a reproducer runs `sha256sum -c
+    # MANIFEST.sha256`, and a manifest covering the results but not
+    # what produced them let them verify everything except that.
     _fnWriteManifest(pathRepo, {
         _S_FIXTURE_FILE_NAME: sFixtureHash,
         "reproduce.sh": sReproduceHash,
         "Dockerfile": sDockerfileHash,
+        "requirements.lock": _fsHashFile(pathRepo / "requirements.lock"),
+        ".vaibify/environment.json": _fsHashFile(
+            pathRepo / ".vaibify" / "environment.json",
+        ),
     })
     pathWorkflows = pathRepo / ".vaibify" / "workflows"
     pathWorkflows.mkdir(parents=True, exist_ok=True)

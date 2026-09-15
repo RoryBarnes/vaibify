@@ -2269,6 +2269,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
         {"listBinaries": [...per-binary capture status...],
          "dictArtifacts": {sName: {"bPresent", "bSatisfied"}}
              (empty dict when there is no project repo),
+         "dictNextOrderedStep": {"sRowKey", "sReason",
+             "listBlockedRowKeys"} or None,
          "dictDeterminism": declared dict or None,
          "dictRemoteSyncs": {sService: dictSummary or None},
          "bAiDeclarationAttested": bool,
@@ -2298,8 +2300,9 @@ def _fdictBuildWorkflowEnvelopeDetail(
         ffilesEnsureRepoFiles, fsRepoRootOf,
     )
     from vaibify.reproducibility import (
-        determinismGate, levelGates, publicationScope, replayGate,
-    )
+        determinismGate, levelGates, levelOrdering, publicationScope,
+        replayGate, syncBookkeeping,
+    )  # noqa: F401 -- syncBookkeeping answers the cross-instance question
     from vaibify.reproducibility.l3Attestation import (
         fbL3AttestationCurrent,
     )
@@ -2319,6 +2322,17 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "dictArtifacts": (
             _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
             if bHasRepo else {}
+        ),
+        # The one blocked requirement that must be fixed BEFORE the
+        # others, or None when order does not matter -- which is the
+        # usual answer and is information, not a gap. Computed on this
+        # side so the dashboard renders a verdict it never re-derives;
+        # a mirrored ordering in JavaScript would be a second
+        # authority on a question that has one.
+        "dictNextOrderedStep": (
+            levelOrdering.fdictDescribeNextOrderedStep(
+                dictWorkflow, filesRepo,
+            ) if bHasRepo else None
         ),
         # THREE-state: True (envelope pins the image this container is
         # running), False (it pins a different one -- a rebuild without
@@ -2394,6 +2408,31 @@ def _fdictBuildWorkflowEnvelopeDetail(
             levelGates.fbEnvelopeMatchesGithubMirror(filesRepo)
             if bHasRepo else False
         ),
+        # Whether those archives are archives at all. From the
+        # CURRENT deposit records -- not from the verify cache beside
+        # them, which is best-effort and can still hold the sandbox
+        # endpoint the moment after a successful promotion. Driving
+        # the button off the cache would offer a promotion the route
+        # then refuses. The gate's own verdict travels with the two
+        # per-archive ones, because the attestation row must name
+        # WHICH archive is a sandbox deposit and must read the
+        # positive off a verdict rather than off a gate that also
+        # passes on "unknown".
+        # The recorded deposit and the declared target on DIFFERENT
+        # Zenodo instances. A publish would ask one instance for a new
+        # version of the other's record, so the archive flow refuses
+        # it -- and the remedy needs a control, not just a refusal
+        # naming one.
+        "sZenodoCrossInstanceRefusal":
+            syncBookkeeping.fsDescribeCrossInstanceParent(
+                dictWorkflow,
+                (dictWorkflow or {}).get("sZenodoService") or "sandbox",
+            ),
+        "dictArchivePermanence": (
+            levelGates.fdictArchivePermanenceState(
+                dictWorkflow, filesRepo,
+            ) if bHasRepo else {}
+        ),
         "bEnvelopeInZenodoArchive": (
             levelGates.fbEnvelopeMatchesZenodoArchive(filesRepo)
             if bHasRepo else False
@@ -2460,6 +2499,20 @@ def _fdictBuildWorkflowEnvelopeDetail(
             _fbRootContextCandidateDetected(filesRepo) if bHasRepo
             else False
         ),
+        # In-flight promotions, so the dashboard can surface one on
+        # LOAD. The browser that started a promotion may be gone, and
+        # a minted DOI nobody wrote down cannot be recovered by
+        # guessing -- the record must not depend on a researcher
+        # having kept a failed request's toast. Read off the merged
+        # workflow dict, which the sidecar contract keeps in step with
+        # syncStatus.json: the sidecar is the one writer and this is
+        # its mirror, refreshed from it on load and after every
+        # promotion update.
+        "listPendingPromotions": [
+            dictRecord for dictRecord
+            in (dictWorkflow or {}).get("listPendingPromotions") or []
+            if isinstance(dictRecord, dict)
+        ],
         "sReplayAxisState": replayGate.fsReplayAxisState(dictWorkflow),
         "dictPromptRecord": _fdictEnvelopePromptRecord(
             dictWorkflow, filesRepo if bHasRepo else None,
@@ -2707,7 +2760,14 @@ def _fdictEnvelopeArtifactPresence(filesRepo):
 
 
 def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
-    """Return the L3 readiness verdict for the five envelope artifacts."""
+    """Return the L3 readiness verdict for the five envelope artifacts.
+
+    A row is satisfied only when EVERY Level 3 criterion naming its
+    file passes -- which is why the reproduce script needs two. A
+    criterion added about an existing artifact and not added here
+    paints a green mark on a file the ladder is blocking on; that
+    shipped once, for ``reproduce-script-stale``.
+    """
     from vaibify.reproducibility import levelGates
     return {
         "manifest": levelGates.fbVerifyManifestComplete(
@@ -2718,8 +2778,11 @@ def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
             filesRepo,
         ),
         "dockerfile": levelGates.fbVerifyDockerfilePinned(filesRepo),
-        "reproduceScript": levelGates.fbVerifyReproduceScript(
-            filesRepo, dictWorkflow,
+        "reproduceScript": (
+            levelGates.fbVerifyReproduceScript(filesRepo, dictWorkflow)
+            and levelGates.fbVerifyReproduceScriptCurrent(
+                filesRepo, dictWorkflow,
+            )
         ),
     }
 
@@ -2770,6 +2833,16 @@ def _fdictProjectSyncSummary(dictStatus):
     # complete under a scope that no longer applies.
     dictSummary["bScopeStale"] = (
         not publicationScope.fbCachedScopeIsCurrent(dictStatus)
+    )
+    # WHAT the verify actually compared against, so the row can show
+    # the DOI beside the counts it produced. A pure projection of the
+    # cache, deliberately: threading the workflow in here would let a
+    # record the verify never saw be displayed as the one it checked.
+    dictSummary["sZenodoDoiVerified"] = str(
+        dictStatus.get("sZenodoDoi") or ""
+    )
+    dictSummary["sEndpointVerified"] = str(
+        dictStatus.get("sEndpointVerified") or ""
     )
     return dictSummary
 

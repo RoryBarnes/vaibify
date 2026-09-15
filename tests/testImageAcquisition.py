@@ -972,7 +972,7 @@ def test_a_record_without_a_size_is_refused_before_any_fetch(tmp_path, monkeypat
         raise AssertionError("a fetch was attempted for a record with no size")
     monkeypatch.setattr(imageAcquisition, "_fsResolveDepositFileUrl", fsNeverResolve)
     with pytest.raises(ImageAcquisitionRefusedError) as excinfo:
-        imageAcquisition._fsDownloadVerifiedTarball({
+        imageAcquisition.fsDownloadVerifiedTarball({
             "sVersionDoi": "10.5281/zenodo.7000001",
             "sTarballName": "environment-image.tar",
             "sTarballSha256": "sha256:" + "0" * 64,

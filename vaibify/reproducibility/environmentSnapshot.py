@@ -33,6 +33,7 @@ __all__ = [
     "fdictCaptureLiveImageIdentity",
     "fdictCaptureBuiltImageIdentity",
     "fbImageExistsLocally",
+    "S_SUPERSEDED_ARCHIVE_KEY",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
     "fsReadImageToolchainEpoch",
@@ -47,6 +48,12 @@ __all__ = [
 
 
 _SCHEMA_VERSION = "1"
+
+# The record a promotion replaced. A NOTE, never an input: no gate
+# reads it, and `flistDescribeArchiveMismatch` never consults it. It
+# exists so a researcher can still see the identifiers of the deposit
+# their permanent one superseded.
+S_SUPERSEDED_ARCHIVE_KEY = "dictSupersededImageArchive"
 _OS_RELEASE_PATH = "/etc/os-release"
 _DOCKER_INSTALL_HINT = (
     "docker executable not found on PATH. Install Docker Desktop, "
@@ -311,17 +318,25 @@ def fdictCarryImageArchiveForward(dictPrevious, dictFresh):
     is correct -- the archive still exists on Zenodo and still covers
     the image it names, but it no longer covers THIS envelope, and the
     Level 3 row says so.
+
+    The superseded note -- the record a promotion replaced -- rides
+    under the SAME condition. It is a note and never an input, but a
+    note that evaporates at the next ordinary regeneration is worse
+    than none: a researcher who promoted an archive would find the
+    sandbox identifiers simply gone, with nothing saying they ever
+    existed. When the capture disagrees both are dropped together;
+    neither describes this envelope any more.
     """
-    dictRecord = (dictPrevious or {}).get("dictImageArchive")
-    if not isinstance(dictRecord, dict):
-        return dictFresh
     for sField in ("sImageDigest", "sArchitecture"):
         sPrevious = str((dictPrevious or {}).get(sField) or "")
         if not sPrevious or sPrevious != str(dictFresh.get(sField) or ""):
             return dictFresh
     dictCarried = dict(dictFresh)
-    dictCarried["dictImageArchive"] = dictRecord
-    return dictCarried
+    for sKey in ("dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY):
+        dictRecord = (dictPrevious or {}).get(sKey)
+        if isinstance(dictRecord, dict):
+            dictCarried[sKey] = dictRecord
+    return dictCarried if dictCarried != dict(dictFresh) else dictFresh
 
 
 def _fnEnsureDockerAvailable():

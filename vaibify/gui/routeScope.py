@@ -357,6 +357,12 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/workflow/{sContainerId}/level3/readiness"),
     ("GET", "/api/workflow/{sContainerId}/manifest/text"),
     ("GET", "/api/workflow/{sContainerId}/project-context"),
+    # Reads the in-flight promotion records out of the sync sidecar in
+    # the owned container's repo. A read of vaibify's own bookkeeping
+    # and nothing else; it exists so an interrupted promotion is
+    # surfaced on LOAD rather than depending on a researcher having
+    # kept a failed request's toast.
+    ("GET", "/api/workflow/{sContainerId}/promotions/pending"),
     ("GET", "/api/workflow/{sContainerId}/prompt-record/status"),
     ("GET", "/api/workflows/{sContainerId}"),
     ("GET", "/api/zenodo/{sContainerId}/deposit"),

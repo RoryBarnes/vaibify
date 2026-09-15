@@ -4940,7 +4940,37 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # read (ownership, and whether it differs from HEAD), two keys on
     # the same payload; the question is answered by
     # reproductionRecord.
-    "routes/pipelineRoutes.py": 3525,
+    # +25 (2026-09-14): the envelope payload gains the archive-
+    # permanence state (the gate's verdict plus the two per-archive
+    # verdicts the attestation row names), and the per-remote sync
+    # summary gains the DOI and endpoint the verify actually compared
+    # against. Keys on payloads this module already builds.
+    # +25 (2026-09-14, second batch): the envelope payload carries the
+    # in-flight promotion list and the cross-instance refusal sentence
+    # the remedy button renders. Two keys on a payload this module
+    # already builds.
+    # +10 (2026-09-14, third): the reproduce-script row now answers the
+    # conjunction of both criteria naming that file, plus the docstring
+    # stating the rule a criterion must be registered here. No new
+    # concern; the alternative was a row contradicting its own gate.
+    # +13 (2026-09-14, fourth): the envelope payload carries the one
+    # blocked requirement that must be fixed first. One key on a
+    # payload this module already builds; the ORDERING itself lives in
+    # reproducibility/levelOrdering.py, which is the new concern.
+    "routes/pipelineRoutes.py": 3598,
+    # NEW at 870 (2026-09-14): the environment archive gains its
+    # PROMOTION lane beside its deposit lane. Not a second concern:
+    # both produce and publish this project's image archive and record
+    # it in the envelope, and they share the envelope writer, the
+    # manifest re-pin, the progress record, the deposit metadata and
+    # the scratch discipline. Splitting would mean exporting five
+    # helpers to a sibling a route module may not import anyway --
+    # the artificial seam AGENTS.md warns about. The promotion's
+    # POLICY (byte-source choice, the sandbox refusal, the
+    # crash-recovery record) is already out, in
+    # reproducibility/archivePromotion.py; what is here is the HTTP
+    # shell, the preflight order and the durable launch.
+    "routes/environmentArchiveRoutes.py": 835,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5109,7 +5139,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # per-file badge action posts the badge-dictionary key, and the
     # raw string passed the resolving pre-flight then died in the
     # container as LOCAL-FILE-ERROR.
-    "routes/syncRoutes.py": 3447,
+    # +176 (2026-09-14): the project deposit's PROMOTION to production
+    # Zenodo, and the start-new-concept transition its cross-instance
+    # refusal names. Not a second concern: both are the Zenodo publish
+    # flow this module already owns, reusing its upload, its existence
+    # pre-flight, its basename-collision refusal and its publish
+    # record with a service and parent passed as overrides. Splitting
+    # would mean exporting five helpers to a sibling a route module
+    # may not import anyway. What could move out already has: the
+    # publish record now lives in syncBookkeeping, beside the contract
+    # that says it is bookkeeping.
+    "routes/syncRoutes.py": 3623,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5151,7 +5191,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # manifest HEAD tracks before writing, and skips a manifest that
     # is not the researcher's own. One guard on an existing hook; the
     # question lives in reproductionRecord.
-    "fileStatusManager.py": 2266,
+    # +12 (2026-09-14): the auto-archive path refuses a publish whose
+    # recorded deposit lives on the other Zenodo instance, the same
+    # local refusal the manual archive raises. One guard and its
+    # reason; the predicate itself lives in syncBookkeeping.
+    "fileStatusManager.py": 2278,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5637,7 +5681,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # above is unchanged.
     # Merged 2026-09-12 at the MEASURED size of the two branches
     # together, never the sum of their allowances.
-    "pipelineServer.py": 3349,
+    # +18 (2026-09-14): the environment-archive row payload gains its
+    # deposit's permanence, and the sync-setup request gains the
+    # credential-only flag a promotion needs. Both are fields on
+    # shapes this module already owns.
+    # +1 (2026-09-14): the promotion-recovery route module registers.
+    "pipelineServer.py": 3368,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6558,7 +6607,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the environment it is running inside, so the exclusion and the
     # handler's own agent-lane refusal have to agree, and a reader
     # needs to be told that is deliberate rather than an omission.
-    "actionCatalog.py": 1246,
+    # +14 (2026-09-14): the environment-archive promotion, registered
+    # bAgentSafe False. A catalog entry is a row in a list; this
+    # module grows by exactly one row per new researcher action.
+    # +63 (2026-09-14, second batch): the project-deposit promotion,
+    # start-new-concept, and the four recovery actions -- six rows in
+    # a list, all bAgentSafe False.
+    "actionCatalog.py": 1323,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6917,7 +6972,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # nobody can claim is a common reason to want the environment
     # gone, so a scope that demanded the lease would lock the
     # researcher out of the remedy. Another row in a map of rows.
-    "routeScope.py": 1018,
+    # +6 (2026-09-14): the promotion-recovery read joins the frozen
+    # container-read allowlist, with the reason it is a read.
+    "routeScope.py": 1024,
 }
 
 
