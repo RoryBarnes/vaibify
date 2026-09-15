@@ -20167,11 +20167,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testPromotionRecovery.py::'
-            'test_discard_refuses_a_published_record_and_an_unreadable_one'
+            'test_discard_refuses_a_published_record'
         ),
         source='vaibify/gui/routes/promotionRecoveryRoutes.py',
-        # Discard widened to every outcome: a real DOI's record is
-        # thrown away, and an unanswered question is answered "no".
+        # Discard widened to accept a PUBLISHED deposit: the record
+        # of a minted DOI is thrown away. Observable only because the
+        # fixture's deposit names this promotion -- otherwise the
+        # promotion-id guard raises first and the mutation survives,
+        # which is how CI caught this entry on 2026-09-15.
         old=(
             '            (archivePromotion.S_OUTCOME_RESUMABLE,\n'
             '             archivePromotion.S_OUTCOME_PUBLISHABLE,\n'

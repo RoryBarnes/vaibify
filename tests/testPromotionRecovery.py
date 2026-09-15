@@ -16,6 +16,7 @@ follows from refusing to guess in that window:
 """
 
 import pytest
+from fastapi import HTTPException
 
 from vaibify.reproducibility import archivePromotion, zenodoClient
 
@@ -268,32 +269,63 @@ def test_an_action_passes_when_the_remote_names_it(monkeypatch):
 
 
 @pytest.mark.falsification
-def test_discard_refuses_a_published_record_and_an_unreadable_one(
-    monkeypatch, tmp_path,
-):
-    """Discarding either throws away something nobody may throw away.
+def test_discard_refuses_a_published_record(monkeypatch, tmp_path):
+    """Discarding a published record throws away a real DOI's record.
+
+    The deposit NAMES this promotion, which is the whole point of the
+    fixture: without that, ``_fnRequireRemoteNamesThisPromotion``
+    raises first and the allowed-outcome tuple is never what stopped
+    the delete. That is exactly how the earlier version of this test
+    survived its own mutation in CI (2026-09-15) -- it asserted only
+    that *some* exception was raised, and a different guard obliged.
+    Naming the promotion leaves the outcome check as the sole thing
+    between the call and ``fnDeleteDraft``.
 
     Kills: widening the discard route's allowed outcomes to include
-    ``published`` or ``unknown`` — the first destroys a real DOI's
-    record, the second answers a question nobody asked with a "no".
+    ``published``, which destroys the record of a minted DOI.
     """
     from vaibify.gui.routes import promotionRecoveryRoutes
-    for dictDeposit in (
-        {"state": "done", "files": _listMatchingFiles(),
-         "doi": "10.5281/zenodo.4242", "conceptdoi": ""},
-        None,
-    ):
-        clientFake = _FakeClient(dictDeposit)
-        if dictDeposit is None:
-            # An unreadable Zenodo, not a 404: the outcome is unknown.
-            clientFake.fdictGetDeposit = _fnRaiseUnreadable
-        _fnPatchClient(monkeypatch, clientFake)
-        with pytest.raises(Exception):
-            promotionRecoveryRoutes._fnDiscardDraftAndRecord(
-                {}, "container", {}, str(tmp_path), "project.json",
-                _fdictIntendedRecord(),
-            )
-        assert clientFake.listDeleted == []
+    clientFake = _FakeClient({
+        "state": "done", "files": _listMatchingFiles(),
+        "doi": "10.5281/zenodo.4242", "conceptdoi": "",
+        "metadata": {"description":
+                     "An image.\n\nvaibify-promotion: promotion-1"},
+    })
+    _fnPatchClient(monkeypatch, clientFake)
+    with pytest.raises(HTTPException) as error:
+        promotionRecoveryRoutes._fnDiscardDraftAndRecord(
+            {}, "container", {}, str(tmp_path), "project.json",
+            _fdictIntendedRecord(),
+        )
+    assert error.value.status_code == 409
+    # The refusal must be the OUTCOME one. Any other 409 here means a
+    # different guard fired and this test proves nothing about the
+    # allowed-outcome tuple it exists to pin.
+    assert "publish" in str(error.value.detail).lower(), error.value.detail
+    assert clientFake.listDeleted == []
+
+
+def test_discard_refuses_a_record_zenodo_could_not_be_read_for(
+    monkeypatch, tmp_path,
+):
+    """An unreadable Zenodo answers nothing; a discard would answer "no".
+
+    Asserted separately from the published case because it cannot be
+    made to reach the allowed-outcome check: every path to the delete
+    asks Zenodo again, and Zenodo is what is unreadable. The property
+    worth pinning here is narrower and still real -- nothing is
+    deleted when the archive could not be consulted.
+    """
+    from vaibify.gui.routes import promotionRecoveryRoutes
+    clientFake = _FakeClient(None)
+    clientFake.fdictGetDeposit = _fnRaiseUnreadable
+    _fnPatchClient(monkeypatch, clientFake)
+    with pytest.raises(Exception):
+        promotionRecoveryRoutes._fnDiscardDraftAndRecord(
+            {}, "container", {}, str(tmp_path), "project.json",
+            _fdictIntendedRecord(),
+        )
+    assert clientFake.listDeleted == []
 
 
 def _fnRaiseUnreadable(iDepositId):
