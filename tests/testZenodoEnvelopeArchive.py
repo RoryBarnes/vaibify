@@ -245,21 +245,14 @@ def test_publishing_to_zenodo_is_not_a_precondition_for_attesting():
 
 
 def _fnMakeEveryOtherConjunctPass(monkeypatch):
-    for sName in (
-        "fbAtLeastLevel2", "fbL3ReadinessOK",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda dictWorkflow, filesRepo: True,
-        )
-    monkeypatch.setattr(
-        levelGates, "fbL3AttestationCurrent", lambda filesRepo: True,
-    )
-    # The environment-archive conjunct joined `fbAtLeastLevel3` with
-    # the image-archive feature; it has its own falsification tests,
-    # so here it is one more "every OTHER conjunct" to satisfy.
-    monkeypatch.setattr(
-        levelGates, "fbImageArchiveDeposited", lambda filesRepo: True,
-    )
+    """Satisfy every conjunct, so each test below fails exactly one.
+
+    The list lives in ``tests/levelGateStubs`` because three modules
+    kept their own copy and all three went stale together the first
+    time a criterion joined the gate.
+    """
+    from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
+    fnMakeEveryLevel3ConjunctPass(monkeypatch)
 
 
 @pytest.mark.falsification
@@ -280,7 +273,7 @@ def test_a_missing_zenodo_archive_refuses_level_three(monkeypatch):
         lambda filesRepo: False,
     )
     assert levelGates.fbAtLeastLevel3(
-        {"listSteps": []}, _FakeRepoFiles(),
+        {"listSteps": []}, _FakeRepoFiles(), False,
     ) is False
 
 
@@ -301,7 +294,7 @@ def test_a_drifted_github_envelope_refuses_level_three(monkeypatch):
         lambda filesRepo: True,
     )
     assert levelGates.fbAtLeastLevel3(
-        {"listSteps": []}, _FakeRepoFiles(),
+        {"listSteps": []}, _FakeRepoFiles(), False,
     ) is False
 
 
@@ -316,7 +309,7 @@ def test_level_three_still_attainable_with_both_envelopes_published(
     ):
         monkeypatch.setattr(levelGates, sName, lambda filesRepo: True)
     assert levelGates.fbAtLeastLevel3(
-        {"listSteps": []}, _FakeRepoFiles(),
+        {"listSteps": []}, _FakeRepoFiles(), False,
     ) is True
 
 

@@ -6,6 +6,7 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
+from ...config.registryManager import fbIsHostProject
 from .. import stepRename, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import fbMaybeAutoArchive
@@ -290,6 +291,7 @@ async def _fnUpdateThenArchiveUnderTheDrain(
         iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            bHostProject=fbIsHostProject(sContainerId),
         )
         try:
             workflowManager.fnUpdateStep(

@@ -22,6 +22,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
+from ...config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     _fsSanitizeServerError,
@@ -208,7 +209,10 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         )
         dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
-            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(
+                dictWorkflow, filesRepo,
+                bHostProject=fbIsHostProject(sContainerId),
+            ),
             "dictLevel2Gaps": dictGaps,
             "listLevel1Blockers": flistLevel1Blockers(
                 dictWorkflow, {}, filesRepo,

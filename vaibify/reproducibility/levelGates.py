@@ -74,6 +74,7 @@ __all__ = [
     "fbAtLeastLevel1",
     "fbAtLeastLevel2",
     "fbAtLeastLevel3",
+    "fdictArchivedAttestationState",
     "fbL3ReadinessOK",
     "fbEnvelopeMatchesGithubMirror",
     "fbEnvelopeMatchesZenodoArchive",
@@ -301,7 +302,9 @@ def _fsRepoFingerprint(filesRepo):
     return sRepoRoot if isinstance(sRepoRoot, str) else "unknown"
 
 
-def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
+def fiProofLevel(
+    dictWorkflow, filesRepo, dictScriptStatus=None, *, bHostProject,
+):
     """Return the integer PROOF level (0..3) for a workflow.
 
     Short-circuits up the ladder so each gate runs at most once. Wraps
@@ -311,6 +314,12 @@ def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
     L1 so callers with mtime info honor the script-stale criterion.
     ``filesRepo`` is a project-repo path string (host clone) or a
     ``repoFiles`` adapter (container or poll snapshot).
+
+    ``bHostProject`` is keyword-only with NO DEFAULT, for the reason
+    :func:`flistLevel3Blockers` states: Level 3 is defined by a pinned
+    container image, so a host project cannot reach it by any amount
+    of work, and a caller that forgot to ask must meet a TypeError
+    rather than hand a host project a Level 3 it can never hold.
     """
     # Unresolved pull markers gate the whole ladder (spec §4.5
     # condition 2, ruling R2, approved 2026-08-15): a set marker means
@@ -328,7 +337,7 @@ def fiProofLevel(dictWorkflow, filesRepo, dictScriptStatus=None):
             return 0
         if not fbAtLeastLevel2(dictWorkflow, filesRepo):
             return 1
-        if not fbAtLeastLevel3(dictWorkflow, filesRepo):
+        if not fbAtLeastLevel3(dictWorkflow, filesRepo, bHostProject):
             return 2
         return 3
 
@@ -1251,54 +1260,62 @@ def fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
     return imageArchive.fbWorkflowAnswersImageArchive(dictWorkflow)
 
 
-def fbAtLeastLevel3(dictWorkflow, filesRepo):
+def fbAtLeastLevel3(dictWorkflow, filesRepo, bHostProject):
     """Return True iff the workflow meets the L3 Reproducibility gate.
 
-    L3 requires L2 plus a green readiness check (the seven orthogonal
-    verifiers composed by ``fbL3ReadinessOK``) plus a non-stale,
-    ``passed`` L3 attestation on file, plus the published-artefact
-    set: the envelope matches the GitHub mirror, is present in the
-    Zenodo archive, AND a deposit of the image the envelope pins is
-    on record. A registry copy of that image is NOT a conjunct (ruled
+    L3 requires L2, plus a green readiness check (the cheap
+    verifiers composed by ``fbL3ReadinessOK``), plus every
+    workflow-scope L3 check -- the attestation, the published-artefact
+    set (the envelope matches the GitHub mirror, is present in the
+    Zenodo archive, the archive carries an attestation covering its
+    own manifest, and a deposit of the image the envelope pins is on
+    record), and the permanence of both archives.
+
+    The workflow checks are taken FROM ``_fdictL3WorkflowChecks``
+    rather than re-listed here. They were re-listed, and the list
+    forgot ``fbAttestationIsPubliclyArchived`` -- so this scalar
+    reported Level 3 attained over a row that was blocking, which is
+    the header-outranks-its-rows defect exactly. A criterion added to
+    the checks dict now enters this gate BY CONSTRUCTION, and there is
+    no second list to forget.
+
+    ``fbL3ReadinessOK`` stays, and stays FIRST: the checks dict
+    carries neither project-repo, manifest-complete nor determinism --
+    those are evaluated per step -- so dropping it would silently
+    widen Level 3. The overlap (Dockerfile, lock, snapshot,
+    reproduce-script appear in both) is harmless.
+
+    A registry copy of the pinned image is NOT a conjunct (ruled
     2026-09-05, superseding the same day's earlier ruling): Docker Hub
     and GHCR are commercial services with no preservation commitment,
-    so like Overleaf and arXiv they are conveniences vaibify integrates
-    with, never rungs of the ladder. reproduce.sh still tries the
-    registry first and falls back to the deposit. They sit
-    here rather than in readiness so a researcher can attest a complete
-    LOCAL envelope before publishing it — but the LEVEL is not
-    attained until the copies a third party would fetch agree. Because
-    Zenodo deposits are immutable, the
-    Zenodo conjunct makes Level 3 a release-time property: any
-    envelope change drops it until the researcher publishes a new
-    deposit version. The expensive rebuild that produces the
-    attestation is the only L3 criterion that touches a multi-hour
-    operation; the others are cheap and re-evaluated on every level
-    recompute.
+    so like Overleaf and arXiv they are conveniences vaibify
+    integrates with, never rungs of the ladder. reproduce.sh still
+    tries the registry first and falls back to the deposit.
+
+    The published conjuncts sit here rather than in readiness so a
+    researcher can attest a complete LOCAL envelope before publishing
+    it -- but the LEVEL is not attained until the copies a third party
+    would fetch agree. Because Zenodo deposits are immutable, that
+    makes Level 3 a release-time property: any envelope change drops
+    it until the researcher publishes a new deposit version.
+
+    ``bHostProject`` denies the level BY CONSTRUCTION rather than
+    incidentally. A host project fails the published-artefact
+    conjuncts today, which reaches the same answer for the wrong
+    reason: the honest statement is that Level 3 is defined by a
+    pinned container image and a host project has none, so no amount
+    of publishing could change it.
     """
+    if bHostProject:
+        return False
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     if not fbAtLeastLevel2(dictWorkflow, filesRepo):
         return False
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
-    if not fbL3AttestationCurrent(filesRepo):
-        return False
-    if not fbEnvelopeMatchesGithubMirror(filesRepo):
-        return False
-    if not fbEnvelopeMatchesZenodoArchive(filesRepo):
-        return False
-    if not fbImageArchiveDeposited(filesRepo):
-        return False
-    # Enumerated BY HAND, so a criterion added to the checks dict
-    # alone would leave this scalar reporting Level 3 attained while
-    # the rows blocked -- the header outranking its own rows, which
-    # is the defect testProjectHeaderNeverOutranksItsRows.py exists
-    # to catch.
-    if not fbNoArchiveIsKnownSandbox(dictWorkflow, filesRepo):
-        return False
-    if not fbVerifyReproduceScriptCurrent(filesRepo, dictWorkflow):
-        return False
-    return True
+    return all(
+        _fdictL3WorkflowChecks(dictWorkflow, filesRepo).values()
+    )
 
 
 def fbL3ReadinessOK(dictWorkflow, filesRepo):
@@ -2953,15 +2970,39 @@ def fbAttestationIsPubliclyArchived(filesRepo):
 
     ``None`` (a cache predating the check) reads as NOT satisfied,
     like every other criterion here: unproven is not passed. It
-    becomes satisfied on the next Zenodo verify.
+    becomes satisfied on the next Zenodo verify. The ROW beside it
+    must keep the three states apart -- see
+    :func:`fdictArchivedAttestationState` -- because "we looked and it
+    is not there" and "nobody has looked" are different sentences and
+    only one of them is red.
     """
+    return fdictArchivedAttestationState(filesRepo)[
+        "bCoversArchivedManifest"
+    ] is True
+
+
+def fdictArchivedAttestationState(filesRepo):
+    """Return the TRI-state coverage verdict the Zenodo archive row renders.
+
+    ``bCoversArchivedManifest`` is True (the attestation in the
+    archive truthfully describes the manifest in the archive), False
+    (a verify compared them and it does not), or ``None`` -- NOBODY
+    LOOKED: no Zenodo verify has run, or the cached one predates this
+    check. The criterion above collapses ``None`` onto False, which is
+    right for a gate (unproven is not passed) and wrong for a colour:
+    red is a claim about the archive that nobody earned.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictCached = scheduledReverify.fdictReadCachedSyncStatus(
         filesRepo, "zenodo",
     )
     dictArchived = (dictCached or {}).get("dictArchivedAttestation")
     if not isinstance(dictArchived, dict):
-        return False
-    return dictArchived.get("bCoversArchivedManifest") is True
+        return {"bCoversArchivedManifest": None}
+    return {
+        "bCoversArchivedManifest":
+            dictArchived.get("bCoversArchivedManifest") is True,
+    }
 
 
 def fdictAttestationPublicationState(filesRepo):

@@ -1,16 +1,27 @@
-"""A sandbox deposit is NAMED beside the row, never painted over it.
+"""A sandbox deposit is NAMED beside the row that owns it.
 
 A sandbox deposit really does hold bytes that match the envelope, so
-moving the row's colour would be a claim nobody earned: the warning
-rides beside the computed state. The attestation row is the one
-exception, and for the opposite reason — the rebuild happened, and it
-is the CREDIT that is withheld.
+the warning rides beside the row rather than claiming a divergence
+nobody found. What it DOES cost is the Level 3 credit, and since
+2026-09-15 that cost is charged where the remedy is: each archive
+carries its own permanence on its own row, beside its own Make
+Permanent button.
 
-Three things these tests hold that a Python-only suite cannot see at
+It used to hang on the Rebuild attestation row through the combined
+``fbNoArchiveIsKnownSandbox`` gate, which classifies TWO deposits. So
+a sandbox PROJECT deposit reddened the attestation row -- whose only
+button re-runs a verification that was never the problem -- while a
+sandbox IMAGE deposit left the Environment archive row green. Only an
+ASYMMETRIC pair exposes that, which is why the cases below never put
+both archives in the same state.
+
+Four things these tests hold that a Python-only suite cannot see at
 all:
 
 * the glyph and the Make Permanent button appear for ``sandbox`` and
   for NEITHER other state;
+* a sandbox deposit costs its own row the Level 3 cell and costs the
+  attestation row nothing;
 * the Published Envelope row renders the DOI the verify compared
   against, selectable, where it previously reported none at all;
 * a production primary with an older SANDBOX verify cache shows no
@@ -131,10 +142,17 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
     # archive": the bytes match either way, and what changes is
     # whether anyone has promised to keep them.
     assert "is deposited in a permanent archive" not in sRow
-    # The row keeps its computed state: a sandbox deposit really does
-    # hold matching bytes, and repainting the cell would be a claim
-    # nobody earned.
-    assert "level-cell-attained" in sRow
+    # The LEVEL 3 cell moves, and it moves to PARTIAL rather than to
+    # red: the deposit exists and matches, and what is missing is the
+    # promise to keep it. This is where the cost is charged now, one
+    # click from the Make Permanent button above. Asserted through the
+    # cell's TITLE, because the level a cell speaks for lives there
+    # and not in its class.
+    assert "Level 3: partially met" in sRow, sRow[:2000]
+    assert "sandbox, which promises to keep nothing" in sRow
+    # The LEVEL 2 cell does not move. Level 2 asks whether the
+    # researcher ANSWERED, and they did.
+    assert "Level 2: met" in sRow
 
     # --- permanent and unknown render exactly as today
     for sState in ("permanent", "unknown", ""):
@@ -143,6 +161,11 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
         assert "requirement-row-warning" not in sOtherRow, sState
         assert "promote-environment-archive" not in sOtherRow, sState
         assert "is deposited in a permanent archive" in sOtherRow, sState
+        # UNKNOWN keeps the level, which is the whole reason the
+        # condition is spelled "!= sandbox" and never "== permanent":
+        # the gate fails open in the researcher's favour, and a row
+        # that spent the level on silence would contradict it.
+        assert "Level 3: met" in sOtherRow, sState
 
     # --- the Published Envelope row: a DOI it reported nowhere at all
     sEnvelope = pageDashboard.evaluate(_S_RENDER_ENVELOPE_ROW, {
@@ -174,9 +197,10 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
     assert "promote-project-deposit" not in sPromotedRow
     assert "requirement-row-warning" not in sPromotedRow
 
-    # --- the attestation row withholds the CREDIT and names which
-    # archive. The rerun happened; the archive it sits in promises
-    # nothing.
+    # --- the attestation row is about the ATTESTATION, and a sandbox
+    # deposit on either archive costs it nothing. It carries neither
+    # Make Permanent button, and its only control re-runs a
+    # verification that was never the problem.
     sBlocked = pageDashboard.evaluate(_S_RENDER_ATTESTATION_ROW, {
         "bNoArchiveKnownSandbox": False,
         "listPermanenceIssues": [
@@ -184,15 +208,16 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
         ],
     })
     sAttestation = _fsSelectRow(sBlocked, "rebuildAttestation")
-    assert "does not count while an archive is a sandbox deposit" in (
+    assert "level-cell-attained" in sAttestation, (
+        "a sandbox deposit reddened the attestation row again; the "
+        "rerun happened, and the archive that promises nothing has "
+        "its own row with its own button"
+    )
+    assert "does not count while an archive is a sandbox deposit" not in (
         sAttestation
     )
-    assert "The environment archive is a Zenodo SANDBOX deposit." in (
-        sAttestation
-    )
-    assert "level-cell-attained" not in sAttestation
 
-    # A payload predating the criterion must not redden the row.
+    # A payload predating any of this renders exactly the same.
     sLegacy = pageDashboard.evaluate(_S_RENDER_ATTESTATION_ROW, {})
     sLegacyRow = _fsSelectRow(sLegacy, "rebuildAttestation")
     assert "level-cell-attained" in sLegacyRow

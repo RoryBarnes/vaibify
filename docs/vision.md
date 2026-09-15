@@ -286,9 +286,11 @@ Both deserve attention; neither is a rung on this ladder.
 Vaibify implements **L1, L2, and L3**, and stops there by design.
 All three have working enforcement in
 `vaibify/reproducibility/levelGates.py`: `fbAtLeastLevel1`,
-`_fbComputeLevel2`'s seven conjuncts, and `fbAtLeastLevel3` (L2 plus
-seven readiness verifiers plus a current attestation), each with a
-blocker list that tells the researcher exactly what is missing.
+`_fbComputeLevel2`'s seven conjuncts, and `fbAtLeastLevel3` (L2, plus
+the readiness verifiers, plus every workflow-scope criterion the
+blocker list emits — taken from `_fdictL3WorkflowChecks` rather than
+re-listed, so the scalar gate and the rows cannot disagree). Each has
+a blocker list that tells the researcher exactly what is missing.
 
 L4, L5, and L6 are described here for completeness and are **not
 implemented**: they depend on institutional archiving, cross-agent

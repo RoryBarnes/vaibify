@@ -261,6 +261,8 @@ def test_gates_compute_same_level_from_snapshot_and_live(tmp_path):
         listScriptRelPaths=["analyze.py"],
         listHashRelPaths=["out.csv"],
     )
-    iLevelSnapshot = fiProofLevel(dictWorkflow, filesFetched)
-    iLevelLive = fiProofLevel(dictWorkflow, HostRepoFiles(str(tmp_path)))
+    iLevelSnapshot = fiProofLevel(dictWorkflow, filesFetched, bHostProject=False)
+    iLevelLive = fiProofLevel(
+        dictWorkflow, HostRepoFiles(str(tmp_path)), bHostProject=False,
+    )
     assert iLevelSnapshot == iLevelLive

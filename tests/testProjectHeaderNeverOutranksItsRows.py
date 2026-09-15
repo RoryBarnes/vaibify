@@ -215,11 +215,15 @@ def testASandboxArchiveBlocksTheScalarGateAndTheRowsTogether(
 ):
     """The header must not outrank its rows over the permanence criterion.
 
-    ``fbAtLeastLevel3`` enumerates its conjuncts by hand, so a
-    criterion registered only in the dict and the tuple leaves the
-    scalar gate reporting attainment while the row blocks — the
+    ``fbAtLeastLevel3`` used to enumerate its conjuncts by hand, so a
+    criterion registered only in the dict and the tuple left the
+    scalar gate reporting attainment while the row blocked — the
     display disagreeing with itself, which is the shape of the 2026-
-    08-30 defect this module exists for.
+    08-30 defect this module exists for. It did happen, to
+    ``fbAttestationIsPubliclyArchived``. The gate now takes every
+    workflow criterion FROM ``_fdictL3WorkflowChecks``, so a new one
+    enters it by construction and the hand-maintained list is gone;
+    this test stays as the behavioural proof of that for one criterion.
     """
     os.makedirs(os.path.join(fixtureProjectRepo, ".vaibify"), exist_ok=True)
     with open(
@@ -239,4 +243,6 @@ def testASandboxArchiveBlocksTheScalarGateAndTheRowsTogether(
         )
     ]
     assert "an-archive-is-a-sandbox-deposit" in listCriteria
-    assert fbAtLeastLevel3(dictWorkflow, fixtureProjectRepo) is False
+    assert fbAtLeastLevel3(
+        dictWorkflow, fixtureProjectRepo, False,
+    ) is False

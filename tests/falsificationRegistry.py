@@ -296,10 +296,25 @@ LIST_FALSIFICATIONS = [
             'test_a_missing_zenodo_archive_refuses_level_three'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesZenodoArchive(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
+        old=(
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
+        ),
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "envelope-not-in-zenodo-archive"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -307,10 +322,25 @@ LIST_FALSIFICATIONS = [
             'test_a_drifted_github_envelope_refuses_level_three'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesGithubMirror(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
+        old=(
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
+        ),
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "envelope-not-in-github-mirror"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -13908,7 +13938,8 @@ def _fdictEntry(sRel):
         old=(
             '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
             '            bMatched, sBadgeKey, listEnvelope);\n'
-            '        var sState = dictHealth.sState;\n'
+            '        var sState = _fsApplyArchiveConjuncts(\n'
+            '            dictHealth.sState, dictArchiveInfo);\n'
         ),
         new=(
             '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
@@ -14251,12 +14282,15 @@ def _fdictEntry(sRel):
         # can (the threaded-parameter lesson).
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '        dictImageCurrency='
-            'fdictAssessEnvelopeImageCurrency(\n'
-            '            dictCtx, sContainerId, filesPoll,\n'
-            '        ),'
+            '    dictImageCurrency = fdictAssessEnvelopeImageCurrency(\n'
+            '        dictCtx, sContainerId, filesPoll,\n'
+            '    )'
         ),
-        new='        dictImageCurrency=None,',
+        # An empty mapping rather than None, because the value is
+        # also read for the lock fingerprint one line down: None
+        # would kill on an AttributeError, which is a crash and not
+        # the dropped-parameter defect this entry is about.
+        new='    dictImageCurrency = {}',
     ),
     Falsification(
         nodeid=(
@@ -14876,6 +14910,8 @@ def _fdictEntry(sRel):
             'true ||\n'
             '                dictReady.bImageMatchesDeclaredPackages '
             '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
+            '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
@@ -14896,6 +14932,8 @@ def _fdictEntry(sRel):
             '        if (dictReady && (dictReady.bL3ReadinessOK !== '
             'true ||\n'
             '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
             '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
@@ -18367,9 +18405,7 @@ def _fdictEntry(sRel):
         # that distinguishes a closed archive from an ordinary miss
         old=(
             '        dictStateByLevel[3] =\n'
-            '            _DICT_MARK_TO_LEVEL_STATE[\n'
-            '                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||\n'
-            '            "unknown";'
+            '            _DICT_MARK_TO_LEVEL_STATE[sMark] || "unknown";'
         ),
         new='        dictStateByLevel[3] = "none";',
     ),
@@ -20109,16 +20145,25 @@ def _fdictEntry(sRel):
             'test_a_sandbox_archive_blocks_the_scalar_gate'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        # The criterion registered in the checks dict and the tuple but
-        # NOT in the scalar gate, which enumerates its conjuncts by
-        # hand: the header reports Level 3 attained above rows that
-        # block.
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
         old=(
-            '    if not fbNoArchiveIsKnownSandbox(dictWorkflow, '
-            'filesRepo):\n'
-            '        return False\n'
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
         ),
-        new='',
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "an-archive-is-a-sandbox-deposit"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20224,14 +20269,25 @@ def _fdictEntry(sRel):
             'test_a_stale_script_blocks_the_scalar_gate'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        # Registered in the checks dict and the tuple but not in the
-        # scalar gate: the header reports Level 3 above a blocking row.
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
         old=(
-            '    if not fbVerifyReproduceScriptCurrent(filesRepo, '
-            'dictWorkflow):\n'
-            '        return False\n'
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
         ),
-        new='',
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "reproduce-script-stale"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20356,8 +20412,30 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/levelOrdering.py',
         # Roots taken from the FULL edge set rather than the live one:
         # an arrow appears over two rows that do not order each other.
-        old='    listLive = _flistSelectLiveEdges(dictSatisfied)\n',
-        new='    listLive = list(T_LEVEL3_ORDERING_EDGES)\n',
+        # RE-ANCHORED 2026-09-15. The mutation used to be "select every
+        # edge, not the live ones", which named a root while the old
+        # tree had exactly one. The graph now has THREE roots
+        # (dependencyLock, environmentArchive, reproduceScript), so
+        # that mutation answers None and reads as killed by a guard it
+        # no longer exercises. The mutation the docstring actually
+        # names -- answer with the first unsatisfied row -- is the one
+        # that reaches this fixture.
+        old=(
+            '    listLive = _flistSelectLiveEdges(dictSatisfied)\n'
+            '    if not listLive:\n'
+            '        return None\n'
+        ),
+        new=(
+            '    listLive = _flistSelectLiveEdges(dictSatisfied)\n'
+            '    if not listLive:\n'
+            '        listUnsatisfied = sorted(\n'
+            '            sRow for sRow, bOk in dictSatisfied.items()\n'
+            '            if not bOk\n'
+            '        )\n'
+            '        if not listUnsatisfied:\n'
+            '            return None\n'
+            '        return _fdictBuildStep(listUnsatisfied[0], [])\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20553,5 +20631,324 @@ def _fdictEntry(sRel):
             '        if dictInstalled.get(sName) != sVersion\n'
             '    ]\n'
         ),
+    ),
+
+    # --- 2026-09-15: the Level 3 path made honest ---
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_readiness_request_answers_two_hundred'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The shipped bug itself: fdictParsePinnedVersions imported
+        # from a module it does not live in, outside every try, so
+        # every readiness request raised and answered 500. A boolean
+        # flip would SURVIVE -- the defect was an exception, not a
+        # wrong answer -- and the source-text guard written for this
+        # very function was green throughout.
+        old=(
+            '    from vaibify.reproducibility import lockSatisfaction\n'
+            '    try:\n'
+            '        if not filesRepo.fbIsFile("requirements.lock"):\n'
+        ),
+        new=(
+            '    from vaibify.reproducibility.dependencyPinning import (\n'
+            '        fdictParsePinnedVersions,\n'
+            '    )\n'
+            '    from vaibify.reproducibility import lockSatisfaction\n'
+            '    try:\n'
+            '        if not filesRepo.fbIsFile("requirements.lock"):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_readiness_request_carries_the_lock_verdict'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # A 200 with the block missing is the same screen the
+        # ImportError produced -- three surfaces rendering "unknown"
+        # -- reached a different way.
+        old='    dictGaps["dictLockSatisfaction"] = dictLockVerdict\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReadinessProbeRunsBothExecsUnderOneDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The carrier gone: the probe runs with no admission open, so
+        # the pip-list exec is refused at the primitive and the whole
+        # request 500s.
+        old=(
+            '    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(\n'
+            '        sContainerId, fdictProbeUnderOneAdmission, '
+            '"l3-readiness",\n'
+            '        requestHttp,\n'
+            '    )'
+        ),
+        new=(
+            '    dictOutcome = {"bPaused": False, "sPausedBy": "",\n'
+            '                   "objResult": fdictProbeUnderOneAdmission()}'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_only_a_mismatch_against_the_proven_pin_blocks_a_rerun'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # A verdict about the RUNNING container reported as a fact
+        # about the PINNED image: every mismatch blocks, including on
+        # a project whose pinned image is perfectly fine.
+        old=(
+            '    return (dictImageCurrency or {}).get('
+            '"bPinnedImageIsLive") is True\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_a_rewritten_lock_downgrades_the_answer_to_unknown'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The lock digest dropped: a regenerated envelope leaves the
+        # old verdict standing over a lock nobody compared.
+        old="""    return f"{sDigest}|{sRunningImageIdentity or ''}"\n""",
+        new="""    return f"|{sRunningImageIdentity or ''}"\n""",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_a_replaced_running_image_downgrades_the_answer_too'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The running-image identity dropped -- the half a lock-only
+        # fingerprint misses, and the one ruling 5 makes load-bearing,
+        # because the measurement is OF that container.
+        old="""    return f"{sDigest}|{sRunningImageIdentity or ''}"\n""",
+        new='    return f"{sDigest}|"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_sandbox_project_deposit_never_lights_the_environment_row'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The environment node judged from the COMBINED sandbox gate,
+        # which classifies two archives: a sandbox project deposit
+        # then lights the Environment row, whose Make Permanent button
+        # promotes the wrong archive.
+        old=(
+            '            and not _fbIsSandbox(\n'
+            '                dictPermanence["sImageArchivePermanence"],\n'
+            '            )\n'
+        ),
+        new=(
+            '            and levelGates.fbNoArchiveIsKnownSandbox(\n'
+            '                dictWorkflow, filesRepo,\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_sandbox_image_deposit_never_lights_the_zenodo_row'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The reverse: the Zenodo node judged from the combined gate,
+        # so a sandbox IMAGE deposit sends the researcher to publish a
+        # new immutable version over a project deposit that is already
+        # permanent.
+        old=(
+            '            and not _fbIsSandbox(\n'
+            '                dictPermanence["sProjectArchivePermanence"],\n'
+            '            )\n'
+        ),
+        new=(
+            '            and levelGates.fbNoArchiveIsKnownSandbox(\n'
+            '                dictWorkflow, filesRepo,\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unknown_permanence_keeps_both_archive_rows_satisfied'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # Permanence spelled as "== permanent": every deposit vaibify
+        # cannot classify is treated as a sandbox one, and the gate
+        # that fails open in the researcher's favour stops doing so.
+        old=(
+            '    return sPermanence == archivePermanence.'
+            'S_PERMANENCE_SANDBOX\n'
+        ),
+        new=(
+            '    return sPermanence != archivePermanence.'
+            'S_PERMANENCE_PERMANENT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_archive_holding_no_covering_attestation_is_named'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The Zenodo node judged on the envelope alone: Level 3 fails
+        # on the archived attestation while every publication node is
+        # satisfied, so no edge is live at both ends and the arrow
+        # goes silent exactly when it is needed.
+        old=(
+            '            and levelGates.fbAttestationIsPubliclyArchived('
+            'filesRepo)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_the_dependency_lock_is_the_only_row_allowed_to_diverge'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The lock-satisfaction conjunct put back on the ROW, which
+        # erases the one permitted divergence -- and with it the
+        # ruling that the warning belongs in an amber note rather than
+        # in the row's colour.
+        old=(
+            '        "dependencyLock": levelGates.fbVerifyDependencyLock('
+            'filesRepo),\n'
+        ),
+        new=(
+            '        "dependencyLock": (\n'
+            '            levelGates.fbVerifyDependencyLock(filesRepo)\n'
+            '            and (dictLockSatisfaction or {}).get("sState")\n'
+            '            != lockSatisfaction.S_LOCK_MISMATCH\n'
+            '        ),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_an_archive_with_no_covering_attestation_denies_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The criterion the hand-written list forgot, removed from the
+        # dict that replaced it.
+        old=(
+            '        "attestation-not-in-zenodo-archive":\n'
+            '            fbAttestationIsPubliclyArchived(filesRepo),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_a_host_project_is_denied_with_every_conjunct_satisfied'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Host mode denied only incidentally again, by failing the
+        # published-artifact conjuncts rather than by construction.
+        old='    if bHostProject:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_a_host_project_never_reports_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The default that makes a dropped hop indistinguishable from
+        # an answered question: every caller that forgets to ask is
+        # told "not a host project" instead of meeting a TypeError.
+        old=(
+            '    dictWorkflow, filesRepo, dictScriptStatus=None, *, '
+            'bHostProject,\n'
+        ),
+        new=(
+            '    dictWorkflow, filesRepo, dictScriptStatus=None, *, '
+            'bHostProject=False,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_readiness_still_gates_what_the_checks_dict_does_not_carry'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Readiness dropped now that the dict supplies the conjuncts:
+        # Level 3 silently widens to projects whose manifest is
+        # incomplete, because that criterion is evaluated per step and
+        # the dict does not carry it.
+        old=(
+            '    if not fbL3ReadinessOK(dictWorkflow, filesRepo):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowsCarryTheirOwnConditions.py::'
+            'test_the_zenodo_row_asks_all_three_of_its_questions'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The row judged on envelope agreement alone again: green over
+        # an archive holding no covering attestation, which is the
+        # state in which Level 3 fails and no publication row says so.
+        old=(
+            '        var sState = _fsApplyArchiveConjuncts(\n'
+            '            dictHealth.sState, dictArchiveInfo);\n'
+        ),
+        new='        var sState = dictHealth.sState;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLockRowKeepsItsStateAndSaysWhy.py::'
+            'test_a_lock_the_container_fails_keeps_its_row_and_gains_a_note'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The note silenced. The row stays green -- correctly, by the
+        # ruling -- the arrow still points at it, and nothing on the
+        # page says why: the researcher is back where they started,
+        # reached from the opposite direction.
+        old='        if (sKey !== "dependencyLock") return "";\n',
+        new='        if (true) return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testALevelCrossingWarnsBeforeItWrites.py::'
+            'test_neither_declaration_writes_before_the_researcher_agrees'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The confirmation dropped from the determinism declaration:
+        # the POST goes out on the click, and the project sits below
+        # Level 2 until a push and a new immutable Zenodo version,
+        # with nothing having said so.
+        old=(
+            '            dictConfirm: {\n'
+            '                sTitle: "Declare the repeatability rules",\n'
+        ),
+        new=(
+            '            dictConfirmDisabled: {\n'
+            '                sTitle: "Declare the repeatability rules",\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_a_busy_container_pauses_the_probe_instead_of_queuing'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The queuing carrier restored. The dashboard fires this GET
+        # on every project open, so waiting for the drain holds a
+        # request nobody made for as long as a fetch or a step takes
+        # -- measured, it delayed the remote badge refresh past ten
+        # seconds and would hold a Run Step just the same.
+        old='    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(\n',
+        new='    dictOutcome = await fgenericRunWorkerUnderTheDrain(\n',
     ),
 ]

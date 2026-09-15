@@ -3582,6 +3582,24 @@ const VaibifyApp = (function () {
         "declare-binary": {
             sPath: "/binaries/declare",
             fdictBodyFromElement: _fdictReadBinaryForm,
+            /* The cost, named before the write. Both of these
+               advance Level 3 by rewriting project.json -- the file
+               Level 2 compares against GitHub and Zenodo -- so the
+               project drops below Level 2 until it is pushed AND a
+               new Zenodo version carries it. A Zenodo version is
+               immutable, which is what earns this a modal where a
+               step rename gets none. */
+            dictConfirm: {
+                sTitle: "Declare this package",
+                sMessage: "Declaring a package to satisfy Level 3 " +
+                    "rewrites project.json, which Level 2 compares " +
+                    "against your GitHub mirror and your Zenodo " +
+                    "archive. This project sits below Level 2 until " +
+                    "you push the change and publish a new Zenodo " +
+                    "version carrying it \u2014 Zenodo versions are " +
+                    "immutable, so the archived copy cannot be " +
+                    "corrected in place.",
+            },
             sToast: "Package declared. Now capture its version and " +
                 "hash from its row.",
         },
@@ -3806,6 +3824,24 @@ const VaibifyApp = (function () {
         "declare-determinism": {
             sPath: "/determinism/declare",
             fdictBodyFromElement: _fdictReadDeterminismForm,
+            /* The cost, named before the write. Both of these
+               advance Level 3 by rewriting project.json -- the file
+               Level 2 compares against GitHub and Zenodo -- so the
+               project drops below Level 2 until it is pushed AND a
+               new Zenodo version carries it. A Zenodo version is
+               immutable, which is what earns this a modal where a
+               step rename gets none. */
+            dictConfirm: {
+                sTitle: "Declare the repeatability rules",
+                sMessage: "Declaring the repeatability rules to " +
+                    "satisfy Level 3 rewrites project.json, which " +
+                    "Level 2 compares against your GitHub mirror " +
+                    "and your Zenodo archive. This project sits " +
+                    "below Level 2 until you push the change and " +
+                    "publish a new Zenodo version carrying it " +
+                    "\u2014 Zenodo versions are immutable, so the " +
+                    "archived copy cannot be corrected in place.",
+            },
             sToast: "Reproducibility rules declared.",
         },
         "delete-determinism": {
@@ -4159,8 +4195,8 @@ const VaibifyApp = (function () {
         var sContainerId = _dictSessionState.sContainerId;
         if (!dictAction || !sContainerId) return;
         if (dictAction.dictConfirm) {
-            var dictNoConfirm = Object.assign({}, dictAction);
-            delete dictNoConfirm.dictConfirm;
+            var dictNoConfirm = _fdictFreezeFormBody(dictAction, elButton);
+            if (!dictNoConfirm) return;
             fnShowConfirmModal(
                 dictAction.dictConfirm.sTitle,
                 dictAction.dictConfirm.sMessage,
@@ -4187,6 +4223,26 @@ const VaibifyApp = (function () {
         }
         await _fnExecuteProjectAction(
             dictAction, sContainerId, sArg, elButton);
+    }
+
+    function _fdictFreezeFormBody(dictAction, elButton) {
+        /* Read a form-backed body at CLICK time, before the modal.
+           The poll re-renders the Project block on its own cadence, so
+           the row holding the form can be replaced while the
+           researcher is reading the confirmation -- and a body read
+           from a detached element comes back empty, which the
+           executor treats as "nothing to send". The declaration would
+           then vanish with no error and no toast, which is the
+           silent-failure class this product exists to avoid. Returns
+           the action to run, or null when the form itself refused. */
+        var dictReady = Object.assign({}, dictAction);
+        delete dictReady.dictConfirm;
+        if (!dictAction.fdictBodyFromElement) return dictReady;
+        var oBody = dictAction.fdictBodyFromElement(elButton);
+        if (!oBody) return null;
+        delete dictReady.fdictBodyFromElement;
+        dictReady.fdictBody = function () { return oBody; };
+        return dictReady;
     }
 
     async function _fnExecuteProjectAction(
@@ -4958,6 +5014,26 @@ const VaibifyApp = (function () {
             "Dockerfile — exported from a different build chain " +
             "than the pinned image's; re-export it from the " +
             "Dockerfile row",
+        /* Also a fact about the CONTAINER rather than one of the
+           envelope gaps, and listed here for the same reason: the
+           rerun refuses on it before it starts, so a researcher who
+           met it as a bare failure toast would have spent the whole
+           pre-flight learning nothing.
+
+           The cheap remedy is named FIRST because it is almost
+           always the right one -- the lock is usually simply older
+           than the image, and Regenerate now rewrites it from what
+           the image has. Rebuilding also settles it, and costs the
+           image: it goes back to matching the older lock. This
+           wording and the shadow's refusal must not give different
+           instructions for one cause. */
+        bLockDoesNotBlockVerification:
+            "Dependency lock — the image your envelope pins does " +
+            "not satisfy it, so the rerun refuses before it starts. " +
+            "Click 'Regenerate now' on the Dependency lock row to " +
+            "rewrite the lock from what the image actually has; " +
+            "rebuilding the image instead also settles it, at the " +
+            "cost of downgrading the image to match the older lock",
     };
 
     function _fnCarryRecordKindOntoGaps(dictResponse) {
@@ -5331,6 +5407,7 @@ const VaibifyApp = (function () {
            (reported 2026-09-01). */
         if (dictReady && (dictReady.bL3ReadinessOK !== true ||
                 dictReady.bImageMatchesDeclaredPackages === false ||
+                dictReady.bLockDoesNotBlockVerification === false ||
                 dictReady.bDockerfileDescribesPinnedImage === false)) {
             _fnShowLevel3NotReadyModal(dictReady);
             return;

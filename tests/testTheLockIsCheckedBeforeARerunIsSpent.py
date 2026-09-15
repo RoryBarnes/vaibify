@@ -112,15 +112,145 @@ def test_the_refusal_names_the_cheap_remedy_first():
     assert "downgrades" in sMessage.lower()
 
 
-def test_the_readiness_route_asks_the_shadows_question():
-    """The pre-flight must ask what the rerun will ask, not something else."""
+def test_both_callers_enumerate_packages_by_the_same_constant():
+    """The one property source text is the right tool for.
+
+    Whether the two lanes SPELL the same constant is a claim about the
+    text, and no request can observe it: a pre-flight that assembled
+    its own ``pip list`` variant would answer plausibly and disagree
+    with the shadow on any image where the two spellings differ --
+    which is the drift that let a lock satisfying nothing reach a
+    researcher's verification in the first place.
+
+    Everything else about that route is asserted by driving it, in
+    ``tests/testTheReadinessRouteAnswersARequest.py``. A source-text
+    guard on the route's BEHAVIOUR is what let the ``ImportError``
+    ship: ``inspect.getsource`` cannot observe whether a function runs.
+    """
     import inspect
     from vaibify.gui.routes import reproducibilityRoutes
-    sSource = inspect.getsource(
+    from vaibify.reproducibility import shadowRerun
+    for fnCaller in (
         reproducibilityRoutes.fdictCheckLockSatisfiedByContainer,
+        shadowRerun._fdictRefusalIfImageLacksLockedPackages,
+    ):
+        assert "S_SHADOW_PIP_ENUMERATE_COMMAND" in inspect.getsource(
+            fnCaller,
+        ), (
+            f"{fnCaller.__name__} enumerates packages its own way; the "
+            "two lanes must ask the image one question, or they can "
+            "disagree again"
+        )
+
+
+# ----------------------------------------------------------------------
+# The pinned image is what a rerun grades, and the measurement is not
+# ----------------------------------------------------------------------
+
+def _fdictJudgeWith(dictVerdict, dictImageCurrency, sProjectRepo):
+    """Return the arrow's verdicts for one (measurement, currency) pair."""
+    from vaibify.reproducibility import levelOrdering
+    return levelOrdering.fdictJudgeOrderedRequirements(
+        {"listSteps": [], "sWorkflowName": "p"}, sProjectRepo,
+        dictVerdict, dictImageCurrency,
     )
-    assert "requirements.lock" in sSource
-    assert "S_SHADOW_PIP_ENUMERATE_COMMAND" in sSource, (
-        "the pre-flight must enumerate packages the same way the "
-        "shadow does, or the two can disagree again"
+
+
+_T_LOCK_CASES = (
+    # (label, verdict, image currency, blocks?)
+    ("clean", {"sState": "clean"}, {"bPinnedImageIsLive": True}, False),
+    (
+        "mismatch against the proven pin",
+        {"sState": "mismatch"}, {"bPinnedImageIsLive": True}, True,
+    ),
+    (
+        "mismatch against a different image",
+        {"sState": "mismatch"}, {"bPinnedImageIsLive": False}, False,
+    ),
+    (
+        "mismatch against an undetermined image",
+        {"sState": "mismatch"}, {"bPinnedImageIsLive": None}, False,
+    ),
+    ("unknown", {"sState": "unknown"}, {"bPinnedImageIsLive": True}, False),
+    ("never asked", None, None, False),
+)
+
+
+@pytest.mark.parametrize(
+    "sLabel,dictVerdict,dictCurrency,bBlocks", _T_LOCK_CASES,
+)
+@pytest.mark.falsification
+def test_only_a_mismatch_against_the_proven_pin_blocks_a_rerun(
+    sLabel, dictVerdict, dictCurrency, bBlocks,
+):
+    """The shadow runs the PIN; the measurement is of the running container.
+
+    A verdict about one is evidence about the other only when the two
+    are known to be the same image. Three of these five mismatch-ish
+    cases must NOT block: blocking on any running-container mismatch
+    falsely refuses a shadow whose pinned image is fine, and treating
+    a clean running container as clearance falsely clears one the
+    shadow will reject.
+
+    Kills: gating on ``sState == "mismatch"`` alone, and reading
+    ``bPinnedImageIsLive`` as truthy-or-absent rather than exactly
+    ``True``.
+    """
+    from vaibify.reproducibility import lockSatisfaction
+    assert lockSatisfaction.fbLockBlocksVerification(
+        dictVerdict, dictCurrency,
+    ) is bBlocks, sLabel
+
+
+@pytest.mark.parametrize(
+    "sLabel,dictVerdict,dictCurrency,bBlocks", _T_LOCK_CASES,
+)
+def test_the_arrow_reads_the_same_truth_table(
+    sLabel, dictVerdict, dictCurrency, bBlocks, tmp_path,
+):
+    """BOTH surfaces, one table. Two derivations is what was fixed.
+
+    The pre-flight and the "Do this next" arrow answer one question,
+    and the arrow used to answer it from the measurement alone -- so a
+    project whose running image was not the pin got an arrow pointing
+    at a row no rerun would refuse on.
+    """
+    import os
+    import subprocess
+    sRepo = str(tmp_path)
+    subprocess.run(["git", "init", "-q", sRepo], check=True)
+    os.makedirs(os.path.join(sRepo, ".vaibify"), exist_ok=True)
+    with open(os.path.join(sRepo, "requirements.lock"), "w") as fileLock:
+        fileLock.write("numpy==2.5.2 \\\n    --hash=sha256:00\n")
+    dictJudged = _fdictJudgeWith(dictVerdict, dictCurrency, sRepo)
+    assert dictJudged["dependencyLock"] is not bBlocks, sLabel
+
+
+def test_the_edge_reason_names_the_cheap_remedy_first():
+    """One cause must not produce two sets of instructions.
+
+    The arrow's reason and the shadow's refusal describe the same
+    mismatch, so both name regenerating the envelope before rebuilding
+    the image, and both say what rebuilding costs. Asserted on the
+    ORDER rather than the sentence: the wording will change and the
+    advice must not.
+    """
+    from vaibify.reproducibility import levelOrdering
+    listReasons = [
+        sReason
+        for sEarlier, sLater, sReason in (
+            levelOrdering.T_LEVEL3_ORDERING_EDGES
+        )
+        if sEarlier == "dependencyLock" and sLater == "rebuildAttestation"
+    ]
+    assert len(listReasons) == 1
+    sReason = listReasons[0]
+    assert sReason.index("Regenerate") < sReason.index("Rebuilding"), (
+        "the expensive remedy is named before the cheap one"
     )
+    assert "downgrading" in sReason
+    assert "pinned image does not satisfy" not in sReason, (
+        "the reason states a fact about the PIN from a measurement of "
+        "the running container"
+    )
+    assert "container you are working in" in sReason

@@ -199,8 +199,18 @@ def _fnSeedReadyL3Repo(sProjectRepo):
 # ============================================================================
 
 
-def test_l3_readiness_returns_gap_dict(fixtureClient):
-    """A bare workflow returns iProofLevel=0 and the readiness gap dict."""
+def test_l3_readiness_returns_gap_dict(
+    fixtureClient, fixtureCarrierStoodDown,
+):
+    """A bare workflow returns iProofLevel=0 and the readiness gap dict.
+
+    Stood down since 2026-09-15: the readiness GET execs twice -- the
+    lock probe and the record-kind question -- so it opens a mode-(b)
+    carrier and binds to the container's owner record, which this
+    module's bare ``FastAPI()`` has not got. What the admission is
+    lives in ``tests/testCarrierMigratedRoutes.py``; what the payload
+    SAYS lives here.
+    """
     response = fixtureClient.get(
         f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
     )
@@ -1200,7 +1210,7 @@ def test_an_undeclared_package_is_not_answered_with_rebuild_alone():
 
 
 def test_readiness_resolves_the_docker_id_before_the_package_lookup(
-    fixtureWorkflow, monkeypatch,
+    fixtureWorkflow, monkeypatch, fixtureCarrierStoodDown,
 ):
     """The readiness payload's package flag must survive an ID path.
 

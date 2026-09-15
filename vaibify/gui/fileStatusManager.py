@@ -2170,7 +2170,11 @@ def fbMaybeAutoArchive(
     filesRepo = _ffilesForWorkflowRepo(
         dictWorkflow, connectionDocker, sContainerId,
     )
-    iLevelNow = fiProofLevel(dictWorkflow, filesRepo)
+    from vaibify.config.registryManager import fbIsHostProject
+    iLevelNow = fiProofLevel(
+        dictWorkflow, filesRepo,
+        bHostProject=fbIsHostProject(sContainerId),
+    )
     bPromoted = iProofLevelBefore < 1 <= iLevelNow
     _fnDispatchEnvelopeRefreshIfPromoted(
         dictWorkflow, sContainerId, bPromoted, connectionDocker,

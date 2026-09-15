@@ -162,15 +162,18 @@ def test_a_sandbox_archive_blocks_the_scalar_gate(sProjectRepo, monkeypatch):
             "10.5072/zenodo.7000001", "sandbox",
         ),
     )
-    for sName in (
-        "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
-        "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
-        "fbImageArchiveDeposited",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda *args, **kwargs: True,
-        )
-    assert levelGates.fbAtLeastLevel3({}, sProjectRepo) is False
+    # EVERY other conjunct satisfied, and the permanence gate left
+    # REAL so the fixture's sandbox record is what refuses. With other
+    # conjuncts still failing, the gate returns False either way and
+    # deleting this criterion changes nothing the test can see --
+    # measured, the mutation SURVIVED exactly that way.
+    from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
+    fnMakeEveryLevel3ConjunctPass(
+        monkeypatch, fbNoArchiveIsKnownSandbox=None,
+    )
+    assert levelGates.fbAtLeastLevel3(
+        {}, sProjectRepo, False,
+    ) is False
 
 
 def test_withholding_the_credit_leaves_the_rerun_runnable(sProjectRepo):

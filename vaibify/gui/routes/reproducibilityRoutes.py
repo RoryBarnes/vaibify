@@ -41,6 +41,7 @@ from ...reproducibility.manifestWriter import (
     fdictCompareManifestEntries,
     flistParseManifestLines,
 )
+from ...config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
 from ..serverMiddleware import fbRequestRidesAgentLane
 from .. import verificationProgress
@@ -56,6 +57,7 @@ from ..pipelineServer import (
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
+    fdictRunAutomaticReadUnderTheDrain,
     ffilesForWorkflow,
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
@@ -96,6 +98,7 @@ from ...reproducibility.determinismGate import (
 )
 from ...reproducibility.declaredPackages import (
     fdictComparePackageDeclarations,
+    fdictParsePinnedVersions,
 )
 from ...reproducibility import imageDeposit
 from ...reproducibility.levelGates import (
@@ -201,13 +204,14 @@ def fdictCheckLockSatisfiedByContainer(
     ``dictImageCurrency`` already says so on its own row, so the
     dashboard is not silent about the gap.
 
-    Never raises. Every failure to read is UNKNOWN, which renders as
-    it always has; a row reddened because an exec failed would be a
-    fault reported against the researcher's envelope.
+    Raises only a CONTROL-PLANE REFUSAL. Every ordinary failure to
+    read is UNKNOWN, which renders as it always has; a row reddened
+    because an exec failed would be a fault reported against the
+    researcher's envelope. A refusal is not such a failure: it means
+    this computation was never admitted to touch the container, and
+    degrading it to "unknown" would publish a control-plane decision
+    as a scientific verdict.
     """
-    from vaibify.reproducibility.dependencyPinning import (
-        fdictParsePinnedVersions,
-    )
     from vaibify.reproducibility import lockSatisfaction
     try:
         if not filesRepo.fbIsFile("requirements.lock"):
@@ -226,6 +230,7 @@ def fdictCheckLockSatisfiedByContainer(
             sContainerId, S_SHADOW_PIP_ENUMERATE_COMMAND,
         )
     except Exception as errorExec:  # noqa: BLE001 -- unknown, not a fault
+        fnReRaiseControlPlaneRefusal(errorExec)
         return lockSatisfaction.fdictDescribeLockSatisfaction(
             dictLocked, None, f"the packages could not be listed: {errorExec}",
         )
@@ -321,91 +326,195 @@ def _fnRegisterReadiness(app, dictCtx):
 
     @ffnAgentAction("check-l3-readiness")
     @app.get("/api/workflow/{sContainerId}/level3/readiness")
-    async def fdictHandleL3Readiness(sContainerId: str):
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleL3Readiness(
+        sContainerId: str, requestHttp: Request,
+    ):
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId,
         )
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        dictGaps = fdictL3ReadinessGaps(dictWorkflow, filesRepo)
-        # Resolved to the registry NAME, like the verify route: the
-        # path parameter is the Docker container ID, which matches no
-        # registry entry, and an unresolved lookup silently disables
-        # the comparison (bChecked False).
-        dictPackageCheck = fdictCheckImageMatchesDeclaration(
-            fsContainerNameForId(dictCtx["docker"], sContainerId),
-            filesRepo,
+        dictProbed = await _fdictProbeTheContainerOnce(
+            dictCtx, sContainerId, dictWorkflow, filesRepo, requestHttp,
         )
-        # Reported beside the gaps rather than folded into them: a
-        # stale image is a fact about the CONTAINER, while every gap
-        # in that dict is a fact about the repository's envelope.
-        # Merging them would make "rebuild your image" read as one
-        # more missing file.
-        dictGaps = dict(dictGaps)
-        dictGaps["bImageMatchesDeclaredPackages"] = (
-            not dictPackageCheck["bChecked"] or dictPackageCheck["bMatches"]
+        return _fdictBuildReadinessPayload(
+            dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
         )
-        # Asked here because this route may exec and the poll may
-        # not. The answer is cached so the Dependency-lock row and the
-        # "Do this next" arrow can report it without one.
-        from vaibify.reproducibility import lockSatisfaction
-        dictLockVerdict = fdictCheckLockSatisfiedByContainer(
-            dictCtx["docker"], sContainerId, filesRepo,
-        )
-        lockSatisfaction.fnRecordLockSatisfaction(
-            sContainerId, dictLockVerdict,
-        )
-        dictGaps["dictLockSatisfaction"] = dictLockVerdict
-        dictGaps["bLockSatisfiedByImage"] = (
-            (dictLockVerdict or {}).get("sState")
-            != lockSatisfaction.S_LOCK_MISMATCH
-        )
-        dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
-        # None (undetermined) reads as passing here: only a PROVEN
-        # mismatch may refuse anything or light a checklist row.
-        dictGaps["bDockerfileDescribesPinnedImage"] = (
-            dictProvenance["bDockerfileDescribesPinnedImage"] is not False
-        )
-        # How this container's image came to exist, beside the two
-        # container facts above: the remedy for either of them differs
-        # when the image was BUILT while the clone pins an obtainable
-        # one -- then the fix is to switch to the author's image, not
-        # to rewrite the author's files to describe a build.
-        dictGaps.update(fdictDescribeImageOrigin(
-            fsContainerNameForId(dictCtx["docker"], sContainerId),
-        ))
+
+
+async def _fdictProbeTheContainerOnce(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, requestHttp,
+):
+    """Run BOTH of this route's execs under ONE mode-(b) admission.
+
+    The handler execs twice -- the lock probe, and the question of
+    whose attestation this clone carries -- and an admission covers a
+    computation rather than a call, so one carrier has to span both.
+
+    They are DIRECT calls inside the worker, not callables handed to
+    ``asyncio.to_thread``: inside a to_thread worker the frames above a
+    primitive are executor infrastructure, so the mutation inventory
+    loses the row naming the expression and only the carrier mode
+    survives. The worker already runs off the event loop, so the
+    thread hop bought nothing but the lost row.
+
+    The declaration on the handler authorizes NOTHING. Without this
+    carrier every readiness request raises ``MutationNotAdmittedError``
+    from the exec primitive, and that refusal is the proof the gate is
+    real rather than a decoration.
+
+    IT NEVER QUEUES, and that is not a detail. The dashboard issues
+    this request ITSELF on every project open, to warm the lock
+    verdict -- so a plain mode-(b) wait spends an unpredictable amount
+    of a request nobody made. Measured on 2026-09-15: with the queuing
+    form, opening a project held the drain long enough that the remote
+    badge refresh had not landed ten seconds later, and
+    ``testProjectBlockBadgesAreActionable`` failed on a badge that was
+    working. The same wait would hold a Run Step. So the probe asks
+    for the drain and takes "" for an answer; PAUSED is a result, not
+    an error, and the caller reports "nobody asked" rather than
+    inventing a verdict.
+    """
+    def fdictProbeUnderOneAdmission(supervisor=None):
+        del supervisor
         return {
-            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
-            "dictL3ReadinessGaps": dictGaps,
-            "dictDeclaredPackageCheck": dictPackageCheck,
-            # Which record a verification of THIS clone would write --
-            # the author's attestation, or a reproduction record when
-            # the attestation on file was last committed by somebody
-            # else. Answered here, before the copy, because the confirm
-            # dialog must say so before the researcher consents.
-            "sRecordKind": await asyncio.to_thread(
-                _fsRecordKindOrUndetermined,
+            "dictLockSatisfaction": fdictCheckLockSatisfiedByContainer(
+                dictCtx["docker"], sContainerId, filesRepo,
+            ),
+            "sRecordKind": _fsRecordKindOrUndetermined(
                 dictCtx["docker"], sContainerId, dictWorkflow,
             ),
-            # Whether the envelope pins the image this container is
-            # RUNNING. Advisory, not a gap: the verification grades
-            # the pinned image either way, and the researcher must
-            # know which image that will be BEFORE spending a rerun.
-            "dictImageCurrency": fdictAssessEnvelopeImageCurrency(
-                dictCtx, sContainerId, filesRepo,
-            ),
-            "dictDockerfileProvenance": dictProvenance,
-            # The environment archive as a STATE, not a boolean. The
-            # gaps dict beside it carries `bImageArchived`, which is
-            # the Level 3 criterion; this is what the row RENDERS, and
-            # the two are different questions -- "unreachable" and
-            # "the deposit covers another platform" are both `False`
-            # in the gap and must not paint the same cell.
-            "dictImageArchive": fdictBuildImageArchiveDetail(
-                dictWorkflow, filesRepo, sContainerId,
-                fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
-            ),
         }
+
+    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(
+        sContainerId, fdictProbeUnderOneAdmission, "l3-readiness",
+        requestHttp,
+    )
+    if dictOutcome["bPaused"]:
+        # UNANSWERED, never answered wrongly. ``None`` is what every
+        # surface renders before any check has run, and the record
+        # kind's empty string is what the confirm dialog already
+        # treats as "not established" -- where ``undetermined`` would
+        # claim git could not say, which nobody asked it.
+        return {
+            "dictLockSatisfaction": None, "sRecordKind": "",
+            "bProbePaused": True,
+            "sProbePausedBy": dictOutcome["sPausedBy"],
+        }
+    return dict(
+        dictOutcome["objResult"], bProbePaused=False, sProbePausedBy="",
+    )
+
+
+def _fdictBuildReadinessPayload(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
+):
+    """Assemble the readiness answer around the container probe."""
+    dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+        dictCtx, sContainerId, filesRepo,
+    )
+    dictProvenance = fdictAssessDockerfileProvenance(filesRepo)
+    dictPackageCheck = fdictCheckImageMatchesDeclaration(
+        fsContainerNameForId(dictCtx["docker"], sContainerId),
+        filesRepo,
+    )
+    return {
+        "iProofLevel": fiProofLevel(
+            dictWorkflow, filesRepo,
+            bHostProject=fbIsHostProject(sContainerId),
+        ),
+        "dictL3ReadinessGaps": _fdictReadinessGapsWithContainerFacts(
+            dictCtx, sContainerId, dictWorkflow, filesRepo,
+            dictProbed, dictImageCurrency, dictProvenance,
+            dictPackageCheck,
+        ),
+        "dictDeclaredPackageCheck": dictPackageCheck,
+        # Which record a verification of THIS clone would write --
+        # the author's attestation, or a reproduction record when
+        # the attestation on file was last committed by somebody
+        # else. Answered here, before the copy, because the confirm
+        # dialog must say so before the researcher consents.
+        "sRecordKind": dictProbed["sRecordKind"],
+        # Whether the container was busy when this was asked, so no
+        # surface reads an unanswered question as an answer. The
+        # dashboard issues this request on its own, and an automatic
+        # read must never queue behind work a researcher started.
+        "bProbePaused": dictProbed["bProbePaused"],
+        "sProbePausedBy": dictProbed["sProbePausedBy"],
+        # Whether the envelope pins the image this container is
+        # RUNNING. Advisory, not a gap: the verification grades
+        # the pinned image either way, and the researcher must
+        # know which image that will be BEFORE spending a rerun.
+        "dictImageCurrency": dictImageCurrency,
+        "dictDockerfileProvenance": dictProvenance,
+        # The environment archive as a STATE, not a boolean. The
+        # gaps dict beside it carries `bImageArchived`, which is
+        # the Level 3 criterion; this is what the row RENDERS, and
+        # the two are different questions -- "unreachable" and
+        # "the deposit covers another platform" are both `False`
+        # in the gap and must not paint the same cell.
+        "dictImageArchive": fdictBuildImageArchiveDetail(
+            dictWorkflow, filesRepo, sContainerId,
+            fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
+        ),
+    }
+
+
+def _fdictReadinessGapsWithContainerFacts(
+    dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
+    dictImageCurrency, dictProvenance, dictPackageCheck,
+):
+    """Return the envelope gaps plus the container facts that refuse a rerun.
+
+    Reported beside the gaps rather than folded into them: a stale
+    image is a fact about the CONTAINER, while every gap in that dict
+    is a fact about the repository's envelope. Merging them would make
+    "rebuild your image" read as one more missing file.
+    """
+    from vaibify.reproducibility import lockSatisfaction
+    dictGaps = dict(fdictL3ReadinessGaps(dictWorkflow, filesRepo))
+    dictGaps["bImageMatchesDeclaredPackages"] = (
+        not dictPackageCheck["bChecked"] or dictPackageCheck["bMatches"]
+    )
+    dictLockVerdict = dictProbed["dictLockSatisfaction"]
+    if not dictProbed["bProbePaused"]:
+        # Recorded ONLY when the probe actually ran. A paused probe
+        # measured nothing, and writing its silence into the cache
+        # would replace a perfectly good answer with an unknown one
+        # because the container happened to be busy.
+        lockSatisfaction.fnRecordLockSatisfaction(
+            sContainerId, dictLockVerdict,
+            lockSatisfaction.fsFingerprintLockState(
+                filesRepo, dictImageCurrency.get("sLiveImageDigest") or "",
+            ),
+        )
+    # TWO fields, because they answer two questions. The MEASUREMENT
+    # is three-state and is about the container the researcher is
+    # working in; the POLICY boolean is about the image the rerun
+    # would grade, and only the second may gate anything. One flag
+    # doing both jobs asserted the pin from a measurement of the
+    # running container and collapsed `unknown` into `clean`.
+    dictGaps["dictLockSatisfaction"] = dictLockVerdict
+    dictGaps["bLockDoesNotBlockVerification"] = (
+        not lockSatisfaction.fbLockBlocksVerification(
+            dictLockVerdict, dictImageCurrency,
+        )
+    )
+    # None (undetermined) reads as passing here: only a PROVEN
+    # mismatch may refuse anything or light a checklist row.
+    dictGaps["bDockerfileDescribesPinnedImage"] = (
+        dictProvenance["bDockerfileDescribesPinnedImage"] is not False
+    )
+    # How this container's image came to exist, beside the two
+    # container facts above: the remedy for either of them differs
+    # when the image was BUILT while the clone pins an obtainable
+    # one -- then the fix is to switch to the author's image, not
+    # to rewrite the author's files to describe a build.
+    dictGaps.update(fdictDescribeImageOrigin(
+        fsContainerNameForId(dictCtx["docker"], sContainerId),
+    ))
+    return dictGaps
 
 
 def _fnRegisterAttestation(app, dictCtx):
@@ -1951,12 +2060,20 @@ def _fdictGenerateEnvelopeThenReadGaps(
     in a ``git diff`` or not at all. Silently replacing the record of a
     result is the wrong default for this product.
     """
-    from ...reproducibility import dataArchiver
+    from ...reproducibility import dataArchiver, lockSatisfaction
     listBefore = _flistReadManifestOrEmpty(filesRepo)
     dictTierResults = dataArchiver.fdictGenerateReproducibilityEnvelope(
         filesRepo, dictWorkflow,
         sContainerId, dictWorkflow.get("saHostBinaries"),
     )
+    # DEFENCE IN DEPTH, never the guarantee. This rewrites
+    # requirements.lock, so the cached verdict describes a lock that no
+    # longer exists -- but the reader's fingerprint already sees that,
+    # and it sees it on every write path including the ones nobody
+    # remembers to edit. A cache whose only invalidation is a call like
+    # this is one that fails silently: that is how the feature arrived
+    # with zero callers of the forgetter.
+    lockSatisfaction.fnForgetLockSatisfaction(sContainerId)
     return {
         "dictTierResults": dictTierResults,
         "dictManifestDelta": fdictCompareManifestEntries(

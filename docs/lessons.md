@@ -503,3 +503,23 @@ correct approach.
   answer from the wrong side. Guarded by
   `tests/testDependencyPinning.py` and the live compile in
   `tests/testLockInputFallsBackToVaibifyRequirements.py`.
+- **A test that asserts on a function's SOURCE TEXT cannot observe
+  whether the function runs.** `GET .../level3/readiness` called
+  `fdictParsePinnedVersions` through an import path the symbol does
+  not live at, so every request raised `ImportError` and 500'd, and
+  three dashboard surfaces rendered "unknown" for a question the route
+  existed to answer. The guard written for that very function was
+  green throughout: it read the handler with `inspect.getsource` and
+  checked that the call was spelled there. Source presence is a claim
+  about the text; a route's behavior is a claim about a request, and
+  only a request can settle it. Five neighboring tests were red,
+  including two in the browser lane, which is exactly what the browser
+  lane is for. This is the second time the repository has shipped a
+  fault the suite was structurally unable to see (the first was the
+  owner map keyed by name and read by id) -- and a later draft of the
+  plan that fixed it proposed the same mistake again in a new place,
+  "parse the conjuncts out of `fbAtLeastLevel3`", which is worth
+  recording beside it: the reflex survives the lesson. Source-text
+  assertions are right for one thing only -- that two call sites spell
+  the SAME constant, where the property genuinely is textual.
+  Guarded by `tests/testTheReadinessRouteAnswersARequest.py`.

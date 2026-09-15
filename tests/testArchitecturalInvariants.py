@@ -4965,7 +4965,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # as a value like the two above it, feeding the Dependency-lock row
     # and the ordering arrow. The judging lives in
     # reproducibility/lockSatisfaction.py; this is the wiring.
-    "routes/pipelineRoutes.py": 3642,
+    # +17 (2026-09-15): the L3-path work. The image currency is
+    # computed once and threaded rather than inlined, the lock
+    # verdict is read with the fingerprint that invalidates it, the
+    # archived-attestation tri-state joins the envelope payload, and
+    # the Dependency-lock row loses its lock conjunct with the
+    # docstring that says why. Every line is the poll payload's one
+    # responsibility: assemble what the dashboard renders, from
+    # verdicts it never re-derives.
+    "routes/pipelineRoutes.py": 3659,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5019,7 +5027,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # its own reviewed change, not a side effect of adding a route.
     # 2026-08-27 (on merge): the merged file's REAL line count, per
     # the standing merge rule — never the sum of the two sides.
-    "routes/testRoutes.py": 993,
+    # +2 (2026-09-15): Level 3 is denied to a host project BY
+    # CONSTRUCTION, so fiProofLevel takes the fact and every caller
+    # has to answer it. Two lines, one of them the import.
+    "routes/testRoutes.py": 995,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5203,7 +5214,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # recorded deposit lives on the other Zenodo instance, the same
     # local refusal the manual archive raises. One guard and its
     # reason; the predicate itself lives in syncBookkeeping.
-    "fileStatusManager.py": 2278,
+    # +4 (2026-09-15): the same host-mode fact threaded into this
+    # module's fiProofLevel call, for the same reason.
+    "fileStatusManager.py": 2282,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5338,7 +5351,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # template vocabulary IS -- and both exist so reproduce.sh
     # resolves paths through the same builders as the live run
     # instead of a second, drifting copy in reproducibility/.
-    "workflowManager.py": 2844,
+    # +5 (2026-09-15): the host-mode fact reaches _fnDeriveProofLevel,
+    # which both the load and the save paths call.
+    "workflowManager.py": 2849,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6762,7 +6777,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # question: a separate module would invite a second, drifting
     # notion of which step edits are destructive, which is the bug
     # class these guards exist to close.
-    "routes/stepRoutes.py": 862,
+    # +2 (2026-09-15): the host-mode fact again, at this module's one
+    # fiProofLevel call.
+    "routes/stepRoutes.py": 864,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -6931,7 +6948,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refused a rerun -- this module is where the readiness pre-flight
     # lives, so it is where the cheap copy of that question belongs;
     # the diff itself is shared, in lockSatisfaction.py.
-    "routes/reproducibilityRoutes.py": 2066,
+    # +81 (2026-09-15): the readiness route made real. The handler
+    # execs twice and had no carrier at all, so it gained one
+    # mode-(b) worker spanning both probes, and the payload assembly
+    # split out of the handler beside it -- three functions where
+    # there was one, each with the docstring that says what the other
+    # two must not do. The rest is the two-field split: the honest
+    # three-state MEASUREMENT of the running container, and the
+    # policy boolean computed from it plus image currency. Still one
+    # responsibility -- this module is the PROOF tab's L3 surface --
+    # and the added lines are the reasons, not new concerns.
+    # +36 the same day: the probe must not QUEUE. The dashboard fires
+    # this GET on every project open, and a plain mode-(b) wait spends
+    # an unpredictable amount of a request nobody made -- measured, it
+    # delayed the remote badge refresh past ten seconds. The lines are
+    # the paused branch and the paragraph explaining why paused is a
+    # result rather than an error.
+    "routes/reproducibilityRoutes.py": 2183,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

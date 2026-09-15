@@ -899,6 +899,12 @@ var VaibifyWorkflowRequirements = (function () {
             dictReasonByLevel[3] = listIssues[0] + " (and " +
                 (listIssues.length - 1) + " more difference" +
                 (listIssues.length > 2 ? "s" : "") + ")";
+        } else if (_fbIsSandboxDeposit(dictArchive.sPermanence)) {
+            /* LAST, so a divergence keeps the reason: a deposit that
+               fails its comparison is red for that, and the sandbox
+               is why an otherwise-matching one is not green. */
+            dictReasonByLevel[3] = "this deposit is on Zenodo's " +
+                "sandbox, which promises to keep nothing";
         }
         return dictReasonByLevel;
     }
@@ -938,10 +944,20 @@ var VaibifyWorkflowRequirements = (function () {
         dictStateByLevel[2] = dictArchive.bAnswered === true
             ? "attained"
             : (dictArchive.bAnswered === false ? "none" : "unknown");
+        /* Permanence is part of the Level 3 answer for THIS archive,
+           and for this archive only. It used to ride on the Rebuild
+           attestation row through the combined sandbox gate, where
+           neither Make Permanent button lives -- so a sandbox project
+           deposit reddened the attestation and a sandbox IMAGE
+           deposit left this row green. The mark is downgraded rather
+           than reddened: the bytes really are deposited and really do
+           match; what is missing is the promise to keep them, which
+           is partially met, not failed. */
+        var sMark = _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown";
+        var bSandbox = _fbIsSandboxDeposit(dictArchive.sPermanence);
+        if (bSandbox && sMark === "green") sMark = "orange";
         dictStateByLevel[3] =
-            _DICT_MARK_TO_LEVEL_STATE[
-                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||
-            "unknown";
+            _DICT_MARK_TO_LEVEL_STATE[sMark] || "unknown";
         return [{
             sKey: "environmentArchive",
             iLevel: 3,
@@ -956,9 +972,8 @@ var VaibifyWorkflowRequirements = (function () {
                 dictArchive, sState),
             sTitle: _DICT_ARCHIVE_STATE_TITLES[sState] ||
                 "Environment archive",
-            sWarning: _fbIsSandboxDeposit(dictArchive.sPermanence)
-                ? S_SANDBOX_WARNING_TOOLTIP : "",
-            sState: _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown",
+            sWarning: bSandbox ? S_SANDBOX_WARNING_TOOLTIP : "",
+            sState: sMark,
             fsDetail: function () {
                 return _fsRenderEnvironmentArchiveDetail(dictArchive);
             }}];
@@ -1317,6 +1332,15 @@ var VaibifyWorkflowRequirements = (function () {
             sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
             sCrossInstance:
                 dictDetail.sZenodoCrossInstanceRefusal || "",
+            /* The gate's own tri-state verdict, not a re-derivation:
+               "the archive carries an attestation covering its own
+               manifest" is a Level 3 conjunct of THIS row, and the
+               row that renders a gate must render the gate. Absent
+               (an older payload) reads as not-compared, which is
+               orange -- never red. */
+            bCoversArchivedManifest:
+                (dictDetail.dictArchivedAttestation || {})
+                    .bCoversArchivedManifest,
         };
     }
 
@@ -1349,13 +1373,72 @@ var VaibifyWorkflowRequirements = (function () {
             '</label>';
     }
 
+    function _fsApplyArchiveConjuncts(sState, dictArchiveInfo) {
+        /* The Zenodo row asks THREE things of one immutable version,
+           and all three have the same remedy: publish a new Zenodo
+           version carrying the envelope and the attestation together.
+           Judged on the envelope alone, this row went green while
+           Level 3 failed on the archived attestation -- and with no
+           unsatisfied publication row anywhere, the "Do this next"
+           arrow fell silent at exactly the moment it was needed.
+
+           Applies to the archive row only: the GitHub row passes no
+           archive info, and GitHub is not an archive, so neither
+           permanence nor the archived attestation is its question. */
+        if (!dictArchiveInfo || sState !== "green") return sState;
+        if (_fbIsSandboxDeposit(dictArchiveInfo.sPermanence)) {
+            return "orange";
+        }
+        /* THREE-state, and the third must never be red. `false` is
+           "a verify compared them and the attestation does not cover
+           the archived manifest"; `null` is "no verify has looked",
+           which is a claim nobody earned. */
+        if (dictArchiveInfo.bCoversArchivedManifest === false) {
+            return "red";
+        }
+        if (dictArchiveInfo.bCoversArchivedManifest !== true) {
+            return "orange";
+        }
+        return "green";
+    }
+
+    function _fsRenderArchiveConjunctNote(
+        bEnvelopeAgrees, sState, dictArchiveInfo
+    ) {
+        /* Says WHICH of the three is missing, and ONLY when the
+           envelope itself agrees. Without that guard a row whose
+           files genuinely differ would carry this note as well, so
+           the researcher reads two complaints for one problem and
+           the second one is about a check the first makes moot. */
+        if (!dictArchiveInfo || !bEnvelopeAgrees) return "";
+        if (sState === "green") return "";
+        if (_fbIsSandboxDeposit(dictArchiveInfo.sPermanence)) return "";
+        var bCovers = dictArchiveInfo.bCoversArchivedManifest;
+        if (bCovers === false) {
+            return '<div class="detail-note">The archived rebuild ' +
+                'attestation does not cover the manifest in the same ' +
+                'archive, so the published version does not show ' +
+                'that this project re-runs. Verify Level 3, commit ' +
+                'the attestation, then publish a Zenodo version ' +
+                'carrying both.</div>';
+        }
+        if (bCovers !== true) {
+            return '<div class="detail-note">No verify has checked ' +
+                'whether the archived rebuild attestation covers the ' +
+                'archived manifest, so vaibify cannot say. Nothing ' +
+                'here is known to be missing. Run Verify now.</div>';
+        }
+        return "";
+    }
+
     function _fdictEnvelopeRemoteRow(
         sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
         dictCheck, dictArchiveInfo, sMatchedNote, sDivergedNote,
     ) {
         var dictHealth = _fdictEnvelopeRemoteRowHealth(
             bMatched, sBadgeKey, listEnvelope);
-        var sState = dictHealth.sState;
+        var sState = _fsApplyArchiveConjuncts(
+            dictHealth.sState, dictArchiveInfo);
         var dictArchive = dictArchiveInfo || {};
         return {
             sKey: sKey, iLevel: 3,
@@ -1445,6 +1528,9 @@ var VaibifyWorkflowRequirements = (function () {
                         : '') +
                     sFiles + '<div class="detail-note">' + sNote +
                     '</div>' +
+                    _fsRenderArchiveConjunctNote(
+                        dictHealth.sState === "green", sState,
+                        dictArchiveInfo) +
                     _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
                     _fsRenderCrossInstanceRemedy(
                         dictArchive.sCrossInstance) +
@@ -1959,22 +2045,19 @@ var VaibifyWorkflowRequirements = (function () {
         // colour is never the only signal. Do not "make these
         // consistent" in either direction.
         var bRunning = dictDetail.bRebuildAttestationRunning === true;
-        /* The rerun DID happen, and the row keeps saying so —
-           bRebuildAttestationCurrent stays honest. What a sandbox
-           deposit withholds is the CREDIT: the attestation cannot
-           carry a Level 3 claim while the archive it sits in promises
-           no preservation. Read from the gate's own verdict, never
-           re-derived: absent (an older hub) is TRUE, so a payload
-           that predates the criterion cannot silently redden a row. */
-        var dictPermanence = dictDetail.dictArchivePermanence || {};
-        var bNoSandbox = dictPermanence.bNoArchiveKnownSandbox !== false;
+        /* A CURRENT attestation, and nothing else. The combined
+           sandbox gate used to hang here: it classifies TWO deposits,
+           so a sandbox PROJECT deposit reddened this row -- whose
+           only button re-runs a verification that was never the
+           problem -- while a sandbox IMAGE deposit left the
+           Environment archive row green. Each archive now carries its
+           own permanence on its own row, beside its own Make
+           Permanent button. */
         return [
             {sKey: "rebuildAttestation", iLevel: 3,
              sTitle: "Rebuild attestation",
              sState: bRunning ? "running" : _fsLightStateFromBoolean(
-                 dictDetail.bRebuildAttestationCurrent === true &&
-                 bNoSandbox),
-             sWarning: bNoSandbox ? "" : S_SANDBOX_WARNING_TOOLTIP,
+                 dictDetail.bRebuildAttestationCurrent === true),
              bChecking: bRunning,
              fsDetail: function () {
                  /* "On file" earns a way to OPEN the file: the row
@@ -1993,7 +2076,6 @@ var VaibifyWorkflowRequirements = (function () {
                          dictDetail, bRunning)) + '</div>' +
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
                      _fsRenderNoVerdictNote(dictDetail) +
-                     _fsRenderAttestationPermanenceNote(dictPermanence) +
                      (bRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
                          "Verify Level 3 reproducibility")) +
@@ -2030,20 +2112,6 @@ var VaibifyWorkflowRequirements = (function () {
             listReasons.map(function (sReason) {
                 return "<li>" + fnEscapeHtml(sReason) + "</li>";
             }).join("") + '</ul></div>';
-    }
-
-    function _fsRenderAttestationPermanenceNote(dictPermanence) {
-        /* Names WHICH archive, from the backend's own issue list.
-           The row never states the positive from this — a gate that
-           passes on "unknown" cannot license "both are permanent". */
-        var listIssues = dictPermanence.listPermanenceIssues || [];
-        if (!listIssues.length) return "";
-        return '<div class="permanence-warning">\u26a0 ' +
-            fnEscapeHtml(
-                "This attestation does not count while an archive is " +
-                "a sandbox deposit. " + listIssues.join(" ") +
-                " Use Make Permanent on the affected row.") +
-            '</div>';
     }
 
     /* GitHub's mark, inline so the nudge needs no network and no
@@ -2405,13 +2473,24 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
     function _fsRenderLockMismatchNote(sKey, dictDetail) {
-        /* Which packages the pinned image does not satisfy. The row
-           was green through all of this, because its check asks
-           whether every entry carries a HASH and nothing about
-           whether the entries are TRUE -- so a lock five days older
-           than the image passed, and the only surface that said
-           otherwise was a refused rerun (researcher-reported,
-           2026-09-15).
+        /* Which packages the container does not satisfy. The row is
+           green through all of this and STAYS green (ruled
+           2026-09-15): its criterion is that the lock is present and
+           hashed, which is true, and a lock the container does not
+           satisfy is a fact about the CONTAINER. The warning lives
+           here, exactly as the image-currency warning does on the
+           Environment snapshot row.
+
+           The measurement is taken against THE CONTAINER YOU ARE
+           WORKING IN, never the pinned image -- asking the pin means
+           launching it, which is the cost this check exists to
+           avoid -- so the sentence says so. The verification grades
+           the pin, and only the pre-flight, which can see whether the
+           two are the same image, may refuse on that basis.
+
+           The cheap remedy comes FIRST and the expensive one carries
+           its cost, in the same words the shadow's refusal uses: one
+           cause must not produce two sets of instructions.
 
            Unknown paints nothing: the poll may not exec, so on most
            ticks nobody has asked, and a note built from an unasked
@@ -2421,10 +2500,13 @@ var VaibifyWorkflowRequirements = (function () {
         if (dictLock.sState !== "mismatch") return "";
         var listPaths = (dictLock.listMismatches || []).slice(0, 10);
         return '<div class="lock-mismatch-warning">' +
-            'The pinned image does not satisfy this lock, so a rerun ' +
-            'refuses before it starts. Usually the lock is simply ' +
-            'older than the image \u2014 Regenerate now rewrites it ' +
-            'from what the image actually has:' +
+            'The container you are working in does not satisfy this ' +
+            'lock. If your envelope pins that image, a rerun refuses ' +
+            'before it starts. Usually the lock is simply older than ' +
+            'the image \u2014 Regenerate now rewrites it from what ' +
+            'the image actually has; rebuilding the image instead ' +
+            'also settles it, at the cost of downgrading the image ' +
+            'to match the older lock:' +
             '<ul>' + listPaths.map(function (sLine) {
                 return "<li>" + fnEscapeHtml(sLine) + "</li>";
             }).join("") + '</ul></div>';

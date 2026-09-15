@@ -34,12 +34,15 @@ inverse of the bug this module exists for.
 
 __all__ = [
     "DICT_LAST_LOCK_SATISFACTION",
+    "fbLockBlocksVerification",
     "fdictReadLockSatisfaction",
     "fnForgetLockSatisfaction",
     "fnRecordLockSatisfaction",
+    "fsFingerprintLockState",
     "S_LOCK_CLEAN",
     "S_LOCK_MISMATCH",
     "S_LOCK_UNKNOWN",
+    "S_LOCK_FILENAME",
     "fdictDescribeLockSatisfaction",
     "flistDescribeLockMismatch",
 ]
@@ -48,6 +51,12 @@ __all__ = [
 S_LOCK_CLEAN = "clean"
 S_LOCK_MISMATCH = "mismatch"
 S_LOCK_UNKNOWN = "unknown"
+
+S_LOCK_FILENAME = "requirements.lock"
+
+_S_REASON_STATE_MOVED = (
+    "the lock or the running image changed since this was last asked"
+)
 
 
 def flistDescribeLockMismatch(dictLocked, dictInstalled):
@@ -97,6 +106,32 @@ def fdictDescribeLockSatisfaction(
     }
 
 
+def fbLockBlocksVerification(dictVerdict, dictImageCurrency):
+    """Return True iff this mismatch is evidence about the PINNED image.
+
+    ONE truth table, read by the pre-flight checklist and by the "Do
+    this next" arrow. Two surfaces answering one question from two
+    derivations is the duplication this module was extracted to end,
+    and the arrow drifted from the pre-flight the first time they were
+    written apart.
+
+    The verification re-runs the image the envelope PINS, and the
+    measurement beside it was taken against the container the
+    researcher is RUNNING (ruling of 2026-09-15: asking the pin means
+    launching it, which is the cost the check exists to avoid). A
+    verdict about one is evidence about the other only when they are
+    known to be the same image, which is exactly
+    ``bPinnedImageIsLive`` being ``True``. Anywhere else the
+    pinned-image answer is UNKNOWN and nothing may be blocked on it:
+    the shadow is authoritative and refuses with a good message of its
+    own, whereas blocking here would refuse a rerun whose pinned image
+    is fine.
+    """
+    if (dictVerdict or {}).get("sState") != S_LOCK_MISMATCH:
+        return False
+    return (dictImageCurrency or {}).get("bPinnedImageIsLive") is True
+
+
 # The last answer per container, so the POLL can report a verdict it
 # is forbidden to compute. Reading the installed list needs an exec
 # and the poll may add none, so the check runs where execs are already
@@ -106,17 +141,71 @@ def fdictDescribeLockSatisfaction(
 DICT_LAST_LOCK_SATISFACTION = {}
 
 
-def fnRecordLockSatisfaction(sContainerId, dictVerdict):
-    """Remember the last lock-satisfaction answer for a container."""
-    if sContainerId:
-        DICT_LAST_LOCK_SATISFACTION[sContainerId] = dictVerdict
+def fsFingerprintLockState(filesRepo, sRunningImageIdentity):
+    """Return the identity a cached verdict was measured against.
+
+    BOTH halves are load-bearing, because the answer is a comparison
+    of two things and either can move on its own: the lock is rewritten
+    by a regeneration, and the running image is replaced by a rebuild
+    or a switch. A lock-only fingerprint keeps answering "clean" about
+    a container that has since been rebuilt -- and the running
+    container is the very thing this check measures, so that is the
+    stale answer that matters most.
+
+    Costs no exec on the poll path: the lock is one of the envelope
+    paths the poll snapshot already hashes. An unsampled or unreadable
+    lock fingerprints as the empty digest, which differs from any real
+    one and so downgrades rather than confirms.
+    """
+    from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+    try:
+        dictHashed = ffilesEnsureRepoFiles(filesRepo).fdictHashFiles(
+            [S_LOCK_FILENAME],
+        )
+    except (OSError, ValueError, KeyError, NotImplementedError):
+        dictHashed = {}
+    sDigest = (dictHashed.get(S_LOCK_FILENAME) or {}).get("sSha256") or ""
+    return f"{sDigest}|{sRunningImageIdentity or ''}"
 
 
-def fdictReadLockSatisfaction(sContainerId):
-    """Return the last answer for a container, or ``None`` if never asked."""
-    return DICT_LAST_LOCK_SATISFACTION.get(sContainerId)
+def fnRecordLockSatisfaction(sContainerId, dictVerdict, sFingerprint=""):
+    """Remember the last answer, stamped with the state it describes."""
+    if not sContainerId:
+        return
+    if dictVerdict is None:
+        DICT_LAST_LOCK_SATISFACTION.pop(sContainerId, None)
+        return
+    DICT_LAST_LOCK_SATISFACTION[sContainerId] = dict(
+        dictVerdict, sFingerprint=sFingerprint,
+    )
+
+
+def fdictReadLockSatisfaction(sContainerId, sFingerprint=""):
+    """Return the last answer, or UNKNOWN once the state it describes moved.
+
+    The FINGERPRINT is the authority, not an invalidation call. A
+    cache invalidated by hand fails silently the first time a new
+    write path forgets to call the forgetter -- which is how this
+    feature arrived with ``fnForgetLockSatisfaction`` and zero callers
+    of it. Comparing costs no exec, so the poll can do it on every
+    tick, and a verdict whose lock or whose running image has moved
+    reports UNKNOWN rather than an answer about a state that no longer
+    exists.
+    """
+    dictVerdict = DICT_LAST_LOCK_SATISFACTION.get(sContainerId)
+    if not dictVerdict:
+        return None
+    if dictVerdict.get("sFingerprint", "") == sFingerprint:
+        return dictVerdict
+    return fdictDescribeLockSatisfaction({}, None, _S_REASON_STATE_MOVED)
 
 
 def fnForgetLockSatisfaction(sContainerId):
-    """Drop the cached answer; the envelope changed under it."""
+    """Drop the cached answer; the envelope changed under it.
+
+    DEFENCE IN DEPTH, never the guarantee: the fingerprint in
+    :func:`fdictReadLockSatisfaction` is what makes a moved lock read
+    as unknown, and it holds whether or not a write path remembers to
+    call this.
+    """
     DICT_LAST_LOCK_SATISFACTION.pop(sContainerId, None)

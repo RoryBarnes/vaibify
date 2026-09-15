@@ -1121,6 +1121,9 @@ async def _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, filesPoll,
         bPipelineRunning,
     )
+    dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+        dictCtx, sContainerId, filesPoll,
+    )
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
@@ -1128,9 +1131,7 @@ async def _fdictFetchOutputStatus(
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
             sContainerId,
         ),
-        dictImageCurrency=fdictAssessEnvelopeImageCurrency(
-            dictCtx, sContainerId, filesPoll,
-        ),
+        dictImageCurrency=dictImageCurrency,
         dictImageArchive=fdictBuildImageArchiveDetail(
             dictWorkflow, filesPoll, sContainerId,
             fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
@@ -1141,8 +1142,17 @@ async def _fdictFetchOutputStatus(
         dictLastNoVerdict=verificationProgress.fdictReadNoVerdict(
             sContainerId,
         ),
+        # The cached verdict, compared against the state it was
+        # measured over. The fingerprint costs no exec -- the lock is
+        # one of the envelope paths this snapshot already hashed --
+        # and it is what makes a rewritten lock or a rebuilt image
+        # read as unknown rather than as a stale answer.
         dictLockSatisfaction=lockSatisfaction.fdictReadLockSatisfaction(
             sContainerId,
+            lockSatisfaction.fsFingerprintLockState(
+                filesPoll,
+                dictImageCurrency.get("sLiveImageDigest") or "",
+            ),
         ),
     )
     _fnSaveIfLevelHighWaterChanged(
@@ -2021,6 +2031,7 @@ def _fdictComputePollLevelGates(
     )
     dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
+        bHostProject=bHostProject,
     )
     return {
         "listBlockers": flistLevel1Blockers(
@@ -2336,9 +2347,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesRepo, bHasRepo,
         ),
         "dictArtifacts": (
-            _fdictEnvelopeArtifacts(
-                dictWorkflow, filesRepo, dictLockSatisfaction,
-            ) if bHasRepo else {}
+            _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
+            if bHasRepo else {}
         ),
         # The one blocked requirement that must be fixed BEFORE the
         # others, or None when order does not matter -- which is the
@@ -2363,6 +2373,7 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "dictNextOrderedStep": (
             levelOrdering.fdictDescribeNextOrderedStep(
                 dictWorkflow, filesRepo, dictLockSatisfaction,
+                dictImageCurrency,
             ) if bHasRepo else None
         ),
         # THREE-state: True (envelope pins the image this container is
@@ -2467,6 +2478,15 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "bEnvelopeInZenodoArchive": (
             levelGates.fbEnvelopeMatchesZenodoArchive(filesRepo)
             if bHasRepo else False
+        ),
+        # Whether the archive carries an attestation covering its own
+        # manifest -- TRI-state, and the third state is why it is not
+        # the criterion's boolean. ``None`` means no verify has
+        # compared it, which must render orange; reddening it would
+        # claim a divergence nobody looked for.
+        "dictArchivedAttestation": (
+            levelGates.fdictArchivedAttestationState(filesRepo)
+            if bHasRepo else {}
         ),
         # The envelope paths that actually exist, so the Level 2 rows
         # can leave them out of their file lists and the Level 3 row
@@ -2753,13 +2773,11 @@ def _fdictEnvelopeBinaryEntry(dictDeclared, dictCapture):
     }
 
 
-def _fdictEnvelopeArtifacts(
-    dictWorkflow, filesRepo, dictLockSatisfaction=None,
-):
+def _fdictEnvelopeArtifacts(dictWorkflow, filesRepo):
     """Pair on-disk presence with the L3 verdict for each artifact."""
     dictPresence = _fdictEnvelopeArtifactPresence(filesRepo)
     dictSatisfaction = _fdictEnvelopeArtifactSatisfaction(
-        dictWorkflow, filesRepo, dictLockSatisfaction,
+        dictWorkflow, filesRepo,
     )
     return {
         sName: {
@@ -2792,9 +2810,7 @@ def _fdictEnvelopeArtifactPresence(filesRepo):
     }
 
 
-def _fdictEnvelopeArtifactSatisfaction(
-    dictWorkflow, filesRepo, dictLockSatisfaction=None,
-):
+def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
     """Return the L3 readiness verdict for the five envelope artifacts.
 
     A row is satisfied only when EVERY Level 3 criterion naming its
@@ -2802,22 +2818,23 @@ def _fdictEnvelopeArtifactSatisfaction(
     criterion added about an existing artifact and not added here
     paints a green mark on a file the ladder is blocking on; that
     shipped once, for ``reproduce-script-stale``.
+
+    Lock SATISFACTION is deliberately absent (ruling of 2026-09-15).
+    Whether the container satisfies the lock is a fact about the
+    CONTAINER; this row's criterion is about the repository's
+    envelope, and the warning rides in an amber note beside the row
+    instead -- the same shape as the image-currency warning on the
+    Environment snapshot row. The "Do this next" arrow still judges
+    that row unsatisfied, which is the one permitted divergence
+    between the two, and ``levelOrdering`` documents it beside the
+    sentence it qualifies.
     """
     from vaibify.reproducibility import levelGates
     return {
         "manifest": levelGates.fbVerifyManifestComplete(
             filesRepo, dictWorkflow,
         ),
-        # Hashed entries AND entries the image actually satisfies.
-        # Hashing alone left this row green while the pinned image
-        # disagreed with every line of the lock, and the only surface
-        # that said so was a refused rerun. A verdict of unknown --
-        # nobody has been able to exec yet -- keeps the old answer.
-        "dependencyLock": (
-            levelGates.fbVerifyDependencyLock(filesRepo)
-            and (dictLockSatisfaction or {}).get("sState")
-            != lockSatisfaction.S_LOCK_MISMATCH
-        ),
+        "dependencyLock": levelGates.fbVerifyDependencyLock(filesRepo),
         "environmentSnapshot": levelGates.fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),

@@ -101,6 +101,17 @@ def _fnWriteSyncStatus(tmp_path):
             # The verified endpoint moves with the recorded one, which
             # is the field the endpoint check compares against.
             "sEndpointVerified": "zenodo",
+            # The archived attestation covers the archived manifest.
+            # A CONJUNCT of fbAtLeastLevel3 since 2026-09-15: it was
+            # registered in the checks dict and the criteria tuple and
+            # forgotten by the scalar gate's hand-written list, so the
+            # header reported Level 3 over a row that was blocking.
+            # This fixture means "every L3 criterion satisfied", so it
+            # has to carry the answer -- and its absence would now,
+            # correctly, cost the level.
+            "dictArchivedAttestation": {
+                "bCoversArchivedManifest": True,
+            },
         },
     }
     (pathDir / "syncStatus.json").write_text(
@@ -252,15 +263,15 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     dictWorkflow = _fdictBuildLevel3Workflow()
     sRepo = str(fixtureLevel3Repo)
     # Without attestation we cap at L2 even with full readiness.
-    assert fiProofLevel(dictWorkflow, sRepo) == 2
+    assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 2
     # Write a passing attestation.
     sDigest = fsCurrentManifestDigest(sRepo)
     fnWriteAttestation(sRepo, fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:" + "c" * 64,
         12.0, 2, 2, [], "",
     ))
-    assert fbAtLeastLevel3(dictWorkflow, sRepo)
-    assert fiProofLevel(dictWorkflow, sRepo) == 3
+    assert fbAtLeastLevel3(dictWorkflow, sRepo, False)
+    assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 3
     # A SANDBOX deposit takes the level back, with nothing else
     # changed. Asserted in this direction because the fixture flipping
     # to production is what made the test pass again, and a fixture
@@ -275,29 +286,29 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     (fixtureLevel3Repo / S_REPRODUCE_SCRIPT_FILENAME).write_text(
         "#!/usr/bin/env bash\nset -e\n",
     )
-    assert not fbAtLeastLevel3(dictWorkflow, sRepo)
+    assert not fbAtLeastLevel3(dictWorkflow, sRepo, False)
     (fixtureLevel3Repo / S_REPRODUCE_SCRIPT_FILENAME).write_text(
         fsRenderReproduceScript(dictWorkflow),
     )
-    assert fbAtLeastLevel3(dictWorkflow, sRepo), (
+    assert fbAtLeastLevel3(dictWorkflow, sRepo, False), (
         "restoring the current script must restore the level; if it "
         "does not, the manifest hash moved and something else broke"
     )
 
     dictSandbox = _fdictBuildLevel3Workflow()
     dictSandbox["dictRemotes"]["zenodo"]["sService"] = "sandbox"
-    assert not fbAtLeastLevel3(dictSandbox, sRepo)
+    assert not fbAtLeastLevel3(dictSandbox, sRepo, False)
     # It lands at 1, not 2, and that is the OTHER half of the same
     # fact: the cached verify was run against production, so a record
     # that now says sandbox also fails the Level 2 endpoint check --
     # the evidence on file compared a different instance from the one
     # the record names. Both drops are correct; asserting the exact
     # level rather than "< 3" is what keeps this honest about which.
-    assert fiProofLevel(dictSandbox, sRepo) == 1
+    assert fiProofLevel(dictSandbox, sRepo, bHostProject=False) == 1
     # Mutate the manifest — attestation goes stale, gate falls to L2.
     (fixtureLevel3Repo / "MANIFEST.sha256").write_text(
         "# changed\n"
     )
-    assert not fbAtLeastLevel3(dictWorkflow, sRepo)
+    assert not fbAtLeastLevel3(dictWorkflow, sRepo, False)
     # With L3 readiness now also failing (no entries), level drops to L2
-    assert fiProofLevel(dictWorkflow, sRepo) == 2
+    assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 2

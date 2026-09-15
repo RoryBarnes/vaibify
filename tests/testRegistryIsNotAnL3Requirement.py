@@ -72,19 +72,15 @@ def test_a_local_only_image_can_still_attain_level_three(monkeypatch):
     can only be about the registry. A gate that still consulted
     ``fbVerifyImagePublished`` would refuse here.
     """
-    for sName in (
-        "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
-        "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
-        "fbImageArchiveDeposited",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda *args, **kwargs: True,
-        )
+    from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
+    fnMakeEveryLevel3ConjunctPass(monkeypatch)
     monkeypatch.setattr(
         levelGates, "fbVerifyImagePublished",
         lambda *args, **kwargs: False,
     )
-    assert levelGates.fbAtLeastLevel3({}, _ffilesStubRepo()) is True
+    assert levelGates.fbAtLeastLevel3(
+        {}, _ffilesStubRepo(), False,
+    ) is True
 
 
 def test_the_archive_is_the_image_criterion_that_gates(monkeypatch):
@@ -94,18 +90,13 @@ def test_the_archive_is_the_image_criterion_that_gates(monkeypatch):
     had dropped BOTH image conjuncts, which is the tidy-looking way to
     make it green.
     """
-    for sName in (
-        "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
-        "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda *args, **kwargs: True,
-        )
-    monkeypatch.setattr(
-        levelGates, "fbImageArchiveDeposited",
-        lambda *args, **kwargs: False,
+    from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
+    fnMakeEveryLevel3ConjunctPass(
+        monkeypatch, fbImageArchiveDeposited=False,
     )
-    assert levelGates.fbAtLeastLevel3({}, _ffilesStubRepo()) is False
+    assert levelGates.fbAtLeastLevel3(
+        {}, _ffilesStubRepo(), False,
+    ) is False
     assert "image-not-archived" in _T_WORKFLOW_LEVEL3_CRITERIA
 
 

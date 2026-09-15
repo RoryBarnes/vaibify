@@ -1974,6 +1974,12 @@ class TestPollLevelStatePayload:
             # verdict rather than off a gate that also passes on
             # "unknown".
             "dictArchivePermanence",
+            # Whether the archive carries an attestation covering its
+            # own manifest -- TRI-state, which is why it is not the
+            # criterion's boolean: `null` means no verify has looked,
+            # and the Zenodo row must render that orange rather than
+            # claim a divergence nobody found.
+            "dictArchivedAttestation",
             # The recorded deposit and the declared target on
             # DIFFERENT Zenodo instances, as the backend's own refusal
             # sentence. The row renders it beside the control that

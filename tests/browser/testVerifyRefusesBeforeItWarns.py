@@ -91,6 +91,19 @@ def _fnAnswerReadinessWith(pageDashboard, bReady):
         sKey: (bReady if isinstance(objValue, bool) else objValue)
         for sKey, objValue in dictGaps.items()
     }
+    # The three CONTAINER facts the route reports beside the envelope
+    # gaps. They are not part of fdictL3ReadinessGaps -- that dict is
+    # about the repository -- but the pre-flight gates on all three,
+    # so a fake that omitted them would answer `undefined` for flags
+    # the product reads. That is the same class of omission as the
+    # flat payload this helper's docstring is about: the fake would
+    # be a shape nobody sends.
+    for sContainerFact in (
+        "bImageMatchesDeclaredPackages",
+        "bDockerfileDescribesPinnedImage",
+        "bLockDoesNotBlockVerification",
+    ):
+        dictGaps[sContainerFact] = bReady
     sBody = jsonModule.dumps({
         "iProofLevel": 3 if bReady else 1,
         "dictL3ReadinessGaps": dictGaps,
