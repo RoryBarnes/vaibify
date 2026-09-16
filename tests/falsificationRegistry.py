@@ -14545,15 +14545,27 @@ def _fdictEntry(sRel):
             'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
             'test_a_running_check_pulses_without_moving_the_colour'
         ),
-        # Stop emitting the pulse class. The badge then renders the
+        # Never mark a checking cell. The badge then renders the
         # aged cache as settled fact while vaibify is still asking --
         # which is the state the whole feature exists to remove.
+        # RE-ANCHORED 2026-09-16 after CI's falsification union
+        # caught the old row-class mutation SURVIVING: the pulse
+        # rides the per-cell data-checking marker since the
+        # pulses-only-what-it-assesses change, so dropping the row
+        # class no longer changes what this test measures (the class
+        # itself is still guarded by the environment-archive row's
+        # in-flight assertion).
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old=(
-            "            (dictRow.bChecking === true\n"
-            "                ? ' requirement-row-checking' : '') + '\">' +\n"
+            '        var dictByLevel = {};\n'
+            '        (listRows || []).forEach(function (dictRow) {\n'
+            '            if (dictRow.bChecking !== true) return;\n'
         ),
-        new="            '\">' +\n",
+        new=(
+            '        var dictByLevel = {};\n'
+            '        (listRows || []).forEach(function (dictRow) {\n'
+            '            if (true) return;\n'
+        ),
     ),
     Falsification(
         nodeid=(
