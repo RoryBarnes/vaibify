@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, Response, WebSocket, WebSocketDiscon
 
 from ...config.registryManager import fbIsHostProject
 from ...docker.dockerConnection import fbErrorMeansContainerUnreachable
-from ...reproducibility import remoteCheckState
+from ...reproducibility import lockSatisfaction, remoteCheckState
 from ...reproducibility.manifestPaths import (
     fdictWorkflowTemplateValues,
     flistStepOutputRepoPaths,
@@ -75,6 +75,9 @@ from ..fileStatusManager import (
 )
 from ..fileIntegrity import flistExtractAllScriptPaths
 from ..testStatusManager import fbRefreshAggregateTestStates
+# Module-qualified so a test double patched onto routeContext
+# reaches BOTH callers of the manifest-text fetch.
+from .. import routeContext
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -1121,6 +1124,9 @@ async def _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, filesPoll,
         bPipelineRunning,
     )
+    dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+        dictCtx, sContainerId, filesPoll,
+    )
     dictRest = _fdictBuildPollResponseRest(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
@@ -1128,12 +1134,28 @@ async def _fdictFetchOutputStatus(
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
             sContainerId,
         ),
-        dictImageCurrency=fdictAssessEnvelopeImageCurrency(
-            dictCtx, sContainerId, filesPoll,
-        ),
+        dictImageCurrency=dictImageCurrency,
         dictImageArchive=fdictBuildImageArchiveDetail(
             dictWorkflow, filesPoll, sContainerId,
             fbPinnedImageIsInLocalStore(dictCtx, sContainerId),
+        ),
+        # Computed where the container id lives and threaded as a
+        # value, exactly as dictImageCurrency is: the payload builder
+        # has no other business with a container id.
+        dictLastNoVerdict=verificationProgress.fdictReadNoVerdict(
+            sContainerId,
+        ),
+        # The cached verdict, compared against the state it was
+        # measured over. The fingerprint costs no exec -- the lock is
+        # one of the envelope paths this snapshot already hashed --
+        # and it is what makes a rewritten lock or a rebuilt image
+        # read as unknown rather than as a stale answer.
+        dictLockSatisfaction=lockSatisfaction.fdictReadLockSatisfaction(
+            sContainerId,
+            lockSatisfaction.fsFingerprintLockState(
+                filesPoll,
+                dictImageCurrency.get("sLiveImageDigest") or "",
+            ),
         ),
     )
     _fnSaveIfLevelHighWaterChanged(
@@ -1847,13 +1869,27 @@ def _ffilesFetchPollSnapshot(
         _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot),
         dictMtimesRel, dictShaCache,
     )
-    filesPoll = SnapshotRepoFiles.ffilesFetch(
-        dictCtx["docker"], sContainerId, sRepoRoot,
-        listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
-        listHashRelPaths=listNeedHash,
-        dictSeedHashes=dictSeed,
-        listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
-    )
+    try:
+        filesPoll = SnapshotRepoFiles.ffilesFetch(
+            dictCtx["docker"], sContainerId, sRepoRoot,
+            listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
+            listHashRelPaths=listNeedHash,
+            dictSeedHashes=dictSeed,
+            listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
+        )
+    except OSError as errorSnapshot:
+        # ONE conservative tick, said out loud. The fetch raises so
+        # each caller owns its degradation; the poll's is "not
+        # verified until the next tick", never a fabricated answer.
+        logger.warning(
+            "Poll snapshot failed for %s (%s); this tick reads "
+            "conservative and the next poll asks again",
+            sContainerId, errorSnapshot,
+        )
+        from vaibify.reproducibility.repoFiles import (
+            ffilesConservativeSnapshot,
+        )
+        return ffilesConservativeSnapshot(sRepoRoot)
     bShaCacheChanged = _fbUpdateShaCache(
         dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
     )
@@ -1861,85 +1897,18 @@ def _ffilesFetchPollSnapshot(
         _fnPersistShaCacheToContainer(
             dictCtx, sContainerId, sRepoRoot, dictShaCache,
         )
-    _fnHydrateManifestText(
+    routeContext.fnHydrateManifestText(
         dictCtx, sContainerId, sRepoRoot, filesPoll,
     )
     return filesPoll
-
-
-def _fdictManifestTextCache(dictCtx, sContainerId):
-    """Return the per-container ``{sSha: sText}`` manifest body cache.
-
-    Honest because the cache is keyed by the manifest's own SHA-256:
-    a stale entry can never outlive its file, and a server restart
-    pays at most one body fetch per active workflow.
-    """
-    dictByContainer = dictCtx.setdefault("dictManifestTextCache", {})
-    return dictByContainer.setdefault(sContainerId, {})
-
-
-def _fnHydrateManifestText(
-    dictCtx, sContainerId, sRepoRoot, filesPoll,
-):
-    """Inject the manifest body into the snapshot via a sha-keyed cache.
-
-    The snapshot script no longer carries ``MANIFEST.sha256`` text
-    inline. The body is fetched at most once per manifest sha via the
-    live container adapter and held in ``dictManifestTextCache`` so
-    later polls observing the same sha pay zero extra docker round
-    trips. Gate code that calls ``filesPoll.fsReadText`` keeps working
-    transparently.
-    """
-    from vaibify.reproducibility.repoFiles import (
-        fnInjectManifestTextIntoSnapshot,
-    )
-    dictHashes = getattr(filesPoll, "_dictHashes", None) or {}
-    dictManifestEntry = dictHashes.get("MANIFEST.sha256") or {}
-    sSha = dictManifestEntry.get("sSha256")
-    if not sSha:
-        return
-    dictTextCache = _fdictManifestTextCache(dictCtx, sContainerId)
-    sText = dictTextCache.get(sSha)
-    if sText is None:
-        sText = _fsFetchManifestTextFromContainer(
-            dictCtx, sContainerId, sRepoRoot,
-        )
-        if sText is not None:
-            dictTextCache[sSha] = sText
-            _fnEvictStaleManifestText(dictTextCache, sSha)
-    fnInjectManifestTextIntoSnapshot(filesPoll, sText)
-
-
-def _fnEvictStaleManifestText(dictTextCache, sCurrentSha):
-    """Drop every cached manifest body other than the current sha."""
-    listStale = [sSha for sSha in dictTextCache if sSha != sCurrentSha]
-    for sSha in listStale:
-        dictTextCache.pop(sSha, None)
-
-
-def _fsFetchManifestTextFromContainer(
-    dictCtx, sContainerId, sRepoRoot,
-):
-    """Read ``MANIFEST.sha256`` once from the container, or None on failure."""
-    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
-    try:
-        filesLive = ContainerRepoFiles(
-            dictCtx["docker"], sContainerId, sRepoRoot,
-        )
-        return filesLive.fsReadText("MANIFEST.sha256")
-    except (FileNotFoundError, OSError, UnicodeDecodeError) as error:
-        logger.info(
-            "manifest body fetch failed for %s: %s",
-            sContainerId, error,
-        )
-        return None
 
 
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
     bHostProject=False, *, bVerificationRunning, dictImageCurrency,
-    dictImageArchive,
+    dictImageArchive, dictLastNoVerdict=None,
+    dictLockSatisfaction=None,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -1976,6 +1945,8 @@ def _fdictBuildPollResponseRest(
         bVerificationRunning=bVerificationRunning,
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=dictImageArchive,
+        dictLastNoVerdict=dictLastNoVerdict,
+        dictLockSatisfaction=dictLockSatisfaction,
     )
 
 
@@ -2009,6 +1980,7 @@ def _fdictComputePollLevelGates(
     )
     dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
+        bHostProject=bHostProject,
     )
     return {
         "listBlockers": flistLevel1Blockers(
@@ -2028,6 +2000,7 @@ def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
     *, bVerificationRunning, dictImageCurrency, dictImageArchive,
+    dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
@@ -2053,6 +2026,8 @@ def _fdictAssemblePollResponse(
             bVerificationRunning=bVerificationRunning,
             dictImageCurrency=dictImageCurrency,
             dictImageArchive=dictImageArchive,
+            dictLastNoVerdict=dictLastNoVerdict,
+            dictLockSatisfaction=dictLockSatisfaction,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
         "dictInvalidatedSteps": listInvalidated,
@@ -2259,6 +2234,7 @@ def _fdictSummarizeAttestation(filesRepo):
 def _fdictBuildWorkflowEnvelopeDetail(
     dictWorkflow, filesPoll, bVerificationRunning=False,
     dictImageCurrency=None, *, dictImageArchive,
+    dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
@@ -2271,6 +2247,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
              (empty dict when there is no project repo),
          "dictNextOrderedStep": {"sRowKey", "sReason",
              "listBlockedRowKeys"} or None,
+         "dictBlockedRows": {sRowKey: sReason} for every endgame
+             row premature right now (empty below Level 2),
          "dictDeterminism": declared dict or None,
          "dictRemoteSyncs": {sService: dictSummary or None},
          "bAiDeclarationAttested": bool,
@@ -2308,6 +2286,13 @@ def _fdictBuildWorkflowEnvelopeDetail(
     )
     filesRepo = ffilesEnsureRepoFiles(filesPoll)
     bHasRepo = bool(fsRepoRootOf(filesRepo))
+    dictOrderedEndgame = (
+        levelOrdering.fdictDescribeOrderedEndgame(
+            dictWorkflow, filesRepo, dictLockSatisfaction,
+            dictImageCurrency,
+        ) if bHasRepo
+        else {"dictNextStep": None, "dictBlockedRows": {}}
+    )
     if not bHasRepo and (dictWorkflow or {}).get("sProjectRepoPath"):
         # The workflow HAS a project repo but this poll's snapshot
         # failed to resolve it (docker-exec contention). Shipping an
@@ -2320,8 +2305,10 @@ def _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesRepo, bHasRepo,
         ),
         "dictArtifacts": (
-            _fdictEnvelopeArtifacts(dictWorkflow, filesRepo)
-            if bHasRepo else {}
+            _fdictEnvelopeArtifacts(
+                dictWorkflow, filesRepo, dictLockSatisfaction,
+                dictImageCurrency,
+            ) if bHasRepo else {}
         ),
         # The one blocked requirement that must be fixed BEFORE the
         # others, or None when order does not matter -- which is the
@@ -2329,11 +2316,27 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # side so the dashboard renders a verdict it never re-derives;
         # a mirrored ordering in JavaScript would be a second
         # authority on a question that has one.
-        "dictNextOrderedStep": (
-            levelOrdering.fdictDescribeNextOrderedStep(
-                dictWorkflow, filesRepo,
-            ) if bHasRepo else None
+        # WHY the last verification established nothing. It was
+        # recorded all along and rendered only on the PROOF tab, so a
+        # researcher working in the Project block watched the marker
+        # pulse, stop, and say nothing -- twice, before they asked
+        # (researcher-reported, 2026-09-15). The Attestation row is
+        # where the arrow points and where the button lives, so the
+        # explanation belongs beside them.
+        "dictLastNoVerdict": dictLastNoVerdict if bHasRepo else None,
+        # Whether the pinned image satisfies requirements.lock,
+        # from the last time a surface that MAY exec asked. Absent
+        # is unknown and renders as it always has.
+        "dictLockSatisfaction": (
+            dictLockSatisfaction if bHasRepo else None
         ),
+        "dictNextOrderedStep": dictOrderedEndgame["dictNextStep"],
+        # Every endgame row that is premature RIGHT NOW, with the
+        # edge's reason -- the arrow's superset. The arrow goes
+        # silent without a unique root; a row downstream of an
+        # unsatisfied prerequisite is premature regardless, and the
+        # circle-slash on its buttons must not vanish with the arrow.
+        "dictBlockedRows": dictOrderedEndgame["dictBlockedRows"],
         # THREE-state: True (envelope pins the image this container is
         # running), False (it pins a different one -- a rebuild without
         # a snapshot regeneration, so verifications grade an image the
@@ -2437,6 +2440,15 @@ def _fdictBuildWorkflowEnvelopeDetail(
             levelGates.fbEnvelopeMatchesZenodoArchive(filesRepo)
             if bHasRepo else False
         ),
+        # Whether the archive carries an attestation covering its own
+        # manifest -- TRI-state, and the third state is why it is not
+        # the criterion's boolean. ``None`` means no verify has
+        # compared it, which must render orange; reddening it would
+        # claim a divergence nobody looked for.
+        "dictArchivedAttestation": (
+            levelGates.fdictArchivedAttestationState(filesRepo)
+            if bHasRepo else {}
+        ),
         # The envelope paths that actually exist, so the Level 2 rows
         # can leave them out of their file lists and the Level 3 row
         # can show them. Sent rather than mirrored in JavaScript: a
@@ -2463,7 +2475,15 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # rather than an icon. From the module that owns the name; a
         # JS literal would be a second authority on it.
         "sAttestationRepoPath": publicationScope.
-        TUPLE_COMPARED_NOT_REQUIRED_PATHS[0],
+        S_ATTESTATION_REPO_PATH,
+        # Compared against every remote, required by no criterion in
+        # that comparison. The copies rows exclude these from their
+        # Level 2 file lists and show them in their own informational
+        # block instead -- a red badge under a green Level 2 cell
+        # with no explanation reads as vaibify contradicting itself.
+        "listComparedNotRequiredPaths": list(
+            publicationScope.TUPLE_COMPARED_NOT_REQUIRED_PATHS
+        ),
         # Whether a rerun is running RIGHT NOW -- transient hub state,
         # not a verdict, and deliberately a separate key from the one
         # above. The row renders the gate's answer for its colour and
@@ -2722,11 +2742,14 @@ def _fdictEnvelopeBinaryEntry(dictDeclared, dictCapture):
     }
 
 
-def _fdictEnvelopeArtifacts(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifacts(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Pair on-disk presence with the L3 verdict for each artifact."""
     dictPresence = _fdictEnvelopeArtifactPresence(filesRepo)
     dictSatisfaction = _fdictEnvelopeArtifactSatisfaction(
-        dictWorkflow, filesRepo,
+        dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
     )
     return {
         sName: {
@@ -2759,7 +2782,10 @@ def _fdictEnvelopeArtifactPresence(filesRepo):
     }
 
 
-def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
+def _fdictEnvelopeArtifactSatisfaction(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Return the L3 readiness verdict for the five envelope artifacts.
 
     A row is satisfied only when EVERY Level 3 criterion naming its
@@ -2767,13 +2793,41 @@ def _fdictEnvelopeArtifactSatisfaction(dictWorkflow, filesRepo):
     criterion added about an existing artifact and not added here
     paints a green mark on a file the ladder is blocking on; that
     shipped once, for ``reproduce-script-stale``.
+
+    Lock satisfaction is one of those criteria (researcher-ruled
+    2026-09-15, REVERSING the same day's earlier ruling that the row
+    should keep its state and warn only in an amber note). Seen on a
+    live project, that combination read as nonsense: every applicable
+    level showing a check, an arrow pointing at the row saying "do
+    this next", and a note underneath explaining that a rerun would
+    refuse. A row nothing can be done about is not green.
+
+    It resolves to ORANGE rather than red, and the existing artifact
+    vocabulary does that without a new state: the file is PRESENT and
+    it is hashed, so ``_fsArtifactStateFromDetail`` renders
+    present-but-unsatisfied as partial. Red would say the envelope is
+    broken, and it is not -- what disagrees is the image.
+
+    The conjunct is the POLICY, never the raw measurement: unknown
+    keeps the row green (nobody asked), and so does a mismatch
+    measured against a container nobody has shown to be the pinned
+    image. One truth table, shared with the arrow and with the
+    verification route, so all three now agree and the row has no
+    exception left to document.
     """
+    from vaibify.reproducibility import lockSatisfaction
     from vaibify.reproducibility import levelGates
     return {
-        "manifest": levelGates.fbVerifyManifestComplete(
-            filesRepo, dictWorkflow,
+        "manifest": (
+            levelGates.fbVerifyManifestComplete(filesRepo, dictWorkflow)
+            and levelGates.fbVerifyManifestMatchesTheFiles(filesRepo)
         ),
-        "dependencyLock": levelGates.fbVerifyDependencyLock(filesRepo),
+        "dependencyLock": (
+            levelGates.fbVerifyDependencyLock(filesRepo)
+            and not lockSatisfaction.fbLockBlocksVerification(
+                dictLockSatisfaction, dictImageCurrency,
+            )
+        ),
         "environmentSnapshot": levelGates.fbVerifyEnvironmentSnapshot(
             filesRepo,
         ),
@@ -3566,7 +3620,7 @@ def _fdictReadManifestTextBounded(
     state without an HTTP error masking the routine "not yet built"
     case.
     """
-    sText = _fsFetchManifestTextFromContainer(
+    sText = routeContext.fsFetchManifestTextFromContainer(
         dictCtx, sContainerId, sRepoRoot,
     )
     if sText is None:

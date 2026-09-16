@@ -1892,6 +1892,22 @@ class TestPollLevelStatePayload:
             # matter. Computed here so the dashboard renders a verdict
             # it never re-derives.
             "dictNextOrderedStep",
+            # Added 2026-09-16: the arrow's superset -- every endgame
+            # row premature right now, surviving the arrow's silence.
+            "dictBlockedRows",
+            # Added 2026-09-16: compared, required by nothing; the
+            # copies rows render these in their own informational
+            # block instead of the Level 2 file lists.
+            "listComparedNotRequiredPaths",
+            # Added 2026-09-15: why the last verification established
+            # nothing. Recorded all along and rendered only on the
+            # PROOF tab, so a researcher in the Project block saw the
+            # marker stop and heard nothing.
+            "dictLastNoVerdict",
+            # Added 2026-09-15: whether the pinned image satisfies
+            # requirements.lock, from the last surface that could
+            # exec. Absent reads as unknown, never as a fault.
+            "dictLockSatisfaction",
             # Added 2026-09-01: whether the envelope pins the image
             # this container is RUNNING, so a rebuild without a
             # snapshot regeneration is announced instead of every
@@ -1965,6 +1981,12 @@ class TestPollLevelStatePayload:
             # verdict rather than off a gate that also passes on
             # "unknown".
             "dictArchivePermanence",
+            # Whether the archive carries an attestation covering its
+            # own manifest -- TRI-state, which is why it is not the
+            # criterion's boolean: `null` means no verify has looked,
+            # and the Zenodo row must render that orange rather than
+            # claim a divergence nobody found.
+            "dictArchivedAttestation",
             # The recorded deposit and the declared target on
             # DIFFERENT Zenodo instances, as the backend's own refusal
             # sentence. The row renders it beside the control that

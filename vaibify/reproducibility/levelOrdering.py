@@ -18,12 +18,41 @@ module is that representation.
 WHAT AN EDGE MEANS, AND WHAT IT DOES NOT
 ----------------------------------------
 
-``(A, B)`` means: **doing B first gets UNDONE by doing A.** Not "A is
-more logical first", not "A is cheaper first" -- undone. That is the
-only claim worth interrupting a researcher with, and it is the reason
-there is no edge from the rebuild attestation to the GitHub mirror:
-pushing before attesting costs a second push, which is a nuisance, not
-a retraction.
+``(A, B)`` means: **doing B first is work you will do again.**
+Almost always because doing A UNDOES it -- regenerating the manifest
+stales the attestation keyed to it, and an immutable Zenodo version
+published before the attestation cannot be corrected without minting
+another. That is the claim worth interrupting a researcher with, and
+it is why there is no edge from the rebuild attestation to the GitHub
+mirror: pushing before attesting costs a second push, which is a
+nuisance, not a retraction.
+
+One edge is weaker and says so in its own reason: generating
+``reproduce.sh`` re-pins the manifest in the same action, so a manifest
+regenerated first is not undone, merely repeated. It stays because the
+researcher still wants the cheaper order (found live, 2026-09-15,
+where following it turned two clicks into one) -- but a reason that
+claimed an undo there would have been false, and the arrow's whole
+value is that its claims hold.
+
+THE TWO ARCHIVES ARE TWO NODES
+------------------------------
+
+``environmentArchive`` joined on 2026-09-15, and the reason is an
+undo: depositing the environment image re-pins ``MANIFEST.sha256`` in
+the same action that writes ``environment.json``, so it orders
+everything the manifest does -- deposit after the rerun and the rerun
+is wasted.
+
+Judging it required splitting a COMBINED criterion.
+``fbNoArchiveIsKnownSandbox`` classifies BOTH deposits, so a node that
+read it would light the Environment row over a sandbox PROJECT deposit
+-- sending the researcher to a Make Permanent button that promotes the
+wrong archive. Each node reads its own per-archive verdict instead,
+and the ``envelopeArchive`` node carries the three conjuncts that
+share one remedy: publish a Zenodo version holding the envelope and
+the attestation together. Only an ASYMMETRIC pair of deposits can tell
+that design from the broken one, which is how the tests are written.
 
 WHY IT ANSWERS ONE ROW AND NOT A PLAN
 -------------------------------------
@@ -53,10 +82,13 @@ disappears exactly when order stops mattering.
 __all__ = [
     "T_LEVEL3_ORDERING_EDGES",
     "fdictDescribeNextOrderedStep",
+    "fdictDescribeOrderedEndgame",
     "fdictJudgeOrderedRequirements",
 ]
 
-from vaibify.reproducibility import levelGates
+from vaibify.reproducibility import (
+    archivePermanence, levelGates, lockSatisfaction,
+)
 from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
@@ -66,10 +98,67 @@ from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 # researcher verbatim, so it says what gets undone rather than naming
 # the criterion that would go red.
 T_LEVEL3_ORDERING_EDGES = (
+    # The one edge that is NOT an undo. Kept, and marked, because the
+    # ordering is still real and the researcher still wants it -- but
+    # calling it an undo would have been false: regenerating the
+    # manifest first costs a wasted click, not lost work.
     (
         "reproduceScript", "manifest",
-        "MANIFEST.sha256 pins reproduce.sh, so a manifest written "
-        "now would pin the script you are about to replace.",
+        "Generating reproduce.sh re-pins MANIFEST.sha256 in the same "
+        "action, so doing the script first settles both. Regenerating "
+        "the manifest now only means doing it twice.",
+    ),
+    # The lock comes before everything the rerun touches. A lock the
+    # pinned image does not satisfy makes the shadow REFUSE, so an
+    # attestation attempted first is a verification spent to be told
+    # this -- which is how the gap was found (2026-09-15). Regenerating
+    # the envelope also rewrites the manifest, so a push or an archive
+    # made first publishes files about to change.
+    (
+        "dependencyLock", "rebuildAttestation",
+        "The container you are working in does not satisfy "
+        "requirements.lock, and it is the image your envelope pins, "
+        "so the rerun will refuse before it starts. Regenerate the "
+        "envelope first \u2014 it rewrites the lock from what the "
+        "image actually has. Rebuilding the image instead also "
+        "settles it, at the cost of downgrading the image to match "
+        "the older lock.",
+    ),
+    (
+        "dependencyLock", "envelopeMirror",
+        "Regenerating the envelope rewrites requirements.lock and "
+        "the manifest, so a push now publishes files you are about "
+        "to change.",
+    ),
+    (
+        "dependencyLock", "envelopeArchive",
+        "Regenerating the envelope rewrites requirements.lock and "
+        "the manifest, and Zenodo versions are immutable \u2014 "
+        "publishing now would cost a second version to correct.",
+    ),
+    # The environment archive re-pins MANIFEST.sha256 in the same
+    # action that writes environment.json, so it sits where the
+    # manifest does: a rerun attested before the deposit is a rerun
+    # keyed to a digest the deposit is about to change, and a push or
+    # a Zenodo version published first publishes files about to move.
+    (
+        "environmentArchive", "rebuildAttestation",
+        "Depositing the environment image re-pins MANIFEST.sha256 in "
+        "the same action, so an attestation made first is stale "
+        "before you read it.",
+    ),
+    (
+        "environmentArchive", "envelopeMirror",
+        "Depositing the environment image rewrites environment.json "
+        "and re-pins the manifest, so a push now publishes files you "
+        "are about to change.",
+    ),
+    (
+        "environmentArchive", "envelopeArchive",
+        "Depositing the environment image rewrites environment.json "
+        "and re-pins the manifest, and Zenodo versions are immutable "
+        "\u2014 publishing now would cost a second version to "
+        "correct.",
     ),
     (
         "manifest", "rebuildAttestation",
@@ -97,7 +186,10 @@ T_LEVEL3_ORDERING_EDGES = (
 )
 
 
-def fdictJudgeOrderedRequirements(dictWorkflow, filesRepo):
+def fdictJudgeOrderedRequirements(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Return ``{sRowKey: bSatisfied}`` for every row an edge names.
 
     These verdicts MUST agree with what the rows themselves render,
@@ -105,11 +197,45 @@ def fdictJudgeOrderedRequirements(dictWorkflow, filesRepo):
     agreement is pinned by a test rather than by a shared call,
     because the row payload is assembled in a route module this one
     may not import.
+
+    The agreement is TOTAL. ``dependencyLock`` was briefly a named
+    exception -- the row kept its state on a mismatch and warned in an
+    amber note, on the reasoning that the row speaks for the
+    repository's envelope while the container is a different question.
+    Seen on a live project that read as nonsense: every applicable
+    level showing a check, this arrow pointing at that row, and a note
+    underneath saying a rerun would refuse. The researcher reversed it
+    the same day -- a row nothing can be done about is not green -- so
+    the row now carries this conjunct too and resolves to PARTIAL,
+    which the artifact vocabulary already had.
+    ``test_no_row_diverges_from_the_arrow_at_all`` states the
+    invariant with no carve-out left in it.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    dictPermanence = levelGates.fdictArchivePermanenceState(
+        dictWorkflow, filesRepo,
+    )
     return {
-        "manifest": levelGates.fbVerifyManifestComplete(
-            filesRepo, dictWorkflow,
+        # UNKNOWN counts as satisfied, and so does a mismatch the
+        # running container is no evidence for. ONE truth table, in
+        # lockSatisfaction, shared with the verification pre-flight:
+        # two surfaces answering one question from two derivations is
+        # the duplication that module was extracted to end.
+        "dependencyLock": (
+            levelGates.fbVerifyDependencyLock(filesRepo)
+            and not lockSatisfaction.fbLockBlocksVerification(
+                dictLockSatisfaction, dictImageCurrency,
+            )
+        ),
+        # BOTH questions: does the manifest cover every declared
+        # file, and are the hashes it pins the files' current bytes.
+        # Coverage alone was the whole of this node until 2026-09-16,
+        # and a manifest that misdescribed two of its own entries sat
+        # green under an arrow pointing past it at the rerun that
+        # would fail on exactly those entries.
+        "manifest": (
+            levelGates.fbVerifyManifestComplete(filesRepo, dictWorkflow)
+            and levelGates.fbVerifyManifestMatchesTheFiles(filesRepo)
         ),
         "reproduceScript": (
             levelGates.fbVerifyReproduceScript(filesRepo, dictWorkflow)
@@ -117,19 +243,52 @@ def fdictJudgeOrderedRequirements(dictWorkflow, filesRepo):
                 filesRepo, dictWorkflow,
             )
         ),
-        "rebuildAttestation": (
-            fbL3AttestationCurrent(filesRepo)
-            and levelGates.fbNoArchiveIsKnownSandbox(
-                dictWorkflow, filesRepo,
+        # PER-ARCHIVE, never the combined sandbox gate. That gate
+        # classifies two deposits, so judging this node from it would
+        # let a sandbox PROJECT deposit light the ENVIRONMENT row --
+        # whose Make Permanent button promotes the wrong archive.
+        # Unsatisfied exactly when Make Permanent (or Deposit) on the
+        # Environment archive row is the right button.
+        "environmentArchive": (
+            levelGates.fbImageArchiveDeposited(filesRepo)
+            and not _fbIsSandbox(
+                dictPermanence["sImageArchivePermanence"],
             )
         ),
+        # A CURRENT attestation, and nothing else. The combined
+        # sandbox gate used to hang here, where the row carries
+        # neither remedy: the buttons that fix a sandbox deposit live
+        # on the two archive rows.
+        "rebuildAttestation": fbL3AttestationCurrent(filesRepo),
         "envelopeMirror": levelGates.fbEnvelopeMatchesGithubMirror(
             filesRepo,
         ),
-        "envelopeArchive": levelGates.fbEnvelopeMatchesZenodoArchive(
-            filesRepo,
+        # All three conjuncts have ONE remedy -- publish a Zenodo
+        # version carrying the envelope and the attestation together
+        # -- which is what makes them one node. Judged on the envelope
+        # alone, this node went satisfied while Level 3 failed on the
+        # archived attestation, and the arrow fell silent at exactly
+        # the moment it was needed.
+        "envelopeArchive": (
+            levelGates.fbEnvelopeMatchesZenodoArchive(filesRepo)
+            and levelGates.fbAttestationIsPubliclyArchived(filesRepo)
+            and not _fbIsSandbox(
+                dictPermanence["sProjectArchivePermanence"],
+            )
         ),
     }
+
+
+def _fbIsSandbox(sPermanence):
+    """Return True only for a deposit KNOWN to be a sandbox one.
+
+    Spelled as "is not permanent"'s opposite on purpose: ``unknown``
+    must keep passing. The permanence gate fails open in the
+    researcher's favour by design, and an arrow that pointed at every
+    deposit vaibify cannot classify would be making the claim the gate
+    refuses to make.
+    """
+    return sPermanence == archivePermanence.S_PERMANENCE_SANDBOX
 
 
 def _flistSelectLiveEdges(dictSatisfied):
@@ -147,15 +306,76 @@ def _flistSelectLiveEdges(dictSatisfied):
     ]
 
 
-def fdictDescribeNextOrderedStep(dictWorkflow, filesRepo):
+def fdictDescribeOrderedEndgame(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
+    """Return the arrow and the blocked map from ONE judge pass.
+
+    Wire shape::
+
+        {"dictNextStep": {...} or None,
+         "dictBlockedRows": {sRowKey: sReason}}
+
+    The two are different readings of the same live edges and MUST
+    come from one judgement, or a poll could render an arrow whose
+    target the blocked map calls premature. They also differ on
+    purpose: the arrow goes silent whenever there is no single root
+    (two independent chains), but a row downstream of an unsatisfied
+    prerequisite is premature regardless of how many chains remain,
+    so the blocked map keeps answering after the arrow stops.
+
+    ONE condition gates both before any edge is consulted: no Level 2
+    work may be outstanding. The researcher met the arrow pointing at
+    the Rebuild attestation on a project sitting at Level 1, whose
+    actual next task was bringing the published copies up to Level 2
+    (2026-09-16): the arrow was right about the endgame's internal
+    order and wrong about the endgame being where they were. A rung
+    below is never something to sequence around -- it is simply next.
+    Below Level 2 the blocked map is empty for the same reason and
+    one more: a blocked row's Level 2 actions (push, publish) ARE the
+    remedy down there, and a circle-slash over the remedy is the
+    dashboard refusing the researcher's next step.
+
+    A second condition -- Level 3 readiness -- gated the arrow for
+    part of 2026-09-16 and was REMOVED the same day. Readiness is
+    false precisely because the ordered rows are unmet, so the gate
+    silenced the arrow at the exact moment the ordering mattered:
+    a project at Level 2 with only ``reproduceScript`` and
+    ``manifest`` open got no arrow, and doing them in the wrong order
+    is the doubled work the arrow exists to prevent.
+    """
+    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):
+        return {"dictNextStep": None, "dictBlockedRows": {}}
+    dictSatisfied = fdictJudgeOrderedRequirements(
+        dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
+    )
+    listLive = _flistSelectLiveEdges(dictSatisfied)
+    return {
+        "dictNextStep": _fdictSelectSingleRootStep(listLive),
+        "dictBlockedRows": _fdictMapBlockedRows(listLive),
+    }
+
+
+def fdictDescribeNextOrderedStep(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
     """Return the one requirement to fix first, or ``None``.
 
     ``None`` means "order does not matter here", which is the answer
     on most projects most of the time -- see the module docstring for
-    why that is information rather than a gap.
+    why that is information rather than a gap. The endgame gate and
+    the shape of the answer live on ``fdictDescribeOrderedEndgame``,
+    which computes this and the blocked map from one judgement.
     """
-    dictSatisfied = fdictJudgeOrderedRequirements(dictWorkflow, filesRepo)
-    listLive = _flistSelectLiveEdges(dictSatisfied)
+    return fdictDescribeOrderedEndgame(
+        dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
+    )["dictNextStep"]
+
+
+def _fdictSelectSingleRootStep(listLive):
+    """Return the arrow payload, or ``None`` without a unique root."""
     if not listLive:
         return None
     setLater = {tEdge[1] for tEdge in listLive}
@@ -165,6 +385,19 @@ def fdictDescribeNextOrderedStep(dictWorkflow, filesRepo):
     if len(listRoots) != 1:
         return None
     return _fdictBuildStep(listRoots[0], listLive)
+
+
+def _fdictMapBlockedRows(listLive):
+    """Return ``{sRowKey: sReason}`` for every LATER end of a live edge.
+
+    The reason shown is the first live edge's, in the edge tuple's own
+    order, so the text a researcher reads is deterministic when two
+    prerequisites block one row.
+    """
+    dictBlocked = {}
+    for tEdge in listLive:
+        dictBlocked.setdefault(tEdge[1], tEdge[2])
+    return dictBlocked
 
 
 def _fdictBuildStep(sRowKey, listLive):

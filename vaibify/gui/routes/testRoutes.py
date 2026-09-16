@@ -8,6 +8,7 @@ import posixpath
 
 from fastapi import HTTPException, Request
 
+from vaibify.config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import (
     fbMaybeAutoArchive,
@@ -326,6 +327,7 @@ async def _ftProbeLevelThenRunUnderTheDrain(
         iLevelBefore = fiProofLevel(
             dictWorkflow,
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            bHostProject=fbIsHostProject(sContainerId),
         )
         return (iLevelBefore, fnRunTheTests())
 

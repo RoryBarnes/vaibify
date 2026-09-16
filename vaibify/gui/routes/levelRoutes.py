@@ -22,6 +22,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
+from ...config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     _fsSanitizeServerError,
@@ -67,8 +68,9 @@ class AiDeclarationAddStepRequest(BaseModel):
     """Body for the add-step route; every override is optional.
 
     Defaults come from ``fdictBuildAiDeclarationStep``: sName
-    "AI Declaration", sDirectory "aiDeclaration", sDeclarationFile
-    "AI_USAGE.md".
+    "AI Declaration", sDirectory "AIDeclaration" (the slug of the
+    name -- it read "aiDeclaration" until 2026-08-25, violating the
+    contract), sDeclarationFile "AI_USAGE.md".
     """
     sName: Optional[str] = None
     sDirectory: Optional[str] = None
@@ -208,7 +210,10 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         )
         dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
-            "iProofLevel": fiProofLevel(dictWorkflow, filesRepo),
+            "iProofLevel": fiProofLevel(
+                dictWorkflow, filesRepo,
+                bHostProject=fbIsHostProject(sContainerId),
+            ),
             "dictLevel2Gaps": dictGaps,
             "listLevel1Blockers": flistLevel1Blockers(
                 dictWorkflow, {}, filesRepo,

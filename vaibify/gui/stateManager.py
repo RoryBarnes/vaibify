@@ -98,6 +98,19 @@ S_VAIBIFY_GITIGNORE_BODY = (
     # The pulled Overleaf manuscript is a read-only convenience copy
     # for the in-container agent, never a canonical project artifact.
     "manuscript/\n"
+    # Produced bookkeeping: per-machine verify caches and deposit
+    # records. Deliberately NOT canonical (that is the whole point of
+    # the sidecar), and untracked files make the reproduction export
+    # refuse -- so leaving them out of this file meant vaibify's own
+    # bookkeeping blocked vaibify's own verification.
+    "syncStatus.json\n"
+    # The per-attempt attestation HISTORY. The current attestation is
+    # l3_attestation.json, which is canonical and tracked; this
+    # directory is the local record of every attempt, written by the
+    # very action it was blocking (researcher-reported, 2026-09-15:
+    # each refused verification wrote history that helped refuse the
+    # next one).
+    "l3_attestations/\n"
 )
 
 T_STATEFUL_STEP_FIELDS = (
@@ -1044,18 +1057,37 @@ def _fsLevelCellState(dictCell):
 def fnEnsureVaibifyGitignore(
     connectionDocker, sContainerId, sProjectRepoPath,
 ):
-    """Write ``.vaibify/.gitignore`` when missing so state.json is local-only."""
+    """Write ``.vaibify/.gitignore``, refreshing a stale auto-managed copy.
+
+    Write-when-missing was not enough. The body grows when vaibify
+    starts producing a new machine-local file, and a project created
+    before that growth kept the old list forever -- so vaibify's own
+    bookkeeping stayed untracked and went on blocking the reproduction
+    export on exactly the established projects most likely to be
+    reproducing (researcher-reported, 2026-09-15).
+
+    Refreshed only while the file still carries the auto-managed
+    header. A researcher who took the header out has adopted the file,
+    and overwriting it then would discard their rules -- the header is
+    the consent, so its absence withdraws it.
+    """
     sPath = fsGitignorePathFromRepo(sProjectRepoPath)
     if not sPath:
         return
+    baWanted = S_VAIBIFY_GITIGNORE_BODY.encode("utf-8")
     try:
-        connectionDocker.fbaFetchFile(sContainerId, sPath)
-        return
+        baExisting = connectionDocker.fbaFetchFile(sContainerId, sPath)
     except FileNotFoundError:
-        pass
-    connectionDocker.fnWriteFile(
-        sContainerId, sPath, S_VAIBIFY_GITIGNORE_BODY.encode("utf-8"),
-    )
+        connectionDocker.fnWriteFile(sContainerId, sPath, baWanted)
+        return
+    if baExisting == baWanted:
+        return
+    if not (baExisting or b"").startswith(_BA_GITIGNORE_HEADER):
+        return
+    connectionDocker.fnWriteFile(sContainerId, sPath, baWanted)
+
+
+_BA_GITIGNORE_HEADER = b"# Auto-managed by vaibify."
 
 
 def fdictBootstrapStateFromMarkers(

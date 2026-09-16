@@ -1,35 +1,24 @@
-"""Two published-copy sections, one per level, with disjoint files.
+"""One row per remote, two halves per row, with disjoint file lists.
 
-The scope split gave Level 3 its own question -- does the published
-reproducibility envelope match the local one -- and the Project block
-answers it in its own section, "Published envelope", parallel to the
-Level 2 "Published copies" section (researcher's ruling, 2026-08-26).
+The scope split of 2026-08-26 gave Level 3 its own question -- does
+the published reproducibility envelope match the local one -- and
+first answered it in a separate "Published envelope" section. That
+section duplicated the copies rows by name, so a green Level 2 banner
+sat over red envelope badges with the explanation in a section the
+researcher had no reason to open. The 2026-09-16 ruling merged them:
+ONE row per remote in Published copies, a Level 2 cell and a Level 3
+cell on that row, and the row's detail split into two LABELED halves.
 
-The two sections must not merely both exist; their FILE LISTS must be
-disjoint, and that is what this drives through a real browser. Level 2
-publishes the generating data and Level 3 publishes what a third party
-needs in order to re-run it, so a researcher scanning Level 2 for why
-their data is unpublished must not find ``reproduce.sh`` among the
-answers. The gates were made scope-aware first and the rows were not,
-which is exactly how the researcher came to see ``reproduce.sh``
-listed under the Level 2 GitHub mirror after the split had supposedly
-landed.
+The disjointness survives the merge and is still what this drives
+through a real browser: Level 2 publishes the generating data and
+Level 3 publishes what a third party needs in order to re-run it, so
+a researcher scanning the Level 2 half for why their data is
+unpublished must not find ``reproduce.sh`` among the answers.
 
-Selection is by SECTION, never by row title: both sections contain a
-row titled "GitHub mirror" -- that parallel is the point -- so a
-find-first-by-title lookup would silently assert against the Level 2
-row while appearing to test the Level 3 one.
-
-The state asserted is `red`. The seeded host project has never had a
-GitHub verify, so the honest answer is "not proven" -- and the
-criterion blocks on unproven by design, symmetric with the Level 2
-gate. A green row here would mean the criterion had been made vacuous.
-
-Kills (confirmed, not assumed): dropping the publishedEnvelope section
-from fsRenderProjectBlock fails the presence assertion; merging its
-row back into publishedCopies fails the placement assertion; removing
-the exclude-list filter in _fsRenderRemoteFileRows fails the
-disjointness assertion.
+The state asserted is unattained. The seeded host project has never
+had a GitHub verify, so the honest answer is "not proven" -- and the
+criterion blocks on unproven by design. An attained Level 3 cell here
+would mean the criterion had been made vacuous.
 """
 
 import pytest
@@ -39,38 +28,33 @@ from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 pytestmark = pytest.mark.browser
 
-S_ROW_TITLE = "GitHub mirror"
-S_LEVEL2_GROUP = "publishedCopies"
-S_LEVEL3_GROUP = "publishedEnvelope"
-
-# Read out of the section bodies and compared, rather than asserted as
-# a literal list: the envelope membership is the backend's to define
-# and this test is about where the files LAND, not what they are.
+S_COPIES_GROUP = "publishedCopies"
 S_ENVELOPE_FILE = "reproduce.sh"
 
-_S_READ_SECTION = """(sGroup) => {
-    const listHeaders = Array.from(document.querySelectorAll(
-        '.requirement-group-header'));
-    const elHeader = listHeaders.find(
-        el => (el.dataset.group || '') === sGroup);
+_S_READ_MERGED_ROW = """(sRowKey) => {
+    const elHeader = Array.from(document.querySelectorAll(
+        '.requirement-row-header')).find(
+            el => (el.dataset.req || '') === sRowKey);
     if (!elHeader) return {bFound: false};
-    const elGroup = elHeader.closest('.requirement-group');
-    const flistText = (sSelector) => Array.from(
-        elGroup.querySelectorAll(sSelector)).map(
-            el => (el.textContent || '').trim());
+    const elRow = elHeader.closest('.requirement-row');
+    const flistPaths = (sHalf) => Array.from(
+        elRow.querySelectorAll(sHalf + ' .wf-file-link')).map(
+            el => el.dataset.path || '');
     return {
         bFound: true,
-        listRowTitles: flistText('.requirement-row-title'),
-        listFilePaths: Array.from(
-            elGroup.querySelectorAll('.wf-file-link')).map(
-                el => el.dataset.path || ''),
-        sMarkup: elGroup.className + ' ' + Array.from(
-            elGroup.querySelectorAll('.requirement-row')).map(
-                el => el.className).join(' '),
+        sGroup: (elRow.closest('.requirement-group')
+            .querySelector('.requirement-group-header')
+            .dataset.group || ''),
+        listLevelTwoPaths: flistPaths('.sync-level-two-files'),
+        listLevelThreePaths: flistPaths('.sync-level-three-envelope'),
+        listCellTitles: Array.from(
+            elHeader.querySelectorAll('.step-level-cell')).map(
+                el => el.getAttribute('title') || ''),
     };
 }"""
 
-
+_S_COUNT_GROUPS = """() => Array.from(document.querySelectorAll(
+    '.requirement-group-header')).map(el => el.dataset.group || '')"""
 
 
 def _fnExpandEverything(pageDashboard):
@@ -91,65 +75,60 @@ def _fnExpandEverything(pageDashboard):
 
 
 @pytest.mark.falsification
-def test_the_two_published_sections_are_parallel_and_disjoint(
+def test_the_merged_row_keeps_its_two_halves_disjoint(
     pageDashboard, serverHub,
 ):
-    """The two published sections exist and their file lists are disjoint.
+    """The merged GitHub row lists the envelope only in its L3 half.
 
     Kills: disable the listExcludePaths filter in
     _fsRenderRemoteFileRows, which puts the envelope files back among
-    the Level 2 published-copies rows -- the exact symptom the
-    researcher reported after the scope split had supposedly landed.
+    the Level 2 file groups -- the exact symptom the researcher
+    reported after the scope split had supposedly landed, one
+    structure later.
     """
-    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub, bAwaitProjectBlock=True)
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
     _fnExpandEverything(pageDashboard)
 
-    dictLevel3 = pageDashboard.evaluate(
-        _S_READ_SECTION, S_LEVEL3_GROUP,
-    )
-    dictLevel2 = pageDashboard.evaluate(
-        _S_READ_SECTION, S_LEVEL2_GROUP,
-    )
-
-    assert dictLevel3["bFound"], (
-        "there is no 'Published envelope' section, so the Level 3 "
-        "published-copy criterion blocks the researcher with nothing "
-        "on screen naming it"
-    )
-    assert dictLevel2["bFound"], "the Level 2 section vanished"
-
-    assert S_ROW_TITLE in " ".join(dictLevel3["listRowTitles"]), (
-        "the Level 3 section has no GitHub mirror row: "
-        f"{dictLevel3['listRowTitles']}"
+    listGroups = pageDashboard.evaluate(_S_COUNT_GROUPS)
+    assert "publishedEnvelope" not in listGroups, (
+        "the separate Published envelope section is back; the merge "
+        f"is undone: {listGroups}"
     )
 
-    # The permanent-archive twin (2026-08-26, reversing the same-day
-    # GitHub-only ruling): the section must also carry the Zenodo
-    # archive row, or the criterion blocks with nothing naming it.
-    assert "Zenodo archive" in " ".join(dictLevel3["listRowTitles"]), (
-        "the Level 3 section has no Zenodo archive row: "
-        f"{dictLevel3['listRowTitles']}"
+    dictGithub = pageDashboard.evaluate(_S_READ_MERGED_ROW, "github")
+    assert dictGithub["bFound"], "the GitHub mirror row is gone"
+    assert dictGithub["sGroup"] == S_COPIES_GROUP, (
+        "the GitHub row left the Published copies section: "
+        f"{dictGithub['sGroup']}"
+    )
+    dictZenodo = pageDashboard.evaluate(_S_READ_MERGED_ROW, "zenodo")
+    assert dictZenodo["bFound"], "the Zenodo archive row is gone"
+
+    # The disjointness that WAS the split and survives the merge.
+    assert S_ENVELOPE_FILE in dictGithub["listLevelThreePaths"], (
+        "the Level 3 half lists no envelope files, so the merge made "
+        "them invisible rather than moving them: "
+        f"{dictGithub['listLevelThreePaths']}"
+    )
+    assert S_ENVELOPE_FILE not in dictGithub["listLevelTwoPaths"], (
+        f"{S_ENVELOPE_FILE} is listed in the Level 2 half, where it "
+        "reads as a reason the researcher's data is unpublished: "
+        f"{dictGithub['listLevelTwoPaths']}"
     )
 
-    # The disjointness that IS the split. An envelope file listed in
-    # the Level 2 section reports a reproducibility problem as a
-    # reason the researcher's DATA is unpublished.
-    assert S_ENVELOPE_FILE in dictLevel3["listFilePaths"], (
-        "the Level 3 section lists no envelope files, so the split "
-        "made them invisible rather than moving them: "
-        f"{dictLevel3['listFilePaths']}"
-    )
-    assert S_ENVELOPE_FILE not in dictLevel2["listFilePaths"], (
-        f"{S_ENVELOPE_FILE} is still listed under the Level 2 "
-        "published-copies section, where it reads as a reason the "
-        f"researcher's data is unpublished: {dictLevel2['listFilePaths']}"
+    # One row, one cell per level -- and the strip carries BOTH.
+    sTitles = " | ".join(dictGithub["listCellTitles"])
+    assert "Level 2:" in sTitles and "Level 3:" in sTitles, (
+        f"the merged row does not claim both levels: {sTitles}"
     )
 
     # Unproven blocks. This project has never had a GitHub verify, so
-    # a passing row would mean the criterion had gone vacuous.
-    assert "green" not in dictLevel3["sMarkup"], (
-        "the envelope row reports a match on a project that has never "
-        f"run a GitHub verify: {dictLevel3['sMarkup']!r}"
+    # an attained Level 3 cell would mean the criterion went vacuous.
+    assert "Level 3: met" not in sTitles, (
+        "the Level 3 cell reports met on a project that has never "
+        f"run a GitHub verify: {sTitles}"
     )
 
     assert pageDashboard.listPageErrors == []

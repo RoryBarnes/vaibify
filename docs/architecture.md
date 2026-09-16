@@ -2607,14 +2607,19 @@ second push, which is a nuisance, not a retraction.
 ways to be subtly wrong and reads authoritatively while being so; one
 answer is wrong in one way, and the researcher finds out in seconds
 because they do the thing and nothing improves. So the dashboard shows
-a single "Do this first" arrow, and the row it names carries the
+a single "Do this next" arrow, and the row it names carries the
 reason.
 
 The arrow rides the banner of the **section** holding that row, not
 the Project banner (researcher's ruling, 2026-09-14): Artifacts is
-where the work is, and the marker travels to Published envelope and
+where the work is, and the marker travels to Published copies and
 then Attestation as the answer moves down the ladder — on the project
-banner it would have been a fixed label about a moving target. Only
+banner it would have been a fixed label about a moving target. (The
+publication criteria lived in a separate "Published envelope" section
+until 2026-09-16, when they became the Level 3 cells of the merged
+Published-copies rows; the ordering graph still speaks the criteria's
+own keys, `envelopeMirror` and `envelopeArchive`, and the frontend
+homes them onto the merged rows through one alias map.) Only
 the section whose own rows contain the target may render it, so the
 arrow cannot point outside the section it sits on. It also sits inside
 a banner whose handler toggles that section, which makes its position

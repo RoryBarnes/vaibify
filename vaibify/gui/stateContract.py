@@ -87,6 +87,19 @@ TUPLE_ROOT_CONFIG_FILES = (
     # records for the envelope artifacts: generated, compared, and
     # reachable by nothing the researcher could click.
     ".vaibify/l3_attestation.json",
+    # The Replay-axis disclosure: declared models, agent CLI
+    # versions, the trust-base statement, and SHA-256 hashes of the
+    # prompt and context rather than their content. Publishable
+    # provenance, so it is committed like any other canonical file
+    # (researcher's ruling, 2026-09-15) -- and being tracked is also
+    # what stops it blocking the reproduction export.
+    #
+    # Canonical is NOT compared: the comparison scope is built from
+    # the declared artefacts plus the envelope, and this is in
+    # neither. That separation is load-bearing here, because
+    # sCapturedAtUtc changes on every capture and a compared file
+    # that always changes is a treadmill.
+    ".vaibify/ai_provenance.json",
     ".gitignore",
 )
 

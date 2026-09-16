@@ -45,12 +45,12 @@ def testAnUnresolvedMarkerCapsTheLevelAtZero():
     problem instead of gating on it.
     """
     dictWorkflow = _fdictAllGreenWorkflow()
-    assert fiProofLevel(dictWorkflow, "/repo") == 1, (
+    assert fiProofLevel(dictWorkflow, "/repo", bHostProject=False) == 1, (
         "control failed: the fixture no longer reaches L1, so the "
         "gate assertion below proves nothing"
     )
     dictWorkflow["listUnresolvedRemoteDataMarkers"] = ["pull-archive"]
-    assert fiProofLevel(dictWorkflow, "/repo") == 0, (
+    assert fiProofLevel(dictWorkflow, "/repo", bHostProject=False) == 0, (
         "an unresolved pull marker did not gate the level; "
         "undocumented remote data reports Self-Consistent"
     )

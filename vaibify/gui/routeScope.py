@@ -468,7 +468,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("GET", "/api/workflow/{sContainerId}/dag/export"),
     ("GET", "/api/workflow/{sContainerId}/level2/readiness"),
     ("GET", "/api/workflow/{sContainerId}/level3/attestation"),
-    ("GET", "/api/workflow/{sContainerId}/level3/readiness"),
     ("GET", "/api/workflow/{sContainerId}/manifest/text"),
     ("GET", "/api/workflow/{sContainerId}/project-context"),
     ("GET", "/api/workflow/{sContainerId}/prompt-record/status"),

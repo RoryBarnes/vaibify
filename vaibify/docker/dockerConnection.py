@@ -25,6 +25,7 @@ from typing import Optional
 
 from vaibify.config import mutationAdmission
 from vaibify.docker.execArgumentBudget import (
+    I_EXEC_ARGUMENT_BUDGET_BYTES,
     flistBatchPathsForOneExec,
 )
 
@@ -279,6 +280,77 @@ def _fnEnsureDockerHost():
 # program is then quoted whole as a single shell argument. An adapter
 # chooses a NAME from this table and supplies a path -- it cannot
 # supply a command, so it cannot supply a bad one.
+# The poll snapshot's program body, shared VERBATIM by two
+# transports: the typed read below (flat prefixed-argument
+# preamble) and the legacy base64-JSON embedded command in
+# repoFiles, which imports this constant so the two lanes cannot
+# drift. Everything the snapshot reads is also hashed -- the
+# reasoning lives with repoFiles._fsBuildSnapshotScriptCommand.
+S_REPO_SNAPSHOT_PROGRAM_CORE = '''sRoot = dictArgs["sRoot"]
+setSkipText = set(dictArgs.get("listSkipTextPaths", []))
+dictOut = {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}}
+def _fsHash(sAbs):
+    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        iFd = os.open(sAbs, iFlags)
+    except OSError:
+        return None
+    h = hashlib.sha256()
+    with os.fdopen(iFd, "rb") as f:
+        for ba in iter(lambda: f.read(65536), b""):
+            h.update(ba)
+    return h.hexdigest()
+def _fsHashFollow(sAbs):
+    # Follows symlinks — declared binaries in ~/.local/bin are
+    # commonly symlinks to the real executable, and we want the
+    # content that actually runs. These are explicit, out-of-repo
+    # workflow declarations, so there is no repo-escape concern.
+    try:
+        h = hashlib.sha256()
+        with open(sAbs, "rb") as f:
+            for ba in iter(lambda: f.read(65536), b""):
+                h.update(ba)
+        return h.hexdigest()
+    except OSError:
+        return None
+for sRel in dictArgs["listContentPaths"]:
+    sAbs = os.path.join(sRoot, sRel)
+    dictEntry = {"bIsFile": os.path.isfile(sAbs), "sText": None,
+                 "iMtime": None}
+    if dictEntry["bIsFile"]:
+        try:
+            dictEntry["iMtime"] = int(os.stat(sAbs).st_mtime)
+            if sRel not in setSkipText:
+                with open(sAbs, "r") as f:
+                    dictEntry["sText"] = f.read()
+        except (OSError, UnicodeDecodeError):
+            dictEntry["sText"] = None
+    dictOut["dictFiles"][sRel] = dictEntry
+def _fdictEntry(sRel):
+    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    if os.path.isabs(sRel):
+        d["bEscapesRoot"] = True
+        return d
+    sCur = sRoot
+    for sSeg in [s for s in sRel.split("/") if s]:
+        sCur = os.path.join(sCur, sSeg)
+        if os.path.islink(sCur):
+            d["sSymlinkSegment"] = sSeg
+            break
+    sRootReal = os.path.realpath(sRoot)
+    sReal = os.path.realpath(os.path.join(sRootReal, sRel))
+    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
+        d["bEscapesRoot"] = True
+        return d
+    d["sSha256"] = _fsHash(sReal)
+    return d
+for sRel in dictArgs["listHashPaths"]:
+    dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
+for sAbs in dictArgs.get("listAbsHashPaths", []):
+    dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
+sys.stdout.write(json.dumps(dictOut))
+'''
+
 _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
 S_TYPED_READ_DIRECTORY = "listDirectory"
@@ -290,6 +362,7 @@ S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_REPO_HASHES = "repoRelativeHashes"
+S_TYPED_READ_REPO_SNAPSHOT = "repoSnapshot"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
 S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
@@ -790,6 +863,32 @@ _DICT_TYPED_READ_PROGRAMS = {
     # bMissing is decided by the presence of `.git` alone, so a
     # directory that is not a repository is reported as missing rather
     # than as an error.
+    # The poll snapshot: one exec that answers existence, content,
+    # mtime and sha for the fixed envelope set, the declared outputs
+    # and the declared binaries. Arguments arrive as a FLAT list of
+    # prefixed strings -- "r:<root>", "c:<content path>",
+    # "k:<skip-text path>", "h:<hash path>", "a:<absolute binary>" --
+    # because the slot admits exactly a path or a flat sequence of
+    # paths, never structure and never a command. The body is the
+    # SHARED core: repoFiles wraps the same constant for its legacy
+    # embedded transport, so the two lanes cannot drift.
+    S_TYPED_READ_REPO_SNAPSHOT: (
+        "import hashlib, json, os, sys\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "dictArgs = {\"sRoot\": \"\", \"listContentPaths\": [],\n"
+        "            \"listSkipTextPaths\": [], \"listHashPaths\": [],\n"
+        "            \"listAbsHashPaths\": []}\n"
+        "dictKeyByPrefix = {\"c\": \"listContentPaths\",\n"
+        "                   \"k\": \"listSkipTextPaths\",\n"
+        "                   \"h\": \"listHashPaths\",\n"
+        "                   \"a\": \"listAbsHashPaths\"}\n"
+        "for sArg in listArgs:\n"
+        "    if sArg[:2] == \"r:\":\n"
+        "        dictArgs[\"sRoot\"] = sArg[2:]\n"
+        "    elif sArg[1:2] == \":\" and sArg[:1] in dictKeyByPrefix:\n"
+        "        dictArgs[dictKeyByPrefix[sArg[:1]]].append(sArg[2:])\n"
+        + S_REPO_SNAPSHOT_PROGRAM_CORE
+    ),
     S_TYPED_READ_GIT_REPO_STATUS: (
         "import json,os,subprocess,sys\n"
         "T_FIELDS=(('sBranch',('rev-parse','--abbrev-ref','HEAD')),"
@@ -1752,6 +1851,63 @@ class DockerConnection:
                 return {}
             dictMerged.update(dictBatch)
         return dictMerged
+
+    def ftReadRepoSnapshot(
+        self, sContainerId, sRootPath, listContentPaths,
+        listSkipTextPaths, listHashPaths, listAbsHashPaths,
+    ):
+        """Run the one-exec poll snapshot as a DECLARED read.
+
+        The snapshot used to travel through the general exec
+        primitive, which the mutation gate must treat as mutating --
+        so inside an enforced lane it could only run under an
+        admission, and the readiness route parked it inside the
+        pausable lock probe. Every dashboard open lost that race, the
+        probe paused, and the gates fell back to file-by-file reads:
+        ten seconds of round trips whose only cause was WHERE the
+        snapshot sat. The caller supplies the root and four path
+        groups; the program is fixed module text shared with the
+        legacy embedded transport.
+
+        NOT batched: one snapshot is one coherent answer, so an
+        over-budget path list is REFUSED with the counts named rather
+        than split or silently truncated -- the badge-probe lesson is
+        that the silent shape of this failure reads as a claim about
+        every file it dropped. The caller falls back to the live
+        adapter, which is slow and correct.
+        """
+        listArgs = ["r:" + (sRootPath or "")]
+        for sPrefix, listGroup in (
+            ("c", listContentPaths), ("k", listSkipTextPaths),
+            ("h", listHashPaths), ("a", listAbsHashPaths),
+        ):
+            for sPath in listGroup or []:
+                listArgs.append(sPrefix + ":" + sPath)
+        # The RENDERED single argument, not an estimate of the path
+        # bytes going into it: repr() doubles every backslash and
+        # escapes what it must, so an estimate admits a command the
+        # kernel still refuses -- measured with backslash-heavy POSIX
+        # names rendering to twice their estimate (external review,
+        # 2026-09-16). This renders the same program the typed read
+        # will run, so the number is the argument's actual size.
+        iRenderedBytes = len(
+            _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]
+            .replace(
+                _S_TYPED_READ_PATH_SLOT,
+                _fsTypedReadPathLiteral(listArgs),
+            ).encode("utf-8"),
+        )
+        if iRenderedBytes > I_EXEC_ARGUMENT_BUDGET_BYTES:
+            raise ValueError(
+                f"the repository snapshot's {len(listArgs)} paths "
+                f"render to a {iRenderedBytes}-byte exec argument, "
+                f"over the {I_EXEC_ARGUMENT_BUDGET_BYTES}-byte "
+                "budget; refusing loudly instead of splitting one "
+                "snapshot into two moments or truncating it silently"
+            )
+        return self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_REPO_SNAPSHOT, listArgs,
+        )
 
     def flistContainerDirectoriesExist(self, sContainerId, listPaths):
         """Return one is-a-directory answer per path, in the order given.

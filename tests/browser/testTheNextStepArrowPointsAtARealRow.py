@@ -1,4 +1,4 @@
-"""The "Do this first" arrow rides the SECTION that holds its row.
+"""The "Do this next" arrow rides the SECTION that holds its row.
 
 A green Python suite proves the ORDER is computed; it does not execute
 one line of the thing that shows it. This renders the real Project

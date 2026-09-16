@@ -316,7 +316,9 @@ def test_fbAtLeastLevel2_all_criteria_green_returns_true(tmp_path):
     dictWorkflow = _fdictBuildLevel2ReadyWorkflow()
     assert fbAtLeastLevel1(dictWorkflow, sProjectRepo) is True
     assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is True
-    assert fiProofLevel(dictWorkflow, sProjectRepo) == 2
+    assert fiProofLevel(
+        dictWorkflow, sProjectRepo, bHostProject=False,
+    ) == 2
 
 
 @pytest.mark.falsification
@@ -342,7 +344,9 @@ def test_fbAtLeastLevel2_committed_sha_drift_blocks_l2(tmp_path):
     dictWorkflow["dictRemotes"]["github"]["sCommittedSha"] = "def456"
     assert fbAtLeastLevel1(dictWorkflow, sProjectRepo) is True
     assert fbAtLeastLevel2(dictWorkflow, sProjectRepo) is False
-    assert fiProofLevel(dictWorkflow, sProjectRepo) == 1
+    assert fiProofLevel(
+        dictWorkflow, sProjectRepo, bHostProject=False,
+    ) == 1
 
 
 def test_fbAtLeastLevel2_no_ai_declaration_step_returns_false(tmp_path):

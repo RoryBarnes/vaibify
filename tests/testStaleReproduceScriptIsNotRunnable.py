@@ -152,16 +152,16 @@ def test_a_stale_script_blocks_the_scalar_gate(sProjectRepo, monkeypatch):
     Level 3 attained above a row that blocks.
     """
     _fnWriteScript(sProjectRepo, _S_STALE_SCRIPT)
-    for sName in (
-        "fbAtLeastLevel2", "fbL3ReadinessOK", "fbL3AttestationCurrent",
-        "fbEnvelopeMatchesGithubMirror", "fbEnvelopeMatchesZenodoArchive",
-        "fbImageArchiveDeposited", "fbNoArchiveIsKnownSandbox",
-    ):
-        monkeypatch.setattr(
-            levelGates, sName, lambda *args, **kwargs: True,
-        )
+    # EVERY other conjunct satisfied, and the staleness gate left REAL
+    # so the fixture's stale script is what refuses. With other
+    # conjuncts still failing the gate returns False either way, and
+    # the mutation that deletes this criterion SURVIVES unseen.
+    from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
+    fnMakeEveryLevel3ConjunctPass(
+        monkeypatch, fbVerifyReproduceScriptCurrent=None,
+    )
     assert levelGates.fbAtLeastLevel3(
-        _fdictBuildWorkflow(), sProjectRepo,
+        _fdictBuildWorkflow(), sProjectRepo, False,
     ) is False
 
 

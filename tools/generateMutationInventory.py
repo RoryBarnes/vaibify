@@ -254,6 +254,12 @@ DICT_PRIMITIVE_ACCESS = {
     # thing went through the general exec primitive besides.
     "flistContainerPathsExist": S_ACCESS_TYPED_READ,
     "flistContainerDirectoriesExist": S_ACCESS_TYPED_READ,
+    # The poll snapshot, on the same terms as the hash batch below:
+    # it replaced an embedded script the repo-files adapter assembled
+    # for the GENERAL exec primitive -- which parked the readiness
+    # route's snapshot inside a pausable admission, where the
+    # open-time race skipped it on every dashboard open (2026-09-16).
+    "ftReadRepoSnapshot": S_ACCESS_TYPED_READ,
     # The file panel's five-second poll, on the same terms again. Both
     # replaced a container WRITE plus an exec: the poll pushed its path
     # list into /tmp because a shell argv would not hold it, and that

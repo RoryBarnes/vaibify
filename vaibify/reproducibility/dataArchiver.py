@@ -75,7 +75,14 @@ def fdictGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
     """Write the three-tier PROOF Level 3 reproducibility envelope.
 
     ``filesRepo`` is a project-repo path string (host clone) or a
-    repo-file adapter (container). Tier 1 writes ``MANIFEST.sha256``
+    repo-file adapter (container). The tiers RUN in dependency order
+    and are REPORTED in envelope order: ``requirements.lock`` and
+    ``.vaibify/environment.json`` are written first, and
+    ``MANIFEST.sha256`` last, because the manifest pins the other two
+    and a manifest written before them is stale about its own entries
+    the moment it lands.
+
+    Tier 1 writes ``MANIFEST.sha256``
     at the project repo root via ``manifestWriter.fnWriteManifest``.
     Tier 2 writes ``requirements.lock`` via
     ``dependencyPinning.fnGenerateRequirementsLock`` (uv on PATH,
@@ -96,16 +103,27 @@ def fdictGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
     can say which tier skipped and why.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    # THE MANIFEST IS WRITTEN LAST, and the order is the whole point.
+    # It pins the SHA-256 of every canonical file, and two of those
+    # files are written by the tiers below it. Written first -- as it
+    # was until 2026-09-16 -- it pinned the PREVIOUS bytes of
+    # requirements.lock and .vaibify/environment.json, so every
+    # regeneration produced a manifest that was already wrong about
+    # two of its own entries. Nothing noticed: the manifest row asks
+    # only whether every declared path is LISTED. The L3 rerun did
+    # notice, on a real project, and reported exactly those two paths
+    # as diverged -- a reproduction failure that never happened,
+    # unfixable by any button, because regenerating recreated the skew.
+    dictLock = _fdictWriteLockTier(filesRepo, sContainerName)
+    dictEnvironment = _fdictWriteEnvironmentTier(
+        filesRepo, sContainerName, listHostBinaries,
+    )
     return {
         "MANIFEST.sha256": _fdictWriteManifestTier(
             filesRepo, dictWorkflow, sContainerName,
         ),
-        "requirements.lock": _fdictWriteLockTier(
-            filesRepo, sContainerName,
-        ),
-        ".vaibify/environment.json": _fdictWriteEnvironmentTier(
-            filesRepo, sContainerName, listHostBinaries,
-        ),
+        "requirements.lock": dictLock,
+        ".vaibify/environment.json": dictEnvironment,
     }
 
 

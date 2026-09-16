@@ -106,6 +106,14 @@ def test_delete_rules_is_painted_destructive_and_declare_is_not(
     pageDashboard.locator(
         '[data-wf-action="declare-determinism"]',
     ).first.click()
+    # CONFIRM first (2026-09-15): declaring rewrites project.json,
+    # which Level 2 compares against GitHub and Zenodo, so the
+    # declaration now warns before it writes. The ORDER is asserted in
+    # tests/browser/testALevelCrossingWarnsBeforeItWrites.py; here the
+    # modal is simply accepted, because what this test is about is how
+    # the two buttons are painted.
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    pageDashboard.click("#btnConfirmOk")
     pageDashboard.wait_for_selector(
         '[data-wf-action="delete-determinism"]', timeout=10000,
     )

@@ -83,6 +83,8 @@ from .repoFiles import ffilesEnsureRepoFiles
 __all__ = [
     "TUPLE_LEVEL3_ENVELOPE_PATHS",
     "TUPLE_COMPARED_NOT_REQUIRED_PATHS",
+    "S_ATTESTATION_REPO_PATH",
+    "S_AI_PROVENANCE_REPO_PATH",
     "TUPLE_UNCOMPARED_PREFIXES",
     "TUPLE_UNCOMPARED_PATHS",
     "I_PUBLICATION_SCOPE_VERSION",
@@ -153,7 +155,14 @@ S_PROJECTS_DIRECTORY = ".vaibify/projects"
 #      that would let an unproven archive pass -- and it never
 #      compared the attestation, so its badge would read matched
 #      by omission.
-I_PUBLICATION_SCOPE_VERSION = 5
+#   6  .vaibify/ai_provenance.json joins the COMPARED set, required
+#      by nothing (2026-09-16 ruling: it is a concern for a rung
+#      the ladder does not have yet, shown truthfully and gating
+#      nothing). A version-5 cache never compared the stamp, so its
+#      absence from that cache's divergence list is not evidence of
+#      agreement, and the stamp's badge would read matched by
+#      omission -- the same reasoning as version 5, one file later.
+I_PUBLICATION_SCOPE_VERSION = 6
 
 # The reproducibility envelope: what a third party needs in order to
 # re-fetch and re-execute. Their presence is already checked by the L3
@@ -170,18 +179,27 @@ TUPLE_LEVEL3_ENVELOPE_PATHS = (
     "pyproject.toml",
 )
 
-# Compared against every remote, and required by NO criterion. The
-# rebuild attestation belongs on GitHub as well as in the archive --
-# a reader who clones the repo should be able to see that the author's
-# rebuild passed -- but only the ARCHIVE copy carries a Level 3
-# criterion, because GitHub is not an archive and a repository can be
-# renamed, made private or deleted. Comparing it here is what gives
-# the dashboard a truthful GitHub badge to show; keeping it out of
-# TUPLE_LEVEL3_ENVELOPE_PATHS is what stops that badge from gating a
-# level. Adding a path here is deliberately cheap; moving one into
-# the envelope tuple is a ladder change.
+# Compared against every remote, and required by no criterion IN THIS
+# COMPARISON. The rebuild attestation belongs on GitHub as well as in
+# the archive -- a reader who clones the repo should be able to see
+# that the author's rebuild passed -- but only the ARCHIVE copy
+# carries a Level 3 criterion (attestation-not-in-zenodo-archive,
+# which reads the archive side, never this comparison), because
+# GitHub is not an archive and a repository can be renamed, made
+# private or deleted. The AI-provenance stamp gates nothing at all:
+# the researcher ruled it a concern for a rung the ladder does not
+# have yet (2026-09-16). Comparing them here is what gives the
+# dashboard truthful badges to show; keeping them out of
+# TUPLE_LEVEL3_ENVELOPE_PATHS is what stops those badges from gating
+# a level. Adding a path here is deliberately cheap; moving one into
+# the envelope tuple is a ladder change. NAMED constants, because two
+# call sites once located the attestation as element [0] -- an index
+# that stays correct only by insertion order.
+S_ATTESTATION_REPO_PATH = ".vaibify/l3_attestation.json"
+S_AI_PROVENANCE_REPO_PATH = ".vaibify/ai_provenance.json"
 TUPLE_COMPARED_NOT_REQUIRED_PATHS = (
-    ".vaibify/l3_attestation.json",
+    S_ATTESTATION_REPO_PATH,
+    S_AI_PROVENANCE_REPO_PATH,
 )
 
 # Tracked, published, and deliberately never compared. Test markers
@@ -319,9 +337,24 @@ def fsetSelectLevel2Paths(listPaths):
     is the claim a researcher makes first and the one whose scope
     should not silently shrink. An envelope addition is an explicit
     edit to the tuple above.
+
+    ``TUPLE_COMPARED_NOT_REQUIRED_PATHS`` is subtracted TOO, and
+    forgetting it made that tuple's own docstring false. A path kept
+    out of the envelope tuple in order to gate nothing landed in
+    Level 2 by the complement rule -- the one scope the complement
+    sweeps everything into. Measured on a real project, 2026-09-16:
+    five files diverged from both remotes after a regeneration, four
+    of them envelope files correctly gating only Level 3, and the
+    single Level 2 blocker was ``.vaibify/l3_attestation.json``. Since
+    running a Level 3 verification is what WRITES that file,
+    attaining Level 3 dropped the project to Level 1, and no button
+    could exit the loop.
     """
-    setEnvelope = set(TUPLE_LEVEL3_ENVELOPE_PATHS)
+    setExcluded = (
+        set(TUPLE_LEVEL3_ENVELOPE_PATHS)
+        | set(TUPLE_COMPARED_NOT_REQUIRED_PATHS)
+    )
     return {
         sPath for sPath in listPaths
-        if sPath not in setEnvelope and fbPathIsCompared(sPath)
+        if sPath not in setExcluded and fbPathIsCompared(sPath)
     }

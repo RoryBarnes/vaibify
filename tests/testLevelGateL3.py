@@ -178,7 +178,7 @@ def test_readiness_gaps_dict_shape(fixtureL3Repo):
 def test_at_least_level3_requires_attestation_and_l2(fixtureL3Repo):
     # Even with full readiness, no attestation means L3 is unmet.
     dictWorkflow = _fdictBuildL3ReadyWorkflow()
-    assert not fbAtLeastLevel3(dictWorkflow, str(fixtureL3Repo))
+    assert not fbAtLeastLevel3(dictWorkflow, str(fixtureL3Repo), False)
     # And without L2 (synthetic — we don't set up github/zenodo here)
     # the gate still fails even after attesting.
     sDigest = fsCurrentManifestDigest(str(fixtureL3Repo))
@@ -188,7 +188,7 @@ def test_at_least_level3_requires_attestation_and_l2(fixtureL3Repo):
             S_STATUS_PASSED, sDigest, "", 1.0, 1, 1, [], "",
         ),
     )
-    assert not fbAtLeastLevel3(dictWorkflow, str(fixtureL3Repo))
+    assert not fbAtLeastLevel3(dictWorkflow, str(fixtureL3Repo), False)
 
 
 def test_individual_verifier_helpers_compose_with_readiness(

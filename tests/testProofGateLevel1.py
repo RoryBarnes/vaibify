@@ -203,18 +203,22 @@ def test_fbAtLeastLevel1_one_step_blocks_workflow():
 
 
 def test_fiProofLevel_returns_zero_when_repo_missing():
-    assert fiProofLevel(_fdictAllGreenWorkflow(), "") == 0
+    assert fiProofLevel(
+        _fdictAllGreenWorkflow(), "", bHostProject=False,
+    ) == 0
 
 
 def test_fiProofLevel_returns_one_when_at_L1_only():
     """L2 and L3 are stub-False in Phase 1 → L1 ceiling."""
-    assert fiProofLevel(_fdictAllGreenWorkflow(), "/repo") == 1
+    assert fiProofLevel(
+        _fdictAllGreenWorkflow(), "/repo", bHostProject=False,
+    ) == 1
 
 
 def test_fiProofLevel_returns_zero_when_step_blocks():
     dictWorkflow = _fdictAllGreenWorkflow()
     dictWorkflow["listSteps"][0]["dictVerification"]["sUser"] = "failed"
-    assert fiProofLevel(dictWorkflow, "/repo") == 0
+    assert fiProofLevel(dictWorkflow, "/repo", bHostProject=False) == 0
 
 
 def test_fbAtLeastLevel2_returns_false_without_sync_state():
@@ -224,4 +228,6 @@ def test_fbAtLeastLevel2_returns_false_without_sync_state():
 
 
 def test_fbAtLeastLevel3_stub_returns_false_until_phase_three():
-    assert fbAtLeastLevel3(_fdictAllGreenWorkflow(), "/repo") is False
+    assert fbAtLeastLevel3(
+        _fdictAllGreenWorkflow(), "/repo", False,
+    ) is False

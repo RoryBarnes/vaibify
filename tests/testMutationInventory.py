@@ -143,7 +143,15 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # row it added AND the one it moved -- `vaibify start`'s stale-container
 # removal, which used to sit unclassified inside a pre-flight CHECK and
 # now sits on the launch path where it belongs.
-I_UNCLASSIFIED_ROW_BUDGET = 283
+# 283 -> 282 (2026-09-15): the L3-path work added five rows and
+# classified all five in the same change -- the readiness route's
+# lock-satisfaction exec, the diverged-branch merge preview and merge,
+# and both branches of the .vaibify/.gitignore write. The net fall is
+# one because the gitignore write had been ONE row and is now two, its
+# create and its refresh being different decisions with different
+# consents; splitting a site and classifying both halves is the shape
+# this ratchet is meant to reward.
+I_UNCLASSIFIED_ROW_BUDGET = 282
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -290,7 +298,36 @@ I_UNCLASSIFIED_ROW_BUDGET = 283
 # patched and source-inspected by name from four test modules, so the
 # move is its own change with its own reconfirmation, not a rider on
 # a feature.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 216
+# +4 (2026-09-15), raised deliberately with the researcher's approval
+# for the features that spend it, and split three ways because the
+# reasons differ:
+#   +1 the readiness route's lock-satisfaction exec. It asks the
+#   RUNNING container what it has installed, and the alternative is
+#   launching the pinned image -- a whole container -- to ask the same
+#   question, which is the cost the check exists to avoid. It is a
+#   fixed module constant shared with the shadow lane, so no caller
+#   text reaches the command, and the candidate that would lower this
+#   again is a typed READ for "enumerate installed packages", which
+#   would serve both lanes.
+#   +2 the diverged-branch merge: a preview that computes the merge in
+#   the object database and changes nothing, and the merge itself.
+#   They are two rows because they are two decisions -- the preview is
+#   what lets the offer state its cost before the researcher accepts
+#   -- and the preview is mutation-capable only because it reaches the
+#   general exec primitive, which cannot tell a query from a delete.
+#   Both sit inside the git panel's mode-(b) drain.
+#   +1 the .vaibify/.gitignore REFRESH. The create was already here;
+#   this is its second branch, taken only while the file still carries
+#   the auto-managed header. Splitting it is what makes the consent
+#   auditable: one row could not say that a researcher who removes the
+#   header keeps their rules.
+# RAISED 220 -> 221 (2026-09-16): fnEnsureStagedClientCurrent's
+# one fnWriteFile -- the archive flow restages the container-side
+# Zenodo client under the archive worker's own mode-(b) admission
+# after a 14-day container ImportError'd a publish. Classified at
+# birth; the write cannot live inside a gateway because the bytes
+# it stages are the reproducibility package's own source.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 221
 
 
 # Every acquisition of a declared capability that still has no reviewed
