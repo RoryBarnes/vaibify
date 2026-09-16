@@ -19344,6 +19344,44 @@ def _fdictEntry(sRel):
         new='        selectionBackground: "rgba(19, 174, 213, 0.3)",',
     ),
 
+    # --- 2026-09-16: a researcher could not copy an agent's login URL
+    # out of the pane. Measured in their own session: the selection
+    # held 2.7 seconds and ~170 repaints while they dragged, and was
+    # destroyed 48ms after they released -- by the program, which
+    # reads the mouse-release byte and redraws. Copy-on-select
+    # debounced by 200ms and so arrived second, and the clearing
+    # selection event cancelled the pending copy on its way through.
+    # `writeText` was never called. Repaint alone does not do this;
+    # measured in both Chromium and Firefox, the selection survives
+    # every frame. The debounce must delay the WRITE, not the READ. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testCopySurvivesTheSelectionBeingCleared.py::'
+            'test_a_copy_survives_the_selection_being_cleared_after_release'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='    function fnScheduleCopyOnSelect(dictTab, terminal) {\n        if (!terminal.hasSelection()) return;\n        if (dictTab.iCopyOnSelectTimer) {\n            window.clearTimeout(dictTab.iCopyOnSelectTimer);\n        }',
+        new='    function fnScheduleCopyOnSelect(dictTab, terminal) {\n        if (dictTab.iCopyOnSelectTimer) {\n            window.clearTimeout(dictTab.iCopyOnSelectTimer);\n        }\n        if (!terminal.hasSelection()) return;',
+    ),
+
+    # --- 2026-09-16: the dashboard had TWO question marks, and the
+    # answer to "how do I select text in the terminal" lived behind
+    # only one of them. A researcher looked in the toolbar's help,
+    # found nothing about terminals, and never found the second button
+    # in the terminal strip -- losing most of a session to a terminal
+    # he could not copy from while the content sat one click away
+    # under the other door. The terminal's "?" is gone and its content
+    # is a folded section of the single panel. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHelpLivesInOnePlace.py::'
+            'testTheOneHelpPanelCarriesTheTerminalAndOpensFolded'
+        ),
+        source='vaibify/gui/static/scriptLegendPanel.js',
+        old='            _fsRenderTerminalUsageSection() +\n',
+        new='',
+    ),
+
     # --- 2026-09-12: review findings on the pinned-image lane, the
     # reproduction record and the reproducer's download ---
     Falsification(
