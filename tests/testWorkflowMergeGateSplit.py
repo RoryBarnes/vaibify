@@ -30,7 +30,9 @@ _PATH_WORKFLOWS = _PATH_REPO / ".github" / "workflows"
 T_PRE_MERGE_WORKFLOWS = (
     "tests-linux.yml",
     "tests-macos.yml",
-    "browser.yml",
+    "browser-chromium.yml",
+    "browser-firefox.yml",
+    "browser-webkit.yml",
     "falsification.yml",
     "security.yml",
     "agentDocsPathCheck.yml",

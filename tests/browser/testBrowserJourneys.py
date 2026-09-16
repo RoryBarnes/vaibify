@@ -921,7 +921,7 @@ def testTheShellDialsOnlyOnTheResearchersGesture(
 
 
 def testReloadDuringAStartPicksTheOutcomeBackUp(
-    pageDashboard, browserChromium, serverHub,
+    pageDashboard, browserEngine, serverHub,
 ):
     """A start outlives the page that asked for it, so the page resumes.
 
@@ -977,7 +977,7 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
         # The negative control, opened while the start is still in
         # flight: a different browser context has neither the
         # sessionStorage marker nor the owning session.
-        contextControl = browserChromium.new_context()
+        contextControl = browserEngine.new_context()
         pageControl = contextControl.new_page()
         pageControl.goto(
             serverHub.fsBootstrapUrl(), wait_until="networkidle",

@@ -45,7 +45,12 @@ from tests.browser.testResizeAndCopyHoldTogether import (
 )
 
 
-pytestmark = pytest.mark.browser
+pytestmark = [
+    pytest.mark.browser,
+    # Chromium is the only engine whose Playwright build grants
+    # clipboard permissions; see pytest.ini for what that costs.
+    pytest.mark.clipboardPermissions,
+]
 
 S_SENTINEL = "SENTINEL-CLIPBOARD-NOT-OVERWRITTEN"
 S_COPY_TOKEN = "copyme0042token"

@@ -1,0 +1,101 @@
+name: browser-firefox
+
+# The frontend, executed in a REAL firefox browser.
+#
+# A sibling of browser.yml, which drives Chromium. These are separate
+# WORKFLOW FILES rather than a matrix inside one job for a reason that
+# is not cosmetic: a GitHub status badge addresses a workflow file, not
+# a job, so a matrix could never give firefox a badge of its own. One
+# file per engine is what makes "is the frontend green in firefox?"
+# answerable from the README at a glance.
+#
+# Why a second engine at all: the lane ran Chromium alone until
+# 2026-09-16, when a terminal defect was reported by a researcher whose
+# daily browser is Firefox and could not be reproduced in Chromium at
+# all. Running the same engine more times says nothing new; running a
+# different one executes genuinely different code.
+#
+# This lane does NOT speak for the Docker boundary. It drives a
+# fail-closed fake adapter, exactly as browser.yml does.
+
+on:
+  # NO base-branch filter, deliberately -- see browser.yml for the
+  # stacked-PR incident that rule exists to prevent.
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  browser-firefox:
+    # The job name IS the status-check name. Keep it identical to the
+    # workflow name so the check is findable by anyone typing the
+    # engine into the required-checks box.
+    name: 'browser-firefox'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,browser]"
+
+      - name: Install firefox
+        # BOUNDED, and probe-then-fetch rather than a blanket apt call.
+        # An unbounded `apt-get` in front of a bounded test is the one
+        # step that can hang a lane into silence -- browser.yml records
+        # the run that sat for one hour forty-four minutes doing it.
+        # The runner image carries most of Firefox's libraries already.
+        timeout-minutes: 8
+        run: |
+          python -m playwright install firefox
+          if python tools/checkBrowserLaunches.py firefox; then
+            echo "firefox launches against the runner image's own libraries."
+            exit 0
+          fi
+          echo "firefox did not launch; fetching its OS dependencies."
+          python -m playwright install-deps firefox
+          python tools/checkBrowserLaunches.py firefox
+
+      - name: Run the browser lane on firefox
+        # Deselects clipboardPermissions EXPLICITLY, here, where a
+        # reader of the lane can see what it does not cover: Playwright
+        # grants clipboard permissions in Chromium only, and on this
+        # engine those five tests error before asserting anything. They
+        # still run in browser.yml every pull request, so the
+        # assertions are never unguarded -- but the clipboard behavior
+        # is not verified here, and that is a real gap stated rather
+        # than hidden.
+        #
+        # 25 minutes: this engine is slower per journey than Chromium,
+        # and the honest reason to raise a browser lane's ceiling is
+        # that the lane got bigger or slower, never that a test is
+        # inconvenient. Measured locally at 23 minutes for 359 tests.
+        timeout-minutes: 25
+        env:
+          # Turns the "playwright not installed" skip into a failure. A
+          # browser job that goes green without a browser is a false
+          # green.
+          VAIBIFY_REQUIRE_BROWSER: '1'
+          VAIBIFY_BROWSER: firefox
+        run: |
+          python -m pytest tests/browser \
+            -m "browser and not clipboardPermissions" --tb=short -v
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-lane-failure-firefox
+          path: test-results/
+          # NOT 'ignore'. A failed browser run with no trace means the
+          # artifact plumbing broke, and that must be visible rather
+          # than silently uploading nothing.
+          if-no-files-found: error

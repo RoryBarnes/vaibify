@@ -50,7 +50,12 @@ from tests.browser.conftest import (
 )
 
 
-pytestmark = pytest.mark.browser
+pytestmark = [
+    pytest.mark.browser,
+    # Chromium is the only engine whose Playwright build grants
+    # clipboard permissions; see pytest.ini for what that costs.
+    pytest.mark.clipboardPermissions,
+]
 
 F_SHELL_DEADLINE_SECONDS = 45.0
 I_SEEDED_LINE_COUNT = 300

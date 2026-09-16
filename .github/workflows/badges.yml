@@ -61,7 +61,7 @@ jobs:
           # Count only tests that actually run in CI, across ALL the
           # pre-merge lanes: the unit lanes' selection plus the browser
           # tests (which the unit lanes deselect with `not browser` but
-          # browser.yml runs). Container tests that skip without a live
+          # browser-chromium.yml runs). Container tests that skip without a live
           # daemon stay excluded.
           iTotal=$(python -m pytest tests/ -m "not docker and not docker_live" --collect-only -q -p no:cacheprovider | grep -c "::")
           iFalsification=$(python -m pytest -m falsification --collect-only -q -p no:cacheprovider | grep -c "::")
@@ -248,7 +248,9 @@ jobs:
               "tests-linux": "statusTestsLinux.json",
               "tests-macos": "statusTestsMacos.json",
               "falsification": "statusFalsification.json",
-              "browser": "statusBrowser.json",
+              "browser-chromium": "statusBrowser.json",
+              "browser-firefox": "statusBrowserFirefox.json",
+              "browser-webkit": "statusBrowserWebkit.json",
               "security": "statusSecurity.json",
               "agent-docs-path-check": "statusAgentDocs.json",
               "style": "statusStyle.json",
@@ -329,6 +331,7 @@ jobs:
                       imageRecipe.json
                       statusTestsLinux.json statusTestsMacos.json
                       statusFalsification.json statusBrowser.json
+                      statusBrowserFirefox.json statusBrowserWebkit.json
                       statusSecurity.json statusAgentDocs.json
                       statusStyle.json statusSsh.json"
           for sBadge in $listBadges; do
