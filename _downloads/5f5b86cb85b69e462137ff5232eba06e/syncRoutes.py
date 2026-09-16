@@ -895,6 +895,15 @@ def _fnRegisterZenodoPromote(app, dictCtx):
             sServiceOverride="zenodo", iParentOverride=0,
         )
         if not dictResult["bSuccess"]:
+            # SAID in the log, because the toast that pointed a
+            # researcher here found nothing: a refused publish
+            # returned as a 200 and no surface recorded why.
+            logger.warning(
+                "Zenodo promote refused for %s (%s): %s",
+                sContainerId,
+                dictResult.get("sErrorType", "unknown"),
+                (dictResult.get("sMessage") or "")[-500:],
+            )
             return dictResult
         _fnRetireSupersededZenodoRecord(dictWorkflow)
         await _fnPersistZenodoArchiveSuccess(

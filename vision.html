@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision &mdash; Vaibify 0.0.14.dev14 documentation</title>
+  <title>Vision &mdash; Vaibify 0.0.14.dev21 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b0e51a71"></script>
+      <script src="_static/documentation_options.js?v=45bcf403"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -388,9 +388,11 @@ left to the reader who can see it.</p></li>
 <p>Vaibify implements <strong>L1, L2, and L3</strong>, and stops there by design.
 All three have working enforcement in
 <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/levelGates.py</span></code>: <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevel1</span></code>,
-<code class="docutils literal notranslate"><span class="pre">_fbComputeLevel2</span></code>’s seven conjuncts, and <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevel3</span></code> (L2 plus
-seven readiness verifiers plus a current attestation), each with a
-blocker list that tells the researcher exactly what is missing.</p>
+<code class="docutils literal notranslate"><span class="pre">_fbComputeLevel2</span></code>’s seven conjuncts, and <code class="docutils literal notranslate"><span class="pre">fbAtLeastLevel3</span></code> (L2, plus
+the readiness verifiers, plus every workflow-scope criterion the
+blocker list emits — taken from <code class="docutils literal notranslate"><span class="pre">_fdictL3WorkflowChecks</span></code> rather than
+re-listed, so the scalar gate and the rows cannot disagree). Each has
+a blocker list that tells the researcher exactly what is missing.</p>
 <p>L4, L5, and L6 are described here for completeness and are <strong>not
 implemented</strong>: they depend on institutional archiving, cross-agent
 regeneration, and third-party attestation that sit outside a

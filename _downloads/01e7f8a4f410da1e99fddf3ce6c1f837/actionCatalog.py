@@ -368,6 +368,17 @@ LIST_AGENT_ACTIONS = [
                      "Refuses on a dirty working tree, returning a "
                      "structured sRefusal so the dashboard can guide "
                      "the user. No args."},
+    {"sName": "merge-upstream", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/git/{sContainerId}/merge-upstream",
+     "bAgentSafe": False,
+     "sDescription": "Merge the tracked upstream branch into the "
+                     "checked-out one, after confirming the merge is "
+                     "clean. Refuses a dirty tree and refuses a "
+                     "conflicting merge rather than leaving conflict "
+                     "markers behind. User-only: it writes a merge "
+                     "commit into the researcher's history, which is "
+                     "their call to make, not an agent's. No args."},
     {"sName": "push-to-github", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/github/{sContainerId}/push",

@@ -409,6 +409,7 @@ def ftResultArchiveToZenodo(
         raise ValueError(
             f"Invalid Zenodo service: {sZenodoService}"
         )
+    fnEnsureStagedClientCurrent(connectionDocker, sContainerId)
     _fnValidateArchiveFilePaths(listFilePaths)
     dictApi = _fdictBuildApiMetadata(dictMetadata or {})
     _fnValidateApiMetadata(dictApi)
@@ -425,6 +426,82 @@ def ftResultArchiveToZenodo(
             iParentDepositId,
         ),
     )
+
+
+# The archive script imports these from /usr/share/vaibify inside the
+# container. The image COPYs them at BUILD time, so a long-lived
+# container drifts behind the host dispatcher whose generated script
+# names the current symbols -- measured live (2026-09-16): a 14-day
+# container answered ``ImportError: cannot import name
+# 'fdictDescribeLocalFileForDeposit'`` to a Make Permanent click.
+# ``_hashing`` is deliberately NOT staged: its only in-module use is a
+# download-hash path the deposit script never takes, and the client's
+# own deposit-side hashing is duplicated flat for exactly this reason.
+# The Overleaf/LaTeX siblings COPYed beside these can adopt the same
+# staging when their lanes need a new symbol.
+_TUPLE_STAGED_CLIENT_MODULES = (
+    "credentialRedactor.py",
+    "zenodoClient.py",
+)
+_S_STAGED_CLIENT_DIRECTORY = "/usr/share/vaibify"
+
+
+def fnEnsureStagedClientCurrent(connectionDocker, sContainerId):
+    """Restage the container-side client modules when the host's differ.
+
+    Hash-compared first, so the ordinary case is one typed read per
+    module and no write; the write runs under the archive worker's
+    own admission, which is the lane this is called from. The staged
+    copy is runtime tooling, not project state: it lives outside the
+    workspace, is pinned by no manifest, and the shadow rerun builds
+    from the pinned IMAGE, so restaging changes nothing any level
+    compares.
+    """
+    import hashlib
+    from pathlib import Path
+    import vaibify.reproducibility as moduleReproducibility
+    if fbIsHostProject(sContainerId):
+        # A host project's script imports from the host package
+        # directly (_fsZenodoClientDirectory) -- there is no staged
+        # copy to refresh, and /usr/share/vaibify is nobody's path
+        # on a researcher's machine.
+        return
+    # hasattr, not bound callables: a getattr-held primitive turns
+    # this row into a passed-callable the inventory can never
+    # attribute (the to_thread lesson), and the direct calls below
+    # keep the expression the ledger records.
+    if not hasattr(connectionDocker, "fsHashContainerFileSha256") or (
+        not hasattr(connectionDocker, "fnWriteFile")
+    ):
+        # An adapter without the typed hash and the write surface
+        # cannot stage; the exec then answers with the ImportError
+        # itself, which at least names the module.
+        return
+    pathPackage = Path(moduleReproducibility.__file__).parent
+    for sName in _TUPLE_STAGED_CLIENT_MODULES:
+        baHostCopy = (pathPackage / sName).read_bytes()
+        sContainerPath = _S_STAGED_CLIENT_DIRECTORY + "/" + sName
+        try:
+            sContainerSha = connectionDocker.fsHashContainerFileSha256(
+                sContainerId, sContainerPath,
+            )
+        except AttributeError:
+            # The hasattr guard above answers for the ROUTER; a test
+            # double behind it may still lack the staging surface,
+            # and the AttributeError surfaces here. An adapter that
+            # cannot stage is left alone -- the exec then reports a
+            # genuinely stale client as its own ImportError.
+            return
+        except OSError:
+            sContainerSha = ""
+        if sContainerSha == hashlib.sha256(baHostCopy).hexdigest():
+            continue
+        try:
+            connectionDocker.fnWriteFile(
+                sContainerId, sContainerPath, baHostCopy,
+            )
+        except AttributeError:
+            return
 
 
 def _fdictBuildApiMetadata(dictMetadata):

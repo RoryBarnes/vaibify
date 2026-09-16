@@ -8,6 +8,7 @@ import re
 import shlex
 from collections import OrderedDict
 
+from vaibify.config.registryManager import fbIsHostProject
 from . import stateManager, workflowMigrations
 from .workflowMigrations import (
     fbMigrateModifiedFilesToRepoRelative,
@@ -422,9 +423,11 @@ def fdictLoadWorkflowFromContainer(
     fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
-    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
-        connectionDocker, sContainerId, sRepoPath,
-    ))
+    _fnDeriveProofLevel(
+        dictWorkflow,
+        _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath),
+        fbIsHostProject(sContainerId),
+    )
     return dictWorkflow
 
 
@@ -1195,7 +1198,7 @@ def fbDeriveUnnecessaryVerification(dictWorkflow):
     return bAnyChanged
 
 
-def _fnDeriveProofLevel(dictWorkflow, filesRepo):
+def _fnDeriveProofLevel(dictWorkflow, filesRepo, bHostProject):
     """Compute and persist the workflow's current PROOF level.
 
     Writes ``iProofLevel`` on the dict. Called from the load-after-merge
@@ -1209,7 +1212,7 @@ def _fnDeriveProofLevel(dictWorkflow, filesRepo):
     """
     from vaibify.reproducibility.levelGates import fiProofLevel
     dictWorkflow["iProofLevel"] = fiProofLevel(
-        dictWorkflow, filesRepo,
+        dictWorkflow, filesRepo, bHostProject=bHostProject,
     )
 
 
@@ -1560,9 +1563,11 @@ def fnSaveWorkflowToContainer(
     fnMigrateLegacyRemotes(dictWorkflow)
     fbDeriveUnnecessaryVerification(dictWorkflow)
     sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
-    _fnDeriveProofLevel(dictWorkflow, _ffilesContainerRepo(
-        connectionDocker, sContainerId, sRepoPath,
-    ))
+    _fnDeriveProofLevel(
+        dictWorkflow,
+        _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath),
+        fbIsHostProject(sContainerId),
+    )
     workflowMigrations.fnStampCurrentVersion(dictWorkflow)
     sJson, dictState, dictBookkeeping = _ftSplitAndSerializeWorkflow(
         dictWorkflow,

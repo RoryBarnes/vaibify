@@ -77,6 +77,7 @@ from vaibify.reproducibility.levelGates import (
     fbVerifyDockerfilePinned,
     fbVerifyEnvironmentSnapshot,
     fbVerifyManifestComplete,
+    fbVerifyManifestMatchesTheFiles,
     fbVerifyReproduceScript,
     fbWorkflowDeclaresBinaries,
 )
@@ -496,6 +497,8 @@ def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
     return [
         ("Manifest complete",
          fbVerifyManifestComplete(sProjectRepo, dictWorkflow)),
+        ("Manifest matches the files",
+         fbVerifyManifestMatchesTheFiles(sProjectRepo)),
         ("Dependency lock",
          fbVerifyDependencyLock(sProjectRepo)),
         ("Environment snapshot digest-form",
