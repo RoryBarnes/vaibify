@@ -13,7 +13,7 @@ var VaibifyPolling = (function () {
     var _fnOnReposStatus = null;
     var _fnOnWorkflowDiscovery = null;
     var _bPipelineInFlight = false;
-    var _bFileStatusInFlight = false;
+    var _promiseFileStatusInFlight = null;
     var _bReposInFlight = false;
     var _bDiscoveryInFlight = false;
     var _iContainerHubPollTimer = null;
@@ -189,14 +189,35 @@ var VaibifyPolling = (function () {
         }
     }
 
-    async function _fnPollFileChanges(sContainerId) {
-        if (_bFileStatusInFlight) return;
-        _bFileStatusInFlight = true;
-        try {
-            await _fnPollFileChangesBody(sContainerId);
-        } finally {
-            _bFileStatusInFlight = false;
+    function _fnPollFileChanges(sContainerId) {
+        /* One file-status request at a time, and the pending one is
+           AWAITABLE rather than merely flagged. A caller that needs an
+           answer MEASURED after something it just did cannot use a
+           tick already in flight -- that request was sent before, so
+           its payload describes the state the caller changed. */
+        if (_promiseFileStatusInFlight) return _promiseFileStatusInFlight;
+        _promiseFileStatusInFlight = _fnPollFileChangesBody(sContainerId)
+            .finally(function () {
+                _promiseFileStatusInFlight = null;
+            });
+        return _promiseFileStatusInFlight;
+    }
+
+    async function fnPollFileStatusOnce(sContainerId) {
+        /* Resolve once a poll that STARTED after this call has been
+           applied. The pending tick is awaited rather than joined,
+           and only then is a fresh one sent; the handle is cleared by
+           the `finally` above before this await resumes, so the
+           ordering is the promise chain's and not a timer's.
+
+           This is what lets the Project block wait for an answer
+           instead of painting a provisional one and correcting it:
+           the verdict is recorded server-side by a route the
+           dashboard calls, and only a LATER poll carries it. */
+        if (_promiseFileStatusInFlight) {
+            await _promiseFileStatusInFlight;
         }
+        await _fnPollFileChanges(sContainerId);
     }
 
     function fnSetReposHandler(fnHandler) {
@@ -496,6 +517,7 @@ var VaibifyPolling = (function () {
         fnStartPipelinePolling: fnStartPipelinePolling,
         fnStopPipelinePolling: fnStopPipelinePolling,
         fnStartFilePolling: fnStartFilePolling,
+        fnPollFileStatusOnce: fnPollFileStatusOnce,
         fbFilePollingActive: fbFilePollingActive,
         fnStopFilePolling: fnStopFilePolling,
         fnSetReposHandler: fnSetReposHandler,

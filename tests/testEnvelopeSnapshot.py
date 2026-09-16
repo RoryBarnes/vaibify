@@ -219,23 +219,31 @@ def test_seed_hashes_merge_and_fetched_results_win(tmp_path):
     assert dictHashes["out.csv"]["sSha256"] == sFreshSha
 
 
-def test_failed_exec_degrades_to_all_absent(tmp_path):
-    """A crashed snapshot exec reports the conservative reading.
+def test_failed_exec_raises_for_the_caller_to_degrade(tmp_path):
+    """A crashed snapshot exec RAISES; each caller owns its degradation.
 
-    Every envelope file reads as absent (gates degrade toward "not
-    verified" for one poll) rather than crashing the file-status poll
-    or reporting state greener than what was actually observed.
+    Superseded (2026-09-16): the fetch used to answer the
+    conservative all-absent reading itself, which the poll wanted --
+    and the readiness route then presented eighteen fabricated
+    absent-file entries as fact instead of falling back to the live
+    adapter as it promises. The fetch now raises ``OSError``; the
+    poll builds its conservative tick from
+    ``ffilesConservativeSnapshot`` at its own catch, asserted here so
+    the poll's degradation cannot silently vanish with the refactor.
     """
     _fnSeedEnvelopeTree(tmp_path)
-    filesFetched = SnapshotRepoFiles.ffilesFetch(
-        FailingExecConnection(), "cid", str(tmp_path),
-        listHashRelPaths=["out.csv"],
+    import pytest as moduleTest
+    with moduleTest.raises(OSError):
+        SnapshotRepoFiles.ffilesFetch(
+            FailingExecConnection(), "cid", str(tmp_path),
+            listHashRelPaths=["out.csv"],
+        )
+    from vaibify.reproducibility.repoFiles import (
+        ffilesConservativeSnapshot,
     )
+    filesConservative = ffilesConservativeSnapshot(str(tmp_path))
     for sRelPath in TUPLE_SNAPSHOT_CONTENT_PATHS:
-        assert filesFetched.fbIsFile(sRelPath) is False
-    assert filesFetched.fdictHashFiles(
-        ["out.csv"],
-    )["out.csv"]["sSha256"] is None
+        assert filesConservative.fbIsFile(sRelPath) is False
 
 
 def test_empty_root_snapshot_probes_false():
@@ -261,6 +269,8 @@ def test_gates_compute_same_level_from_snapshot_and_live(tmp_path):
         listScriptRelPaths=["analyze.py"],
         listHashRelPaths=["out.csv"],
     )
-    iLevelSnapshot = fiProofLevel(dictWorkflow, filesFetched)
-    iLevelLive = fiProofLevel(dictWorkflow, HostRepoFiles(str(tmp_path)))
+    iLevelSnapshot = fiProofLevel(dictWorkflow, filesFetched, bHostProject=False)
+    iLevelLive = fiProofLevel(
+        dictWorkflow, HostRepoFiles(str(tmp_path)), bHostProject=False,
+    )
     assert iLevelSnapshot == iLevelLive

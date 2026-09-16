@@ -226,6 +226,18 @@ var VaibifyProofTab = (function () {
                  "Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
+            {sStateKey: "bManifestMatchesTheFiles",
+             sLabel: "Manifest matches the files",
+             sWhat: "Every hash MANIFEST.sha256 pins is the file's " +
+                 "current bytes. Coverage is a different question: a " +
+                 "manifest can list every declared file and still " +
+                 "describe none of them, and a rebuild grades your " +
+                 "work against what it says.",
+             sHow: "Regenerate the envelope from the Artifacts " +
+                 "section of the Project block; the manifest is " +
+                 "written last, after the files it pins.",
+             sFixTabPanel: "steps",
+             sFixLabel: "Open the Main tab"},
             {sStateKey: "bDependencyLockHashed",
              sLabel: "Dependency lock",
              sWhat: "requirements.lock pins every Python dependency " +

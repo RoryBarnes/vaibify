@@ -4185,6 +4185,12 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 873 (2026-09-16): the manifest-body hydration helpers
+    # moved here from pipelineRoutes when the readiness snapshot seam
+    # became their second caller -- an unhydrated readiness snapshot
+    # had the pre-flight reporting a complete manifest as incomplete.
+    # Cross-route request helpers are this module's stated purpose.
+    "routeContext.py": 873,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -4957,7 +4963,38 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # blocked requirement that must be fixed first. One key on a
     # payload this module already builds; the ORDERING itself lives in
     # reproducibility/levelOrdering.py, which is the new concern.
-    "routes/pipelineRoutes.py": 3598,
+    # +18 (2026-09-15): the no-verdict record, threaded as a VALUE
+    # through the three poll layers the way dictImageCurrency already
+    # is, so the payload builder needs no container id. One key; the
+    # rest is the threading those layers already do.
+    # +26 (2026-09-15, second): the lock-satisfaction verdict, threaded
+    # as a value like the two above it, feeding the Dependency-lock row
+    # and the ordering arrow. The judging lives in
+    # reproducibility/lockSatisfaction.py; this is the wiring.
+    # +17 (2026-09-15): the L3-path work. The image currency is
+    # computed once and threaded rather than inlined, the lock
+    # verdict is read with the fingerprint that invalidates it, the
+    # archived-attestation tri-state joins the envelope payload, and
+    # the Dependency-lock row loses its lock conjunct with the
+    # docstring that says why. Every line is the poll payload's one
+    # responsibility: assemble what the dashboard renders, from
+    # verdicts it never re-derives.
+    # +25 the same day: the Dependency-lock row takes the lock
+    # conjunct back after the researcher reversed the amber-note
+    # ruling on sight. The lines are the conjunct, the two threaded
+    # parameters, and the paragraph recording why the row resolves to
+    # partial rather than to red -- the file is present and hashed;
+    # what disagrees is the image.
+    # NEW at 3685 (2026-09-16): the poll's manifest row asks the
+    # SECOND manifest question -- are the hashes it pins the files'
+    # current bytes -- beside the coverage question it already asked.
+    # One conjunct on an existing row, not a new concern.
+    # RAISED to 3703 (2026-09-16, same day): the envelope payload
+    # carries the blocked-row map beside the arrow (one ordered-
+    # endgame call instead of the arrow-only one) and names the
+    # compared-not-required paths for the copies rows. Payload
+    # fields on the existing envelope builder, not a new concern.
+    "routes/pipelineRoutes.py": 3703,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5011,7 +5048,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # its own reviewed change, not a side effect of adding a route.
     # 2026-08-27 (on merge): the merged file's REAL line count, per
     # the standing merge rule — never the sum of the two sides.
-    "routes/testRoutes.py": 993,
+    # +2 (2026-09-15): Level 3 is denied to a host project BY
+    # CONSTRUCTION, so fiProofLevel takes the fact and every caller
+    # has to answer it. Two lines, one of them the import.
+    "routes/testRoutes.py": 995,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5149,7 +5189,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # may not import anyway. What could move out already has: the
     # publish record now lives in syncBookkeeping, beside the contract
     # that says it is bookkeeping.
-    "routes/syncRoutes.py": 3623,
+    # RAISED to 3631 (2026-09-16): the promote route logs
+    # every refused publish -- the refusal used to return
+    # as a silent 200 while the toast claimed success.
+    "routes/syncRoutes.py": 3631,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5195,7 +5238,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # recorded deposit lives on the other Zenodo instance, the same
     # local refusal the manual archive raises. One guard and its
     # reason; the predicate itself lives in syncBookkeeping.
-    "fileStatusManager.py": 2278,
+    # +4 (2026-09-15): the same host-mode fact threaded into this
+    # module's fiProofLevel call, for the same reason.
+    "fileStatusManager.py": 2282,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5330,7 +5375,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # template vocabulary IS -- and both exist so reproduce.sh
     # resolves paths through the same builders as the live run
     # instead of a second, drifting copy in reproducibility/.
-    "workflowManager.py": 2844,
+    # +5 (2026-09-15): the host-mode fact reaches _fnDeriveProofLevel,
+    # which both the load and the save paths call.
+    "workflowManager.py": 2849,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5385,7 +5432,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # root-layout repo (no .vaibify/ yet) bootstraps its first state
     # save instead of crashing the load. One helper beside the
     # checkpoint and install steps it precedes.
-    "stateManager.py": 1208,
+    # +13 (2026-09-15): two entries in the auto-managed .gitignore
+    # body, with the comments recording why each is machine-local.
+    # No new concern; both are the same produced-bookkeeping rule the
+    # file already states for state.json.
+    # +19 (2026-09-15, second): the auto-managed .gitignore now
+    # REFRESHES a stale copy instead of only creating a missing one --
+    # write-when-missing left every established project on the old
+    # list, which is where the blocked verifications were.
+    "stateManager.py": 1240,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -6160,7 +6215,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # changes (git add -u) before the guarded commit, so the
     # dirty-dot tooltip's "click Push to commit and push them"
     # becomes true.
-    "syncDispatcher.py": 2057,
+    # RAISED to 2102 (2026-09-16): the archive flow gained
+    # fnEnsureStagedClientCurrent, restaging the container-
+    # side Zenodo client whose build-time copy broke a
+    # 14-day container's publish with an ImportError. Same
+    # archive concern.
+    # 2112 after the same day's triage: staging tolerates a router
+    # leg without the surface (AttributeError is "cannot stage",
+    # not a crash).
+    "syncDispatcher.py": 2112,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6613,7 +6676,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +63 (2026-09-14, second batch): the project-deposit promotion,
     # start-new-concept, and the four recovery actions -- six rows in
     # a list, all bAgentSafe False.
-    "actionCatalog.py": 1323,
+    # +11 (2026-09-15): merge-upstream, one row, bAgentSafe False --
+    # it writes a merge commit into the researcher's history.
+    "actionCatalog.py": 1334,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6663,7 +6728,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a named function beside the collector, matching the arXiv loader
     # directly above it -- the two answer the same question for two
     # remotes and a reader who finds one expects the other.
-    "routes/gitRoutes.py": 1141,
+    # +125 (2026-09-15): reconciling a DIVERGED branch. A refusal
+    # builder, a preview helper, one route, its check-then-act worker
+    # and its fail-raiser -- the same five pieces the fast-forward
+    # above it is made of, for the case the fast-forward cannot
+    # handle. Not split out: this module owns every project-repo git
+    # endpoint, and a sibling module holding one endpoint of the same
+    # concern would put "which file is the pull in?" between a reader
+    # and the answer. The judgement-free half (preview classification,
+    # the merge command) already lives in containerGit.
+    "routes/gitRoutes.py": 1266,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
@@ -6735,7 +6809,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # question: a separate module would invite a second, drifting
     # notion of which step edits are destructive, which is the bug
     # class these guards exist to close.
-    "routes/stepRoutes.py": 862,
+    # +2 (2026-09-15): the host-mode fact again, at this module's one
+    # fiProofLevel call.
+    "routes/stepRoutes.py": 864,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -6898,7 +6974,55 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reproduce.sh skipping a foreign manifest). The ownership
     # question is reproductionRecord's; what grew here is the HTTP
     # shape of the refusal and the consent it carries.
-    "routes/reproducibilityRoutes.py": 1995,
+    # +71 (2026-09-15): asking whether the container satisfies
+    # requirements.lock, where it costs one exec rather than a
+    # container launch. The question the SHADOW already asked when it
+    # refused a rerun -- this module is where the readiness pre-flight
+    # lives, so it is where the cheap copy of that question belongs;
+    # the diff itself is shared, in lockSatisfaction.py.
+    # +81 (2026-09-15): the readiness route made real. The handler
+    # execs twice and had no carrier at all, so it gained one
+    # mode-(b) worker spanning both probes, and the payload assembly
+    # split out of the handler beside it -- three functions where
+    # there was one, each with the docstring that says what the other
+    # two must not do. The rest is the two-field split: the honest
+    # three-state MEASUREMENT of the running container, and the
+    # policy boolean computed from it plus image currency. Still one
+    # responsibility -- this module is the PROOF tab's L3 surface --
+    # and the added lines are the reasons, not new concerns.
+    # +36 the same day: the probe must not QUEUE. The dashboard fires
+    # this GET on every project open, and a plain mode-(b) wait spends
+    # an unpredictable amount of a request nobody made -- measured, it
+    # delayed the remote badge refresh past ten seconds. The lines are
+    # the paused branch and the paragraph explaining why paused is a
+    # result rather than an error.
+    # +68 the same day, after review: the verification POST did not
+    # enforce the lock policy at all -- it lived only in the browser
+    # pre-flight, which proceeds deliberately when its readiness GET
+    # fails and which the agent lane never runs. The lines are the
+    # measurement under the verify route's own drain, the shared
+    # refusal sentence, and the paragraphs saying why a precondition
+    # that reads a cache which may be cold is not a precondition.
+    # NEW at 2303 (2026-09-16): per-phase timing on the readiness
+    # route plus the snapshot it now evaluates its gates against. The
+    # dashboard holds the Project block's first paint until this
+    # request answers, so its latency is the researcher's waiting
+    # time, and the phase breakdown is what named the ten seconds as
+    # gate evaluation rather than the exec everyone assumed.
+    #
+    # The generic half was NOT kept here: fcontextTimeOnePhase moved
+    # to routeContext, where the other cross-route request helpers
+    # live, because timing a phase is nobody's business in
+    # particular. What is left is this route's own phases. The module
+    # is still genuinely large and a split along the
+    # readiness/attestation/archive seam is the conversation this
+    # entry keeps forcing -- it has now been deferred twice.
+    # RAISED to 2322 (2026-09-16): the readiness handler takes the
+    # repository snapshot as a declared read BEFORE the pausable
+    # probe, and the timing line now states whether the probe RAN or
+    # PAUSED and who held the carrier. Same readiness concern; the
+    # third deferral of the seam split above.
+    "routes/reproducibilityRoutes.py": 2322,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

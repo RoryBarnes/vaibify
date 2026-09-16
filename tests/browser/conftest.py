@@ -237,8 +237,14 @@ def fnOpenTheSeededHostWorkflow(
         f"text={S_HOST_STEP_NAME}", timeout=20000,
     )
     if bAwaitProjectBlock:
+        # The BODY, not the banner. Since the block holds its first
+        # paint until the lock verdict is in, the banner appears over
+        # a "this may take a moment" placeholder with no requirement
+        # rows under it -- so waiting on the banner alone returns
+        # before anything a caller wants to read exists, and every
+        # caller that asked for this wait wants the rendered block.
         pageDashboard.wait_for_selector(
-            ".project-block-header", timeout=20000,
+            "#projectBlock .requirement-group", timeout=30000,
         )
 
 

@@ -84,7 +84,9 @@ def fdictBuildLevelReport(dictWorkflow, filesRepo, bHostProject=False):
     listLevel3Blockers = flistLevel3Blockers(
         dictWorkflow, filesRepo, bHostProject,
     )
-    iLevel = fiProofLevel(dictWorkflow, filesRepo)
+    iLevel = fiProofLevel(
+        dictWorkflow, filesRepo, bHostProject=bHostProject,
+    )
     return {
         "sWorkflowName": dictWorkflow.get("sWorkflowName", ""),
         "sProjectRepoPath": dictWorkflow.get("sProjectRepoPath", ""),

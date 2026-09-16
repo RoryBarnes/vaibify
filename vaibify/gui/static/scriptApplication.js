@@ -65,6 +65,16 @@ const VaibifyApp = (function () {
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
             dictRemoteChecks: {},
+            /* The Project block renders a lock verdict that costs a
+               container exec, and the poll is forbidden to make one.
+               True means nobody has asked yet, so the block has
+               nothing to render but a wait; the open-time check
+               clears it once an answer -- including "unknown" -- has
+               been measured and a poll has carried it back. The first
+               paint must be correct: a provisional green is not a
+               smaller error than a slow page, it is a worse one,
+               because the researcher clicks it (2026-09-15). */
+            bProjectBlockAwaitsFirstAnswer: true,
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
@@ -804,14 +814,50 @@ const VaibifyApp = (function () {
     }
 
     function _fnSeedBadgesThenAskTheRemotes(sId) {
-        // Badges first so the first paint is never an empty map; the
-        // remote checks follow, and their own completion bumps the
-        // sync epoch, which repaints the badges with what they found.
+        // ONE chain, three links: badges, then readiness, then the
+        // remote refresh. Badges first so the first paint is never an
+        // empty map; the remote checks LAST, and their own completion
+        // bumps the sync epoch, which repaints the badges with what
+        // they found.
+        //
+        // The readiness request sits BETWEEN them because its lock
+        // probe is an automatic read that PAUSES rather than queues
+        // -- fired alongside the other open-time requests it lost
+        // the carrier race on every open, came back "paused", and
+        // the Dependency-lock verdict was never measured on a real
+        // open at all (the "container probe 0.01s" line). Note the
+        // remote refresh RETURNS before its background checks
+        // finish, so "await the refresh, then ask readiness" would
+        // not serialize anything; starting the refresh after
+        // readiness answers is the order that does.
         if (typeof VaibifyGitBadges === "undefined") {
-            VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+            fnResolveLockSatisfactionBeforeFirstPaint(sId)
+                .then(function () {
+                    return VaibifyWorkflowManager.fnCheckOriginDrift(
+                        sId, false);
+                })
+                .then(function () {
+                    VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+                });
             return;
         }
         VaibifyGitBadges.fnRefresh(sId).then(function () {
+            // The Project block holds its first paint until this
+            // answers, because a row it renders is derived from the
+            // verdict; the resolver never rejects.
+            return fnResolveLockSatisfactionBeforeFirstPaint(sId);
+        }).then(function () {
+            // The origin-drift check opens a lock-held git-fetch
+            // carrier. Fired from fnSelectWorkflow it raced this
+            // chain and held the carrier at exactly the moment the
+            // readiness probe asked for the drain -- the log's
+            // "PAUSED (carrier held by helper on git-fetch)", first
+            // seen the same evening the badge/remote race was fixed.
+            // Ordering is this chain's ONE job, so the check moved
+            // into it.
+            return VaibifyWorkflowManager.fnCheckOriginDrift(
+                sId, false);
+        }).then(function () {
             VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
         });
     }
@@ -1961,6 +2007,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
             dictRemoteChecks:
                 _dictWorkflowState.dictRemoteChecks,
+            bProjectBlockAwaitsFirstAnswer:
+                _dictWorkflowState.bProjectBlockAwaitsFirstAnswer,
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
@@ -3576,6 +3624,24 @@ const VaibifyApp = (function () {
         "declare-binary": {
             sPath: "/binaries/declare",
             fdictBodyFromElement: _fdictReadBinaryForm,
+            /* The cost, named before the write. Both of these
+               advance Level 3 by rewriting project.json -- the file
+               Level 2 compares against GitHub and Zenodo -- so the
+               project drops below Level 2 until it is pushed AND a
+               new Zenodo version carries it. A Zenodo version is
+               immutable, which is what earns this a modal where a
+               step rename gets none. */
+            dictConfirm: {
+                sTitle: "Declare this package",
+                sMessage: "Declaring a package to satisfy Level 3 " +
+                    "rewrites project.json, which Level 2 compares " +
+                    "against your GitHub mirror and your Zenodo " +
+                    "archive. This project sits below Level 2 until " +
+                    "you push the change and publish a new Zenodo " +
+                    "version carrying it \u2014 Zenodo versions are " +
+                    "immutable, so the archived copy cannot be " +
+                    "corrected in place.",
+            },
             sToast: "Package declared. Now capture its version and " +
                 "hash from its row.",
         },
@@ -3639,6 +3705,11 @@ const VaibifyApp = (function () {
         "regenerate-envelope": {
             sPath: "/level3/envelope",
             bOfferCommitAfterGenerate: true,
+            sBusyLabel: "Regenerating\u2026",
+            sStartNotice: "Regenerating the envelope: compiling the "
+                + "dependency lock from the container, capturing the "
+                + "environment snapshot, then rewriting the manifest "
+                + "over both. This takes a few seconds.",
             /* The server refuses to replace a manifest another
                identity committed -- the author's claim on a clone --
                and names this action; the researcher is asked in the
@@ -3678,6 +3749,7 @@ const VaibifyApp = (function () {
                     (dictResult || {}).dictL3ReadinessGaps || {};
                 var listStillFailing = [
                     ["bManifestComplete", "manifest"],
+                    ["bManifestMatchesTheFiles", "manifest hashes"],
                     ["bDependencyLockHashed", "dependency lock"],
                     ["bEnvironmentDigestPinned", "environment"],
                 ].filter(function (t) {
@@ -3686,9 +3758,22 @@ const VaibifyApp = (function () {
                 var sDelta = _fsDescribeManifestDelta(
                     (dictResult || {}).dictManifestDelta);
                 if (listStillFailing.length === 0) {
-                    return {sMessage: "Envelope regenerated — " +
-                        "manifest, dependency lock, and environment " +
-                        "snapshot are all current." + sDelta,
+                    /* WHICH files were rewritten, from the tier
+                       results, not a fixed list of three. A tier can
+                       skip without failing -- a project with no
+                       dependency input has no lock to compile -- and
+                       naming it anyway told the researcher a file had
+                       been refreshed that had not been touched. */
+                    var listWritten = Object.keys(
+                        (dictResult || {}).dictTierResults || {},
+                    ).filter(function (sTier) {
+                        return ((dictResult.dictTierResults[sTier] ||
+                            {}).bWritten) === true;
+                    });
+                    return {sMessage: "Envelope regenerated" +
+                        (listWritten.length
+                            ? " — rewrote " + listWritten.join(", ")
+                            : "") + "." + sDelta,
                         sType: "info"};
                 }
                 // The REASON, not a pointer to a log. Each tier
@@ -3800,6 +3885,24 @@ const VaibifyApp = (function () {
         "declare-determinism": {
             sPath: "/determinism/declare",
             fdictBodyFromElement: _fdictReadDeterminismForm,
+            /* The cost, named before the write. Both of these
+               advance Level 3 by rewriting project.json -- the file
+               Level 2 compares against GitHub and Zenodo -- so the
+               project drops below Level 2 until it is pushed AND a
+               new Zenodo version carries it. A Zenodo version is
+               immutable, which is what earns this a modal where a
+               step rename gets none. */
+            dictConfirm: {
+                sTitle: "Declare the repeatability rules",
+                sMessage: "Declaring the repeatability rules to " +
+                    "satisfy Level 3 rewrites project.json, which " +
+                    "Level 2 compares against your GitHub mirror " +
+                    "and your Zenodo archive. This project sits " +
+                    "below Level 2 until you push the change and " +
+                    "publish a new Zenodo version carrying it " +
+                    "\u2014 Zenodo versions are immutable, so the " +
+                    "archived copy cannot be corrected in place.",
+            },
             sToast: "Reproducibility rules declared.",
         },
         "delete-determinism": {
@@ -3917,6 +4020,16 @@ const VaibifyApp = (function () {
                routes live under /api/zenodo/{id}, beside the archive
                flow it reuses. */
             sAbsolutePath: "/api/zenodo/{sContainerId}/promote",
+            // A promotion collects, uploads and verifies a whole
+            // publication -- minutes of nothing on screen without
+            // these. A researcher watched exactly that silence and
+            // asked whether anything was running (2026-09-16).
+            sBusyLabel: "Publishing\u2026",
+            sStartNotice: "Publishing on production Zenodo: " +
+                "collecting the publication files, uploading them " +
+                "to a new record, and verifying the deposit. A " +
+                "large project takes minutes; the verdict arrives " +
+                "as a toast and the Zenodo row updates.",
             fdictBody: function () {
                 return {listFilePaths: []};
             },
@@ -3936,8 +4049,7 @@ const VaibifyApp = (function () {
                     "tombstoned rather than removed. Your sandbox " +
                     "record stays where it is.",
             },
-            sToast: "Publishing on production Zenodo. The new DOI is " +
-                "recorded when it finishes.",
+            fdictAfterResponse: fdictDescribePromoteOutcome,
         },
         "start-new-zenodo-concept": {
             sAbsolutePath:
@@ -4153,8 +4265,8 @@ const VaibifyApp = (function () {
         var sContainerId = _dictSessionState.sContainerId;
         if (!dictAction || !sContainerId) return;
         if (dictAction.dictConfirm) {
-            var dictNoConfirm = Object.assign({}, dictAction);
-            delete dictNoConfirm.dictConfirm;
+            var dictNoConfirm = _fdictFreezeFormBody(dictAction, elButton);
+            if (!dictNoConfirm) return;
             fnShowConfirmModal(
                 dictAction.dictConfirm.sTitle,
                 dictAction.dictConfirm.sMessage,
@@ -4183,6 +4295,26 @@ const VaibifyApp = (function () {
             dictAction, sContainerId, sArg, elButton);
     }
 
+    function _fdictFreezeFormBody(dictAction, elButton) {
+        /* Read a form-backed body at CLICK time, before the modal.
+           The poll re-renders the Project block on its own cadence, so
+           the row holding the form can be replaced while the
+           researcher is reading the confirmation -- and a body read
+           from a detached element comes back empty, which the
+           executor treats as "nothing to send". The declaration would
+           then vanish with no error and no toast, which is the
+           silent-failure class this product exists to avoid. Returns
+           the action to run, or null when the form itself refused. */
+        var dictReady = Object.assign({}, dictAction);
+        delete dictReady.dictConfirm;
+        if (!dictAction.fdictBodyFromElement) return dictReady;
+        var oBody = dictAction.fdictBodyFromElement(elButton);
+        if (!oBody) return null;
+        delete dictReady.fdictBodyFromElement;
+        dictReady.fdictBody = function () { return oBody; };
+        return dictReady;
+    }
+
     async function _fnExecuteProjectAction(
         dictAction, sContainerId, sArg, elButton
     ) {
@@ -4203,6 +4335,21 @@ const VaibifyApp = (function () {
                 .replace("{sPromotionId}",
                     encodeURIComponent(sArg || ""))
             : "/api/workflow/" + sContainerId + dictAction.sPath;
+        /* A control that reaches the network before it can show
+           anything must say so. Regenerating the envelope compiles a
+           lock and captures a container, which is tens of seconds of
+           nothing: the researcher clicked, watched an unchanged
+           button, and learned it had worked when a row changed
+           colour (researcher-reported, 2026-09-16). The busy hold and
+           the notice are the same discipline as the Project block's
+           first paint -- say what is happening, rather than leave a
+           wait to be interpreted. */
+        var fnReleaseButton = _ffnHoldButtonBusy(
+            elButton, dictAction.sBusyLabel || "",
+        );
+        if (dictAction.sStartNotice) {
+            fnShowToast(dictAction.sStartNotice, "info");
+        }
         try {
             var dictResult;
             if (dictAction.sMethod === "DELETE") {
@@ -4231,11 +4378,13 @@ const VaibifyApp = (function () {
             }
         } catch (error) {
             if (_fbRefusalNamesARetry(dictAction, error)) {
+                fnReleaseButton();
                 _fnOfferRetryWithConsent(
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
             }
             if (_fbRefusalNeedsACredential(dictAction, error)) {
+                fnReleaseButton();
                 await _fnAskForCredentialThenRetry(
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
@@ -4244,6 +4393,11 @@ const VaibifyApp = (function () {
                 "Action failed: " +
                 ((error && error.message) ? error.message : error),
                 "error");
+        } finally {
+            // Released on EVERY path, including the two that hand off
+            // to a retry above: a button left disabled by a refusal
+            // the researcher then consents to is a dead control.
+            fnReleaseButton();
         }
         // Fire an immediate file-status poll so the block's status
         // lights reflect the action right away instead of waiting for
@@ -4251,6 +4405,68 @@ const VaibifyApp = (function () {
         // connect payload — calling it bare threw and silently
         // skipped this refresh.)
         VaibifyPolling.fnStartFilePolling(sContainerId);
+    }
+
+    function _fsDistillZenodoReason(sReason) {
+        /* A refusal's reason arrives as whatever the container
+           script printed: a Python traceback whose last line holds
+           the message, or an error body that is a whole HTML page
+           (Zenodo's 504 is one). Neither is a sentence a researcher
+           should have to parse -- distill to the claim. */
+        var sDistilled = String(sReason || "");
+        if (sDistilled.indexOf("Traceback") !== -1) {
+            var listLines = sDistilled.trim().split(/\n+/);
+            sDistilled = listLines[listLines.length - 1];
+        }
+        return sDistilled.replace(/<[^>]*>/g, " ")
+            .replace(/\s+/g, " ").trim();
+    }
+
+    function fdictDescribePromoteOutcome(dictResult) {
+        /* The promote route returns refusals as 200s with
+           ``bSuccess: false`` and the reason in ``sMessage``. The
+           old static toast said "Publishing on production Zenodo"
+           over BOTH answers, so a refused publish looked like a
+           silent success that never arrived -- a researcher asked
+           "is it trying to archive?" over a refusal already parsed
+           and thrown away (2026-09-16). */
+        if (dictResult && dictResult.bSuccess === false) {
+            var sReason = _fsDistillZenodoReason(
+                dictResult.sMessage || dictResult.sError ||
+                "no reason was given");
+            /* Zenodo's overload answers -- a 5xx from their
+               gateway, wrapped in an HTML page -- are about THEIR
+               servers, and a researcher shown a raw gateway page
+               reasonably reads it as their own failure. Say whose
+               problem it is and that nothing is left behind: the
+               orphan-draft cleanup runs before this answer, and a
+               504 on publish that had actually landed would have
+               made that cleanup refuse. */
+            if (/\b(502|503|504)\b|gateway time.?out|service unavailable/i
+                    .test(sReason)) {
+                return {
+                    sMessage: "Zenodo's servers are overloaded and " +
+                        "timed out before the publish could start " +
+                        "or finish. This is on Zenodo's side: " +
+                        "nothing was published, no DOI was minted, " +
+                        "and no draft was left behind, so trying " +
+                        "again is safe. Check status.zenodo.org and " +
+                        "retry when it is green.",
+                    sType: "error",
+                };
+            }
+            return {
+                sMessage: "Zenodo refused the publish: " +
+                    VaibifyUtilities.fsSanitizeErrorForUser(sReason),
+                sType: "error",
+            };
+        }
+        return {
+            sMessage: "Published on production Zenodo \u2014 the " +
+                "new DOI is recorded. Run Verify now on the Zenodo " +
+                "row to light its cells.",
+            sType: "success",
+        };
     }
 
     function _fbRefusalNeedsACredential(dictAction, error) {
@@ -4928,6 +5144,10 @@ const VaibifyApp = (function () {
     var _DICT_L3_READINESS_LABELS = {
         bManifestComplete:
             "Manifest — it does not yet cover every declared file",
+        bManifestMatchesTheFiles:
+            "Manifest — it pins hashes that are not the current " +
+            "bytes of the files it names, so a rebuild would report " +
+            "those files as diverged. Regenerate the envelope",
         bDependencyLockHashed:
             "Dependency lock — missing, or not hashed",
         bEnvironmentDigestPinned:
@@ -4952,6 +5172,26 @@ const VaibifyApp = (function () {
             "Dockerfile — exported from a different build chain " +
             "than the pinned image's; re-export it from the " +
             "Dockerfile row",
+        /* Also a fact about the CONTAINER rather than one of the
+           envelope gaps, and listed here for the same reason: the
+           rerun refuses on it before it starts, so a researcher who
+           met it as a bare failure toast would have spent the whole
+           pre-flight learning nothing.
+
+           The cheap remedy is named FIRST because it is almost
+           always the right one -- the lock is usually simply older
+           than the image, and Regenerate now rewrites it from what
+           the image has. Rebuilding also settles it, and costs the
+           image: it goes back to matching the older lock. This
+           wording and the shadow's refusal must not give different
+           instructions for one cause. */
+        bLockDoesNotBlockVerification:
+            "Dependency lock — the image your envelope pins does " +
+            "not satisfy it, so the rerun refuses before it starts. " +
+            "Click 'Regenerate now' on the Dependency lock row to " +
+            "rewrite the lock from what the image actually has; " +
+            "rebuilding the image instead also settles it, at the " +
+            "cost of downgrading the image to match the older lock",
     };
 
     function _fnCarryRecordKindOntoGaps(dictResponse) {
@@ -4962,6 +5202,57 @@ const VaibifyApp = (function () {
         var dictGaps = (dictResponse || {}).dictL3ReadinessGaps || null;
         if (dictGaps) {
             dictGaps.sRecordKind = (dictResponse || {}).sRecordKind || "";
+        }
+    }
+
+    async function fnResolveLockSatisfactionBeforeFirstPaint(sId) {
+        /* One readiness GET on project open, and the Project block
+           waits for it. Reading the installed packages needs an exec
+           and the poll may add none, so the Dependency-lock row and
+           the "Do this next" arrow would otherwise stay UNKNOWN until
+           the researcher opened the PROOF tab or clicked Verify --
+           which is how a stale lock went unnoticed until it refused a
+           rerun (researcher-reported, 2026-09-15).
+
+           It is AWAITED rather than fired alongside, because the
+           answer arrives five to ten seconds after the block would
+           otherwise paint. Painting first meant a green Project block
+           with the arrow on the Rebuild attestation row, then the
+           real state: amber, arrow on Artifacts. The researcher acted
+           on the interim twice. A provisional green is not a smaller
+           error than a slow page -- it is a worse one, because it is
+           the one that gets clicked. The pulse-while-asking pattern
+           the remote badges use is deliberately NOT borrowed here: it
+           trades a wrong first paint for a two-stage one and still
+           leaves an interim to act on.
+
+           The verdict is recorded SERVER-SIDE by the route, so the
+           readiness answer alone is not enough -- the block renders
+           from the poll payload, and only a poll sent after the route
+           returned carries it. Hence the ordered single poll.
+
+           Failure clears the wait exactly as success does. Every
+           surface renders unknown as it always has, and a block held
+           forever over a failed background fetch would be the same
+           dishonesty pointed the other way. */
+        try {
+            await _fdictFetchL3Readiness();
+            await VaibifyPolling.fnPollFileStatusOnce(sId);
+        } catch (error) {
+            console.warn("[l3] lock warm-up did not complete:",
+                error && error.message);
+        } finally {
+            /* Only for the project this resolver was opened for. A
+               researcher who switches projects mid-wait leaves this
+               one in flight over a state that has since been reset,
+               and clearing the new project's flag from here would
+               release its block on the strength of the old one's
+               answer -- the same wrong first paint, arrived at from
+               the other direction. */
+            if (_dictSessionState.sContainerId === sId) {
+                _dictWorkflowState.bProjectBlockAwaitsFirstAnswer = false;
+                fnRenderStepList();
+            }
         }
     }
 
@@ -5305,6 +5596,7 @@ const VaibifyApp = (function () {
            (reported 2026-09-01). */
         if (dictReady && (dictReady.bL3ReadinessOK !== true ||
                 dictReady.bImageMatchesDeclaredPackages === false ||
+                dictReady.bLockDoesNotBlockVerification === false ||
                 dictReady.bDockerfileDescribesPinnedImage === false)) {
             _fnShowLevel3NotReadyModal(dictReady);
             return;
@@ -5327,13 +5619,53 @@ const VaibifyApp = (function () {
             "reporting a result you could not trust.",
             fnOnConfirm,
             {
-                sDetails: "The rerun takes about as long as running " +
-                    "the workflow yourself.",
+                sDetails: _fsDescribeRerunCost(dictReady),
                 sCommand: "vaibify reproduce --rerun",
                 sConfirmLabel: "Copy and verify",
                 sCancelLabel: "Not now",
             }
         );
+    }
+
+    function _fsDescribeRerunCost(dictReady) {
+        /* Vaibify records fWallClock for every step it has run, so it
+           can state THIS project's cost rather than warn about "hours"
+           at a workflow that finishes in ten seconds -- noise in a
+           safety notice is how researchers learn to click through
+           safety notices (researcher-reported, 2026-09-15).
+
+           Always a FLOOR, and it says so: untimed steps contribute
+           nothing, and the rerun also exports the project, acquires
+           the pinned image (which can mean loading a multi-gigabyte
+           archive) and hashes every pinned file. */
+        var dictCost = (dictReady || {}).dictRerunCost || {};
+        var sTail = " The whole pipeline is re-run, and this does not " +
+            "count exporting the project, fetching the pinned image, " +
+            "or hashing the results \u2014 so allow more.";
+        if (dictCost.bAnyStepTimed !== true) {
+            return "\u26a0 The whole pipeline is re-run. None of " +
+                "these steps has been timed yet, so vaibify cannot " +
+                "say how long that will take.";
+        }
+        var sTotal = _fsHumanizeDuration(dictCost.fRecordedSeconds);
+        if (dictCost.iStepsUntimed) {
+            return "\u26a0 Last time, the timed steps took " + sTotal +
+                " \u2014 but " + dictCost.iStepsUntimed + " step" +
+                (dictCost.iStepsUntimed === 1 ? " has" : "s have") +
+                " never been timed and are not in that figure." + sTail;
+        }
+        return "\u26a0 Last time, these steps took " + sTotal + "." +
+            sTail;
+    }
+
+    function _fsHumanizeDuration(fSeconds) {
+        // Coarse on purpose: a recorded wall-clock is evidence of an
+        // order of magnitude, not a stopwatch for the next run.
+        var f = Number(fSeconds) || 0;
+        if (f < 90) return Math.round(f) + " seconds";
+        if (f < 5400) return Math.round(f / 60) + " minutes";
+        if (f < 172800) return (f / 3600).toFixed(1) + " hours";
+        return (f / 86400).toFixed(1) + " days";
     }
     var fnShowInputModal = VaibifyModals.fnShowInputModal;
 
@@ -5415,71 +5747,16 @@ const VaibifyApp = (function () {
         );
         fnRecolorVisibleDagEdges();
         _dictWorkflowState.iLastRenderedProofLevel = iLevel;
-        _fnRefreshAttestationBanner(iLevel);
-    }
-
-    function _fnRefreshAttestationBanner(iLevel) {
-        /* Show #proofAttestationBanner when an L3 attestation exists
-           but its recorded manifest digest no longer matches the live
-           manifest. Loud failure: clicking opens the PROOF tab so the
-           researcher can re-verify. The poll is light (single GET)
-           and only fires when the workflow is at least L2 so we never
-           query an envelope-free repo. */
-        if (iLevel < 2) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        var sId = VaibifyContainerManager.fsGetSelectedContainerId();
-        if (!sId) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        VaibifyApi.fdictGet(
-            "/api/workflow/" + sId + "/level3/attestation"
-        ).then(function (dictResp) {
-            _fnRenderAttestationBannerFromResponse(dictResp);
-        }).catch(function () {
-            _fnHideAttestationBanner();
-        });
-    }
-
-    function _fnRenderAttestationBannerFromResponse(dictResp) {
-        var elBanner = document.getElementById(
-            "proofAttestationBanner"
-        );
-        if (!elBanner) return;
-        var dictCurrent = dictResp && dictResp.dictCurrentAttestation;
-        var sLive = (dictResp && dictResp.sLiveManifestDigest) || "";
-        if (!dictCurrent) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        var sRecorded = dictCurrent.sManifestDigestAtAttestation ||
-            "";
-        if (!sRecorded || !sLive || sRecorded === sLive) {
-            _fnHideAttestationBanner();
-            return;
-        }
-        elBanner.innerHTML = 'L3 attestation expired because the ' +
-            'manifest changed. Click to open the PROOF tab and ' +
-            're-run reproduction verification.';
-        elBanner.hidden = false;
-        elBanner.onclick = function () {
-            var elTab = document.querySelector(
-                '.left-tab[data-panel="proof"]'
-            );
-            if (elTab) elTab.click();
-        };
-    }
-
-    function _fnHideAttestationBanner() {
-        var elBanner = document.getElementById(
-            "proofAttestationBanner"
-        );
-        if (!elBanner) return;
-        elBanner.hidden = true;
-        elBanner.innerHTML = "";
-        elBanner.onclick = null;
+        /* No attestation banner. It fetched
+           /level3/attestation on every level render to say one thing
+           -- "your attestation no longer covers the manifest" -- that
+           the Attestation row already says, and it said it while
+           sending the researcher to a different tab than the "Do this
+           first" arrow was pointing at. Two destinations for one
+           action, neither wrong, which is what made it confusing
+           (researcher's ruling, 2026-09-15: the Main tab is where the
+           researcher should stay). The row carries the state and the
+           button; the arrow carries the order. */
     }
 
     function fnRecolorVisibleDagEdges() {
@@ -6486,6 +6763,7 @@ const VaibifyApp = (function () {
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
         fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
+        fdictDescribePromoteOutcome: fdictDescribePromoteOutcome,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,

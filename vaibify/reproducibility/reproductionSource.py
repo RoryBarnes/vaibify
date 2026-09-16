@@ -812,24 +812,98 @@ def _fnRefuseUnlessRepositoryRoot(sSourcePath):
 def _fnRefuseUnlessClean(sSourcePath):
     """Refuse a clone with any tracked, untracked or ignored change."""
     sStatus = _fsGitQueryOrRefuse(
-        ["status", "--porcelain", "--untracked-files=all", "--ignored"],
+        # NOT --ignored (researcher's ruling, 2026-09-15). Staging
+        # CLONES the source, and a clone never carries ignored files,
+        # so they cannot reach the rerun or change what is reproduced.
+        # Blocking on them meant every verification first demanded
+        # `git clean -fdX` -- strictness that bought nothing and stood
+        # between every researcher and their own attestation. Untracked
+        # and modified files still block: those CAN differ from the
+        # published state a reader would clone.
+        ["status", "--porcelain", "--untracked-files=all"],
         sSourcePath, "reading the clone's status",
     )
     listDirty = [sLine for sLine in sStatus.splitlines() if sLine.strip()]
     if not listDirty:
         return
-    listNamed = listDirty[:_I_MAX_DIRTY_PATHS_NAMED]
-    sMore = (
-        f" and {len(listDirty) - len(listNamed)} more"
-        if len(listDirty) > len(listNamed) else ""
-    )
     raise ReproductionSourceRefusedError(
-        f"{sSourcePath!r} is not a clean clone, so it is not a published "
-        "project. git reports:\n  " + "\n  ".join(listNamed) + sMore
-        + "\nCommit the changes, stash them (git stash "
-        "--include-untracked), remove the ignored files (git clean "
-        "-fdX), or give the published URL instead."
+        f"{sSourcePath!r} is not a clean clone, so it is not a "
+        "published project.\n"
+        + _fsDescribeDirtyPaths(listDirty)
     )
+
+
+def _fsDescribeDirtyPaths(listDirty):
+    """Describe what is dirty, separating vaibify's files from the user's.
+
+    One undifferentiated list read as "your repository is a mess" when
+    half of it was vaibify's own bookkeeping -- and the remedy differs:
+    the researcher can do nothing useful about a file vaibify wrote and
+    forgot to ignore, while their own unpublished work genuinely has to
+    be committed before a reproduction can claim to reproduce what is
+    published (researcher-reported, 2026-09-15). Naming the halves
+    separately is what makes the second sentence actionable.
+    """
+    listMine = [
+        sLine for sLine in listDirty
+        if _fbLooksLikeVaibifyBookkeeping(sLine)
+    ]
+    listTheirs = [sLine for sLine in listDirty if sLine not in listMine]
+    listParts = []
+    if listTheirs:
+        listParts.append(
+            "Your unpublished work:\n  "
+            + _fsNameSome(listTheirs)
+            + "\n  Commit it, or stash it (git stash "
+            "--include-untracked), or give the published URL instead."
+        )
+    if listMine:
+        listParts.append(
+            "Files vaibify itself wrote, which should not be blocking "
+            "you:\n  " + _fsNameSome(listMine)
+            + "\n  Newer vaibify ignores these; an older project may "
+            "need them added to .vaibify/.gitignore or committed once."
+        )
+    return "\n\n".join(listParts)
+
+
+def _fsNameSome(listPaths):
+    """Name the first few paths, and say how many were not named."""
+    listNamed = listPaths[:_I_MAX_DIRTY_PATHS_NAMED]
+    sMore = (
+        f"\n  ...and {len(listPaths) - len(listNamed)} more"
+        if len(listPaths) > len(listNamed) else ""
+    )
+    return "\n  ".join(listNamed) + sMore
+
+
+def _fbLooksLikeVaibifyBookkeeping(sStatusLine):
+    """Return True when a git status line names a file vaibify produced.
+
+    Matched on the produced-bookkeeping paths by name rather than on
+    the whole ``.vaibify/`` prefix: project.json, the test markers and
+    the attestation ARE the researcher's published record, and calling
+    them "vaibify's own" would tell them to ignore the files their
+    Level 2 claim rests on.
+    """
+    sPath = sStatusLine[3:].strip() if len(sStatusLine) > 3 else ""
+    return any(
+        sPath.startswith(sProduced)
+        for sProduced in _T_PRODUCED_BOOKKEEPING_PATHS
+    )
+
+
+# Written by vaibify, meaningful only on this machine, and not part of
+# any published claim. Kept here rather than imported from the gui
+# package: this module is reachable from the CLI, which must not drag
+# the hub in.
+_T_PRODUCED_BOOKKEEPING_PATHS = (
+    ".vaibify/syncStatus.json",
+    ".vaibify/l3_attestations/",
+    ".vaibify/state.json",
+    ".vaibify/container_mtime_cache.json",
+    ".vaibify/manuscript/",
+)
 
 
 def _fsResolvedHead(sRepositoryPath):

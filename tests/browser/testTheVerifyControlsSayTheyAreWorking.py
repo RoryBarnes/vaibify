@@ -224,10 +224,12 @@ def test_the_attestation_row_pulses_while_the_rerun_runs(
         f"the running state never reaches the cell: "
         f"{dictRunning['sCellClass']!r}"
     )
-    # The tooltip is built from the state's own phrase. Borrowing
-    # "partial" would paint the same orange and hover "partially met"
-    # over a row where nothing is met yet.
-    assert "being verified now" in dictRunning["sCellTitle"], (
+    # The tooltip carries the UNIFIED being-asked phrase since the
+    # pulses-only-what-it-assesses change (2026-09-16): every cell
+    # under a live check says "being checked now", whichever check it
+    # is. The guarded property is unchanged -- a running rerun must
+    # not hover "partially met" over a row where nothing is met yet.
+    assert "being checked now" in dictRunning["sCellTitle"], (
         f"the hover text misdescribes a running rerun: "
         f"{dictRunning['sCellTitle']!r}"
     )

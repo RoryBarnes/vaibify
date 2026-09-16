@@ -296,10 +296,25 @@ LIST_FALSIFICATIONS = [
             'test_a_missing_zenodo_archive_refuses_level_three'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesZenodoArchive(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
+        old=(
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
+        ),
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "envelope-not-in-zenodo-archive"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -307,10 +322,25 @@ LIST_FALSIFICATIONS = [
             'test_a_drifted_github_envelope_refuses_level_three'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        old=('    if not fbEnvelopeMatchesGithubMirror(filesRepo):\n'
-             '        return False'),
-        new=('    if False:\n'
-             '        return False'),
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
+        old=(
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
+        ),
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "envelope-not-in-github-mirror"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -343,8 +373,8 @@ LIST_FALSIFICATIONS = [
             'test_a_version_two_cache_is_no_longer_scope_current'
         ),
         source='vaibify/reproducibility/publicationScope.py',
-        old='I_PUBLICATION_SCOPE_VERSION = 5',
-        new='I_PUBLICATION_SCOPE_VERSION = 4',
+        old='I_PUBLICATION_SCOPE_VERSION = 6',
+        new='I_PUBLICATION_SCOPE_VERSION = 5',
     ),
     # --- 2026-08-26: guards added with the publication-scope work ---
     Falsification(
@@ -405,7 +435,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testTheEnvelopeMirrorRowRenders.py::'
-            'test_the_two_published_sections_are_parallel_and_disjoint'
+            'test_the_merged_row_keeps_its_two_halves_disjoint'
         ),
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old='        if (listExcludePaths && listExcludePaths.length) {',
@@ -2544,7 +2574,10 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid='tests/testRepoFilesMutationCoverage.py::test_snapshot_hash_refuses_sibling_dir_sharing_root_prefix',
-        source='vaibify/reproducibility/repoFiles.py',
+        # RE-HOMED 2026-09-16: the snapshot program body moved to the
+        # docker gateway when the snapshot became a declared typed
+        # read; both transports now run this one constant.
+        source='vaibify/docker/dockerConnection.py',
         old="""    dictOut["dictFiles"][sRel] = dictEntry
 def _fdictEntry(sRel):
     d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
@@ -13905,15 +13938,16 @@ def _fdictEntry(sRel):
         # beside it means "checked, and it differs". The gate is
         # unchanged either way, so nothing else in the suite notices.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # RE-ANCHORED 2026-09-16: the envelope row became the Level 3
+        # half of the merged copies row; the two-state regression now
+        # spells itself on the merged row's Level 3 mark.
         old=(
-            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
-            '            bMatched, sBadgeKey, listEnvelope);\n'
-            '        var sState = dictHealth.sState;\n'
+            '        var sLevelThreeMark = _fsApplyArchiveConjuncts(\n'
+            '            dictHealth.sState, dictArgs.dictArchiveInfo);\n'
         ),
         new=(
-            '        var dictHealth = _fdictEnvelopeRemoteRowHealth(\n'
-            '            bMatched, sBadgeKey, listEnvelope);\n'
-            '        var sState = bMatched ? "green" : "red";\n'
+            '        var sLevelThreeMark = '
+            'dictArgs.bMatched ? "green" : "red";\n'
         ),
     ),
     Falsification(
@@ -14018,13 +14052,10 @@ def _fdictEntry(sRel):
         # for. The confirm dialog still fires; this removes the only
         # signal available BEFORE the click.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        # Retargeted 2026-09-08: a caution variant now follows the
-        # danger one on the next line.
-        old=(
-            "            (bDestructive ? ' wf-action-danger' : '') +\n"
-            "            (bCaution ? ' wf-action-caution' : '') + '\" ' +\n"
-        ),
-        new="            (bCaution ? ' wf-action-caution' : '') + '\" ' +\n",
+        # Retargeted 2026-09-16: a blocked variant now follows the
+        # caution one, which follows the danger one.
+        old="            (bDestructive ? ' wf-action-danger' : '') +\n",
+        new="",
     ),
     # --- 2026-08-28: the shadow-container rerun lane -------------------
     Falsification(
@@ -14251,12 +14282,15 @@ def _fdictEntry(sRel):
         # can (the threaded-parameter lesson).
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '        dictImageCurrency='
-            'fdictAssessEnvelopeImageCurrency(\n'
-            '            dictCtx, sContainerId, filesPoll,\n'
-            '        ),'
+            '    dictImageCurrency = fdictAssessEnvelopeImageCurrency(\n'
+            '        dictCtx, sContainerId, filesPoll,\n'
+            '    )'
         ),
-        new='        dictImageCurrency=None,',
+        # An empty mapping rather than None, because the value is
+        # also read for the lock fingerprint one line down: None
+        # would kill on an AttributeError, which is a crash and not
+        # the dropped-parameter defect this entry is about.
+        new='    dictImageCurrency = {}',
     ),
     Falsification(
         nodeid=(
@@ -14511,15 +14545,27 @@ def _fdictEntry(sRel):
             'tests/browser/testARunningRemoteCheckPulsesTheBadge.py::'
             'test_a_running_check_pulses_without_moving_the_colour'
         ),
-        # Stop emitting the pulse class. The badge then renders the
+        # Never mark a checking cell. The badge then renders the
         # aged cache as settled fact while vaibify is still asking --
         # which is the state the whole feature exists to remove.
+        # RE-ANCHORED 2026-09-16 after CI's falsification union
+        # caught the old row-class mutation SURVIVING: the pulse
+        # rides the per-cell data-checking marker since the
+        # pulses-only-what-it-assesses change, so dropping the row
+        # class no longer changes what this test measures (the class
+        # itself is still guarded by the environment-archive row's
+        # in-flight assertion).
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old=(
-            "            (dictRow.bChecking === true\n"
-            "                ? ' requirement-row-checking' : '') + '\">' +\n"
+            '        var dictByLevel = {};\n'
+            '        (listRows || []).forEach(function (dictRow) {\n'
+            '            if (dictRow.bChecking !== true) return;\n'
         ),
-        new="            '\">' +\n",
+        new=(
+            '        var dictByLevel = {};\n'
+            '        (listRows || []).forEach(function (dictRow) {\n'
+            '            if (true) return;\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -14876,6 +14922,8 @@ def _fdictEntry(sRel):
             'true ||\n'
             '                dictReady.bImageMatchesDeclaredPackages '
             '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
+            '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
@@ -14896,6 +14944,8 @@ def _fdictEntry(sRel):
             '        if (dictReady && (dictReady.bL3ReadinessOK !== '
             'true ||\n'
             '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
             '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
@@ -17513,14 +17563,18 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_an_untracked_file_refuses_the_clone_naming_the_path',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
-        new='        ["status", "--porcelain", "--untracked-files=no", "--ignored"],\n',
+        old='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        new='        ["status", "--porcelain", "--untracked-files=no"],\n',
     ),
     Falsification(
-        nodeid='tests/testReproductionSource.py::test_an_ignored_file_refuses_the_clone_too',
+        nodeid='tests/testReproductionSource.py::test_an_ignored_file_does_not_refuse_the_clone',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
-        new='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        # INVERTED on 2026-09-15 with the rule it pins. The mutation is
+        # now putting --ignored BACK: a clone never carries ignored
+        # files, so blocking on them stopped verifications for a
+        # difference that cannot reach the rerun.
+        old='        ["status", "--porcelain", "--untracked-files=all"],\n',
+        new='        ["status", "--porcelain", "--untracked-files=all", "--ignored"],\n',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_a_clean_clone_stages_the_checked_out_commit',
@@ -18308,9 +18362,16 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         # drops the per-level states, returning the Level 2 cell to the not-
-        # applicable dash over a live L2 blocker
-        old='            dictStateByLevel: dictStateByLevel,\n',
-        new='',
+        # applicable dash over a live L2 blocker. Anchored WITH the
+        # reason line since the copies merge (2026-09-16) gave a
+        # second row the same dictStateByLevel spelling.
+        old=(
+            '            dictStateByLevel: dictStateByLevel,\n'
+            '            dictReasonByLevel: _fdictArchiveReasonByLevel(\n'
+        ),
+        new=(
+            '            dictReasonByLevel: _fdictArchiveReasonByLevel(\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -18363,9 +18424,7 @@ def _fdictEntry(sRel):
         # that distinguishes a closed archive from an ordinary miss
         old=(
             '        dictStateByLevel[3] =\n'
-            '            _DICT_MARK_TO_LEVEL_STATE[\n'
-            '                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||\n'
-            '            "unknown";'
+            '            _DICT_MARK_TO_LEVEL_STATE[sMark] || "unknown";'
         ),
         new='        dictStateByLevel[3] = "none";',
     ),
@@ -18410,8 +18469,8 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         # drops the reason clause, leaving a tooltip that says whether and
         # never what is missing
-        old='                (sReason ? " — " + sReason : ""));',
-        new='                "");',
+        old='                (sReason ? " — " + sReason : ""),',
+        new='                "",',
     ),
     Falsification(
         nodeid=(
@@ -20143,16 +20202,25 @@ def _fdictEntry(sRel):
             'test_a_sandbox_archive_blocks_the_scalar_gate'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        # The criterion registered in the checks dict and the tuple but
-        # NOT in the scalar gate, which enumerates its conjuncts by
-        # hand: the header reports Level 3 attained above rows that
-        # block.
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
         old=(
-            '    if not fbNoArchiveIsKnownSandbox(dictWorkflow, '
-            'filesRepo):\n'
-            '        return False\n'
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
         ),
-        new='',
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "an-archive-is-a-sandbox-deposit"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20258,14 +20326,25 @@ def _fdictEntry(sRel):
             'test_a_stale_script_blocks_the_scalar_gate'
         ),
         source='vaibify/reproducibility/levelGates.py',
-        # Registered in the checks dict and the tuple but not in the
-        # scalar gate: the header reports Level 3 above a blocking row.
+        # The hand-written conjunct list restored, minus one
+        # criterion -- which is exactly the shape of the defect
+        # that deleting the list removed: the scalar gate reports
+        # Level 3 attained while the blocker list, still built
+        # from the dict, names the criterion that blocks.
         old=(
-            '    if not fbVerifyReproduceScriptCurrent(filesRepo, '
-            'dictWorkflow):\n'
-            '        return False\n'
+            '    return all(\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).values()\n'
+            '    )'
         ),
-        new='',
+        new=(
+            '    return all(\n'
+            '        bPassed for sCriterion, bPassed in\n'
+            '        _fdictL3WorkflowChecks(dictWorkflow, '
+            'filesRepo).items()\n'
+            '        if sCriterion != "reproduce-script-stale"\n'
+            '    )'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20390,8 +20469,35 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/levelOrdering.py',
         # Roots taken from the FULL edge set rather than the live one:
         # an arrow appears over two rows that do not order each other.
-        old='    listLive = _flistSelectLiveEdges(dictSatisfied)\n',
-        new='    listLive = list(T_LEVEL3_ORDERING_EDGES)\n',
+        # RE-ANCHORED 2026-09-15. The mutation used to be "select every
+        # edge, not the live ones", which named a root while the old
+        # tree had exactly one. The graph now has THREE roots
+        # (dependencyLock, environmentArchive, reproduceScript), so
+        # that mutation answers None and reads as killed by a guard it
+        # no longer exercises. The mutation the docstring actually
+        # names -- answer with the first unsatisfied row -- is the one
+        # that reaches this fixture.
+        old=(
+            '    listLive = _flistSelectLiveEdges(dictSatisfied)\n'
+            '    return {\n'
+            '        "dictNextStep": _fdictSelectSingleRootStep(listLive),\n'
+        ),
+        new=(
+            '    listLive = _flistSelectLiveEdges(dictSatisfied)\n'
+            '    listUnsatisfied = sorted(\n'
+            '        sRow for sRow, bOk in dictSatisfied.items()\n'
+            '        if not bOk\n'
+            '    )\n'
+            '    dictFallback = (\n'
+            '        _fdictBuildStep(listUnsatisfied[0], [])\n'
+            '        if listUnsatisfied else None\n'
+            '    )\n'
+            '    return {\n'
+            '        "dictNextStep": (\n'
+            '            _fdictSelectSingleRootStep(listLive)\n'
+            '            or dictFallback\n'
+            '        ),\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -20458,5 +20564,1057 @@ def _fdictEntry(sRel):
             '_fnHandleRequirementGroupToggle,\n'
             '        ".ordering-arrow": _fnHandleOrderingArrow,\n'
         ),
+    ),
+    # --- 2026-09-15: a diverged branch is offered a merge ---
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_a_diverged_branch_is_named_before_git_is_asked_to_try'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The pull is sent to git, which answers with hint text and
+        # no action the researcher can take.
+        old=(
+            '    if int(dictGit.get("iAhead") or 0) > 0 and int(\n'
+            '        dictGit.get("iBehind") or 0\n'
+            '    ) > 0:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_a_conflicting_merge_is_refused_rather_than_half_applied'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The merge runs without consulting the preview, leaving
+        # conflict markers and an unfinished MERGE_HEAD behind.
+        old=(
+            '    if dictPreview["sState"] != '
+            'containerGit.S_MERGE_PREVIEW_CLEAN:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testADivergedBranchIsOfferedAMerge.py::'
+            'test_an_unaskable_preview_refuses_rather_than_assuming_clean'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        # Unchecked read as clean: the merge runs on exactly the
+        # machines where nothing could verify it was safe.
+        old=(
+            '    if dictPreview["sState"] != '
+            'containerGit.S_MERGE_PREVIEW_CLEAN:\n'
+        ),
+        new=(
+            '    if dictPreview["sState"] == '
+            'containerGit.S_MERGE_PREVIEW_CONFLICTS:\n'
+        ),
+    ),
+    # --- 2026-09-15: the rerun says what it costs ---
+    Falsification(
+        nodeid=(
+            'tests/testTheRerunSaysWhatItCosts.py::'
+            'test_an_untimed_step_is_counted_as_unknown_not_as_zero'
+        ),
+        source='vaibify/reproducibility/rerunEstimate.py',
+        # "Never run" absorbed as "took no time": the total looks
+        # precise and is confidently too small. Anchored on the
+        # MISSING-key branch, which is the one a step that never ran
+        # actually takes -- the malformed-value branch below it is a
+        # different path, and mutating that one survives.
+        old=(
+            '    if not isinstance(dictRunStats, dict):\n'
+            '        return None\n'
+        ),
+        new=(
+            '    if not isinstance(dictRunStats, dict):\n'
+            '        return 0.0\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheMergeModalIsActuallyVisible.py::'
+            'test_the_merge_modal_is_visible_when_the_button_is_clicked'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # The overlay is built without .active, so it stays
+        # display:none and the button reads as doing nothing.
+        old=(
+            '        elOverlay.className = '
+            '"modal-overlay merge-modal-overlay active";\n'
+        ),
+        new=(
+            '        elOverlay.className = '
+            '"modal-overlay merge-modal-overlay";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheRerunSaysWhatItCosts.py::'
+            'test_a_project_with_no_timings_reports_no_figure'
+        ),
+        source='vaibify/reproducibility/rerunEstimate.py',
+        # A project nobody has run presents a measured-looking zero.
+        old='        "bAnyStepTimed": bool(listSeconds),\n',
+        new='        "bAnyStepTimed": bool(listSteps),\n',
+    ),
+    # --- 2026-09-15: the lock is checked before a rerun is spent ---
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_an_unreadable_image_is_unknown_not_an_empty_one'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # "Could not look" arrives as "the image has nothing", which
+        # mismatches every line of the lock and reddens the row of any
+        # project whose container was briefly unreachable.
+        old='    if dictInstalled is None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_the_shadow_and_the_preflight_share_one_diff'
+        ),
+        source='vaibify/reproducibility/shadowRerun.py',
+        # A private diff inside the shadow again: two authorities on
+        # one question, which is how the mismatch reached a rerun.
+        old=(
+            '    listMismatched = flistDescribeLockMismatch('
+            'dictLocked, dictInstalled)\n'
+        ),
+        new=(
+            '    listMismatched = [\n'
+            '        f"{sName}=={sVersion} (image has "\n'
+            '        f"{dictInstalled.get(sName) or \'nothing\'})"\n'
+            '        for sName, sVersion in sorted(dictLocked.items())\n'
+            '        if dictInstalled.get(sName) != sVersion\n'
+            '    ]\n'
+        ),
+    ),
+
+    # --- 2026-09-15: the Level 3 path made honest ---
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_readiness_request_answers_two_hundred'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The shipped bug itself: fdictParsePinnedVersions imported
+        # from a module it does not live in, outside every try, so
+        # every readiness request raised and answered 500. A boolean
+        # flip would SURVIVE -- the defect was an exception, not a
+        # wrong answer -- and the source-text guard written for this
+        # very function was green throughout.
+        old=(
+            '    from vaibify.reproducibility import lockSatisfaction\n'
+            '    # The BYTES, not the text, and hashed here rather than '
+            're-read\n'
+        ),
+        new=(
+            '    from vaibify.reproducibility.dependencyPinning import (\n'
+            '        fdictParsePinnedVersions,\n'
+            '    )\n'
+            '    from vaibify.reproducibility import lockSatisfaction\n'
+            '    # The BYTES, not the text, and hashed here rather than '
+            're-read\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_readiness_request_carries_the_lock_verdict'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # A 200 with the block missing is the same screen the
+        # ImportError produced -- three surfaces rendering "unknown"
+        # -- reached a different way.
+        old='    dictGaps["dictLockSatisfaction"] = dictLockVerdict\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testTheReadinessProbeRunsBothExecsUnderOneDrain'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The carrier gone: the probe runs with no admission open, so
+        # the pip-list exec is refused at the primitive and the whole
+        # request 500s.
+        old=(
+            '    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(\n'
+            '        sContainerId, fdictProbeUnderOneAdmission, '
+            '"l3-readiness",\n'
+            '        requestHttp,\n'
+            '    )'
+        ),
+        new=(
+            '    dictOutcome = {"bPaused": False, "sPausedBy": "",\n'
+            '                   "objResult": fdictProbeUnderOneAdmission()}'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_only_a_mismatch_against_the_proven_pin_blocks_a_rerun'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # A verdict about the RUNNING container reported as a fact
+        # about the PINNED image: every mismatch blocks, including on
+        # a project whose pinned image is perfectly fine.
+        old=(
+            '    return (dictImageCurrency or {}).get('
+            '"bPinnedImageIsLive") is True\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_a_rewritten_lock_downgrades_the_answer_to_unknown'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The lock digest dropped: a regenerated envelope leaves the
+        # old verdict standing over a lock nobody compared.
+        # Anchored on the MEASURING side. The same line now exists
+        # on the comparing side too, and dropping the digest from both
+        # would leave them agreeing -- a different defect, caught by a
+        # different test.
+        old=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"{sDigest}|{sRunningImageIdentity or ''}"\n"""
+        ),
+        new=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"|{sRunningImageIdentity or ''}"\n"""
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_a_replaced_running_image_downgrades_the_answer_too'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The running-image identity dropped -- the half a lock-only
+        # fingerprint misses, and the one ruling 5 makes load-bearing,
+        # because the measurement is OF that container.
+        old=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            """    return f"{sDigest}|{sRunningImageIdentity or ''}"\n"""
+        ),
+        new=(
+            '    sDigest = hashlib.sha256(baLockContent or b"")'
+            '.hexdigest()\n'
+            '    return f"{sDigest}|"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_sandbox_project_deposit_never_lights_the_environment_row'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The environment node judged from the COMBINED sandbox gate,
+        # which classifies two archives: a sandbox project deposit
+        # then lights the Environment row, whose Make Permanent button
+        # promotes the wrong archive.
+        old=(
+            '            and not _fbIsSandbox(\n'
+            '                dictPermanence["sImageArchivePermanence"],\n'
+            '            )\n'
+        ),
+        new=(
+            '            and levelGates.fbNoArchiveIsKnownSandbox(\n'
+            '                dictWorkflow, filesRepo,\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_sandbox_image_deposit_never_lights_the_zenodo_row'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The reverse: the Zenodo node judged from the combined gate,
+        # so a sandbox IMAGE deposit sends the researcher to publish a
+        # new immutable version over a project deposit that is already
+        # permanent.
+        old=(
+            '            and not _fbIsSandbox(\n'
+            '                dictPermanence["sProjectArchivePermanence"],\n'
+            '            )\n'
+        ),
+        new=(
+            '            and levelGates.fbNoArchiveIsKnownSandbox(\n'
+            '                dictWorkflow, filesRepo,\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unknown_permanence_keeps_both_archive_rows_satisfied'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # Permanence spelled as "== permanent": every deposit vaibify
+        # cannot classify is treated as a sandbox one, and the gate
+        # that fails open in the researcher's favour stops doing so.
+        old=(
+            '    return sPermanence == archivePermanence.'
+            'S_PERMANENCE_SANDBOX\n'
+        ),
+        new=(
+            '    return sPermanence != archivePermanence.'
+            'S_PERMANENCE_PERMANENT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_archive_holding_no_covering_attestation_is_named'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The Zenodo node judged on the envelope alone: Level 3 fails
+        # on the archived attestation while every publication node is
+        # satisfied, so no edge is live at both ends and the arrow
+        # goes silent exactly when it is needed.
+        old=(
+            '            and levelGates.fbAttestationIsPubliclyArchived('
+            'filesRepo)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_no_row_diverges_from_the_arrow_at_all'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The conjunct dropped back OFF the row, restoring the
+        # green-row-with-an-arrow-on-it the researcher rejected on
+        # sight: every applicable level showing a check, the arrow
+        # pointing at it, and a note underneath saying a rerun refuses.
+        old=(
+            '            and not lockSatisfaction.fbLockBlocksVerification(\n'
+            '                dictLockSatisfaction, dictImageCurrency,\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_an_unasked_lock_leaves_the_row_and_the_arrow_green'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The row given the raw MEASUREMENT instead of the policy,
+        # which is the tempting simplification: it turns every
+        # unasked project amber between hub restarts, and every
+        # project whose running container is not the pinned image.
+        old=(
+            '            and not lockSatisfaction.fbLockBlocksVerification(\n'
+            '                dictLockSatisfaction, dictImageCurrency,\n'
+            '            )\n'
+        ),
+        new=(
+            '            and (dictLockSatisfaction or {}).get("sState")\n'
+            '            != lockSatisfaction.S_LOCK_MISMATCH\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_an_archive_with_no_covering_attestation_denies_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The criterion the hand-written list forgot, removed from the
+        # dict that replaced it.
+        old=(
+            '        "attestation-not-in-zenodo-archive":\n'
+            '            fbAttestationIsPubliclyArchived(filesRepo),\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_a_host_project_is_denied_with_every_conjunct_satisfied'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Host mode denied only incidentally again, by failing the
+        # published-artifact conjuncts rather than by construction.
+        old='    if bHostProject:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_a_host_project_never_reports_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The default that makes a dropped hop indistinguishable from
+        # an answered question: every caller that forgets to ask is
+        # told "not a host project" instead of meeting a TypeError.
+        old=(
+            '    dictWorkflow, filesRepo, dictScriptStatus=None, *, '
+            'bHostProject,\n'
+        ),
+        new=(
+            '    dictWorkflow, filesRepo, dictScriptStatus=None, *, '
+            'bHostProject=False,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheScalarGateHasNoSecondList.py::'
+            'test_readiness_still_gates_what_the_checks_dict_does_not_carry'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Readiness dropped now that the dict supplies the conjuncts:
+        # Level 3 silently widens to projects whose manifest is
+        # incomplete, because that criterion is evaluated per step and
+        # the dict does not carry it.
+        old=(
+            '    if not fbL3ReadinessOK(dictWorkflow, filesRepo):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowsCarryTheirOwnConditions.py::'
+            'test_the_zenodo_row_asks_all_three_of_its_questions'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The row judged on envelope agreement alone again: green over
+        # an archive holding no covering attestation, which is the
+        # state in which Level 3 fails and no publication row says so.
+        # RE-ANCHORED 2026-09-16 with the copies/envelope row merge.
+        old=(
+            '        var sLevelThreeMark = _fsApplyArchiveConjuncts(\n'
+            '            dictHealth.sState, dictArgs.dictArchiveInfo);\n'
+        ),
+        new='        var sLevelThreeMark = dictHealth.sState;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheLockRowKeepsItsStateAndSaysWhy.py::'
+            'test_a_lock_the_container_fails_turns_its_row_amber_and_says_why'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The note silenced. The row stays green -- correctly, by the
+        # ruling -- the arrow still points at it, and nothing on the
+        # page says why: the researcher is back where they started,
+        # reached from the opposite direction.
+        old='        if (sKey !== "dependencyLock") return "";\n',
+        new='        if (true) return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testALevelCrossingWarnsBeforeItWrites.py::'
+            'test_neither_declaration_writes_before_the_researcher_agrees'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The confirmation dropped from the determinism declaration:
+        # the POST goes out on the click, and the project sits below
+        # Level 2 until a push and a new immutable Zenodo version,
+        # with nothing having said so.
+        old=(
+            '            dictConfirm: {\n'
+            '                sTitle: "Declare the repeatability rules",\n'
+        ),
+        new=(
+            '            dictConfirmDisabled: {\n'
+            '                sTitle: "Declare the repeatability rules",\n'
+        ),
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_a_busy_container_pauses_the_probe_instead_of_queuing'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The queuing carrier restored. The dashboard fires this GET
+        # on every project open, so waiting for the drain holds a
+        # request nobody made for as long as a fetch or a step takes
+        # -- measured, it delayed the remote badge refresh past ten
+        # seconds and would hold a Run Step just the same.
+        old='    dictOutcome = await fdictRunAutomaticReadUnderTheDrain(\n',
+        new='    dictOutcome = await fgenericRunWorkerUnderTheDrain(\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/testTheReadinessRouteAnswersARequest.py::'
+            'test_the_verify_route_refuses_a_lock_the_pinned_image_fails'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # The policy left to the browser alone, which is where it was:
+        # the JS pre-flight proceeds deliberately when its readiness
+        # GET fails, and the agent lane never runs it at all, so the
+        # route answered 202 and spent a container export on a rerun
+        # the shadow was going to refuse.
+        old=(
+            '    if lockSatisfaction.fbLockBlocksVerification(\n'
+            '        dictLockSatisfaction, dictImageCurrency,\n'
+            '    ):\n'
+            '        listUnmet.append(_S_LOCK_BLOCKS_THE_RERUN)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheLockVerdictCarriesItsFingerprint.py::'
+            'test_the_two_fingerprints_agree_on_an_unchanged_lock'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        # The measuring side normalizing what it hashes. Plausible as
+        # tidiness, and it makes the probe's stamp differ from the
+        # poll's for any file ending in a newline -- so every verdict
+        # is downgraded to unknown on the next tick, silently, because
+        # unknown is also what "nobody asked" looks like.
+        old='    sDigest = hashlib.sha256(baLockContent or b"").hexdigest()\n',
+        new=(
+            '    sDigest = hashlib.sha256(\n'
+            '        (baLockContent or b"").strip(),\n'
+            '    ).hexdigest()\n'
+        ),
+    ),
+
+    # --- 2026-09-15: the image inventory sheds pip's blind spot ---
+    Falsification(
+        nodeid=(
+            'tests/testTheLockIsCheckedBeforeARerunIsSpent.py::'
+            'test_the_inventory_reports_what_pip_refuses_to_show'
+        ),
+        source='vaibify/reproducibility/shadowRerun.py',
+        # The spelling that shipped. pip refuses to report
+        # argparse, python and wsgiref, so any of the three,
+        # installed and locked, reads back as 'the image has
+        # nothing' -- a false mismatch no button can clear, which
+        # blocks Level 3 permanently.
+        old=(
+            'S_ENUMERATE_PACKAGES_COMMAND = (\n'
+            '    "python3 -c \'import importlib.metadata as metadata\\n"\n'
+            '    "for distribution in metadata.distributions():\\n"\n'
+            '    "    sName = distribution.metadata[\\"Name\\"]\\n"\n'
+            '    "    sVersion = distribution.metadata[\\"Version\\"]\\n"\n'
+            '    "    if sName and sVersion:\\n"\n'
+            '    "        print(sName + \\"==\\" + sVersion)\'"\n'
+            ')\n'
+        ),
+        new=(
+            'S_ENUMERATE_PACKAGES_COMMAND = (\n'
+            '    "python3 -m pip list --format=freeze '
+            '--disable-pip-version-check"\n'
+            ')\n'
+        ),
+    ),
+
+    # --- 2026-09-15: the Project block's first paint is its right one ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheProjectBlockPaintsOnceAndCorrectly.py::'
+            'test_the_project_block_waits_for_its_verdict_and_says_so'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The shipped behaviour: the block paints from whatever the
+        # poll has, and the lock verdict -- which decides the level
+        # strip, the ordering arrow and its own row -- corrects it five
+        # to ten seconds later. The researcher acted on the interim.
+        old='            bProjectBlockAwaitsFirstAnswer: true,\n',
+        new='            bProjectBlockAwaitsFirstAnswer: false,\n',
+    ),
+
+    # --- 2026-09-16: the envelope describes the files it ships with ---
+    Falsification(
+        nodeid=(
+            'tests/testTheManifestDescribesTheFilesItShipsWith.py::'
+            'test_a_freshly_written_envelope_describes_its_own_files'
+        ),
+        source='vaibify/reproducibility/dataArchiver.py',
+        # The shipped write order: the manifest pinned the PREVIOUS
+        # bytes of the two files the tiers below it then rewrote, so
+        # every envelope was wrong about two of its own entries and
+        # every L3 rerun reported them as diverged.
+        old=(
+            '    dictLock = _fdictWriteLockTier(filesRepo, sContainerName)\n'
+            '    dictEnvironment = _fdictWriteEnvironmentTier(\n'
+            '        filesRepo, sContainerName, listHostBinaries,\n'
+            '    )\n'
+            '    return {\n'
+            '        "MANIFEST.sha256": _fdictWriteManifestTier(\n'
+            '            filesRepo, dictWorkflow, sContainerName,\n'
+            '        ),\n'
+            '        "requirements.lock": dictLock,\n'
+            '        ".vaibify/environment.json": dictEnvironment,\n'
+            '    }\n'
+        ),
+        new=(
+            '    return {\n'
+            '        "MANIFEST.sha256": _fdictWriteManifestTier(\n'
+            '            filesRepo, dictWorkflow, sContainerName,\n'
+            '        ),\n'
+            '        "requirements.lock": _fdictWriteLockTier(\n'
+            '            filesRepo, sContainerName,\n'
+            '        ),\n'
+            '        ".vaibify/environment.json": '
+            '_fdictWriteEnvironmentTier(\n'
+            '            filesRepo, sContainerName, listHostBinaries,\n'
+            '        ),\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheManifestDescribesTheFilesItShipsWith.py::'
+            'test_a_manifest_that_misdescribes_a_file_blocks_level_three'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # The gate gone, which is the state the product shipped in:
+        # coverage-only, so a manifest describing none of its files
+        # stayed green on every surface until a researcher spent a
+        # full workflow rerun to be told.
+        old=(
+            '    return not flistManifestEntriesContradictingTheFiles'
+            '(filesRepo)\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testThePollDoesNotRewriteWhatItReads.py::'
+            'test_every_path_the_snapshot_reads_is_also_hashed'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        # The sampling gap itself: paths read for content but not
+        # hashed, so the one lenient accessor answers None and the
+        # caller hears a fact about a file.
+        old='        | set(TUPLE_SNAPSHOT_CONTENT_PATHS)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testThePollDoesNotRewriteWhatItReads.py::'
+            'test_an_unchanged_stamp_is_not_rewritten_on_the_next_poll'
+        ),
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        # What an unsampled path produced on the COMPARISON side only
+        # -- the writer kept the real hash -- so the predicate never
+        # matched the stamp it had just written and the poll rewrote a
+        # canonical file every five seconds. Mutating the shared
+        # helper instead breaks both sides equally and the stamp
+        # agrees with itself, which is a SURVIVING mutation and was.
+        old=(
+            '    return dictStamp.get("sProjectContextSha256") == '
+            '_fsHashProjectContext(\n'
+            '        filesRepo,\n'
+            '    )\n'
+        ),
+        new='    return dictStamp.get("sProjectContextSha256") == ""\n',
+    ),
+
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationPulsesOnlyWhatItAssesses.py::'
+            'test_a_running_verification_pulses_and_explains_only_level_three'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The pulse marked on every cell of a checking strip, which is
+        # what the group-wide CSS selector did: Level 1 and Level 2
+        # dashes animated over a rerun that assesses neither.
+        old=(
+            '            var bChecking = Boolean(\n'
+            '                (dictCheckingByLevel || {})[iLevel],\n'
+            '            );\n'
+        ),
+        new='            var bChecking = true;\n',
+    ),
+
+    # --- 2026-09-16: attaining a level must not lower another ---
+    Falsification(
+        nodeid=(
+            'tests/testAttainingALevelDoesNotLowerAnother.py::'
+            'test_a_diverged_rebuild_attestation_does_not_block_level_two'
+        ),
+        source='vaibify/reproducibility/publicationScope.py',
+        # The shipped selection: Level 2 as the complement of the
+        # envelope alone, which swept the rebuild attestation -- kept
+        # out of the envelope tuple precisely so it would gate nothing
+        # -- into the one scope the complement sweeps everything into.
+        old=(
+            '    setExcluded = (\n'
+            '        set(TUPLE_LEVEL3_ENVELOPE_PATHS)\n'
+            '        | set(TUPLE_COMPARED_NOT_REQUIRED_PATHS)\n'
+            '    )\n'
+        ),
+        new='    setExcluded = set(TUPLE_LEVEL3_ENVELOPE_PATHS)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttainingALevelDoesNotLowerAnother.py::'
+            'test_diverged_published_data_still_blocks_level_two'
+        ),
+        source='vaibify/reproducibility/publicationScope.py',
+        # The exclusion widened until it swallows the published data
+        # itself, which is the worse failure in the other direction: a
+        # Level 2 claim that passes over files nobody published.
+        old='        if sPath not in setExcluded and fbPathIsCompared(sPath)\n',
+        new='        if sPath in setExcluded and fbPathIsCompared(sPath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_the_arrow_is_silent_outside_the_endgame'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The shipped behaviour: consult the ordering edges at every
+        # level, so an arrow named one unmet endgame row as "do this
+        # next" while a whole rung below it was the actual work.
+        # RE-ANCHORED 2026-09-16: the readiness half of the gate was
+        # removed (it silenced the arrow exactly when ordering
+        # mattered), and the surviving Level 2 half moved into
+        # fdictDescribeOrderedEndgame, which also empties the blocked
+        # map below Level 2.
+        old=(
+            '    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):\n'
+            '        return {"dictNextStep": None, "dictBlockedRows": {}}\n'
+        ),
+        new='',
+    ),
+    # --- 2026-09-16: the blocked map outlives the arrow ---
+    Falsification(
+        nodeid=(
+            'tests/testTheBlockedMapOutlivesTheArrow.py::'
+            'test_two_chains_silence_the_arrow_but_not_the_blocked_map'
+        ),
+        source='vaibify/reproducibility/levelOrdering.py',
+        # The frontend's first implementation, restated on the
+        # backend: blocking derived from the arrow payload, so every
+        # multi-chain endgame -- exactly when two prerequisites are
+        # open and acting early is easiest -- rendered every button
+        # live.
+        old=(
+            '    return {\n'
+            '        "dictNextStep": _fdictSelectSingleRootStep(listLive),\n'
+            '        "dictBlockedRows": _fdictMapBlockedRows(listLive),\n'
+            '    }\n'
+        ),
+        new=(
+            '    dictNextStep = _fdictSelectSingleRootStep(listLive)\n'
+            '    dictBlockedRows = {}\n'
+            '    if dictNextStep:\n'
+            '        for sRowKey in dictNextStep["listBlockedRowKeys"]:\n'
+            '            dictBlockedRows[sRowKey] = dictNextStep["sReason"]\n'
+            '    return {\n'
+            '        "dictNextStep": dictNextStep,\n'
+            '        "dictBlockedRows": dictBlockedRows,\n'
+            '    }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testABlockedRowStillTeaches.py::'
+            'test_a_blocked_rows_inline_controls_are_inert_'
+            'and_it_still_teaches'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        # Neutralize the structural click guard: the per-button
+        # disabled path still runs, so every _fsRenderActionButton
+        # control stays inert -- and the inline remote controls the
+        # blocked rows actually carry (wf-verify-remote,
+        # wf-push-envelope) go live under a row that says "Do this
+        # later". The reviewed defect, restated as a mutation.
+        old=(
+            '        if (elBlockedButton &&\n'
+            '                !elBlockedButton.classList.contains(\n'
+            '                    "wf-view-attestation")) {\n'
+        ),
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAttainingALevelDoesNotLowerAnother.py::'
+            'test_a_diverged_ai_provenance_stamp_gates_nothing'
+        ),
+        source='vaibify/reproducibility/publicationScope.py',
+        # Drop the stamp from the compared-not-required tuple: the
+        # complement rule sweeps it into Level 2, and a file the hub
+        # rewrites itself holds the data-publication claim hostage --
+        # the attestation bug's second instance.
+        old=(
+            'TUPLE_COMPARED_NOT_REQUIRED_PATHS = (\n'
+            '    S_ATTESTATION_REPO_PATH,\n'
+            '    S_AI_PROVENANCE_REPO_PATH,\n'
+            ')\n'
+        ),
+        new=(
+            'TUPLE_COMPARED_NOT_REQUIRED_PATHS = (\n'
+            '    S_ATTESTATION_REPO_PATH,\n'
+            ')\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testInformationalFilesAreNotLevelTwoDefects.py::'
+            'test_the_stamp_renders_informationally_and_not_as_level_two'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # Leave the compared-not-required paths out of the Level 2
+        # exclusion: the stamp renders among the Level 2 file groups,
+        # a red badge under a green cell with nothing explaining the
+        # pair.
+        old=(
+            '        var listExclude = '
+            'listEnvelope.concat(listNotRequired);\n'
+        ),
+        new='        var listExclude = listEnvelope;\n',
+    ),
+    # --- 2026-09-16: the snapshot is a declared read ---
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_the_typed_and_embedded_transports_answer_identically'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # Drop the skip-text prefix from the typed preamble's key
+        # map: k-arguments fall on the floor, the skip set is empty,
+        # and the typed lane carries file bodies the embedded lane
+        # withholds -- the two transports disagree about one program.
+        old=(
+            '        "dictKeyByPrefix = {\\"c\\": '
+            '\\"listContentPaths\\",\\n"\n'
+            '        "                   \\"k\\": '
+            '\\"listSkipTextPaths\\",\\n"\n'
+        ),
+        new=(
+            '        "dictKeyByPrefix = {\\"c\\": '
+            '\\"listContentPaths\\",\\n"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_the_fetch_prefers_the_declared_read'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        # Ignore the typed read: the snapshot rides the
+        # mutation-capable primitive again, an enforced lane refuses
+        # it outside an admission, and the readiness route is back to
+        # parking it inside the pausable probe.
+        old=(
+            '        fnTypedSnapshot = getattr(\n'
+            '            connectionDocker, "ftReadRepoSnapshot", None,\n'
+            '        )\n'
+        ),
+        new='        fnTypedSnapshot = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_paused_probe_still_gets_snapshot_backed_gates'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        # Empty the snapshot phase: behaviourally the shipped
+        # placement, in which a paused probe handed the gates the
+        # live adapter and the ten-second file-by-file evaluation
+        # came back on every dashboard open.
+        old=(
+            '        with fcontextTimeOnePhase(dictElapsed, '
+            '"filesSnapshot"):\n'
+            '            filesSnapshot = ffilesSnapshotForWorkflow(\n'
+            '                dictCtx, sContainerId, dictWorkflow,\n'
+            '            )\n'
+        ),
+        new=(
+            '        with fcontextTimeOnePhase(dictElapsed, '
+            '"filesSnapshot"):\n'
+            '            filesSnapshot = None\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheOpenTimeReadsAreChained.py::'
+            'test_readiness_runs_after_badges_and_before_'
+            'the_remote_refresh'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The shipped race: readiness fired alongside the badge
+        # refresh instead of chained after it, so the automatic lock
+        # probe -- which pauses rather than queues -- lost the
+        # carrier on every project open and the Dependency-lock
+        # verdict was never measured.
+        old=(
+            '        VaibifyGitBadges.fnRefresh(sId).then(function () {\n'
+            '            // The Project block holds its first paint '
+            'until this\n'
+            '            // answers, because a row it renders is '
+            'derived from the\n'
+            '            // verdict; the resolver never rejects.\n'
+            '            return '
+            'fnResolveLockSatisfactionBeforeFirstPaint(sId);\n'
+            '        }).then(function () {\n'
+        ),
+        new=(
+            '        fnResolveLockSatisfactionBeforeFirstPaint(sId);\n'
+            '        VaibifyGitBadges.fnRefresh(sId).then(function () {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_a_failed_exec_raises_instead_of_fabricating_absence'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        # Swallow the exit code: an exec that died after printing a
+        # whole-looking payload sails through, and the fabricated
+        # answer reaches the readiness gates as fact.
+        old=(
+            '        if tExecResult.iExitCode != 0:\n'
+            '            raise OSError(\n'
+        ),
+        new=(
+            '        if False:\n'
+            '            raise OSError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_backslash_heavy_names_are_measured_as_rendered'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # Revert the budget to an estimate of the raw path bytes:
+        # repr() doubles every backslash, so the estimate admits a
+        # rendered argument the kernel refuses.
+        old=(
+            '        iRenderedBytes = len(\n'
+            '            _DICT_TYPED_READ_PROGRAMS'
+            '[S_TYPED_READ_REPO_SNAPSHOT]\n'
+            '            .replace(\n'
+            '                _S_TYPED_READ_PATH_SLOT,\n'
+            '                _fsTypedReadPathLiteral(listArgs),\n'
+            '            ).encode("utf-8"),\n'
+            '        )\n'
+        ),
+        new=(
+            '        iRenderedBytes = sum(\n'
+            '            len(sArg.encode("utf-8")) + 4 '
+            'for sArg in listArgs\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_the_readiness_snapshot_carries_the_manifest_body'
+        ),
+        source='vaibify/gui/routeContext.py',
+        # The shipped gap: the readiness snapshot returned without
+        # the manifest body, so the pre-flight told a researcher a
+        # complete manifest did not cover its files.
+        old=(
+            '    fnHydrateManifestText(\n'
+            '        dictCtx, sContainerId, sRepoRoot, filesSnapshot,\n'
+            '    )\n'
+            '    return filesSnapshot\n'
+        ),
+        new='    return filesSnapshot\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAStaleVerifyAdmitsIt.py::'
+            'test_a_drifted_badge_under_a_green_cell_is_said_out_loud'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # The shipped silence: never consult the badges, so a cached
+        # full match renders as current fact over a file the badge
+        # lane already knows has changed.
+        old=(
+            '        return (listPaths || []).filter('
+            'function (sPath) {\n'
+            '            var dictBadges = '
+            'VaibifyGitBadges.fdictGetBadgesForFile(\n'
+            '                sPath, "") || {};\n'
+            '            return dictBadges[sBadgeKey] === "drifted";\n'
+            '        });\n'
+        ),
+        new='        return [];\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheSnapshotIsADeclaredRead.py::'
+            'test_listing_json_filenames_is_a_declared_read'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        # The shipped shape: fetch every file's BODY through the
+        # general exec primitive to answer a question about NAMES --
+        # refused in an enforced lane outside a carrier, which is
+        # how Make Permanent 500d out of its own candidate
+        # collection.
+        old=(
+            '        try:\n'
+            '            listEntries = '
+            'self.connectionDocker.flistDirectoryEntries(\n'
+            '                self.sContainerId, '
+            'self._fsAbsolute(sRelDir),\n'
+            '            )\n'
+            '        except FileNotFoundError:\n'
+            '            return []\n'
+            '        return sorted(\n'
+            '            (sName for sName in listEntries\n'
+            '             if sName.endswith(".json")),\n'
+            '            reverse=True,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return sorted(\n'
+            '            self.fdictReadDirJsonContents(sRelDir), '
+            'reverse=True,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPromoteRefusalSaysWhy.py::'
+            'test_the_promote_toast_reads_the_answer_it_reports'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The shipped shape: a static success toast over both
+        # answers, so a refused publish read as a publish in
+        # progress and the refusal's own reason was thrown away.
+        # RE-ANCHORED when the 504 distiller joined the describer.
+        old=(
+            '        if (dictResult && dictResult.bSuccess === '
+            'false) {\n'
+            '            var sReason = _fsDistillZenodoReason(\n'
+        ),
+        new=(
+            '        if (false) {\n'
+            '            var sReason = _fsDistillZenodoReason(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheStagedClientStaysCurrent.py::'
+            'test_a_stale_staged_client_is_rewritten_before_the_upload'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        # The shipped shape: the archive script runs against
+        # whatever the image build froze, and a publish dies on an
+        # ImportError over a symbol the host added since.
+        old=(
+            '    fnEnsureStagedClientCurrent(connectionDocker, '
+            'sContainerId)\n'
+            '    _fnValidateArchiveFilePaths(listFilePaths)\n'
+        ),
+        new='    _fnValidateArchiveFilePaths(listFilePaths)\n',
     ),
 ]

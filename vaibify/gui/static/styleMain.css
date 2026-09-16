@@ -6111,21 +6111,6 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin-top: 10px;
 }
 
-/* --- PROOF attestation banner (Phase 2 stub for Phase 3 staleness) --- */
-
-.proof-attestation-banner {
-    background: rgba(240, 160, 80, 0.15);
-    border-bottom: 1px solid #f0a050;
-    color: #f0a050;
-    padding: 8px 12px;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.proof-attestation-banner[hidden] {
-    display: none;
-}
-
 /* --- Phase 3: PROOF L3 readiness, attestation card, history table --- */
 
 .proof-card.proof-level3-card.disabled {
@@ -6849,6 +6834,22 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* An action the ordering says must wait. Disabled in markup as well
+   as in appearance: the effect would have to be undone. */
+.wf-action-blocked,
+.wf-action-blocked:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* The Project block before its first verdict is in. Muted, because
+   it is a wait and not a finding. */
+.project-block-waiting {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 10px 14px 12px 20px;
+}
+
 .requirement-group-header {
     display: flex;
     align-items: center;
@@ -6931,9 +6932,13 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    Scoped to each banner's own cells: a group's rows carry their own
    class, so a descendant selector would pulse the settled rows
    alongside the checking one. */
-.requirement-group-checking > .requirement-group-header
-    .step-level-cell,
-.requirement-row-checking > .requirement-row-header .step-level-cell {
+/* Only the cells whose LEVEL is actually being assessed. A Level 3
+   rerun used to pulse the Level 1 and Level 2 cells beside it --
+   dashes, for levels the rerun says nothing about, animated as
+   though they were under reconsideration. The marker is set per
+   cell by _fdictCheckingLevelsOf, so a group banner and its rows
+   pulse the same set. */
+.step-level-cell[data-checking="1"] {
     animation: pulse 1.6s infinite;
 }
 
@@ -8571,6 +8576,165 @@ body.council-workspace-open #mainLayout {
     color: var(--highlight-color);
 }
 
+/* The ordering's "not yet" on an expanded row. Muted where the
+   arrow's reason is highlighted: premature is a wait, not a
+   finding, and never an error color -- red means a claim failed. */
+.requirement-row-wait-reason {
+    margin: 0.35em 0 0.2em 1.6em;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+/* A refused click points the eye at the explanation. */
+.wait-reason-attention {
+    animation: waitReasonPulse 0.9s ease-out 1;
+}
+
+@keyframes waitReasonPulse {
+    0% { color: var(--highlight-color); }
+    100% { color: var(--text-muted); }
+}
+
+/* STRUCTURAL: every button in a blocked row's detail looks and acts
+   inert, whichever renderer drew it. The circle-slash rides the
+   button itself so the signal survives on a touch screen, where the
+   not-allowed cursor does not exist. wf-view-attestation stays live
+   (it only shows a stored record) and keeps its normal look. */
+.requirement-row-blocked .requirement-row-detail
+    button:not(.wf-view-attestation) {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.requirement-row-blocked .requirement-row-detail
+    button:not(.wf-view-attestation)::before {
+    content: "\2298 ";
+}
+
+/* Actionable non-buttons in a blocked row: the file badges open the
+   push/sync picklist and the Repos link opens the panel that
+   performs it, so both go inert with the buttons. No glyph on a
+   badge -- it is an icon already -- the dimming and the cursor
+   carry the signal. */
+.requirement-row-blocked .requirement-row-detail .remote-badge,
+.requirement-row-blocked .requirement-row-detail .envelope-open-repos {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wait-reason-attention { animation: none; }
+}
+
+/* Compared-but-required-by-nothing files, set apart from the Level 2
+   list so their honest badges cannot read as Level 2 defects. */
+.informational-files-block {
+    margin-top: 0.6em;
+    padding-top: 0.4em;
+    border-top: 1px solid var(--border-color);
+}
+
+.informational-files-title {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-bottom: 0.25em;
+}
+
+.informational-files-note {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-top: 0.25em;
+}
+
+/* The two halves of a merged copies row, each labeled with the
+   level it speaks for so neither list can read as the other's. */
+.sync-scope-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 0.5em 0 0.25em 0;
+}
+
+.sync-level-three-envelope {
+    margin-top: 0.6em;
+    padding-top: 0.4em;
+    border-top: 1px solid var(--border-color);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ordering-arrow-glyph { animation: none; }
+}
+
+/* ── Joining a diverged history ──────────────────────────────────
+   The merge modal states what the merge does, what vaibify checked,
+   and why no rebase is offered. Its preview has three colours because
+   it has three answers: "could not check" must not look like "clean". */
+/* Inside the house .modal box, so only what differs is set here. */
+.merge-modal {
+    width: auto;
+    max-width: 34rem;
+}
+
+.merge-modal-note {
+    font-size: 0.85em;
+    color: var(--text-muted, #888);
+    border-left: 2px solid var(--border-color);
+    padding-left: 0.7em;
+}
+
+.merge-preview {
+    padding: 0.5em 0.7em;
+    border-radius: 4px;
+    border-left: 3px solid var(--border-color);
+}
+
+.merge-preview-clean {
+    border-left-color: var(--success-color, #4caf50);
+}
+
+.merge-preview-conflict {
+    border-left-color: var(--error-color, #e53935);
+}
+
+/* Deliberately NOT the conflict colour: unchecked is not a failure,
+   and painting it red would make a researcher treat "vaibify could
+   not ask" as "this will break". */
+.merge-preview-unknown {
+    border-left-color: var(--warning-color, #ffa726);
+}
+
+.merge-preview-list {
+    margin: 0.3em 0 0 1.2em;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85em;
+}
+
+/* Why the last verification established nothing. Amber, never red:
+   nothing was attested and the Level 3 state did not move, so this
+   must not read as a failed rebuild. */
+.attestation-no-verdict {
+    margin: 0.5em 0;
+    padding: 0.5em 0.7em;
+    border-left: 3px solid var(--warning-color, #ffa726);
+    font-size: 0.9em;
+}
+
+.attestation-no-verdict ul {
+    margin: 0.3em 0 0 1.2em;
+}
+
+/* Which packages the pinned image does not satisfy. Amber like the
+   image-currency warning beside it: the envelope is internally
+   coherent, and what is wrong is the agreement between two files. */
+.lock-mismatch-warning {
+    margin: 0.5em 0;
+    padding: 0.5em 0.7em;
+    border-left: 3px solid var(--warning-color, #ffa726);
+    font-size: 0.9em;
+}
+
+.lock-mismatch-warning ul {
+    margin: 0.3em 0 0 1.2em;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.9em;
 }

@@ -423,21 +423,39 @@ sentence.
 reran and reproduced the outputs against the current manifest", which
 remains true over a sandbox archive. The rebuild happened.
 
-The poll additionally ships `bNoArchiveKnownSandbox`,
-`listPermanenceIssues` and the two per-archive verdicts. The row — in
-both `scriptProofTab.js` (the level-3 list) and the Project block's
-requirements — renders
+**Superseded 2026-09-15 — the permanence conditions moved OFF the
+attestation row and onto the two archive rows.** The formula below
+was `bL3AttestationCurrent && bNoArchiveKnownSandbox`, and it was
+wrong in a way only an asymmetric pair exposes: `fbNoArchiveIsKnownSandbox`
+classifies **two** deposits, so a sandbox *project* deposit reddened
+the *Attestation* row — whose only button re-runs a verification that
+was never the problem — while a sandbox *image* deposit left the
+*Environment archive* row green. Neither Make Permanent button lives
+on the attestation row. The rows now read:
 
-```
-green iff  bL3AttestationCurrent && bNoArchiveKnownSandbox
-```
+| Row | Green requires |
+|---|---|
+| Environment archive | a matching image archive **and** `sImageArchivePermanence != sandbox` |
+| Zenodo archive | a matching envelope **and** a covering archived attestation **and** `sProjectArchivePermanence != sandbox` |
+| Rebuild attestation | `bL3AttestationCurrent` only |
 
-and when that second half is the failing one, the tooltip and the
-expanded block say **"This attestation does not count while an archive
-is a sandbox deposit"**, naming which. Both halves are backend
-verdicts; the frontend composes them and derives neither. Where the row
-wants to state the positive — that the archives *are* permanent — it
-must read the two per-archive verdicts, never infer it from the gate.
+Permanence is spelled `!= sandbox`, never `== permanent`: the gate
+passes on `unknown` by design and the row may not make a claim the
+gate refuses to make. The archived-attestation condition is
+**tri-state** — green on `True`, red on `False`, **orange on `None`**,
+because `None` means no verify has looked and red is a claim about the
+archive nobody earned.
+
+The poll still ships `bNoArchiveKnownSandbox`, `listPermanenceIssues`
+and the two per-archive verdicts, plus `dictArchivedAttestation`. Both
+halves are backend verdicts; the frontend composes them and derives
+neither. Where a row states the positive — that an archive *is*
+permanent — it reads that archive's own verdict, never the combined
+gate. The same decomposition applies to the "Do this next" arrow:
+`levelOrdering` gained an `environmentArchive` node judged from
+`fbImageArchiveDeposited` plus the image verdict alone, and its
+`envelopeArchive` node carries the three Zenodo conjuncts, which share
+one remedy — publish a Zenodo version.
 
 The expanded block also states the order, because this is the one place
 on the ladder where getting it wrong costs a published DOI that cannot

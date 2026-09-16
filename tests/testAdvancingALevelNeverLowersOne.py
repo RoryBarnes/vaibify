@@ -185,20 +185,17 @@ DICT_ACCEPTED_CROSSINGS = {
         "definition, which Level 2 compares; the researcher confirms "
         "before it is written.",
     ),
-    "verify-l3": (
-        S_DISPOSITION_WARNED,
-        "The rebuild attestation is vaibify's own artefact, committed "
-        "by the verification that produced it, and it is compared "
-        "against both remotes outside the envelope. The researcher is "
-        "warned before the verification begins.",
-    ),
     "declare-binary": (
-        S_DISPOSITION_UNWARNED,
+        S_DISPOSITION_WARNED,
         "Declaring a package to satisfy Level 3 rewrites the project "
-        "definition, which Level 2 compares, and says nothing about "
-        "the push and Zenodo version that restores it. Surfaced by "
-        "this test on 2026-09-09; the remedy is a confirmation naming "
-        "the cost, and the decision is the researcher's.",
+        "definition, which Level 2 compares. The researcher now "
+        "confirms first, over a message naming the cost: the project "
+        "sits below Level 2 until the change is pushed and a new "
+        "Zenodo version carries it, and a Zenodo version is "
+        "immutable. Declaration is per package, so declaring four "
+        "means four confirmations -- the honest price of the ruling, "
+        "and the remedy is a form that submits several at once, "
+        "never a dropped confirmation.",
     ),
     "promote-project-deposit": (
         S_DISPOSITION_WARNED,
@@ -226,20 +223,20 @@ DICT_ACCEPTED_CROSSINGS = {
         "before it is recorded.",
     ),
     "declare-determinism": (
-        S_DISPOSITION_UNWARNED,
-        "Declaring the reproducibility rules to satisfy Level 3 "
-        "rewrites the project definition, which Level 2 compares, "
-        "with no warning. Same shape as the deposit instance except "
-        "that the written content is real rather than an echo, so the "
-        "honest remedy is a warning rather than a removal. Surfaced "
-        "by this test on 2026-09-09.",
+        S_DISPOSITION_WARNED,
+        "Declaring the repeatability rules to satisfy Level 3 "
+        "rewrites the project definition, which Level 2 compares. "
+        "The written content is real rather than an echo, so the "
+        "honest remedy was a warning rather than a removal, and the "
+        "researcher now confirms over a message naming the same "
+        "cost as declare-binary.",
     ),
 }
 
 # May only fall. Fixing one of these -- by warning, or by not writing
 # -- means deleting its entry above and lowering this number in the
 # same commit.
-_I_UNWARNED_CROSSING_BUDGET = 2
+_I_UNWARNED_CROSSING_BUDGET = 0
 
 
 # ----------------------------------------------------------------------

@@ -231,7 +231,9 @@ def test_fiProofLevel_evaluates_L1_once_per_call():
         "vaibify.reproducibility.levelGates._fbComputeLevel1",
         wraps=levelGates._fbComputeLevel1,
     ) as mockCompute:
-        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(
+            dictWorkflow, "/workspace/repo", bHostProject=False,
+        )
     assert mockCompute.call_count == 1
 
 
@@ -245,7 +247,9 @@ def test_fiProofLevel_evaluates_L2_at_most_once_per_call():
         "vaibify.reproducibility.levelGates._fbComputeLevel2",
         wraps=levelGates._fbComputeLevel2,
     ) as mockCompute:
-        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(
+            dictWorkflow, "/workspace/repo", bHostProject=False,
+        )
     assert mockCompute.call_count <= 1
 
 
@@ -273,6 +277,10 @@ def test_aics_memo_does_not_leak_across_invocations():
         "vaibify.reproducibility.levelGates._fbComputeLevel1",
         wraps=levelGates._fbComputeLevel1,
     ) as mockCompute:
-        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
-        levelGates.fiProofLevel(dictWorkflow, "/workspace/repo")
+        levelGates.fiProofLevel(
+            dictWorkflow, "/workspace/repo", bHostProject=False,
+        )
+        levelGates.fiProofLevel(
+            dictWorkflow, "/workspace/repo", bHostProject=False,
+        )
     assert mockCompute.call_count == 2

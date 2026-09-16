@@ -42,6 +42,8 @@ __all__ = [
 import asyncio
 import hashlib
 import logging
+import time
+from contextlib import contextmanager
 
 from fastapi import HTTPException
 
@@ -434,6 +436,170 @@ def ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow):
     return ffilesEnsureRepoFiles(
         (dictWorkflow or {}).get("sProjectRepoPath") or "",
     )
+
+
+@contextmanager
+def fcontextTimeOnePhase(dictElapsed, sPhase):
+    """Record one phase's wall-clock seconds into ``dictElapsed``.
+
+    Request instrumentation rather than any one route's business: a
+    handler whose latency is a researcher's waiting time needs to say
+    WHERE the time went, and the phases differ per route while the
+    measuring does not.
+    """
+    iStarted = time.monotonic()
+    try:
+        yield
+    finally:
+        dictElapsed[sPhase] = time.monotonic() - iStarted
+
+
+def ffilesSnapshotForWorkflow(dictCtx, sContainerId, dictWorkflow):
+    """Return a ONE-EXEC snapshot of the project repo, or the live adapter.
+
+    The gates read a repository file by file. Against
+    ``ContainerRepoFiles`` that is one container exec per read, and an
+    exec costs about 80 ms on a laptop daemon, so a full Level 2 plus
+    Level 3 evaluation spends ten seconds of round trips on a
+    four-megabyte repository. Measured on a real project, 2026-09-16:
+    ``L3 readiness ... took 11.25s (image currency 0.33s, container
+    probe 0.01s, gates 10.91s)`` -- and the dashboard holds the
+    Project block's first paint until that request answers, so it was
+    ten seconds of the researcher's time.
+
+    The poll has always avoided this by reading the repository ONCE
+    and answering every gate from the snapshot, which is why the poll
+    is fast and this route was not. Nothing about the gates changes:
+    they already run against this adapter on every tick, and the
+    levels the dashboard renders are already derived that way.
+
+    Falls back to the live adapter wherever a snapshot cannot be
+    built -- no ``files`` callable (host and legacy contexts), no
+    project repo, or an exec that fails. A slow answer is better than
+    a wrong one, and the live adapter is what produced every answer
+    before this existed.
+    """
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+    from vaibify.reproducibility.levelGates import (
+        _flistAllStepScriptPaths, flistWorkflowBinaryPaths,
+    )
+    filesLive = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    sRepoRoot = (dictWorkflow or {}).get("sProjectRepoPath") or ""
+    if not sRepoRoot or dictCtx.get("files") is None:
+        return filesLive
+    try:
+        filesSnapshot = SnapshotRepoFiles.ffilesFetch(
+            dictCtx["docker"], sContainerId, sRepoRoot,
+            listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
+            listHashRelPaths=flistAllOutputRepoPaths(
+                dictWorkflow, sRepoRoot,
+            ),
+            listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
+        )
+    except Exception as errorSnapshot:  # noqa: BLE001 -- fall back, never fail
+        # WARNING, not info. The fallback is correct and invisible,
+        # which is the dangerous combination: a caller that switched
+        # to the snapshot for speed would go on paying the per-read
+        # cost with nothing on screen to say so.
+        logger.warning(
+            "Repository snapshot unavailable for %s (%s); reading the "
+            "container file by file instead, which is slower",
+            sContainerId, errorSnapshot,
+        )
+        return filesLive
+    # HYDRATED like the poll's snapshot, or the manifest gates lie:
+    # the snapshot omits the MANIFEST.sha256 body by design, and a
+    # gate reading its text through an unhydrated snapshot sees
+    # "absent" -- which the readiness pre-flight reported to a
+    # researcher as "your manifest does not cover every declared
+    # file" and "reproduce.sh not pinned", about a manifest that was
+    # complete and a script that was pinned (live, 2026-09-16). The
+    # placement inside the paused probe had hidden this: the snapshot
+    # lane never actually ran before the declared-read migration.
+    fnHydrateManifestText(
+        dictCtx, sContainerId, sRepoRoot, filesSnapshot,
+    )
+    return filesSnapshot
+
+
+def fdictManifestTextCache(dictCtx, sContainerId):
+    """Return the per-container ``{sSha: sText}`` manifest body cache.
+
+    Honest because the cache is keyed by the manifest's own SHA-256:
+    a stale entry can never outlive its file, and a server restart
+    pays at most one body fetch per active workflow.
+    """
+    dictByContainer = dictCtx.setdefault("dictManifestTextCache", {})
+    return dictByContainer.setdefault(sContainerId, {})
+
+
+def fnHydrateManifestText(
+    dictCtx, sContainerId, sRepoRoot, filesSnapshot,
+):
+    """Inject the manifest body into a snapshot via the sha-keyed cache.
+
+    The snapshot script does not carry ``MANIFEST.sha256`` text
+    inline. The body is fetched at most once per manifest sha via the
+    live container adapter and held in ``dictManifestTextCache`` so
+    later snapshots observing the same sha pay zero extra docker
+    round trips. Gate code that calls ``fsReadText`` keeps working
+    transparently. Shared by the poll and the readiness route --
+    lived in pipelineRoutes until the readiness route needed it too
+    (2026-09-16), and an unhydrated readiness snapshot had the
+    manifest gates reporting a complete manifest as incomplete.
+    """
+    from vaibify.reproducibility.repoFiles import (
+        fnInjectManifestTextIntoSnapshot,
+    )
+    dictHashes = getattr(filesSnapshot, "_dictHashes", None) or {}
+    dictManifestEntry = dictHashes.get("MANIFEST.sha256") or {}
+    sSha = dictManifestEntry.get("sSha256")
+    if not sSha:
+        return
+    dictTextCache = fdictManifestTextCache(dictCtx, sContainerId)
+    sText = dictTextCache.get(sSha)
+    if sText is None:
+        sText = fsFetchManifestTextFromContainer(
+            dictCtx, sContainerId, sRepoRoot,
+        )
+        if sText is not None:
+            dictTextCache[sSha] = sText
+            _fnEvictStaleManifestText(dictTextCache, sSha)
+    fnInjectManifestTextIntoSnapshot(filesSnapshot, sText)
+
+
+def _fnEvictStaleManifestText(dictTextCache, sCurrentSha):
+    """Drop every cached manifest body other than the current sha."""
+    listStale = [sSha for sSha in dictTextCache if sSha != sCurrentSha]
+    for sSha in listStale:
+        dictTextCache.pop(sSha, None)
+
+
+def fsFetchManifestTextFromContainer(
+    dictCtx, sContainerId, sRepoRoot,
+):
+    """Read ``MANIFEST.sha256`` once from the container, or None on failure."""
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    try:
+        filesLive = ContainerRepoFiles(
+            dictCtx["docker"], sContainerId, sRepoRoot,
+        )
+        return filesLive.fsReadText("MANIFEST.sha256")
+    except (FileNotFoundError, OSError, UnicodeDecodeError) as error:
+        logger.info(
+            "manifest body fetch failed for %s: %s",
+            sContainerId, error,
+        )
+        return None
+
+
+def flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
+    """Return every declared output as a deduplicated repo-relative path."""
+    from .fileStatusManager import _flistStepOutputsRepoRelative
+    setPaths = set()
+    for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
+        setPaths.update(_flistStepOutputsRepoRelative(dictStep, sRepoRoot))
+    return sorted(sPath for sPath in setPaths if sPath)
 
 
 def fnRecordAttributionEvent(

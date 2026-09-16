@@ -57,6 +57,9 @@ from vaibify.reproducibility import repoFiles
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
+from vaibify.reproducibility.shadowRerun import (
+    S_ENUMERATE_PACKAGES_COMMAND,
+)
 from tests.testDraftRoutes import (
     DICT_WORKFLOW,
     MockDockerDraft,
@@ -147,6 +150,31 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             "sCommand": sCommand,
             "sPath": sPath,
         })
+
+    def ftReadRepoSnapshot(
+        self, sContainerId, sRootPath, listContentPaths,
+        listSkipTextPaths, listHashPaths, listAbsHashPaths,
+    ):
+        """The declared snapshot read: recorded, and NEVER gated.
+
+        The real adapter grants the audited-read exemption inside
+        ``_ftRunTypedRead``; this double records the admission mode
+        live at the call so a test can assert the read needed none.
+        An empty answer parses to the conservative all-absent
+        snapshot, which is what the general-exec double answered
+        before the read was declared.
+        """
+        import collections
+        import json as jsonModule
+        self._fnRecordLiveAdmission(
+            sContainerId, "typedRead", sCommand="repoSnapshot",
+        )
+        tShape = collections.namedtuple(
+            "tExecResult", "iExitCode sStdout sStderr",
+        )
+        return tShape(0, jsonModule.dumps(
+            {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}},
+        ), "")
 
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
@@ -4303,7 +4331,14 @@ def testTheStepUpdateHoldsTheDrainAcrossItsLevelReadings(tclientGated):
 
     def fiRecordTheLiveAdmission(
         dictWorkflowArg, filesRepoArg, dictScriptStatus=None,
+        *, bHostProject,
     ):
+        # ``bHostProject`` is keyword-only with NO default in the real
+        # gate, deliberately -- a host project cannot reach Level 3 by
+        # any amount of work, so a caller that forgot to ask must meet
+        # a TypeError. The stub spells it the same way, or it would
+        # accept a call the real function refuses.
+        del bHostProject
         admission = mutationAdmission.fadmissionActiveForContainerId(
             S_CONTAINER_ID,
         )
@@ -6351,6 +6386,198 @@ class DockerDoubleServingALevelThreeWorkflow(
 def tclientLevelThree():
     """The gated client over a workflow with a project repo."""
     return _tConnectGatedClient(DockerDoubleServingALevelThreeWorkflow())
+
+
+S_LOCK_ABS_PATH = posixpath.join(S_PROJECT_REPO, "requirements.lock")
+# The continuation shape a compiled lock really has: a hash on
+# the SAME line begins with "--", which the pin parser skips as a
+# flag line -- so a one-line fixture would pin nothing and the
+# probe would return before it execs.
+S_LOCK_TEXT = "numpy==2.5.2 \\\n    --hash=sha256:deadbeef\n"
+
+
+class DockerDoubleHoldingALockTheContainerFails(
+    DockerDoubleServingALevelThreeWorkflow,
+):
+    """The L3 double with a requirements.lock the container does not meet.
+
+    Both halves matter. The lock has to EXIST as a typed-read answer or
+    the probe returns before it execs, and the enumerate command has to
+    answer or the verdict degrades to ``unknown`` -- either way the
+    route would reach no exec and a carrier assertion over it would be
+    vacuous rather than false.
+    """
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        if sPath != S_LOCK_ABS_PATH:
+            return super().fbContainerPathIsFile(sContainerId, sPath)
+        tokenRead = mutationAdmission.ftokenEnterAuditedRead()
+        try:
+            mutationAdmission.fnAssertContainerCommandAdmitted(
+                sContainerId, S_PRIMITIVE_EXEC,
+            )
+        finally:
+            mutationAdmission.fnExitAuditedRead(tokenRead)
+        self.listTypedPathProbes.append(sPath)
+        return True
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_LOCK_ABS_PATH:
+            return S_LOCK_TEXT.encode("utf-8")
+        return super().fbaFetchFile(sContainerId, sPath, iMaxBytes)
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand, sWorkdir=None):
+        # Delegated FIRST, so the enumerate exec crosses the same gate
+        # every other command does; answering it before the super call
+        # would exempt exactly the exec this fixture exists to watch.
+        tResult = super().ftResultExecuteCommand(
+            sContainerId, sCommand, sWorkdir,
+        )
+        if sCommand == S_ENUMERATE_PACKAGES_COMMAND:
+            return (0, "numpy==2.2.6\n")
+        return tResult
+
+
+@pytest.fixture
+def tclientReadiness():
+    """The gated client over a project whose lock the container fails."""
+    return _tConnectGatedClient(DockerDoubleHoldingALockTheContainerFails())
+
+
+@pytest.mark.falsification
+def testTheReadinessProbeRunsBothExecsUnderOneDrain(tclientReadiness):
+    """GET .../level3/readiness: two carried execs, one declared read.
+
+    The route asks two questions of the container -- whether its
+    packages satisfy ``requirements.lock``, and whose attestation this
+    clone carries -- and an admission covers a computation rather than
+    a call, so ONE mode-(b) carrier has to span both. A carrier opened
+    around only the first leaves the second refused, from inside a
+    handler whose catch would report the refusal as a scientific
+    "undetermined".
+
+    Asserted as a SUCCESS, not a refusal. A correctly carried route
+    must answer 200 and produce its verdict; the refusal direction is
+    the separate assertion below, and writing only that one would pass
+    against a route that refuses for any reason at all.
+
+    Kills: dropping ``_fdictProbeTheContainerOnce``'s carrier, which
+    makes the enumerate exec raise ``MutationNotAdmittedError`` out of
+    the worker.
+    """
+    client, connectionDocker = tclientReadiness
+    responseHttp = client.get(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    dictGaps = responseHttp.json()["dictL3ReadinessGaps"]
+    assert dictGaps["dictLockSatisfaction"]["sState"] == "mismatch", (
+        "the probe did not reach a verdict, so nothing below asserts "
+        f"anything about how it was admitted: {dictGaps}"
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+            and dictReached["sCommand"] == S_ENUMERATE_PACKAGES_COMMAND
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "package enumerate exec",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+            and "git " in (dictReached["sCommand"] or "")
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "record-kind git exec",
+    )
+    # The repository snapshot is NOT one of the carried execs any
+    # more (2026-09-16): it is a DECLARED typed read needing no
+    # admission, taken before the probe -- parked inside the probe,
+    # the open-time race paused it on every dashboard open and the
+    # gates silently fell back to ten seconds of file-by-file reads.
+    # Asserted both ways: the typed read ran with NO admission open,
+    # and no embedded-script snapshot rode the general primitive.
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == "typedRead"
+            and dictReached["sCommand"] == "repoSnapshot"
+        ),
+        "",
+        "repository snapshot typed read",
+    )
+    listEmbeddedSnapshots = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+        and "b64decode" in (dictReached["sCommand"] or "")
+    ]
+    assert listEmbeddedSnapshots == [], (
+        "the snapshot rode the general exec primitive on an adapter "
+        "that declares the typed read; an enforced lane admits that "
+        "only inside a carrier, which is the pausable placement this "
+        "migration removed"
+    )
+
+
+def testTheReadinessProbeIsRefusedWithNoCarrier(tclientReadiness):
+    """With the carrier bypassed, the SAME request is refused.
+
+    The other half of the pair, and it has to be its own test: a route
+    that succeeds proves a carrier was opened, and only a route that
+    fails without one proves the gate is what admitted it. This is
+    ``testDeclaringMintsNoAdmission`` applied to one real route -- the
+    declaration on the handler authorizes nothing, so removing the
+    carrier must produce a refusal rather than a quieter answer.
+
+    The bypass patches the carrier helper to call its worker with no
+    admission open, which is exactly what forgetting the call would do.
+
+    DELIBERATELY UNMARKED, and the reason is worth recording rather
+    than working around. Two candidate mutations were tried and BOTH
+    survived, because the system under test is fail-closed in both
+    directions: deleting the ``ffnDeclareCarrierMode`` stamp leaves the
+    route in neither record, and a route in neither record is enforced
+    anyway; adding it back to ``SET_ROUTES_AWAITING_CARRIER_MODE``
+    changes nothing while the stamp is still there, because a
+    declaration wins. Pre-admitting this route therefore takes an edit
+    to TWO files, which the registry's one-file mutation cannot
+    express -- and the general property ("a declaration mints nothing")
+    is kill-confirmed one level up by
+    ``testCarrierModeDeclaration.testDeclaringMintsNoAdmission``.
+    Marking this one would claim a confirmation nobody obtained.
+    """
+    client, connectionDocker = tclientReadiness
+
+    async def fdictRunWithoutAnyAdmission(
+        sContainerId, fnWorker, sOperationTarget, requestHttp,
+    ):
+        del sContainerId, sOperationTarget, requestHttp
+        return {"bPaused": False, "sPausedBy": "", "objResult": fnWorker()}
+
+    with patch.object(
+        reproducibilityRoutes, "fdictRunAutomaticReadUnderTheDrain",
+        fdictRunWithoutAnyAdmission,
+    ):
+        responseHttp = client.get(
+            f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
+        )
+    assert responseHttp.status_code >= 500, (
+        "an uncarried readiness request was answered normally, so the "
+        "carrier it opens grants nothing that was not already granted: "
+        f"{responseHttp.status_code} {responseHttp.text[:200]}"
+    )
+    assert not [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+    ], (
+        "an exec crossed the gate with no admission open, which means "
+        "the enforced lane is not examining this route at all"
+    )
 
 
 def _fnAssertTheDeclarationSavedSynchronously(connectionDocker):

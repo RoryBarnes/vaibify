@@ -1829,9 +1829,22 @@ var VaibifySyncManager = (function () {
     function _fnAttachAutoDismissListeners() {
         if (_fnAutoDismissHandler) return;
         _fnAutoDismissHandler = function () { fnDismissAllPicklists(); };
-        window.addEventListener(
-            "scroll", _fnAutoDismissHandler, true);
-        window.addEventListener("resize", _fnAutoDismissHandler);
+        /* Armed one frame LATE on purpose. The scroll listener is
+           capture-phase, so it hears scrolls from every container --
+           and the click that opens the menu can land with a scroll
+           event still in flight from bringing the control into view.
+           Attached synchronously, that leftover scroll dismissed the
+           menu in the same tick it opened: the researcher saw the
+           badge flash a menu closed, measured on the Project block's
+           badges, which sit at the bottom of a long page. Detach can
+           run before the frame fires; the null check honours it. */
+        var fnArmed = _fnAutoDismissHandler;
+        window.requestAnimationFrame(function () {
+            if (_fnAutoDismissHandler !== fnArmed) return;
+            window.addEventListener(
+                "scroll", _fnAutoDismissHandler, true);
+            window.addEventListener("resize", _fnAutoDismissHandler);
+        });
     }
 
     function _fnDetachAutoDismissListeners() {

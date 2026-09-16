@@ -665,6 +665,23 @@ var VaibifyWorkflowRequirements = (function () {
     }
 
 
+    /* Render-time context: the reason the row being rendered must
+       wait, or "" when it need not. Set around ONE call --
+       `dictRow.fsDetail()` in _fsRenderRequirementRow -- because the
+       alternative is threading a parameter through every row's detail
+       closure to reach the handful that draw a button, and every one
+       of those closures would then carry a concern that is not its
+       own. Renders here are synchronous, so the value cannot outlive
+       the row it describes. */
+    var _sBlockedActionReason = "";
+
+    /* {sRowKey: sReason} from the poll's dictBlockedRows: every
+       endgame row whose action is premature right now. Empty below
+       Level 2, where a row's Level 2 actions are the remedy and must
+       stay live -- the backend enforces that, and this map only ever
+       echoes it. */
+    var _dictBlockedRowReasons = {};
+
     function _fsRenderActionButton(
         sAction, sArg, sLabel, bDestructive, bCaution,
     ) {
@@ -675,10 +692,22 @@ var VaibifyWorkflowRequirements = (function () {
         // discards work does not look like the one beside it that
         // records work. Both still confirm before acting; this is the
         // signal available BEFORE the click.
+        // DISABLED, not merely dimmed. An action the ordering says
+        // must wait is one whose effect the researcher would have to
+        // undo -- publishing an unproven envelope into an immutable
+        // Zenodo version is the standing example -- and a control
+        // that looks unavailable and still fires is worse than one
+        // that looks available. The reason rides the title, because a
+        // greyed button with no explanation is a dead end
+        // (researcher-requested, 2026-09-16).
+        var bBlocked = Boolean(_sBlockedActionReason);
         return '<div class="requirement-row-actions">' +
             '<button type="button" class="btn wf-action-btn' +
             (bDestructive ? ' wf-action-danger' : '') +
-            (bCaution ? ' wf-action-caution' : '') + '" ' +
+            (bCaution ? ' wf-action-caution' : '') +
+            (bBlocked ? ' wf-action-blocked' : '') + '" ' +
+            (bBlocked ? 'disabled title="' +
+                fnEscapeHtml(_sBlockedActionReason) + '" ' : '') +
             'data-wf-action="' + fnEscapeHtml(sAction) + '" ' +
             'data-wf-arg="' + fnEscapeHtml(sArg || "") + '">' +
             fnEscapeHtml(sLabel) + '</button></div>';
@@ -831,7 +860,8 @@ var VaibifyWorkflowRequirements = (function () {
         return Object.keys(_DICT_ENVELOPE_ARTIFACT_LABELS).map(
             function (sKey) {
                 return _fdictArtifactRow(
-                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency);
+                    sKey, dictArtifacts[sKey] || {}, dictImageCurrency,
+                    dictDetail);
             });
     }
 
@@ -898,6 +928,12 @@ var VaibifyWorkflowRequirements = (function () {
             dictReasonByLevel[3] = listIssues[0] + " (and " +
                 (listIssues.length - 1) + " more difference" +
                 (listIssues.length > 2 ? "s" : "") + ")";
+        } else if (_fbIsSandboxDeposit(dictArchive.sPermanence)) {
+            /* LAST, so a divergence keeps the reason: a deposit that
+               fails its comparison is red for that, and the sandbox
+               is why an otherwise-matching one is not green. */
+            dictReasonByLevel[3] = "this deposit is on Zenodo's " +
+                "sandbox, which promises to keep nothing";
         }
         return dictReasonByLevel;
     }
@@ -937,10 +973,20 @@ var VaibifyWorkflowRequirements = (function () {
         dictStateByLevel[2] = dictArchive.bAnswered === true
             ? "attained"
             : (dictArchive.bAnswered === false ? "none" : "unknown");
+        /* Permanence is part of the Level 3 answer for THIS archive,
+           and for this archive only. It used to ride on the Rebuild
+           attestation row through the combined sandbox gate, where
+           neither Make Permanent button lives -- so a sandbox project
+           deposit reddened the attestation and a sandbox IMAGE
+           deposit left this row green. The mark is downgraded rather
+           than reddened: the bytes really are deposited and really do
+           match; what is missing is the promise to keep them, which
+           is partially met, not failed. */
+        var sMark = _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown";
+        var bSandbox = _fbIsSandboxDeposit(dictArchive.sPermanence);
+        if (bSandbox && sMark === "green") sMark = "orange";
         dictStateByLevel[3] =
-            _DICT_MARK_TO_LEVEL_STATE[
-                _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown"] ||
-            "unknown";
+            _DICT_MARK_TO_LEVEL_STATE[sMark] || "unknown";
         return [{
             sKey: "environmentArchive",
             iLevel: 3,
@@ -955,9 +1001,8 @@ var VaibifyWorkflowRequirements = (function () {
                 dictArchive, sState),
             sTitle: _DICT_ARCHIVE_STATE_TITLES[sState] ||
                 "Environment archive",
-            sWarning: _fbIsSandboxDeposit(dictArchive.sPermanence)
-                ? S_SANDBOX_WARNING_TOOLTIP : "",
-            sState: _DICT_ARCHIVE_STATE_MARKS[sState] || "unknown",
+            sWarning: bSandbox ? S_SANDBOX_WARNING_TOOLTIP : "",
+            sState: sMark,
             fsDetail: function () {
                 return _fsRenderEnvironmentArchiveDetail(dictArchive);
             }}];
@@ -1188,66 +1233,6 @@ var VaibifyWorkflowRequirements = (function () {
                 "Deposit this image in Zenodo");
     }
 
-    function _flistEnvelopeMirrorRows(dictDetail, dictChecks) {
-        /* The Level 3 published-copy rows, in their own section so
-           they read as the parallel of the Level 2 sync rows rather
-           than as sub-items of one. Zenodo's twin joined on
-           2026-08-26, reversing a same-day GitHub-only ruling:
-           Level 3 claims a third party can re-fetch and re-execute,
-           and GitHub is not an archive — an envelope that lives only
-           there gives the claim the lifetime of a mutable host. */
-        var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
-        return [
-            _fdictEnvelopeRemoteRow(
-                "envelopeMirror", "GitHub mirror", "github",
-                "sGithub", listEnvelope,
-                dictDetail.bEnvelopeInGithubMirror === true,
-                _fdictCheckForService(dictChecks, "github"), null,
-                'The published reproduce script, manifest, ' +
-                'dependency lock, environment snapshot and ' +
-                'Dockerfile match the copies in this repository.',
-                'One of the envelope files differs from the copy on ' +
-                'GitHub, or has not been compared with it. A third ' +
-                'party reproducing from the published repository ' +
-                'would not be running what you ran. Commit and push ' +
-                'the current envelope, then verify.'),
-            _fdictEnvelopeRemoteRow(
-                "envelopeArchive", "Zenodo archive", "zenodo",
-                "sZenodo", listEnvelope,
-                dictDetail.bEnvelopeInZenodoArchive === true,
-                _fdictCheckForService(dictChecks, "zenodo"),
-                _fdictProjectArchiveInfo(dictDetail),
-                'The envelope files are in the Zenodo archive under ' +
-                'a DOI. Zenodo versions are immutable, so this row ' +
-                'goes red after any envelope change and comes back ' +
-                'at your next published version — Level 3 describes ' +
-                'a published release, not the working tree.',
-                'One of the envelope files is not in the Zenodo ' +
-                'archive, differs from the archived copy, or has ' +
-                'not been compared with it. The DOI a reader ' +
-                'resolves in ten years must carry what they need to ' +
-                're-run this project. Publish a new deposit version ' +
-                'containing the envelope (or declare the Zenodo ' +
-                'record that already holds it), then verify.' +
-                // The ORDER, said here because this is the row that
-                // costs a DOI and the one a researcher reaches it
-                // from. Zenodo versions are immutable, so a deposit
-                // made at Level 2 cannot gain the attestation later
-                // -- and the attestation does not exist until the
-                // rerun has run. Getting this wrong costs a
-                // published version, which is the one mistake on
-                // this ladder that cannot be undone.
-                ' Order matters: deposit the environment image and ' +
-                'run Verify Level 3 FIRST, so the attestation exists ' +
-                'and is committed, then publish the Zenodo version ' +
-                'that carries the envelope and the attestation ' +
-                'together. Later re-verifies that change only the ' +
-                'timestamp do not need another version \u2014 the ' +
-                'archived attestation is checked against the ' +
-                'archived manifest, not against your local file.'),
-        ];
-    }
-
     function _fdictEnvelopeRemoteRowHealth(
         bMatched, sBadgeKey, listEnvelope,
     ) {
@@ -1316,6 +1301,15 @@ var VaibifyWorkflowRequirements = (function () {
             sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
             sCrossInstance:
                 dictDetail.sZenodoCrossInstanceRefusal || "",
+            /* The gate's own tri-state verdict, not a re-derivation:
+               "the archive carries an attestation covering its own
+               manifest" is a Level 3 conjunct of THIS row, and the
+               row that renders a gate must render the gate. Absent
+               (an older payload) reads as not-compared, which is
+               orange -- never red. */
+            bCoversArchivedManifest:
+                (dictDetail.dictArchivedAttestation || {})
+                    .bCoversArchivedManifest,
         };
     }
 
@@ -1348,111 +1342,269 @@ var VaibifyWorkflowRequirements = (function () {
             '</label>';
     }
 
-    function _fdictEnvelopeRemoteRow(
-        sKey, sTitle, sService, sBadgeKey, listEnvelope, bMatched,
-        dictCheck, dictArchiveInfo, sMatchedNote, sDivergedNote,
+    function _fsApplyArchiveConjuncts(sState, dictArchiveInfo) {
+        /* The Zenodo row asks THREE things of one immutable version,
+           and all three have the same remedy: publish a new Zenodo
+           version carrying the envelope and the attestation together.
+           Judged on the envelope alone, this row went green while
+           Level 3 failed on the archived attestation -- and with no
+           unsatisfied publication row anywhere, the "Do this next"
+           arrow fell silent at exactly the moment it was needed.
+
+           Applies to the archive row only: the GitHub row passes no
+           archive info, and GitHub is not an archive, so neither
+           permanence nor the archived attestation is its question. */
+        if (!dictArchiveInfo || sState !== "green") return sState;
+        if (_fbIsSandboxDeposit(dictArchiveInfo.sPermanence)) {
+            return "orange";
+        }
+        /* THREE-state, and the third must never be red. `false` is
+           "a verify compared them and the attestation does not cover
+           the archived manifest"; `null` is "no verify has looked",
+           which is a claim nobody earned. */
+        if (dictArchiveInfo.bCoversArchivedManifest === false) {
+            return "red";
+        }
+        if (dictArchiveInfo.bCoversArchivedManifest !== true) {
+            return "orange";
+        }
+        return "green";
+    }
+
+    function _fsRenderArchiveConjunctNote(
+        bEnvelopeAgrees, sState, dictArchiveInfo
     ) {
-        var dictHealth = _fdictEnvelopeRemoteRowHealth(
-            bMatched, sBadgeKey, listEnvelope);
-        var sState = dictHealth.sState;
+        /* Says WHICH of the three is missing, and ONLY when the
+           envelope itself agrees. Without that guard a row whose
+           files genuinely differ would carry this note as well, so
+           the researcher reads two complaints for one problem and
+           the second one is about a check the first makes moot. */
+        if (!dictArchiveInfo || !bEnvelopeAgrees) return "";
+        if (sState === "green") return "";
+        if (_fbIsSandboxDeposit(dictArchiveInfo.sPermanence)) return "";
+        var bCovers = dictArchiveInfo.bCoversArchivedManifest;
+        if (bCovers === false) {
+            return '<div class="detail-note">The archived rebuild ' +
+                'attestation does not cover the manifest in the same ' +
+                'archive, so the published version does not show ' +
+                'that this project re-runs. Verify Level 3, commit ' +
+                'the attestation, then publish a Zenodo version ' +
+                'carrying both.</div>';
+        }
+        if (bCovers !== true) {
+            return '<div class="detail-note">No verify has checked ' +
+                'whether the archived rebuild attestation covers the ' +
+                'archived manifest, so vaibify cannot say. Nothing ' +
+                'here is known to be missing. Run Verify now.</div>';
+        }
+        return "";
+    }
+
+    function _fsRenderEnvelopeLevelThreeHalf(
+        sBadgeKey, listEnvelope, bMatched, dictHealth, sState,
+        dictArchiveInfo, sMatchedNote, sDivergedNote,
+    ) {
+        /* The Level 3 half of a merged copies row: the envelope
+           files against THIS remote, under their own heading so the
+           researcher scanning for unpublished DATA never reads an
+           envelope file as the answer. The row shell, the check
+           line and the actions belong to the merged row. */
         var dictArchive = dictArchiveInfo || {};
+        var sFiles = "";
+        for (var i = 0; i < listEnvelope.length; i++) {
+            sFiles += _fsRenderFileRowWithBadges(
+                listEnvelope[i], [sBadgeKey]);
+        }
+        if (!sFiles) {
+            sFiles = '<div class="envelope-empty-note">' +
+                'No envelope files exist yet.</div>';
+        }
+        // Four notes for four situations. Telling a researcher
+        // a file "differs" when nothing has compared it sends
+        // them to push a file that may already be identical;
+        // the unchecked case names the verify instead, and the
+        // MIXED case says how much of the requirement still
+        // stands rather than reading as total failure.
+        var sNote = sDivergedNote;
+        if (bMatched) {
+            sNote = sMatchedNote;
+        } else if (dictHealth.listNeedsPush.length > 0 &&
+                dictHealth.iSynced > 0) {
+            sNote = dictHealth.listNeedsPush.length +
+                ' of these files differ from (or are missing ' +
+                'from) the published copies; the rest match. ' +
+                'Publish the changed files, then verify.';
+        } else if (sState === "orange") {
+            sNote = 'No verify has compared every envelope ' +
+                'file against this remote yet, so vaibify ' +
+                'cannot say whether they match. Nothing here ' +
+                'is known to differ. Run Verify now.';
+        }
+        return '<div class="sync-level-three-envelope">' +
+            '<div class="sync-scope-title">Reproducibility ' +
+            'envelope (Level 3)</div>' +
+            sFiles + '<div class="detail-note">' + sNote +
+            '</div>' +
+            _fsRenderArchiveConjunctNote(
+                dictHealth.sState === "green", sState,
+                dictArchiveInfo) +
+            _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
+            _fsRenderCrossInstanceRemedy(
+                dictArchive.sCrossInstance) +
+            _fsRenderPermanenceNote(
+                dictArchive.sPermanence,
+                "This project's Zenodo deposit",
+                "promote-project-deposit") + '</div>';
+    }
+
+    function _flistPathsDriftedSinceTheVerify(
+        sBadgeKey, listPaths,
+    ) {
+        /* Paths whose LIVE badge says "drifted" for this remote.
+           Only "drifted": it is the one badge state that positively
+           contradicts a recorded agreement. "unknown"/"not checked"
+           contradict nothing (unchecked is never red), and "none"
+           means different things per service. */
+        return (listPaths || []).filter(function (sPath) {
+            var dictBadges = VaibifyGitBadges.fdictGetBadgesForFile(
+                sPath, "") || {};
+            return dictBadges[sBadgeKey] === "drifted";
+        });
+    }
+
+    function _fsDescribeStaleAgreement(iDriftedCount, sService) {
+        /* The check stays -- a completed verify really did match --
+           and this names what the check is silent about. The remedy
+           differs per service, so the sentence does too. */
+        var sRemedy = sService === "github"
+            ? "Push, then verify."
+            : "It re-agrees at your next published version.";
+        return iDriftedCount + " file" +
+            (iDriftedCount === 1 ? " has" : "s have") +
+            " changed locally since the verify this \u2713 reports. " +
+            sRemedy;
+    }
+
+    function _fdictMergedRemoteRow(dictArgs) {
+        /* ONE row per remote, one cell per level (researcher's
+           ruling, 2026-09-16, superseding the separate "Published
+           envelope" section of 2026-08-26). The two sections shared
+           their row titles, so the green Level 2 banner sat over red
+           envelope badges with the explanation in a section the
+           researcher had no reason to open. The Level 2 and Level 3
+           verdicts stay separate CELLS backed by separate
+           derivations -- merging the rows must never merge the
+           levels. The Level 3 mark keeps the tri-state vocabulary:
+           partial and unchecked map to "partial"/"unknown", never
+           red -- red stays "checked and failing". */
+        var dictHealth = _fdictEnvelopeRemoteRowHealth(
+            dictArgs.bMatched, dictArgs.sBadgeKey,
+            dictArgs.listEnvelope);
+        var sLevelThreeMark = _fsApplyArchiveConjuncts(
+            dictHealth.sState, dictArgs.dictArchiveInfo);
+        var dictStateByLevel = {};
+        dictStateByLevel[2] = _DICT_MARK_TO_LEVEL_STATE[
+            _fsSyncRowState(dictArgs.dictSync)] || "unknown";
+        dictStateByLevel[3] = _DICT_MARK_TO_LEVEL_STATE[
+            sLevelThreeMark] || "unknown";
+        var dictArchive = dictArgs.dictArchiveInfo || {};
+        /* A green cell standing on a cached verify, over live badges
+           that contradict it, misread twice in one session (L2
+           project.json after a directory align; the Zenodo twin of
+           the same file). The verdict is the verify's to change --
+           only a comparison moves a cell -- but the SILENCE is not:
+           the row wears the drift where the check is. */
+        var listDriftedSince = [];
+        if (dictStateByLevel[2] === "attained" ||
+                dictStateByLevel[3] === "attained") {
+            listDriftedSince = _flistPathsDriftedSinceTheVerify(
+                dictArgs.sBadgeKey,
+                _flistSelectRemoteFiles(
+                    dictArgs.sBadgeKey, dictArgs.listExcludePaths,
+                ).concat(dictArgs.listEnvelope || []));
+        }
+        var listWarnings = [];
+        if (_fbIsSandboxDeposit(dictArchive.sPermanence)) {
+            listWarnings.push(S_SANDBOX_WARNING_TOOLTIP);
+        }
+        if (listDriftedSince.length > 0) {
+            listWarnings.push(_fsDescribeStaleAgreement(
+                listDriftedSince.length, dictArgs.sKey));
+        }
         return {
-            sKey: sKey, iLevel: 3,
-            sTitle: sTitle,
-            sState: sState,
-            sWarning: _fbIsSandboxDeposit(dictArchive.sPermanence)
-                ? S_SANDBOX_WARNING_TOOLTIP : "",
-            // One verify answers both scopes, so the Level 3 row
-            // pulses on the same service's check as its Level 2 twin.
-            bChecking: _fbCheckIsRunning(dictCheck),
+            sKey: dictArgs.sKey, sTitle: dictArgs.sTitle,
+            dictStateByLevel: dictStateByLevel,
+            sWarning: listWarnings.join(" \u2014 "),
+            // One verify answers both scopes in a single pass, so
+            // one check pulses both cells: both really are being
+            // re-asked.
+            bChecking: _fbCheckIsRunning(dictArgs.dictCheck),
             fsDetail: function () {
-                // The per-file rows the Level 2 sync rows no longer
-                // carry. Without them the split is invisible: the
-                // envelope files vanish from one list and appear in
-                // none, which reads as vaibify having stopped
-                // checking them.
-                var sFiles = "";
-                for (var i = 0; i < listEnvelope.length; i++) {
-                    sFiles += _fsRenderFileRowWithBadges(
-                        listEnvelope[i], [sBadgeKey]);
-                }
-                if (!sFiles) {
-                    sFiles = '<div class="envelope-empty-note">' +
-                        'No envelope files exist yet.</div>';
-                }
-                // Its own Verify-now, not a pointer at the Level 2
-                // row's: one verify compares both scopes in a single
-                // pass, so the action that resolves this row belongs
-                // on it. Sending the researcher to another section to
-                // press a button is how a row becomes a dead end.
-                /* The push button appears only on GitHub — a Zenodo
-                   "sync" is a new immutable deposit version, its own
-                   deliberate act — and only over files a push would
-                   actually fix: proven diverged or proven absent.
-                   Merely-unproven files want a verify, and pushing
-                   them would be acting on a claim nobody made
-                   (researcher-requested, 2026-09-02). */
-                var sPush = "";
-                if (sService === "github" &&
-                        dictHealth.listNeedsPush.length > 0) {
-                    sPush = '<button type="button" class="btn ' +
-                        'wf-push-envelope" data-service="github" ' +
-                        'data-paths="' + fnEscapeHtml(
-                            encodeURIComponent(JSON.stringify(
-                                dictHealth.listNeedsPush))) + '">' +
-                        'Push changed files to GitHub</button> ';
-                }
-                var sVerify = '<div class="requirement-row-actions">' +
-                    sPush +
-                    '<button type="button" class="btn ' +
-                    'wf-verify-remote" data-service="' +
-                    fnEscapeHtml(sService) + '">' +
-                    'Verify now</button></div>';
-                // Four notes for four situations. Telling a researcher
-                // a file "differs" when nothing has compared it sends
-                // them to push a file that may already be identical;
-                // the unchecked case names the verify instead, and the
-                // MIXED case says how much of the requirement still
-                // stands rather than reading as total failure.
-                var sNote = sDivergedNote;
-                if (bMatched) {
-                    sNote = sMatchedNote;
-                } else if (dictHealth.listNeedsPush.length > 0 &&
-                        dictHealth.iSynced > 0) {
-                    sNote = dictHealth.listNeedsPush.length +
-                        ' of these files differ from (or are missing ' +
-                        'from) the published copies; the rest match. ' +
-                        'Publish the changed files, then verify.';
-                } else if (sState === "orange") {
-                    sNote = 'No verify has compared every envelope ' +
-                        'file against this remote yet, so vaibify ' +
-                        'cannot say whether they match. Nothing here ' +
-                        'is known to differ. Run Verify now.';
-                }
-                var sCheck = _fsDescribeCheck(dictCheck);
-                /* Wrapped like every other row's detail: the
-                   requirement-row-detail class carries the indent, and
-                   these two rows were the only detail renderers that
-                   returned bare content — their body sat fully
-                   left-aligned under the banner while Published
-                   copies indented (researcher-reported, 2026-09-02,
-                   twice: first read as "a tab has been lost"). */
-                return '<div class="requirement-row-detail">' +
-                    (sCheck
-                        ? '<div class="requirement-row-check">' +
-                          fnEscapeHtml(sCheck) + '</div>'
-                        : '') +
-                    sFiles + '<div class="detail-note">' + sNote +
-                    '</div>' +
-                    _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
-                    _fsRenderCrossInstanceRemedy(
-                        dictArchive.sCrossInstance) +
-                    _fsRenderPermanenceNote(
-                        dictArchive.sPermanence,
-                        "This project's Zenodo deposit",
-                        "promote-project-deposit") +
-                    sVerify + '</div>';
+                return _fsRenderMergedRemoteDetail(
+                    dictArgs, dictHealth, sLevelThreeMark);
             }};
+    }
+
+    function _fsRenderMergedRemoteDetail(
+        dictArgs, dictHealth, sLevelThreeMark,
+    ) {
+        /* The push button appears only on GitHub -- a Zenodo "sync"
+           is a new immutable deposit version, its own deliberate act
+           -- and only over files a push would actually fix: proven
+           diverged or proven absent. Merely-unproven files want a
+           verify, and pushing them would be acting on a claim nobody
+           made (researcher-requested, 2026-09-02). */
+        var sPush = "";
+        if (dictArgs.sKey === "github" &&
+                dictHealth.listNeedsPush.length > 0) {
+            sPush = '<button type="button" class="btn ' +
+                'wf-push-envelope" data-service="github" ' +
+                'data-paths="' + fnEscapeHtml(
+                    encodeURIComponent(JSON.stringify(
+                        dictHealth.listNeedsPush))) + '">' +
+                'Push changed files to GitHub</button> ';
+        }
+        var sActions = '<div class="requirement-row-actions">' +
+            sPush +
+            '<button type="button" class="btn wf-verify-remote" ' +
+            'data-service="' + fnEscapeHtml(dictArgs.sKey) + '">' +
+            'Verify now</button></div>';
+        var sCheck = _fsDescribeCheck(dictArgs.dictCheck);
+        var listDriftedSince = _flistPathsDriftedSinceTheVerify(
+            dictArgs.sBadgeKey,
+            _flistSelectRemoteFiles(
+                dictArgs.sBadgeKey, dictArgs.listExcludePaths,
+            ).concat(dictArgs.listEnvelope || []));
+        var sStaleNote = listDriftedSince.length === 0 ? "" :
+            '<div class="detail-note sync-stale-note">\u26a0 ' +
+            fnEscapeHtml(_fsDescribeStaleAgreement(
+                listDriftedSince.length, dictArgs.sKey)) + '</div>';
+        return '<div class="requirement-row-detail">' +
+            (sCheck
+                ? '<div class="requirement-row-check">' +
+                  fnEscapeHtml(sCheck) + '</div>'
+                : '') +
+            sStaleNote +
+            '<div class="sync-level-two-files">' +
+            '<div class="sync-scope-title">Published data ' +
+            '(Level 2)</div>' +
+            '<div class="requirement-row-status">' +
+            fnEscapeHtml(_fsDescribeSyncState(dictArgs.dictSync)) +
+            '</div>' +
+            _fsRenderRemoteFileRows(
+                dictArgs.sBadgeKey, dictArgs.listExcludePaths,
+                dictArgs.setToggled) +
+            '</div>' +
+            _fsRenderEnvelopeLevelThreeHalf(
+                dictArgs.sBadgeKey, dictArgs.listEnvelope,
+                dictArgs.bMatched, dictHealth, sLevelThreeMark,
+                dictArgs.dictArchiveInfo, dictArgs.sMatchedNote,
+                dictArgs.sDivergedNote) +
+            '<div class="requirement-row-howto">' +
+            fnEscapeHtml(dictArgs.sHowto) + ' ' +
+            '<a href="#" class="envelope-open-repos">' +
+            'Open the Repos panel</a></div>' +
+            sActions + (dictArgs.sInformationalHtml || '') + '</div>';
     }
 
     function _fsRenderDeterminismFooter(dictDetail) {
@@ -1580,23 +1732,166 @@ var VaibifyWorkflowRequirements = (function () {
             }};
     }
 
+    function _fsRenderInformationalFileBlock(
+        listNotRequired, sBadgeKey,
+    ) {
+        /* The compared-not-required files, on their own and SAID to
+           be informational. They are compared -- their badges are
+           real -- but no criterion requires them, so leaving them in
+           the Level 2 list put a red badge under a green cell with
+           nothing explaining the pair. Both facts are stated where
+           the badge is. */
+        if (!listNotRequired || !listNotRequired.length) return "";
+        /* "never a requirement" overclaimed: it is true of THIS
+           comparison and false of the attestation, whose Level 3
+           criterion is judged inside the Zenodo archive -- and a
+           researcher read the old title as "the attestation is not
+           an L3 blocker" within a day (2026-09-16). The title now
+           names the comparison, and the note says where the real
+           requirement lives. */
+        var sHtml = '<div class="informational-files-block">' +
+            '<div class="informational-files-title">' +
+            'Informational — this comparison gates nothing</div>';
+        for (var i = 0; i < listNotRequired.length; i++) {
+            sHtml += _fsRenderFileRowWithBadges(
+                listNotRequired[i], [sBadgeKey]);
+        }
+        return sHtml + '<div class="informational-files-note">' +
+            'These badges compare your local copies with this ' +
+            'remote, and a difference here never lowers a PROOF ' +
+            'level; they re-sync with the next push or deposit ' +
+            'version. The rebuild attestation IS a Level 3 ' +
+            'requirement — judged inside the Zenodo archive (does ' +
+            'the archived attestation cover the archived manifest), ' +
+            "on that row's Level 3 cell, not by this comparison. " +
+            'The AI-provenance stamp gates nothing anywhere.' +
+            '</div></div>';
+    }
+
+    /* The ordering graph names the endgame's publication criteria
+       by their own keys; the merged rows answer to their sync
+       identity. ONE map, so the arrow target, the blocked-map
+       lookup, the DOM anchor and the expansion key cannot disagree
+       about where a criterion lives. */
+    var _DICT_ORDERING_ROW_HOMES = {
+        envelopeMirror: "github",
+        envelopeArchive: "zenodo",
+    };
+
+    function _fdictHomeOrderingTarget(dictNextStep) {
+        if (!dictNextStep || !dictNextStep.sRowKey) {
+            return dictNextStep || null;
+        }
+        return {
+            sRowKey: _DICT_ORDERING_ROW_HOMES[dictNextStep.sRowKey] ||
+                dictNextStep.sRowKey,
+            sReason: dictNextStep.sReason || "",
+            listBlockedRowKeys:
+                (dictNextStep.listBlockedRowKeys || []).map(
+                    function (sRowKey) {
+                        return _DICT_ORDERING_ROW_HOMES[sRowKey] ||
+                            sRowKey;
+                    }),
+        };
+    }
+
+    function _fdictHomeBlockedRows(dictBlockedRows) {
+        var dictHomed = {};
+        Object.keys(dictBlockedRows || {}).forEach(function (sRowKey) {
+            dictHomed[_DICT_ORDERING_ROW_HOMES[sRowKey] || sRowKey] =
+                dictBlockedRows[sRowKey];
+        });
+        return dictHomed;
+    }
+
     function _flistPublishedCopiesRows(
         dictDetail, dictChecks, setToggled,
     ) {
         var dictSyncs = dictDetail.dictRemoteSyncs || {};
         var listEnvelope = dictDetail.listLevel3EnvelopePaths || [];
+        var listNotRequired =
+            dictDetail.listComparedNotRequiredPaths || [];
+        // Excluded from the Level 2 file lists for the same reason
+        // the envelope is: a researcher scanning for why their DATA
+        // is unpublished must not find a file no criterion requires
+        // among the answers. The envelope renders in the row's own
+        // Level 3 half; the not-required files in the informational
+        // block.
+        var listExclude = listEnvelope.concat(listNotRequired);
         return [
-            _fdictSyncRow("GitHub mirror", "github", dictSyncs.github,
-                "sGithub", "Push and re-verify from the Repos panel.",
-                "", listEnvelope,
-                _fdictCheckForService(dictChecks, "github"),
-                setToggled),
-            _fdictSyncRow("Zenodo deposit", "zenodo", dictSyncs.zenodo,
-                "sZenodo",
-                "Publish or re-verify from the Repos panel.",
-                "", listEnvelope,
-                _fdictCheckForService(dictChecks, "zenodo"),
-                setToggled),
+            _fdictMergedRemoteRow({
+                sKey: "github", sTitle: "GitHub mirror",
+                sBadgeKey: "sGithub",
+                dictSync: dictSyncs.github,
+                sHowto: "Push and re-verify from the Repos panel.",
+                sInformationalHtml: _fsRenderInformationalFileBlock(
+                    listNotRequired, "sGithub"),
+                listEnvelope: listEnvelope,
+                listExcludePaths: listExclude,
+                dictCheck: _fdictCheckForService(dictChecks, "github"),
+                dictArchiveInfo: null,
+                bMatched: dictDetail.bEnvelopeInGithubMirror === true,
+                setToggled: setToggled,
+                sMatchedNote:
+                    'The published reproduce script, manifest, ' +
+                    'dependency lock, environment snapshot and ' +
+                    'Dockerfile match the copies in this repository.',
+                sDivergedNote:
+                    'One of the envelope files differs from the copy ' +
+                    'on GitHub, or has not been compared with it. A ' +
+                    'third party reproducing from the published ' +
+                    'repository would not be running what you ran. ' +
+                    'Commit and push the current envelope, then ' +
+                    'verify.',
+            }),
+            _fdictMergedRemoteRow({
+                sKey: "zenodo", sTitle: "Zenodo archive",
+                sBadgeKey: "sZenodo",
+                dictSync: dictSyncs.zenodo,
+                sHowto: "Publish or re-verify from the Repos panel.",
+                sInformationalHtml: _fsRenderInformationalFileBlock(
+                    listNotRequired, "sZenodo"),
+                listEnvelope: listEnvelope,
+                listExcludePaths: listExclude,
+                dictCheck: _fdictCheckForService(dictChecks, "zenodo"),
+                dictArchiveInfo: _fdictProjectArchiveInfo(dictDetail),
+                bMatched: dictDetail.bEnvelopeInZenodoArchive === true,
+                setToggled: setToggled,
+                sMatchedNote:
+                    'The envelope files are in the Zenodo archive ' +
+                    'under a DOI. Zenodo versions are immutable, so ' +
+                    'this cell goes red after any envelope change ' +
+                    'and comes back at your next published version ' +
+                    '\u2014 Level 3 describes a published release, ' +
+                    'not the working tree.',
+                sDivergedNote:
+                    'One of the envelope files is not in the Zenodo ' +
+                    'archive, differs from the archived copy, or has ' +
+                    'not been compared with it. The DOI a reader ' +
+                    'resolves in ten years must carry what they need ' +
+                    'to re-run this project. Publish a new deposit ' +
+                    'version containing the envelope (or declare the ' +
+                    'Zenodo record that already holds it), then ' +
+                    'verify.' +
+                    // The ORDER, said here because this is the row
+                    // that costs a DOI and the one a researcher
+                    // reaches it from. Zenodo versions are immutable,
+                    // so a deposit made at Level 2 cannot gain the
+                    // attestation later -- and the attestation does
+                    // not exist until the rerun has run. Getting this
+                    // wrong costs a published version, which is the
+                    // one mistake on this ladder that cannot be
+                    // undone.
+                    ' Order matters: deposit the environment image ' +
+                    'and run Verify Level 3 FIRST, so the ' +
+                    'attestation exists and is committed, then ' +
+                    'publish the Zenodo version that carries the ' +
+                    'envelope and the attestation together. Later ' +
+                    're-verifies that change only the timestamp do ' +
+                    'not need another version \u2014 the archived ' +
+                    'attestation is checked against the archived ' +
+                    'manifest, not against your local file.',
+            }),
             _fdictOverleafRow(
                 dictDetail, dictSyncs, dictChecks, setToggled),
             _fdictArxivRow(
@@ -1958,22 +2253,19 @@ var VaibifyWorkflowRequirements = (function () {
         // colour is never the only signal. Do not "make these
         // consistent" in either direction.
         var bRunning = dictDetail.bRebuildAttestationRunning === true;
-        /* The rerun DID happen, and the row keeps saying so —
-           bRebuildAttestationCurrent stays honest. What a sandbox
-           deposit withholds is the CREDIT: the attestation cannot
-           carry a Level 3 claim while the archive it sits in promises
-           no preservation. Read from the gate's own verdict, never
-           re-derived: absent (an older hub) is TRUE, so a payload
-           that predates the criterion cannot silently redden a row. */
-        var dictPermanence = dictDetail.dictArchivePermanence || {};
-        var bNoSandbox = dictPermanence.bNoArchiveKnownSandbox !== false;
+        /* A CURRENT attestation, and nothing else. The combined
+           sandbox gate used to hang here: it classifies TWO deposits,
+           so a sandbox PROJECT deposit reddened this row -- whose
+           only button re-runs a verification that was never the
+           problem -- while a sandbox IMAGE deposit left the
+           Environment archive row green. Each archive now carries its
+           own permanence on its own row, beside its own Make
+           Permanent button. */
         return [
             {sKey: "rebuildAttestation", iLevel: 3,
              sTitle: "Rebuild attestation",
              sState: bRunning ? "running" : _fsLightStateFromBoolean(
-                 dictDetail.bRebuildAttestationCurrent === true &&
-                 bNoSandbox),
-             sWarning: bNoSandbox ? "" : S_SANDBOX_WARNING_TOOLTIP,
+                 dictDetail.bRebuildAttestationCurrent === true),
              bChecking: bRunning,
              fsDetail: function () {
                  /* "On file" earns a way to OPEN the file: the row
@@ -1991,7 +2283,7 @@ var VaibifyWorkflowRequirements = (function () {
                      fnEscapeHtml(_fsDescribeAttestation(
                          dictDetail, bRunning)) + '</div>' +
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
-                     _fsRenderAttestationPermanenceNote(dictPermanence) +
+                     _fsRenderNoVerdictNote(dictDetail) +
                      (bRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
                          "Verify Level 3 reproducibility")) +
@@ -2006,18 +2298,28 @@ var VaibifyWorkflowRequirements = (function () {
         ];
     }
 
-    function _fsRenderAttestationPermanenceNote(dictPermanence) {
-        /* Names WHICH archive, from the backend's own issue list.
-           The row never states the positive from this — a gate that
-           passes on "unknown" cannot license "both are permanent". */
-        var listIssues = dictPermanence.listPermanenceIssues || [];
-        if (!listIssues.length) return "";
-        return '<div class="permanence-warning">\u26a0 ' +
-            fnEscapeHtml(
-                "This attestation does not count while an archive is " +
-                "a sandbox deposit. " + listIssues.join(" ") +
-                " Use Make Permanent on the affected row.") +
-            '</div>';
+    function _fsRenderNoVerdictNote(dictDetail) {
+        /* WHY the last attempt established nothing. The backend has
+           recorded this all along and only the PROOF tab rendered it,
+           so a researcher working here watched the marker pulse, stop,
+           and say nothing -- twice, before they asked
+           (researcher-reported, 2026-09-15).
+
+           Deliberately NOT a failure: nothing was attested and the
+           Level 3 state is unchanged, so the row's own colour must not
+           move. This is the missing sentence, not a new verdict. */
+        var dictNoVerdict = dictDetail.dictLastNoVerdict || null;
+        if (!dictNoVerdict) return "";
+        var listReasons = dictNoVerdict.listReasons || [];
+        if (!listReasons.length) return "";
+        return '<div class="attestation-no-verdict">' +
+            '<strong>' + fnEscapeHtml(
+                "The last attempt reached no verdict, so nothing was "
+                + "attested and your Level 3 status is unchanged.") +
+            '</strong><ul>' +
+            listReasons.map(function (sReason) {
+                return "<li>" + fnEscapeHtml(sReason) + "</li>";
+            }).join("") + '</ul></div>';
     }
 
     /* GitHub's mark, inline so the nudge needs no network and no
@@ -2113,7 +2415,8 @@ var VaibifyWorkflowRequirements = (function () {
         if (bRunning) {
             return "Re-running this workflow now, in a throwaway copy " +
                 "of the project. This takes as long as the workflow " +
-                "itself; the verdict replaces this line when it lands.";
+                "itself; the Level 3 lights will pulse until the " +
+                "pipeline run is complete.";
         }
         if (dictDetail.bRebuildAttestationCurrent === true) {
             return "A current rebuild attestation is on file.";
@@ -2181,7 +2484,8 @@ var VaibifyWorkflowRequirements = (function () {
         return '<div class="attestation-failure">' +
             _fsRenderImageGapNote(dictLast.dictRerunFailure) +
             (sReasons ? '<ul>' + sReasons + '</ul>' : '') +
-            _fsRenderFailingStepOutput(dictLast.dictRerunFailure) +
+            _fsRenderFailingStepOutput(
+                dictLast.dictRerunFailure, listReasons.length) +
             '</div>';
     }
 
@@ -2202,7 +2506,7 @@ var VaibifyWorkflowRequirements = (function () {
             '<div>' + fnEscapeHtml(sNote) + '</div></div>';
     }
 
-    function _fsRenderFailingStepOutput(dictFailure) {
+    function _fsRenderFailingStepOutput(dictFailure, iDivergedCount) {
         // Three shapes, three different things to say. null means the
         // record predates capture; an empty object means capture ran
         // and nothing reported a cause; a populated one has the
@@ -2215,11 +2519,27 @@ var VaibifyWorkflowRequirements = (function () {
                 'to collect it.</div>';
         }
         if (!dictFailure.sKind) {
+            /* An EMPTY capture record means "no step reported a
+               failure", which is the normal and complete state for a
+               HASH DIVERGENCE: every step ran and exited cleanly, and
+               what disagrees is the file list above. Reading it as
+               "cause unknown" told a researcher to report a defect
+               while the diagnosis sat two lines higher on the same
+               screen (researcher-reported, 2026-09-16). It is only a
+               mystery when there is nothing listed either. */
+            if (iDivergedCount) {
+                return '<div class="attestation-failure-note">' +
+                    'Every step ran and exited cleanly \u2014 no step ' +
+                    'failed. What differs is the file list above: the ' +
+                    'rebuild produced bytes that do not match the ' +
+                    'hashes MANIFEST.sha256 pins for those paths.' +
+                    '</div>';
+            }
             return '<div class="attestation-failure-note">' +
                 'Vaibify could not determine which part of the run ' +
                 'failed. Please report this \u2014 the run reported a ' +
-                'failure that named no step and no validation ' +
-                'error.</div>';
+                'failure that named no step, no diverged file and no ' +
+                'validation error.</div>';
         }
         var listTail = dictFailure.listOutputTail || [];
         if (!listTail.length) return "";
@@ -2288,7 +2608,8 @@ var VaibifyWorkflowRequirements = (function () {
     // Says, once per artifact row, what those inline badges are and
     // are NOT. The row's own light answers existence + the artifact's
     // Level 3 check; whether the published copies AGREE is a separate
-    // requirement, answered by the "Published envelope" section. A
+    // requirement, answered by the Level 3 cells of the Published
+    // copies rows (their own section until the 2026-09-16 merge). A
     // green row beside an orange octocat is both marks telling the
     // truth about different questions, but nothing on screen said so,
     // so the row read as claiming the badges were fine.
@@ -2297,8 +2618,8 @@ var VaibifyWorkflowRequirements = (function () {
         'matching, orange = not checked yet, red = differs. This ' +
         "row's own status does not depend on them — it asks whether " +
         'the file exists and meets its Level 3 check. Whether the ' +
-        'published copies agree is asked by the Published envelope ' +
-        'section below, and Level 3 needs both.';
+        'published copies agree is asked by the Level 3 cells of ' +
+        'the Published copies rows, and Level 3 needs both.';
 
     function _fsRenderFileRowWithBadges(sPath, aBadgeKeys) {
         // A clickable file row: the path opens in the figure/file
@@ -2378,6 +2699,46 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
+    function _fsRenderLockMismatchNote(sKey, dictDetail) {
+        /* Which packages the container does not satisfy. The row is
+           green through all of this and STAYS green (ruled
+           2026-09-15): its criterion is that the lock is present and
+           hashed, which is true, and a lock the container does not
+           satisfy is a fact about the CONTAINER. The warning lives
+           here, exactly as the image-currency warning does on the
+           Environment snapshot row.
+
+           The measurement is taken against THE CONTAINER YOU ARE
+           WORKING IN, never the pinned image -- asking the pin means
+           launching it, which is the cost this check exists to
+           avoid -- so the sentence says so. The verification grades
+           the pin, and only the pre-flight, which can see whether the
+           two are the same image, may refuse on that basis.
+
+           The cheap remedy comes FIRST and the expensive one carries
+           its cost, in the same words the shadow's refusal uses: one
+           cause must not produce two sets of instructions.
+
+           Unknown paints nothing: the poll may not exec, so on most
+           ticks nobody has asked, and a note built from an unasked
+           question would appear on every project between restarts. */
+        if (sKey !== "dependencyLock") return "";
+        var dictLock = dictDetail.dictLockSatisfaction || {};
+        if (dictLock.sState !== "mismatch") return "";
+        var listPaths = (dictLock.listMismatches || []).slice(0, 10);
+        return '<div class="lock-mismatch-warning">' +
+            'The container you are working in does not satisfy this ' +
+            'lock. If your envelope pins that image, a rerun refuses ' +
+            'before it starts. Usually the lock is simply older than ' +
+            'the image \u2014 Regenerate now rewrites it from what ' +
+            'the image actually has; rebuilding the image instead ' +
+            'also settles it, at the cost of downgrading the image ' +
+            'to match the older lock:' +
+            '<ul>' + listPaths.map(function (sLine) {
+                return "<li>" + fnEscapeHtml(sLine) + "</li>";
+            }).join("") + '</ul></div>';
+    }
+
     function _fsRenderImageCurrencyWarning(sKey, dictImageCurrency) {
         /* Rendered only on the Environment snapshot row, and only on a
            determined MISMATCH (bPinnedImageIsLive === false). null is
@@ -2408,7 +2769,9 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
-    function _fdictArtifactRow(sKey, dictArtifact, dictImageCurrency) {
+    function _fdictArtifactRow(
+        sKey, dictArtifact, dictImageCurrency, dictDetailForLock
+    ) {
         return {
             sKey: sKey,
             iLevel: 3,
@@ -2418,7 +2781,8 @@ var VaibifyWorkflowRequirements = (function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,
                     _DICT_ARTIFACT_HOWTO[sKey] || "",
-                    dictImageCurrency || {});
+                    dictImageCurrency || {}) +
+                    _fsRenderLockMismatchNote(sKey, dictDetailForLock);
             }};
     }
 
@@ -2459,8 +2823,30 @@ var VaibifyWorkflowRequirements = (function () {
         "not-applicable": "no requirement at this level",
     };
 
+    function _fdictCheckingLevelsOf(listRows) {
+        /* Which LEVELS a live check is actually assessing.
+
+           The pulse used to be a property of the group or the row,
+           so a Level 3 rerun pulsed the Level 1 and Level 2 cells
+           beside it -- dashes, for levels the rerun says nothing
+           about, animated as though they were being reconsidered
+           (researcher-reported, 2026-09-16). A cell pulses only when
+           the check under way claims that cell's level. */
+        var dictByLevel = {};
+        (listRows || []).forEach(function (dictRow) {
+            if (dictRow.bChecking !== true) return;
+            for (var iLevel = 1; iLevel <= 3; iLevel++) {
+                var bClaims = dictRow.dictStateByLevel
+                    ? dictRow.dictStateByLevel[iLevel] !== undefined
+                    : (dictRow.iLevel || 3) === iLevel;
+                if (bClaims) dictByLevel[iLevel] = true;
+            }
+        });
+        return dictByLevel;
+    }
+
     function _fsRenderLevelStrip(
-        dictStateByLevel, sTitle, dictReasonByLevel,
+        dictStateByLevel, sTitle, dictReasonByLevel, dictCheckingByLevel,
     ) {
         // Three cells (L1 | L2 | L3) behind a warning-column spacer,
         // so every strip in the column shares the banner's four-slot
@@ -2477,11 +2863,18 @@ var VaibifyWorkflowRequirements = (function () {
             // researcher to go hunting, which is the opposite of the
             // premise that a refusal names its cause.
             var sReason = (dictReasonByLevel || {})[iLevel] || "";
+            var bChecking = Boolean(
+                (dictCheckingByLevel || {})[iLevel],
+            );
             sHtml += fsBuildLevelCell(
                 sLevelState,
                 sTitle + " — Level " + iLevel + ": " +
-                _DICT_LEVEL_STATE_PHRASES[sLevelState] +
-                (sReason ? " — " + sReason : ""));
+                (bChecking
+                    ? "being checked now"
+                    : _DICT_LEVEL_STATE_PHRASES[sLevelState]) +
+                (sReason ? " — " + sReason : ""),
+                "",
+                bChecking ? ' data-checking="1"' : "");
         }
         return sHtml + '</span>';
     }
@@ -2525,7 +2918,7 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(dictNextStep.sRowKey) + '" title="' +
             fnEscapeHtml(dictNextStep.sReason || "") + '">' +
             '<span class="ordering-arrow-glyph">\u2192</span>' +
-            'Do this first</button>';
+            'Do this next</button>';
     }
 
     function _fbGroupHoldsTheNextRow(listRows, dictNextStep) {
@@ -2536,6 +2929,21 @@ var VaibifyWorkflowRequirements = (function () {
         return (listRows || []).some(function (dictRow) {
             return dictRow.sKey === dictNextStep.sRowKey;
         });
+    }
+
+    function _fsReasonThisRowMustWait(dictRow) {
+        /* "" unless the ordering names this row as blocked by
+           another. The ordering graph is the ONE authority on what
+           must come first -- re-deriving a second opinion here is the
+           duplication levelOrdering was extracted to end -- and it
+           speaks only inside the Level 3 endgame, so nothing greys
+           out while a lower rung is the real work. Read from the
+           blocked MAP rather than the arrow payload: the arrow goes
+           silent when no single root exists, and blocking must not
+           vanish with it (researcher-reported, 2026-09-16). */
+        var sReason = _dictBlockedRowReasons[dictRow.sKey] || "";
+        if (!sReason) return "";
+        return "Do this later \u2014 " + sReason;
     }
 
     function _fsRenderNextStepReason(dictRow, dictNextStep) {
@@ -2564,9 +2972,17 @@ var VaibifyWorkflowRequirements = (function () {
             _fdictSingleLevelState(dictRow);
         var bIsNext = Boolean(dictNextStep) &&
             dictNextStep.sRowKey === dictRow.sKey;
+        /* Blocking is a property of the ROW, carried as a class so
+           the click guard in scriptEventBindings and the CSS can
+           refuse EVERY control in the detail -- the per-button path
+           through _fsRenderActionButton missed the inline remote
+           controls (wf-push-envelope, wf-verify-remote), and
+           auditing renderers one by one is how they were missed. */
+        var sWaitReason = _fsReasonThisRowMustWait(dictRow);
         var sHtml = '<div class="requirement-row' +
             (bOpen ? ' expanded' : '') +
             (bIsNext ? ' requirement-row-next' : '') +
+            (sWaitReason ? ' requirement-row-blocked' : '') +
             (dictRow.bChecking === true
                 ? ' requirement-row-checking' : '') + '">' +
             '<div class="requirement-row-header" data-req="' +
@@ -2584,11 +3000,23 @@ var VaibifyWorkflowRequirements = (function () {
                 : '') + '</span>' +
             _fsRenderLevelStrip(
                 dictStateByLevel, dictRow.sTitle,
-                dictRow.dictReasonByLevel) +
+                dictRow.dictReasonByLevel,
+                _fdictCheckingLevelsOf([dictRow])) +
             '</div>' +
             _fsRenderNextStepReason(dictRow, dictNextStep);
         if (bOpen) {
+            _sBlockedActionReason = sWaitReason;
+            // VISIBLE, not only a disabled button's tooltip: a greyed
+            // control with no reachable explanation is a dead end on
+            // a touch screen, and the row is expanded precisely
+            // because the researcher wants to know what to do.
+            if (sWaitReason) {
+                sHtml += '<div class="requirement-row-wait-reason">' +
+                    '\u2298 ' + fnEscapeHtml(sWaitReason) +
+                    '</div>';
+            }
             sHtml += dictRow.fsDetail();
+            _sBlockedActionReason = "";
         }
         return sHtml + '</div>';
     }
@@ -2602,7 +3030,6 @@ var VaibifyWorkflowRequirements = (function () {
         // each row's level strip already shows which column lights, so
         // spelling it in the heading too is noise.
         publishedCopies: "Published copies",
-        publishedEnvelope: "Published envelope",
         ai: "AI",
         attestation: "Attestation",
         promotions: "Interrupted promotions",
@@ -2770,7 +3197,8 @@ var VaibifyWorkflowRequirements = (function () {
                     ? sGroupKey : "") +
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
-                _DICT_GROUP_TITLES[sGroupKey]) + '</div>';
+                _DICT_GROUP_TITLES[sGroupKey], null,
+                _fdictCheckingLevelsOf(listRows)) + '</div>';
         if (bOpen) {
             sHtml += '<div class="requirement-group-body">';
             for (var i = 0; i < listRows.length; i++) {
@@ -2813,7 +3241,35 @@ var VaibifyWorkflowRequirements = (function () {
             '</div></div>';
     }
 
+    function _fsRenderProjectBlockAwaitingAnswer(bOpen) {
+        /* The whole block waits, not the one row. The Dependency-lock
+           verdict feeds the level strip and the "Do this next" arrow
+           as well as its own row, so painting the rest and filling
+           that in later is the two-stage paint the ruling forbids --
+           the researcher acts on the interim, and has, twice
+           (2026-09-15). The banner itself stays so the layout does
+           not jump, WITHOUT its level strip: a strip rendered here
+           would be a verdict, and no verdict has been reached. */
+        var sHtml = '<div class="project-block-header">' +
+            '<span class="project-block-title" ' +
+            'title="Requirements that apply to the project as a ' +
+            'whole rather than to any single step.">' +
+            _fsExpandTriangle(bOpen) + 'Project' +
+            '</span></div>';
+        if (!bOpen) return sHtml;
+        return sHtml + '<div class="project-block-body">' +
+            '<div class="project-block-waiting">' +
+            'Asking the container what it has installed, so this ' +
+            'block can be right the first time. This may take a ' +
+            'moment.</div></div>';
+    }
+
     function fsRenderProjectBlock(dictContext) {
+        if (dictContext.bProjectBlockAwaitsFirstAnswer === true) {
+            return _fsRenderProjectBlockAwaitingAnswer(
+                dictContext.bProjectBlockCollapsed !== true,
+            );
+        }
         var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
         var dictChecks = dictContext.dictRemoteChecks || {};
         var setToggled = dictContext.setToggledFileGroups;
@@ -2829,22 +3285,20 @@ var VaibifyWorkflowRequirements = (function () {
                 _flistEnvironmentArchiveRows(dictDetail)), ""],
             ["determinism", _flistDeterminismRows(dictDetail),
              _fsRenderDeterminismFooter(dictDetail)],
-            // Two parallel published-copy sections, one per level.
-            // "Published copies" answers Level 2 — is the generating
-            // DATA published — and "Published envelope" answers Level
-            // 3 — is what a third party needs in order to RE-RUN it
-            // published. Same comparison, same network pass, disjoint
-            // files. They are separate sections rather than one list
-            // because a researcher scanning for why their data is
-            // unpublished must not find a reproduce.sh problem among
-            // the answers; that coupling is what the scope split
-            // removed from the gates, and a merged section would put
-            // it straight back on the screen.
+            // ONE published-copies section, one row per remote, one
+            // CELL per level (2026-09-16 merge, superseding the
+            // two-section layout of 2026-08-26): the Level 2 cell
+            // answers "is the generating DATA published", the Level
+            // 3 cell "is what a third party needs to RE-RUN it
+            // published". Same comparison, same network pass. The
+            // scope split survives INSIDE the row: the Level 2 file
+            // list and the Level 3 envelope half are disjoint, so a
+            // researcher scanning for why their data is unpublished
+            // still never finds a reproduce.sh problem among the
+            // answers.
             ["publishedCopies",
              _flistPublishedCopiesRows(
                  dictDetail, dictChecks, setToggled), ""],
-            ["publishedEnvelope",
-             _flistEnvelopeMirrorRows(dictDetail, dictChecks), ""],
             ["ai", _flistAiRows(dictDetail), ""],
             ["attestation",
              _flistAttestationRows(dictDetail, dictContext), ""],
@@ -2856,10 +3310,20 @@ var VaibifyWorkflowRequirements = (function () {
         /* The arrow lives on the SECTION banner, not this one
            (researcher's ruling, 2026-09-14): "Artifacts" is where the
            work is, and as the answer moves down the ladder the marker
-           travels with it to Published envelope and then Attestation.
+           travels with it to Published copies and then Attestation.
            On the project banner it would have been a fixed label
            about a moving target. */
-        var dictNextStep = dictDetail.dictNextOrderedStep || null;
+        var dictNextStep = _fdictHomeOrderingTarget(
+            dictDetail.dictNextOrderedStep || null);
+        /* The blocked map is the arrow's superset and outlives it:
+           the arrow goes silent when two independent chains remain,
+           but a row downstream of an unsatisfied prerequisite stays
+           premature. Render-time context for the same reason
+           _sBlockedActionReason is: threading it through every
+           section builder would put an ordering concern in closures
+           that have none. */
+        _dictBlockedRowReasons = _fdictHomeBlockedRows(
+            dictDetail.dictBlockedRows || {});
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
             'title="Requirements that apply to the project as a ' +

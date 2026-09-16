@@ -24,8 +24,14 @@ from vaibify.reproducibility import levelOrdering
 
 
 _T_ROWS = (
-    "manifest", "reproduceScript", "rebuildAttestation",
-    "envelopeMirror", "envelopeArchive",
+    # dependencyLock joined on 2026-09-15: a lock the pinned image
+    # does not satisfy makes the rerun refuse, and until it was a row
+    # here the arrow sent researchers at the attestation instead.
+    # environmentArchive joined the same day: its deposit re-pins
+    # MANIFEST.sha256, so it orders everything the manifest does.
+    "dependencyLock", "environmentArchive", "manifest",
+    "reproduceScript", "rebuildAttestation", "envelopeMirror",
+    "envelopeArchive",
 )
 
 
@@ -36,6 +42,24 @@ def sProjectRepo(tmp_path):
     return str(tmp_path)
 
 
+def _fnEnterTheEndgame(monkeypatch):
+    """Satisfy the ONE condition that gates the arrow before any edge.
+
+    The arrow is an endgame device: no Level 2 work outstanding. It
+    is asserted on its own in
+    ``test_the_arrow_is_silent_outside_the_endgame``; every ordering
+    test below is about what happens INSIDE the endgame and would
+    otherwise be asserting the gate over and over. Level 3 readiness
+    was a second condition for part of 2026-09-16 and is deliberately
+    NOT satisfied here -- it must never be consulted again, which
+    ``test_readiness_never_silences_the_arrow`` states directly.
+    """
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [],
+    )
+
+
 def _fdictNextFrom(dictSatisfied, monkeypatch):
     """Drive the ordering with a hand-set verdict for each row.
 
@@ -44,11 +68,96 @@ def _fdictNextFrom(dictSatisfied, monkeypatch):
     ``test_the_arrow_judges_rows_exactly_as_the_rows_do`` exercises
     the judgement against the payload the dashboard renders.
     """
+    _fnEnterTheEndgame(monkeypatch)
     monkeypatch.setattr(
         levelOrdering, "fdictJudgeOrderedRequirements",
-        lambda dictWorkflow, filesRepo: dictSatisfied,
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: dictSatisfied,
     )
     return levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere")
+
+
+@pytest.mark.falsification
+def test_the_arrow_is_silent_outside_the_endgame(monkeypatch):
+    """Outstanding Level 2 work silences the arrow AND the blocked map.
+
+    The researcher met this arrow pointing at the Rebuild attestation
+    on a project sitting at Level 1, whose actual next task was
+    bringing the published copies up to Level 2 (2026-09-16). The
+    arrow was right about the endgame's internal order and wrong about
+    the endgame being where they were. The blocked map is gated for
+    that reason and one more: below Level 2 a blocked row's push and
+    publish buttons ARE the remedy, and a circle-slash over the
+    remedy refuses the researcher's next step.
+
+    Kills: consulting the ordering edges before the endgame gate --
+    the shipped behaviour, in which an arrow appeared at every level
+    and named one unmet endgame row as "do this next" while lower
+    rungs were open.
+    """
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: _fdictAllSatisfiedExcept(
+            "rebuildAttestation", "envelopeArchive",
+        ),
+    )
+    _fnEnterTheEndgame(monkeypatch)
+    assert levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere"), (
+        "the endgame itself produced no arrow, so the refusal below "
+        "proves nothing"
+    )
+
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [
+            {"iStepIndex": -1, "sCriterion": "not-in-github-mirror"},
+        ],
+    )
+    dictEndgame = levelOrdering.fdictDescribeOrderedEndgame(
+        {}, "/nowhere",
+    )
+    assert dictEndgame["dictNextStep"] is None, (
+        "an arrow sequenced the Level 3 endgame while Level 2 work "
+        "was outstanding; a rung below is not something to sequence "
+        "around, it is simply next"
+    )
+    assert dictEndgame["dictBlockedRows"] == {}, (
+        "a row was marked premature below Level 2, where its Level 2 "
+        "actions are the remedy"
+    )
+
+
+def test_readiness_never_silences_the_arrow(monkeypatch):
+    """Level 3 readiness is not consulted; the ruling is superseded.
+
+    A readiness condition gated the arrow for part of 2026-09-16 and
+    silenced it at exactly the moment ordering mattered: readiness is
+    false BECAUSE the ordered rows are unmet, so a project at Level 2
+    with only the script and the manifest open got no arrow while
+    doing them backwards doubled the work. Asserted by making the
+    consultation itself the failure, so re-adding the condition in
+    any spelling fails here.
+    """
+    def _fnRefuseTheQuestion(*args, **kwargs):
+        raise AssertionError(
+            "the arrow consulted Level 3 readiness; that condition "
+            "was removed 2026-09-16 because it fires exactly when "
+            "the ordering matters most"
+        )
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "fbL3ReadinessOK",
+        _fnRefuseTheQuestion,
+    )
+    dictNext = _fdictNextFrom(
+        _fdictAllSatisfiedExcept("reproduceScript", "manifest"),
+        monkeypatch,
+    )
+    assert dictNext and dictNext["sRowKey"] == "reproduceScript", (
+        "the endgame's cheapest-order answer disappeared: %r" % (
+            dictNext,
+        )
+    )
 
 
 def _fdictAllSatisfiedExcept(*saUnsatisfied):
@@ -67,7 +176,12 @@ def test_the_script_comes_before_the_manifest_that_pins_it(monkeypatch):
         monkeypatch,
     )
     assert dictNext["sRowKey"] == "reproduceScript"
-    assert "MANIFEST.sha256 pins reproduce.sh" in dictNext["sReason"]
+    # The reason must not claim an UNDO here. Generating the script
+    # re-pins the manifest in the same action, so a manifest done
+    # first is repeated rather than lost, and the first wording said
+    # otherwise (corrected 2026-09-15 after a live run).
+    assert "re-pins MANIFEST.sha256" in dictNext["sReason"]
+    assert "doing it twice" in dictNext["sReason"]
 
 
 def test_the_manifest_comes_before_the_attestation_keyed_to_it(
@@ -139,7 +253,8 @@ def test_two_independent_chains_are_answered_with_silence(monkeypatch):
         {
             "manifest": False, "envelopeMirror": False,
             "rebuildAttestation": False, "envelopeArchive": False,
-            "reproduceScript": True,
+            "reproduceScript": True, "dependencyLock": True,
+            "environmentArchive": True,
         },
         monkeypatch,
     ) is None
@@ -171,6 +286,13 @@ def test_the_arrow_judges_rows_exactly_as_the_rows_do(sProjectRepo):
     actually happened once: ``reproduce-script-stale`` was registered
     in five places and not in the row's own map, and the row stayed
     green while the level blocked.
+
+    Every shared row is compared, not a named pair, so a row added to
+    either side joins this check by existing. ``dependencyLock`` is
+    excluded because a ruling made it the one permitted divergence;
+    that carve-out has its own test asserting it is the only one, and
+    excluding it here without that test would be indistinguishable
+    from weakening this one.
 
     Kills: dropping either conjunct from the reproduce-script entry in
     ``fdictJudgeOrderedRequirements`` -- the arrow would then judge a
@@ -208,7 +330,14 @@ def test_the_arrow_judges_rows_exactly_as_the_rows_do(sProjectRepo):
     dictArrow = levelOrdering.fdictJudgeOrderedRequirements(
         dictWorkflow, sProjectRepo,
     )
-    for sRow in ("manifest", "reproduceScript"):
+    listShared = sorted(
+        set(dictRows) & set(dictArrow) - {"dependencyLock"}
+    )
+    assert "manifest" in listShared and "reproduceScript" in listShared, (
+        "the overlap this test compares has shrunk to "
+        f"{listShared}, so it may be asserting nothing"
+    )
+    for sRow in listShared:
         assert bool(dictArrow[sRow]) == bool(dictRows[sRow]), (
             f"the arrow and the {sRow} row disagree: arrow says "
             f"{dictArrow[sRow]}, the row renders {dictRows[sRow]}"
@@ -226,7 +355,14 @@ def test_the_poll_payload_carries_the_verdict(sProjectRepo):
     import inspect
     sSource = inspect.getsource(_fdictBuildWorkflowEnvelopeDetail)
     assert "dictNextOrderedStep" in sSource
-    assert "levelOrdering.fdictDescribeNextOrderedStep" in sSource
+    assert "dictBlockedRows" in sSource, (
+        "the blocked map left the payload; the circle-slash would "
+        "then survive only while an arrow exists"
+    )
+    assert "levelOrdering.fdictDescribeOrderedEndgame" in sSource, (
+        "the route stopped reading the ONE combined verdict; two "
+        "separate calls can disagree between themselves"
+    )
 
 
 def test_the_arrow_precedes_the_banner_it_sits_inside():
@@ -249,3 +385,355 @@ def test_the_arrow_precedes_the_banner_it_sits_inside():
     assert iArrow < iBanner, (
         "the arrow must be registered before the banner it sits inside"
     )
+
+
+def test_a_lock_the_image_does_not_satisfy_is_named_first(monkeypatch):
+    """The live gap: the rerun refuses, so everything after it is wasted.
+
+    Found on 2026-09-15 by a researcher who spent a verification to be
+    told their lock was five days older than their image. The
+    Dependency-lock row was green throughout -- it asked only whether
+    every entry carried a hash -- and no arrow pointed there.
+    """
+    from vaibify.reproducibility import lockSatisfaction
+    # Reachable inside the endgame, and deliberately: L3 readiness
+    # asks whether the lock is present and hashed, never whether the
+    # IMAGE satisfies it. That second question is the arrow's alone,
+    # which is why this edge survives the endgame gate while the
+    # manifest's edges -- wholly inside readiness -- do not.
+    _fnEnterTheEndgame(monkeypatch)
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: (
+            _fdictAllSatisfiedExcept(
+                "dependencyLock", "rebuildAttestation",
+                "envelopeMirror", "envelopeArchive",
+            )
+        ),
+    )
+    dictNext = levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere")
+    assert dictNext["sRowKey"] == "dependencyLock"
+    assert "refuse before it starts" in dictNext["sReason"]
+    assert sorted(dictNext["listBlockedRowKeys"]) == [
+        "envelopeArchive", "envelopeMirror", "rebuildAttestation",
+    ]
+    assert lockSatisfaction.S_LOCK_MISMATCH == "mismatch"
+
+
+def test_an_unchecked_lock_points_no_arrow_at_it(sProjectRepo):
+    """Unknown is not a mismatch.
+
+    The poll may not exec, so on most ticks nobody has asked whether
+    the image satisfies the lock. Treating that silence as a fault
+    would put an arrow on the Dependency-lock row of every project
+    between restarts.
+    """
+    dictWorkflow = {"listSteps": [], "sWorkflowName": "p"}
+    dictJudged = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo, None,
+    )
+    dictJudgedUnknown = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo, {"sState": "unknown"},
+    )
+    assert dictJudged["dependencyLock"] == (
+        dictJudgedUnknown["dependencyLock"]
+    ), "an unknown verdict must read exactly as an unasked one"
+
+
+# ----------------------------------------------------------------------
+# The two archives are separate nodes, and only an ASYMMETRIC pair
+# can tell the decomposed design from the combined one
+# ----------------------------------------------------------------------
+
+_S_SANDBOX = "sandbox"
+_S_PERMANENT = "permanent"
+
+
+def _fnStubEveryGate(monkeypatch, dictPermanence, **dictOverrides):
+    """Make every ordering gate pass, then apply the named overrides.
+
+    The arrow only fires on an edge live at BOTH ends, so a fixture
+    that left unrelated rows unsatisfied would produce an answer about
+    whichever chain happened to be longest. Stubbing the lot and
+    reaching in for one pair is what makes each assertion about the
+    pair it names.
+    """
+    from vaibify.reproducibility import levelGates
+    dictGates = {
+        "fbVerifyDependencyLock": True,
+        "fbVerifyManifestComplete": True,
+        "fbVerifyReproduceScript": True,
+        "fbVerifyReproduceScriptCurrent": True,
+        "fbImageArchiveDeposited": True,
+        "fbEnvelopeMatchesGithubMirror": True,
+        "fbEnvelopeMatchesZenodoArchive": True,
+        "fbAttestationIsPubliclyArchived": True,
+        # Derived from the permanence above, NEVER forced True. The
+        # combined gate is the thing these tests are about: a node
+        # that read it instead of its own archive's verdict is the
+        # defect, and stubbing it True neutralises that mutation --
+        # measured, both asymmetric tests reported SURVIVED until
+        # this line existed.
+        "fbNoArchiveIsKnownSandbox": not any(
+            sValue == _S_SANDBOX for sValue in dictPermanence.values()
+            if isinstance(sValue, str)
+        ),
+    }
+    dictGates.update(dictOverrides)
+    for sName, bValue in dictGates.items():
+        monkeypatch.setattr(
+            levelGates, sName,
+            lambda *args, bValue=bValue, **kwargs: bValue,
+        )
+    monkeypatch.setattr(
+        levelGates, "fdictArchivePermanenceState",
+        lambda *args, **kwargs: dictPermanence,
+    )
+    monkeypatch.setattr(
+        levelOrdering, "fbL3AttestationCurrent",
+        lambda *args, **kwargs: dictOverrides.get(
+            "fbL3AttestationCurrent", True,
+        ),
+    )
+
+
+def _fdictJudgeUnderStubs(monkeypatch, dictPermanence, **dictOverrides):
+    _fnStubEveryGate(monkeypatch, dictPermanence, **dictOverrides)
+    return levelOrdering.fdictJudgeOrderedRequirements({}, "/nowhere")
+
+
+@pytest.mark.falsification
+def test_a_sandbox_project_deposit_never_lights_the_environment_row(
+    monkeypatch,
+):
+    """The image is permanent; only the PROJECT deposit is a sandbox one.
+
+    ``fbNoArchiveIsKnownSandbox`` classifies BOTH archives, so a node
+    judged from it goes unsatisfied here as well -- and if that node is
+    the environment one, the arrow sends the researcher to a Make
+    Permanent button that promotes the wrong archive. A fixture with
+    both deposits in the same state passes against the broken design
+    and proves nothing, which is why this pair is asymmetric.
+
+    Kills: judging ``environmentArchive`` from the combined sandbox
+    gate rather than from ``sImageArchivePermanence``.
+    """
+    dictJudged = _fdictJudgeUnderStubs(monkeypatch, {
+        "sImageArchivePermanence": _S_PERMANENT,
+        "sProjectArchivePermanence": _S_SANDBOX,
+    })
+    assert dictJudged["environmentArchive"] is True, (
+        "a sandbox PROJECT deposit marked the ENVIRONMENT archive row "
+        "unsatisfied; its button promotes the image deposit, which is "
+        "not what is wrong"
+    )
+    assert dictJudged["envelopeArchive"] is False
+    assert dictJudged["rebuildAttestation"] is True, (
+        "the rerun happened and the attestation is current; permanence "
+        "is not this row's question and it carries neither remedy"
+    )
+
+
+@pytest.mark.falsification
+def test_a_sandbox_image_deposit_never_lights_the_zenodo_row(monkeypatch):
+    """The reverse: a sandbox IMAGE deposit and a permanent project one.
+
+    Kills: judging ``envelopeArchive`` from the combined sandbox gate,
+    which would send a researcher to publish a new immutable Zenodo
+    version over a project deposit that is already permanent.
+    """
+    dictJudged = _fdictJudgeUnderStubs(monkeypatch, {
+        "sImageArchivePermanence": _S_SANDBOX,
+        "sProjectArchivePermanence": _S_PERMANENT,
+    })
+    assert dictJudged["environmentArchive"] is False
+    assert dictJudged["envelopeArchive"] is True
+    assert dictJudged["rebuildAttestation"] is True
+
+
+@pytest.mark.falsification
+def test_an_unknown_permanence_keeps_both_archive_rows_satisfied(
+    monkeypatch,
+):
+    """``unknown`` passes: the gate fails open in the researcher's favour.
+
+    Spelling permanence as ``== permanent`` would block every deposit
+    vaibify cannot classify -- a hand-edited envelope, a service from a
+    future release -- and there is no harm this ordering prevents that
+    an abstention causes.
+
+    Kills: rewriting ``_fbIsSandbox`` as ``!= permanent``.
+    """
+    dictJudged = _fdictJudgeUnderStubs(monkeypatch, {
+        "sImageArchivePermanence": "unknown",
+        "sProjectArchivePermanence": "unknown",
+    })
+    assert dictJudged["environmentArchive"] is True
+    assert dictJudged["envelopeArchive"] is True
+
+
+@pytest.mark.falsification
+def test_an_archive_holding_no_covering_attestation_is_named(monkeypatch):
+    """The silence this widening fixed.
+
+    Zenodo holds the envelope, so ``fbEnvelopeMatchesZenodoArchive``
+    passes -- but the archived attestation does not cover the archived
+    manifest, so Level 3 fails. Judged on the envelope alone, every
+    publication node was satisfied, no edge was live at both ends, and
+    the arrow said nothing at exactly the moment the researcher needed
+    it. All three of this node's conjuncts have ONE remedy: publish a
+    Zenodo version.
+
+    Kills: dropping ``fbAttestationIsPubliclyArchived`` from the
+    ``envelopeArchive`` node.
+    """
+    dictJudged = _fdictJudgeUnderStubs(
+        monkeypatch,
+        {"sImageArchivePermanence": _S_PERMANENT,
+         "sProjectArchivePermanence": _S_PERMANENT},
+        fbAttestationIsPubliclyArchived=False,
+    )
+    assert dictJudged["envelopeArchive"] is False
+
+
+def test_two_real_roots_are_answered_with_silence(monkeypatch):
+    """The fork the shipped graph can now produce, not a synthetic one.
+
+    Before the environment archive became a node, the edge set was a
+    tree and two roots could only be staged by replacing the table --
+    which is a guard on the algorithm, not on this graph. The lock and
+    the archive are genuinely independent (neither undoes the other)
+    and both point at the same three later rows, so a project blocked
+    on both has no single next step, and saying otherwise would tell
+    the researcher the other chain is not ready to start.
+    """
+    assert _fdictNextFrom(
+        _fdictAllSatisfiedExcept(
+            "dependencyLock", "environmentArchive",
+            "rebuildAttestation", "envelopeMirror", "envelopeArchive",
+        ),
+        monkeypatch,
+    ) is None
+
+
+def test_the_environment_archive_orders_everything_the_manifest_does(
+    monkeypatch,
+):
+    """Its deposit re-pins MANIFEST.sha256, so a rerun made first is stale.
+
+    The live consequence: depositing after the verification wastes the
+    verification. Asserted as an ARROW answer rather than as an edge
+    table entry, so it is the researcher-facing behaviour that is
+    pinned.
+    """
+    dictNext = _fdictNextFrom(
+        _fdictAllSatisfiedExcept(
+            "environmentArchive", "rebuildAttestation",
+            "envelopeMirror", "envelopeArchive",
+        ),
+        monkeypatch,
+    )
+    assert dictNext["sRowKey"] == "environmentArchive"
+    assert sorted(dictNext["listBlockedRowKeys"]) == [
+        "envelopeArchive", "envelopeMirror", "rebuildAttestation",
+    ]
+
+
+@pytest.mark.falsification
+def test_no_row_diverges_from_the_arrow_at_all(sProjectRepo):
+    """There is no permitted divergence any more, and that is a ruling.
+
+    The Dependency-lock row used to be one: it stayed green over a
+    lock the container did not satisfy, on the reasoning that the
+    row's criterion is about the repository's envelope while the
+    container is a different question, with the warning in an amber
+    note beside it.
+
+    Seen on a live project the combination read as nonsense -- every
+    applicable level showing a check, the "Do this next" arrow
+    pointing at that very row, and a note underneath saying a rerun
+    would refuse. The researcher reversed it on 2026-09-15: a row
+    nothing can be done about is not green, so the row now carries the
+    same conjunct the arrow does and resolves to PARTIAL (the file is
+    present and hashed; what disagrees is the image).
+
+    So the invariant is now total, and this test is its whole
+    statement: for the state in which the lock blocks, EVERY shared
+    row agrees with the arrow.
+
+    Kills: dropping the lock conjunct back off the row, which
+    restores the green-row-with-an-arrow-on-it the researcher
+    rejected.
+    """
+    from vaibify.gui.routes.pipelineRoutes import (
+        _fdictEnvelopeArtifactSatisfaction,
+    )
+    from vaibify.reproducibility import lockSatisfaction
+    dictWorkflow = {"sWorkflowName": "project", "listSteps": []}
+    with open(
+        os.path.join(sProjectRepo, "requirements.lock"), "w",
+    ) as fileLock:
+        fileLock.write("numpy==2.5.2 \\\n    --hash=sha256:00\n")
+    dictBlocked = {"sState": lockSatisfaction.S_LOCK_MISMATCH}
+    dictPinIsLive = {"bPinnedImageIsLive": True}
+    dictRows = _fdictEnvelopeArtifactSatisfaction(
+        dictWorkflow, sProjectRepo, dictBlocked, dictPinIsLive,
+    )
+    dictArrow = levelOrdering.fdictJudgeOrderedRequirements(
+        dictWorkflow, sProjectRepo, dictBlocked, dictPinIsLive,
+    )
+    assert dictArrow["dependencyLock"] is False, (
+        "the fixture is meant to hold a lock the pinned image fails"
+    )
+    listDiverged = sorted(
+        sRow for sRow in dictRows
+        if sRow in dictArrow
+        and bool(dictRows[sRow]) != bool(dictArrow[sRow])
+    )
+    assert listDiverged == [], (
+        "these rows render a state the arrow disagrees with, so the "
+        "arrow can point at a row the researcher sees as green: "
+        + str(listDiverged)
+    )
+
+
+@pytest.mark.falsification
+def test_an_unasked_lock_leaves_the_row_and_the_arrow_green(sProjectRepo):
+    """Unknown is not a failure, on the row as well as on the arrow.
+
+    The row gained the POLICY conjunct, not the raw measurement. The
+    poll may not exec, so on most ticks nobody has asked -- and a row
+    that went amber on silence would be amber on every project
+    between hub restarts, which is the inverse of the defect the
+    reversal fixed.
+
+    Kills: giving the row the measurement (``sState != mismatch``)
+    instead of ``fbLockBlocksVerification``, which reddens every
+    unasked project and every project whose running container is not
+    the pinned image.
+    """
+    from vaibify.gui.routes.pipelineRoutes import (
+        _fdictEnvelopeArtifactSatisfaction,
+    )
+    from vaibify.reproducibility import lockSatisfaction
+    dictWorkflow = {"sWorkflowName": "project", "listSteps": []}
+    with open(
+        os.path.join(sProjectRepo, "requirements.lock"), "w",
+    ) as fileLock:
+        fileLock.write("numpy==2.5.2 \\\n    --hash=sha256:00\n")
+    for sLabel, dictVerdict, dictCurrency in (
+        ("never asked", None, None),
+        ("unknown", {"sState": lockSatisfaction.S_LOCK_UNKNOWN},
+         {"bPinnedImageIsLive": True}),
+        ("mismatch against a different image",
+         {"sState": lockSatisfaction.S_LOCK_MISMATCH},
+         {"bPinnedImageIsLive": False}),
+        ("mismatch against an undetermined image",
+         {"sState": lockSatisfaction.S_LOCK_MISMATCH},
+         {"bPinnedImageIsLive": None}),
+    ):
+        dictRows = _fdictEnvelopeArtifactSatisfaction(
+            dictWorkflow, sProjectRepo, dictVerdict, dictCurrency,
+        )
+        assert dictRows["dependencyLock"] is True, sLabel

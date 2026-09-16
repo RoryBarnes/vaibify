@@ -75,9 +75,9 @@ _REGEX_EXACT_PIN = re.compile(
 def fdictParsePinnedVersions(sText):
     """Return ``{normalized-name: version}`` for exact ``==`` pins.
 
-    The shape both a compiled lockfile and ``pip list
-    --format=freeze`` share, which is what lets the shadow's
-    lock-satisfaction check compare them without a second grammar.
+    The shape a compiled lockfile and an image's package inventory
+    share, which is what lets the shadow's lock-satisfaction check
+    compare them without a second grammar.
     Lines that pin nothing exactly — editable installs, URLs, bare
     names, ranges, flag lines — are skipped rather than guessed at;
     an extras suffix collapses onto the name (``name[extra]==v`` IS

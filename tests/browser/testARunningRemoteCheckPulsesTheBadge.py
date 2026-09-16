@@ -86,17 +86,24 @@ _S_DRIVE_CHECK_STATES = """() => {
         elHost.querySelectorAll('.requirement-row')).find(
             el => (el.textContent || '').indexOf(sLabel) !== -1);
     const elGithub = fnFindRow('GitHub mirror');
-    const elZenodo = fnFindRow('Zenodo deposit');
+    const elZenodo = fnFindRow('Zenodo archive');
     const fsAnimationOf = (elRow) => {
+        /* The MARKED cell: since the pulses-only-what-it-assesses
+           ruling (2026-09-16) the animation rides
+           data-checking="1", set per level actually being re-asked.
+           The first cell is the Level 1 n/a dash and correctly
+           never pulses. */
         const elCell = elRow.querySelector(
-            '.requirement-row-header .step-level-cell');
+            '.requirement-row-header ' +
+            '.step-level-cell[data-checking="1"]');
         return elCell
-            ? window.getComputedStyle(elCell).animationName : 'no-cell';
+            ? window.getComputedStyle(elCell).animationName : 'none';
     };
     const elGroupHeader = Array.from(elHost.querySelectorAll(
         '.requirement-group-header')).find(
             el => (el.dataset.group || '') === 'publishedCopies');
-    const elGroupCell = elGroupHeader.querySelector('.step-level-cell');
+    const elGroupCell = elGroupHeader.querySelector(
+        '.step-level-cell[data-checking="1"]');
     const fsCheckTextOf = (elRow) => {
         const elCheck = elRow.querySelector('.requirement-row-check');
         return elCheck ? elCheck.textContent : '';
@@ -104,8 +111,9 @@ _S_DRIVE_CHECK_STATES = """() => {
     const dictAnswer = {
         sGithubAnimation: fsAnimationOf(elGithub),
         sZenodoAnimation: fsAnimationOf(elZenodo),
-        sGroupAnimation:
-            window.getComputedStyle(elGroupCell).animationName,
+        sGroupAnimation: elGroupCell
+            ? window.getComputedStyle(elGroupCell).animationName
+            : 'none',
         sGithubMarkup: elGithub.innerHTML,
         sZenodoMarkup: elZenodo.innerHTML,
         sGithubCheckText: fsCheckTextOf(elGithub),
@@ -148,9 +156,9 @@ def test_a_running_check_pulses_without_moving_the_colour(
 ):
     """The badge pulses while asking, and claims nothing while it does.
 
-    Kills: removing the `requirement-row-checking` class from
-    _fsRenderRequirementRow, and removing the pulse rule from
-    styleMain.css, each fail the animation assertion.
+    Kills: dropping the row from _fdictCheckingLevelsOf (no cell is
+    marked data-checking) and removing the pulse rule from
+    styleMain.css each fail the animation assertion.
     """
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,

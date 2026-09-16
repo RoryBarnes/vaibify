@@ -239,11 +239,18 @@ project deposit classifies as `sandbox`. `unknown` passes.
 
 **The row.** `bL3AttestationCurrent` stays honest — the rebuild did
 happen. Ship `bNoArchiveKnownSandbox`, `listPermanenceIssues` and the
-two per-archive verdicts; the row renders
-`bL3AttestationCurrent && bNoArchiveKnownSandbox` and says "This
-attestation does not count while an archive is a sandbox deposit",
-naming which. Where the row wants to state the positive, it reads the
-per-archive verdicts — never inferring it from the gate.
+two per-archive verdicts.
+
+**Superseded 2026-09-15.** The row rendered
+`bL3AttestationCurrent && bNoArchiveKnownSandbox`, and that combined
+gate covers two deposits while the Attestation row carries neither
+remedy — so a sandbox *project* deposit reddened it and a sandbox
+*image* deposit left the Environment archive row green. Each archive
+now carries its own permanence on its own row, beside its own Make
+Permanent button; the Attestation row renders
+`bL3AttestationCurrent` alone. See `permanentArchivePromotion.md` —
+"The row" — for the three-row table and for why permanence is spelled
+`!= sandbox` rather than `== permanent`.
 
 `/level3/verify` is **not** touched: the rerun still runs and still
 records.

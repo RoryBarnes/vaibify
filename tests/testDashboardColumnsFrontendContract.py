@@ -472,8 +472,10 @@ def test_workflow_wide_groups_and_rows_are_expandable():
     sBlock = _fsExtractFunctionBlock(
         sSource, "fsRenderProjectBlock",
     )
+    # publishedEnvelope merged into publishedCopies 2026-09-16:
+    # one row per remote, one cell per level.
     for sKey in ('"software"', '"artifacts"', '"determinism"',
-                 '"publishedCopies"', '"publishedEnvelope"',
+                 '"publishedCopies"',
                  '"attestation"'):
         assert sKey in sBlock, "missing requirement section " + sKey
     assert "data-group=" in sSource
@@ -560,7 +562,7 @@ def test_published_copies_section_names_services_not_syncs():
     sBlock = sSource[iStart:sSource.find("};", iStart)]
     assert "Published copies" in sBlock
     assert "Syncs" not in sBlock
-    assert "GitHub mirror" in sSource and "Zenodo deposit" in sSource
+    assert "GitHub mirror" in sSource and "Zenodo archive" in sSource
 
 
 def test_declaration_step_offers_commit_to_repo():
