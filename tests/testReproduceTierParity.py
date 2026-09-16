@@ -125,8 +125,12 @@ def testTier4RunsTheBinariesVerifier(fixtureRepo):
     )
 
     listLabels = [sLabel for sLabel, _ in listResults]
-    assert len(listResults) == 7, (
-        "Tier 4 must run seven verifiers to match fbL3ReadinessOK; "
+    # Eight since 2026-09-16: "Manifest matches the files" joined
+    # fbL3ReadinessOK and this tier together, after a manifest
+    # misdescribing its own entries sat green on every surface until
+    # a rerun was spent.
+    assert len(listResults) == 8, (
+        "Tier 4 must run eight verifiers to match fbL3ReadinessOK; "
         f"ran {len(listResults)}: {listLabels}"
     )
     assert any("binar" in sLabel.lower() for sLabel in listLabels), (

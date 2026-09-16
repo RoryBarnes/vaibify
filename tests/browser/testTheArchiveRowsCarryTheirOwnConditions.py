@@ -45,8 +45,8 @@ _S_RENDER_ZENODO_ROW = """(dictArgs) => {
         dictRemoteChecks: {},
         setToggledFileGroups: new Set(),
         bProjectBlockCollapsed: false,
-        setExpandedRequirementGroups: new Set(['publishedEnvelope']),
-        setExpandedRequirementRows: new Set(['envelopeArchive']),
+        setExpandedRequirementGroups: new Set(['publishedCopies']),
+        setExpandedRequirementRows: new Set(['zenodo', 'github']),
     });
 }"""
 
@@ -72,7 +72,7 @@ def _fsRenderZenodo(pageDashboard, **dictArgs):
     )
     return _fsSelectRow(
         pageDashboard.evaluate(_S_RENDER_ZENODO_ROW, dictArgs),
-        "envelopeArchive",
+        "zenodo",
     )
 
 
@@ -138,7 +138,7 @@ def test_the_zenodo_row_asks_all_three_of_its_questions(
             "sPermanence": "sandbox",
             "dictArchivedAttestation": None,
         }),
-        "envelopeMirror",
+        "github",
     )
     assert "Level 3: met" in sGithub, sGithub[:1500]
     assert "No verify has checked" not in sGithub

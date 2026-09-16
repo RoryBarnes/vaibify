@@ -149,6 +149,12 @@ LIST_SWALLOWING_GATES = [
         ),
     ),
     (
+        "flistManifestEntriesContradictingTheFiles",
+        lambda files: levelGates.flistManifestEntriesContradictingTheFiles(
+            files,
+        ),
+    ),
+    (
         "fbVerifyReproduceScript",
         lambda files: levelGates.fbVerifyReproduceScript(
             files, DICT_WORKFLOW,

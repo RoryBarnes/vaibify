@@ -321,7 +321,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 282
 #   the auto-managed header. Splitting it is what makes the consent
 #   auditable: one row could not say that a researcher who removes the
 #   header keeps their rules.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 220
+# RAISED 220 -> 221 (2026-09-16): fnEnsureStagedClientCurrent's
+# one fnWriteFile -- the archive flow restages the container-side
+# Zenodo client under the archive worker's own mode-(b) admission
+# after a 14-day container ImportError'd a publish. Classified at
+# birth; the write cannot live inside a gateway because the bytes
+# it stages are the reproducibility package's own source.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 221
 
 
 # Every acquisition of a declared capability that still has no reviewed

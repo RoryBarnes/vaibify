@@ -800,11 +800,44 @@ def _fcontextHoldShadowLaneLock(sResourceName):
         fileHandleLock.close()
 
 
-# The command the lock-satisfaction check runs inside the shadow. Its
-# output shares the ``name==version`` grammar with the lock, which is
-# what lets one parser read both sides of the comparison.
-S_SHADOW_PIP_ENUMERATE_COMMAND = (
-    "python3 -m pip list --format=freeze --disable-pip-version-check"
+# The command both lock-satisfaction lanes run to learn what an image
+# has installed. Its output shares the ``name==version`` grammar with
+# the lock, which is what lets one parser read both sides of the
+# comparison.
+#
+# It enumerates DISTRIBUTIONS rather than asking pip to list them.
+# ``pip list`` and ``pip freeze`` hardcode a refusal to show three
+# installed distributions whose names shadow stdlib modules --
+# ``argparse``, ``python`` and ``wsgiref``
+# (``pip._internal.utils.compat.stdlib_pkgs``, read out of a running
+# image rather than out of documentation). Any of the three, when
+# genuinely installed and genuinely locked, reads back as "the image
+# has nothing": a mismatch that is FALSE and that no button can
+# clear, because Regenerate keeps re-pinning the version the image
+# already has. Met live on a project whose dependencies pull the
+# ``argparse`` PyPI backport, where it blocked Level 3 permanently
+# from both the readiness gate and the shadow's own refusal
+# (2026-09-15).
+#
+# ``importlib.metadata`` is the stdlib inventory pip itself reads and
+# then filters, so this is the unfiltered form of the same question --
+# same grammar, same normalization downstream, no new dependency in
+# the image and no change to the parser. A distribution missing
+# either half of the pair is skipped rather than printed with an
+# empty version, which would reach ``fdictParsePinnedVersions`` as a
+# line pinning nothing.
+#
+# It needs Python 3.8 in the image, and an older one exits non-zero
+# and refuses. That is deliberate: falling back to pip there would
+# restore the false mismatch on exactly the images nobody is looking
+# at closely, and 3.7 has been end-of-life since 2023.
+S_ENUMERATE_PACKAGES_COMMAND = (
+    "python3 -c 'import importlib.metadata as metadata\n"
+    "for distribution in metadata.distributions():\n"
+    "    sName = distribution.metadata[\"Name\"]\n"
+    "    sVersion = distribution.metadata[\"Version\"]\n"
+    "    if sName and sVersion:\n"
+    "        print(sName + \"==\" + sVersion)'"
 )
 
 
@@ -856,12 +889,12 @@ def _fdictRefusalIfImageLacksLockedPackages(
     if not dictLocked:
         return None
     tExecResult = connectionDocker.ftRunInContainerStreamed(
-        sShadowContainerName, S_SHADOW_PIP_ENUMERATE_COMMAND,
+        sShadowContainerName, S_ENUMERATE_PACKAGES_COMMAND,
     )
     if tExecResult.iExitCode != 0:
         return fdictUnrunOutcome(
             "the pinned image's installed packages could not be "
-            "enumerated (pip list exited "
+            "enumerated (the inventory exited "
             f"{tExecResult.iExitCode}), so lock satisfaction cannot "
             "be checked — and unverifiable is not satisfied"
         )

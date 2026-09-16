@@ -65,6 +65,16 @@ const VaibifyApp = (function () {
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
             dictRemoteChecks: {},
+            /* The Project block renders a lock verdict that costs a
+               container exec, and the poll is forbidden to make one.
+               True means nobody has asked yet, so the block has
+               nothing to render but a wait; the open-time check
+               clears it once an answer -- including "unknown" -- has
+               been measured and a poll has carried it back. The first
+               paint must be correct: a provisional green is not a
+               smaller error than a slow page, it is a worse one,
+               because the researcher clicks it (2026-09-15). */
+            bProjectBlockAwaitsFirstAnswer: true,
             iL1BlockerCount: 0,
             iL2BlockerCount: 0,
             iL3BlockerCount: 0,
@@ -804,20 +814,50 @@ const VaibifyApp = (function () {
     }
 
     function _fnSeedBadgesThenAskTheRemotes(sId) {
-        // Badges first so the first paint is never an empty map; the
-        // remote checks follow, and their own completion bumps the
-        // sync epoch, which repaints the badges with what they found.
+        // ONE chain, three links: badges, then readiness, then the
+        // remote refresh. Badges first so the first paint is never an
+        // empty map; the remote checks LAST, and their own completion
+        // bumps the sync epoch, which repaints the badges with what
+        // they found.
         //
-        // The lock check rides along on the same open-time trigger,
-        // for the same reason the remote checks do: it needs an exec,
-        // the poll may add none, and a question nobody asks stays
-        // unknown forever.
-        fnWarmLockSatisfactionCheck();
+        // The readiness request sits BETWEEN them because its lock
+        // probe is an automatic read that PAUSES rather than queues
+        // -- fired alongside the other open-time requests it lost
+        // the carrier race on every open, came back "paused", and
+        // the Dependency-lock verdict was never measured on a real
+        // open at all (the "container probe 0.01s" line). Note the
+        // remote refresh RETURNS before its background checks
+        // finish, so "await the refresh, then ask readiness" would
+        // not serialize anything; starting the refresh after
+        // readiness answers is the order that does.
         if (typeof VaibifyGitBadges === "undefined") {
-            VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+            fnResolveLockSatisfactionBeforeFirstPaint(sId)
+                .then(function () {
+                    return VaibifyWorkflowManager.fnCheckOriginDrift(
+                        sId, false);
+                })
+                .then(function () {
+                    VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
+                });
             return;
         }
         VaibifyGitBadges.fnRefresh(sId).then(function () {
+            // The Project block holds its first paint until this
+            // answers, because a row it renders is derived from the
+            // verdict; the resolver never rejects.
+            return fnResolveLockSatisfactionBeforeFirstPaint(sId);
+        }).then(function () {
+            // The origin-drift check opens a lock-held git-fetch
+            // carrier. Fired from fnSelectWorkflow it raced this
+            // chain and held the carrier at exactly the moment the
+            // readiness probe asked for the drain -- the log's
+            // "PAUSED (carrier held by helper on git-fetch)", first
+            // seen the same evening the badge/remote race was fixed.
+            // Ordering is this chain's ONE job, so the check moved
+            // into it.
+            return VaibifyWorkflowManager.fnCheckOriginDrift(
+                sId, false);
+        }).then(function () {
             VaibifySyncManager.fnRefreshConfiguredRemotes(sId);
         });
     }
@@ -1967,6 +2007,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
             dictRemoteChecks:
                 _dictWorkflowState.dictRemoteChecks,
+            bProjectBlockAwaitsFirstAnswer:
+                _dictWorkflowState.bProjectBlockAwaitsFirstAnswer,
             fbFileIsL1Offending: fbFileIsL1Offending,
             fbUpstreamStepIsL1Offending: fbUpstreamStepIsL1Offending,
             fsBuildL1FailureGlyph: fsBuildL1FailureGlyph,
@@ -3663,6 +3705,11 @@ const VaibifyApp = (function () {
         "regenerate-envelope": {
             sPath: "/level3/envelope",
             bOfferCommitAfterGenerate: true,
+            sBusyLabel: "Regenerating\u2026",
+            sStartNotice: "Regenerating the envelope: compiling the "
+                + "dependency lock from the container, capturing the "
+                + "environment snapshot, then rewriting the manifest "
+                + "over both. This takes a few seconds.",
             /* The server refuses to replace a manifest another
                identity committed -- the author's claim on a clone --
                and names this action; the researcher is asked in the
@@ -3702,6 +3749,7 @@ const VaibifyApp = (function () {
                     (dictResult || {}).dictL3ReadinessGaps || {};
                 var listStillFailing = [
                     ["bManifestComplete", "manifest"],
+                    ["bManifestMatchesTheFiles", "manifest hashes"],
                     ["bDependencyLockHashed", "dependency lock"],
                     ["bEnvironmentDigestPinned", "environment"],
                 ].filter(function (t) {
@@ -3710,9 +3758,22 @@ const VaibifyApp = (function () {
                 var sDelta = _fsDescribeManifestDelta(
                     (dictResult || {}).dictManifestDelta);
                 if (listStillFailing.length === 0) {
-                    return {sMessage: "Envelope regenerated — " +
-                        "manifest, dependency lock, and environment " +
-                        "snapshot are all current." + sDelta,
+                    /* WHICH files were rewritten, from the tier
+                       results, not a fixed list of three. A tier can
+                       skip without failing -- a project with no
+                       dependency input has no lock to compile -- and
+                       naming it anyway told the researcher a file had
+                       been refreshed that had not been touched. */
+                    var listWritten = Object.keys(
+                        (dictResult || {}).dictTierResults || {},
+                    ).filter(function (sTier) {
+                        return ((dictResult.dictTierResults[sTier] ||
+                            {}).bWritten) === true;
+                    });
+                    return {sMessage: "Envelope regenerated" +
+                        (listWritten.length
+                            ? " — rewrote " + listWritten.join(", ")
+                            : "") + "." + sDelta,
                         sType: "info"};
                 }
                 // The REASON, not a pointer to a log. Each tier
@@ -3959,6 +4020,16 @@ const VaibifyApp = (function () {
                routes live under /api/zenodo/{id}, beside the archive
                flow it reuses. */
             sAbsolutePath: "/api/zenodo/{sContainerId}/promote",
+            // A promotion collects, uploads and verifies a whole
+            // publication -- minutes of nothing on screen without
+            // these. A researcher watched exactly that silence and
+            // asked whether anything was running (2026-09-16).
+            sBusyLabel: "Publishing\u2026",
+            sStartNotice: "Publishing on production Zenodo: " +
+                "collecting the publication files, uploading them " +
+                "to a new record, and verifying the deposit. A " +
+                "large project takes minutes; the verdict arrives " +
+                "as a toast and the Zenodo row updates.",
             fdictBody: function () {
                 return {listFilePaths: []};
             },
@@ -3978,8 +4049,7 @@ const VaibifyApp = (function () {
                     "tombstoned rather than removed. Your sandbox " +
                     "record stays where it is.",
             },
-            sToast: "Publishing on production Zenodo. The new DOI is " +
-                "recorded when it finishes.",
+            fdictAfterResponse: fdictDescribePromoteOutcome,
         },
         "start-new-zenodo-concept": {
             sAbsolutePath:
@@ -4265,6 +4335,21 @@ const VaibifyApp = (function () {
                 .replace("{sPromotionId}",
                     encodeURIComponent(sArg || ""))
             : "/api/workflow/" + sContainerId + dictAction.sPath;
+        /* A control that reaches the network before it can show
+           anything must say so. Regenerating the envelope compiles a
+           lock and captures a container, which is tens of seconds of
+           nothing: the researcher clicked, watched an unchanged
+           button, and learned it had worked when a row changed
+           colour (researcher-reported, 2026-09-16). The busy hold and
+           the notice are the same discipline as the Project block's
+           first paint -- say what is happening, rather than leave a
+           wait to be interpreted. */
+        var fnReleaseButton = _ffnHoldButtonBusy(
+            elButton, dictAction.sBusyLabel || "",
+        );
+        if (dictAction.sStartNotice) {
+            fnShowToast(dictAction.sStartNotice, "info");
+        }
         try {
             var dictResult;
             if (dictAction.sMethod === "DELETE") {
@@ -4293,11 +4378,13 @@ const VaibifyApp = (function () {
             }
         } catch (error) {
             if (_fbRefusalNamesARetry(dictAction, error)) {
+                fnReleaseButton();
                 _fnOfferRetryWithConsent(
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
             }
             if (_fbRefusalNeedsACredential(dictAction, error)) {
+                fnReleaseButton();
                 await _fnAskForCredentialThenRetry(
                     dictAction, error, sContainerId, sArg, elButton);
                 return;
@@ -4306,6 +4393,11 @@ const VaibifyApp = (function () {
                 "Action failed: " +
                 ((error && error.message) ? error.message : error),
                 "error");
+        } finally {
+            // Released on EVERY path, including the two that hand off
+            // to a retry above: a button left disabled by a refusal
+            // the researcher then consents to is a dead control.
+            fnReleaseButton();
         }
         // Fire an immediate file-status poll so the block's status
         // lights reflect the action right away instead of waiting for
@@ -4313,6 +4405,68 @@ const VaibifyApp = (function () {
         // connect payload — calling it bare threw and silently
         // skipped this refresh.)
         VaibifyPolling.fnStartFilePolling(sContainerId);
+    }
+
+    function _fsDistillZenodoReason(sReason) {
+        /* A refusal's reason arrives as whatever the container
+           script printed: a Python traceback whose last line holds
+           the message, or an error body that is a whole HTML page
+           (Zenodo's 504 is one). Neither is a sentence a researcher
+           should have to parse -- distill to the claim. */
+        var sDistilled = String(sReason || "");
+        if (sDistilled.indexOf("Traceback") !== -1) {
+            var listLines = sDistilled.trim().split(/\n+/);
+            sDistilled = listLines[listLines.length - 1];
+        }
+        return sDistilled.replace(/<[^>]*>/g, " ")
+            .replace(/\s+/g, " ").trim();
+    }
+
+    function fdictDescribePromoteOutcome(dictResult) {
+        /* The promote route returns refusals as 200s with
+           ``bSuccess: false`` and the reason in ``sMessage``. The
+           old static toast said "Publishing on production Zenodo"
+           over BOTH answers, so a refused publish looked like a
+           silent success that never arrived -- a researcher asked
+           "is it trying to archive?" over a refusal already parsed
+           and thrown away (2026-09-16). */
+        if (dictResult && dictResult.bSuccess === false) {
+            var sReason = _fsDistillZenodoReason(
+                dictResult.sMessage || dictResult.sError ||
+                "no reason was given");
+            /* Zenodo's overload answers -- a 5xx from their
+               gateway, wrapped in an HTML page -- are about THEIR
+               servers, and a researcher shown a raw gateway page
+               reasonably reads it as their own failure. Say whose
+               problem it is and that nothing is left behind: the
+               orphan-draft cleanup runs before this answer, and a
+               504 on publish that had actually landed would have
+               made that cleanup refuse. */
+            if (/\b(502|503|504)\b|gateway time.?out|service unavailable/i
+                    .test(sReason)) {
+                return {
+                    sMessage: "Zenodo's servers are overloaded and " +
+                        "timed out before the publish could start " +
+                        "or finish. This is on Zenodo's side: " +
+                        "nothing was published, no DOI was minted, " +
+                        "and no draft was left behind, so trying " +
+                        "again is safe. Check status.zenodo.org and " +
+                        "retry when it is green.",
+                    sType: "error",
+                };
+            }
+            return {
+                sMessage: "Zenodo refused the publish: " +
+                    VaibifyUtilities.fsSanitizeErrorForUser(sReason),
+                sType: "error",
+            };
+        }
+        return {
+            sMessage: "Published on production Zenodo \u2014 the " +
+                "new DOI is recorded. Run Verify now on the Zenodo " +
+                "row to light its cells.",
+            sType: "success",
+        };
     }
 
     function _fbRefusalNeedsACredential(dictAction, error) {
@@ -4990,6 +5144,10 @@ const VaibifyApp = (function () {
     var _DICT_L3_READINESS_LABELS = {
         bManifestComplete:
             "Manifest — it does not yet cover every declared file",
+        bManifestMatchesTheFiles:
+            "Manifest — it pins hashes that are not the current " +
+            "bytes of the files it names, so a rebuild would report " +
+            "those files as diverged. Regenerate the envelope",
         bDependencyLockHashed:
             "Dependency lock — missing, or not hashed",
         bEnvironmentDigestPinned:
@@ -5047,23 +5205,54 @@ const VaibifyApp = (function () {
         }
     }
 
-    async function fnWarmLockSatisfactionCheck() {
-        /* One readiness GET on project open. Reading the installed
-           packages needs an exec and the poll may add none, so the
-           Dependency-lock row and the "Do this next" arrow would
-           otherwise stay UNKNOWN until the researcher opened the
-           PROOF tab or clicked Verify -- which is how a stale lock
-           went unnoticed until it refused a rerun
-           (researcher-reported, 2026-09-15).
+    async function fnResolveLockSatisfactionBeforeFirstPaint(sId) {
+        /* One readiness GET on project open, and the Project block
+           waits for it. Reading the installed packages needs an exec
+           and the poll may add none, so the Dependency-lock row and
+           the "Do this next" arrow would otherwise stay UNKNOWN until
+           the researcher opened the PROOF tab or clicked Verify --
+           which is how a stale lock went unnoticed until it refused a
+           rerun (researcher-reported, 2026-09-15).
 
-           Failure is swallowed on purpose: the answer is an
-           optimization, every surface renders unknown exactly as it
-           did before, and a toast about a background warm-up is
-           noise about something nobody asked for. */
+           It is AWAITED rather than fired alongside, because the
+           answer arrives five to ten seconds after the block would
+           otherwise paint. Painting first meant a green Project block
+           with the arrow on the Rebuild attestation row, then the
+           real state: amber, arrow on Artifacts. The researcher acted
+           on the interim twice. A provisional green is not a smaller
+           error than a slow page -- it is a worse one, because it is
+           the one that gets clicked. The pulse-while-asking pattern
+           the remote badges use is deliberately NOT borrowed here: it
+           trades a wrong first paint for a two-stage one and still
+           leaves an interim to act on.
+
+           The verdict is recorded SERVER-SIDE by the route, so the
+           readiness answer alone is not enough -- the block renders
+           from the poll payload, and only a poll sent after the route
+           returned carries it. Hence the ordered single poll.
+
+           Failure clears the wait exactly as success does. Every
+           surface renders unknown as it always has, and a block held
+           forever over a failed background fetch would be the same
+           dishonesty pointed the other way. */
         try {
             await _fdictFetchL3Readiness();
+            await VaibifyPolling.fnPollFileStatusOnce(sId);
         } catch (error) {
-            return;
+            console.warn("[l3] lock warm-up did not complete:",
+                error && error.message);
+        } finally {
+            /* Only for the project this resolver was opened for. A
+               researcher who switches projects mid-wait leaves this
+               one in flight over a state that has since been reset,
+               and clearing the new project's flag from here would
+               release its block on the strength of the old one's
+               answer -- the same wrong first paint, arrived at from
+               the other direction. */
+            if (_dictSessionState.sContainerId === sId) {
+                _dictWorkflowState.bProjectBlockAwaitsFirstAnswer = false;
+                fnRenderStepList();
+            }
         }
     }
 
@@ -6574,6 +6763,7 @@ const VaibifyApp = (function () {
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
         fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
+        fdictDescribePromoteOutcome: fdictDescribePromoteOutcome,
         fnShowInputModal: fnShowInputModal,
         fnClearOutputModified: fnClearOutputModified,
         fnActivateWorkflow: _fnActivateWorkflow,

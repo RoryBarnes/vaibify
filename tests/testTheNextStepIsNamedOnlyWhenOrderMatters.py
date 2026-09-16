@@ -42,6 +42,24 @@ def sProjectRepo(tmp_path):
     return str(tmp_path)
 
 
+def _fnEnterTheEndgame(monkeypatch):
+    """Satisfy the ONE condition that gates the arrow before any edge.
+
+    The arrow is an endgame device: no Level 2 work outstanding. It
+    is asserted on its own in
+    ``test_the_arrow_is_silent_outside_the_endgame``; every ordering
+    test below is about what happens INSIDE the endgame and would
+    otherwise be asserting the gate over and over. Level 3 readiness
+    was a second condition for part of 2026-09-16 and is deliberately
+    NOT satisfied here -- it must never be consulted again, which
+    ``test_readiness_never_silences_the_arrow`` states directly.
+    """
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [],
+    )
+
+
 def _fdictNextFrom(dictSatisfied, monkeypatch):
     """Drive the ordering with a hand-set verdict for each row.
 
@@ -50,12 +68,96 @@ def _fdictNextFrom(dictSatisfied, monkeypatch):
     ``test_the_arrow_judges_rows_exactly_as_the_rows_do`` exercises
     the judgement against the payload the dashboard renders.
     """
+    _fnEnterTheEndgame(monkeypatch)
     monkeypatch.setattr(
         levelOrdering, "fdictJudgeOrderedRequirements",
         lambda dictWorkflow, filesRepo, dictLock=None,
         dictCurrency=None: dictSatisfied,
     )
     return levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere")
+
+
+@pytest.mark.falsification
+def test_the_arrow_is_silent_outside_the_endgame(monkeypatch):
+    """Outstanding Level 2 work silences the arrow AND the blocked map.
+
+    The researcher met this arrow pointing at the Rebuild attestation
+    on a project sitting at Level 1, whose actual next task was
+    bringing the published copies up to Level 2 (2026-09-16). The
+    arrow was right about the endgame's internal order and wrong about
+    the endgame being where they were. The blocked map is gated for
+    that reason and one more: below Level 2 a blocked row's push and
+    publish buttons ARE the remedy, and a circle-slash over the
+    remedy refuses the researcher's next step.
+
+    Kills: consulting the ordering edges before the endgame gate --
+    the shipped behaviour, in which an arrow appeared at every level
+    and named one unmet endgame row as "do this next" while lower
+    rungs were open.
+    """
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: _fdictAllSatisfiedExcept(
+            "rebuildAttestation", "envelopeArchive",
+        ),
+    )
+    _fnEnterTheEndgame(monkeypatch)
+    assert levelOrdering.fdictDescribeNextOrderedStep({}, "/nowhere"), (
+        "the endgame itself produced no arrow, so the refusal below "
+        "proves nothing"
+    )
+
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [
+            {"iStepIndex": -1, "sCriterion": "not-in-github-mirror"},
+        ],
+    )
+    dictEndgame = levelOrdering.fdictDescribeOrderedEndgame(
+        {}, "/nowhere",
+    )
+    assert dictEndgame["dictNextStep"] is None, (
+        "an arrow sequenced the Level 3 endgame while Level 2 work "
+        "was outstanding; a rung below is not something to sequence "
+        "around, it is simply next"
+    )
+    assert dictEndgame["dictBlockedRows"] == {}, (
+        "a row was marked premature below Level 2, where its Level 2 "
+        "actions are the remedy"
+    )
+
+
+def test_readiness_never_silences_the_arrow(monkeypatch):
+    """Level 3 readiness is not consulted; the ruling is superseded.
+
+    A readiness condition gated the arrow for part of 2026-09-16 and
+    silenced it at exactly the moment ordering mattered: readiness is
+    false BECAUSE the ordered rows are unmet, so a project at Level 2
+    with only the script and the manifest open got no arrow while
+    doing them backwards doubled the work. Asserted by making the
+    consultation itself the failure, so re-adding the condition in
+    any spelling fails here.
+    """
+    def _fnRefuseTheQuestion(*args, **kwargs):
+        raise AssertionError(
+            "the arrow consulted Level 3 readiness; that condition "
+            "was removed 2026-09-16 because it fires exactly when "
+            "the ordering matters most"
+        )
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "fbL3ReadinessOK",
+        _fnRefuseTheQuestion,
+    )
+    dictNext = _fdictNextFrom(
+        _fdictAllSatisfiedExcept("reproduceScript", "manifest"),
+        monkeypatch,
+    )
+    assert dictNext and dictNext["sRowKey"] == "reproduceScript", (
+        "the endgame's cheapest-order answer disappeared: %r" % (
+            dictNext,
+        )
+    )
 
 
 def _fdictAllSatisfiedExcept(*saUnsatisfied):
@@ -253,7 +355,14 @@ def test_the_poll_payload_carries_the_verdict(sProjectRepo):
     import inspect
     sSource = inspect.getsource(_fdictBuildWorkflowEnvelopeDetail)
     assert "dictNextOrderedStep" in sSource
-    assert "levelOrdering.fdictDescribeNextOrderedStep" in sSource
+    assert "dictBlockedRows" in sSource, (
+        "the blocked map left the payload; the circle-slash would "
+        "then survive only while an arrow exists"
+    )
+    assert "levelOrdering.fdictDescribeOrderedEndgame" in sSource, (
+        "the route stopped reading the ONE combined verdict; two "
+        "separate calls can disagree between themselves"
+    )
 
 
 def test_the_arrow_precedes_the_banner_it_sits_inside():
@@ -287,6 +396,12 @@ def test_a_lock_the_image_does_not_satisfy_is_named_first(monkeypatch):
     every entry carried a hash -- and no arrow pointed there.
     """
     from vaibify.reproducibility import lockSatisfaction
+    # Reachable inside the endgame, and deliberately: L3 readiness
+    # asks whether the lock is present and hashed, never whether the
+    # IMAGE satisfies it. That second question is the arrow's alone,
+    # which is why this edge survives the endgame gate while the
+    # manifest's edges -- wholly inside readiness -- do not.
+    _fnEnterTheEndgame(monkeypatch)
     monkeypatch.setattr(
         levelOrdering, "fdictJudgeOrderedRequirements",
         lambda dictWorkflow, filesRepo, dictLock=None,

@@ -8,7 +8,9 @@ page.
 ``bMatched ? green : red``, while the per-file octocats beside it speak
 a three-state vocabulary in which orange means "not checked" and red
 means "checked, and it differs" -- the badge stylesheet says so in as
-many words. So a project whose GitHub verify had simply never covered
+many words. Since the 2026-09-16 merge the same claim lives on the
+Level 3 cell of the merged copies rows, and the mutation spells
+itself on the merged row's Level 3 mark. So a project whose GitHub verify had simply never covered
 an envelope file got a red alarm next to that same file's honest orange
 badge, and the two surfaces contradicted each other about one fact. The
 GATE is unchanged and still blocks on unproven; only the colour now
@@ -37,7 +39,9 @@ from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 pytestmark = pytest.mark.browser
 
-S_LEVEL3_GROUP = "publishedEnvelope"
+# The merged copies section (2026-09-16): the envelope claims live on
+# the Level 3 CELLS of the GitHub and Zenodo rows.
+S_COPIES_GROUP = "publishedCopies"
 
 # Reads the LEVEL CELL state, not a row class: the cell is what the
 # researcher actually looks at, and `level-cell-<state>` is the single
@@ -143,9 +147,9 @@ def test_the_project_block_stops_making_unactionable_claims(
     _fnExpandEverything(pageDashboard)
 
     dictSection = pageDashboard.evaluate(
-        _S_READ_ROW_STATES, S_LEVEL3_GROUP,
+        _S_READ_ROW_STATES, S_COPIES_GROUP,
     )
-    assert dictSection["bFound"], "the Published envelope section is gone"
+    assert dictSection["bFound"], "the Published copies section is gone"
 
     listMirrorRows = [
         dictRow for dictRow in dictSection["listRows"]

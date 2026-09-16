@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from vaibify.gui.routes import pipelineRoutes
+from vaibify.gui import routeContext
 
 
 _S_CONTAINER_ID = "ctr-manifest-text"
@@ -64,7 +65,7 @@ def test_manifest_text_route_returns_body_on_demand(clientManifest):
     """The viewer endpoint returns the body even when poll snapshots omit it."""
     sBody = "abc  out/a.dat\ndef  out/b.dat\n"
     with patch.object(
-        pipelineRoutes, "_fsFetchManifestTextFromContainer",
+        routeContext, "fsFetchManifestTextFromContainer",
         return_value=sBody,
     ):
         responseHttp = clientManifest.get(
@@ -81,7 +82,7 @@ def test_manifest_text_route_truncates_at_iMaxBytes(clientManifest):
     """A body larger than iMaxBytes returns bTruncated True with iBytes set."""
     sBody = "x" * 4096
     with patch.object(
-        pipelineRoutes, "_fsFetchManifestTextFromContainer",
+        routeContext, "fsFetchManifestTextFromContainer",
         return_value=sBody,
     ):
         responseHttp = clientManifest.get(
@@ -97,7 +98,7 @@ def test_manifest_text_route_truncates_at_iMaxBytes(clientManifest):
 def test_manifest_text_route_missing_manifest_returns_empty(clientManifest):
     """An absent manifest reports empty body / iBytes=0, never an HTTP error."""
     with patch.object(
-        pipelineRoutes, "_fsFetchManifestTextFromContainer",
+        routeContext, "fsFetchManifestTextFromContainer",
         return_value=None,
     ):
         responseHttp = clientManifest.get(
@@ -123,11 +124,11 @@ def test_iMaxBytes_zero_falls_back_to_default():
 def test_manifest_text_cache_hydrates_snapshot_lazily():
     """The per-container manifest text cache is keyed by sha."""
     dictCtx = {}
-    dictCache = pipelineRoutes._fdictManifestTextCache(dictCtx, "cid")
+    dictCache = routeContext.fdictManifestTextCache(dictCtx, "cid")
     # Inserting a sha → text pair and re-reading must return the same dict
     # instance: the cache is mutated in place per container.
     dictCache["abc"] = "manifest body\n"
-    dictRe = pipelineRoutes._fdictManifestTextCache(dictCtx, "cid")
+    dictRe = routeContext.fdictManifestTextCache(dictCtx, "cid")
     assert dictRe is dictCache
     assert dictRe["abc"] == "manifest body\n"
 
@@ -135,6 +136,6 @@ def test_manifest_text_cache_hydrates_snapshot_lazily():
 def test_manifest_text_cache_evicts_stale_sha_on_new_entry():
     """Only the current sha survives once a new one is recorded."""
     dictCache = {"oldsha": "old body", "currentsha": "current body"}
-    pipelineRoutes._fnEvictStaleManifestText(dictCache, "currentsha")
+    routeContext._fnEvictStaleManifestText(dictCache, "currentsha")
     assert "oldsha" not in dictCache
     assert dictCache["currentsha"] == "current body"

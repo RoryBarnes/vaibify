@@ -522,8 +522,10 @@ def test_a_version_two_cache_is_no_longer_scope_current():
     sync bookkeeping the sidecar migration removed; a v4 cache carries
     no answer at all to the archived-attestation criterion, and an
     absent answer is indistinguishable from a recorded "does not
-    cover". The literal versions are deliberate — these are the
-    assertions that fail if a bump is ever reverted.
+    cover"; a v5 cache never compared the AI-provenance stamp, so its
+    badge would read matched by omission. The literal versions are
+    deliberate — these are the assertions that fail if a bump is ever
+    reverted.
 
     EVERY BUMP MUST EXTEND THIS LIST. The guard is only live for the
     versions named here: retargeting the registry entry from 4 to 5
@@ -532,11 +534,11 @@ def test_a_version_two_cache_is_no_longer_scope_current():
     superseded version that no test names is a version the gate may
     silently start accepting again.
 
-    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 4 (or any
-    earlier value), which makes every cache predating the criterion
-    claim to answer a question it never asked.
+    Kills: reverting ``I_PUBLICATION_SCOPE_VERSION`` to 5 (or any
+    earlier value), which makes every cache predating the widened
+    comparison claim to answer a question it never asked.
     """
-    for iStaleVersion in (2, 3, 4):
+    for iStaleVersion in (2, 3, 4, 5):
         assert publicationScope.fbCachedScopeIsCurrent(
             {"iScopeVersion": iStaleVersion},
         ) is False

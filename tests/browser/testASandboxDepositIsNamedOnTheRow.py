@@ -22,8 +22,9 @@ all:
   for NEITHER other state;
 * a sandbox deposit costs its own row the Level 3 cell and costs the
   attestation row nothing;
-* the Published Envelope row renders the DOI the verify compared
-  against, selectable, where it previously reported none at all;
+* the merged Zenodo copies row (the envelope row until the
+  2026-09-16 merge) renders the DOI the verify compared against,
+  selectable, where it previously reported none at all;
 * a production primary with an older SANDBOX verify cache shows no
   button — permanence comes from the current record, and the cache
   lags because the post-archive verify is best-effort.
@@ -83,8 +84,8 @@ _S_RENDER_ENVELOPE_ROW = """(dictArgs) => {
         dictRemoteChecks: {},
         setToggledFileGroups: new Set(),
         bProjectBlockCollapsed: false,
-        setExpandedRequirementGroups: new Set(['publishedEnvelope']),
-        setExpandedRequirementRows: new Set(['envelopeArchive']),
+        setExpandedRequirementGroups: new Set(['publishedCopies']),
+        setExpandedRequirementRows: new Set(['zenodo']),
     });
 }"""
 
@@ -172,7 +173,7 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
         "sPermanence": "sandbox",
         "sDoiVerified": "10.5072/zenodo.551",
     })
-    sEnvelopeRow = _fsSelectRow(sEnvelope, "envelopeArchive")
+    sEnvelopeRow = _fsSelectRow(sEnvelope, "zenodo", "overleaf")
     assert "Archived DOI" in sEnvelopeRow
     assert "10.5072/zenodo.551" in sEnvelopeRow
     # Read-only and selectable, like the environment archive's own
@@ -190,7 +191,7 @@ def test_a_sandbox_deposit_is_named_beside_every_row_it_touches(
         "sPermanence": "permanent",
         "sDoiVerified": "10.5072/zenodo.551",
     })
-    sPromotedRow = _fsSelectRow(sPromoted, "envelopeArchive")
+    sPromotedRow = _fsSelectRow(sPromoted, "zenodo", "overleaf")
     assert "10.5072/zenodo.551" in sPromotedRow, (
         "the DOI shown is still the one the verify compared against"
     )

@@ -35,7 +35,7 @@ from pydantic import BaseModel
 
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import gitEvidence, reproductionRecord
-from ...reproducibility.shadowRerun import S_SHADOW_PIP_ENUMERATE_COMMAND
+from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
 from ...reproducibility.manifestWriter import (
     S_REPRODUCED_MANIFEST_FILENAME,
     fdictCompareManifestEntries,
@@ -59,6 +59,8 @@ from ..routeContext import (
     fdictRequireLaneTupleForCommit,
     fdictRunAutomaticReadUnderTheDrain,
     ffilesForWorkflow,
+    fcontextTimeOnePhase,
+    ffilesSnapshotForWorkflow,
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
 )
@@ -234,7 +236,7 @@ def fdictCheckLockSatisfiedByContainer(
         return None
     try:
         tExecResult = connectionDocker.ftRunInContainerStreamed(
-            sContainerId, S_SHADOW_PIP_ENUMERATE_COMMAND,
+            sContainerId, S_ENUMERATE_PACKAGES_COMMAND,
         )
     except Exception as errorExec:  # noqa: BLE001 -- unknown, not a fault
         fnReRaiseControlPlaneRefusal(errorExec)
@@ -246,7 +248,7 @@ def fdictCheckLockSatisfiedByContainer(
     if tExecResult.iExitCode != 0:
         return lockSatisfaction.fdictDescribeLockSatisfaction(
             dictLocked, None,
-            f"pip list exited {tExecResult.iExitCode}", sFingerprint,
+            f"the inventory exited {tExecResult.iExitCode}", sFingerprint,
         )
     return lockSatisfaction.fdictDescribeLockSatisfaction(
         dictLocked, fdictParsePinnedVersions(tExecResult.sStdout),
@@ -345,20 +347,86 @@ def _fnRegisterReadiness(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        dictElapsed = {}
         # Resolved BEFORE the probe, because the probe stamps its
         # verdict with the image it was measured against and cannot do
         # that from a value read afterwards.
-        dictImageCurrency = fdictAssessEnvelopeImageCurrency(
-            dictCtx, sContainerId, filesRepo,
-        )
+        with fcontextTimeOnePhase(dictElapsed, "imageCurrency"):
+            dictImageCurrency = fdictAssessEnvelopeImageCurrency(
+                dictCtx, sContainerId, filesRepo,
+            )
+        # The SAME one-exec snapshot the poll evaluates these gates
+        # against; against the live adapter each read is a container
+        # round trip. Taken BEFORE and OUTSIDE the probe, because the
+        # snapshot is a DECLARED typed read needing no admission --
+        # its first placement was inside the pausable probe, where
+        # the open-time race paused it on every dashboard open and
+        # the fix never ran (measured 2026-09-16: "container probe
+        # 0.01s, gates 10.91s"). Falls back to the live adapter,
+        # which is slow and correct.
+        with fcontextTimeOnePhase(dictElapsed, "filesSnapshot"):
+            filesSnapshot = ffilesSnapshotForWorkflow(
+                dictCtx, sContainerId, dictWorkflow,
+            )
+        iProbeStarted = time.monotonic()
         dictProbed = await _fdictProbeTheContainerOnce(
             dictCtx, sContainerId, dictWorkflow, filesRepo, requestHttp,
             dictImageCurrency.get("sLiveImageDigest") or "",
         )
-        return _fdictBuildReadinessPayload(
-            dictCtx, sContainerId, dictWorkflow, filesRepo, dictProbed,
-            dictImageCurrency,
+        dictElapsed["containerProbe"] = time.monotonic() - iProbeStarted
+        with fcontextTimeOnePhase(dictElapsed, "gates"):
+            dictPayload = _fdictBuildReadinessPayload(
+                dictCtx, sContainerId, dictWorkflow,
+                filesSnapshot or filesRepo,
+                dictProbed, dictImageCurrency,
+            )
+        _fnReportReadinessTiming(
+            sContainerId, dictElapsed,
+            type(filesSnapshot).__name__ == "SnapshotRepoFiles",
+            dictProbed,
         )
+        return dictPayload
+
+
+def _fnReportReadinessTiming(
+    sContainerId, dictElapsed, bSnapshot, dictProbed,
+):
+    """Log where a readiness request spent its time, per phase.
+
+    The dashboard holds the Project block's first paint until this
+    request answers, so this route's latency IS the researcher's
+    waiting time -- and a wait nobody can attribute is a wait nobody
+    can shorten. The phases cost wildly different things: a docker
+    inspect, one declared-read exec, one carried exec, and the whole
+    gate evaluation over the repository. One line per project open,
+    unconditional, because a threshold would hide the ordinary case
+    and the ordinary case is the baseline a regression is measured
+    against.
+
+    The probe half says RAN or PAUSED, with the holder's name --
+    because a paused probe was invisible for a day behind a "0.01s"
+    that read as fast rather than as skipped, and a probe that
+    always pauses means the Dependency-lock verdict is never
+    measured on a real open.
+    """
+    sProbeOutcome = "ran"
+    if dictProbed.get("bProbePaused"):
+        sProbeOutcome = "PAUSED (carrier held by {})".format(
+            dictProbed.get("sProbePausedBy") or "an unnamed holder",
+        )
+    logger.info(
+        "L3 readiness for container=%s took %.2fs (image currency "
+        "%.2fs, snapshot %.2fs, container probe %.2fs %s, gates "
+        "%.2fs over %s)",
+        sContainerId,
+        sum(dictElapsed.values()),
+        dictElapsed.get("imageCurrency", 0.0),
+        dictElapsed.get("filesSnapshot", 0.0),
+        dictElapsed.get("containerProbe", 0.0),
+        sProbeOutcome,
+        dictElapsed.get("gates", 0.0),
+        "one snapshot" if bSnapshot else "the LIVE container, file by file",
+    )
 
 
 async def _fdictProbeTheContainerOnce(
@@ -687,6 +755,9 @@ async def _fsGateReadinessAndSnapshotDigest(
 # than an ugly one.
 _DICT_READINESS_LABELS = {
     "bManifestComplete": "the manifest does not cover every declared file",
+    "bManifestMatchesTheFiles":
+        "the manifest pins hashes that are not the files' "
+        "current bytes",
     "bDependencyLockHashed": "the dependency lock is missing or unhashed",
     "bEnvironmentDigestPinned": "the environment snapshot is not pinned",
     "bDockerfilePinned": "the Dockerfile is not pinned",

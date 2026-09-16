@@ -598,6 +598,42 @@ var VaibifyEventBindings = (function () {
     function fnHandleDelegatedClick(event) {
         var elTarget = event.target;
 
+        /* The ordering's structural refusal: every ACTIONABLE
+           control inside a blocked row's detail is inert, whichever
+           renderer drew it -- the per-button disabled path missed
+           the inline remote controls (wf-push-envelope,
+           wf-verify-remote), and buttons alone missed the file
+           BADGES, actionable spans whose picklist offers the very
+           push the row says to postpone, plus the Repos-panel link
+           beside them (external review, 2026-09-16). Inspection
+           stays live: wf-view-attestation only shows a stored
+           record, wf-file-link only views a file, and the
+           expand/collapse headers sit outside the detail. The
+           refusal points the eye at the reason line the row already
+           renders. */
+        var elBlockedButton = elTarget.closest(
+            ".requirement-row-blocked .requirement-row-detail button, " +
+            ".requirement-row-blocked .requirement-row-detail " +
+            ".remote-badge, " +
+            ".requirement-row-blocked .requirement-row-detail " +
+            ".envelope-open-repos");
+        if (elBlockedButton &&
+                !elBlockedButton.classList.contains(
+                    "wf-view-attestation")) {
+            event.preventDefault();
+            event.stopPropagation();
+            var elBlockedRow = elBlockedButton.closest(
+                ".requirement-row-blocked");
+            var elWaitReason = elBlockedRow && elBlockedRow
+                .querySelector(".requirement-row-wait-reason");
+            if (elWaitReason) {
+                elWaitReason.classList.remove("wait-reason-attention");
+                void elWaitReason.offsetWidth;
+                elWaitReason.classList.add("wait-reason-attention");
+            }
+            return;
+        }
+
         for (var sSelector in _DICT_CLICK_HANDLERS) {
             var elMatch = elTarget.closest(sSelector);
             if (elMatch) {

@@ -59,7 +59,7 @@ def test_an_unreadable_image_is_unknown_not_an_empty_one():
     Kills: treating a missing installed list as an empty mapping.
     """
     dictUnknown = lockSatisfaction.fdictDescribeLockSatisfaction(
-        {"numpy": "2.5.2"}, None, "pip list exited 127",
+        {"numpy": "2.5.2"}, None, "the package inventory exited 127",
     )
     assert dictUnknown["sState"] == lockSatisfaction.S_LOCK_UNKNOWN
     assert dictUnknown["listMismatches"] == []
@@ -117,7 +117,7 @@ def test_both_callers_enumerate_packages_by_the_same_constant():
 
     Whether the two lanes SPELL the same constant is a claim about the
     text, and no request can observe it: a pre-flight that assembled
-    its own ``pip list`` variant would answer plausibly and disagree
+    its own inventory variant would answer plausibly and disagree
     with the shadow on any image where the two spellings differ --
     which is the drift that let a lock satisfying nothing reach a
     researcher's verification in the first place.
@@ -134,7 +134,7 @@ def test_both_callers_enumerate_packages_by_the_same_constant():
         reproducibilityRoutes.fdictCheckLockSatisfiedByContainer,
         shadowRerun._fdictRefusalIfImageLacksLockedPackages,
     ):
-        assert "S_SHADOW_PIP_ENUMERATE_COMMAND" in inspect.getsource(
+        assert "S_ENUMERATE_PACKAGES_COMMAND" in inspect.getsource(
             fnCaller,
         ), (
             f"{fnCaller.__name__} enumerates packages its own way; the "
@@ -254,3 +254,91 @@ def test_the_edge_reason_names_the_cheap_remedy_first():
         "the running container"
     )
     assert "container you are working in" in sReason
+
+
+# ----------------------------------------------------------------------
+# The inventory must not inherit pip's blind spot
+# ----------------------------------------------------------------------
+
+def _fsWriteShadowingDistribution(pathSite, sName, sVersion):
+    """Install a distribution whose name shadows a stdlib module.
+
+    Nothing but a ``.dist-info`` directory with a METADATA file is
+    needed for a distribution to be installed as far as the packaging
+    metadata standard -- and as far as pip -- is concerned, which is
+    what lets this drive the real command instead of a stub.
+    """
+    pathDistInfo = pathSite / f"{sName}-{sVersion}.dist-info"
+    pathDistInfo.mkdir(parents=True)
+    (pathDistInfo / "METADATA").write_text(
+        "Metadata-Version: 2.1\n"
+        f"Name: {sName}\n"
+        f"Version: {sVersion}\n",
+        encoding="utf-8",
+    )
+    (pathDistInfo / "RECORD").write_text("", encoding="utf-8")
+    return str(pathSite)
+
+
+def _fsRunInventoryCommand(sCommand, sSitePath):
+    """Run one of the two spellings through a real shell and interpreter."""
+    import os
+    import subprocess
+    dictEnvironment = dict(os.environ)
+    dictEnvironment["PYTHONPATH"] = sSitePath
+    return subprocess.run(
+        ["bash", "-c", sCommand], capture_output=True, text=True,
+        env=dictEnvironment, timeout=120,
+    ).stdout
+
+
+@pytest.mark.falsification
+def test_the_inventory_reports_what_pip_refuses_to_show(tmp_path):
+    """A stdlib-shadowing distribution is installed, and must be seen.
+
+    ``pip list`` and ``pip freeze`` hardcode a refusal to report
+    ``argparse``, ``python`` and ``wsgiref``
+    (``pip._internal.utils.compat.stdlib_pkgs``). Any of the three,
+    genuinely installed and genuinely locked, read back as "the image
+    has nothing" -- a mismatch that is FALSE and that no button can
+    clear, because Regenerate keeps re-pinning the version the image
+    already has. Met live, where it blocked Level 3 permanently
+    (2026-09-15).
+
+    Driven through a real ``bash`` and a real interpreter over a
+    synthesized distribution, because the claim is about what the
+    command SEES. A stub returning canned lines would agree with any
+    spelling, and the spelling is the entire defect.
+
+    Kills: restoring the ``pip list --format=freeze`` spelling.
+    """
+    from vaibify.reproducibility.declaredPackages import (
+        fdictParsePinnedVersions,
+    )
+    from vaibify.reproducibility.shadowRerun import (
+        S_ENUMERATE_PACKAGES_COMMAND,
+    )
+    sSitePath = _fsWriteShadowingDistribution(tmp_path, "wsgiref", "0.1.2")
+    dictSeenByPip = fdictParsePinnedVersions(_fsRunInventoryCommand(
+        "python3 -m pip list --format=freeze --disable-pip-version-check",
+        sSitePath,
+    ))
+    if dictSeenByPip.get("wsgiref"):
+        pytest.skip(
+            "this pip no longer hides stdlib-shadowing distributions, "
+            "so the two spellings cannot be told apart here and this "
+            "test can kill nothing"
+        )
+    dictSeen = fdictParsePinnedVersions(_fsRunInventoryCommand(
+        S_ENUMERATE_PACKAGES_COMMAND, sSitePath,
+    ))
+    assert dictSeen.get("wsgiref") == "0.1.2", (
+        "the image inventory inherited pip's blind spot, so a locked "
+        "package the image HAS reads as 'the image has nothing' and "
+        "no button can clear the mismatch"
+    )
+    assert len(dictSeen) > 1, (
+        "the inventory reported only the synthesized distribution; it "
+        "must enumerate the whole environment, or every other locked "
+        "package reads as missing"
+    )

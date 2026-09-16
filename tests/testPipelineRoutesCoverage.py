@@ -1892,6 +1892,13 @@ class TestPollLevelStatePayload:
             # matter. Computed here so the dashboard renders a verdict
             # it never re-derives.
             "dictNextOrderedStep",
+            # Added 2026-09-16: the arrow's superset -- every endgame
+            # row premature right now, surviving the arrow's silence.
+            "dictBlockedRows",
+            # Added 2026-09-16: compared, required by nothing; the
+            # copies rows render these in their own informational
+            # block instead of the Level 2 file lists.
+            "listComparedNotRequiredPaths",
             # Added 2026-09-15: why the last verification established
             # nothing. Recorded all along and rendered only on the
             # PROOF tab, so a researcher in the Project block saw the

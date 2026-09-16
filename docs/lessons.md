@@ -523,3 +523,90 @@ correct approach.
   assertions are right for one thing only -- that two call sites spell
   the SAME constant, where the property genuinely is textual.
   Guarded by `tests/testTheReadinessRouteAnswersARequest.py`.
+- **A tool's convenience filter became a scientific claim vaibify
+  could not retract.** `pip list` and `pip freeze` hardcode a refusal
+  to report three installed distributions whose names shadow stdlib
+  modules -- `argparse`, `python`, `wsgiref`
+  (`pip._internal.utils.compat.stdlib_pkgs`, read out of a running
+  image rather than out of documentation). Vaibify enumerated an
+  image's packages with `pip list --format=freeze`, so a project whose
+  dependencies pull the `argparse` PyPI backport was told its image
+  did not satisfy its own lock: a mismatch that was FALSE and that no
+  button could clear, because Regenerate kept re-pinning the version
+  the image already had. It blocked Level 3 permanently, from the
+  readiness gate and from the shadow's own refusal. The inventory now
+  enumerates distributions through `importlib.metadata` -- the stdlib
+  record pip itself reads and then filters -- and the lesson
+  generalizes past pip: when a measurement is going to be published as
+  a fact about an environment, ask the record, not the tool that
+  presents the record to humans. Guarded by
+  `tests/testTheLockIsCheckedBeforeARerunIsSpent.py::`
+  `test_the_inventory_reports_what_pip_refuses_to_show`, which drives
+  the shipped command through a real shell over a synthesized
+  distribution, because the claim is about what the command SEES.
+- **A provisional first paint is worse than a slow one, because it is
+  the one that gets clicked.** Opening a project painted the Project
+  block green with the ordering arrow on the Rebuild attestation row,
+  and five to ten seconds later replaced it with the truth: amber, and
+  the arrow on Artifacts. The researcher acted on the interim twice
+  (2026-09-15). The structure that produced it recurs: a verdict that
+  costs a container exec is measured by a route the dashboard fires on
+  open, recorded server-side, and carried back by a LATER poll, so
+  every render in between is derived from an answer nobody has yet.
+  The block now holds its first paint until the answer AND a poll that
+  carries it, and says "this may take a moment" while it waits. The
+  tempting alternative -- borrowing the remote badges'
+  pulse-while-asking -- was refused on the same reasoning: it trades a
+  wrong first paint for a two-stage one and still leaves an interim to
+  act on. Guarded by
+  `tests/browser/testTheProjectBlockPaintsOnceAndCorrectly.py`, which
+  asserts the ORDER of paints against the moment the answer arrived,
+  never a duration.
+- **A writer that pins its siblings must run last.** The envelope
+  generator wrote `MANIFEST.sha256` first and then rewrote two of the
+  files it had just pinned — `requirements.lock` and
+  `.vaibify/environment.json`, tiers 2 and 3 of the same call. Every
+  regeneration therefore produced a manifest that was wrong about two
+  of its own entries the instant it landed (measured on a real
+  project: manifest at 23:58:40, the two files at 23:58:51 and
+  23:58:52). Nothing on the dashboard could see it, because
+  `fbVerifyManifestComplete` asks whether every declared path is
+  LISTED and nothing about whether the listed hashes are TRUE — the
+  same blind spot the Dependency-lock row had. The only thing in the
+  product that asked the real question was the Level 3 rerun, which a
+  researcher reaches by spending a full re-run of their workflow; it
+  reported those two paths as diverged, and both available remedies
+  (Verify again, Regenerate) recreated the skew, so Level 3 was
+  unreachable for every project vaibify had ever written an envelope
+  for. Two guards now, failing on different mutations: the manifest is
+  written last, and `fbVerifyManifestMatchesTheFiles` asks whether the
+  hashes are true — reporting only a POSITIVE contradiction, because a
+  hash nobody could take is unchecked and unchecked is never red.
+  Guarded by `tests/testTheManifestDescribesTheFilesItShipsWith.py`.
+- **A sampling gap became a fact about a file.**
+  `SnapshotRepoFiles.fdictHashFiles` is the one lenient accessor on a
+  deliberately strict class: where its siblings raise `KeyError` for a
+  path outside the poll snapshot, it answers `sSha256: None`. The
+  project-context file was sampled for CONTENT and not for HASH, so
+  the AI-provenance stamp's own comparison hashed it to `""`, never
+  matched the stamp it had just written, and the poll rewrote a
+  canonical file every five seconds for weeks — one log line per tick,
+  and a permanently dirty `git status`. The writer used a full adapter
+  and the comparer used the snapshot, which is why nothing disagreed
+  with itself in any test. The fix is structural: everything the
+  snapshot reads is also hashed, pinned by a test over the two sets
+  rather than over the one path that bit us. Note the mutation
+  arithmetic — breaking the SHARED hash helper makes the stamp agree
+  with itself and the mutation SURVIVES; only breaking the comparison
+  side reproduces the defect.
+  Guarded by `tests/testThePollDoesNotRewriteWhatItReads.py`.
+- **An empty failure record is an answer, not a mystery.** A Level 3
+  rerun that ends in a pure hash divergence has every step exit
+  cleanly, so the capture record is `{}` — "no step reported a
+  failure". The attestation row read `{}` as "cause unknown" and asked
+  the researcher to report a defect, while the diagnosis (the diverged
+  paths) sat two lines higher on the same screen. It is only a mystery
+  when nothing is listed either. The general form: when a record has
+  three shapes, check that the EMPTY one is not being read as the
+  UNKNOWN one — they were told apart correctly one layer down and
+  collapsed at the point of rendering.

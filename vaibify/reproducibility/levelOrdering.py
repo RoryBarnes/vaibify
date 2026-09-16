@@ -82,6 +82,7 @@ disappears exactly when order stops mattering.
 __all__ = [
     "T_LEVEL3_ORDERING_EDGES",
     "fdictDescribeNextOrderedStep",
+    "fdictDescribeOrderedEndgame",
     "fdictJudgeOrderedRequirements",
 ]
 
@@ -226,8 +227,15 @@ def fdictJudgeOrderedRequirements(
                 dictLockSatisfaction, dictImageCurrency,
             )
         ),
-        "manifest": levelGates.fbVerifyManifestComplete(
-            filesRepo, dictWorkflow,
+        # BOTH questions: does the manifest cover every declared
+        # file, and are the hashes it pins the files' current bytes.
+        # Coverage alone was the whole of this node until 2026-09-16,
+        # and a manifest that misdescribed two of its own entries sat
+        # green under an arrow pointing past it at the rerun that
+        # would fail on exactly those entries.
+        "manifest": (
+            levelGates.fbVerifyManifestComplete(filesRepo, dictWorkflow)
+            and levelGates.fbVerifyManifestMatchesTheFiles(filesRepo)
         ),
         "reproduceScript": (
             levelGates.fbVerifyReproduceScript(filesRepo, dictWorkflow)
@@ -298,6 +306,57 @@ def _flistSelectLiveEdges(dictSatisfied):
     ]
 
 
+def fdictDescribeOrderedEndgame(
+    dictWorkflow, filesRepo, dictLockSatisfaction=None,
+    dictImageCurrency=None,
+):
+    """Return the arrow and the blocked map from ONE judge pass.
+
+    Wire shape::
+
+        {"dictNextStep": {...} or None,
+         "dictBlockedRows": {sRowKey: sReason}}
+
+    The two are different readings of the same live edges and MUST
+    come from one judgement, or a poll could render an arrow whose
+    target the blocked map calls premature. They also differ on
+    purpose: the arrow goes silent whenever there is no single root
+    (two independent chains), but a row downstream of an unsatisfied
+    prerequisite is premature regardless of how many chains remain,
+    so the blocked map keeps answering after the arrow stops.
+
+    ONE condition gates both before any edge is consulted: no Level 2
+    work may be outstanding. The researcher met the arrow pointing at
+    the Rebuild attestation on a project sitting at Level 1, whose
+    actual next task was bringing the published copies up to Level 2
+    (2026-09-16): the arrow was right about the endgame's internal
+    order and wrong about the endgame being where they were. A rung
+    below is never something to sequence around -- it is simply next.
+    Below Level 2 the blocked map is empty for the same reason and
+    one more: a blocked row's Level 2 actions (push, publish) ARE the
+    remedy down there, and a circle-slash over the remedy is the
+    dashboard refusing the researcher's next step.
+
+    A second condition -- Level 3 readiness -- gated the arrow for
+    part of 2026-09-16 and was REMOVED the same day. Readiness is
+    false precisely because the ordered rows are unmet, so the gate
+    silenced the arrow at the exact moment the ordering mattered:
+    a project at Level 2 with only ``reproduceScript`` and
+    ``manifest`` open got no arrow, and doing them in the wrong order
+    is the doubled work the arrow exists to prevent.
+    """
+    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):
+        return {"dictNextStep": None, "dictBlockedRows": {}}
+    dictSatisfied = fdictJudgeOrderedRequirements(
+        dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
+    )
+    listLive = _flistSelectLiveEdges(dictSatisfied)
+    return {
+        "dictNextStep": _fdictSelectSingleRootStep(listLive),
+        "dictBlockedRows": _fdictMapBlockedRows(listLive),
+    }
+
+
 def fdictDescribeNextOrderedStep(
     dictWorkflow, filesRepo, dictLockSatisfaction=None,
     dictImageCurrency=None,
@@ -306,12 +365,17 @@ def fdictDescribeNextOrderedStep(
 
     ``None`` means "order does not matter here", which is the answer
     on most projects most of the time -- see the module docstring for
-    why that is information rather than a gap.
+    why that is information rather than a gap. The endgame gate and
+    the shape of the answer live on ``fdictDescribeOrderedEndgame``,
+    which computes this and the blocked map from one judgement.
     """
-    dictSatisfied = fdictJudgeOrderedRequirements(
+    return fdictDescribeOrderedEndgame(
         dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
-    )
-    listLive = _flistSelectLiveEdges(dictSatisfied)
+    )["dictNextStep"]
+
+
+def _fdictSelectSingleRootStep(listLive):
+    """Return the arrow payload, or ``None`` without a unique root."""
     if not listLive:
         return None
     setLater = {tEdge[1] for tEdge in listLive}
@@ -321,6 +385,19 @@ def fdictDescribeNextOrderedStep(
     if len(listRoots) != 1:
         return None
     return _fdictBuildStep(listRoots[0], listLive)
+
+
+def _fdictMapBlockedRows(listLive):
+    """Return ``{sRowKey: sReason}`` for every LATER end of a live edge.
+
+    The reason shown is the first live edge's, in the edge tuple's own
+    order, so the text a researcher reads is deterministic when two
+    prerequisites block one row.
+    """
+    dictBlocked = {}
+    for tEdge in listLive:
+        dictBlocked.setdefault(tEdge[1], tEdge[2])
+    return dictBlocked
 
 
 def _fdictBuildStep(sRowKey, listLive):

@@ -185,13 +185,6 @@ DICT_ACCEPTED_CROSSINGS = {
         "definition, which Level 2 compares; the researcher confirms "
         "before it is written.",
     ),
-    "verify-l3": (
-        S_DISPOSITION_WARNED,
-        "The rebuild attestation is vaibify's own artefact, committed "
-        "by the verification that produced it, and it is compared "
-        "against both remotes outside the envelope. The researcher is "
-        "warned before the verification begins.",
-    ),
     "declare-binary": (
         S_DISPOSITION_WARNED,
         "Declaring a package to satisfy Level 3 rewrites the project "

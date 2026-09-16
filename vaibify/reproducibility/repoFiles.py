@@ -598,8 +598,27 @@ class ContainerRepoFiles:
         return iExitCode == 0
 
     def flistListJsonFilenames(self, sRelDir):
-        """Return ``*.json`` filenames in the directory, sorted descending."""
-        return sorted(self.fdictReadDirJsonContents(sRelDir), reverse=True)
+        """Return ``*.json`` filenames in the directory, sorted descending.
+
+        Names only, through the DECLARED directory read -- it used to
+        ride ``fdictReadDirJsonContents``, fetching every file's BODY
+        through the general exec primitive to answer a question about
+        names. In an enforced lane outside a carrier the gate refused
+        that exec, which is how Make Permanent on the Zenodo archive
+        500d out of its own candidate collection (live, 2026-09-16).
+        An absent directory is an empty listing, as on the host.
+        """
+        try:
+            listEntries = self.connectionDocker.flistDirectoryEntries(
+                self.sContainerId, self._fsAbsolute(sRelDir),
+            )
+        except FileNotFoundError:
+            return []
+        return sorted(
+            (sName for sName in listEntries
+             if sName.endswith(".json")),
+            reverse=True,
+        )
 
     def fdictReadDirJsonContents(self, sRelDir):
         """Return ``{sFilename: sContents}`` in one container exec."""
@@ -739,73 +758,14 @@ class ContainerRepoFiles:
 # body. ``MANIFEST.sha256`` lives there because its body is hundreds of
 # KB for a real sweep and is parsed lazily by a sha-keyed host cache
 # once per manifest version, not once per poll.
-_S_SNAPSHOT_SCRIPT = '''
+# The legacy transport's preamble: args as base64-JSON in a repr
+# literal. The BODY is dockerConnection.S_REPO_SNAPSHOT_PROGRAM_CORE,
+# imported where the command is built -- one program, two transports,
+# so the typed read and this embedded form cannot drift.
+_S_SNAPSHOT_PAYLOAD_PREAMBLE = """
 import base64, hashlib, json, os, sys
 dictArgs = json.loads(base64.b64decode(%(payload)s).decode())
-sRoot = dictArgs["sRoot"]
-setSkipText = set(dictArgs.get("listSkipTextPaths", []))
-dictOut = {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}}
-def _fsHash(sAbs):
-    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        iFd = os.open(sAbs, iFlags)
-    except OSError:
-        return None
-    h = hashlib.sha256()
-    with os.fdopen(iFd, "rb") as f:
-        for ba in iter(lambda: f.read(65536), b""):
-            h.update(ba)
-    return h.hexdigest()
-def _fsHashFollow(sAbs):
-    # Follows symlinks — declared binaries in ~/.local/bin are
-    # commonly symlinks to the real executable, and we want the
-    # content that actually runs. These are explicit, out-of-repo
-    # workflow declarations, so there is no repo-escape concern.
-    try:
-        h = hashlib.sha256()
-        with open(sAbs, "rb") as f:
-            for ba in iter(lambda: f.read(65536), b""):
-                h.update(ba)
-        return h.hexdigest()
-    except OSError:
-        return None
-for sRel in dictArgs["listContentPaths"]:
-    sAbs = os.path.join(sRoot, sRel)
-    dictEntry = {"bIsFile": os.path.isfile(sAbs), "sText": None,
-                 "iMtime": None}
-    if dictEntry["bIsFile"]:
-        try:
-            dictEntry["iMtime"] = int(os.stat(sAbs).st_mtime)
-            if sRel not in setSkipText:
-                with open(sAbs, "r") as f:
-                    dictEntry["sText"] = f.read()
-        except (OSError, UnicodeDecodeError):
-            dictEntry["sText"] = None
-    dictOut["dictFiles"][sRel] = dictEntry
-def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
-    if os.path.isabs(sRel):
-        d["bEscapesRoot"] = True
-        return d
-    sCur = sRoot
-    for sSeg in [s for s in sRel.split("/") if s]:
-        sCur = os.path.join(sCur, sSeg)
-        if os.path.islink(sCur):
-            d["sSymlinkSegment"] = sSeg
-            break
-    sRootReal = os.path.realpath(sRoot)
-    sReal = os.path.realpath(os.path.join(sRootReal, sRel))
-    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
-        d["bEscapesRoot"] = True
-        return d
-    d["sSha256"] = _fsHash(sReal)
-    return d
-for sRel in dictArgs["listHashPaths"]:
-    dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
-for sAbs in dictArgs.get("listAbsHashPaths", []):
-    dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
-sys.stdout.write(json.dumps(dictOut))
-'''
+"""
 
 
 # The fixed envelope-file set every snapshot fetch reads. Existence,
@@ -873,30 +833,52 @@ def _fsBuildSnapshotScriptCommand(
     trip — the snapshot then answers ``fdictHashAbsolutePaths`` from
     pre-fetched values instead of a forbidden second exec.
 
-    The Level 3 envelope paths are always in the hash batch: the
-    envelope-agreement gate compares each one's CURRENT hash against
-    the hash the last remote verify graded, on every poll, and a
-    snapshot that had not sampled them would answer ``sSha256: None``
-    — read by that gate as unproven, blocking Level 3 for a project
-    whose envelope is perfectly synced. Five small files in the same
-    exec. The import is deferred because ``publicationScope`` imports
+    EVERYTHING THE SNAPSHOT READS IS ALSO HASHED. A path sampled for
+    content but not for hash answers ``sSha256: None``, and
+    ``fdictHashFiles`` is the one lenient accessor on this otherwise
+    strict class -- it guesses ``None`` where its siblings raise -- so
+    the gap arrives at a caller as a real answer about a real file.
+    It did: ``.vaibify/AGENTS.md`` was a content path and not a hash
+    path, so the AI-provenance stamp's own comparison hashed it to
+    ``""``, never matched the stamp it had just written, and the poll
+    rewrote that file every five seconds for weeks (measured
+    2026-09-16). The Level 3 envelope paths were added here for the
+    same reason one gate at a time; the content set closes the rest of
+    the class. They are small files in an exec that already opens
+    them. The import is deferred because ``publicationScope`` imports
     this module at its top level.
     """
-    from .publicationScope import TUPLE_LEVEL3_ENVELOPE_PATHS
-    listHashPaths = sorted(
-        set(["MANIFEST.sha256"])
-        | set(TUPLE_LEVEL3_ENVELOPE_PATHS)
-        | set(listScriptRelPaths or [])
-        | set(listHashRelPaths or []),
+    from vaibify.docker.dockerConnection import (
+        S_REPO_SNAPSHOT_PROGRAM_CORE,
+    )
+    listHashPaths = _flistSnapshotHashPaths(
+        listScriptRelPaths, listHashRelPaths,
     )
     return _fsBuildEmbeddedScriptCommand(
-        _S_SNAPSHOT_SCRIPT, {
+        _S_SNAPSHOT_PAYLOAD_PREAMBLE + S_REPO_SNAPSHOT_PROGRAM_CORE, {
             "sRoot": sRootPath,
             "listContentPaths": list(TUPLE_SNAPSHOT_CONTENT_PATHS),
             "listSkipTextPaths": list(TUPLE_SNAPSHOT_SKIP_TEXT_PATHS),
             "listHashPaths": listHashPaths,
             "listAbsHashPaths": sorted(set(listAbsHashPaths or [])),
         },
+    )
+
+
+def _flistSnapshotHashPaths(listScriptRelPaths, listHashRelPaths):
+    """Return the full hash batch: EVERYTHING the snapshot reads.
+
+    One derivation for both transports. The import is deferred
+    because ``publicationScope`` imports this module at its top
+    level.
+    """
+    from .publicationScope import TUPLE_LEVEL3_ENVELOPE_PATHS
+    return sorted(
+        set(["MANIFEST.sha256"])
+        | set(TUPLE_SNAPSHOT_CONTENT_PATHS)
+        | set(TUPLE_LEVEL3_ENVELOPE_PATHS)
+        | set(listScriptRelPaths or [])
+        | set(listHashRelPaths or []),
     )
 
 
@@ -920,23 +902,20 @@ def fnInjectManifestTextIntoSnapshot(filesSnapshot, sManifestText):
         dictEntry["bIsFile"] = True
 
 
-def _fdictSnapshotFilesOrConservative(dictParsed):
-    """Return the fetched file entries, or all-absent on a failed exec.
+def ffilesConservativeSnapshot(sRootPath):
+    """Return the all-absent snapshot for ONE degraded poll tick.
 
-    A snapshot exec that crashed or printed garbage yields the
-    conservative reading — every envelope file reported absent — so
-    the gates degrade toward "not verified" for one poll (matching
-    the conservative-on-error convention used throughout the gates)
-    rather than crashing the whole file-status poll or, worse,
-    reporting a greener state than was actually observed.
+    The POLL's own degradation, built explicitly at its catch since
+    ``ffilesFetch`` began raising on a failed exec (2026-09-16): the
+    gates read "not verified" for one tick rather than the poll
+    crashing — and rather than a fabricated answer reaching the
+    readiness route, whose promise on failure is the slow live
+    adapter, not this shape.
     """
-    dictFiles = dictParsed.get("dictFiles")
-    if isinstance(dictFiles, dict) and dictFiles:
-        return dictFiles
-    return {
+    return SnapshotRepoFiles(sRootPath, {
         sRelPath: {"bIsFile": False, "sText": None, "iMtime": None}
         for sRelPath in TUPLE_SNAPSHOT_CONTENT_PATHS
-    }
+    }, {})
 
 
 class SnapshotRepoFiles:
@@ -974,19 +953,60 @@ class SnapshotRepoFiles:
         binaries) hashed in the same exec and answered later via
         ``fdictHashAbsolutePaths``.
         """
-        sCommand = _fsBuildSnapshotScriptCommand(
-            sRootPath, listScriptRelPaths, listHashRelPaths,
-            listAbsHashPaths=listAbsHashPaths,
+        fnTypedSnapshot = getattr(
+            connectionDocker, "ftReadRepoSnapshot", None,
         )
-        tExecResult = connectionDocker.ftRunInContainerStreamed(
-            sContainerId, sCommand,
-        )
+        if fnTypedSnapshot is not None:
+            # The DECLARED read: no admission needed, so the fetch
+            # can run outside any carrier -- which is what lets the
+            # readiness route snapshot before its pausable probe.
+            tExecResult = fnTypedSnapshot(
+                sContainerId, sRootPath,
+                list(TUPLE_SNAPSHOT_CONTENT_PATHS),
+                list(TUPLE_SNAPSHOT_SKIP_TEXT_PATHS),
+                _flistSnapshotHashPaths(
+                    listScriptRelPaths, listHashRelPaths,
+                ),
+                sorted(set(listAbsHashPaths or [])),
+            )
+        else:
+            # Legacy transport for adapters without the typed read
+            # (test doubles): the same program body over the general
+            # exec primitive, which an enforced lane treats as
+            # mutating.
+            sCommand = _fsBuildSnapshotScriptCommand(
+                sRootPath, listScriptRelPaths, listHashRelPaths,
+                listAbsHashPaths=listAbsHashPaths,
+            )
+            tExecResult = connectionDocker.ftRunInContainerStreamed(
+                sContainerId, sCommand,
+            )
+        # A failed exec RAISES rather than degrading here, because
+        # the two callers own different degradations and this seam
+        # cannot pick for them: the readiness route falls back to
+        # the slow live adapter (its promise), while the poll shows
+        # one conservative tick. Swallowing the failure into the
+        # all-absent shape presented eighteen missing envelope files
+        # as fact (external review, 2026-09-16).
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "the repository snapshot exec exited "
+                f"{tExecResult.iExitCode}: "
+                f"{(tExecResult.sStderr or '')[-300:]}"
+            )
         dictParsed = _fdictParseEmbeddedScriptOutput(tExecResult.sStdout)
+        if not isinstance(dictParsed.get("dictFiles"), dict) or (
+            not dictParsed["dictFiles"]
+        ):
+            raise OSError(
+                "the repository snapshot exec printed no parseable "
+                "answer; refusing to fabricate one"
+            )
         dictHashes = dict(dictSeedHashes or {})
         dictHashes.update(dictParsed.get("dictHashes") or {})
         return cls(
             sRootPath,
-            _fdictSnapshotFilesOrConservative(dictParsed),
+            dictParsed["dictFiles"],
             dictHashes,
             dictAbsHashes=dictParsed.get("dictAbsHashes") or {},
         )

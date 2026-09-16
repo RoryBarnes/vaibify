@@ -84,6 +84,8 @@ __all__ = [
     "fbVerifyDockerfilePinned",
     "fbVerifyEnvironmentSnapshot",
     "fbVerifyManifestComplete",
+    "fbVerifyManifestMatchesTheFiles",
+    "flistManifestEntriesContradictingTheFiles",
     "fbVerifyReproduceScript",
     "fbWorkflowDeclaresBinaries",
     "fbWorkflowFullySyncedWithArxiv",
@@ -1333,6 +1335,7 @@ def fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
     return (
         fbVerifyManifestComplete(filesRepo, dictWorkflow)
+        and fbVerifyManifestMatchesTheFiles(filesRepo)
         and fbVerifyDependencyLock(filesRepo)
         and fbVerifyEnvironmentSnapshot(filesRepo)
         and fbVerifyDockerfilePinned(filesRepo)
@@ -1399,6 +1402,46 @@ def fbVerifyManifestComplete(filesRepo, dictWorkflow):
         fnReRaiseControlPlaneRefusal(error)
         return False
     return not listMissing
+
+
+def flistManifestEntriesContradictingTheFiles(filesRepo):
+    """Return pinned entries whose file is PRESENT and hashes differently.
+
+    The manifest row asked only whether every declared path was
+    LISTED. Whether the listed hashes were TRUE was asked by exactly
+    one thing in the product -- the Level 3 rerun -- and only after a
+    researcher had spent a full workflow re-run to get there. So a
+    manifest that misdescribed its own files was green on every
+    surface and reported as a reproduction FAILURE at the end of the
+    ladder, naming the files as diverged. That is what the envelope
+    generator's write order produced for every project it ever wrote
+    (fixed 2026-09-16); this gate is what makes the next such skew
+    visible where it happens instead of a rerun later.
+
+    ONLY a positive contradiction counts. An entry whose hash the
+    adapter could not produce -- a file that is gone, a path the poll
+    snapshot did not sample -- is NOT reported: unchecked is never
+    red, and a manifest row reddened because nobody could look would
+    be the inverse of the bug this exists for. Absence is already the
+    business of the gates that own those files.
+    """
+    from . import manifestWriter
+    try:
+        listMismatches = manifestWriter.flistVerifyManifest(filesRepo)
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError, KeyError, NotImplementedError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return []
+    return [
+        dictEntry for dictEntry in listMismatches
+        if dictEntry.get("sActual")
+    ]
+
+
+def fbVerifyManifestMatchesTheFiles(filesRepo):
+    """Return False only when the manifest is KNOWN to misdescribe a file."""
+    return not flistManifestEntriesContradictingTheFiles(filesRepo)
 
 
 def fbVerifyDependencyLock(filesRepo):
@@ -1526,6 +1569,9 @@ def _fdictCollectL3ReadinessFlags(dictWorkflow, filesRepo, bRepo):
     return {
         "bManifestComplete": bRepo and fbVerifyManifestComplete(
             filesRepo, dictWorkflow,
+        ),
+        "bManifestMatchesTheFiles": bRepo and fbVerifyManifestMatchesTheFiles(
+            filesRepo,
         ),
         "bDependencyLockHashed": bRepo and fbVerifyDependencyLock(
             filesRepo,
@@ -3035,7 +3081,7 @@ def fdictAttestationPublicationState(filesRepo):
 def _fbAttestationPublishedTo(filesRepo, sService):
     """Return the tri-state publication verdict for one remote."""
     from . import publicationScope
-    sPath = publicationScope.TUPLE_COMPARED_NOT_REQUIRED_PATHS[0]
+    sPath = publicationScope.S_ATTESTATION_REPO_PATH
     dictStatus = scheduledReverify.fdictReadCachedSyncStatus(
         filesRepo, sService,
     )

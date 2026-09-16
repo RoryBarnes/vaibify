@@ -58,7 +58,7 @@ from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
 )
 from vaibify.reproducibility.shadowRerun import (
-    S_SHADOW_PIP_ENUMERATE_COMMAND,
+    S_ENUMERATE_PACKAGES_COMMAND,
 )
 from tests.testDraftRoutes import (
     DICT_WORKFLOW,
@@ -150,6 +150,31 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             "sCommand": sCommand,
             "sPath": sPath,
         })
+
+    def ftReadRepoSnapshot(
+        self, sContainerId, sRootPath, listContentPaths,
+        listSkipTextPaths, listHashPaths, listAbsHashPaths,
+    ):
+        """The declared snapshot read: recorded, and NEVER gated.
+
+        The real adapter grants the audited-read exemption inside
+        ``_ftRunTypedRead``; this double records the admission mode
+        live at the call so a test can assert the read needed none.
+        An empty answer parses to the conservative all-absent
+        snapshot, which is what the general-exec double answered
+        before the read was declared.
+        """
+        import collections
+        import json as jsonModule
+        self._fnRecordLiveAdmission(
+            sContainerId, "typedRead", sCommand="repoSnapshot",
+        )
+        tShape = collections.namedtuple(
+            "tExecResult", "iExitCode sStdout sStderr",
+        )
+        return tShape(0, jsonModule.dumps(
+            {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}},
+        ), "")
 
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
@@ -6408,7 +6433,7 @@ class DockerDoubleHoldingALockTheContainerFails(
         tResult = super().ftResultExecuteCommand(
             sContainerId, sCommand, sWorkdir,
         )
-        if sCommand == S_SHADOW_PIP_ENUMERATE_COMMAND:
+        if sCommand == S_ENUMERATE_PACKAGES_COMMAND:
             return (0, "numpy==2.2.6\n")
         return tResult
 
@@ -6421,7 +6446,7 @@ def tclientReadiness():
 
 @pytest.mark.falsification
 def testTheReadinessProbeRunsBothExecsUnderOneDrain(tclientReadiness):
-    """GET .../level3/readiness execs TWICE, and both are carried.
+    """GET .../level3/readiness: two carried execs, one declared read.
 
     The route asks two questions of the container -- whether its
     packages satisfy ``requirements.lock``, and whose attestation this
@@ -6437,7 +6462,7 @@ def testTheReadinessProbeRunsBothExecsUnderOneDrain(tclientReadiness):
     against a route that refuses for any reason at all.
 
     Kills: dropping ``_fdictProbeTheContainerOnce``'s carrier, which
-    makes the pip-list exec raise ``MutationNotAdmittedError`` out of
+    makes the enumerate exec raise ``MutationNotAdmittedError`` out of
     the worker.
     """
     client, connectionDocker = tclientReadiness
@@ -6454,10 +6479,10 @@ def testTheReadinessProbeRunsBothExecsUnderOneDrain(tclientReadiness):
         connectionDocker,
         lambda dictReached: (
             dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
-            and dictReached["sCommand"] == S_SHADOW_PIP_ENUMERATE_COMMAND
+            and dictReached["sCommand"] == S_ENUMERATE_PACKAGES_COMMAND
         ),
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
-        "pip enumerate exec",
+        "package enumerate exec",
     )
     _fnAssertSelectedRanUnder(
         connectionDocker,
@@ -6467,6 +6492,34 @@ def testTheReadinessProbeRunsBothExecsUnderOneDrain(tclientReadiness):
         ),
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
         "record-kind git exec",
+    )
+    # The repository snapshot is NOT one of the carried execs any
+    # more (2026-09-16): it is a DECLARED typed read needing no
+    # admission, taken before the probe -- parked inside the probe,
+    # the open-time race paused it on every dashboard open and the
+    # gates silently fell back to ten seconds of file-by-file reads.
+    # Asserted both ways: the typed read ran with NO admission open,
+    # and no embedded-script snapshot rode the general primitive.
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
+            dictReached["sPrimitive"] == "typedRead"
+            and dictReached["sCommand"] == "repoSnapshot"
+        ),
+        "",
+        "repository snapshot typed read",
+    )
+    listEmbeddedSnapshots = [
+        dictReached
+        for dictReached in connectionDocker.listAdmittedPrimitives
+        if dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+        and "b64decode" in (dictReached["sCommand"] or "")
+    ]
+    assert listEmbeddedSnapshots == [], (
+        "the snapshot rode the general exec primitive on an adapter "
+        "that declares the typed read; an enforced lane admits that "
+        "only inside a carrier, which is the pausable placement this "
+        "migration removed"
     )
 
 

@@ -594,3 +594,37 @@ question.
 The `level2/readiness` and `level3/attestation` GETs are also
 `(awaiting)` in the carrier audit. Neither execs today, so both are
 out of scope here — but they are the remaining gap on this prefix.
+
+---
+
+## Landed after the seven stages (2026-09-15)
+
+Two follow-ups, both found by running the finished ladder against a
+real project rather than by reading it.
+
+**The image inventory no longer inherits pip's blind spot.** `pip
+list` and `pip freeze` hardcode a refusal to report three installed
+distributions whose names shadow stdlib modules -- `argparse`,
+`python`, `wsgiref`. The lock-satisfaction check enumerated an image
+with `pip list --format=freeze`, so a project whose dependencies pull
+the `argparse` backport was told its image failed its own lock: a
+FALSE mismatch that no button could clear, blocking Level 3
+permanently from both the readiness gate and the shadow's refusal.
+The shared constant is now `S_ENUMERATE_PACKAGES_COMMAND` and
+enumerates distributions through `importlib.metadata`. Same grammar,
+same parser, same two callers, one constant. It needs Python 3.8 in
+the image and refuses below that rather than falling back to the
+filtered answer.
+
+**The Project block holds its first paint until its verdict is in.**
+The verdict costs a container exec, the poll may make none, so it is
+measured by the open-time readiness GET, recorded server-side, and
+carried back by a LATER poll -- and everything rendered in between is
+derived from an answer nobody has. Opening a project painted green
+with the arrow on Rebuild attestation, then corrected itself to amber
+with the arrow on Artifacts. The block now renders a "this may take a
+moment" notice, without its level strip, until the readiness answer
+AND an ordered single poll (`VaibifyPolling.fnPollFileStatusOnce`)
+have both landed. The open-time warm-up race listed as a third item is
+closed by this and needs no work of its own: no other surface reads
+the verdict off the poll.

@@ -419,9 +419,19 @@ def test_container_read_dir_json_is_one_exec(
     dictContents = filesContainer.fdictReadDirJsonContents("hist")
     assert len(connectionFake.listCommands) == 1
     assert json.loads(dictContents["x.json"]) == {"iA": 1}
+    # Names-only listings ride the DECLARED directory read since
+    # 2026-09-16 (the general-exec form was refused in the promote
+    # route's request lane), so the fake answers it as the typed
+    # read would -- and the body fetch above stays one general exec.
+    connectionFake.flistDirectoryEntries = (
+        lambda sContainerId, sPath: ["y.json", "x.json", "notes.md"]
+    )
     assert filesContainer.flistListJsonFilenames("hist") == [
         "y.json", "x.json",
     ]
+    assert len(connectionFake.listCommands) == 1, (
+        "the names-only listing paid a general exec"
+    )
 
 
 def test_container_run_command_is_timeout_guarded():

@@ -6834,6 +6834,22 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* An action the ordering says must wait. Disabled in markup as well
+   as in appearance: the effect would have to be undone. */
+.wf-action-blocked,
+.wf-action-blocked:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* The Project block before its first verdict is in. Muted, because
+   it is a wait and not a finding. */
+.project-block-waiting {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 10px 14px 12px 20px;
+}
+
 .requirement-group-header {
     display: flex;
     align-items: center;
@@ -6916,9 +6932,13 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    Scoped to each banner's own cells: a group's rows carry their own
    class, so a descendant selector would pulse the settled rows
    alongside the checking one. */
-.requirement-group-checking > .requirement-group-header
-    .step-level-cell,
-.requirement-row-checking > .requirement-row-header .step-level-cell {
+/* Only the cells whose LEVEL is actually being assessed. A Level 3
+   rerun used to pulse the Level 1 and Level 2 cells beside it --
+   dashes, for levels the rerun says nothing about, animated as
+   though they were under reconsideration. The marker is set per
+   cell by _fdictCheckingLevelsOf, so a group banner and its rows
+   pulse the same set. */
+.step-level-cell[data-checking="1"] {
     animation: pulse 1.6s infinite;
 }
 
@@ -8539,6 +8559,91 @@ body.council-workspace-open #mainLayout {
     margin: 0.35em 0 0.2em 1.6em;
     font-size: 0.85em;
     color: var(--highlight-color);
+}
+
+/* The ordering's "not yet" on an expanded row. Muted where the
+   arrow's reason is highlighted: premature is a wait, not a
+   finding, and never an error color -- red means a claim failed. */
+.requirement-row-wait-reason {
+    margin: 0.35em 0 0.2em 1.6em;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+/* A refused click points the eye at the explanation. */
+.wait-reason-attention {
+    animation: waitReasonPulse 0.9s ease-out 1;
+}
+
+@keyframes waitReasonPulse {
+    0% { color: var(--highlight-color); }
+    100% { color: var(--text-muted); }
+}
+
+/* STRUCTURAL: every button in a blocked row's detail looks and acts
+   inert, whichever renderer drew it. The circle-slash rides the
+   button itself so the signal survives on a touch screen, where the
+   not-allowed cursor does not exist. wf-view-attestation stays live
+   (it only shows a stored record) and keeps its normal look. */
+.requirement-row-blocked .requirement-row-detail
+    button:not(.wf-view-attestation) {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.requirement-row-blocked .requirement-row-detail
+    button:not(.wf-view-attestation)::before {
+    content: "\2298 ";
+}
+
+/* Actionable non-buttons in a blocked row: the file badges open the
+   push/sync picklist and the Repos link opens the panel that
+   performs it, so both go inert with the buttons. No glyph on a
+   badge -- it is an icon already -- the dimming and the cursor
+   carry the signal. */
+.requirement-row-blocked .requirement-row-detail .remote-badge,
+.requirement-row-blocked .requirement-row-detail .envelope-open-repos {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wait-reason-attention { animation: none; }
+}
+
+/* Compared-but-required-by-nothing files, set apart from the Level 2
+   list so their honest badges cannot read as Level 2 defects. */
+.informational-files-block {
+    margin-top: 0.6em;
+    padding-top: 0.4em;
+    border-top: 1px solid var(--border-color);
+}
+
+.informational-files-title {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-bottom: 0.25em;
+}
+
+.informational-files-note {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    margin-top: 0.25em;
+}
+
+/* The two halves of a merged copies row, each labeled with the
+   level it speaks for so neither list can read as the other's. */
+.sync-scope-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin: 0.5em 0 0.25em 0;
+}
+
+.sync-level-three-envelope {
+    margin-top: 0.6em;
+    padding-top: 0.4em;
+    border-top: 1px solid var(--border-color);
 }
 
 @media (prefers-reduced-motion: reduce) {

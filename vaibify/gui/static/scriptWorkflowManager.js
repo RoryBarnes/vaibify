@@ -123,7 +123,10 @@ var VaibifyWorkflowManager = (function () {
             if (iThisGeneration !== _iWorkflowGeneration) return;
             VaibifyApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
-            fnCheckOriginDrift(sId, false);
+            // The drift check rides the open-time chain in
+            // scriptApplication now: fired from here it held the
+            // git-fetch carrier while the readiness probe asked for
+            // the drain, and the probe pauses rather than queues.
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
             if (_fbClaimWasLost(error)) {
@@ -181,7 +184,8 @@ var VaibifyWorkflowManager = (function () {
         }
         if (iThisGeneration !== _iWorkflowGeneration) return true;
         VaibifyApp.fnActivateWorkflow(sId, dictResult, sWorkflowName);
-        fnCheckOriginDrift(sId, false);
+        // Drift check: on the open-time chain, same as the primary
+        // select path above.
         return true;
     }
 

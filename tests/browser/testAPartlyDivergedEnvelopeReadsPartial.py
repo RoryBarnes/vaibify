@@ -1,12 +1,14 @@
-"""A mixed envelope row is PARTIAL, and its GitHub row can push.
+"""A mixed envelope reads PARTIAL on the merged row, which can push.
 
 Two changed envelope files over three matching ones painted the
-Published-envelope rows fully red — the mark for a requirement with
-nothing left standing — above a file list that was mostly green
+envelope rows fully red — the mark for a requirement with nothing
+left standing — above a file list that was mostly green
 (researcher-ruled, 2026-09-02): red is for total failure, "2 of 5
 differ" is the definition of partial. And the row offered a Verify
 button with no way to publish, so the fix it named ("push the
-current envelope") had no control anywhere near it.
+current envelope") had no control anywhere near it. Since the
+2026-09-16 merge the same claims live on the Level 3 CELL of the
+merged Published-copies rows.
 
 These tests execute the SHIPPED render function inside a real
 browser with the badge oracle stubbed per path — the render path is
@@ -41,14 +43,17 @@ _S_RENDER_WITH_BADGES = """(dictArgs) => {
                 dictArtifacts: {},
                 dictImageCurrency: {bPinnedImageIsLive: null},
                 listBinaries: [],
+                dictRemoteSyncs: {github: {
+                    iTotalFiles: 3, iMatching: 3, iDivergedCount: 0,
+                }},
             },
             dictRemoteChecks: {},
             setToggledFileGroups: new Set(),
             bProjectBlockCollapsed: false,
             setExpandedRequirementGroups:
-                new Set(['publishedEnvelope']),
+                new Set(['publishedCopies']),
             setExpandedRequirementRows:
-                new Set(['envelopeMirror', 'envelopeArchive']),
+                new Set(['github', 'zenodo']),
         });
     } finally {
         VaibifyGitBadges.fdictGetBadgesForFile = fnOriginal;
@@ -105,13 +110,22 @@ def test_mixed_divergence_reads_partial_and_offers_a_push(
         "requirements.lock": "drifted",
         ".vaibify/environment.json": "drifted",
     })
-    sMirrorRow = sHtml.split('data-req="envelopeMirror"')[1]
-    sMirrorRow = sMirrorRow.split('data-req="envelopeArchive"')[0]
+    sMirrorRow = sHtml.split('data-req="github"')[1]
+    sMirrorRow = sMirrorRow.split('data-req="zenodo"')[0]
     assert "level-cell-partial" in sMirrorRow, (
         "two diverged files over three matching ones must read "
         "PARTIAL, not total failure"
     )
     assert "level-cell-none" not in sMirrorRow
+    # The two cells DISAGREE, and both are right: the Level 2 verify
+    # above passed in full, and a diverged envelope is Level 3's
+    # business alone. "banner not green" would be too weak here -- an
+    # implementation that wrongly lowered Level 2 would satisfy it.
+    assert "Level 2: met" in sMirrorRow, (
+        "a diverged envelope lowered the Level 2 cell; the higher "
+        "rung reached down"
+    )
+    assert "Level 3: met" not in sMirrorRow
     assert "wf-push-envelope" in sMirrorRow, (
         "the row proves specific files diverged and offers no way "
         "to publish them"
@@ -156,11 +170,11 @@ def test_mixed_divergence_reads_partial_and_offers_a_push(
         "requirements.lock": "drifted",
         ".vaibify/environment.json": "drifted",
     })
-    sRedRow = sAllDrifted.split('data-req="envelopeMirror"')[1]
-    sRedRow = sRedRow.split('data-req="envelopeArchive"')[0]
+    sRedRow = sAllDrifted.split('data-req="github"')[1]
+    sRedRow = sRedRow.split('data-req="zenodo"')[0]
     assert "level-cell-none" in sRedRow
 
     # --- the Zenodo row never offers a push: a Zenodo "sync" is a
     # new immutable deposit version, its own deliberate act
-    sArchiveRow = sAllDrifted.split('data-req="envelopeArchive"')[1]
+    sArchiveRow = sAllDrifted.split('data-req="zenodo"')[1]
     assert "wf-push-envelope" not in sArchiveRow

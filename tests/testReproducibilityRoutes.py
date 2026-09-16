@@ -199,6 +199,75 @@ def _fnSeedReadyL3Repo(sProjectRepo):
 # ============================================================================
 
 
+@pytest.mark.falsification
+def test_a_paused_probe_still_gets_snapshot_backed_gates(
+    fixtureWorkflow, monkeypatch,
+):
+    """The gates run over the one-exec snapshot even when the probe pauses.
+
+    The snapshot's first placement was INSIDE the pausable probe --
+    it is the one read of the three that never needed an admission,
+    being a declared typed read -- so the open-time race that pauses
+    the probe on every dashboard open silenced the fix entirely:
+    "container probe 0.01s, gates 10.91s", measured 2026-09-16 on a
+    real project. The snapshot is taken before the probe now, and
+    this drives the route with the probe FORCED paused to hold that.
+
+    Kills: emptying the route's snapshot phase (``filesSnapshot =
+    None``), which is behaviourally the shipped placement -- a paused
+    probe hands the gates the live adapter, and every read is a
+    container round trip again.
+    """
+    objSentinel = object()
+    dictSeen = {}
+
+    def _fobjSnapshot(dictCtx, sContainerId, dictWorkflow):
+        return objSentinel
+
+    async def _fdictPausedDrain(sContainerId, fnRead, sName, request):
+        return {"bPaused": True, "sPausedBy": "test-holder",
+                "objResult": None}
+
+    def _fdictCapturePayload(dictCtx, sContainerId, dictWorkflow,
+                             filesRepo, dictProbed, dictImageCurrency):
+        dictSeen["filesRepo"] = filesRepo
+        dictSeen["dictProbed"] = dictProbed
+        return {"bStub": True}
+
+    monkeypatch.setattr(
+        reproducibilityRoutes, "ffilesSnapshotForWorkflow",
+        _fobjSnapshot,
+    )
+    monkeypatch.setattr(
+        reproducibilityRoutes, "fdictRunAutomaticReadUnderTheDrain",
+        _fdictPausedDrain,
+    )
+    monkeypatch.setattr(
+        reproducibilityRoutes, "_fdictBuildReadinessPayload",
+        _fdictCapturePayload,
+    )
+    monkeypatch.setattr(
+        reproducibilityRoutes, "fdictAssessEnvelopeImageCurrency",
+        lambda dictCtx, sContainerId, filesRepo: {
+            "sLiveImageDigest": "",
+        },
+    )
+    clientApp = _fclientBuildTestClient(fixtureWorkflow)
+    response = clientApp.get(
+        f"/api/workflow/{S_CONTAINER_ID}/level3/readiness",
+    )
+    assert response.status_code == 200, response.text
+    assert dictSeen["dictProbed"]["bProbePaused"] is True, (
+        "the probe was not paused, so this run proves nothing about "
+        "the placement it exists to hold"
+    )
+    assert dictSeen["filesRepo"] is objSentinel, (
+        "a paused probe handed the gates the live adapter; the "
+        "snapshot is being taken inside the probe again"
+    )
+
+
+
 def test_l3_readiness_returns_gap_dict(
     fixtureClient, fixtureCarrierStoodDown,
 ):

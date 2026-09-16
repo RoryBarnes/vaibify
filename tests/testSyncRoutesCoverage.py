@@ -71,6 +71,27 @@ class MockDockerSync:
             sPath not in self._setMissingPaths for sPath in listPaths
         ]
 
+    def fsHashContainerFileSha256(self, sContainerId, sPath):
+        # The archive flow restages the container-side Zenodo client
+        # when the hash differs from the host's (2026-09-16). This
+        # mock answers with the HOST's own hash so the ordinary
+        # tests exercise the no-write path; the staging behaviour has
+        # its own file (testTheStagedClientStaysCurrent).
+        import hashlib
+        from pathlib import Path
+        import vaibify.reproducibility as moduleReproducibility
+        pathHost = (
+            Path(moduleReproducibility.__file__).parent
+            / sPath.rsplit("/", 1)[1]
+        )
+        if pathHost.is_file():
+            return hashlib.sha256(pathHost.read_bytes()).hexdigest()
+        return ""
+
+    def fnWriteFile(self, sContainerId, sPath, baContent,
+                    iMode=None, iUid=None, iGid=None):
+        self._dictFiles[sPath] = baContent
+
     def flistGetRunningContainers(self):
         return [
             {
