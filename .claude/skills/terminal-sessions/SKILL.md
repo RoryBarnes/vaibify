@@ -110,7 +110,36 @@ first, one — and the one that remains belongs to the program's own
 model of what it printed, which nothing on this side can reach. Do
 not move that ioctl back to where the request lands, and do not
 reflow without waiting for the marker: both were measured to be
-indistinguishable from having no ordering at all.
+indistinguishable from having no ordering at all. Waiting for the
+marker is necessary and **not sufficient** — the next paragraph is
+the half that was missing for months.
+
+**The marker orders the SOCKET, not the PARSER, and those are not the
+same thing.** xterm's `write()` is asynchronous: it queues bytes and
+parses them in chunks across frames. Output that arrived BEFORE the
+acknowledgement can therefore still be unparsed when the
+acknowledgement is handled, and reflowing there re-wraps the buffer
+first and parses the old-width bytes into it afterwards — the same
+stranding as above, reproduced inside the browser with the wire order
+perfectly correct. The reflow consequently waits behind an empty
+write, whose callback fires once everything queued ahead of it has
+been parsed (`fnReflowOncePendingOutputIsParsed`), and the
+acknowledgement timeout is disarmed INSIDE that callback so a barrier
+that never fires still leaves the fallback to resize the pane.
+
+**This is the part that looks redundant and is not.** Having read the
+paragraph above, the barrier reads as indirection around an ordering
+that is already correct, and deleting it is the natural next thought
+— which is precisely why the defect survived for months. Measured
+2026-09-17 against the SIGWINCH-aware repainter: four failures in
+thirty-six Firefox runs without the barrier, none in fourteen with
+it. Chromium parses fast enough to measure zero either way, so a
+single-engine lane cannot see this at all, and the behavioral test
+catches it on roughly one run in ten of one engine. That is why
+`testTheResizeAcknowledgementWaitsForTheParser` asserts the SHAPE
+instead — the reflow must not be reachable from the acknowledgement
+except through the barrier. **If that test fails, the barrier was
+removed: restore it rather than updating the test.**
 
 The second failure was worse and quieter. A reflow left the viewport
 parked away from its own output — measured, 16 pixels down a buffer
