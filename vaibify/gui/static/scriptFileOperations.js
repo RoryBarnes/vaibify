@@ -19,15 +19,34 @@ var VaibifyFileOps = (function () {
         }
     }
 
-    /* Background copies (terminal copy-on-select) must be silent and
-       must never fall back to the textarea path: the fallback steals
-       keyboard focus, which is worse than a missed automatic copy.
-       Explicit copies (Cmd+C, right-click, copy buttons) keep the
-       toast-and-fallback path above. */
-    function fnCopyToClipboardQuietly(sText) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(sText).catch(function () {});
+    /* Background copies (terminal copy-on-select) must never fall back
+       to the textarea path: it steals keyboard focus, and a focus
+       theft on every selection is worse than a missed copy. That is
+       the whole of what "background" buys, and it is in the name.
+
+       It does NOT mean silent. A copy that says nothing is
+       indistinguishable from one that never happened, and the
+       terminal pane is precisely where the researcher cannot tell the
+       difference -- a full-screen program can clear the highlight the
+       instant they release the mouse, so the selection they just made
+       is gone from the screen either way. Reporting the outcome is
+       what separates those two states. The failure is reported for
+       the same reason: this repository's rule is that an ugly truth
+       is shown, not hidden, and a clipboard write that is refused
+       every time should be loud enough to get fixed. */
+    function fnCopyToClipboardWithoutStealingFocus(sText) {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            VaibifyApp.fnShowToast(
+                "This browser did not offer a clipboard to copy into.",
+                "error");
+            return;
         }
+        navigator.clipboard.writeText(sText).then(function () {
+            VaibifyApp.fnShowToast("Copied to clipboard", "success");
+        }).catch(function () {
+            VaibifyApp.fnShowToast(
+                "The browser refused the clipboard write.", "error");
+        });
     }
 
     function _fnCopyToClipboardFallback(sText) {
@@ -565,7 +584,8 @@ var VaibifyFileOps = (function () {
 
     return {
         fnCopyToClipboard: fnCopyToClipboard,
-        fnCopyToClipboardQuietly: fnCopyToClipboardQuietly,
+        fnCopyToClipboardWithoutStealingFocus:
+            fnCopyToClipboardWithoutStealingFocus,
         fnInlineEditItem: fnInlineEditItem,
         fnScheduleFileExistenceCheck: fnScheduleFileExistenceCheck,
         fnCheckOutputFileExistence: fnCheckOutputFileExistence,

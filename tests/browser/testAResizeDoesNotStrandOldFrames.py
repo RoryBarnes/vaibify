@@ -22,13 +22,28 @@ does. A shell loop is NOT a usable proxy -- bash did not run its WINCH
 trap inside a tight loop at all, so it never learned the new width and
 would have reported this broken however well it worked.
 
-ONE stale frame is tolerated, and the number is not slack. The program
-tracks the rows it PRINTED; the reflow changes how many rows that text
-occupies; so its first erase after a resize is short by construction,
-and no ordering on this side can reach a program's model of its own
-output. Measured on a real pane: three stale frames before the drain
-existed, one after. The assertion is therefore "at most one", and it
-is what fails if the drain is removed.
+TWO stale frames are tolerated, and neither is slack. They have
+different causes and both are out of reach from this side.
+
+The FIRST is structural. The program tracks the rows it PRINTED; the
+reflow changes how many rows that text occupies; so its first erase
+after a resize is short by construction, and no ordering on this side
+can reach a program's model of its own output.
+
+The SECOND is rarer. SIGWINCH can land while the program is midway
+through composing a frame, so that frame is finished at the OLD width
+and reaches the pane after the marker that announced the new one. The
+hub cannot know when a program is between frames, so no ordering
+prevents this either. Measured on 2026-09-17, after the browser-side
+write barrier landed: about one run in thirty-five, observed on
+Chromium. The cause is not engine-specific -- Firefox produced
+two-frame runs for the same reason before the barrier.
+
+THREE is still a failure, and that is what keeps this assertion a
+guard rather than slack: removing the drain was measured at three
+stale frames on 2026-09-17, so a tolerance of two kills that mutation
+exactly as a tolerance of one did. Raising this number again without
+re-measuring the mutation would retire the guard silently.
 
 Kills (confirmed -- the mutation was applied, this test run, and the
 named assertion observed to fail):
@@ -60,8 +75,9 @@ T_VIEWPORT_NARROW = (820, 620)
 F_SETTLE_BEFORE_RESIZE_SECONDS = 2.5
 F_SETTLE_AFTER_RESIZE_SECONDS = 4.0
 
-# One stale frame is the floor, not slack -- see the module docstring.
-I_TOLERATED_STALE_FRAMES = 1
+# Two stale frames are the floor, not slack -- and they have two
+# different causes. See the module docstring before changing this.
+I_TOLERATED_STALE_FRAMES = 2
 
 S_REPAINTER = '''\
 import fcntl, signal, struct, sys, termios, time
@@ -126,7 +142,7 @@ def test_a_resize_does_not_strand_old_frames(
     """Narrow the pane under a repainting program; count what stays.
     Kills: the drain removed from
     `_fnApplyPendingResizeAndAcknowledge` -> three stale frames
-    instead of one (observed).
+    instead of at most two (observed).
     """
     pathProgram = tmp_path / "paneRepainter.py"
     pathProgram.write_text(S_REPAINTER)
@@ -167,6 +183,9 @@ def test_a_resize_does_not_strand_old_frames(
         "columns) are still on screen after the resize. That is the "
         "researcher-visible defect: old output stranded above the new "
         "at the old wrapping. At most "
-        f"{I_TOLERATED_STALE_FRAMES} is expected, because the program "
-        "tracks the rows it printed and the reflow changes them"
+        f"{I_TOLERATED_STALE_FRAMES} are expected: one because the "
+        "program tracks the rows it printed and the reflow changes "
+        "them, and one because SIGWINCH can land mid-frame. More than "
+        "that means an ordering broke -- check the hub's drain and the "
+        "browser's write barrier before touching this number"
     )

@@ -51,7 +51,12 @@ from tests.browser.testResizeAndCopyHoldTogether import (
 )
 
 
-pytestmark = pytest.mark.browser
+pytestmark = [
+    pytest.mark.browser,
+    # Chromium is the only engine whose Playwright build grants
+    # clipboard permissions; see pytest.ini for what that costs.
+    pytest.mark.clipboardPermissions,
+]
 
 T_VIEWPORT_NARROW = (900, 620)
 T_VIEWPORT_WIDE = (1400, 780)

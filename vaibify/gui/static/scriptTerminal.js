@@ -216,6 +216,7 @@ const VaibifyTerminal = (function () {
             dictPendingResize: null,
             iResizeAckTimer: null,
             iCopyOnSelectTimer: null,
+            sPendingSelection: "",
         };
         dictPane.listTabs.push(dictTab);
         fnRenderPaneTabs(iPaneId);
@@ -437,18 +438,28 @@ const VaibifyTerminal = (function () {
        Cmd+C or right-click, a focus theft on every selection is not. */
     var I_COPY_ON_SELECT_DELAY_MS = 200;
 
+    /* The debounce delays the WRITE, never the READ. A program that
+       reads the mouse-release byte can clear the selection before the
+       delay elapses -- measured at 48ms against this 200ms delay, on
+       a real agent in a real pane -- and reading at flush time lost
+       the researcher's copy twice over: the clearing selection event
+       cancelled the pending timer on its way through, and the flush
+       that did survive found nothing left to read. So the text is
+       captured while it is still the researcher's, and an empty
+       selection no longer cancels a copy already scheduled. */
     function fnScheduleCopyOnSelect(dictTab, terminal) {
+        if (!terminal.hasSelection()) return;
         if (dictTab.iCopyOnSelectTimer) {
             window.clearTimeout(dictTab.iCopyOnSelectTimer);
-            dictTab.iCopyOnSelectTimer = null;
         }
-        if (!terminal.hasSelection()) return;
+        dictTab.sPendingSelection = terminal.getSelection();
         dictTab.iCopyOnSelectTimer = window.setTimeout(function () {
             dictTab.iCopyOnSelectTimer = null;
-            if (!terminal.hasSelection()) return;
-            var sSelection = terminal.getSelection();
+            var sSelection = dictTab.sPendingSelection;
+            dictTab.sPendingSelection = "";
             if (sSelection) {
-                VaibifyFileOps.fnCopyToClipboardQuietly(sSelection);
+                VaibifyFileOps.fnCopyToClipboardWithoutStealingFocus(
+                    sSelection);
             }
         }, I_COPY_ON_SELECT_DELAY_MS);
     }
@@ -829,19 +840,52 @@ const VaibifyTerminal = (function () {
     var _I_REJECT_TERMINAL_DISABLED = 4503;
     var _I_REJECT_TERMINAL_NOT_ON_HOST = 4504;
     var _I_REJECT_POISONED = 4423;
+    var _I_REJECT_BAD_ORIGIN = 4003;
+    var _I_REJECT_BAD_TOKEN = 4401;
+    var _I_REJECT_FOREIGN_LEASE = 4403;
+    var _I_REJECT_DUPLICATE_SESSION = 4409;
+
+    /* The authorization refusals reach this pane exactly as often as
+       the terminal-specific ones do, and used to arrive as
+       "[Connection closed]" -- the very reading the server keeps the
+       codes distinct to prevent. A browser RESTART is the ordinary way
+       to earn one: the per-browser credential and the container lease
+       both live in sessionStorage, which the restart clears, so the
+       socket is refused for a reason the researcher can act on while
+       the pane reported a network fault they cannot. The recovery
+       differs per code, so each names its own. */
+    var DICT_TERMINAL_CLOSE_MESSAGES = {};
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_TERMINAL_DISABLED] =
+        "[Terminals are disabled in this build]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_TERMINAL_NOT_ON_HOST] =
+        "[This project runs on your machine; use your own shell]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_POISONED] =
+        "[This container needs 'vaibify reconcile' before it can be "
+        + "used]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_BAD_ORIGIN] =
+        "[Refused: this page was not served from this machine]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_BAD_TOKEN] =
+        "[This browser's credential is gone -- restarting the browser "
+        + "clears it. Reload the dashboard from the address vaibify "
+        + "printed]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_FOREIGN_LEASE] =
+        "[Another browser session still holds this container. Reload "
+        + "the dashboard and claim it]";
+    DICT_TERMINAL_CLOSE_MESSAGES[_I_REJECT_DUPLICATE_SESSION] =
+        "[Another live session is already driving this container. "
+        + "Close the other tab, then reload]";
 
     function fsDescribeTerminalClose(event) {
         var iCode = event ? event.code : 0;
-        if (iCode === _I_REJECT_TERMINAL_DISABLED) {
-            return "[Terminals are disabled in this build]";
+        if (DICT_TERMINAL_CLOSE_MESSAGES[iCode]) {
+            return DICT_TERMINAL_CLOSE_MESSAGES[iCode];
         }
-        if (iCode === _I_REJECT_TERMINAL_NOT_ON_HOST) {
-            return "[This project runs on your machine; use your own "
-                + "shell]";
-        }
-        if (iCode === _I_REJECT_POISONED) {
-            return "[This container needs 'vaibify reconcile' before "
-                + "it can be used]";
+        /* A 4xxx nobody named is still a DELIBERATE refusal, and
+           calling it a closed connection misreports a healthy server
+           as a dead one. Name the code so it can be looked up. */
+        if (iCode >= 4000 && iCode < 5000) {
+            return "[The server refused this terminal (code " + iCode
+                + ")]";
         }
         return "[Connection closed]";
     }
@@ -976,10 +1020,39 @@ const VaibifyTerminal = (function () {
                says nothing about whether that one will arrive. */
             return;
         }
-        fnDisarmResizeAcknowledgementTimeout(dictTab);
-        fnApplyProposedDimensions(dictTab, {
+        fnReflowOncePendingOutputIsParsed(dictTab, {
             cols: dictData.iColumns,
             rows: dictData.iRows,
+        });
+    }
+
+    /* The acknowledgement orders the SOCKET, not the parser.
+
+       xterm's write() is asynchronous: it queues bytes and parses them
+       in chunks across frames. So output that arrived BEFORE the
+       marker can still be sitting unparsed when the marker is
+       handled, and reflowing then re-wraps the buffer first and
+       parses the old-width bytes into it afterwards -- the very
+       stranding the hub's ordering exists to prevent, reintroduced
+       inside the browser. The wire order is right and the outcome is
+       still wrong, which is why this looked like a hub bug.
+
+       Measured on Firefox against the SIGWINCH-aware repainter: three
+       stale frames on roughly a tenth of resizes, with the
+       acknowledgement arriving cleanly and the fallback never firing.
+       Chromium parses fast enough to hide it. write()'s callback
+       fires once everything queued ahead of it has been parsed, so an
+       empty write is the barrier.
+
+       The acknowledgement timeout is disarmed INSIDE the callback,
+       never before it: if the barrier never fires, the fallback is
+       what still reflows the pane, and disarming early would trade a
+       stale frame for a pane stuck at the wrong size. */
+    function fnReflowOncePendingOutputIsParsed(dictTab, dictProposed) {
+        if (!dictTab.terminal) return;
+        dictTab.terminal.write("", function () {
+            fnDisarmResizeAcknowledgementTimeout(dictTab);
+            fnApplyProposedDimensions(dictTab, dictProposed);
         });
     }
 
@@ -1247,18 +1320,6 @@ const VaibifyTerminal = (function () {
         document.getElementById("btnAddTerminalPane").addEventListener(
             "click", fnCreatePane
         );
-        var elHelp = document.getElementById("btnTerminalHelp");
-        var elPopup = document.getElementById("terminalHelpPopup");
-        if (elHelp && elPopup) {
-            elHelp.addEventListener("click", function () {
-                elPopup.style.display =
-                    elPopup.style.display === "none" ? "" : "none";
-            });
-            elPopup.querySelector(".help-popup-close")
-                .addEventListener("click", function () {
-                    elPopup.style.display = "none";
-                });
-        }
     });
 
     function _fbSendWhenReady(dictPane, sCommand) {

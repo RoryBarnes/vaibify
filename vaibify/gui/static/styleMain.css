@@ -706,8 +706,8 @@ body.proof-level-3 .toolbar-label {
 .toolbar-workflow:hover {
     background: var(--bg-hover);
 }
-.toolbar-workflow::after {
-    content: " \25BE";
+.toolbar-workflow::before {
+    content: "\25BE ";
     font-size: 10px;
     color: var(--text-secondary);
 }
@@ -7349,7 +7349,7 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    beneath the dashboard header help button. ``aria-hidden=true`` by
    default; the JS toggles ``.is-open`` to reveal it. */
 .proof-help-button {
-    margin-left: 6px;
+    margin-left: auto;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-primary);
@@ -7412,6 +7412,21 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 .proof-legend-section-title {
     font-weight: 600;
     margin-bottom: 4px;
+}
+
+/* The divisions are <details> now, so their titles are <summary>
+   elements and need the affordance: a pointer, and the disclosure
+   triangle that tells the researcher there is something behind the
+   line. Sized to match .proof-help-details summary so "Using AI" and
+   "Steps" read as the same kind of thing, because they are. */
+details.proof-legend-section > summary.proof-legend-section-title {
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 0;
+}
+
+details.proof-legend-section {
+    margin-bottom: 10px;
 }
 
 /* Alignment only — never color. Each sample glyph carries the same

@@ -286,6 +286,7 @@ var VaibifyLegendPanel = (function () {
             _fsRenderProjectDivision() +
             _fsRenderLevelLightsDivision() +
             _fsRenderFilesAndRemotesDivision() +
+            _fsRenderTerminalUsageSection() +
             _fsRenderFooter();
     }
 
@@ -354,53 +355,55 @@ var VaibifyLegendPanel = (function () {
         return sHtml;
     }
 
+    /* Every division folds, and folds SHUT. The panel is reference
+       material a researcher consults for one glyph, and opening it on
+       four expanded divisions of marks and criteria is what made it
+       unreadable -- the complaint was "too busy", not "too long". The
+       summary line is the whole index; one click is the whole cost. */
+    function _fsWrapCollapsibleDivision(sTitle, sBody) {
+        return '<details class="proof-legend-section">' +
+            '<summary class="proof-legend-section-title">' +
+            sTitle + '</summary>' +
+            sBody +
+            '</details>';
+    }
+
     function _fsRenderStepsDivision() {
         var dictCatalog = _fdictGlyphCatalog();
-        return '<div class="proof-legend-section">' +
-            '<div class="proof-legend-section-title">Steps</div>' +
+        return _fsWrapCollapsibleDivision('Steps',
             _fsRenderMarkRows(_LIST_STEP_MARKS) +
             '<div class="proof-legend-subsection-title">' +
             'Why a step shows a warning</div>' +
             _fsRenderCriteriaRows(dictCatalog.iLevel1 || {}) +
-            _fsRenderAxisSubStateRows() +
-            '</div>';
+            _fsRenderAxisSubStateRows());
     }
 
     function _fsRenderProjectDivision() {
         var dictCatalog = _fdictGlyphCatalog();
-        return '<div class="proof-legend-section">' +
-            '<div class="proof-legend-section-title">' +
-            'Project</div>' +
+        return _fsWrapCollapsibleDivision('Project',
             _fsRenderMarkRows(_LIST_WORKFLOW_MARKS) +
             '<div class="proof-legend-subsection-title">' +
             'Publication warnings (Level 2)</div>' +
             _fsRenderCriteriaRows(dictCatalog.iLevel2 || {}) +
             '<div class="proof-legend-subsection-title">' +
             'Reproducibility warnings (Level 3)</div>' +
-            _fsRenderCriteriaRows(dictCatalog.iLevel3 || {}) +
-            '</div>';
+            _fsRenderCriteriaRows(dictCatalog.iLevel3 || {}));
     }
 
     function _fsRenderLevelLightsDivision() {
-        return '<div class="proof-legend-section">' +
-            '<div class="proof-legend-section-title">' +
-            'Level status lights</div>' +
+        return _fsWrapCollapsibleDivision('Level status lights',
             '<div class="proof-legend-division-note">The ' +
             'L1&thinsp;|&thinsp;L2&thinsp;|&thinsp;L3 cells on ' +
             'step rows, both banners, and requirement rows:</div>' +
-            _fsRenderMarkRows(_LIST_LEVEL_CELL_MARKS) +
-            '</div>';
+            _fsRenderMarkRows(_LIST_LEVEL_CELL_MARKS));
     }
 
     function _fsRenderFilesAndRemotesDivision() {
-        return '<div class="proof-legend-section">' +
-            '<div class="proof-legend-section-title">' +
-            'Files and remotes</div>' +
+        return _fsWrapCollapsibleDivision('Files and remotes',
             '<div class="proof-legend-division-note">GitHub, ' +
             'Overleaf, Zenodo, and arXiv badges beside file ' +
             'names, and the file-name text styles:</div>' +
-            _fsRenderMarkRows(_LIST_FILE_REMOTE_MARKS) +
-            '</div>';
+            _fsRenderMarkRows(_LIST_FILE_REMOTE_MARKS));
     }
 
     function _fsRenderAxisSubStateRows() {
@@ -457,6 +460,55 @@ var VaibifyLegendPanel = (function () {
         return '<span class="proof-legend-glyph ' +
             fnEscapeHtml(dictMark.sClass) + '">' +
             fnEscapeHtml(dictMark.sIcon) + '</span>';
+    }
+
+    /* Folded, like "Using AI", because this is reference text a
+       researcher reads once and then wants out of the way -- the panel
+       earns its place by being scannable, and eight open paragraphs of
+       terminal lore is what made the old one too busy to read.
+
+       It lives HERE rather than behind a second "?" beside the
+       terminal. Two help buttons meant the answer to "how do I select
+       text" sat behind whichever one the researcher did not press, and
+       on 2026-09-16 that cost a researcher the better part of a
+       session: they went to the toolbar "?", which had nothing to say
+       about the terminal, and never found the one in the terminal
+       strip. One question mark, one place. */
+    function _fsRenderTerminalUsageSection() {
+        return '<details class="proof-help-details">' +
+            '<summary>Terminal usage</summary>' +
+            '<p>The terminal behaves like a native terminal. All ' +
+            'keystrokes are passed straight to the container.</p>' +
+            '<p><strong>If you cannot select text at all:</strong> a ' +
+            'full-screen program (an agent, vim, htop) has taken the ' +
+            'mouse for itself. Hold <strong>Option</strong> (macOS) ' +
+            'or <strong>Shift</strong> (Linux) while dragging. The ' +
+            'highlight may vanish the instant you release -- that is ' +
+            'the program repainting, not a failed copy, and the text ' +
+            'is on the clipboard regardless. A toast confirms it.</p>' +
+            '<p><strong>Copying:</strong> a selection is copied ' +
+            'automatically. Cmd+C (macOS), Ctrl+Shift+C (Linux), and ' +
+            'right-clicking a selection also copy it.</p>' +
+            '<p><strong>Ctrl+Insert</strong> copies too, and is worth ' +
+            'knowing because no browser reserves it. Ctrl+Shift+C is ' +
+            'also Firefox\'s Inspector shortcut, and whether the page ' +
+            'receives it differs between machines -- if it opens ' +
+            'developer tools instead of copying, use Ctrl+Insert.</p>' +
+            '<p><strong>Shift+scroll</strong> reaches the terminal\'s ' +
+            'own scrollback even while a full-screen program is ' +
+            'capturing the wheel. Without it, a running agent leaves ' +
+            'earlier output unreachable.</p>' +
+            '<p><strong>Copy all</strong> (each pane\'s tab bar) puts ' +
+            'the whole scrollback on the clipboard. It needs no ' +
+            'selection and no mouse, so it works whatever is ' +
+            'running.</p>' +
+            '<p><strong>Kill</strong> (small red circle, top-right of ' +
+            'the pane) kills the foreground process when Ctrl+C is ' +
+            'unresponsive.</p>' +
+            '<p><strong>Ctrl+Z / Cmd+Z</strong> is vaibify\'s undo ' +
+            'when the terminal is not focused. Inside the terminal, ' +
+            'Ctrl+Z suspends the process as usual.</p>' +
+            '</details>';
     }
 
     function _fsRenderFooter() {

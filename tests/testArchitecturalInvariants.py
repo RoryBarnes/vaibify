@@ -579,6 +579,79 @@ def testNoRawOnMessageInFeatureModules():
     )
 
 
+def _fsExtractJsFunctionBody(sSource, sFunctionName):
+    """Return the brace-matched body of a ``function`` declaration."""
+    iAt = sSource.find(f"function {sFunctionName}(")
+    if iAt == -1:
+        return ""
+    iOpen = sSource.find("{", iAt)
+    iDepth = 0
+    for iCursor in range(iOpen, len(sSource)):
+        if sSource[iCursor] == "{":
+            iDepth += 1
+        elif sSource[iCursor] == "}":
+            iDepth -= 1
+            if iDepth == 0:
+                return sSource[iOpen:iCursor + 1]
+    return ""
+
+
+@pytest.mark.falsification
+def testTheResizeAcknowledgementWaitsForTheParser():
+    """The reflow waits behind xterm's parser, not just the socket.
+
+    The hub's acknowledgement marks a point in the OUTPUT STREAM, and
+    that is all it can mark. xterm's ``write()`` is asynchronous -- it
+    queues bytes and parses them in chunks across frames -- so output
+    that arrived BEFORE the marker can still be unparsed when the
+    marker is handled. Reflowing there re-wraps the buffer first and
+    parses the old-width bytes into it afterwards, which is exactly
+    the stranding the hub's ordering exists to prevent, reintroduced
+    inside the browser.
+
+    This is asserted STRUCTURALLY because the behavior cannot be
+    asserted reliably. Measured on Firefox, removing the barrier
+    strands frames on roughly a tenth of resizes and on Chromium never
+    -- so the behavioral test
+    (``testAResizeDoesNotStrandOldFrames``) would flake rather than
+    fail, and a CI lane that fails one run in ten teaches people to
+    re-run it. The shape is checkable every time; the symptom is not.
+
+    Kills: routing the acknowledgement straight back to
+    ``fnApplyProposedDimensions``, which reflows synchronously while
+    bytes are still queued in the parser.
+    """
+    sSource = fsReadSource(STATIC_DIR / "scriptTerminal.js")
+    sAcknowledge = _fsExtractJsFunctionBody(sSource, "fnAcknowledgeResize")
+    assert sAcknowledge, (
+        "fnAcknowledgeResize was not found in scriptTerminal.js; if it "
+        "was renamed, this invariant must be re-pointed rather than "
+        "deleted -- it guards an ordering with no reliable test."
+    )
+    assert "fnApplyProposedDimensions(" not in sAcknowledge, (
+        "the resize acknowledgement reflows SYNCHRONOUSLY. Output that "
+        "arrived before the acknowledgement may still be queued in "
+        "xterm's parser, and resizing now re-wraps the buffer before "
+        "those bytes are parsed into it. Route through the write "
+        "barrier instead."
+    )
+    sBarrier = _fsExtractJsFunctionBody(
+        sSource, "fnReflowOncePendingOutputIsParsed",
+    )
+    assert sBarrier, (
+        "the write barrier fnReflowOncePendingOutputIsParsed is gone; "
+        "without it nothing orders the reflow behind the parser."
+    )
+    iWrite = sBarrier.find(".write(")
+    iApply = sBarrier.find("fnApplyProposedDimensions(")
+    assert 0 <= iWrite < iApply, (
+        "the barrier must call terminal.write() and reflow inside its "
+        "callback -- write()'s callback is what fires once everything "
+        f"queued ahead of it has been parsed (write at {iWrite}, "
+        f"reflow at {iApply})."
+    )
+
+
 def _flistMissingReExports(sOrchestrator, listChildNames):
     """Return (sChild, sSymbol) pairs the orchestrator fails to re-export."""
     moduleOrchestrator = importlib.import_module(
@@ -6511,7 +6584,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment they had just looked inside instead of meeting the
     # "close it, then delete it" dead end only the command line could
     # finish. The three lines are that third case in its docstring.
-    "registryRoutes.py": 2250,
+    # +48 (2026-09-16): the busy check's journal axis waits, bounded,
+    # for a record to settle instead of reading it once. Promotion
+    # refused ITSELF without it: it releases the caller's own session
+    # one line above the check, which ends the dashboard's in-flight
+    # file-status poll -- a read that travels the arbitrary-exec path
+    # and so is journaled like a mutation -- and the check then read
+    # the journal in the gap before that record settled, answering
+    # "reconcile it before you promote it" about a container that
+    # needed no reconciling. Measured at 142ms and 154ms to settle,
+    # failing two runs in three on Firefox. What landed here is the
+    # wait and the paragraph explaining why it must be asynchronous:
+    # the record belongs to an in-flight request on this same hub, so
+    # a blocking sleep would hold the event loop and guarantee the
+    # refusal it exists to prevent. It stays in this module because
+    # the busy refusal is this module's responsibility; the journal
+    # itself is only read.
+    "registryRoutes.py": 2298,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7262,6 +7351,284 @@ def testModuleSizeIsBounded():
         )
     )
 
+
+
+# ----------------------------------------------------------------------
+# Coroutines that are built and discarded
+# ----------------------------------------------------------------------
+
+_SET_COROUTINE_CONSUMERS = frozenset({
+    "gather", "create_task", "ensure_future", "run", "wait_for", "shield",
+    "wait", "as_completed", "run_until_complete",
+    "run_coroutine_threadsafe", "start_soon", "iscoroutine",
+})
+
+_T_COLLECTING_NODES = (
+    ast.ListComp, ast.GeneratorExp, ast.comprehension,
+    ast.List, ast.Tuple, ast.Set, ast.Dict,
+)
+
+
+def _fsReadCalleeName(nodeCall):
+    """Return the callee's bare name, or "" when the call is computed."""
+    nodeFunc = nodeCall.func
+    if isinstance(nodeFunc, ast.Name):
+        return nodeFunc.id
+    if isinstance(nodeFunc, ast.Attribute):
+        return nodeFunc.attr
+    return ""
+
+
+def _fdictCollectDefinitionKindsByName(listParsed):
+    """Map every function name to the set of kinds that define it.
+
+    A name reaching both "sync" and "async" is defined each way
+    somewhere in the package, which is the collision
+    ``testCoroutineNamesDoNotCollideWithSyncNames`` bounds.
+    """
+    dictKinds = {}
+    for _, treeAst in listParsed:
+        for node in ast.walk(treeAst):
+            if isinstance(node, ast.AsyncFunctionDef):
+                dictKinds.setdefault(node.name, set()).add("async")
+            elif isinstance(node, ast.FunctionDef):
+                dictKinds.setdefault(node.name, set()).add("sync")
+    return dictKinds
+
+
+def _fsetCollectUnambiguousCoroutineNames(listParsed):
+    """Return ``async def`` names that no sync ``def`` anywhere also claims.
+
+    Dropping the collisions is what keeps the check from crying wolf:
+    a plain method sharing a spelling with some coroutine elsewhere
+    leaves the vocabulary entirely. The cost is stated in the
+    invariant's docstring -- it degrades toward missing a call, never
+    toward a false alarm -- and bounded by the collision budget.
+    """
+    dictKinds = _fdictCollectDefinitionKindsByName(listParsed)
+    return {sName for sName, setKinds in dictKinds.items()
+            if setKinds == {"async"}}
+
+
+def _fdictMapChildToParent(treeAst):
+    """Return a child-node -> parent-node map for the whole tree."""
+    dictParent = {}
+    for node in ast.walk(treeAst):
+        for nodeChild in ast.iter_child_nodes(node):
+            dictParent[nodeChild] = node
+    return dictParent
+
+
+def _fbCallResultIsConsumed(nodeCall, dictParent):
+    """True when the coroutine a call builds is awaited, deferred or collected.
+
+    Ascends the parent chain, because the coroutine can be reached
+    through an attribute or a star-unpack before it meets whatever
+    consumes it. A ``lambda`` body counts as consumed: the call has not
+    run yet, and its spawner awaits what the lambda returns.
+    """
+    nodeCursor = nodeCall
+    while True:
+        nodeUp = dictParent.get(nodeCursor)
+        if nodeUp is None:
+            return False
+        if isinstance(nodeUp, (ast.Await, ast.Lambda)):
+            return True
+        if isinstance(nodeUp, _T_COLLECTING_NODES):
+            return True
+        if isinstance(nodeUp, ast.Call):
+            return _fsReadCalleeName(nodeUp) in _SET_COROUTINE_CONSUMERS
+        if not isinstance(nodeUp, (ast.Attribute, ast.Starred)):
+            return False
+        nodeCursor = nodeUp
+
+
+def _fsetCollectAsyncWithContexts(treeAst):
+    """Return ids of the call nodes an ``async with`` drives.
+
+    An ``@asynccontextmanager`` is entered, never awaited, so its call
+    site is consumed without an ``await`` in front of it.
+    """
+    setIds = set()
+    for node in ast.walk(treeAst):
+        if isinstance(node, ast.AsyncWith):
+            for nodeItem in node.items:
+                setIds.add(id(nodeItem.context_expr))
+    return setIds
+
+
+def _fsetCollectVisibleNames(treeAst):
+    """Return every name the module defines or imports."""
+    setNames = set()
+    for node in ast.walk(treeAst):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            setNames.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for nodeAlias in node.names:
+                setNames.add(
+                    nodeAlias.asname or nodeAlias.name.split(".")[0])
+    return setNames
+
+
+def _fsetCollectBoundNames(nodeScope):
+    """Return names a scope binds as parameters or plain assignments."""
+    setBound = set()
+    nodeArguments = nodeScope.args
+    for nodeArg in (list(nodeArguments.posonlyargs)
+                    + list(nodeArguments.args)
+                    + list(nodeArguments.kwonlyargs)
+                    + [nodeArguments.vararg, nodeArguments.kwarg]):
+        if nodeArg is not None:
+            setBound.add(nodeArg.arg)
+    for node in ast.walk(nodeScope):
+        if isinstance(node, ast.Assign):
+            for nodeTarget in node.targets:
+                if isinstance(nodeTarget, ast.Name):
+                    setBound.add(nodeTarget.id)
+    return setBound
+
+
+def _fbNameIsShadowedLocally(treeAst, nodeCall, sName):
+    """True when a function enclosing the call binds sName itself."""
+    for nodeScope in _flistFunctionLikeScopes(treeAst):
+        iEnd = nodeScope.end_lineno or nodeScope.lineno
+        if nodeScope.lineno <= nodeCall.lineno <= iEnd:
+            if sName in _fsetCollectBoundNames(nodeScope):
+                return True
+    return False
+
+
+def _flistFindUnconsumedCoroutineCalls(treeAst, setCoroutineNames):
+    """Return (lineNumber, name) for each coroutine call that is discarded."""
+    dictParent = _fdictMapChildToParent(treeAst)
+    setContexts = _fsetCollectAsyncWithContexts(treeAst)
+    setVisible = _fsetCollectVisibleNames(treeAst)
+    listFound = []
+    for node in ast.walk(treeAst):
+        if not isinstance(node, ast.Call):
+            continue
+        sName = _fsReadCalleeName(node)
+        if sName not in setCoroutineNames or id(node) in setContexts:
+            continue
+        bIsBareName = isinstance(node.func, ast.Name)
+        if bIsBareName and sName not in setVisible:
+            continue
+        if _fbCallResultIsConsumed(node, dictParent):
+            continue
+        if bIsBareName and _fbNameIsShadowedLocally(treeAst, node, sName):
+            continue
+        listFound.append((node.lineno, sName))
+    return listFound
+
+
+_I_SYNC_ASYNC_COLLISION_BUDGET = 6
+
+_T_SEEDED_SYNC_ASYNC_COLLISIONS = (
+    "fdictAcceptPlan",
+    "fdictDeleteEnvironment",
+    "fdictReadReproductionReport",
+    "fdictReconcilePromotion",
+    "fdictRejectCandidate",
+    "fiterStreamNormalizedEvents",
+)
+
+
+@pytest.mark.falsification
+def testCoroutineNamesDoNotCollideWithSyncNames():
+    """A name means one thing -- a coroutine or a plain call, never both.
+
+    This is a naming rule that pays for a guard.
+    ``testEveryCoroutineCallIsConsumed`` resolves calls by NAME and
+    drops any name a sync ``def`` also claims, because matching on
+    spelling alone would otherwise flag ordinary methods. Every
+    collision is therefore a hole in that guard, not a cosmetic
+    blemish, and this budget is what stops the holes from
+    multiplying.
+
+    The seed is one shape repeated: an async route handler named for
+    the sync core it wraps. Note which name leads it --
+    ``fdictDeleteEnvironment``, the very module where an un-awaited
+    guard once shipped -- so the blind spot already overlaps the
+    failure it was built to catch.
+
+    The budget may only fall, and a handler is safe to rename: FastAPI
+    binds a path from the decorator, never from the function name. Fix
+    one and lower the constant in the same commit.
+
+    Kills: turning the sync ``fdictDeleteEnvironment`` core into an
+    ``async def``, which silently resolves one collision and leaves
+    the recorded budget overstating the holes that remain.
+    """
+    listParsed = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        _, treeAst = ftParseFile(pathFile)
+        listParsed.append((pathFile, treeAst))
+    dictKinds = _fdictCollectDefinitionKindsByName(listParsed)
+    setCollisions = {
+        sName for sName, setKinds in dictKinds.items() if len(setKinds) > 1
+    }
+    setNew = setCollisions - set(_T_SEEDED_SYNC_ASYNC_COLLISIONS)
+    assert not setNew, (
+        "A name is now defined both as `def` and as `async def`, which "
+        "removes it from what testEveryCoroutineCallIsConsumed can "
+        "see. Rename one of the two:\n"
+        + "\n".join(f"  {sName}" for sName in sorted(setNew))
+    )
+    assert len(setCollisions) == _I_SYNC_ASYNC_COLLISION_BUDGET, (
+        f"sync/async name collisions are now {len(setCollisions)}, and "
+        f"the recorded budget is {_I_SYNC_ASYNC_COLLISION_BUDGET}. This "
+        "budget may only fall: lower _I_SYNC_ASYNC_COLLISION_BUDGET "
+        "(and drop the fixed name from "
+        "_T_SEEDED_SYNC_ASYNC_COLLISIONS) in the same commit."
+    )
+
+
+@pytest.mark.falsification
+def testEveryCoroutineCallIsConsumed():
+    """A coroutine must be awaited, deferred or collected -- never dropped.
+
+    Turning a ``def`` into an ``async def`` is the one signature change
+    Python does not report at the call site. Every other mismatch
+    raises TypeError; an un-awaited coroutine is a truthy object that
+    runs no body and raises nothing, so a guard that stops being
+    awaited stops guarding and the suite stays green. That shipped
+    once: ``_fnRefuseBusyProject`` became async and the delete route's
+    call was left bare, which would have let one session delete an
+    environment another session held open.
+
+    Runtime detection is NOT a substitute. Python reports the
+    un-awaited coroutine through the garbage collector's unraisable
+    hook, where pytest's ``filterwarnings`` cannot convert it into a
+    failure -- measured against a live instance of this bug, three
+    filter spellings (including the broadest, ``error::RuntimeWarning``)
+    all reported the suite green.
+
+    Scope is deliberately narrow and stated rather than implied: only
+    ``vaibify/`` is scanned, and only names no sync ``def`` also
+    claims, so the check degrades toward missing a call rather than
+    toward a false alarm. A coroutine collected into a list that is
+    then never awaited is outside what it can see.
+
+    Kills: dropping the ``await`` from the delete route's call to
+    ``_fnRefuseBusyProject``, which restores the silent-guard bug.
+    """
+    listParsed = []
+    for pathFile in sorted(PACKAGE_DIR.rglob("*.py")):
+        _, treeAst = ftParseFile(pathFile)
+        listParsed.append((pathFile, treeAst))
+    setCoroutineNames = _fsetCollectUnambiguousCoroutineNames(listParsed)
+    listOffenders = []
+    for pathFile, treeAst in listParsed:
+        sRelative = pathFile.relative_to(REPO_ROOT).as_posix()
+        for iLine, sName in _flistFindUnconsumedCoroutineCalls(
+            treeAst, setCoroutineNames,
+        ):
+            listOffenders.append(f"  {sRelative}:{iLine}  {sName}()")
+    assert not listOffenders, (
+        "Coroutine built and discarded -- the call runs no code and "
+        "raises nothing. Await it, hand it to a spawner, or collect it "
+        "for gather():\n" + "\n".join(listOffenders)
+    )
 
 # ---------------------------------------------------------------------
 # Falsification-test convention (see AGENTS.md "Epistemics"). A

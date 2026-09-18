@@ -1,4 +1,4 @@
-"""Fixtures for the browser lane: a real server, a real Chromium.
+"""Fixtures for the browser lane: a real server, a real browser.
 
 The application under test is the real hub built by
 ``fappCreateHubApplication`` and served by a real uvicorn on an
@@ -36,6 +36,32 @@ from tests.browser.fakeDockerAdapter import (
 
 
 S_REQUIRE_BROWSER_ENV = "VAIBIFY_REQUIRE_BROWSER"
+
+# Which engine this run drives. The lane was Chromium-only for its whole
+# life, which is a coverage claim it never made out loud: a defect that
+# lives in one engine's event or clipboard behavior is invisible to it,
+# and the researcher's daily browser is not the one it ran. Engines are
+# NOT the OS/Python matrix this lane deliberately refuses -- running the
+# same engine 24 times tells you nothing new, whereas a second engine
+# executes genuinely different code, which is the entire point.
+S_BROWSER_ENGINE_ENV = "VAIBIFY_BROWSER"
+S_DEFAULT_BROWSER_ENGINE = "chromium"
+T_SUPPORTED_BROWSER_ENGINES = ("chromium", "firefox", "webkit")
+
+
+def fsSelectedBrowserEngine():
+    """Return the engine this run drives, refusing an unknown name."""
+    sEngine = os.environ.get(
+        S_BROWSER_ENGINE_ENV, S_DEFAULT_BROWSER_ENGINE,
+    ).strip().lower() or S_DEFAULT_BROWSER_ENGINE
+    if sEngine not in T_SUPPORTED_BROWSER_ENGINES:
+        raise ValueError(
+            f"{S_BROWSER_ENGINE_ENV}={sEngine!r} is not one of "
+            f"{', '.join(T_SUPPORTED_BROWSER_ENGINES)}. A typo must "
+            "fail here rather than silently running Chromium and "
+            "reporting coverage of an engine that was never driven."
+        )
+    return sEngine
 
 # The two host projects the lane's registry carries beside the one
 # container. Named here so a journey can address them without
@@ -488,12 +514,13 @@ def serverHub():
 
 
 @pytest.fixture(scope="module")
-def browserChromium():
-    """A single headless Chromium for the whole lane."""
+def browserEngine():
+    """A single headless browser of the selected engine for the lane."""
     _fnRequirePlaywright()
     from playwright.sync_api import sync_playwright
+    sEngine = fsSelectedBrowserEngine()
     with sync_playwright() as playwrightDriver:
-        browser = playwrightDriver.chromium.launch()
+        browser = getattr(playwrightDriver, sEngine).launch()
         yield browser
         browser.close()
 
@@ -509,7 +536,7 @@ def pytest_runtest_makereport(item, call):
 
 
 @pytest.fixture
-def pageDashboard(browserChromium, serverHub, request):
+def pageDashboard(browserEngine, serverHub, request):
     """A fresh page that records every console error and page error.
 
     The recorded lists are attached to the page object so a journey can
@@ -529,7 +556,7 @@ def pageDashboard(browserChromium, serverHub, request):
         pathlib.Path(S_ARTIFACT_DIRECTORY) / request.node.name
     )
     pathArtifacts.mkdir(parents=True, exist_ok=True)
-    contextBrowser = browserChromium.new_context(
+    contextBrowser = browserEngine.new_context(
         record_video_dir=str(pathArtifacts),
     )
     contextBrowser.tracing.start(screenshots=True, snapshots=True)

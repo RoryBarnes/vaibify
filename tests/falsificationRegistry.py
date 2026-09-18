@@ -19403,6 +19403,65 @@ def _fdictEntry(sRel):
         new='        selectionBackground: "rgba(19, 174, 213, 0.3)",',
     ),
 
+    # --- 2026-09-16: a researcher could not copy an agent's login URL
+    # out of the pane. Measured in their own session: the selection
+    # held 2.7 seconds and ~170 repaints while they dragged, and was
+    # destroyed 48ms after they released -- by the program, which
+    # reads the mouse-release byte and redraws. Copy-on-select
+    # debounced by 200ms and so arrived second, and the clearing
+    # selection event cancelled the pending copy on its way through.
+    # `writeText` was never called. Repaint alone does not do this;
+    # measured in both Chromium and Firefox, the selection survives
+    # every frame. The debounce must delay the WRITE, not the READ. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testCopySurvivesTheSelectionBeingCleared.py::'
+            'test_a_copy_survives_the_selection_being_cleared_after_release'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='    function fnScheduleCopyOnSelect(dictTab, terminal) {\n        if (!terminal.hasSelection()) return;\n        if (dictTab.iCopyOnSelectTimer) {\n            window.clearTimeout(dictTab.iCopyOnSelectTimer);\n        }',
+        new='    function fnScheduleCopyOnSelect(dictTab, terminal) {\n        if (dictTab.iCopyOnSelectTimer) {\n            window.clearTimeout(dictTab.iCopyOnSelectTimer);\n        }\n        if (!terminal.hasSelection()) return;',
+    ),
+
+    # --- 2026-09-16: the dashboard had TWO question marks, and the
+    # answer to "how do I select text in the terminal" lived behind
+    # only one of them. A researcher looked in the toolbar's help,
+    # found nothing about terminals, and never found the second button
+    # in the terminal strip -- losing most of a session to a terminal
+    # he could not copy from while the content sat one click away
+    # under the other door. The terminal's "?" is gone and its content
+    # is a folded section of the single panel. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testHelpLivesInOnePlace.py::'
+            'testTheOneHelpPanelCarriesTheTerminalAndOpensFolded'
+        ),
+        source='vaibify/gui/static/scriptLegendPanel.js',
+        old='            _fsRenderTerminalUsageSection() +\n',
+        new='',
+    ),
+
+    # --- 2026-09-16: promoting from inside the open project refused
+    # ITSELF. The dashboard's file-status poll runs a container command
+    # to read test markers -- a read that travels the arbitrary-exec
+    # path, so it is journaled like a mutation. Promotion releases the
+    # caller's own session (deliberately; refusing the researcher's own
+    # tab once made in-browser promotion impossible), which makes that
+    # poll's admission stale and ends it, and the busy check then read
+    # the journal in the gap before the record settled. Measured: 142ms
+    # and 154ms to settle, and the journey failed two runs in three on
+    # Firefox. The journal axis now waits, bounded, for a record to
+    # settle before calling the project unsettled. ---
+    Falsification(
+        nodeid=(
+            'tests/testABusyCheckWaitsForATransientRecord.py::'
+            'testARecordThatSettlesIsNotCalledUnsettled'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old='        if time.monotonic() >= fDeadline:\n            return False\n        await asyncio.sleep(F_JOURNAL_SETTLE_POLL_SECONDS)',
+        new='        return False',
+    ),
+
     # --- 2026-09-12: review findings on the pinned-image lane, the
     # reproduction record and the reproducer's download ---
     Falsification(
@@ -21578,5 +21637,62 @@ def _fdictEntry(sRel):
             '    _fnValidateArchiveFilePaths(listFilePaths)\n'
         ),
         new='    _fnValidateArchiveFilePaths(listFilePaths)\n',
+    ),
+    # --- 2026-09-16: sync->async is the one signature change Python
+    # does not report at the call site, so a guard that stops being
+    # awaited stops guarding silently. This is the real bug, restored. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryCoroutineCallIsConsumed'
+        ),
+        source='vaibify/gui/environmentDeletionRoutes.py',
+        old='        await _fnRefuseBusyProject(\n',
+        new='        _fnRefuseBusyProject(\n',
+    ),
+    # --- 2026-09-16: the collision budget is what bounds the blind
+    # spot in the guard above -- it resolves calls by name, so a name
+    # defined both ways is one it cannot see. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testCoroutineNamesDoNotCollideWithSyncNames'
+        ),
+        source='vaibify/gui/environmentDeletion.py',
+        old='def fdictDeleteEnvironment(dictProject):\n',
+        new='async def fdictDeleteEnvironment(dictProject):\n',
+    ),
+    # --- 2026-09-17: the acknowledgement orders the socket, not
+    # xterm's parser. Structural, because the symptom is ~10% on
+    # Firefox and never on Chromium -- a behavioral guard would flake
+    # rather than fail. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testTheResizeAcknowledgementWaitsForTheParser'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        fnReflowOncePendingOutputIsParsed(dictTab, {\n',
+        new='        fnApplyProposedDimensions(dictTab, {\n',
+    ),
+    # --- 2026-09-18: the workflow hub poll rebuilt the picker every
+    # three seconds, so a click resolved an instant before a tick
+    # landed on a node that had left the document and did nothing.
+    # Found by the Firefox and WebKit lanes as two timeouts per run on
+    # different tests each time; Chromium never showed it. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePickerKeepsItsCardsAcrossAPoll.py::'
+            'test_the_picker_keeps_its_cards_across_a_poll'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '        if (sCardsHtml === _sRenderedWorkflowCardsHtml\n'
+            '                && sId === _sRenderedWorkflowContainerId\n'
+            '                && elList.firstChild) {\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
     ),
 ]

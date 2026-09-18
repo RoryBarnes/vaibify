@@ -281,6 +281,20 @@ control; this line is the signpost. The reasoning lives in
   containers.** Editing it as ordinary Python loses escape sequences
   silently, and its duplication with `dataLoaders.py` is deliberate —
   container scripts cannot import from the host.
+- **A coroutine is never built and discarded.** Turning a `def` into
+  an `async def` is the one signature change Python does not report at
+  the call site: an un-awaited coroutine is truthy, runs no body, and
+  raises nothing, so a guard that stops being awaited stops guarding
+  while the suite stays green. That shipped once, on the
+  environment-delete route. `testEveryCoroutineCallIsConsumed`
+  resolves calls by NAME, which is why
+  `testCoroutineNamesDoNotCollideWithSyncNames` bounds the names
+  defined both ways — each collision is a hole in the guard, not a
+  blemish. Runtime detection is NOT a substitute: Python reports the
+  un-awaited coroutine through the garbage collector's unraisable
+  hook, where pytest's `filterwarnings` cannot turn it into a failure
+  (measured — `error::RuntimeWarning` reports the suite green on a
+  live instance of the bug).
 - **JavaScript IIFE state objects share mutable collections by
   reference.** Reassigning a Set breaks rendering; use `.clear()` and
   mutate in place. See `vaibify/gui/static/AGENTS.md`.

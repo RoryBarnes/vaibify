@@ -1,4 +1,4 @@
-"""Answer whether Chromium actually starts, and say why if it does not.
+"""Answer whether a browser engine actually starts, and say why not.
 
 The browser lane installs Chromium without running ``apt-get``, because
 the runner image already ships the shared libraries Chromium links
@@ -16,13 +16,21 @@ dashboard works.
 Prints the launch error rather than a traceback, because the reader is
 looking at a CI log and the useful part of a Playwright launch failure
 is the missing-library list it prints itself.
+
+The engine is an argument because the lane now drives three of them and
+each links against different OS libraries: WebKit in particular needs
+packages the runner image does not ship, so "Chromium starts" is no
+evidence at all about the engine actually under test.
 """
 
 import sys
 
+S_DEFAULT_ENGINE = "chromium"
+T_SUPPORTED_ENGINES = ("chromium", "firefox", "webkit")
 
-def fbChromiumLaunches():
-    """Return True when a Chromium process starts and stops cleanly."""
+
+def fbBrowserLaunches(sEngine):
+    """Return True when the engine starts and stops cleanly."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as errorImport:
@@ -30,19 +38,26 @@ def fbChromiumLaunches():
         return False
     try:
         with sync_playwright() as playwrightRunning:
-            browserChromium = playwrightRunning.chromium.launch()
-            sVersion = browserChromium.version
-            browserChromium.close()
+            browserUnderTest = getattr(playwrightRunning, sEngine).launch()
+            sVersion = browserUnderTest.version
+            browserUnderTest.close()
     except Exception as errorLaunch:
-        print(f"Chromium did not launch: {errorLaunch}")
+        print(f"{sEngine} did not launch: {errorLaunch}")
         return False
-    print(f"Chromium {sVersion} launched and closed cleanly.")
+    print(f"{sEngine} {sVersion} launched and closed cleanly.")
     return True
 
 
 def main():
-    """Return a process exit code: 0 when Chromium launched."""
-    return 0 if fbChromiumLaunches() else 1
+    """Return a process exit code: 0 when the named engine launched."""
+    sEngine = sys.argv[1] if len(sys.argv) > 1 else S_DEFAULT_ENGINE
+    if sEngine not in T_SUPPORTED_ENGINES:
+        print(
+            f"unknown engine {sEngine!r}; expected one of "
+            f"{', '.join(T_SUPPORTED_ENGINES)}"
+        )
+        return 2
+    return 0 if fbBrowserLaunches(sEngine) else 1
 
 
 if __name__ == "__main__":

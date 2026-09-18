@@ -131,24 +131,35 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function _fsBuildUnauthorizedMessage(dictError) {
-        /* A 401 used to be reported as "the server has been restarted",
-           which is a guess and, for the case that produces most 401s,
-           a false one: a session that reached its cap was ended by a
-           hub that is still running. The server now sends its own
-           account of the ending when it has one, so prefer it, and
-           keep the old sentence only for a 401 the hub could not
-           explain — which really is what a restart looks like. */
+        /* NEVER assert a restart this page cannot observe. The old
+           sentence claimed "Vaibify server has been restarted" for
+           every unexplained 401, and its own comment conceded that was
+           a guess -- but the guess was still printed, and on
+           2026-09-16 it sent a researcher hunting a server that was up
+           for 1h33m and answering in 17ms. The browser had restarted,
+           not the hub.
+
+           One thing IS known here and was not being said: a 401 is a
+           RESPONSE, so the server is demonstrably answering. Saying so
+           costs nothing and removes the reading that sent the
+           researcher looking for a dead hub. Which of restart or
+           expiry occurred is NOT knowable from this side -- a
+           credential-less tab never reaches here, because the page
+           renders its own not-signed-in notice instead of
+           initializing -- so the disjunction is reported as a
+           disjunction rather than resolved by guess. */
         var dictDetail = dictError.dictDetail || {};
-        if (!dictDetail.sMessage) {
+        if (dictDetail.sMessage) {
             return (
-                "Vaibify server has been restarted (session expired). " +
-                "Click to reload the dashboard."
+                dictDetail.sMessage +
+                _fsDescribeEndingTime(dictDetail.sEndedWallClockIso) +
+                " Click to reload the dashboard."
             );
         }
         return (
-            dictDetail.sMessage +
-            _fsDescribeEndingTime(dictDetail.sEndedWallClockIso) +
-            " Click to reload the dashboard."
+            "The server did not accept this tab's session, but it is " +
+            "running and answering. Either it restarted or the " +
+            "session expired. Click to reload the dashboard."
         );
     }
 

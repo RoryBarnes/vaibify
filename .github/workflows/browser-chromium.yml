@@ -1,4 +1,4 @@
-name: browser
+name: browser-chromium
 
 # The frontend, executed in a real browser.
 #
@@ -9,9 +9,30 @@ name: browser
 # follow, and a branch once merged fully green with the frontend
 # entirely unexecuted.
 #
-# ONE cell on purpose -- Linux, one Python, Chromium. A browser journey
-# does not become more trustworthy by running 24 times across the
-# OS/Python matrix; it becomes slower.
+# CHROMIUM. Firefox and WebKit have their own workflow files,
+# browser-firefox.yml and browser-webkit.yml, and the split is not
+# cosmetic: a GitHub status badge addresses a WORKFLOW FILE, not a job,
+# so a matrix inside this one could never give either engine a badge of
+# its own. One file per engine is what makes each answerable from the
+# README at a glance.
+#
+# Still one cell of OS and Python, deliberately. A browser journey does
+# not become more trustworthy by running 24 times across the OS/Python
+# matrix; it becomes slower. A second ENGINE is the opposite trade --
+# it executes genuinely different code. The lane ran Chromium alone
+# until 2026-09-16, when a terminal defect was reported by a researcher
+# whose daily browser is Firefox and could not be reproduced here at
+# all.
+#
+# This job KEEPS ITS NAME. It is the required check, and renaming it to
+# "browser (chromium)" would have silently removed that check while
+# every pull request still showed a green browser lane. Add
+# "browser-firefox" and "browser-webkit" to the required set for the
+# other two to gate as well.
+#
+# Chromium ALSO runs the five clipboardPermissions tests, which
+# Playwright can only grant in this engine; the other two deselect
+# them.
 #
 # This lane does NOT speak for the Docker boundary. It drives a
 # fail-closed fake adapter, and the container acceptance lane is what
@@ -31,13 +52,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  browser:
+  browser-chromium:
     # The job name IS the status-check name, and the status-check name is
     # what you search for when adding a required check. Called "frontend
     # (chromium)", this lane was unfindable by anyone typing "browser" —
     # so it silently stayed out of the required set while appearing to
     # gate every pull request.
-    name: 'browser'
+    #
+    # Renamed from 'browser' to 'browser-chromium' on 2026-09-16, when
+    # the sibling engines arrived and a bare "browser" stopped saying
+    # which one it drove. A rename retires the OLD required check: add
+    # 'browser-chromium' to the required set and drop 'browser', or
+    # nothing gates the frontend at all.
+    name: 'browser-chromium'
     runs-on: ubuntu-24.04
 
     steps:
@@ -89,13 +116,13 @@ jobs:
         timeout-minutes: 8
         run: |
           python -m playwright install chromium
-          if python tools/checkChromiumLaunches.py; then
+          if python tools/checkBrowserLaunches.py chromium; then
             echo "Chromium launches against the runner image's own libraries."
             exit 0
           fi
           echo "Chromium did not launch; fetching its OS dependencies."
           python -m playwright install-deps chromium
-          python tools/checkChromiumLaunches.py
+          python tools/checkBrowserLaunches.py chromium
 
       - name: Run the browser lane
         # 10 -> 15 on 2026-09-08, with the researcher's approval. The
@@ -109,7 +136,14 @@ jobs:
         # trimming tests when it next gets close; the honest reason to
         # cut a browser test is that it proves nothing, never that the
         # clock is short.
-        timeout-minutes: 15
+        #
+        # 15 -> 25 on 2026-09-16, with the researcher's approval, under
+        # that same rule. The note above was written against 299 tests;
+        # collection now reports 365, and the lane had no more headroom
+        # than it did the last time this was raised. 25 matches the
+        # engines job, so no browser check fails for the sole offence
+        # of finishing its work.
+        timeout-minutes: 25
         env:
           # Turns the "playwright not installed" skip into a failure.
           # A browser job that goes green without a browser is the same

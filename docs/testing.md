@@ -237,7 +237,9 @@ window.
 |---|---|---|
 | `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union |
-| `browser.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python/Chromium cell) |
+| `browser-chromium.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python cell) |
+| `browser-firefox.yml` | the same suite in Firefox, minus the five `clipboardPermissions` tests Playwright can only grant in Chromium | on pull requests |
+| `browser-webkit.yml` | the same suite in WebKit (Safari's engine), same deselection | on pull requests |
 | `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
 | `security.yml` | the security-boundary suite, in its own named lane so a green architectural badge can never launder a red security one | Ubuntu 24 + macOS 26 × Python 3.9 & 3.14 |
 | `styleContract.yml` | `tests/testStyleInvariants.py`, then `tools/generateStyleInventory.py --check` for inventory drift | one Linux cell |
@@ -408,7 +410,8 @@ browser both absent. Three lanes exist because that leaves two real
 boundaries unexercised, and both have shipped bugs a green suite could
 not see.
 
-**The browser lane (`browser.yml`)** loads the real dashboard in real Chromium
+**The browser lanes (`browser-chromium.yml`, `browser-firefox.yml`,
+`browser-webkit.yml`)** load the real dashboard in a real browser
 against a real uvicorn hub and fails on any console error, uncaught
 promise rejection, or failed asset. It runs on one cell — a browser
 journey does not become more trustworthy by running 24 times across
