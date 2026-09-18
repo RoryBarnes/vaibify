@@ -21638,4 +21638,28 @@ def _fdictEntry(sRel):
         ),
         new='    _fnValidateArchiveFilePaths(listFilePaths)\n',
     ),
+    # --- 2026-09-16: sync->async is the one signature change Python
+    # does not report at the call site, so a guard that stops being
+    # awaited stops guarding silently. This is the real bug, restored. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testEveryCoroutineCallIsConsumed'
+        ),
+        source='vaibify/gui/environmentDeletionRoutes.py',
+        old='        await _fnRefuseBusyProject(\n',
+        new='        _fnRefuseBusyProject(\n',
+    ),
+    # --- 2026-09-16: the collision budget is what bounds the blind
+    # spot in the guard above -- it resolves calls by name, so a name
+    # defined both ways is one it cannot see. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testCoroutineNamesDoNotCollideWithSyncNames'
+        ),
+        source='vaibify/gui/environmentDeletion.py',
+        old='def fdictDeleteEnvironment(dictProject):\n',
+        new='async def fdictDeleteEnvironment(dictProject):\n',
+    ),
 ]
