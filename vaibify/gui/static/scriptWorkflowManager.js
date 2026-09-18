@@ -5,6 +5,38 @@ var VaibifyWorkflowManager = (function () {
 
     /* --- Workflow List Rendering --- */
 
+    /* What this list last PUT on screen, so an identical repaint can
+       be skipped.
+
+       The workflow hub poll calls this render every three seconds, and
+       the render replaces the list wholesale with innerHTML, which
+       destroys every card and rebinds the handlers. A click that
+       resolved a card an instant before a tick therefore lands on a
+       node that is no longer in the document, and nothing happens:
+       the researcher clicks a project and the picker just sits there.
+
+       Measured 2026-09-18 against the live picker: with the poll
+       ticking twice, a marker written onto a card was gone both times
+       on Chromium and Firefox, so every tick was destroying the cards.
+       It reached CI as two timeouts per Firefox lane, on different
+       tests every run, because any test that opens a project rolls the
+       same dice -- roughly one click in three hundred on Firefox and
+       WebKit, and never on Chromium, which dispatches faster than the
+       rebuild window.
+
+       Skipping an identical repaint is NOT caching state. The poll
+       still fetches the workflows on every tick, and anything that
+       changes what would be displayed changes this string and
+       repaints. What is skipped is a DOM write that would have
+       produced the same pixels and nothing else.
+
+       The comparison is against the string we are ABOUT to write,
+       never elList.innerHTML read back: the browser normalizes
+       attribute quoting and order on read, so a read-back would never
+       compare equal and the guard would silently never fire. */
+    var _sRenderedWorkflowCardsHtml = null;
+    var _sRenderedWorkflowContainerId = null;
+
     function fnRenderWorkflowList(listWorkflows, sId) {
         var elList = document.getElementById("listWorkflows");
         var sCardsHtml = "";
@@ -19,8 +51,18 @@ var VaibifyWorkflowManager = (function () {
                 return _fsRenderWorkflowCard(dictWf);
             }).join("");
         }
+        /* elList.firstChild is part of the condition because something
+           else may have emptied the list since we wrote it; the cards
+           must come back then even though our string has not moved. */
+        if (sCardsHtml === _sRenderedWorkflowCardsHtml
+                && sId === _sRenderedWorkflowContainerId
+                && elList.firstChild) {
+            return;
+        }
         elList.innerHTML = sCardsHtml;
         _fnBindWorkflowCards(elList, sId);
+        _sRenderedWorkflowCardsHtml = sCardsHtml;
+        _sRenderedWorkflowContainerId = sId;
     }
 
     function _fsRenderWorkflowCard(dictWf) {

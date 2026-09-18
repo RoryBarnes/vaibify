@@ -21675,4 +21675,24 @@ def _fdictEntry(sRel):
         old='        fnReflowOncePendingOutputIsParsed(dictTab, {\n',
         new='        fnApplyProposedDimensions(dictTab, {\n',
     ),
+    # --- 2026-09-18: the workflow hub poll rebuilt the picker every
+    # three seconds, so a click resolved an instant before a tick
+    # landed on a node that had left the document and did nothing.
+    # Found by the Firefox and WebKit lanes as two timeouts per run on
+    # different tests each time; Chromium never showed it. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePickerKeepsItsCardsAcrossAPoll.py::'
+            'test_the_picker_keeps_its_cards_across_a_poll'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '        if (sCardsHtml === _sRenderedWorkflowCardsHtml\n'
+            '                && sId === _sRenderedWorkflowContainerId\n'
+            '                && elList.firstChild) {\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
 ]
