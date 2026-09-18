@@ -219,6 +219,14 @@ def _flistCallablesBehind(tRoute):
         ],
         ("POST", "/api/registry/{sName}/delete-environment"): [
             registryRoutes._fnRefuseBusyProject,
+            # The journal READ moved out of the busy check on
+            # 2026-09-16, when its third axis gained a bounded wait for
+            # a record to settle. The route still reaches the journal;
+            # without this entry the reachable source no longer
+            # mentions it and the audit reads as "writes no journal
+            # record", which would be a finding that quietly stopped
+            # being true because a helper was extracted.
+            registryRoutes._fbWaitForJournalToSettle,
             registryRoutes._fnReleaseCallerOwnedSession,
             environmentDeletion.fdictDeleteEnvironment,
             environmentDeletion._fbRemoveContainer,

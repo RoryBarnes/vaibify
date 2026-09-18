@@ -6511,7 +6511,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment they had just looked inside instead of meeting the
     # "close it, then delete it" dead end only the command line could
     # finish. The three lines are that third case in its docstring.
-    "registryRoutes.py": 2250,
+    # +48 (2026-09-16): the busy check's journal axis waits, bounded,
+    # for a record to settle instead of reading it once. Promotion
+    # refused ITSELF without it: it releases the caller's own session
+    # one line above the check, which ends the dashboard's in-flight
+    # file-status poll -- a read that travels the arbitrary-exec path
+    # and so is journaled like a mutation -- and the check then read
+    # the journal in the gap before that record settled, answering
+    # "reconcile it before you promote it" about a container that
+    # needed no reconciling. Measured at 142ms and 154ms to settle,
+    # failing two runs in three on Firefox. What landed here is the
+    # wait and the paragraph explaining why it must be asynchronous:
+    # the record belongs to an in-flight request on this same hub, so
+    # a blocking sleep would hold the event loop and guarantee the
+    # refusal it exists to prevent. It stays in this module because
+    # the busy refusal is this module's responsibility; the journal
+    # itself is only read.
+    "registryRoutes.py": 2298,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7261,6 +7277,7 @@ def testModuleSizeIsBounded():
             for sKey, iLines, iAllowed in listOffenders
         )
     )
+
 
 
 # ---------------------------------------------------------------------

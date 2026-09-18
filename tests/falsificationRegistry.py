@@ -19441,6 +19441,27 @@ def _fdictEntry(sRel):
         new='',
     ),
 
+    # --- 2026-09-16: promoting from inside the open project refused
+    # ITSELF. The dashboard's file-status poll runs a container command
+    # to read test markers -- a read that travels the arbitrary-exec
+    # path, so it is journaled like a mutation. Promotion releases the
+    # caller's own session (deliberately; refusing the researcher's own
+    # tab once made in-browser promotion impossible), which makes that
+    # poll's admission stale and ends it, and the busy check then read
+    # the journal in the gap before the record settled. Measured: 142ms
+    # and 154ms to settle, and the journey failed two runs in three on
+    # Firefox. The journal axis now waits, bounded, for a record to
+    # settle before calling the project unsettled. ---
+    Falsification(
+        nodeid=(
+            'tests/testABusyCheckWaitsForATransientRecord.py::'
+            'testARecordThatSettlesIsNotCalledUnsettled'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        old='        if time.monotonic() >= fDeadline:\n            return False\n        await asyncio.sleep(F_JOURNAL_SETTLE_POLL_SECONDS)',
+        new='        return False',
+    ),
+
     # --- 2026-09-12: review findings on the pinned-image lane, the
     # reproduction record and the reproducer's download ---
     Falsification(

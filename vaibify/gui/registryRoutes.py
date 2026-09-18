@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import re
+import time
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -1609,7 +1610,7 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         await _fnReleaseCallerOwnedSession(
             app, sName, requestHttp,
         )
-        _fnRefuseBusyProject(app, sName, dictCtx)
+        await _fnRefuseBusyProject(app, sName, dictCtx)
         # A container IS a Project, so containerizing has to bring one
         # into being exactly as promotion does -- otherwise the
         # researcher waits out an image build and arrives at a Project
@@ -1719,7 +1720,29 @@ async def _fnReleaseCallerOwnedSession(app, sName, requestHttp):
         raise HTTPException(409, detail={"sMessage": dictPayload["sMessage"]})
 
 
-def _fnRefuseBusyProject(app, sName, dictCtx, sVerb="convert"):
+# How long the journal axis waits for an operation to settle before it
+# is called unsettled. MEASURED, not chosen: promoting from inside the
+# open project refused itself because the dashboard's own file-status
+# poll still had a record open, and that record settled 142ms and 154ms
+# after the refusal on two runs. The poll is a READ that travels the
+# arbitrary-exec path, so it is journaled like a mutation; releasing the
+# caller's session (which promotion does, deliberately, one line above
+# the check) makes its admission stale and ends it. So the promotion
+# created the very condition it then refused itself over, and told the
+# researcher to reconcile a container that needed no reconciling.
+#
+# 2 seconds is roughly thirteen times the measured settle, which leaves
+# the refusal meaningful: a project genuinely busy with a run is still
+# refused, two seconds later, with the same message. This is NOT the
+# drain a transfer must never wait for -- that prohibition is about
+# spending a capability's window on an operation of unknown length,
+# where this is a bounded wait for a record whose owner has already
+# been released.
+F_JOURNAL_SETTLE_DEADLINE_SECONDS = 2.0
+F_JOURNAL_SETTLE_POLL_SECONDS = 0.05
+
+
+async def _fnRefuseBusyProject(app, sName, dictCtx, sVerb="convert"):
     """409 when the project is open, locked, or has unsettled operations.
 
     Conversion renames the lock/lease/journal key and deletion destroys
@@ -1751,16 +1774,39 @@ def _fnRefuseBusyProject(app, sName, dictCtx, sVerb="convert"):
             f"'{sName}' is in use by another vaibify session. Close it "
             f"there, then {sVerb} it."
         )})
-    dictResolution = operationJournal.fdictResolveContainerJournal(
-        sName, dictCtx.get("docker"), bPersistResolution=False,
-    )
-    if dictResolution["sResolution"] != (
-        operationJournal.S_RESOLUTION_SETTLED
-    ):
+    # The wait is ASYNCHRONOUS and that is load-bearing. The record
+    # this usually waits on belongs to an in-flight request on this
+    # same hub; a blocking sleep here holds the event loop, so that
+    # request could never finish, the record could never settle, and
+    # the wait would expire every time -- turning a race that is lost
+    # occasionally into a refusal that is certain.
+    if not await _fbWaitForJournalToSettle(sName, dictCtx):
         raise HTTPException(409, detail={"sMessage": (
             f"'{sName}' has operations that are not settled; reconcile "
             f"it before you {sVerb} it."
         )})
+
+
+async def _fbWaitForJournalToSettle(sName, dictCtx):
+    """Return True once the container journal settles, or on timeout False.
+
+    Resolution is READ each time (``bPersistResolution=False``): asking
+    again is what lets an operation that was merely in flight answer
+    differently a moment later, and nothing here writes a verdict.
+    """
+    from vaibify.config import operationJournal
+    fDeadline = time.monotonic() + F_JOURNAL_SETTLE_DEADLINE_SECONDS
+    while True:
+        dictResolution = operationJournal.fdictResolveContainerJournal(
+            sName, dictCtx.get("docker"), bPersistResolution=False,
+        )
+        if dictResolution["sResolution"] == (
+            operationJournal.S_RESOLUTION_SETTLED
+        ):
+            return True
+        if time.monotonic() >= fDeadline:
+            return False
+        await asyncio.sleep(F_JOURNAL_SETTLE_POLL_SECONDS)
 
 
 def _fnRejectDuplicateForConversion(sNewName, sOldName):
@@ -1882,7 +1928,9 @@ def _fnRegisterPromoteToHostProject(app, dictCtx):
         await _fnReleaseCallerOwnedSession(
             app, sName, requestHttp,
         )
-        _fnRefuseBusyProject(app, sName, dictCtx, sVerb="promote")
+        await _fnRefuseBusyProject(
+            app, sName, dictCtx, sVerb="promote",
+        )
         # Workflow scaffold FIRST: if it fails, nothing has been
         # renamed and the sandbox is untouched; if a later write fails,
         # a sandbox carrying a workflow file re-runs safely because the

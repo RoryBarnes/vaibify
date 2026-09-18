@@ -106,7 +106,9 @@ def _fnRegisterDeleteEnvironment(app, dictCtx):
         # A lease a DIFFERENT session bound releases nothing and falls
         # through to the busy refusal below.
         await _fnReleaseCallerOwnedSession(app, sName, requestHttp)
-        _fnRefuseBusyProject(app, sName, dictCtx, sVerb="delete")
+        await _fnRefuseBusyProject(
+            app, sName, dictCtx, sVerb="delete",
+        )
         dictReport = await asyncio.to_thread(
             environmentDeletion.fdictDeleteEnvironment, dictProject,
         )
