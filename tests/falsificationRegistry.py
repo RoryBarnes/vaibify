@@ -21662,4 +21662,17 @@ def _fdictEntry(sRel):
         old='def fdictDeleteEnvironment(dictProject):\n',
         new='async def fdictDeleteEnvironment(dictProject):\n',
     ),
+    # --- 2026-09-17: the acknowledgement orders the socket, not
+    # xterm's parser. Structural, because the symptom is ~10% on
+    # Firefox and never on Chromium -- a behavioral guard would flake
+    # rather than fail. ---
+    Falsification(
+        nodeid=(
+            'tests/testArchitecturalInvariants.py::'
+            'testTheResizeAcknowledgementWaitsForTheParser'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        fnReflowOncePendingOutputIsParsed(dictTab, {\n',
+        new='        fnApplyProposedDimensions(dictTab, {\n',
+    ),
 ]

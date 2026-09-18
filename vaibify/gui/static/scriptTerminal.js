@@ -1020,10 +1020,39 @@ const VaibifyTerminal = (function () {
                says nothing about whether that one will arrive. */
             return;
         }
-        fnDisarmResizeAcknowledgementTimeout(dictTab);
-        fnApplyProposedDimensions(dictTab, {
+        fnReflowOncePendingOutputIsParsed(dictTab, {
             cols: dictData.iColumns,
             rows: dictData.iRows,
+        });
+    }
+
+    /* The acknowledgement orders the SOCKET, not the parser.
+
+       xterm's write() is asynchronous: it queues bytes and parses them
+       in chunks across frames. So output that arrived BEFORE the
+       marker can still be sitting unparsed when the marker is
+       handled, and reflowing then re-wraps the buffer first and
+       parses the old-width bytes into it afterwards -- the very
+       stranding the hub's ordering exists to prevent, reintroduced
+       inside the browser. The wire order is right and the outcome is
+       still wrong, which is why this looked like a hub bug.
+
+       Measured on Firefox against the SIGWINCH-aware repainter: three
+       stale frames on roughly a tenth of resizes, with the
+       acknowledgement arriving cleanly and the fallback never firing.
+       Chromium parses fast enough to hide it. write()'s callback
+       fires once everything queued ahead of it has been parsed, so an
+       empty write is the barrier.
+
+       The acknowledgement timeout is disarmed INSIDE the callback,
+       never before it: if the barrier never fires, the fallback is
+       what still reflows the pane, and disarming early would trade a
+       stale frame for a pane stuck at the wrong size. */
+    function fnReflowOncePendingOutputIsParsed(dictTab, dictProposed) {
+        if (!dictTab.terminal) return;
+        dictTab.terminal.write("", function () {
+            fnDisarmResizeAcknowledgementTimeout(dictTab);
+            fnApplyProposedDimensions(dictTab, dictProposed);
         });
     }
 

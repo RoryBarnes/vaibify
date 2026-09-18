@@ -579,6 +579,79 @@ def testNoRawOnMessageInFeatureModules():
     )
 
 
+def _fsExtractJsFunctionBody(sSource, sFunctionName):
+    """Return the brace-matched body of a ``function`` declaration."""
+    iAt = sSource.find(f"function {sFunctionName}(")
+    if iAt == -1:
+        return ""
+    iOpen = sSource.find("{", iAt)
+    iDepth = 0
+    for iCursor in range(iOpen, len(sSource)):
+        if sSource[iCursor] == "{":
+            iDepth += 1
+        elif sSource[iCursor] == "}":
+            iDepth -= 1
+            if iDepth == 0:
+                return sSource[iOpen:iCursor + 1]
+    return ""
+
+
+@pytest.mark.falsification
+def testTheResizeAcknowledgementWaitsForTheParser():
+    """The reflow waits behind xterm's parser, not just the socket.
+
+    The hub's acknowledgement marks a point in the OUTPUT STREAM, and
+    that is all it can mark. xterm's ``write()`` is asynchronous -- it
+    queues bytes and parses them in chunks across frames -- so output
+    that arrived BEFORE the marker can still be unparsed when the
+    marker is handled. Reflowing there re-wraps the buffer first and
+    parses the old-width bytes into it afterwards, which is exactly
+    the stranding the hub's ordering exists to prevent, reintroduced
+    inside the browser.
+
+    This is asserted STRUCTURALLY because the behavior cannot be
+    asserted reliably. Measured on Firefox, removing the barrier
+    strands frames on roughly a tenth of resizes and on Chromium never
+    -- so the behavioral test
+    (``testAResizeDoesNotStrandOldFrames``) would flake rather than
+    fail, and a CI lane that fails one run in ten teaches people to
+    re-run it. The shape is checkable every time; the symptom is not.
+
+    Kills: routing the acknowledgement straight back to
+    ``fnApplyProposedDimensions``, which reflows synchronously while
+    bytes are still queued in the parser.
+    """
+    sSource = fsReadSource(STATIC_DIR / "scriptTerminal.js")
+    sAcknowledge = _fsExtractJsFunctionBody(sSource, "fnAcknowledgeResize")
+    assert sAcknowledge, (
+        "fnAcknowledgeResize was not found in scriptTerminal.js; if it "
+        "was renamed, this invariant must be re-pointed rather than "
+        "deleted -- it guards an ordering with no reliable test."
+    )
+    assert "fnApplyProposedDimensions(" not in sAcknowledge, (
+        "the resize acknowledgement reflows SYNCHRONOUSLY. Output that "
+        "arrived before the acknowledgement may still be queued in "
+        "xterm's parser, and resizing now re-wraps the buffer before "
+        "those bytes are parsed into it. Route through the write "
+        "barrier instead."
+    )
+    sBarrier = _fsExtractJsFunctionBody(
+        sSource, "fnReflowOncePendingOutputIsParsed",
+    )
+    assert sBarrier, (
+        "the write barrier fnReflowOncePendingOutputIsParsed is gone; "
+        "without it nothing orders the reflow behind the parser."
+    )
+    iWrite = sBarrier.find(".write(")
+    iApply = sBarrier.find("fnApplyProposedDimensions(")
+    assert 0 <= iWrite < iApply, (
+        "the barrier must call terminal.write() and reflow inside its "
+        "callback -- write()'s callback is what fires once everything "
+        f"queued ahead of it has been parsed (write at {iWrite}, "
+        f"reflow at {iApply})."
+    )
+
+
 def _flistMissingReExports(sOrchestrator, listChildNames):
     """Return (sChild, sSymbol) pairs the orchestrator fails to re-export."""
     moduleOrchestrator = importlib.import_module(
