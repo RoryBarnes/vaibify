@@ -156,7 +156,7 @@ Three scopes:
 
 | Scope       | What it examines                                              |
 |-------------|---------------------------------------------------------------|
-| `host`      | This machine: Docker context and endpoint, daemon reachability, the runtime (Docker Desktop / Colima / rootful or rootless Engine), architecture, daemon storage and memory, what vaibify will request against what the daemon has, and room for an environment deposit |
+| `host`      | This machine: whether the Python answering the command is a native build or runs through CPU translation, Docker context and endpoint, daemon reachability, the runtime (Docker Desktop / Colima / rootful or rootless Engine), architecture, daemon storage and memory, what vaibify will request against what the daemon has, and room for an environment deposit |
 | `container` | Inside the running container: network attachments and default route, the resolver configuration, name resolution compared against this host's, the effective proxy path, and (with `--online`) transport |
 | `project`   | Vaibify's own record of the project: journal quarantine, whether the environment envelope pins the image the container runs, workspace ownership, and what the entrypoint observed at the last start |
 
