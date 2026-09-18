@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.14.dev21 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.14.dev31 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=45bcf403"></script>
+      <script src="_static/documentation_options.js?v=21732447"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -383,9 +383,17 @@ window.</p>
 <td><p>the invariants, the falsification tests, and the re-kill harness</p></td>
 <td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser.yml</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code></p></td>
 <td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
-<td><p>on pull requests (one Linux/Python/Chromium cell)</p></td>
+<td><p>on pull requests (one Linux/Python cell)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code></p></td>
+<td><p>the same suite in Firefox, minus the five <code class="docutils literal notranslate"><span class="pre">clipboardPermissions</span></code> tests Playwright can only grant in Chromium</p></td>
+<td><p>on pull requests</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code></p></td>
+<td><p>the same suite in WebKit (Safari’s engine), same deselection</p></td>
+<td><p>on pull requests</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck.yml</span></code></p></td>
 <td><p>that every path referenced in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> resolves</p></td>
@@ -619,7 +627,8 @@ is realistically the only place a failure becomes visible.</p>
 browser both absent. Three lanes exist because that leaves two real
 boundaries unexercised, and both have shipped bugs a green suite could
 not see.</p>
-<p><strong>The browser lane (<code class="docutils literal notranslate"><span class="pre">browser.yml</span></code>)</strong> loads the real dashboard in real Chromium
+<p><strong>The browser lanes (<code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code>,
+<code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code>)</strong> load the real dashboard in a real browser
 against a real uvicorn hub and fails on any console error, uncaught
 promise rejection, or failed asset. It runs on one cell — a browser
 journey does not become more trustworthy by running 24 times across

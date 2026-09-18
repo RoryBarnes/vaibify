@@ -74,7 +74,9 @@ progressively more reality, and each proves something the others do not.
 
 | Lane | What is real | When | What it proves |
 |---|---|---|---|
-| browser (`browser.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behavior reach the screen honestly |
+| browser-chromium (`browser-chromium.yml`) | Chromium + uvicorn + real HTTP/WebSockets; Docker is a fail-closed fake | every PR | JS loads and evaluates; API and refusal behavior reach the screen honestly |
+| browser-firefox (`browser-firefox.yml`) | the same journeys in Firefox | every PR | the engine the maintainer actually uses executes the frontend; clipboard-permission tests are deselected (Chromium only) |
+| browser-webkit (`browser-webkit.yml`) | the same journeys in WebKit | every PR | Safari's engine executes the frontend; clipboard-permission tests are deselected (Chromium only) |
 | container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands the browser lane's fake models |
 | fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `vaibify/containerImage/**` PRs | the image still builds; the container user is unprivileged |
 
