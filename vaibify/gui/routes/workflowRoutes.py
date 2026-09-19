@@ -153,9 +153,14 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
         # A host project's projects live under the directory the
         # researcher registered, not under the container volume the
         # module default names.
-        sSearchRoot = projectRoots.fsResolveProjectRoot(
-            sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
-        )
+        try:
+            sSearchRoot = projectRoots.fsResolveProjectRoot(
+                sContainerId, workflowManager.DEFAULT_SEARCH_ROOT,
+            )
+        except ValueError as error:
+            # A host entry with no directory used to escape as the
+            # generic 500; the sentence says which entry to restore.
+            raise HTTPException(409, detail={"sMessage": str(error)})
         try:
             return workflowManager.flistFindWorkflowsInContainer(
                 dictCtx["docker"], sContainerId, sSearchRoot,

@@ -1018,6 +1018,15 @@ const VaibifyApp = (function () {
             _fnRenderToolkitBanner(0);
             document.title = VaibifyContainerManager.fsGetSelectedContainerName() || "Vaibify";
             fnShowMainLayout();
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        /* The layout is on screen from here: a failure below leaves
+           the researcher INSIDE a Blank Project whose panels did not
+           all come up, so it is reported as that rather than as the
+           open having failed. */
+        try {
             VaibifyTerminal.fnEnsureTab();
             await VaibifyReposPanel.fnInit(sId);
             VaibifyProofTab.fnSetContainerId(sId);
@@ -1034,9 +1043,11 @@ const VaibifyApp = (function () {
             VaibifyPolling.fnStartDiscoveryPolling(sId);
             VaibifyPolling.fnStartFileTreePolling();
         } catch (error) {
-            fnShowToast(
-                fsSanitizeErrorForUser(error.message), "error"
-            );
+            VaibifyDiagnosis.fnReportFailure(
+                "The Blank Project opened, but part of its dashboard " +
+                "did not set up: " +
+                fsSanitizeErrorForUser(error.message) +
+                " Use Back and open it again.");
         }
     }
 

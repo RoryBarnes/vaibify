@@ -1088,8 +1088,17 @@ var VaibifyEventBindings = (function () {
             "click", function () {
                 var sId = VaibifyContainerManager
                     .fsGetSelectedContainerId();
-                if (sId) VaibifyApp.fnEnterNoWorkflow(sId);
+                if (!sId) {
+                    VaibifyApp.fnShowToast(
+                        VaibifyWorkflowManager.S_NO_ENVIRONMENT_OPEN,
+                        "warning");
+                    return;
+                }
+                VaibifyApp.fnEnterNoWorkflow(sId);
             }
+        );
+        document.getElementById("btnProjectHubHelp").addEventListener(
+            "click", VaibifyWorkflowManager.fnShowProjectHubHelp
         );
         document.getElementById("btnNewWorkflow").addEventListener(
             "click", function () {
@@ -1100,10 +1109,13 @@ var VaibifyEventBindings = (function () {
             .addEventListener("click", function () {
                 var sId = VaibifyContainerManager
                     .fsGetSelectedContainerId();
-                if (sId) {
-                    VaibifyContainerManager
-                        .fnConnectToContainer(sId);
+                if (!sId) {
+                    VaibifyApp.fnShowToast(
+                        VaibifyWorkflowManager.S_NO_ENVIRONMENT_OPEN,
+                        "warning");
+                    return;
                 }
+                VaibifyContainerManager.fnConnectToContainer(sId);
             }
         );
         var elWorkflowNewWindow = document.getElementById(

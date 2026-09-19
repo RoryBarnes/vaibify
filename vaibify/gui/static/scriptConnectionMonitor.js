@@ -33,16 +33,21 @@ var VaibifyConnectionMonitor = (function () {
         return false;
     }
 
-    var _bStaleHubSurfaced = false;
+    var _DICT_STALE_LIST_NAMES = {
+        "container-hub": "environment list",
+        "workflow-hub": "project list",
+    };
+    var _dictStaleListSurfaced = {};
 
-    function _fnSurfaceStaleHub(dictError) {
-        /* A server error on the hub poll used to be a console line and
-           a tile list frozen at its last good render, indefinitely.
-           Once per streak, say so; the diagnosis click is the way out. */
-        if (_bStaleHubSurfaced) return;
-        _bStaleHubSurfaced = true;
+    function _fnSurfaceStaleList(sPoller, dictError) {
+        /* A server error on a hub poll used to be a console line and
+           a list frozen at its last good render, indefinitely. Once
+           per streak, say so; the diagnosis click is the way out. */
+        var sListName = _DICT_STALE_LIST_NAMES[sPoller];
+        if (!sListName || _dictStaleListSurfaced[sPoller]) return;
+        _dictStaleListSurfaced[sPoller] = true;
         VaibifyDiagnosis.fnReportFailure(
-            "The environment list could not be refreshed (" +
+            "The " + sListName + " could not be refreshed (" +
             VaibifyUtilities.fsSanitizeErrorForUser(
                 dictError && dictError.message) +
             "). What you see is the last state vaibify saw.");
@@ -55,7 +60,7 @@ var VaibifyConnectionMonitor = (function () {
                 "[poll] " + sPoller + " failed:",
                 dictError && dictError.message
             );
-            if (sPoller === "container-hub") _fnSurfaceStaleHub(dictError);
+            _fnSurfaceStaleList(sPoller, dictError);
             return;
         }
         _dictConsecutiveFailures[sPoller] =
@@ -64,7 +69,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnReportPollSuccess(sPoller) {
-        if (sPoller === "container-hub") _bStaleHubSurfaced = false;
+        _dictStaleListSurfaced[sPoller] = false;
         _dictConsecutiveFailures[sPoller] = 0;
     }
 

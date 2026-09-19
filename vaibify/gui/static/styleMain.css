@@ -454,6 +454,21 @@ html, body {
     cursor: pointer;
 }
 
+.toast-clickable {
+    cursor: pointer;
+}
+
+.toast-clickable:hover {
+    filter: brightness(1.15);
+}
+
+.wizard-load-error,
+.wizard-submit-error {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--color-red-text);
+}
+
 .hub-help-section summary {
     cursor: pointer;
     font-weight: 700;

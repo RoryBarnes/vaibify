@@ -108,7 +108,18 @@ _DICT_KNOWN_ERROR_PATTERNS = {
 
 
 def fsSanitizeExceptionForClient(errorCaught):
-    """Return a user-safe error message without leaking internal paths."""
+    """Return a user-safe error message without leaking internal paths.
+
+    A control-plane refusal is the one exception whose text is written
+    FOR the researcher: it names the container, the operation that was
+    left unfinished and the reconcile that clears it. Sanitizing it to
+    the generic sentence threw that away, so a create that quarantined
+    a container answered "Pipeline action failed" and never said
+    `vaibify reconcile`. Everything else stays generic on purpose.
+    """
+    from vaibify.config.mutationAdmission import ControlPlaneRefusalError
+    if isinstance(errorCaught, ControlPlaneRefusalError):
+        return str(errorCaught)
     sRaw = str(errorCaught)
     for sPattern, sMessage in _DICT_KNOWN_ERROR_PATTERNS.items():
         if sPattern.lower() in sRaw.lower():
@@ -2566,9 +2577,14 @@ async def fdictHandleConnect(
         return _fdictConnectNoWorkflow(
             dictCtx, sContainerId, sBrowserSessionId,
         )
+    try:
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT,
+        )
+    except ValueError as error:
+        raise HTTPException(409, detail={"sMessage": str(error)})
     sWorkflowPath = _fsValidateConnectWorkflowPath(
-        sWorkflowPath,
-        projectRoots.fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
+        sWorkflowPath, sProjectRoot,
     )
     try:
         dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
@@ -2645,7 +2661,7 @@ async def fdictHandleConnect(
             ),
             "sExecutionHostname": fsExecutionHostname(),
             "bRemoteSession": fbConnectionIsRemote(
-                dictCtx, sBrowserSessionId,
+                dictCtx.get("dictBrowserSessions"), sBrowserSessionId,
             ),
             "fReconnectWindowSeconds": (
                 sessionLifecycle.ffReconnectWindowSecondsForSession(
@@ -2656,8 +2672,15 @@ async def fdictHandleConnect(
     except HTTPException:
         raise
     except Exception as error:
+        # The sentence names the file and what is wrong with it: a
+        # missing key, a schema written by a newer vaibify, a host file
+        # that could not be read. "Workflow load failed" alone sent a
+        # researcher to the log for the one line that told them what
+        # to fix.
         logger.error("Workflow load failed: %s", error)
-        raise HTTPException(400, "Workflow load failed")
+        raise HTTPException(400, detail={"sMessage": (
+            f"The project file could not be loaded: {error}"
+        )})
 
 
 async def _fnRefreshConftestsAndMigrateMarkers(
