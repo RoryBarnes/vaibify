@@ -1,3 +1,4 @@
+from unittest.mock import patch
 """Tests for fdictDiagnoseDockerError pattern matching.
 
 Each common Docker init failure should map to a specific hint and
@@ -245,11 +246,14 @@ def test_docker_py_socket_absent_on_a_known_runtime_names_that_runtime():
     )
     assert "Colima virtual machine is not running" in dictDiagnosis["sHint"]
     assert dictDiagnosis["sCommand"] == "colima start --profile gpu"
-    dictDesktop = fdictDiagnoseDockerError(
-        S_DOCKER_PY_SOCKET_ABSENT, sContext="desktop-linux",
-        sPlatform="darwin",
-        dictRuntime=_fdictRuntime(S_RUNTIME_DOCKER_DESKTOP),
-    )
+    # The Desktop remedy reads the HOST platform, so pin it: on Linux
+    # CI the same runtime answers `systemctl --user start docker-desktop`.
+    with patch("vaibify.docker.runtimeRemedies.sys.platform", "darwin"):
+        dictDesktop = fdictDiagnoseDockerError(
+            S_DOCKER_PY_SOCKET_ABSENT, sContext="desktop-linux",
+            sPlatform="darwin",
+            dictRuntime=_fdictRuntime(S_RUNTIME_DOCKER_DESKTOP),
+        )
     assert "Docker Desktop is not running" in dictDesktop["sHint"]
     assert dictDesktop["sCommand"] == "open -a Docker"
 
