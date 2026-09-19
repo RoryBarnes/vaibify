@@ -51,7 +51,7 @@ ARG VC_PROJECT_NAME=Vaibify
 # below. The waived block above floats by design -- see its comment --
 # and freezing it would silently override that decision and strand a
 # researcher whose systemPackages name anything published since.
-ARG APT_SNAPSHOT_DATE=20260909
+ARG APT_SNAPSHOT_DATE=20260918
 
 # Declared so a build can be given a fixed timestamp base, and so this
 # file satisfies vaibify's own L3 lint rather than being copied into a
@@ -213,10 +213,10 @@ RUN set -eu; \
             libasan8=14.2.0-4ubuntu2~24.04.1 \
             libatomic1=14.2.0-4ubuntu2~24.04.1 \
             libbinutils=2.42-4ubuntu2.10 \
-            libc-bin=2.39-0ubuntu8.8 \
-            libc-dev-bin=2.39-0ubuntu8.8 \
-            libc6=2.39-0ubuntu8.8 \
-            libc6-dev=2.39-0ubuntu8.8 \
+            libc-bin=2.39-0ubuntu8.9 \
+            libc-dev-bin=2.39-0ubuntu8.9 \
+            libc6=2.39-0ubuntu8.9 \
+            libc6-dev=2.39-0ubuntu8.9 \
             libcc1-0=14.2.0-4ubuntu2~24.04.1 \
             libcrypt-dev=1:4.4.36-4build1 \
             libctf-nobfd0=2.42-4ubuntu2.10 \
