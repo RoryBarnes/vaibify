@@ -200,14 +200,15 @@ def test_docker_py_socket_absent_does_not_blame_the_binary():
     """
     dictDiagnosis = fdictDiagnoseDockerError(
         S_DOCKER_PY_SOCKET_ABSENT, sContext="default", sPlatform="linux",
+        dictRuntime=_fdictRuntime(S_RUNTIME_UNKNOWN),
     )
     assert "not found on path" not in dictDiagnosis["sHint"].lower()
     assert "apt-get" not in dictDiagnosis["sCommand"]
     assert "socket" in dictDiagnosis["sHint"].lower()
 
 
-def test_docker_py_socket_absent_names_both_of_its_causes():
-    """The hint must not pick one of two causes it cannot distinguish.
+def test_docker_py_socket_absent_names_both_causes_when_runtime_unknown():
+    """With no runtime identified, the hint must not pick a cause.
 
     No socket at the resolved endpoint means the daemon is stopped OR
     it listens where vaibify did not look. Naming only one repeats the
@@ -216,11 +217,37 @@ def test_docker_py_socket_absent_names_both_of_its_causes():
     """
     dictDiagnosis = fdictDiagnoseDockerError(
         S_DOCKER_PY_SOCKET_ABSENT, sContext="default", sPlatform="linux",
+        dictRuntime=_fdictRuntime(S_RUNTIME_UNKNOWN),
     )
     sHint = dictDiagnosis["sHint"].lower()
-    assert "not running" in sHint
+    assert "stopped" in sHint
     assert "context" in sHint
     assert dictDiagnosis["sCommand"] == "docker context ls"
+
+
+def test_docker_py_socket_absent_on_a_known_runtime_names_that_runtime():
+    """A classified runtime turns the absent socket into one cause.
+
+    The dashboard reported "No Docker socket exists ... compare the
+    endpoint" while `vaibify doctor`, from the same stopped Colima,
+    said "The Colima virtual machine is not running" and named
+    `colima start`. The socket-absent branch must give the runtime's
+    own remedy whenever the classifier has one, so the two surfaces
+    cannot disagree about one failure.
+    """
+    dictDiagnosis = fdictDiagnoseDockerError(
+        S_DOCKER_PY_SOCKET_ABSENT, sContext="colima", sPlatform="darwin",
+        dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA, "gpu"),
+    )
+    assert "Colima virtual machine is not running" in dictDiagnosis["sHint"]
+    assert dictDiagnosis["sCommand"] == "colima start --profile gpu"
+    dictDesktop = fdictDiagnoseDockerError(
+        S_DOCKER_PY_SOCKET_ABSENT, sContext="desktop-linux",
+        sPlatform="darwin",
+        dictRuntime=_fdictRuntime(S_RUNTIME_DOCKER_DESKTOP),
+    )
+    assert "Docker Desktop is not running" in dictDesktop["sHint"]
+    assert dictDesktop["sCommand"] == "open -a Docker"
 
 
 def test_a_genuinely_missing_binary_still_says_so():

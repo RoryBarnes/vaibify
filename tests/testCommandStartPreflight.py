@@ -65,6 +65,11 @@ def test_preflight_fails_when_daemon_unreachable_no_colima():
         "vaibify.docker.dockerContext.fsActiveDockerContext",
         return_value="desktop-linux",
     ), patch(
+        "vaibify.docker.dockerContext.fsReadActiveContextEndpoint",
+        return_value="",
+    ), patch.dict(
+        "vaibify.docker.dockerContext.os.environ", {}, clear=True,
+    ), patch(
         "vaibify.cli.preflightChecks.sys.platform", "darwin",
     ):
         listResults = flistRunStartPreflight(config)

@@ -50,16 +50,25 @@ def test_fbColimaActive_true_when_context_is_colima(mockRun):
 @patch("vaibify.docker.dockerContext.subprocess.run")
 def test_fbColimaActive_false_for_desktop_linux(mockRun):
     mockRun.return_value = _fmockCompletedProcess(0, "desktop-linux\n")
-    assert fbColimaActive() is False
+    with patch.dict(
+        "vaibify.docker.dockerContext.os.environ", {}, clear=True,
+    ):
+        assert fbColimaActive() is False
 
 
 @patch("vaibify.docker.dockerContext.subprocess.run")
 def test_fbColimaActive_false_when_context_empty(mockRun):
     mockRun.return_value = _fmockCompletedProcess(0, "\n")
-    assert fbColimaActive() is False
+    with patch.dict(
+        "vaibify.docker.dockerContext.os.environ", {}, clear=True,
+    ):
+        assert fbColimaActive() is False
 
 
 @patch("vaibify.docker.dockerContext.subprocess.run")
 def test_fbColimaActive_false_on_error(mockRun):
     mockRun.side_effect = FileNotFoundError("no docker")
-    assert fbColimaActive() is False
+    with patch.dict(
+        "vaibify.docker.dockerContext.os.environ", {}, clear=True,
+    ):
+        assert fbColimaActive() is False

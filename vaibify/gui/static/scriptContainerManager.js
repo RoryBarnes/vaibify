@@ -71,19 +71,23 @@ var VaibifyContainerManager = (function () {
         var sEndpoint = VaibifyUtilities.fnEscapeHtml(
             dictStatus.sEndpoint || ""
         );
+        var sDetail =
+            (sEndpoint
+                ? 'Endpoint vaibify used: <code>' + sEndpoint + '</code>.'
+                : '') +
+            (sError ? '<div>' + sError + '</div>' : '');
         elBanner.innerHTML =
             '<div class="docker-status-banner-message">' +
             '<strong>Docker is unavailable.</strong> ' + sHint +
-            (sEndpoint
-                ? ' Endpoint vaibify used: <code>' + sEndpoint
-                  + '</code>.'
-                : '') +
             (sCommand
-                ? ' <code>' + sCommand + '</code>'
+                ? ' Usually this failure means you need to run <code>'
+                  + sCommand + '</code> and then click Retry. If that '
+                  + 'does not fix it, run <code>vaibify doctor</code> '
+                  + 'for a full diagnosis.'
                 : '') +
-            (sError
-                ? '<div class="docker-status-banner-detail">'
-                  + sError + '</div>'
+            (sDetail
+                ? '<details class="docker-status-banner-detail">'
+                  + '<summary>Details</summary>' + sDetail + '</details>'
                 : '') +
             '</div>' +
             '<div class="docker-status-banner-actions">' +
@@ -105,7 +109,9 @@ var VaibifyContainerManager = (function () {
             );
             if (dictStatus.bAvailable) {
                 VaibifyApp.fnShowToast(
-                    "Docker is available", "success"
+                    "Docker is available. To start a container, open "
+                    + "its \u22ee menu and choose Start.",
+                    "success"
                 );
                 await fnLoadContainers();
                 return;

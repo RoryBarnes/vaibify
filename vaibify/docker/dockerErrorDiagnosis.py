@@ -55,7 +55,9 @@ def fdictDiagnoseDockerError(
             _fdictResolveRuntime(dictRuntime),
         )
     if _fbErrorIsSocketAbsent(sLower):
-        return _fdictSocketAbsentDiagnosis()
+        return _fdictSocketAbsentDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
     if _fbErrorIsBinaryMissing(sLower):
         return _fdictBinaryMissingDiagnosis(sPlatform)
     if "permission denied" in sLower:
@@ -92,7 +94,7 @@ def _fdictDaemonUnreachableDiagnosis(dictRuntime):
     return _fdictRuntimeRemedy(S_SITUATION_DAEMON_UNREACHABLE, dictRuntime)
 
 
-def _fdictSocketAbsentDiagnosis():
+def _fdictSocketAbsentDiagnosis(dictRuntime):
     """Diagnosis for a connection that found no socket file to open.
 
     This must be answered separately from a missing binary, and the
@@ -104,22 +106,30 @@ def _fdictSocketAbsentDiagnosis():
     researchers with a working ``docker`` CLI to install Docker
     (researcher-reported on Ubuntu, 2026-09-04).
 
-    The remaining ambiguity is real and is stated rather than
-    guessed at: no socket at the resolved endpoint means either the
-    daemon is stopped or it is listening somewhere vaibify did not
+    When the classifier knows WHICH runtime owns the endpoint, an
+    absent socket there has one meaning -- that runtime is not
+    running -- and the answer is the same one the daemon-unreachable
+    branch gives, so the dashboard and ``vaibify doctor`` cannot
+    describe one stopped Colima two different ways (they did, on
+    2026-09-18). Only an UNKNOWN runtime leaves the ambiguity real:
+    the daemon is stopped, or it listens somewhere vaibify did not
     resolve -- a rootless or Docker Desktop context the researcher's
-    shell inherits and the hub process did not. Naming one cause
-    would be the same wrong-remedy failure one step further on, so
-    the command is the one that tells them which.
+    shell inherits and the hub process did not -- and then the
+    command is the one that tells them which.
     """
+    from .dockerContext import S_RUNTIME_UNKNOWN
+    from .runtimeRemedies import S_SITUATION_DAEMON_UNREACHABLE
+    if dictRuntime.get("sRuntime", S_RUNTIME_UNKNOWN) != S_RUNTIME_UNKNOWN:
+        return _fdictRuntimeRemedy(
+            S_SITUATION_DAEMON_UNREACHABLE, dictRuntime,
+        )
     return {
         "sHint": "No Docker socket exists at the endpoint vaibify "
-                 "resolved. Either the daemon is not running, or it "
-                 "listens on a socket your shell reaches and vaibify "
-                 "did not (a rootless or Docker Desktop context). "
-                 "Compare the endpoint vaibify used, named below, "
-                 "with your shell's; if they agree, the daemon is "
-                 "not running.",
+                 "resolved. Compare the active endpoint the command "
+                 "below prints with the one vaibify used: if they "
+                 "match, the daemon is stopped; if they differ, "
+                 "vaibify inherited a different Docker context than "
+                 "your shell.",
         "sCommand": "docker context ls",
     }
 
