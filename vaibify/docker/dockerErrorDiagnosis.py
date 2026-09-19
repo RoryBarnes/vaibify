@@ -30,7 +30,8 @@ import re
 
 __all__ = [
     "fdictDiagnoseDockerError", "fdictDiagnoseContainerOperationError",
-    "fsExplainContainerOperationFailure",
+    "fsExplainContainerOperationFailure", "flistDecisiveBuildLines",
+    "fdictDiagnoseBuildFailure", "fsExplainBuildFailure",
 ]
 
 
@@ -362,3 +363,125 @@ def fsExplainContainerOperationFailure(sOperation, sProjectName, sRawError):
     if dictDiagnosis["sCommand"]:
         sSentence += f" Command: {dictDiagnosis['sCommand']}"
     return f"{sSentence} (Docker said: {sRaw})"
+
+
+_RE_BUILDKIT_LINE_PREFIX = re.compile(r"^#\d+\s+(?:\d+\.\d+\s+)?")
+_T_BUILD_DECISIVE_MARKERS = (
+    "this build stopped on purpose", "e: ", "error", "could not resolve",
+    "temporary failure resolving", "failed to fetch", "no space left",
+    "pull access denied", "not found", "unable to locate package",
+    "no matching distribution", "could not find a version",
+    "did not complete successfully", "returned a non-zero code",
+    "permission denied", "connection refused", "timed out",
+)
+
+
+def flistDecisiveBuildLines(sStderrTail, iLimit=6):
+    """Return the lines of a build's output that say why it failed.
+
+    BuildKit ends a failed build by echoing the whole failing Dockerfile
+    step, sixty lines of ``>>>``-prefixed source, which is what filled
+    the tail a researcher was shown while the one apt line that named
+    the cause had scrolled out of it. The echo and the separators are
+    dropped, the ``#12 3.45`` prefixes stripped, and only lines carrying
+    a failure marker survive, newest last.
+    """
+    listDecisive = []
+    for sRawLine in (sStderrTail or "").splitlines():
+        sLine = _RE_BUILDKIT_LINE_PREFIX.sub("", sRawLine).strip()
+        if not sLine or ">>>" in sLine or set(sLine) <= {"-", "="}:
+            continue
+        if re.match(r"^\s*\d+\s*\|", sRawLine):
+            continue
+        sLower = sLine.lower()
+        if any(sMarker in sLower for sMarker in _T_BUILD_DECISIVE_MARKERS):
+            if sLine not in listDecisive:
+                listDecisive.append(sLine)
+    return listDecisive[-iLimit:]
+
+
+def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
+    """Return ``{sHint, sCommand}`` for a failed image build, or None."""
+    sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
+    if not sLower:
+        return None
+    if "this build stopped on purpose" in sLower or "toolchain" in sLower:
+        return {
+            "sHint": (
+                "vaibify's pinned compiler toolchain could not be installed "
+                "from Ubuntu's archive. This is vaibify's own pin, not your "
+                "project's packages: the pinned names are x86-64 only, so "
+                "an arm64 daemon (Apple Silicon) cannot install them, and "
+                "on any machine the pin rotates about monthly. Update "
+                "vaibify, or report the build output, which lists what "
+                "the archive offers."
+            ),
+            "sCommand": "python tools/checkToolchainEpoch.py --verify",
+        }
+    if "unable to locate package" in sLower:
+        return {
+            "sHint": (
+                "A name under systemPackages in vaibify.yml is not a "
+                "package Ubuntu's archive knows. Fix the name, then "
+                "rebuild."
+            ),
+            "sCommand": "",
+        }
+    if "no matching distribution" in sLower or "could not find a version" in sLower:
+        return {
+            "sHint": (
+                "A name or version under pythonPackages in vaibify.yml "
+                "does not exist on the package index. Fix it, then "
+                "rebuild."
+            ),
+            "sCommand": "",
+        }
+    if (
+        "could not resolve" in sLower or "temporary failure resolving" in sLower
+        or "failed to fetch" in sLower or "timed out" in sLower
+    ):
+        return {
+            "sHint": (
+                "The build could not reach the package archives from "
+                "inside Docker: name resolution or the network failed in "
+                "the daemon, not on this machine. Check the daemon's "
+                "network with a diagnosis; on Colima a restart usually "
+                "clears a stale resolver."
+            ),
+            "sCommand": "vaibify doctor",
+        }
+    if "no space left" in sLower:
+        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
+        return _fdictRuntimeRemedy(
+            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
+        )
+    if "pull access denied" in sLower or "manifest unknown" in sLower:
+        return {
+            "sHint": (
+                "The base image the build starts from could not be "
+                "pulled. Check the baseImage in vaibify.yml and that "
+                "this machine can reach the registry."
+            ),
+            "sCommand": "",
+        }
+    return None
+
+
+def fsExplainBuildFailure(sProjectName, sRawError, sStderrTail):
+    """Return the sentence a researcher reads for a failed image build.
+
+    Leads with the translated cause when the output is recognised,
+    otherwise with the decisive lines of the output itself; the bare
+    "Docker command failed (exit 1): docker buildx build ..." that used
+    to be the whole message names the command and never the reason.
+    """
+    listDecisive = flistDecisiveBuildLines(sStderrTail, 3)
+    sEvidence = " | ".join(listDecisive) or " ".join(
+        (sRawError or "").split())[:240]
+    dictDiagnosis = fdictDiagnoseBuildFailure(sStderrTail, sProjectName)
+    if dictDiagnosis is None:
+        return f"Build of '{sProjectName}' failed: {sEvidence}"
+    sSentence = f"Build of '{sProjectName}' failed. {dictDiagnosis['sHint']}"
+    if dictDiagnosis["sCommand"]:
+        sSentence += f" Command: {dictDiagnosis['sCommand']}"
+    return f"{sSentence} (Docker said: {sEvidence})"

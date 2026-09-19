@@ -75,9 +75,16 @@ def testTheHubHelpExplainsTheThreeBlocks(pageDashboard, serverHub):
     _fnLoadTheHub(pageDashboard, serverHub)
     pageDashboard.click("#btnHubHelp")
     pageDashboard.wait_for_selector("#modalInfo", timeout=5000)
-    sHelp = pageDashboard.locator("#modalInfo").inner_text()
+    # An outline: three folded sections whose headings read first.
+    assert pageDashboard.locator("#modalInfo details.hub-help-section").count() == 3
+    assert pageDashboard.locator("#modalInfo details[open]").count() == 0
+    sOutline = pageDashboard.locator("#modalInfo").inner_text()
     for sHeading in ("Creating an environment", "Legend", "Troubleshooting"):
-        assert sHeading in sHelp
+        assert sHeading in sOutline
+    assert "One environment per browser tab" not in sOutline
+    for elSummary in pageDashboard.locator("#modalInfo summary").all():
+        elSummary.click()
+    sHelp = pageDashboard.locator("#modalInfo").inner_text()
     assert "One environment per browser tab" in sHelp
     # The legend draws the real glyphs, so it cannot drift from the tiles.
     assert pageDashboard.locator(

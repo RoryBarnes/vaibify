@@ -306,7 +306,10 @@
             border: 1px solid var(--border-default, #333);
             border-radius: 4px; white-space: pre-wrap;
             word-break: break-word; margin-top: 4px;"></pre>
-        <div style="text-align: right; margin-top: 12px;">
+        <div style="text-align: right; margin-top: 12px; display: flex;
+                    gap: 8px; justify-content: flex-end;">
+            <button id="buttonBuildFailureDiagnose"
+                    class="btn">Run a diagnosis</button>
             <button id="buttonBuildFailureClose"
                     class="button-primary">Close</button>
         </div>

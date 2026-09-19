@@ -1320,6 +1320,9 @@ var VaibifyContainerManager = (function () {
         "obtained; attaching to its progress.";
 
     async function fnBuildContainer(sName, bNoCache) {
+        VaibifyApp.fnShowToast(
+            "Building the image for '" + sName + "'. The container " +
+            "starts when the build finishes.", "info");
         /* Returns whether the container is now BUILT AND RUNNING. It
            reports its own failures, so a caller has nothing to add --
            but a caller with follow-on work needs to know not to
@@ -1642,6 +1645,13 @@ var VaibifyContainerManager = (function () {
         elClose.onclick = function () {
             elModal.style.display = "none";
         };
+        var elDiagnose = document.getElementById("buttonBuildFailureDiagnose");
+        if (elDiagnose) {
+            elDiagnose.onclick = function () {
+                elModal.style.display = "none";
+                VaibifyDiagnosis.fnShowDoctorReport();
+            };
+        }
         elModal.style.display = "flex";
     }
 
@@ -2513,7 +2523,8 @@ var VaibifyContainerManager = (function () {
     }
 
     var _S_HUB_HELP =
-        '<h3 class="diagnosis-heading">Creating an environment</h3>' +
+        '<details class="hub-help-section">' +
+        '<summary>Creating an environment</summary>' +
         '<p>Press <strong>+</strong> and choose where the work runs: a ' +
         '<strong>Container</strong> (Docker; reproducible and attestable) ' +
         'or <strong>This machine</strong> (no container; immediate, but ' +
@@ -2526,7 +2537,8 @@ var VaibifyContainerManager = (function () {
         'it; the first build takes minutes to hours. Afterwards, the ' +
         'tile\'s \u22ee menu offers Start, Stop, Restart and Rebuild, ' +
         'and \u2699 holds its resource limits.</p>' +
-        '<h3 class="diagnosis-heading">Legend</h3>' +
+        '</details><details class="hub-help-section">' +
+        '<summary>Legend</summary>' +
         '<div class="hub-help-legend">' +
         '<p><span class="status-dot status-running"></span> running ' +
         '&nbsp; <span class="status-dot status-stopped"></span> stopped ' +
@@ -2547,7 +2559,8 @@ var VaibifyContainerManager = (function () {
         'window; hover it to read which. \u21bb refreshes the list, ' +
         '\u29C9 opens a second vaibify window for working in two ' +
         'environments at once.</p></div>' +
-        '<h3 class="diagnosis-heading">Troubleshooting</h3>' +
+        '</details><details class="hub-help-section">' +
+        '<summary>Troubleshooting</summary>' +
         '<p><strong>Docker is unavailable.</strong> The banner names the ' +
         'command that usually fixes it; run it, then click Retry. If that ' +
         'does not work, run <code>vaibify doctor</code> in a terminal, ' +
@@ -2563,7 +2576,8 @@ var VaibifyContainerManager = (function () {
         '<p><strong>Something failed.</strong> Every failure toast ends ' +
         'with <em>Click to run a diagnosis</em>: it runs the checks of ' +
         '<code>vaibify doctor</code> on this machine and shows each ' +
-        'finding with its remedy.</p>';
+        'finding with its remedy.</p>' +
+        '</details>';
 
     var _S_ADD_CHOICE_HELP =
         '<p>An <strong>environment</strong> is a place your projects ' +

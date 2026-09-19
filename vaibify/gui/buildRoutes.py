@@ -430,13 +430,9 @@ def _fdictBuildFailureDetail(error, sStderrTail, sName):
     ``sError``, which nothing rendered; the reason now rides in the
     message, translated where the catalog knows the daemon's text.
     """
-    from vaibify.docker.dockerErrorDiagnosis import (
-        fsExplainContainerOperationFailure,
-    )
+    from vaibify.docker.dockerErrorDiagnosis import fsExplainBuildFailure
     return {
-        "sMessage": fsExplainContainerOperationFailure(
-            "Build", sName, str(error),
-        ),
+        "sMessage": fsExplainBuildFailure(sName, str(error), sStderrTail),
         "sError": str(error),
         "sStderrTail": sStderrTail,
         # The one recovery a refusal offers, when it offers one (an

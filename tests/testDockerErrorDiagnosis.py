@@ -12,6 +12,7 @@ from vaibify.docker.dockerContext import (
 )
 from vaibify.docker.dockerErrorDiagnosis import (
     fdictDiagnoseContainerOperationError, fdictDiagnoseDockerError,
+    flistDecisiveBuildLines, fsExplainBuildFailure,
     fsExplainContainerOperationFailure,
 )
 
@@ -466,3 +467,72 @@ def test_the_explained_sentence_keeps_the_daemons_words_as_evidence():
         "Stop", "proj", "docker stop failed: something new",
     )
     assert sUntranslated == "Stop of 'proj' failed: docker stop failed: something new"
+
+
+# -----------------------------------------------------------------------
+# Image builds: the reason, not the command line
+# -----------------------------------------------------------------------
+
+
+S_TOOLCHAIN_BUILD_TAIL = """#14 12.31 E: Version '13.3.0-6ubuntu2~24.04.1' for 'gcc-13-x86-64-linux-gnu' was not found
+#14 12.40 =============================================================
+#14 12.40 This build stopped on purpose. The compiler is an INPUT to your
+#14 12.40 results: code compiled by a different gcc can differ in the last
+#14 12.41 Currently available in this archive:
+#14 ERROR: process "/bin/bash -o pipefail -c set -eu; apt-get install" did not complete successfully: exit code: 1
+------
+ > [toolchain 3/9] RUN set -eu; apt-get install:
+------
+Dockerfile:250
+--------------------
+ 249 |     RUN set -eu; \\
+ 250 | >>>     apt-get install -y --no-install-recommends \\
+ 251 | >>>         gcc-13-x86-64-linux-gnu=13.3.0-6ubuntu2~24.04.1 \\
+--------------------
+ERROR: failed to solve: process "/bin/bash -o pipefail -c set -eu" did not complete successfully: exit code: 1
+"""
+
+
+def test_decisive_lines_skip_the_dockerfile_echo_and_keep_the_cause():
+    """The sixty-line step echo is not evidence; the apt line is."""
+    listLines = flistDecisiveBuildLines(S_TOOLCHAIN_BUILD_TAIL)
+    assert listLines[0].startswith("E: Version '13.3.0")
+    assert not any(">>>" in sLine for sLine in listLines)
+    assert not any(sLine.startswith("#14") for sLine in listLines)
+    assert any("stopped on purpose" in sLine for sLine in listLines)
+
+
+def test_the_toolchain_pin_failure_is_named_as_vaibifys_not_the_projects():
+    """An arm64 daemon meeting x86-64 pin names read as a project fault.
+
+    The researcher saw "Docker command failed (exit 1): docker buildx
+    build -f ... --build-arg" -- the command, cut off, and never the
+    reason. The reason was the pin, which no project setting can fix.
+    """
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        S_TOOLCHAIN_BUILD_TAIL,
+    )
+    assert sSentence.startswith("Build of 'fillet' failed. vaibify's pinned")
+    assert "x86-64 only" in sSentence
+    assert "Command: python tools/checkToolchainEpoch.py --verify" in sSentence
+    assert "(Docker said: " in sSentence
+    assert "docker buildx build" not in sSentence
+
+
+def test_an_unrecognised_build_failure_shows_its_decisive_lines_not_the_argv():
+    sSentence = fsExplainBuildFailure(
+        "proj", "Docker command failed (exit 1): docker buildx build -f x",
+        "#9 2.10 Something entirely new went wrong\n#9 ERROR: process did not complete successfully: exit code: 1\n",
+    )
+    # A line carrying no failure marker is context, not evidence; the
+    # marked line is what the sentence shows.
+    assert sSentence == (
+        "Build of 'proj' failed: ERROR: process did not complete "
+        "successfully: exit code: 1"
+    )
+
+
+def test_a_build_with_no_output_falls_back_to_the_raw_error():
+    sSentence = fsExplainBuildFailure("proj", "config not found", "")
+    assert sSentence == "Build of 'proj' failed: config not found"

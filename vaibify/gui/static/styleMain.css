@@ -454,6 +454,18 @@ html, body {
     cursor: pointer;
 }
 
+.hub-help-section summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin: 8px 0 4px 0;
+}
+
+.hub-help-section p {
+    margin-left: 14px;
+}
+
 .hub-help-legend .status-dot,
 .hub-help-legend .containment-chip {
     margin-right: 6px;
