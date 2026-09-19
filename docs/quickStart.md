@@ -1,24 +1,37 @@
 # QuickStart
 
-In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly. This latter step can take over an hour if you do not already have Docker installed on your computer.
+In about fifteen minutes, with no Docker and nothing to build, you will
+take a published scientific project, delete its results, regenerate them
+on your own machine, and check the new bytes against the ones its author
+recorded.
+
+That last step is the interesting one, and not because it will succeed.
 
 ## 1. Install
 
-You need Python 3.9 or later to run `vaibify`.
+You need Python 3.9 or later.
 
 ```bash
 pip install vaibify
 vaibify
 ```
 
-Run `vaibify` with no arguments in any directory to start the **Environments Hub** —
+Run `vaibify` with no arguments in any directory to start the **hub** —
 a local web server on `http://127.0.0.1:8050` — in your browser. You
-should see the `vaibify` logo, the motto, and an empty **Environments**
+should see the Vaibify logo, the tagline, and an empty **Containers**
 list.
 
-## 2. Download the example project
+Vaibify's full purpose is running scientific work inside containers, and
+for that you will want Docker (or Colima on macOS) eventually — the
+[install guide](install.md) covers it. You do not need it for this
+walkthrough, and installing it is not a quick start. Everything below
+runs directly on your machine in **host mode**, which trades containment
+for immediacy: commands run with your user's authority on your real
+files, exactly as if you had typed them in a terminal, because that is
+what is happening. Vaibify says so when you enter a host project and
+again at the top of every host terminal session.
 
-Return to the terminal and run
+## 2. Get the example project
 
 ```bash
 git clone https://github.com/RoryBarnes/aigreenhouse.git
@@ -26,98 +39,189 @@ cd aigreenhouse
 pip install -r .vaibify/requirements.txt
 ```
 
-This repository contains the data to generate two figures from the `vaibify` paper (Barnes 2026) a real, finished analysis: estimates for how long it will be before the waste heat from AI
-data centers becomes large enough fo Earth to begin losing water permanently to space. The Project consists of two
+This is a real, finished analysis: how long until the waste heat from AI
+data centers becomes large enough to matter for a planet's climate. Two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at PROOF
 Level 3, which means its author committed a manifest of every artifact's
 SHA-256 hash along with the pinned environment that produced them.
 
-## 3. View the example project in vaibify
-
-Back in the hub, click the **+** next to *Environments* to add this project to the list of environments that `vaibify` can access. The wizard asks
-two things: where the project runs — choose **This machine** rather than
+Back in the hub, click the **+** next to *Environments*. The wizard asks
+two things: where it runs — choose **This machine** rather than
 *Container* — and whether the project already exists — choose **Add
-Existing** and point it at your clone. Now you will return to the Environment Hub and see a registered environment: `aigreenhouse`. Select it.
+Existing** and point it at your clone. There is no image to build; the
+environment opens in seconds.
 
-You will now move to the **Projects Hub**. An environment is a *place* projects run, and it can hold more than one, so
-this hub offers you one or more Projects to work on. You will see two options: A **Blank Project** is an empty
-workspace (a "sandbox") in which you can experiment in the environment. All environments include a "Blank Project". The second option is **AI Greenhouse**, the project you are reproducing in this guide. Select it. 
+One more click, and it is the one everything below depends on. An
+environment is a *place* projects run, and it can hold more than one, so
+the dashboard asks which project you want. Open the project dropdown at
+the top and choose **AI Greenhouse** — the repository ships a
+`project.json` describing it, which is how vaibify knows the steps, the
+tests, and the figures. **Blank Project**, the other entry, is an empty
+workspace: pick it by mistake and the dashboard is bare, with nothing to
+run and nothing to check.
 
-You are now in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. The top right consists of two "viewing windows" that displays images and ASCII text files for you to examine and compare. The bottom left is one large reproduction of a terminal. You can create multiple tabs and multiple terminals. This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.
+You are looking at somebody else's finished work — and the header says
+**Level 0**, with most requirements unmet. That is correct, and it is
+the first thing worth understanding about vaibify.
 
-Although the published result is at PROOF Level 3, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you're at Level 0, meaning your results aren't even being labeled as "self-consistent"! This status is because you have not run any of the steps locally and verified the results pass the unit tests, which check that the output files match the author's results to some tolerance that they deemed accepatable for scientific reproduction, which is in general a lower bar than byte-reproducibility. Before we start driving your copy up the PROOF Ladder, we're going to explore the repository a bit more.
+A PROOF level is not a badge the author publishes. It is a verdict your
+copy computes, on your machine, from evidence available to *you*. Open
+the **PROOF** tab and the two computational steps both say
+`user-not-approved`: nobody on this machine has run them or looked at
+what they produced. The author's approvals live in `.vaibify/state.json`,
+which vaibify deliberately keeps out of git — "I examined this figure and
+I stand behind it" is a statement by a person, and it would be worth
+nothing if it copied itself to strangers. The same is true of the
+records of their GitHub and Zenodo checks, and of their rebuild
+attestation.
 
-## 4. Check the archive before touching it
+So a published project does not arrive pre-trusted. It arrives with
+everything you need to decide for yourself, which is the entire point.
 
-From the **Run** menu, choose **Check Files Against Manifest**. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository and reports that all
-of them match. 
+## 3. Check the archive before touching it
 
-This result has to hold for a freshly cloned Level 3 project because nothing has changed. You have
-confirmed that the files in your clone are byte-for-byte identical to the files the
-author committed. Note that this check is *not* a statement about the
-accuracy of the science; it is a check on the archive's integrity, and nothing more.
+From the **Run** menu, choose **Check Files Against Manifest**.
 
-## 5. Recreate the data
+It re-hashes every file pinned in `MANIFEST.sha256` and reports that all
+of them match. This is the one claim that *does* travel, because a hash
+is a property of the bytes rather than of anyone's judgment: you have
+confirmed that the files in your clone are byte-for-byte the files the
+author committed. Note what it is not — a statement about whether the
+science is right, or whether those files can be produced again. It is
+the archive's integrity, and nothing more.
 
-Next we will rerun the results locally and see if they pass the unit tests. First, we need to get rid of the old outputs and start clean.
-From the **Run** menu, choose **Clean Outputs**, and confirm. Every automatic step's data files and figures are deleted and every
-verification mark resets to untested. You will be prompted about the AI Declaration because it is interactive. Select **Skip** for this step because that is the author's statement and should not be deleted or modified until you make changes that you plan on publishing..
+That "all match" holds for a *fresh* clone. Once you have run the
+pipeline yourself, five of those twenty-four files are ones your
+machine produced, and the check will start reporting them as different.
+That is the check working, and [section 6](#6-now-check-the-bytes) is
+about why. If you are returning to a clone you have already run —
+re-testing, or picking this up a second time — `git checkout .`
+restores the author's bytes and the check passes again.
 
-Now we're ready to rerun the pipeline. From the **Run** menu, choose **Run All Steps**. Each step runs its data commands, then its plots, and
-pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You'll also see the terminal output of the command in the top left viewing window. 
+The same check is available from the command line, and there it will
+also tell you the reproducibility envelope is coherent:
 
-Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here about input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange. Click on the plot file and you will see the figure appear in the top right viewing window and resize if necessary. Compare it to Figure 2 in Barnes (2026). It looks the same, but yet is orange. That's because you have not yet verified the results.
+```bash
+vaibify reproduce --repo . --skip-tier 2 --skip-tier 3
+```
 
-So let's run them: From the Run
-menu's select **Run All Unit Tests** and you will see messages in the top right that state that they pass. Now look at the Step A01 block under verification and you can see that the Unit Tests marker has changed to "Pass". If you expand the Unit Tests, you can see the three types of unit tests - Qualitative, Quantitative, and Integrity - all pass, too. 
+Tiers 2 and 3 are skipped because they install a pinned dependency set
+and pull a container image; neither is needed to answer the question in
+front of you. (`vaibify reproduce --from <url>` checks the same things
+from the published URL alone, without touching the clone you have open
+in the hub -- and, as section 7 shows, can go on to re-run it.) (If you do run tier 2 later, do it inside a virtual
+environment — it installs an exact, hash-pinned dependency set into
+whatever Python is active.)
 
-Note, however, that the research field still says "Untested". You have not declared the results to meet your own standard of scientific rigor. When you're using `vaibify` for your own research, you'll want to be very careful about passing the researcher test because that means you are declaring the results to be accurate. While the process can of course be undone, waiting until you are sure is the best approach with `vaibify`. But for this example, go ahead and click the researcher marker for Step A01 to "Passed". After a couple seconds or so, the left-most orange marker in the banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1. Then do the same for Step A02. This time, when the dashboard detects the change, not only will the main orange marker flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of "AI Greenhouse" along the top bar. The number of checks next to the project name indicated the current PROOF Level of the project, Level 1 in this case.
+## 4. Delete the results
+
+From the **Run** menu, choose **Clean Outputs**, and confirm.
+
+Every automatic step's data files and figures are deleted and every
+verification mark resets to untested. The dashboard goes gray. The
+figure viewers empty. The AI Declaration step keeps its content, because
+a person wrote that and no amount of re-running would produce it again.
+
+Nothing is lost: `git status` now lists the deleted files, and `git
+checkout .` would bring them straight back. The point of stopping here
+is that an empty dashboard is *evidence*. Whatever appears next was
+produced by your machine, not shipped in the repository — and unlike
+the level, which was never the author's to give you, the files were.
+
+## 5. Run the pipeline
+
+From the **Run** menu, choose **Run All Steps**.
+
+Each step runs its data commands, then its tests, then its plots, and
+turns amber as it runs and green as it finishes. So the three test
+tiers run as part of the step — the integrity tests confirm the output
+files have the expected structure, and the quantitative tests confirm
+the numbers land inside the author's recorded tolerances. (The Run
+menu's **Run All Unit Tests** re-runs only the tests, when you want
+them without redoing the data and the plots.)
+
+Click a step's figure in the viewing window above the terminal to
+display it. The two plots are regenerated from scratch, in order, with
+the second step consuming the first step's output through a declared
+dependency rather than a hardcoded path.
+
+Now approve each step, and the header moves from Level 0 to **Level 1**
+— every step ran, every output was inspected, every test passed, and you
+signed off. You did not inherit that level; you earned it, on this
+machine, in about two minutes. That is as far as a host project goes:
+Level 2 asks whether the outputs are published and verified against
+GitHub and Zenodo, and Level 3 is *defined* by a pinned container image,
+so a project running directly on your machine reports a single honest
+blocker saying so rather than offering you work that cannot help.
 
 ### Doing the same thing with an agent
 
-Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like "Run all steps and their unit tests." `vaibify` includes an [agent action catalog](dashboard.md#agent-actions) that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the `vaibify` to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.
+If you have an AI coding agent available, the terminal at the bottom of
+the dashboard is a real shell in the project directory, and vaibify
+exposes its own actions to an agent running there through the
+`vaibify-do` command. Asking the agent to "clean the outputs and re-run
+every step" performs the same operations as the menu items above, and
+the dashboard follows along — the agent is not typing shell commands
+behind vaibify's back, it is calling the same endpoints your clicks
+call. The [agent action catalog](dashboard.md#agent-actions) lists what
+it can and cannot do; destructive operations like cleaning are
+researcher-only by design.
 
-## 6. Check the bytes again
+## 6. Now check the bytes
 
-So are the new files identical to the author's manifest? From the **Run** menu, choose **Check Files Against Manifest** again.
+From the **Run** menu, choose **Check Files Against Manifest** again.
 
-They will fail. (Unless you are running on an Ubuntu v24.04 machine shortly after September 2026).
+It will fail.
 
-Not all of it, but the numbers you just regenerated are not identical
-to the numbers the author published, and neither are the figures. Here's why not:
+Not all of it — but the numbers you just regenerated are not identical
+to the numbers the author published, and neither are the figures. This
+is the most useful thing in the walkthrough, so it is worth being
+precise about what went wrong, because *nothing* did:
 
 - **The fitted values differ in their last digits.** A least-squares fit
-  is a sequence of floating-point operations, and different environment's
-  build orders and vectorization schemes are different. The science is identical
-  to twelve significant figures, which is close enough for most scientific reproducibility expectations. The bytes, however, are not identical.
-- **The figures differ significantly.** Matplotlib stamps its own version into
+  is a sequence of floating-point operations, and different BLAS/LAPACK
+  builds order and vectorize them differently. The science is identical
+  to twelve significant figures. The bytes are not.
+- **The figures differ by more.** Matplotlib stamps its own version into
   every PNG it writes, so a different matplotlib version guarantees
   different bytes before you even reach font rendering, which also
   differs by platform.
 
-Your run passed every *scientific test* the project defines, but did
-not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the standard rules that govern computing standards (the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires reruning the work in the exact same environment that the author used, which is the topic of the next section.
+Your run passed every scientific test the project defines and still did
+not reproduce it byte-for-byte. Those are different claims, and vaibify
+keeps them apart on purpose. "The tests pass" says the result is
+consistent with what the author asserted. "The hashes match" says a
+stranger re-executing this work would obtain the identical artifact —
+which is what a reader must be able to check if the published numbers
+are to mean anything on their own.
 
-This next section is technically optional, but discouraged. While the `vaibify` dashboard offers a complete view of your computer and the `vaibify` Projects, you computer is not secure and the results cannot be fully reproduced. We bring this up because the next step can take an hour or more for Mac and some Linux users who need to install Docker.
+Getting the second claim requires pinning the environment, not just the
+code: a specific image, specific library versions, a recorded thread
+count. That is what PROOF Level 3 is, it is why it needs a container,
+and it is why this project ships a `Dockerfile`, a `requirements.lock`
+with hash pins, and an `environment.json` naming an image digest.
+
+So the next step is to give this project the environment it is
+missing, which is what the rest of this walkthrough does. If you would
+rather do it from the command line, the equivalent is:
+
+```bash
+vaibify reproduce --repo . --rerun
+```
+
+which rebuilds the pinned environment, re-runs the workflow inside a
+disposable copy of it, and re-hashes every artifact against the
+manifest — leaving your own files untouched.
 
 ## 7. Containerize the same project
 
-Before we begin this step, note the following:
+The blocker at the bottom of the PROOF tab is the honest one: Level 3
+is *defined* by a pinned container image, and there isn't one. You can
+lift that without starting over, and without moving a single file.
 
-- **The project must not be open anywhere else.** If it is open in the
-  tab you are clicking from, `vaibify` closes it for you. A session in
-  another browser or on another machine refuses the conversion instead,
-  because the conversion renames the key that the project's lock,
-  lease, and journal all hang from.
-- **Install Docker or Colima if you don't have them yet.** This step requires Docker containers, which are run as `colima` on macOS. See the [install guide](install.md#docker-on-macos)) to install. *Note that this process can require over 60 minutes.*
-- **A failed build does not put you back where you started.** It leaves
-  a registered container that has not been built yet. Fix the cause
-  and build again (try working with an AI agent); you have not lost the host project's work, because
-  there was never a copy to lose.
-
-
-If you're ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments [Note to claude: It currently still says Containers] to return to the original landing page. Open the kebab menu (**⋮**) on this environment's tile, and choose **Containerize Environment**.
+Go back to the Environments hub, open the kebab menu (**⋮**) on this
+environment's tile, and choose **Containerize Environment**.
 
 A seven-page wizard opens. It asks about the *environment* — nothing
 it collects moves, renames, or rewrites your files. Every page has a
@@ -125,7 +229,6 @@ it collects moves, renames, or rewrites your files. Every page has a
 enter to finish this walkthrough. Where a page says "leave it", the
 default is the right answer and you can press **Next**.
 
-[Notes to Claude: 1) The "What to Enter" field does not wrap when rendered; can they wrap? Or at least have a horizontal scroll bar? 2) There does not seeem to be the proper instructions for installing an existing environment!]
 | # | Page | What to enter here |
 |---|------|--------------------|
 | 1 | **Name** | The container, image, and registry name. It is pre-filled with a Docker-safe version of your directory name — lowercase, hyphens, no spaces. Accept it unless it collides with another environment on this machine. |
@@ -136,17 +239,46 @@ default is the right answer and you can press **Next**.
 | 6 | **Packages** | Leave both boxes **empty**. The dependencies come from the repository's own `requirements.lock`. |
 | 7 | **Summary** | Read it back, then press **Convert**. |
 
-Then the build runs. This process does not create a second project. Your clone stays exactly where
+Then the build runs.
+
+This does not create a second project. Your clone stays exactly where
 it is — the same directory, the same git history, the same outputs you
-just produced. The difference is that now when you interact with the project via `vaibify` you are inside a container that cannot modify your own computer and whose environment is identical to that of the author of the project.
+just produced. What changes is how vaibify runs the steps: the project
+is re-registered under a Docker-safe name, an image is built from the
+`Dockerfile` and the hash-pinned `requirements.lock` this repository
+ships, and from then on every command runs inside a container built
+from that image rather than against whatever Python happens to be on
+your PATH.
 
-When the build finishes, open the project again. It will look the same except the `host-mode` badges become `contained`. The steps still do the
+That difference is the entire point of the level you are reaching for.
+Until now "it ran on my machine" has been doing real work in your
+favor — your numpy, your matplotlib, your interpreter. A stranger has
+none of those. Pinning the environment is what converts *your* result
+into one somebody else can obtain.
+
+A few things to know before you click:
+
+- **The project must not be open anywhere else.** If it is open in the
+  tab you are clicking from, vaibify closes it for you. A session in
+  another browser or on another machine refuses the conversion instead,
+  because the conversion renames the key that the project's lock,
+  lease, and journal all hang from.
+- **The build takes minutes, not seconds.** It installs the pinned
+  dependency set. On macOS, prefix long commands with `caffeinate -s`
+  (see the [install guide](install.md#docker-on-macos)) — a sleeping
+  Colima VM corrupts a build in progress.
+- **A failed build does not put you back where you started.** It leaves
+  a registered container that has not been built yet, which is the
+  normal state of any newly created container project. Fix the cause
+  and build again; you have not lost the host project's work, because
+  there was never a copy to lose.
+
+When the build finishes, open the project again. The steps still do the
 same things, but now they do them in the pinned environment, and the
-PROOF tab's Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
+PROOF tab's Level 3 row stops saying the project has no image and
+starts asking the questions it is really about: whether the environment
+is recorded, whether the reproducibility rules have been answered, and
 whether a rebuild from that image reproduces the outputs.
-
-
-[Note to Claude: From here, there should be simple instructions on how to use the GUI to confirm the reproduction. So much of this is excessive.]
 
 ### Two claims, checked two different ways
 
@@ -236,8 +368,6 @@ why they can come out at zero and a hand rerun cannot.
 
 It is the difference between believing your work reproduces and having
 watched it happen.
-
-[Note to Claude: The 1-2 paragraphs that describe how to actually reproduce the results should end here.]
 
 ## 8. When something is wrong
 
