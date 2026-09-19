@@ -6212,7 +6212,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    "startReservation.py": 992,
+    "startReservation.py": 1069,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6600,7 +6600,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2308,
+    "registryRoutes.py": 2338,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

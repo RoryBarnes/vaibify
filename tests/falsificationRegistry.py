@@ -19608,7 +19608,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptContainerManager.js',
         # the re-obtain proceeds after a stop that failed
         old=(
-            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                if (!(await _fbStoppedBefore(sName, "Re-obtaining the pinned image"))) return;\n'
             '                await fnAcquireImage(sName, bAllowEmulation, false);\n'
         ),
         new=(
@@ -19625,7 +19625,7 @@ def _fdictEntry(sRel):
         # the switch is posted whatever the stop reported
         old=(
             '                VaibifyTerminal.fnCloseAll();\n'
-            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                if (!(await _fbStoppedBefore(sName, "Switching to building"))) return;\n'
             '                try {\n'
         ),
         new=(

@@ -22,7 +22,7 @@ var VaibifyContainerManager = (function () {
         try {
             await fnRefreshContainerHub();
         } catch (error) {
-            _fnShowContainerListLoadError();
+            _fnShowContainerListLoadError(error);
         }
     }
 
@@ -36,12 +36,22 @@ var VaibifyContainerManager = (function () {
         fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
     }
 
-    function _fnShowContainerListLoadError() {
+    function _fnShowContainerListLoadError(error) {
         var elList = document.getElementById("listContainers");
         _sLastRenderedContainerListHtml = null;
+        var sReason = VaibifyUtilities.fsSanitizeErrorForUser(
+            error && error.message);
         elList.innerHTML =
-            '<p style="color: var(--color-red-text);">' +
-            "Cannot load containers</p>";
+            '<p class="picker-load-error">The environment list could ' +
+            'not be loaded: ' + VaibifyUtilities.fnEscapeHtml(sReason) +
+            ' Use \u21bb to try again, or ' +
+            '<button type="button" class="btn-link" ' +
+            'id="btnDiagnoseListLoad">run a diagnosis</button>.</p>';
+        var elDiagnose = document.getElementById("btnDiagnoseListLoad");
+        if (elDiagnose) {
+            elDiagnose.addEventListener(
+                "click", VaibifyDiagnosis.fnShowDoctorReport);
+        }
     }
 
     async function _fnRefreshDockerStatusBanner() {
@@ -58,7 +68,15 @@ var VaibifyContainerManager = (function () {
             }
             _fnRenderDockerStatusBanner(elBanner, dictStatus);
         } catch (error) {
-            elBanner.style.display = "none";
+            /* Hiding the banner here used to read as "Docker is fine"
+               whenever the PROBE failed, which is the one moment the
+               researcher most needs to hear that vaibify cannot tell. */
+            _fnRenderDockerStatusBanner(elBanner, {
+                sHint: "vaibify could not check whether Docker is " +
+                    "available: " + VaibifyUtilities.fsSanitizeErrorForUser(
+                        error && error.message) + " Click Retry.",
+                sCommand: "", sError: "", sEndpoint: "",
+            });
         }
     }
 
@@ -122,10 +140,7 @@ var VaibifyContainerManager = (function () {
             );
             await _fnRefreshDockerStatusBanner();
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error"
-            );
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             var elRetryAfter = document.getElementById(
                 "btnRetryDockerStatus"
@@ -505,6 +520,17 @@ var VaibifyContainerManager = (function () {
         return "";
     }
 
+    function _fsUnavailableRemedy(sLockedMessage) {
+        /* The obstacle alone ("in use in another ...") left the
+           researcher at the same tile with nothing to try. */
+        if (sLockedMessage.indexOf("browser session") >= 0) {
+            return "Close it in that tab, or use \u29C9 New vaibify " +
+                "window to work on a different environment here.";
+        }
+        return "Close it in that vaibify window, or run 'vaibify " +
+            "sessions' in a terminal to see and stop it.";
+    }
+
     function _fsLockedMessage(iLockedByPort) {
         var sSuffix = iLockedByPort
             ? " on port " + iLockedByPort : "";
@@ -526,9 +552,7 @@ var VaibifyContainerManager = (function () {
             _fnBindQuarantineRemedyCopy(dictDetail.sRemedy || "");
             _fnBindQuarantineReconcile(sName, dictDetail);
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -792,7 +816,9 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast(
                 "Container '" + sName + "': " +
                 (elTile.dataset.lockedMessage ||
-                 _fsLockedMessage(0)), "warning");
+                 _fsLockedMessage(0)) + " " +
+                _fsUnavailableRemedy(elTile.dataset.lockedMessage || ""),
+                "warning");
             return;
         }
         if (elTile && elTile.dataset.mode === "host") {
@@ -822,7 +848,13 @@ var VaibifyContainerManager = (function () {
         var sStoredId = elTile ? elTile.dataset.containerId : "";
         var sTargetId = sStoredId ||
             await fsResolveContainerId(sName);
-        if (!sTargetId) return;
+        if (!sTargetId) {
+            VaibifyApp.fnShowToast(
+                "Container '" + sName + "' is claimed, but its id is " +
+                "not in the environment list yet. Refresh the list " +
+                "(\u21bb) and open it again.", "warning");
+            return;
+        }
         _fnShowInitializingOverlay();
         var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
         _fnHideInitializingOverlay();
@@ -831,9 +863,10 @@ var VaibifyContainerManager = (function () {
             var sStatus = dictReadiness ? dictReadiness.sStatus : "";
             if (sStatus !== "failed" && sStatus !== "stalled") {
                 VaibifyApp.fnShowToast(
-                    "Container took too long to initialize. "
-                    + "Connecting anyway — some data may be "
-                    + "incomplete.", "warning");
+                    "Container '" + sName + "' is running but did not " +
+                    "report ready within two minutes. Connecting " +
+                    "anyway; if the dashboard stays empty, choose " +
+                    "Restart from its \u22ee menu.", "warning");
             }
         }
         fnConnectToContainer(sTargetId);
@@ -1001,7 +1034,8 @@ var VaibifyContainerManager = (function () {
                 ? _fsLockedMessage(dictDetail.iLockedByPort)
                 : _fsLockedMessage(0));
         VaibifyApp.fnShowToast(
-            "Container '" + sName + "': " + sReason, "warning");
+            "Container '" + sName + "': " + sReason + " " +
+            _fsUnavailableRemedy(sReason), "warning");
     }
 
     async function fnReleaseClaim(sName) {
@@ -1072,6 +1106,9 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "remove") await fnRemoveContainer(sName);
         else if (sAction === "delete-environment")
             fnDeleteEnvironment(sName);
+        else VaibifyApp.fnShowToast(
+            "'" + sAction + "' is not an action this page knows. " +
+            "Reload the page and try again.", "warning");
     }
 
     function _fnStartConversion(sName) {
@@ -1112,9 +1149,7 @@ var VaibifyContainerManager = (function () {
             );
             fnShowContainerSettingsModal(sName, dictSettings);
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -1217,9 +1252,7 @@ var VaibifyContainerManager = (function () {
                 "Settings saved. Use Restart to apply.",
                 "success");
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -1443,7 +1476,7 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                if (!(await fnStopContainer(sName))) return;
+                if (!(await _fbStoppedBefore(sName, "Re-obtaining the pinned image"))) return;
                 await fnAcquireImage(sName, bAllowEmulation, false);
             },
             {
@@ -1470,7 +1503,7 @@ var VaibifyContainerManager = (function () {
                    server refuses the switch while the container
                    exists, whatever this page believes. */
                 VaibifyTerminal.fnCloseAll();
-                if (!(await fnStopContainer(sName))) return;
+                if (!(await _fbStoppedBefore(sName, "Switching to building"))) return;
                 try {
                     await VaibifyApi.fdictPost(
                         "/api/containers/" + encodeURIComponent(sName) +
@@ -1581,9 +1614,10 @@ var VaibifyContainerManager = (function () {
             await fnStartContainer(sName);
             return true;
         }
-        VaibifyApp.fnShowToast(
-            "The running build failed; see the hub log for the " +
-            "full output.", "error");
+        _fnShowBuildFailureModal(
+            "The build of '" + sName + "' failed.",
+            (dictProgress.saTailLines || []).join("\n")
+            || "The hub kept no output of it.");
         return false;
     }
 
@@ -1591,9 +1625,7 @@ var VaibifyContainerManager = (function () {
         var sTail = (error.dictDetail && error.dictDetail.sStderrTail)
             || "";
         if (!sTail) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
             return;
         }
         _fnShowBuildFailureModal(error.message, sTail);
@@ -1699,12 +1731,28 @@ var VaibifyContainerManager = (function () {
                     error, sName, fnStartContainer)) {
                 return;
             }
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            if (_fbOfferBuildOfUnbuiltImage(error, sName)) return;
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             fnLoadContainers();
         }
+    }
+
+    function _fbOfferBuildOfUnbuiltImage(error, sName) {
+        /* The start route refuses an unbuilt project before Docker is
+           asked, and names the remedy; offering the build here is that
+           remedy one click closer. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sAction !== "build") return false;
+        VaibifyModals.fnShowConfirmModal(
+            "Build '" + sName + "' first?",
+            (dictDetail.sMessage || "") + "\n\nBuild it now? The first " +
+            "build takes minutes to hours; the container starts when " +
+            "it finishes.",
+            async function () { await fnBuildContainer(sName, false); },
+            {sConfirmLabel: "Build now", sCancelLabel: "Not now"}
+        );
+        return true;
     }
 
     function _fsContainerUrl(sName, sSuffix) {
@@ -1785,11 +1833,11 @@ var VaibifyContainerManager = (function () {
             return;
         }
         _dictAcknowledgedStartFailure[sName] = dictStatus.sReservationId;
-        VaibifyApp.fnShowToast(
+        VaibifyDiagnosis.fnReportFailure(
             VaibifyUtilities.fsSanitizeErrorForUser(
-                "Start failed: " + (dictStatus.sError || "unknown error")
-            ),
-            "error");
+                dictStatus.sError
+                || ("Start of '" + sName + "' failed, and the hub " +
+                    "recorded no reason.")));
     }
 
     function _fnWarnOnStalledStart(sName, dictStatus, iAttempt) {
@@ -1812,9 +1860,7 @@ var VaibifyContainerManager = (function () {
             );
             _fnReportCancelOutcome(sName, dictCancel);
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             fnLoadContainers();
         }
@@ -1856,13 +1902,23 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast("Container stopped", "success");
             return true;
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
             return false;
         } finally {
             fnLoadContainers();
         }
+    }
+
+    async function _fbStoppedBefore(sName, sAction) {
+        /* Every transition that begins with a stop used to end silently
+           when the stop failed: the stop's own toast was the only word,
+           and nothing said the Restart or Rebuild the researcher asked
+           for had been abandoned as a whole. */
+        if (await fnStopContainer(sName)) return true;
+        VaibifyApp.fnShowToast(
+            sAction + " of '" + sName + "' was not started, because " +
+            "the container could not be stopped first.", "warning");
+        return false;
     }
 
     async function fnRestartContainer(sName) {
@@ -1873,7 +1929,7 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                if (!(await fnStopContainer(sName))) return;
+                if (!(await _fbStoppedBefore(sName, "Restart"))) return;
                 await fnStartContainer(sName);
             },
             {
@@ -1898,7 +1954,7 @@ var VaibifyContainerManager = (function () {
             "Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                if (!(await fnStopContainer(sName))) return;
+                if (!(await _fbStoppedBefore(sName, "Rebuild"))) return;
                 await fnBuildContainer(sName, false);
             },
             {
@@ -1921,7 +1977,7 @@ var VaibifyContainerManager = (function () {
             "minutes. Workspace files are preserved.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
-                if (!(await fnStopContainer(sName))) return;
+                if (!(await _fbStoppedBefore(sName, "Force Rebuild"))) return;
                 await fnBuildContainer(sName, true);
             },
             {
@@ -2055,9 +2111,7 @@ var VaibifyContainerManager = (function () {
                listed. Show that sentence rather than a generic
                failure: it is the difference between "nothing happened"
                and "the container is gone but the image is not". */
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
         fnLoadContainers();
     }
@@ -2283,9 +2337,7 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
-                "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -2322,6 +2374,12 @@ var VaibifyContainerManager = (function () {
                 this.textContent = bVisible
                     ? "Show unrecognized containers"
                     : "Hide unrecognized containers";
+            }
+        );
+        document.getElementById("btnHubHelp").addEventListener(
+            "click", function () {
+                VaibifyModals.fnShowInfoModal(
+                    "Environment hub \u2014 Help", _S_HUB_HELP);
             }
         );
         document.addEventListener("click", function () {
@@ -2453,6 +2511,59 @@ var VaibifyContainerManager = (function () {
         var elInfo = document.getElementById("modalInfo");
         if (elInfo) elInfo.style.zIndex = "1200";
     }
+
+    var _S_HUB_HELP =
+        '<h3 class="diagnosis-heading">Creating an environment</h3>' +
+        '<p>Press <strong>+</strong> and choose where the work runs: a ' +
+        '<strong>Container</strong> (Docker; reproducible and attestable) ' +
+        'or <strong>This machine</strong> (no container; immediate, but ' +
+        'with your full user authority). Then <strong>Add Existing</strong> ' +
+        'points at a directory that already has a <code>vaibify.yml</code>, ' +
+        'and <strong>Create New</strong> writes one. The <strong>?</strong> ' +
+        'in that dialog explains each choice in full.</p>' +
+        '<p>A new container environment appears as a tile that is ' +
+        '<em>not built</em>. Click the tile to build its image and open ' +
+        'it; the first build takes minutes to hours. Afterwards, the ' +
+        'tile\'s \u22ee menu offers Start, Stop, Restart and Rebuild, ' +
+        'and \u2699 holds its resource limits.</p>' +
+        '<h3 class="diagnosis-heading">Legend</h3>' +
+        '<div class="hub-help-legend">' +
+        '<p><span class="status-dot status-running"></span> running ' +
+        '&nbsp; <span class="status-dot status-stopped"></span> stopped ' +
+        '&nbsp; <span class="status-dot status-not-built"></span> not built ' +
+        '&nbsp; <span class="status-dot status-host-ready"></span> ready ' +
+        '(this machine) &nbsp; <span class="status-dot status-missing">' +
+        '</span> directory missing</p>' +
+        '<p><span class="containment-chip containment-chip--contained">' +
+        'contained</span> runs in a container &nbsp; ' +
+        '<span class="containment-chip containment-chip--direct">' +
+        'uncontained</span> runs on this machine &nbsp; ' +
+        '<span class="containment-chip containment-chip--held">held by ' +
+        'this tab</span> this tab holds it (open it, or Release from ' +
+        '\u22ee) &nbsp; <span class="containment-chip ' +
+        'containment-chip--quarantined">quarantined</span> blocked until ' +
+        'reconciled; click the chip to see why</p>' +
+        '<p>A greyed tile is open in another tab or another vaibify ' +
+        'window; hover it to read which. \u21bb refreshes the list, ' +
+        '\u29C9 opens a second vaibify window for working in two ' +
+        'environments at once.</p></div>' +
+        '<h3 class="diagnosis-heading">Troubleshooting</h3>' +
+        '<p><strong>Docker is unavailable.</strong> The banner names the ' +
+        'command that usually fixes it; run it, then click Retry. If that ' +
+        'does not work, run <code>vaibify doctor</code> in a terminal, ' +
+        'which reads the failed attempt\'s log.</p>' +
+        '<p><strong>One environment per browser tab.</strong> Starting ' +
+        'or opening an environment claims it for this tab, so starting a ' +
+        'second one is refused until the first is released. Accept the ' +
+        'offer to release it, choose Release from the held tile\'s ' +
+        '\u22ee menu, or open a second vaibify window.</p>' +
+        '<p><strong>A tile says not built.</strong> Click it to build; ' +
+        'Start alone cannot create a container from an image that does ' +
+        'not exist.</p>' +
+        '<p><strong>Something failed.</strong> Every failure toast ends ' +
+        'with <em>Click to run a diagnosis</em>: it runs the checks of ' +
+        '<code>vaibify doctor</code> on this machine and shows each ' +
+        'finding with its remedy.</p>';
 
     var _S_ADD_CHOICE_HELP =
         '<p>An <strong>environment</strong> is a place your projects ' +

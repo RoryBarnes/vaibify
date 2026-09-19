@@ -877,7 +877,7 @@ def test_the_retry_without_additions_drops_them_before_obtaining(
             dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
         )
     assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
-    assert buildRoutes._fdictBuildFailureDetail(excinfo.value, "")[
+    assert buildRoutes._fdictBuildFailureDetail(excinfo.value, "", "proj")[
         "sAction"
     ] == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
     assert store.dictHeld[S_BASE_ID].listTags == [], "refused before tagging"

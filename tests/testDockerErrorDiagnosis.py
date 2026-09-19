@@ -10,7 +10,10 @@ from vaibify.docker.dockerContext import (
     S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP, S_RUNTIME_LINUX_ROOTFUL,
     S_RUNTIME_LINUX_ROOTLESS, S_RUNTIME_UNKNOWN,
 )
-from vaibify.docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
+from vaibify.docker.dockerErrorDiagnosis import (
+    fdictDiagnoseContainerOperationError, fdictDiagnoseDockerError,
+    fsExplainContainerOperationFailure,
+)
 
 
 def _fdictRuntime(sRuntime, sColimaProfile=""):
@@ -385,3 +388,81 @@ def test_a_stale_colima_lock_names_the_active_profile():
         dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA, "gpu"),
     )
     assert "--profile gpu" in dictDiagnosis["sCommand"]
+
+
+# -----------------------------------------------------------------------
+# Container operations: the daemon's stderr, in the researcher's terms
+# -----------------------------------------------------------------------
+
+
+S_DAEMON_IMAGE_MISSING = (
+    "docker create failed: Unable to find image 'fillet:latest' locally "
+    "Error response from daemon: pull access denied for fillet, "
+    "repository does not exist or may require 'docker login'"
+)
+
+
+def test_a_missing_image_is_explained_as_not_built():
+    """Docker Hub's wording becomes a sentence about the project.
+
+    A researcher who had just created a project read "repository does
+    not exist" as vaibify denying that the project existed; the image
+    had simply never been built.
+    """
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        S_DAEMON_IMAGE_MISSING, "fillet",
+    )
+    assert "has not been built yet" in dictDiagnosis["sHint"]
+    assert "fillet" in dictDiagnosis["sHint"]
+    assert "Rebuild" in dictDiagnosis["sHint"]
+    assert dictDiagnosis["sCommand"] == "vaibify build -p fillet"
+
+
+def test_a_taken_port_names_the_port_and_where_to_change_it():
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        "docker start failed: Error response from daemon: driver failed "
+        "programming external connectivity on endpoint x: Bind for "
+        "0.0.0.0:8888 failed: port is already allocated", "proj",
+    )
+    assert "port 8888" in dictDiagnosis["sHint"]
+    assert "settings" in dictDiagnosis["sHint"]
+    assert "8888" in dictDiagnosis["sCommand"]
+
+
+def test_a_stale_container_name_names_the_removal():
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        'docker create failed: Error response from daemon: Conflict. The '
+        'container name "/proj" is already in use by container "abc"',
+        "proj",
+    )
+    assert "already exists" in dictDiagnosis["sHint"]
+    assert dictDiagnosis["sCommand"] == "docker rm -f proj"
+
+
+def test_a_full_disk_uses_the_runtime_remedy_not_a_blanket_prune():
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        "docker create failed: write /var/lib/docker: no space left on "
+        "device", "proj", dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA),
+    )
+    assert dictDiagnosis["sCommand"] == "docker builder prune"
+    assert "system prune -a" in dictDiagnosis["sHint"]
+
+
+def test_unrecognised_daemon_text_is_not_guessed_at():
+    assert fdictDiagnoseContainerOperationError(
+        "docker create failed: something entirely new", "proj",
+    ) is None
+
+
+def test_the_explained_sentence_keeps_the_daemons_words_as_evidence():
+    """A translation that hid its evidence could not be checked."""
+    sSentence = fsExplainContainerOperationFailure(
+        "Start", "fillet", S_DAEMON_IMAGE_MISSING,
+    )
+    assert sSentence.startswith("Start of 'fillet' failed. The image for")
+    assert "Command: vaibify build -p fillet" in sSentence
+    assert "(Docker said: docker create failed: Unable to find image" in sSentence
+    sUntranslated = fsExplainContainerOperationFailure(
+        "Stop", "proj", "docker stop failed: something new",
+    )
+    assert sUntranslated == "Stop of 'proj' failed: docker stop failed: something new"

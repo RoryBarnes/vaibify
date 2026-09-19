@@ -25,7 +25,13 @@ PATTERN MATCHING, which is what it is actually good at.
 """
 
 
-__all__ = ["fdictDiagnoseDockerError"]
+import re
+
+
+__all__ = [
+    "fdictDiagnoseDockerError", "fdictDiagnoseContainerOperationError",
+    "fsExplainContainerOperationFailure",
+]
 
 
 def fdictDiagnoseDockerError(
@@ -230,3 +236,129 @@ def _fbErrorIsBinaryMissing(sLower):
     if "no such file or directory" in sLower:
         return True
     return "[errno 2]" in sLower
+
+
+_RE_ALLOCATED_PORT = re.compile(r"(?:0\.0\.0\.0|127\.0\.0\.1|\[::\]|:)(\d{2,5})\b")
+
+
+def _fdictImageNotBuiltDiagnosis(sProjectName):
+    """The daemon looked for an image nobody has built yet.
+
+    Docker's own wording -- "pull access denied ... repository does not
+    exist or may require 'docker login'" -- is about Docker Hub, and a
+    researcher who had just created the project read it as vaibify
+    denying that the project existed (2026-09-18).
+    """
+    return {
+        "sHint": (
+            f"The image for '{sProjectName}' has not been built yet, so "
+            "there is nothing to start. Click its tile to build it, or "
+            "choose Rebuild from its \u22ee menu."
+        ),
+        "sCommand": f"vaibify build -p {sProjectName}",
+    }
+
+
+def _fdictPortTakenDiagnosis(sLower):
+    """A port the container publishes is held by another program."""
+    matchPort = _RE_ALLOCATED_PORT.search(sLower)
+    sPort = matchPort.group(1) if matchPort else ""
+    sWhich = f"port {sPort}" if sPort else "a port this container publishes"
+    return {
+        "sHint": (
+            f"Another program on this machine is already listening on "
+            f"{sWhich}. Stop that program, or change the port in the "
+            "project's settings (\u2699 on its tile), then start again."
+        ),
+        "sCommand": f"lsof -nP -iTCP:{sPort} -sTCP:LISTEN" if sPort else "",
+    }
+
+
+def _fdictNameTakenDiagnosis(sProjectName):
+    """A container with this name survives from an earlier start."""
+    return {
+        "sHint": (
+            f"A container named '{sProjectName}' already exists from an "
+            "earlier start, so a new one cannot be created under that "
+            "name. Remove the old one, then start again."
+        ),
+        "sCommand": f"docker rm -f {sProjectName}",
+    }
+
+
+def _fdictMountSourceMissingDiagnosis():
+    """A host directory the container mounts is gone."""
+    return {
+        "sHint": (
+            "A directory this container mounts from this machine no "
+            "longer exists. Restore it, or remove that entry from the "
+            "project's bind mounts, then start again."
+        ),
+        "sCommand": "",
+    }
+
+
+def fdictDiagnoseContainerOperationError(
+    sError, sProjectName, dictRuntime=None,
+):
+    """Return ``{sHint, sCommand}`` for a failed create/start/stop/build.
+
+    The daemon's stderr is precise and useless to a researcher: it
+    names Docker Hub, port bindings and mount configs in Docker's own
+    vocabulary. This branch of the catalog translates the failures
+    vaibify has watched researchers hit into a sentence about THEIR
+    project and the control that fixes it. ``None`` means the text
+    matched nothing, and the caller shows it as it came -- a guess
+    dressed as a diagnosis is the failure the whole catalog exists to
+    prevent.
+    """
+    sLower = (sError or "").lower()
+    if not sLower:
+        return None
+    if (
+        "unable to find image" in sLower
+        or "pull access denied" in sLower
+        or "repository does not exist" in sLower
+        or "no such image" in sLower
+    ):
+        return _fdictImageNotBuiltDiagnosis(sProjectName)
+    if "port is already allocated" in sLower or "address already in use" in sLower:
+        return _fdictPortTakenDiagnosis(sLower)
+    if "is already in use by container" in sLower:
+        return _fdictNameTakenDiagnosis(sProjectName)
+    if "bind source path does not exist" in sLower or (
+        "invalid mount config" in sLower
+    ):
+        return _fdictMountSourceMissingDiagnosis()
+    if "no space left on device" in sLower:
+        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
+        return _fdictRuntimeRemedy(
+            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
+        )
+    if _fbErrorIsDaemonUnreachable(sLower):
+        return _fdictDaemonUnreachableDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
+    if "permission denied" in sLower:
+        return _fdictPermissionDeniedDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
+    return None
+
+
+def fsExplainContainerOperationFailure(sOperation, sProjectName, sRawError):
+    """Return the one sentence a researcher reads for a failed operation.
+
+    Leads with the translated cause and what to do; keeps the daemon's
+    own words, bounded, in parentheses, because a translation that hid
+    its evidence could not be checked and a wrong one could not be
+    caught.
+    """
+    sRaw = " ".join((sRawError or "").split())[:240]
+    dictDiagnosis = fdictDiagnoseContainerOperationError(sRaw, sProjectName)
+    if dictDiagnosis is None:
+        return f"{sOperation} of '{sProjectName}' failed: {sRaw}"
+    sSentence = f"{sOperation} of '{sProjectName}' failed. {dictDiagnosis['sHint']}"
+    if dictDiagnosis["sCommand"]:
+        sSentence += f" Command: {dictDiagnosis['sCommand']}"
+    return f"{sSentence} (Docker said: {sRaw})"
