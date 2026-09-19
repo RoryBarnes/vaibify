@@ -25,7 +25,14 @@ PATTERN MATCHING, which is what it is actually good at.
 """
 
 
-__all__ = ["fdictDiagnoseDockerError"]
+import re
+
+
+__all__ = [
+    "fdictDiagnoseDockerError", "fdictDiagnoseContainerOperationError",
+    "fsExplainContainerOperationFailure", "flistDecisiveBuildLines",
+    "fdictDiagnoseBuildFailure", "fsExplainBuildFailure",
+]
 
 
 def fdictDiagnoseDockerError(
@@ -55,7 +62,9 @@ def fdictDiagnoseDockerError(
             _fdictResolveRuntime(dictRuntime),
         )
     if _fbErrorIsSocketAbsent(sLower):
-        return _fdictSocketAbsentDiagnosis()
+        return _fdictSocketAbsentDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
     if _fbErrorIsBinaryMissing(sLower):
         return _fdictBinaryMissingDiagnosis(sPlatform)
     if "permission denied" in sLower:
@@ -92,7 +101,7 @@ def _fdictDaemonUnreachableDiagnosis(dictRuntime):
     return _fdictRuntimeRemedy(S_SITUATION_DAEMON_UNREACHABLE, dictRuntime)
 
 
-def _fdictSocketAbsentDiagnosis():
+def _fdictSocketAbsentDiagnosis(dictRuntime):
     """Diagnosis for a connection that found no socket file to open.
 
     This must be answered separately from a missing binary, and the
@@ -104,22 +113,30 @@ def _fdictSocketAbsentDiagnosis():
     researchers with a working ``docker`` CLI to install Docker
     (researcher-reported on Ubuntu, 2026-09-04).
 
-    The remaining ambiguity is real and is stated rather than
-    guessed at: no socket at the resolved endpoint means either the
-    daemon is stopped or it is listening somewhere vaibify did not
+    When the classifier knows WHICH runtime owns the endpoint, an
+    absent socket there has one meaning -- that runtime is not
+    running -- and the answer is the same one the daemon-unreachable
+    branch gives, so the dashboard and ``vaibify doctor`` cannot
+    describe one stopped Colima two different ways (they did, on
+    2026-09-18). Only an UNKNOWN runtime leaves the ambiguity real:
+    the daemon is stopped, or it listens somewhere vaibify did not
     resolve -- a rootless or Docker Desktop context the researcher's
-    shell inherits and the hub process did not. Naming one cause
-    would be the same wrong-remedy failure one step further on, so
-    the command is the one that tells them which.
+    shell inherits and the hub process did not -- and then the
+    command is the one that tells them which.
     """
+    from .dockerContext import S_RUNTIME_UNKNOWN
+    from .runtimeRemedies import S_SITUATION_DAEMON_UNREACHABLE
+    if dictRuntime.get("sRuntime", S_RUNTIME_UNKNOWN) != S_RUNTIME_UNKNOWN:
+        return _fdictRuntimeRemedy(
+            S_SITUATION_DAEMON_UNREACHABLE, dictRuntime,
+        )
     return {
         "sHint": "No Docker socket exists at the endpoint vaibify "
-                 "resolved. Either the daemon is not running, or it "
-                 "listens on a socket your shell reaches and vaibify "
-                 "did not (a rootless or Docker Desktop context). "
-                 "Compare the endpoint vaibify used, named below, "
-                 "with your shell's; if they agree, the daemon is "
-                 "not running.",
+                 "resolved. Compare the active endpoint the command "
+                 "below prints with the one vaibify used: if they "
+                 "match, the daemon is stopped; if they differ, "
+                 "vaibify inherited a different Docker context than "
+                 "your shell.",
         "sCommand": "docker context ls",
     }
 
@@ -220,3 +237,251 @@ def _fbErrorIsBinaryMissing(sLower):
     if "no such file or directory" in sLower:
         return True
     return "[errno 2]" in sLower
+
+
+_RE_ALLOCATED_PORT = re.compile(r"(?:0\.0\.0\.0|127\.0\.0\.1|\[::\]|:)(\d{2,5})\b")
+
+
+def _fdictImageNotBuiltDiagnosis(sProjectName):
+    """The daemon looked for an image nobody has built yet.
+
+    Docker's own wording -- "pull access denied ... repository does not
+    exist or may require 'docker login'" -- is about Docker Hub, and a
+    researcher who had just created the project read it as vaibify
+    denying that the project existed (2026-09-18).
+    """
+    return {
+        "sHint": (
+            f"The image for '{sProjectName}' has not been built yet, so "
+            "there is nothing to start. Click its tile to build it, or "
+            "choose Rebuild from its \u22ee menu."
+        ),
+        "sCommand": f"vaibify build -p {sProjectName}",
+    }
+
+
+def _fdictPortTakenDiagnosis(sLower):
+    """A port the container publishes is held by another program."""
+    matchPort = _RE_ALLOCATED_PORT.search(sLower)
+    sPort = matchPort.group(1) if matchPort else ""
+    sWhich = f"port {sPort}" if sPort else "a port this container publishes"
+    return {
+        "sHint": (
+            f"Another program on this machine is already listening on "
+            f"{sWhich}. Stop that program, or change the port in the "
+            "project's settings (\u2699 on its tile), then start again."
+        ),
+        "sCommand": f"lsof -nP -iTCP:{sPort} -sTCP:LISTEN" if sPort else "",
+    }
+
+
+def _fdictNameTakenDiagnosis(sProjectName):
+    """A container with this name survives from an earlier start."""
+    return {
+        "sHint": (
+            f"A container named '{sProjectName}' already exists from an "
+            "earlier start, so a new one cannot be created under that "
+            "name. Remove the old one, then start again."
+        ),
+        "sCommand": f"docker rm -f {sProjectName}",
+    }
+
+
+def _fdictMountSourceMissingDiagnosis():
+    """A host directory the container mounts is gone."""
+    return {
+        "sHint": (
+            "A directory this container mounts from this machine no "
+            "longer exists. Restore it, or remove that entry from the "
+            "project's bind mounts, then start again."
+        ),
+        "sCommand": "",
+    }
+
+
+def fdictDiagnoseContainerOperationError(
+    sError, sProjectName, dictRuntime=None,
+):
+    """Return ``{sHint, sCommand}`` for a failed create/start/stop/build.
+
+    The daemon's stderr is precise and useless to a researcher: it
+    names Docker Hub, port bindings and mount configs in Docker's own
+    vocabulary. This branch of the catalog translates the failures
+    vaibify has watched researchers hit into a sentence about THEIR
+    project and the control that fixes it. ``None`` means the text
+    matched nothing, and the caller shows it as it came -- a guess
+    dressed as a diagnosis is the failure the whole catalog exists to
+    prevent.
+    """
+    sLower = (sError or "").lower()
+    if not sLower:
+        return None
+    if (
+        "unable to find image" in sLower
+        or "pull access denied" in sLower
+        or "repository does not exist" in sLower
+        or "no such image" in sLower
+    ):
+        return _fdictImageNotBuiltDiagnosis(sProjectName)
+    if "port is already allocated" in sLower or "address already in use" in sLower:
+        return _fdictPortTakenDiagnosis(sLower)
+    if "is already in use by container" in sLower:
+        return _fdictNameTakenDiagnosis(sProjectName)
+    if "bind source path does not exist" in sLower or (
+        "invalid mount config" in sLower
+    ):
+        return _fdictMountSourceMissingDiagnosis()
+    if "no space left on device" in sLower:
+        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
+        return _fdictRuntimeRemedy(
+            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
+        )
+    if _fbErrorIsDaemonUnreachable(sLower):
+        return _fdictDaemonUnreachableDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
+    if "permission denied" in sLower:
+        return _fdictPermissionDeniedDiagnosis(
+            _fdictResolveRuntime(dictRuntime),
+        )
+    return None
+
+
+def fsExplainContainerOperationFailure(sOperation, sProjectName, sRawError):
+    """Return the one sentence a researcher reads for a failed operation.
+
+    Leads with the translated cause and what to do; keeps the daemon's
+    own words, bounded, in parentheses, because a translation that hid
+    its evidence could not be checked and a wrong one could not be
+    caught.
+    """
+    sRaw = " ".join((sRawError or "").split())[:240]
+    dictDiagnosis = fdictDiagnoseContainerOperationError(sRaw, sProjectName)
+    if dictDiagnosis is None:
+        return f"{sOperation} of '{sProjectName}' failed: {sRaw}"
+    sSentence = f"{sOperation} of '{sProjectName}' failed. {dictDiagnosis['sHint']}"
+    if dictDiagnosis["sCommand"]:
+        sSentence += f" Command: {dictDiagnosis['sCommand']}"
+    return f"{sSentence} (Docker said: {sRaw})"
+
+
+_RE_BUILDKIT_LINE_PREFIX = re.compile(r"^#\d+\s+(?:\d+\.\d+\s+)?")
+_T_BUILD_DECISIVE_MARKERS = (
+    "this build stopped on purpose", "e: ", "error", "could not resolve",
+    "temporary failure resolving", "failed to fetch", "no space left",
+    "pull access denied", "not found", "unable to locate package",
+    "no matching distribution", "could not find a version",
+    "did not complete successfully", "returned a non-zero code",
+    "permission denied", "connection refused", "timed out",
+)
+
+
+def flistDecisiveBuildLines(sStderrTail, iLimit=6):
+    """Return the lines of a build's output that say why it failed.
+
+    BuildKit ends a failed build by echoing the whole failing Dockerfile
+    step, sixty lines of ``>>>``-prefixed source, which is what filled
+    the tail a researcher was shown while the one apt line that named
+    the cause had scrolled out of it. The echo and the separators are
+    dropped, the ``#12 3.45`` prefixes stripped, and only lines carrying
+    a failure marker survive, newest last.
+    """
+    listDecisive = []
+    for sRawLine in (sStderrTail or "").splitlines():
+        sLine = _RE_BUILDKIT_LINE_PREFIX.sub("", sRawLine).strip()
+        if not sLine or ">>>" in sLine or set(sLine) <= {"-", "="}:
+            continue
+        if re.match(r"^\s*\d+\s*\|", sRawLine):
+            continue
+        sLower = sLine.lower()
+        if any(sMarker in sLower for sMarker in _T_BUILD_DECISIVE_MARKERS):
+            if sLine not in listDecisive:
+                listDecisive.append(sLine)
+    return listDecisive[-iLimit:]
+
+
+def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
+    """Return ``{sHint, sCommand}`` for a failed image build, or None."""
+    sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
+    if not sLower:
+        return None
+    if "this build stopped on purpose" in sLower or "toolchain" in sLower:
+        return {
+            "sHint": (
+                "vaibify's pinned compiler toolchain could not be installed "
+                "from Ubuntu's archive. This is vaibify's own pin, not your "
+                "project's packages: the pinned names are x86-64 only, so "
+                "an arm64 daemon (Apple Silicon) cannot install them, and "
+                "on any machine the pin rotates about monthly. Update "
+                "vaibify, or report the build output, which lists what "
+                "the archive offers."
+            ),
+            "sCommand": "python tools/checkToolchainEpoch.py --verify",
+        }
+    if "unable to locate package" in sLower:
+        return {
+            "sHint": (
+                "A name under systemPackages in vaibify.yml is not a "
+                "package Ubuntu's archive knows. Fix the name, then "
+                "rebuild."
+            ),
+            "sCommand": "",
+        }
+    if "no matching distribution" in sLower or "could not find a version" in sLower:
+        return {
+            "sHint": (
+                "A name or version under pythonPackages in vaibify.yml "
+                "does not exist on the package index. Fix it, then "
+                "rebuild."
+            ),
+            "sCommand": "",
+        }
+    if (
+        "could not resolve" in sLower or "temporary failure resolving" in sLower
+        or "failed to fetch" in sLower or "timed out" in sLower
+    ):
+        return {
+            "sHint": (
+                "The build could not reach the package archives from "
+                "inside Docker: name resolution or the network failed in "
+                "the daemon, not on this machine. Check the daemon's "
+                "network with a diagnosis; on Colima a restart usually "
+                "clears a stale resolver."
+            ),
+            "sCommand": "vaibify doctor",
+        }
+    if "no space left" in sLower:
+        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
+        return _fdictRuntimeRemedy(
+            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
+        )
+    if "pull access denied" in sLower or "manifest unknown" in sLower:
+        return {
+            "sHint": (
+                "The base image the build starts from could not be "
+                "pulled. Check the baseImage in vaibify.yml and that "
+                "this machine can reach the registry."
+            ),
+            "sCommand": "",
+        }
+    return None
+
+
+def fsExplainBuildFailure(sProjectName, sRawError, sStderrTail):
+    """Return the sentence a researcher reads for a failed image build.
+
+    Leads with the translated cause when the output is recognised,
+    otherwise with the decisive lines of the output itself; the bare
+    "Docker command failed (exit 1): docker buildx build ..." that used
+    to be the whole message names the command and never the reason.
+    """
+    listDecisive = flistDecisiveBuildLines(sStderrTail, 3)
+    sEvidence = " | ".join(listDecisive) or " ".join(
+        (sRawError or "").split())[:240]
+    dictDiagnosis = fdictDiagnoseBuildFailure(sStderrTail, sProjectName)
+    if dictDiagnosis is None:
+        return f"Build of '{sProjectName}' failed: {sEvidence}"
+    sSentence = f"Build of '{sProjectName}' failed. {dictDiagnosis['sHint']}"
+    if dictDiagnosis["sCommand"]:
+        sSentence += f" Command: {dictDiagnosis['sCommand']}"
+    return f"{sSentence} (Docker said: {sEvidence})"

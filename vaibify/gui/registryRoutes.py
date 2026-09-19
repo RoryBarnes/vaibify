@@ -22,6 +22,7 @@ import time
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
+import yaml
 from typing import List, Optional
 
 from vaibify.gui import buildRoutes
@@ -329,18 +330,27 @@ def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
 def _fnAnnotateOwnershipState(
     listContainers, dictContainerOwners, sCallerLease,
 ):
-    """Flag containers owned by a different browser session on this hub.
+    """Flag who holds each container: another session, or the caller.
 
     ``bOwnedByOtherSession`` is True when an in-process owner record
     exists whose lease differs from the caller's, so the picker can grey
-    a tile that another tab already holds. The owner's lease is never
-    echoed; only the boolean leaves the process.
+    a tile that another tab already holds. ``bOwnedByThisSession`` is
+    the complement the caller can act on: its own tab holds the
+    container -- a start from the picker claims before anything is
+    opened -- so the tile can say so and offer Release instead of
+    looking like every other running container. The owner's lease is
+    never echoed; only the booleans leave the process.
     """
     for dictContainer in listContainers:
         recordOwner = dictContainerOwners.get(dictContainer.get("sName"))
         dictContainer["bOwnedByOtherSession"] = bool(
             recordOwner is not None
             and recordOwner.sLeaseId != sCallerLease
+        )
+        dictContainer["bOwnedByThisSession"] = bool(
+            recordOwner is not None
+            and sCallerLease
+            and recordOwner.sLeaseId == sCallerLease
         )
         # Honest surfacing of a force-abandoned (poisoned) owner: the
         # journal annotation already renders the durable quarantine
@@ -674,7 +684,13 @@ def _fsProjectNameForDirectory(sDirectory):
     )
     from vaibify.cli.configLoader import fconfigLoadFromPath
     sConfigPath = fsDiscoverConfigInDirectory(sDirectory)
-    configProject = fconfigLoadFromPath(sConfigPath)
+    try:
+        configProject = fconfigLoadFromPath(sConfigPath)
+    except _T_CONFIG_LOAD_ERRORS as error:
+        raise HTTPException(409, detail={"sMessage": (
+            f"The vaibify.yml at {sConfigPath} fails validation: {error} "
+            "Fix the file, then add the directory again."
+        )})
     return configProject.sProjectName
 
 
@@ -742,7 +758,8 @@ def _fnRegisterStartContainer(app, dictCtx):
         )
         if iStatusCode == 409:
             return JSONResponse(status_code=409, content=dict(
-                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+                dictBody,
+                detail=startReservation.fdictRefusalDetail(dictBody),
             ))
         return JSONResponse(status_code=iStatusCode, content=dictBody)
 
@@ -800,10 +817,30 @@ def _fsBrowserSessionFor(app, request):
     )
 
 
+# Everything a vaibify.yml can do wrong on the way to a ProjectConfig:
+# absent, unparseable, the wrong shape, or failing validation.
+_T_CONFIG_LOAD_ERRORS = (
+    ValueError, TypeError, FileNotFoundError, yaml.YAMLError,
+)
+
+
 def _fconfigLoadForProject(dictProject):
-    """Load the validated project config the start will launch from."""
+    """Load the validated project config the start will launch from.
+
+    A vaibify.yml that fails validation used to escape as the generic
+    "Pipeline action failed. Check server logs for details." -- the
+    one sentence that could have told the researcher which file to fix
+    was the one discarded. It is a 409 naming the file now.
+    """
     from vaibify.cli.configLoader import fconfigLoadFromPath
-    return fconfigLoadFromPath(dictProject["sConfigPath"])
+    try:
+        return fconfigLoadFromPath(dictProject["sConfigPath"])
+    except _T_CONFIG_LOAD_ERRORS as error:
+        raise HTTPException(409, detail={"sMessage": (
+            f"The vaibify.yml for '{dictProject.get('sName', '')}' could "
+            f"not be loaded: {error} Fix the file at "
+            f"{dictProject['sConfigPath']}, then try again."
+        )})
 
 
 def _fnRegisterStopContainer(app, dictCtx):
@@ -851,7 +888,12 @@ def _fnRegisterStopContainer(app, dictCtx):
             )
         except Exception as error:
             logger.error("Stop failed for %s: %s", sName, error)
-            raise HTTPException(500, f"Stop failed: {error}")
+            from vaibify.docker.dockerErrorDiagnosis import (
+                fsExplainContainerOperationFailure,
+            )
+            raise HTTPException(500, fsExplainContainerOperationFailure(
+                "Stop", sName, str(error),
+            ))
         return {"bSuccess": True}
 
 
@@ -887,10 +929,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
     @app.get("/api/containers/{sName}/settings")
     async def fdictGetContainerSettings(sName: str):
         dictProject = _fdictRequireProject(sName)
-        from vaibify.config.projectConfig import fconfigLoadFromFile
-        configProject = fconfigLoadFromFile(
-            dictProject["sConfigPath"]
-        )
+        configProject = _fconfigLoadForProject(dictProject)
         dictResult = {
             "bNeverSleep": configProject.bNeverSleep,
             "iCpuLimit": configProject.iCpuLimit,

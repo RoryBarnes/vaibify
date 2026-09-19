@@ -664,6 +664,24 @@ binaries, and the lock file freezes what runs your analyses.
 vaibify recorded the epoch carries no label, and the modal says so
 rather than guessing.
 
+## The hub's help and diagnosis
+
+The environment hub (the landing page) has a **?** beside the ⧉ New
+window icon. It opens three short blocks: creating an environment
+(starting with **+**), a legend of the tile marks drawn with the real
+glyphs, and troubleshooting tips such as the one-environment-per-tab
+rule.
+
+Every failure toast on the hub ends with *Click to run a diagnosis*.
+The click runs the host-scope checks of `vaibify doctor` through the
+hub and shows each finding with its level, message, remedy and
+command — the same report the terminal prints, so the two cannot
+disagree. Docker's own error text, when vaibify recognizes it, is
+translated into a sentence about your project (an image that has not
+been built, a port another program holds, a container name left from
+an earlier start, a full disk) with Docker's words kept in
+parentheses as evidence.
+
 ## The Help panel
 
 The **?** button beside the project name opens the Help panel. It
@@ -1055,3 +1073,18 @@ and the dashboard's Admin menu opens a fresh vaibify session in a new
 browser tab — useful for working on **two different projects** side by
 side. Each window claims its own containers; it is not a way to open
 the *same* container twice.
+
+### One container per browser session
+
+The rule also runs the other way: one tab holds at most one container.
+Starting a container from a tile's ⋮ menu claims it for that tab
+before you open it, and the tile then reads **held by this tab**.
+Starting or opening a second container from the same tab is refused
+with *"This browser session already holds container ..."*, and the
+refusal offers to release the first one and continue. You can also
+release it yourself from the tile's ⋮ menu (**Release**), and
+returning to the container list from an open dashboard releases in
+the same way. Releasing drops only the tab's hold: the container keeps
+running, and a release is refused while a pipeline run or an agent is
+live in it. To work in two containers at once, open a second vaibify
+window.

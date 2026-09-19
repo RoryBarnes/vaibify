@@ -120,7 +120,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
                 "\nstderr tail:\n" + sTail if sTail else "",
             )
             raise HTTPException(
-                500, detail=_fdictBuildFailureDetail(error, sTail),
+                500, detail=_fdictBuildFailureDetail(error, sTail, sName),
             )
         return {"bSuccess": True, "sMessage": "Build complete"}
 
@@ -226,7 +226,7 @@ def _fnRegisterAcquireImage(app, dictCtx):
         except Exception as error:
             logger.error("Acquisition failed for %s: %s", sName, error)
             raise HTTPException(
-                500, detail=_fdictBuildFailureDetail(error, ""),
+                500, detail=_fdictBuildFailureDetail(error, "", sName),
             )
         return {
             "bSuccess": True, "sMessage": "Image obtained",
@@ -420,15 +420,19 @@ def _fnExecuteBuild(dictProject, bNoCache=False, dictProgress=None):
         _fnCloseBuildProgress(dictProgress, "succeeded")
 
 
-def _fdictBuildFailureDetail(error, sStderrTail):
+def _fdictBuildFailureDetail(error, sStderrTail, sName):
     """Format the FastAPI detail payload for a build failure.
 
     The tail has already been credential-redacted by imageBuilder's
     ``fsRedactBuildOutputCredentials`` before it lands on the
-    exception, so it is safe to surface to the GUI.
+    exception, so it is safe to surface to the GUI. ``sMessage`` used
+    to be the two words "Build failed" while the reason sat in
+    ``sError``, which nothing rendered; the reason now rides in the
+    message, translated where the catalog knows the daemon's text.
     """
+    from vaibify.docker.dockerErrorDiagnosis import fsExplainBuildFailure
     return {
-        "sMessage": "Build failed",
+        "sMessage": fsExplainBuildFailure(sName, str(error), sStderrTail),
         "sError": str(error),
         "sStderrTail": sStderrTail,
         # The one recovery a refusal offers, when it offers one (an

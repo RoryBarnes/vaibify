@@ -618,7 +618,9 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # exactly what makes it a root the scan cannot read.
 DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
-    "untraceable-docker-sdk-root": 51,
+    # 52 since fsImageState (2026-09-18): a gateway image lookup, read
+    # through the same SDK root as flistGetRunningContainers beside it.
+    "untraceable-docker-sdk-root": 52,
 }
 
 

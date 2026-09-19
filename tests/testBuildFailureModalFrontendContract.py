@@ -105,5 +105,7 @@ def test_container_manager_falls_back_to_toast_when_tail_absent():
     assert iStart != -1
     iEnd = sSource.find("\n    }\n", iStart)
     sBlock = sSource[iStart:iEnd]
-    assert "fnShowToast" in sBlock
+    # The fallback toast is the diagnosis toast: VaibifyDiagnosis wraps
+    # fnShowToast and appends the "Click to run a diagnosis" step.
+    assert "VaibifyDiagnosis.fnReportFailure" in sBlock
     assert "sStderrTail" in sBlock

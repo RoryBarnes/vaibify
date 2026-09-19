@@ -45,6 +45,62 @@ def _fnWriteMinimalConfig(tmp_path, sProjectName="test-project"):
     return sProjectDir
 
 
+@pytest.fixture(autouse=True)
+def fixtureImageIsBuilt(monkeypatch):
+    """Every project's image counts as built for the start routes here."""
+    from vaibify.gui import startReservation
+    monkeypatch.setattr(
+        startReservation, "_fsImageBuildState",
+        lambda connectionDocker, sName: startReservation.S_IMAGE_STATE_BUILT,
+    )
+
+
+def testStopFailureIsExplainedInTheResearchersTerms(
+    fixtureLiveClient, fixtureApp, tmp_path, monkeypatch,
+):
+    """A failed stop leads with the cause and keeps Docker's words."""
+    _fnRegisterProject(fixtureLiveClient, tmp_path, "stop-proj")
+
+    def fnFailStop(sContainerName):
+        raise RuntimeError(
+            "docker stop failed: Cannot connect to the Docker daemon at "
+            "unix:///var/run/docker.sock. Is the docker daemon running?"
+        )
+
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes._fnExecuteStop", fnFailStop,
+    )
+    monkeypatch.setattr(
+        "vaibify.docker.dockerContext.fdictClassifyDockerRuntime",
+        lambda: {
+            "sRuntime": "colima", "sContextName": "colima",
+            "sColimaProfile": "default", "sEndpoint": "",
+            "bDaemonAnswered": False,
+        },
+    )
+    response = fixtureLiveClient.post("/api/containers/stop-proj/stop")
+    assert response.status_code == 500, response.text
+    sDetail = response.json()["detail"]
+    assert sDetail.startswith("Stop of 'stop-proj' failed. The Colima")
+    assert "Command: colima start" in sDetail
+    assert "(Docker said: docker stop failed:" in sDetail
+
+
+def testAnInvalidConfigIsNamedNotHiddenBehindAGeneric500(
+    fixtureLiveClient, fixtureApp, tmp_path, monkeypatch,
+):
+    """The one sentence that names the file to fix reaches the browser."""
+    _fnRegisterProject(fixtureLiveClient, tmp_path, "bad-yml")
+    sConfigPath = os.path.join(str(tmp_path / "bad-yml"), "vaibify.yml")
+    with open(sConfigPath, "w") as fileHandle:
+        fileHandle.write("projectName: [this is not a name\n")
+    response = fixtureLiveClient.get("/api/containers/bad-yml/settings")
+    assert response.status_code == 409, response.text
+    sMessage = response.json()["detail"]["sMessage"]
+    assert "could not be loaded" in sMessage
+    assert sConfigPath in sMessage
+
+
 @pytest.fixture
 def fixtureApp():
     """Create a hub-mode app with Docker mocked out."""
@@ -109,6 +165,59 @@ def testGetRegistryReturnsProjects(fixtureClient, monkeypatch):
     response = fixtureClient.get("/api/registry")
     assert response.status_code == 200
     assert len(response.json()["listContainers"]) == 1
+
+
+def testGetRegistryMarksTheCallersOwnHold(
+    fixtureApp, fixtureClient, monkeypatch,
+):
+    """The tile a tab holds is flagged as its own, not as somebody else's.
+
+    Both flags come from one owner record and one lease comparison, so
+    they are asserted together across the three states a tile can be
+    in: held by the caller, held by another session, held by nobody.
+    A caller presenting no lease owns nothing, whatever the records say.
+    """
+    from vaibify.gui import containerOwnership
+    listProjects = [
+        {
+            "sName": sName, "sContainerName": sName,
+            "sStatus": "running", "bRunning": True,
+        }
+        for sName in ("heldByMe", "heldByAnother", "heldByNobody")
+    ]
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.flistGetAllProjectsWithStatus",
+        lambda: listProjects,
+    )
+    fixtureApp.state.dictContainerOwners["heldByMe"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="lease-mine", fileHandleLock=None,
+        )
+    )
+    fixtureApp.state.dictContainerOwners["heldByAnother"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="lease-theirs", fileHandleLock=None,
+        )
+    )
+
+    def fdictFlagsByName(dictHeaders):
+        response = fixtureClient.get("/api/registry", headers=dictHeaders)
+        assert response.status_code == 200, response.text
+        return {
+            dictContainer["sName"]: (
+                dictContainer["bOwnedByThisSession"],
+                dictContainer["bOwnedByOtherSession"],
+            )
+            for dictContainer in response.json()["listContainers"]
+        }
+
+    dictFlags = fdictFlagsByName({"X-Vaibify-Lease": "lease-mine"})
+    assert dictFlags["heldByMe"] == (True, False)
+    assert dictFlags["heldByAnother"] == (False, True)
+    assert dictFlags["heldByNobody"] == (False, False)
+    dictFlagsLeaseless = fdictFlagsByName({})
+    assert dictFlagsLeaseless["heldByMe"] == (False, True)
+    assert dictFlagsLeaseless["heldByNobody"] == (False, False)
 
 
 # --- POST /api/registry ---
@@ -473,7 +582,7 @@ def testBuildFailureSurfacesStderrTail(
     )
     assert response.status_code == 500
     dictDetail = response.json()["detail"]
-    assert dictDetail["sMessage"] == "Build failed"
+    assert dictDetail["sMessage"].startswith("Build of 'tail-build' failed")
     assert "Docker command failed" in dictDetail["sError"]
     assert "enough free space" in dictDetail["sStderrTail"]
 
@@ -500,7 +609,7 @@ def testBuildFailureWithoutTailStillStructured(
     )
     assert response.status_code == 500
     dictDetail = response.json()["detail"]
-    assert dictDetail["sMessage"] == "Build failed"
+    assert dictDetail["sMessage"].startswith("Build of 'notail-build' failed")
     assert dictDetail["sStderrTail"] == ""
 
 

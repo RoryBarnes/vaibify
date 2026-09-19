@@ -1155,6 +1155,11 @@ def _fbInterpretPathProbe(tExecResult, sPath):
     return tExecResult.sStdout.strip() == "1"
 
 
+S_IMAGE_STATE_BUILT = "built"
+S_IMAGE_STATE_MISSING = "missing"
+S_IMAGE_STATE_UNANSWERED = "unanswered"
+
+
 class DockerConnection:
     """Wraps docker-py client for container operations."""
 
@@ -1181,6 +1186,24 @@ class DockerConnection:
         for sContainerId in list(_CACHED_CONTAINER_USER.keys()):
             if sContainerId not in setRunningContainerIds:
                 _CACHED_CONTAINER_USER.pop(sContainerId, None)
+
+    def fsImageState(self, sImageName):
+        """Return whether a local image exists: built, missing, unanswered.
+
+        Three answers rather than a boolean because the start guard
+        that asks may refuse only on a POSITIVE "no such image". A
+        daemon that did not answer is not evidence that nothing was
+        built, and reading it that way would refuse every start the
+        moment Docker was briefly busy.
+        """
+        from docker.errors import ImageNotFound
+        try:
+            self._clientDocker.images.get(sImageName)
+        except ImageNotFound:
+            return S_IMAGE_STATE_MISSING
+        except Exception:  # noqa: BLE001 -- an unanswered probe is not a refusal
+            return S_IMAGE_STATE_UNANSWERED
+        return S_IMAGE_STATE_BUILT
 
     def flistGetRunningContainers(self):
         """Return list of dicts with container id, name, image.
