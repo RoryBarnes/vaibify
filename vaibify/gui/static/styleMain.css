@@ -393,6 +393,105 @@ html, body {
     border: 1px solid var(--border-error-tint);
     color: var(--color-red-text);
 }
+
+.diagnosis-heading {
+    margin: 12px 0 6px 0;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.diagnosis-finding {
+    margin: 0 0 8px 0;
+    padding-left: 8px;
+    border-left: 3px solid var(--text-muted);
+}
+
+.diagnosis-finding--fail {
+    border-left-color: var(--color-red);
+}
+
+.diagnosis-finding--warn {
+    border-left-color: var(--color-orange);
+}
+
+.diagnosis-level {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+}
+
+.diagnosis-remedy {
+    margin-top: 2px;
+}
+
+.diagnosis-command {
+    margin: 4px 0 0 0;
+    padding: 2px 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    background: var(--bg-input);
+    border-radius: 3px;
+    white-space: pre-wrap;
+    user-select: all;
+}
+
+.diagnosis-footer {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.picker-load-error {
+    color: var(--color-red-text);
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-blue);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.toast-clickable {
+    cursor: pointer;
+}
+
+.toast-clickable:hover {
+    filter: brightness(1.15);
+}
+
+.wizard-load-error,
+.wizard-submit-error {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--color-red-text);
+}
+
+.hub-help-section summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin: 8px 0 4px 0;
+}
+
+.hub-help-section p {
+    margin-left: 14px;
+}
+
+.hub-help-legend .status-dot,
+.hub-help-legend .containment-chip {
+    margin-right: 6px;
+    margin-left: 0;
+}
+
+.containment-chip--held {
+    background: transparent;
+    border: 1px solid var(--color-blue);
+    color: var(--color-blue);
+}
 .status-dot.status-missing {
     background: transparent;
     border: 2px solid var(--color-red);

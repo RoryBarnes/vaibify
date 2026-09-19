@@ -9223,16 +9223,16 @@ def _fdictEntry(sRel):
         # shortcut, and wrong because it never consults the MODE. Every
         # container project would search its own config folder.
         old=(
-            '        sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
-            '            sContainerId, '
+            '            sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
+            '                sContainerId, '
             'workflowManager.DEFAULT_SEARCH_ROOT,\n'
-            '        )\n'
+            '            )\n'
         ),
         new=(
-            '        from vaibify.config import registryManager\n'
-            '        sSearchRoot = (registryManager.fdictGetProject('
+            '            from vaibify.config import registryManager\n'
+            '            sSearchRoot = (registryManager.fdictGetProject('
             'sContainerId) or {}).get(\n'
-            '            "sDirectory", '
+            '                "sDirectory", '
             'workflowManager.DEFAULT_SEARCH_ROOT)\n'
         ),
     ),
@@ -11004,7 +11004,7 @@ def _fdictEntry(sRel):
             '                if (await _fbReclaimAndRetryOnce(\n'
             '                    sId, sWorkflowPathArg, sWorkflowName,\n'
             '                    iThisGeneration\n'
-            '                )) return;\n'
+            '                )) return true;\n'
         ),
         new='',
     ),
@@ -19608,7 +19608,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptContainerManager.js',
         # the re-obtain proceeds after a stop that failed
         old=(
-            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                if (!(await _fbStoppedBefore(sName, "Re-obtaining the pinned image"))) return;\n'
             '                await fnAcquireImage(sName, bAllowEmulation, false);\n'
         ),
         new=(
@@ -19625,7 +19625,7 @@ def _fdictEntry(sRel):
         # the switch is posted whatever the stop reported
         old=(
             '                VaibifyTerminal.fnCloseAll();\n'
-            '                if (!(await fnStopContainer(sName))) return;\n'
+            '                if (!(await _fbStoppedBefore(sName, "Switching to building"))) return;\n'
             '                try {\n'
         ),
         new=(

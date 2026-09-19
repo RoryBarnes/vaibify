@@ -33,6 +33,26 @@ var VaibifyConnectionMonitor = (function () {
         return false;
     }
 
+    var _DICT_STALE_LIST_NAMES = {
+        "container-hub": "environment list",
+        "workflow-hub": "project list",
+    };
+    var _dictStaleListSurfaced = {};
+
+    function _fnSurfaceStaleList(sPoller, dictError) {
+        /* A server error on a hub poll used to be a console line and
+           a list frozen at its last good render, indefinitely. Once
+           per streak, say so; the diagnosis click is the way out. */
+        var sListName = _DICT_STALE_LIST_NAMES[sPoller];
+        if (!sListName || _dictStaleListSurfaced[sPoller]) return;
+        _dictStaleListSurfaced[sPoller] = true;
+        VaibifyDiagnosis.fnReportFailure(
+            "The " + sListName + " could not be refreshed (" +
+            VaibifyUtilities.fsSanitizeErrorForUser(
+                dictError && dictError.message) +
+            "). What you see is the last state vaibify saw.");
+    }
+
     function fnReportPollFailure(sPoller, dictError) {
         if (_bSurfaced) return;
         if (!_fbErrorIsDisconnectSignal(dictError)) {
@@ -40,6 +60,7 @@ var VaibifyConnectionMonitor = (function () {
                 "[poll] " + sPoller + " failed:",
                 dictError && dictError.message
             );
+            _fnSurfaceStaleList(sPoller, dictError);
             return;
         }
         _dictConsecutiveFailures[sPoller] =
@@ -48,6 +69,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnReportPollSuccess(sPoller) {
+        _dictStaleListSurfaced[sPoller] = false;
         _dictConsecutiveFailures[sPoller] = 0;
     }
 

@@ -13,6 +13,27 @@ no unit test catches.
 The repository-wide rules in `AGENTS.md` still apply; this file is
 the detail for this subsystem.
 
+**A failure names its remedy, or offers the diagnosis that will.** A
+2026-09-18 audit of the environment hub and the Project Hub found four
+shapes of failure reporting: the server's raw text shown verbatim
+(Docker's stderr included -- "pull access denied ... repository does
+not exist" for an image that had never been built), a description with
+no remedy ("Build failed", "Cannot load containers"), silence (a list
+frozen at its last good render after a poll 500, a Restart abandoned
+after a failed stop with no word), and a real sentence discarded on
+the server behind "Pipeline action failed. Check server logs for
+details." The rule that closes all four: every user-visible failure
+either states what to do, or ends in "Click to run a diagnosis"
+(`VaibifyDiagnosis`, backed by `GET /api/system/doctor`, which runs the
+same host checks `vaibify doctor` prints so the browser can never say
+something the terminal would not). On the server, Docker's text is
+translated at the boundary by `dockerErrorDiagnosis` with the daemon's
+words kept as evidence, a control-plane refusal passes through the
+client sanitizer in its own words because it is written for the
+researcher and names the reconcile, and a sentence that names the file
+to fix is never collapsed into a generic status. A refusal without a
+remedy is a dead end the researcher pays for in a support round trip.
+
 **A configured secret this host cannot resolve DEGRADES, and the
 telling is the load-bearing half.** `flistMountSecrets` skips it and
 the container starts (ruled 2026-09-05, making the Features page's

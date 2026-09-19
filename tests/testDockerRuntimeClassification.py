@@ -53,6 +53,23 @@ def test_a_named_colima_profile_is_recognised(sContext, sProfile):
     """`colima-<profile>` is Colima; the exact-name test missed it."""
     with patch.object(
         dockerContext, "fsActiveDockerContext", return_value=sContext,
+    ), patch.object(dockerContext.os, "environ", {}):
+        assert dockerContext.fbColimaActive() is True
+        assert dockerContext.fsColimaProfileName() == sProfile
+
+
+@pytest.mark.parametrize("sEndpoint,sProfile", [
+    ("unix:///home/someone/.colima/default/docker.sock", "default"),
+    ("unix:///home/someone/.colima/gpu/docker.sock", "gpu"),
+])
+def test_colima_is_active_when_docker_host_names_its_socket(
+    sEndpoint, sProfile,
+):
+    """An exported `DOCKER_HOST` flattens the context; the path answers."""
+    with patch.object(
+        dockerContext, "fsActiveDockerContext", return_value="default",
+    ), patch.object(
+        dockerContext.os, "environ", {"DOCKER_HOST": sEndpoint},
     ):
         assert dockerContext.fbColimaActive() is True
         assert dockerContext.fsColimaProfileName() == sProfile
@@ -63,7 +80,7 @@ def test_a_non_colima_context_reports_no_profile(sContext):
     """A context that merely mentions nothing Colima answers ''."""
     with patch.object(
         dockerContext, "fsActiveDockerContext", return_value=sContext,
-    ):
+    ), patch.object(dockerContext.os, "environ", {}):
         assert dockerContext.fbColimaActive() is False
         assert dockerContext.fsColimaProfileName() == ""
 
@@ -75,6 +92,28 @@ def test_colima_is_classified_with_its_profile():
     )
     assert dictRuntime["sRuntime"] == dockerContext.S_RUNTIME_COLIMA
     assert dictRuntime["sColimaProfile"] == "gpu"
+
+
+@pytest.mark.parametrize("sEndpoint,sProfile", [
+    ("unix:///home/someone/.colima/default/docker.sock", "default"),
+    ("unix:///home/someone/.colima/gpu/docker.sock", "gpu"),
+])
+def test_colima_named_only_by_its_socket_path_is_still_colima(
+    sEndpoint, sProfile,
+):
+    """`DOCKER_HOST` flattens the context name; the path still says Colima.
+
+    The hub seeds ``DOCKER_HOST`` from the active context, after which
+    ``docker context show`` answers ``default``. Reading the name alone
+    classified a stopped Colima as unknown from inside the hub, so the
+    dashboard hedged between two causes while ``vaibify doctor``, in a
+    fresh process, named the one cause and `colima start`.
+    """
+    dictRuntime = _fdictClassifyWith(
+        "default", sEndpoint=sEndpoint, sPlatform="darwin",
+    )
+    assert dictRuntime["sRuntime"] == dockerContext.S_RUNTIME_COLIMA
+    assert dictRuntime["sColimaProfile"] == sProfile
 
 
 def test_docker_desktop_is_classified_from_the_daemon_answer():

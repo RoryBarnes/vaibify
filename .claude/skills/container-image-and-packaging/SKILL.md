@@ -27,6 +27,25 @@ red waiting for a maintainer to approve something nobody can evaluate
 -- a glibc SRU changes real bytes, and no review separates "this moves
 a number" from "this does not".
 
+The pin list is amd64 by construction: nine of its names carry
+`-x86-64-linux-gnu`, and `tools/checkToolchainEpoch.py` reads the
+`binary-amd64` index. A native build on an arm64 daemon (Apple
+Silicon under Colima) therefore stops at the pinned step every time,
+which a researcher met on 2026-09-18 as Docker Hub's "pull access
+denied" one build later. The build-failure catalog
+(`dockerErrorDiagnosis.fsExplainBuildFailure`) names this cause; the
+Dockerfile still has no arm64 list, and adding one is an
+architecture-selected second pin block plus an architecture parameter
+on the epoch tool -- an epoch decision, not a chore. Two more traps in
+the same block, both met the same week: the base image is pinned by
+digest, so when that digest already ships a NEWER libc than the pins
+name, apt refuses the install as a downgrade
+("Packages were downgraded and -y was used without --allow-downgrades")
+and the answer is an epoch bump, never `--allow-downgrades`; and
+BuildKit ends a failed build by echoing the whole sixty-line step, so
+the one apt line naming the cause scrolls out of any short tail -- the
+catalog drops that echo before it looks for the reason.
+
 Four things not to undo:
 
 - **The date and the pins are one statement.** Editing either alone

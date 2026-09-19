@@ -160,9 +160,17 @@ var VaibifyUtilities = (function () {
 
     function fsSanitizeErrorForUser(sRawError) {
         if (!sRawError) return "An error occurred.";
+        /* The server explains a Docker failure in the researcher's
+           terms and keeps the daemon's words after "Docker said:" as
+           evidence. Those words are exactly what the rewrites below
+           match on, so a translated sentence must pass untouched or
+           the remedy is replaced by the symptom it already explained. */
+        if (sRawError.indexOf("(Docker said:") >= 0) return sRawError;
         if (sRawError.indexOf("no space left on device") >= 0) {
-            return "Docker disk is full. Run 'docker image " +
-                "prune -f' to free space.";
+            return "Docker's disk is full. Run 'docker builder prune' " +
+                "to reclaim the build cache first; do not run 'docker " +
+                "system prune -a', which removes the images your " +
+                "projects pin.";
         }
         if (sRawError.indexOf("No such container") >= 0) {
             return "Container not found. It may have stopped.";
@@ -334,7 +342,14 @@ var VaibifyUtilities = (function () {
             var dictResponse = await VaibifyApi.fdictPost(
                 "/api/session/spawn", {});
             var windowChild = window.open(dictResponse.sUrl, "_blank");
-            if (windowChild) windowChild.focus();
+            if (!windowChild) {
+                VaibifyApp.fnShowToast(
+                    "Your browser blocked the new window. Allow pop-ups " +
+                    "for this site, or open this address yourself: " +
+                    dictResponse.sUrl, "warning");
+                return;
+            }
+            windowChild.focus();
         } catch (error) {
             VaibifyApp.fnShowToast(
                 "Could not open new vaibify window: " +

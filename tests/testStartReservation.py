@@ -311,6 +311,66 @@ def test_stop_is_refused_while_the_start_reservation_is_live(
 # Cardinality and the reaper.
 # ------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def fixtureImageIsBuilt(monkeypatch):
+    """The mocked daemon of this module has every project's image built.
+
+    The unbuilt-image guard asks the daemon through its own probe; with
+    the launch executor already a double, the probe must be one too, or
+    every accepted start here would be refused for an image nobody
+    built on the test machine.
+    """
+    monkeypatch.setattr(
+        startReservation, "_fsImageBuildState",
+        lambda connectionDocker, sName: startReservation.S_IMAGE_STATE_BUILT,
+    )
+
+
+def test_an_unbuilt_project_is_refused_before_docker_is_asked(
+    appHub, tmp_path, monkeypatch,
+):
+    """Start names the build instead of relaying Docker Hub's refusal.
+
+    The daemon's answer to creating a container from an image that was
+    never built is "pull access denied ... repository does not exist",
+    which a researcher read as vaibify denying their project existed.
+    A POSITIVE "no such image" refuses before any reservation; an
+    unanswered probe does not.
+    """
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    monkeypatch.setattr(
+        startReservation, "_fsImageBuildState",
+        lambda connectionDocker, sName: startReservation.S_IMAGE_STATE_MISSING,
+    )
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path, S_PROJECT_NAME)
+        responseStart = client.post(f"/api/containers/{S_PROJECT_NAME}/start")
+    assert responseStart.status_code == 409, responseStart.text
+    dictDetail = responseStart.json()["detail"]
+    assert "has not been built yet" in dictDetail["sMessage"]
+    assert dictDetail["sAction"] == "build"
+    assert executor.iCallCount == 0
+    assert S_PROJECT_NAME not in appHub.state.dictContainerOwners
+
+
+def test_an_unanswered_image_probe_does_not_refuse(
+    appHub, tmp_path, monkeypatch,
+):
+    executor = HeldStartExecutor()
+    fnInstallExecutor(monkeypatch, executor)
+    monkeypatch.setattr(
+        startReservation, "_fsImageBuildState",
+        lambda connectionDocker, sName: startReservation.S_IMAGE_STATE_UNANSWERED,
+    )
+    sCredential = fsBootstrapCredential(appHub)
+    with fclientLive(appHub, sCredential) as client:
+        fnRegisterProject(client, tmp_path, S_PROJECT_NAME)
+        responseStart = client.post(f"/api/containers/{S_PROJECT_NAME}/start")
+    assert responseStart.status_code == 202, responseStart.text
+
+
 def test_a_session_holding_another_container_cannot_start_a_second(
     appHub, tmp_path, monkeypatch,
 ):
@@ -330,6 +390,12 @@ def test_a_session_holding_another_container_cannot_start_a_second(
         )
         assert responseStart.status_code == 409, responseStart.text
         assert S_SECOND_CONTAINER_NAME in responseStart.text
+        # The held name rides in `detail`, which is the one field the
+        # picker reads; a message-only refusal leaves it with nothing
+        # to offer releasing.
+        assert responseStart.json()["detail"]["sHeldContainerName"] == (
+            S_SECOND_CONTAINER_NAME
+        )
     assert executor.iCallCount == 0
     assert S_PROJECT_NAME not in appHub.state.dictContainerOwners
 
