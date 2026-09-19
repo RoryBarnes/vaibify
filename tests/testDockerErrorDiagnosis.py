@@ -1,4 +1,3 @@
-from unittest.mock import patch
 """Tests for fdictDiagnoseDockerError pattern matching.
 
 Each common Docker init failure should map to a specific hint and
@@ -6,6 +5,8 @@ copy-pasteable command. Unrecognized errors must still produce a
 non-empty hint and the verbatim error must travel along separately
 (verified in tests/testDockerStatusEndpoint.py).
 """
+
+from unittest.mock import patch
 
 from vaibify.docker.dockerContext import (
     S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP, S_RUNTIME_LINUX_ROOTFUL,
