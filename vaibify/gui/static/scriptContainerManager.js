@@ -258,6 +258,7 @@ var VaibifyContainerManager = (function () {
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
             _fsRenderContainmentChip(dictContainer, bHost) +
+            _fsRenderHeldChip(dictContainer) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -268,6 +269,7 @@ var VaibifyContainerManager = (function () {
                 bHost, _fbImageObtained(dictContainer),
                 dictContainer.bPinnedImageObtainable === true) +
             _fsRenderHostConvertMenuItem(bHost) +
+            _fsRenderReleaseMenuItem(dictContainer) +
             /* "Remove from list" stopped being the destructive item
                here the moment a permanent Delete joined the menu
                beneath it. It deletes nothing -- the container, the
@@ -299,6 +301,34 @@ var VaibifyContainerManager = (function () {
             'container-menu-item--irreversible" ' +
             'data-action="delete-environment">Delete environment…</div>'
         );
+    }
+
+    function _fsRenderHeldChip(dictContainer) {
+        /* The tab that started or claimed a container holds it until it
+           opens or releases it. A held tile that looked like every other
+           running one is how a researcher came to be refused a second
+           container with no idea why. */
+        if (dictContainer.bOwnedByThisSession !== true) return "";
+        return '<span class="containment-chip containment-chip--held" ' +
+            'title="This browser tab holds this container. Open it, or ' +
+            'release it from the \u22ee menu to open another.">' +
+            "held by this tab</span>";
+    }
+
+    function _fsRenderReleaseMenuItem(dictContainer) {
+        if (dictContainer.bOwnedByThisSession !== true) return "";
+        return '<div class="container-menu-item" data-action="release">' +
+            "Release</div>";
+    }
+
+    async function fnReleaseHeldContainer(sName) {
+        await fnReleaseClaim(sName);
+        if (!VaibifyApp.fsGetLeaseForContainer(sName)) {
+            VaibifyApp.fnShowToast(
+                "Released '" + sName + "'. This tab can now open " +
+                "another container.", "success");
+        }
+        await fnLoadContainers();
     }
 
     function _fsRenderContainmentChip(dictContainer, bHost) {
@@ -923,7 +953,48 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    function _fsHeldContainerNameFromRefusal(error) {
+        var dictDetail = (error && error.dictDetail) || {};
+        return dictDetail.sHeldContainerName || "";
+    }
+
+    function _fbOfferReleaseOfHeldContainer(error, sName, fnRetry) {
+        /* A refusal because THIS tab already holds a different container
+           names the obstacle; the remedy it implies -- release that one,
+           then do what was asked -- is offered here rather than left for
+           the researcher to work out. Releasing drops only this tab's
+           hold: the held container keeps running, and a release the
+           server refuses (a run or an agent is live in it) keeps the
+           lease and says so, in which case nothing is retried. */
+        var sHeldName = _fsHeldContainerNameFromRefusal(error);
+        if (!sHeldName || sHeldName === sName) return false;
+        VaibifyModals.fnShowConfirmModal(
+            "This tab already holds a container",
+            "This browser tab holds '" + sHeldName + "', and a tab can " +
+            "hold one container at a time. Release it to continue with '" +
+            sName + "'?\n\nReleasing does not stop '" + sHeldName +
+            "'; it only frees this tab to open another container.",
+            async function () {
+                await fnReleaseClaim(sHeldName);
+                if (VaibifyApp.fsGetLeaseForContainer(sHeldName)) {
+                    await fnLoadContainers();
+                    return;
+                }
+                await fnRetry(sName);
+            },
+            {
+                sConfirmLabel: "Release and continue",
+                sCancelLabel: "Keep '" + sHeldName + "'",
+            }
+        );
+        return true;
+    }
+
     function _fnReportClaimRefusal(sName, error) {
+        if (_fbOfferReleaseOfHeldContainer(
+                error, sName, fnHandleContainerClick)) {
+            return;
+        }
         var dictDetail = error.dictDetail || {};
         var sReason = dictDetail.sMessage
             || (dictDetail.iLockedByPort
@@ -987,6 +1058,7 @@ var VaibifyContainerManager = (function () {
         else if (sAction === "cancel-start")
             await fnCancelStartContainer(sName);
         else if (sAction === "stop") await fnStopContainer(sName);
+        else if (sAction === "release") await fnReleaseHeldContainer(sName);
         else if (sAction === "restart") await fnRestartContainer(sName);
         else if (sAction === "rebuild") await fnRebuildContainer(sName);
         else if (sAction === "reobtain") await fnReobtainPinnedImage(sName);
@@ -1623,6 +1695,10 @@ var VaibifyContainerManager = (function () {
             await _fnFollowStartToItsOutcome(sName, dictStart);
         } catch (error) {
             _fnForgetPendingStart();
+            if (_fbOfferReleaseOfHeldContainer(
+                    error, sName, fnStartContainer)) {
+                return;
+            }
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message),
                 "error");

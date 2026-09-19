@@ -1055,3 +1055,18 @@ and the dashboard's Admin menu opens a fresh vaibify session in a new
 browser tab — useful for working on **two different projects** side by
 side. Each window claims its own containers; it is not a way to open
 the *same* container twice.
+
+### One container per browser session
+
+The rule also runs the other way: one tab holds at most one container.
+Starting a container from a tile's ⋮ menu claims it for that tab
+before you open it, and the tile then reads **held by this tab**.
+Starting or opening a second container from the same tab is refused
+with *"This browser session already holds container ..."*, and the
+refusal offers to release the first one and continue. You can also
+release it yourself from the tile's ⋮ menu (**Release**), and
+returning to the container list from an open dashboard releases in
+the same way. Releasing drops only the tab's hold: the container keeps
+running, and a release is refused while a pipeline run or an agent is
+live in it. To work in two containers at once, open a second vaibify
+window.

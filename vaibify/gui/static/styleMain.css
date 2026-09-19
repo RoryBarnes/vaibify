@@ -393,6 +393,12 @@ html, body {
     border: 1px solid var(--border-error-tint);
     color: var(--color-red-text);
 }
+
+.containment-chip--held {
+    background: transparent;
+    border: 1px solid var(--color-blue);
+    color: var(--color-blue);
+}
 .status-dot.status-missing {
     background: transparent;
     border: 2px solid var(--color-red);

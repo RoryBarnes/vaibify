@@ -39,6 +39,7 @@ never touch either layer directly.
 """
 
 __all__ = [
+    "fdictRefusalDetail",
     "F_HEARTBEAT_STALE_SECONDS",
     "F_START_HARD_TIMEOUT_SECONDS",
     "StartCancelledError",
@@ -185,6 +186,20 @@ def fbReservationHeartbeatIsStale(
 # ---------------------------------------------------------------------
 # Beginning a start.
 # ---------------------------------------------------------------------
+
+def fdictRefusalDetail(dictBody):
+    """Return the ``detail`` the picker reads from a refused start.
+
+    The message alone left a researcher at a dead end: "this session
+    already holds X" named the obstacle and offered nothing. The held
+    container's name rides beside it so the picker can offer to release
+    that container and retry, which is the remedy the message implies.
+    """
+    dictDetail = {"sMessage": dictBody.get("sMessage", "")}
+    if dictBody.get("sHeldContainerName"):
+        dictDetail["sHeldContainerName"] = dictBody["sHeldContainerName"]
+    return dictDetail
+
 
 async def ftBeginStart(
     appState, sName, sBrowserSessionId, configProject, iPort,

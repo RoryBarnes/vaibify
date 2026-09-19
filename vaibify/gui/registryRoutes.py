@@ -329,18 +329,27 @@ def _fnAnnotateJournalState(dictContainer, sName, dictCtx):
 def _fnAnnotateOwnershipState(
     listContainers, dictContainerOwners, sCallerLease,
 ):
-    """Flag containers owned by a different browser session on this hub.
+    """Flag who holds each container: another session, or the caller.
 
     ``bOwnedByOtherSession`` is True when an in-process owner record
     exists whose lease differs from the caller's, so the picker can grey
-    a tile that another tab already holds. The owner's lease is never
-    echoed; only the boolean leaves the process.
+    a tile that another tab already holds. ``bOwnedByThisSession`` is
+    the complement the caller can act on: its own tab holds the
+    container -- a start from the picker claims before anything is
+    opened -- so the tile can say so and offer Release instead of
+    looking like every other running container. The owner's lease is
+    never echoed; only the booleans leave the process.
     """
     for dictContainer in listContainers:
         recordOwner = dictContainerOwners.get(dictContainer.get("sName"))
         dictContainer["bOwnedByOtherSession"] = bool(
             recordOwner is not None
             and recordOwner.sLeaseId != sCallerLease
+        )
+        dictContainer["bOwnedByThisSession"] = bool(
+            recordOwner is not None
+            and sCallerLease
+            and recordOwner.sLeaseId == sCallerLease
         )
         # Honest surfacing of a force-abandoned (poisoned) owner: the
         # journal annotation already renders the durable quarantine
@@ -742,7 +751,8 @@ def _fnRegisterStartContainer(app, dictCtx):
         )
         if iStatusCode == 409:
             return JSONResponse(status_code=409, content=dict(
-                dictBody, detail={"sMessage": dictBody.get("sMessage", "")},
+                dictBody,
+                detail=startReservation.fdictRefusalDetail(dictBody),
             ))
         return JSONResponse(status_code=iStatusCode, content=dictBody)
 

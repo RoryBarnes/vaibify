@@ -111,6 +111,59 @@ def testGetRegistryReturnsProjects(fixtureClient, monkeypatch):
     assert len(response.json()["listContainers"]) == 1
 
 
+def testGetRegistryMarksTheCallersOwnHold(
+    fixtureApp, fixtureClient, monkeypatch,
+):
+    """The tile a tab holds is flagged as its own, not as somebody else's.
+
+    Both flags come from one owner record and one lease comparison, so
+    they are asserted together across the three states a tile can be
+    in: held by the caller, held by another session, held by nobody.
+    A caller presenting no lease owns nothing, whatever the records say.
+    """
+    from vaibify.gui import containerOwnership
+    listProjects = [
+        {
+            "sName": sName, "sContainerName": sName,
+            "sStatus": "running", "bRunning": True,
+        }
+        for sName in ("heldByMe", "heldByAnother", "heldByNobody")
+    ]
+    monkeypatch.setattr(
+        "vaibify.config.registryManager.flistGetAllProjectsWithStatus",
+        lambda: listProjects,
+    )
+    fixtureApp.state.dictContainerOwners["heldByMe"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="lease-mine", fileHandleLock=None,
+        )
+    )
+    fixtureApp.state.dictContainerOwners["heldByAnother"] = (
+        containerOwnership.OwnerRecord(
+            sLeaseId="lease-theirs", fileHandleLock=None,
+        )
+    )
+
+    def fdictFlagsByName(dictHeaders):
+        response = fixtureClient.get("/api/registry", headers=dictHeaders)
+        assert response.status_code == 200, response.text
+        return {
+            dictContainer["sName"]: (
+                dictContainer["bOwnedByThisSession"],
+                dictContainer["bOwnedByOtherSession"],
+            )
+            for dictContainer in response.json()["listContainers"]
+        }
+
+    dictFlags = fdictFlagsByName({"X-Vaibify-Lease": "lease-mine"})
+    assert dictFlags["heldByMe"] == (True, False)
+    assert dictFlags["heldByAnother"] == (False, True)
+    assert dictFlags["heldByNobody"] == (False, False)
+    dictFlagsLeaseless = fdictFlagsByName({})
+    assert dictFlagsLeaseless["heldByMe"] == (False, True)
+    assert dictFlagsLeaseless["heldByNobody"] == (False, False)
+
+
 # --- POST /api/registry ---
 
 def testAddProjectSuccess(fixtureClient, tmp_path):

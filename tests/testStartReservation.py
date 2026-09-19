@@ -330,6 +330,12 @@ def test_a_session_holding_another_container_cannot_start_a_second(
         )
         assert responseStart.status_code == 409, responseStart.text
         assert S_SECOND_CONTAINER_NAME in responseStart.text
+        # The held name rides in `detail`, which is the one field the
+        # picker reads; a message-only refusal leaves it with nothing
+        # to offer releasing.
+        assert responseStart.json()["detail"]["sHeldContainerName"] == (
+            S_SECOND_CONTAINER_NAME
+        )
     assert executor.iCallCount == 0
     assert S_PROJECT_NAME not in appHub.state.dictContainerOwners
 
