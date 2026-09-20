@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev33 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev44 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b2f32a34"></script>
+      <script src="_static/documentation_options.js?v=9c648d64"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -78,6 +78,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-proof-tab">The PROOF tab</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#admin-environment-info">Admin &gt; Environment Info</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-hub-s-help-and-diagnosis">The hub’s help and diagnosis</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-help-panel">The Help panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#verification">Verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#publishing-and-remote-sync">Publishing and remote sync</a><ul>
@@ -95,6 +96,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#hub-mode">Hub mode</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#two-ways-to-remove-an-environment">Two ways to remove an environment</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#one-browser-session-per-container">One browser session per container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#one-container-per-browser-session">One container per browser session</a></li>
 </ul>
 </li>
 </ul>
@@ -854,6 +856,23 @@ binaries, and the lock file freezes what runs your analyses.</p>
 vaibify recorded the epoch carries no label, and the modal says so
 rather than guessing.</p>
 </section>
+<section id="the-hub-s-help-and-diagnosis">
+<h2>The hub’s help and diagnosis<a class="headerlink" href="#the-hub-s-help-and-diagnosis" title="Link to this heading"></a></h2>
+<p>The environment hub (the landing page) has a <strong>?</strong> beside the ⧉ New
+window icon. It opens three short blocks: creating an environment
+(starting with <strong>+</strong>), a legend of the tile marks drawn with the real
+glyphs, and troubleshooting tips such as the one-environment-per-tab
+rule.</p>
+<p>Every failure toast on the hub ends with <em>Click to run a diagnosis</em>.
+The click runs the host-scope checks of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> through the
+hub and shows each finding with its level, message, remedy and
+command — the same report the terminal prints, so the two cannot
+disagree. Docker’s own error text, when vaibify recognizes it, is
+translated into a sentence about your project (an image that has not
+been built, a port another program holds, a container name left from
+an earlier start, a full disk) with Docker’s words kept in
+parentheses as evidence.</p>
+</section>
 <section id="the-help-panel">
 <h2>The Help panel<a class="headerlink" href="#the-help-panel" title="Link to this heading"></a></h2>
 <p>The <strong>?</strong> button beside the project name opens the Help panel. It
@@ -1229,6 +1248,21 @@ and the dashboard’s Admin menu opens a fresh vaibify session in a new
 browser tab — useful for working on <strong>two different projects</strong> side by
 side. Each window claims its own containers; it is not a way to open
 the <em>same</em> container twice.</p>
+</section>
+<section id="one-container-per-browser-session">
+<h3>One container per browser session<a class="headerlink" href="#one-container-per-browser-session" title="Link to this heading"></a></h3>
+<p>The rule also runs the other way: one tab holds at most one container.
+Starting a container from a tile’s ⋮ menu claims it for that tab
+before you open it, and the tile then reads <strong>held by this tab</strong>.
+Starting or opening a second container from the same tab is refused
+with <em>“This browser session already holds container …”</em>, and the
+refusal offers to release the first one and continue. You can also
+release it yourself from the tile’s ⋮ menu (<strong>Release</strong>), and
+returning to the container list from an open dashboard releases in
+the same way. Releasing drops only the tab’s hold: the container keeps
+running, and a release is refused while a pipeline run or an agent is
+live in it. To work in two containers at once, open a second vaibify
+window.</p>
 </section>
 </section>
 </section>

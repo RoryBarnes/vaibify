@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.14.dev33 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.14.dev44 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b2f32a34"></script>
+      <script src="_static/documentation_options.js?v=9c648d64"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,6 +54,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#developers">Developers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#data-format-libraries">Data Format Libraries</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#vaibify-command-not-found-after-an-upgrade"><code class="docutils literal notranslate"><span class="pre">vaibify:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code> after an upgrade</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installing-for-remote-access">Installing for remote access</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#browser-compatibility">Browser Compatibility</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installing-docker">Installing Docker</a><ul>
@@ -158,6 +159,17 @@ machine with no container at all, which is how the
 <p>This installs the CLI, the Docker SDK, keyring integration, and the
 common data format libraries. A few specialist format readers live in
 an extra — see <a class="reference internal" href="#data-format-libraries">Data Format Libraries</a> below.</p>
+<p>Install into a Python built for your machine’s processor. On an
+Apple Silicon Mac an Intel-only Python (an older Anaconda, for
+example) runs through Rosetta, and everything installed into it stops
+working the day an operating-system upgrade removes that layer. Check
+before installing:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>file<span class="w"> </span><span class="s2">"</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>python3<span class="k">)</span><span class="s2">"</span>
+uname<span class="w"> </span>-m
+</pre></div>
+</div>
+<p>The two must name the same architecture. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> warns
+whenever the Python it runs under is being translated.</p>
 <p>After installation, confirm the CLI is available:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>--version
 </pre></div>
@@ -251,6 +263,33 @@ command:</p>
 vaibify<span class="w"> </span>--version
 </pre></div>
 </div>
+</section>
+<section id="vaibify-command-not-found-after-an-upgrade">
+<h2><code class="docutils literal notranslate"><span class="pre">vaibify:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code> after an upgrade<a class="headerlink" href="#vaibify-command-not-found-after-an-upgrade" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command is a two-line launcher whose first line names
+the Python that installed it. When that Python stops working, the
+launcher dies with it, and because your shell’s Python setup usually
+hides the error, the only symptom is <code class="docutils literal notranslate"><span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code>. The two
+common causes:</p>
+<ol class="arabic simple">
+<li><p><strong>The Python was built for a different processor</strong> and ran through
+a translation layer the operating-system upgrade removed. On an
+Apple Silicon Mac the tell is <code class="docutils literal notranslate"><span class="pre">Bad</span> <span class="pre">CPU</span> <span class="pre">type</span> <span class="pre">in</span> <span class="pre">executable</span></code> when you
+run the interpreter directly.</p></li>
+<li><p><strong>The Python itself was replaced or removed</strong> – a package manager
+moved to a new minor version, or the developer tools were
+reinstalled and took their bundled Python with them.</p></li>
+</ol>
+<p>Find the launcher and the interpreter it names:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>find<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">"</span><span class="w"> </span>/opt<span class="w"> </span>/usr/local<span class="w"> </span>-maxdepth<span class="w"> </span><span class="m">4</span><span class="w"> </span>-name<span class="w"> </span>vaibify<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+head<span class="w"> </span>-1<span class="w"> </span>&lt;that<span class="w"> </span>path&gt;
+</pre></div>
+</div>
+<p>Run the interpreter named on that line. If it fails, the fix is not
+in vaibify: install a Python that runs natively on this machine (see
+<a class="reference internal" href="#users">Users</a>), then reinstall vaibify and the other commands you
+rely on from it. Reinstalling the translation layer restores the old
+Python, but only until the next time the vendor withdraws it.</p>
 </section>
 <section id="installing-for-remote-access">
 <h2>Installing for remote access<a class="headerlink" href="#installing-for-remote-access" title="Link to this heading"></a></h2>

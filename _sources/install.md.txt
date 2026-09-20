@@ -31,6 +31,20 @@ This installs the CLI, the Docker SDK, keyring integration, and the
 common data format libraries. A few specialist format readers live in
 an extra — see [Data Format Libraries](#data-format-libraries) below.
 
+Install into a Python built for your machine's processor. On an
+Apple Silicon Mac an Intel-only Python (an older Anaconda, for
+example) runs through Rosetta, and everything installed into it stops
+working the day an operating-system upgrade removes that layer. Check
+before installing:
+
+```bash
+file "$(command -v python3)"
+uname -m
+```
+
+The two must name the same architecture. `vaibify doctor` warns
+whenever the Python it runs under is being translated.
+
 After installation, confirm the CLI is available:
 
 ```bash
@@ -125,6 +139,35 @@ command:
 rm ~/.vaibify/.setup_done
 vaibify --version
 ```
+
+## `vaibify: command not found` after an upgrade
+
+The `vaibify` command is a two-line launcher whose first line names
+the Python that installed it. When that Python stops working, the
+launcher dies with it, and because your shell's Python setup usually
+hides the error, the only symptom is `command not found`. The two
+common causes:
+
+1. **The Python was built for a different processor** and ran through
+   a translation layer the operating-system upgrade removed. On an
+   Apple Silicon Mac the tell is `Bad CPU type in executable` when you
+   run the interpreter directly.
+2. **The Python itself was replaced or removed** -- a package manager
+   moved to a new minor version, or the developer tools were
+   reinstalled and took their bundled Python with them.
+
+Find the launcher and the interpreter it names:
+
+```bash
+find "$HOME" /opt /usr/local -maxdepth 4 -name vaibify -type f 2>/dev/null
+head -1 <that path>
+```
+
+Run the interpreter named on that line. If it fails, the fix is not
+in vaibify: install a Python that runs natively on this machine (see
+[Users](#users)), then reinstall vaibify and the other commands you
+rely on from it. Reinstalling the translation layer restores the old
+Python, but only until the next time the vendor withdraws it.
 
 ## Installing for remote access
 
