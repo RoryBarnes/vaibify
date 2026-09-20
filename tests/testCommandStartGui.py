@@ -39,9 +39,10 @@ def _fcontextPatchLauncherModules(mockCreate, mockUvicorn):
     """Replace the app factory and the launcher's uvicorn, so no server runs.
 
     The launcher imports uvicorn at module load and derives its logging
-    server class from ``uvicorn.Server`` there, so swapping the module
-    in ``sys.modules`` alone would leave the real class bound; the
-    launcher's own two names are replaced beside it.
+    server class from uvicorn's own there, so swapping the module in
+    ``sys.modules`` alone would leave the real class bound; the
+    launcher's own two names are replaced beside it. (Nothing here
+    binds a port: the autouse fixture above stubs the socket binder.)
     """
     with patch.dict(
         sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),

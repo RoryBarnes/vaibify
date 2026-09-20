@@ -260,7 +260,16 @@ def fbInterpreterRunsTranslated():
     would only report the same fact one step removed. The kernel key
     is absent on a machine with no translation layer, and absent is
     "not translated".
+
+    Only macOS ships a translation layer the kernel will admit to, and
+    only its libc exports ``sysctlbyname`` at all: glibc has no such
+    symbol, so the lookup itself raises there. The platform is settled
+    here, in the probe, because the first caller outside the doctor
+    (the build preflight's host-architecture read) reached it on a
+    Linux runner and crashed the build before it started (2026-09-20).
     """
+    if sys.platform != "darwin":
+        return False
     fiSysctlByName = ctypes.CDLL(
         ctypes.util.find_library("c"), use_errno=True,
     ).sysctlbyname

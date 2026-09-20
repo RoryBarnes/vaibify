@@ -21850,4 +21850,18 @@ def _fdictEntry(sRel):
         old='        if (dictDetail.sMessage) return dictDetail.sMessage;\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testDoctorInterpreterArchitecture.py::'
+            'test_the_probe_never_touches_libc_off_macos'
+        ),
+        # the probe looks up sysctlbyname on every platform again
+        source='vaibify/cli/doctorHostChecks.py',
+        old=(
+            '    if sys.platform != "darwin":\n'
+            '        return False\n'
+            '    fiSysctlByName = ctypes.CDLL(\n'
+        ),
+        new='    fiSysctlByName = ctypes.CDLL(\n',
+    ),
 ]
