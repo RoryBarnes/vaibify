@@ -13,10 +13,22 @@ None of these is fatal, and the levels say so. ``--memory`` is an
 upper bound rather than a reservation, so a cap above the daemon's RAM
 is suspicious, not wrong; ``--cpus`` above the daemon's count is the
 same shape.
+
+The fourth fact is about the interpreter answering the command. A
+Python built for a different CPU than the machine's runs only through
+the operating system's translation layer, and an OS upgrade can
+withdraw that layer: every command installed into that Python then
+dies with "Bad CPU type in executable", the shell reports "command not
+found", and ``doctor`` itself can no longer run to say why. So the
+warning has to fire while the interpreter still works.
 """
 
+import ctypes
+import ctypes.util
 import os
+import platform
 import shutil
+import sys
 
 from vaibify.docker.dockerContext import (
     fdictClassifyDockerRuntime, fdictReadDaemonFacts,
@@ -34,6 +46,7 @@ from .preflightResult import (
 
 __all__ = [
     "flistCheckDepositScratchSpace", "flistCheckResourceAllocation",
+    "fpreflightInterpreterArchitecture",
 ]
 
 
@@ -236,3 +249,74 @@ def flistCheckResourceAllocation(config):
     listResults = _flistCheckCpuAllocation(config, dictDaemon)
     listResults.extend(_flistCheckMemoryAllocation(config, dictDaemon))
     return listResults
+
+
+def _fbInterpreterRunsTranslated():
+    """True when the kernel reports THIS process as CPU-translated.
+
+    Asks the running process about itself rather than spawning a
+    probe, because a child inherits the parent's translation and so
+    would only report the same fact one step removed. The kernel key
+    is absent on a machine with no translation layer, and absent is
+    "not translated".
+    """
+    fiSysctlByName = ctypes.CDLL(
+        ctypes.util.find_library("c"), use_errno=True,
+    ).sysctlbyname
+    iTranslated = ctypes.c_int(0)
+    iSize = ctypes.c_size_t(ctypes.sizeof(iTranslated))
+    iStatus = fiSysctlByName(
+        b"sysctl.proc_translated", ctypes.byref(iTranslated),
+        ctypes.byref(iSize), None, 0,
+    )
+    return iStatus == 0 and iTranslated.value == 1
+
+
+def fpreflightInterpreterArchitecture():
+    """Report whether the Python answering this command is native.
+
+    Only macOS ships a translation layer the kernel will admit to, so
+    every other platform returns None and the report says nothing.
+    Naming the interpreter matters more than naming the layer: the
+    remedy is to install into a different Python, and ``sys.executable``
+    is the one thing the researcher must not reuse.
+    """
+    if sys.platform != "darwin":
+        return None
+    sMechanism = (
+        "Asks the kernel whether this process runs under CPU translation "
+        "(the sysctl.proc_translated key) and names the interpreter's "
+        "own build architecture from platform.machine()."
+    )
+    sMachine = platform.machine()
+    if not _fbInterpreterRunsTranslated():
+        return PreflightResult(
+            sName="interpreter-architecture", sLevel=S_LEVEL_OK,
+            sScope=S_SCOPE_HOST,
+            sMessage=(
+                f"the Python answering this command ({sys.executable}) "
+                f"is a native {sMachine} build."
+            ),
+            sMechanism=sMechanism,
+        )
+    return PreflightResult(
+        sName="interpreter-architecture", sLevel=S_LEVEL_WARN,
+        sScope=S_SCOPE_HOST,
+        sMessage=(
+            f"the Python answering this command ({sys.executable}) is "
+            f"an {sMachine} build running through CPU translation on a "
+            "machine with a different processor. An operating-system "
+            "upgrade can remove that layer, after which every command "
+            "installed into this Python fails with 'Bad CPU type in "
+            "executable' and the shell reports 'command not found'."
+        ),
+        sRemediation=(
+            "Install vaibify into a Python built for this machine's "
+            "processor -- one whose `file` output names the same "
+            "architecture as the machine -- and reinstall the other "
+            "commands you rely on from it, before an upgrade forces "
+            "the move."
+        ),
+        sCommand='file "$(command -v python3)"',
+        sMechanism=sMechanism,
+    )

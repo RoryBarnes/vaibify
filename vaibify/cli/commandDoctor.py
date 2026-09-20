@@ -143,6 +143,18 @@ def fpreflightInstalledCheckout():
     )
 
 
+def _flistInterpreterChecks():
+    """Run the checks about the Python answering this command.
+
+    These sit beside the installed-checkout fact and ahead of every
+    scope, host projects included, because they describe the process
+    producing the report rather than anything the project chose.
+    """
+    from .doctorHostChecks import fpreflightInterpreterArchitecture
+    preflightResult = fpreflightInterpreterArchitecture()
+    return [] if preflightResult is None else [preflightResult]
+
+
 def _fdictHostProjectOrNone(config):
     """Return the registry record when config names a HOST project."""
     if config is None:
@@ -371,6 +383,7 @@ def flistRunDoctorChecks(
     run, and the exit code treats exactly those as REQUESTED.
     """
     listResults = [fpreflightInstalledCheckout()]
+    listResults.extend(_flistInterpreterChecks())
     dictHostProject = _fdictHostProjectOrNone(config)
     if dictHostProject is not None:
         listResults.extend(_flistHostProjectChecks(dictHostProject))

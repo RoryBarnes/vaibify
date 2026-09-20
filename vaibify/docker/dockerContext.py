@@ -108,21 +108,58 @@ S_COLIMA_DEFAULT_PROFILE = "default"
 
 
 def fbColimaActive():
-    """Return True iff the active Docker context is a Colima context."""
-    return bool(_RE_COLIMA_CONTEXT.match(fsActiveDockerContext()))
+    """Return True iff this host is talking to a Colima daemon.
+
+    Decided from the context name, or from a Colima socket named by
+    ``DOCKER_HOST`` -- the variable that flattens the name to
+    ``default`` is the one that carries the path.
+    """
+    return _fmatchColimaEvidence(
+        fsActiveDockerContext(), os.environ.get("DOCKER_HOST", ""),
+    ) is not None
 
 
-def fsColimaProfileName():
+# Colima's socket lives at ~/.colima/<profile>/docker.sock, and that
+# path is the evidence that survives ``DOCKER_HOST``: once the variable
+# is set -- by the researcher, or by the hub seeding it from the
+# context -- ``docker context show`` answers ``default`` whatever the
+# context was, and a classifier reading the name alone called a
+# stopped Colima "unknown" from inside the very hub that had just
+# resolved its socket (2026-09-18).
+_RE_COLIMA_ENDPOINT = re.compile(
+    r"/\.colima/(?P<profile>[^/]+)/docker\.sock$",
+)
+
+
+def _fmatchColimaEvidence(sContext, sEndpoint):
+    """Return the regex match naming a Colima profile, or None.
+
+    The context name is tried first because it is the researcher's own
+    declaration; the socket path answers when the name has been
+    flattened to ``default`` by ``DOCKER_HOST``.
+    """
+    matchContext = _RE_COLIMA_CONTEXT.match(sContext)
+    if matchContext is not None:
+        return matchContext
+    return _RE_COLIMA_ENDPOINT.search(sEndpoint or "")
+
+
+def fsColimaProfileName(sEndpoint=""):
     """Return the active Colima profile name, or '' when not Colima.
 
     The default profile answers ``"default"`` -- the name ``colima``
     itself uses for it -- so a caller can always print the profile it
     is talking about rather than printing nothing for the common case.
+    ``sEndpoint`` lets the socket path stand in for a context name
+    that ``DOCKER_HOST`` has flattened.
     """
-    matchContext = _RE_COLIMA_CONTEXT.match(fsActiveDockerContext())
-    if matchContext is None:
+    matchEvidence = _fmatchColimaEvidence(
+        fsActiveDockerContext(),
+        sEndpoint or os.environ.get("DOCKER_HOST", ""),
+    )
+    if matchEvidence is None:
         return ""
-    return matchContext.group("profile") or S_COLIMA_DEFAULT_PROFILE
+    return matchEvidence.group("profile") or S_COLIMA_DEFAULT_PROFILE
 
 
 S_RUNTIME_DOCKER_DESKTOP = "docker-desktop"
@@ -174,7 +211,7 @@ def _fbInfoReportsDockerDesktop(jsonInfo):
 
 def _fsClassifyFromEvidence(sContext, sEndpoint, jsonInfo):
     """Return the runtime name implied by the three evidence sources."""
-    if _RE_COLIMA_CONTEXT.match(sContext):
+    if _fmatchColimaEvidence(sContext, sEndpoint) is not None:
         return S_RUNTIME_COLIMA
     if _fbInfoReportsDockerDesktop(jsonInfo):
         return S_RUNTIME_DOCKER_DESKTOP
@@ -217,7 +254,7 @@ def fdictClassifyDockerRuntime():
     return {
         "sRuntime": sRuntime,
         "sContextName": sContext,
-        "sColimaProfile": fsColimaProfileName(),
+        "sColimaProfile": fsColimaProfileName(sEndpoint),
         "sEndpoint": sEndpoint,
         "bDaemonAnswered": bool(jsonInfo),
     }

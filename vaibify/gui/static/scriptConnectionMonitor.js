@@ -33,6 +33,21 @@ var VaibifyConnectionMonitor = (function () {
         return false;
     }
 
+    var _bStaleHubSurfaced = false;
+
+    function _fnSurfaceStaleHub(dictError) {
+        /* A server error on the hub poll used to be a console line and
+           a tile list frozen at its last good render, indefinitely.
+           Once per streak, say so; the diagnosis click is the way out. */
+        if (_bStaleHubSurfaced) return;
+        _bStaleHubSurfaced = true;
+        VaibifyDiagnosis.fnReportFailure(
+            "The environment list could not be refreshed (" +
+            VaibifyUtilities.fsSanitizeErrorForUser(
+                dictError && dictError.message) +
+            "). What you see is the last state vaibify saw.");
+    }
+
     function fnReportPollFailure(sPoller, dictError) {
         if (_bSurfaced) return;
         if (!_fbErrorIsDisconnectSignal(dictError)) {
@@ -40,6 +55,7 @@ var VaibifyConnectionMonitor = (function () {
                 "[poll] " + sPoller + " failed:",
                 dictError && dictError.message
             );
+            if (sPoller === "container-hub") _fnSurfaceStaleHub(dictError);
             return;
         }
         _dictConsecutiveFailures[sPoller] =
@@ -48,6 +64,7 @@ var VaibifyConnectionMonitor = (function () {
     }
 
     function fnReportPollSuccess(sPoller) {
+        if (sPoller === "container-hub") _bStaleHubSurfaced = false;
         _dictConsecutiveFailures[sPoller] = 0;
     }
 

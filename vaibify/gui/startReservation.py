@@ -39,6 +39,8 @@ never touch either layer directly.
 """
 
 __all__ = [
+    "fdictRefusalDetail",
+    "S_IMAGE_STATE_BUILT", "S_IMAGE_STATE_MISSING", "S_IMAGE_STATE_UNANSWERED",
     "F_HEARTBEAT_STALE_SECONDS",
     "F_START_HARD_TIMEOUT_SECONDS",
     "StartCancelledError",
@@ -63,6 +65,9 @@ from dataclasses import dataclass, field
 
 from vaibify.config import operationJournal
 from vaibify.docker import containerManager
+from vaibify.docker.dockerConnection import (
+    S_IMAGE_STATE_BUILT, S_IMAGE_STATE_MISSING, S_IMAGE_STATE_UNANSWERED,
+)
 from . import commitCarrier
 from . import containerOwnership
 from . import sessionLifecycle
@@ -186,6 +191,21 @@ def fbReservationHeartbeatIsStale(
 # Beginning a start.
 # ---------------------------------------------------------------------
 
+def fdictRefusalDetail(dictBody):
+    """Return the ``detail`` the picker reads from a refused start.
+
+    The message alone left a researcher at a dead end: "this session
+    already holds X" named the obstacle and offered nothing. The held
+    container's name rides beside it so the picker can offer to release
+    that container and retry, which is the remedy the message implies.
+    """
+    dictDetail = {"sMessage": dictBody.get("sMessage", "")}
+    for sKey in ("sHeldContainerName", "sAction"):
+        if dictBody.get(sKey):
+            dictDetail[sKey] = dictBody[sKey]
+    return dictDetail
+
+
 async def ftBeginStart(
     appState, sName, sBrowserSessionId, configProject, iPort,
     connectionDocker=None, sAcknowledgeReservationId="",
@@ -214,6 +234,11 @@ async def ftBeginStart(
     )
     if sRunningRefusal:
         return (409, {"sName": sName, "sMessage": sRunningRefusal})
+    sUnbuiltRefusal = _fsRefusalForUnbuiltImage(connectionDocker, sName)
+    if sUnbuiltRefusal:
+        return (409, {
+            "sName": sName, "sMessage": sUnbuiltRefusal, "sAction": "build",
+        })
     sOutcome, dictBody, recordOwner = (
         await sessionLifecycle.ftReserveContainerForStart(
             appState, sName, sBrowserSessionId, iPort, connectionDocker,
@@ -311,6 +336,53 @@ def _fsRefusalForAlreadyRunningContainer(connectionDocker, sName):
         f"Container '{sName}' is already running, so there is nothing to "
         "start. Open it from the dashboard, or stop it first if you mean "
         "to start a fresh one."
+    )
+
+
+def _fsImageBuildState(connectionDocker, sName):
+    """Ask the CONNECTION whether ``<name>:latest`` exists; three answers.
+
+    Through the connection the route already holds, never a subprocess
+    of this module's own: the connection is what the tests and the
+    browser lane stand in for, and a probe that bypassed it asked the
+    real daemon about a pretend container. Only a POSITIVE "missing"
+    may refuse a start; a connection that cannot answer -- absent, a
+    double without the probe, a daemon that errs -- reads as
+    UNANSWERED and falls through to the launch, where the authoritative
+    failure is an ordinary one, the same rule the already-running
+    probe follows.
+    """
+    from vaibify.config.connectionAvailability import fbDockerReachable
+    if not fbDockerReachable(connectionDocker):
+        return S_IMAGE_STATE_UNANSWERED
+    try:
+        return connectionDocker.fsImageState(f"{sName}:latest")
+    except AttributeError:
+        # A double or an adapter that does not model the lookup.
+        return S_IMAGE_STATE_UNANSWERED
+    except Exception:  # noqa: BLE001 -- an unanswered probe is not a refusal
+        return S_IMAGE_STATE_UNANSWERED
+
+
+def _fsRefusalForUnbuiltImage(connectionDocker, sName):
+    """Return why a start of an unbuilt project is refused, or ''.
+
+    Refusing here, before any reservation, is what turns "pull access
+    denied ... repository does not exist" into a sentence about the
+    project. A project whose image is OBTAINED rather than built has
+    its own launch guard with its own two remedies and is left to it.
+    """
+    from vaibify.config.registryManager import (
+        fbProjectImageIsObtained, fdictGetProject,
+    )
+    if fbProjectImageIsObtained(fdictGetProject(sName)):
+        return ""
+    if _fsImageBuildState(connectionDocker, sName) != S_IMAGE_STATE_MISSING:
+        return ""
+    return (
+        f"The image for '{sName}' has not been built yet, so there is "
+        "nothing to start. Click its tile to build it, or choose Rebuild "
+        "from its \u22ee menu."
     )
 
 
@@ -587,7 +659,7 @@ def _fbCommitFailedStart(
     Returns whether the container was proven clean, which is the ONLY
     condition under which the lifecycle authority frees its flock.
     """
-    sSafeError = _fsSafeStartError(errorStart)
+    sSafeError = _fsExplainedStartError(sName, errorStart)
     if not dictTermination["bExited"]:
         dictSettlement = dict(dictSettlement, bConclusive=False, sDetail=(
             "the launch process could not be confirmed exited"
@@ -678,6 +750,26 @@ def _fsSafeStartError(errorStart):
         return "The start was cancelled."
     sMessage = str(errorStart).strip() or errorStart.__class__.__name__
     return sMessage[:400]
+
+
+def _fsExplainedStartError(sName, errorStart):
+    """Translate a launch failure into the researcher's own terms.
+
+    The daemon's stderr reaches the picker verbatim otherwise, and a
+    missing image read as "pull access denied ... repository does not
+    exist" to the researcher who had just created the project. The
+    catalog answers what it recognises and returns the text untouched
+    when it does not.
+    """
+    if isinstance(errorStart, StartCancelledError):
+        return _fsSafeStartError(errorStart)
+    from vaibify.docker.dockerErrorDiagnosis import (
+        fsExplainContainerOperationFailure,
+    )
+    sExplained = fsExplainContainerOperationFailure(
+        "Start", sName, _fsSafeStartError(errorStart),
+    )
+    return sExplained[:600]
 
 
 def _fsCombineFailureDetail(sSafeError, dictSettlement):

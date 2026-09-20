@@ -7,6 +7,8 @@ import concurrent.futures
 import json
 import os
 
+from fastapi import Request
+
 from .. import pipelineServer as _pipelineServer
 from ..dockerStatus import (
     fdictGetDockerStatus,
@@ -14,6 +16,7 @@ from ..dockerStatus import (
     fdictDetectDockerRuntime,
 )
 from ..resourceMonitor import fdictGetContainerStats
+from ..routeContext import fnRejectAgentTokenLane
 from ..routeScope import S_CARRIER_TYPED_READ, ffnDeclareCarrierMode
 
 
@@ -449,6 +452,30 @@ def _fnRegisterContainerIsolation(app, dictCtx):
         )
 
 
+def _fnRegisterDoctor(app, dictCtx):
+    """Register GET /api/system/doctor: doctor's host checks, as JSON.
+
+    The dashboard's failure toasts end in "Click to run a diagnosis",
+    and this is what the click runs: the same host-scope checks
+    ``vaibify doctor`` prints, so the report a researcher reads in the
+    browser cannot say something different from the one in their
+    terminal. Read-only, project-less (the environment checks only),
+    and refused to the in-container agent lane, which must not read
+    host state.
+    """
+    del dictCtx
+
+    @app.get("/api/system/doctor")
+    async def fdictHandleGetDoctorReport(request: Request):
+        fnRejectAgentTokenLane(request)
+        from vaibify.cli.commandDoctor import flistRunDoctorChecks
+        from vaibify.cli.preflightResult import flistRenderResultsForJson
+        listResults = await asyncio.to_thread(
+            flistRunDoctorChecks, None, False, False,
+        )
+        return {"listFindings": flistRenderResultsForJson(listResults)}
+
+
 def _fnRegisterDockerStatus(app, dictCtx):
     """Register the Docker availability probe + retry endpoints.
 
@@ -553,3 +580,4 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterContainerReady(app, dictCtx)
     _fnRegisterContainerIsolation(app, dictCtx)
     _fnRegisterDockerStatus(app, dictCtx)
+    _fnRegisterDoctor(app, dictCtx)

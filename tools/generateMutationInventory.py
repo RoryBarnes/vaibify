@@ -175,6 +175,11 @@ DICT_PRIMITIVE_ACCESS = {
     "fnSignalProcessGroupMembers": S_ACCESS_SIGNAL,
     # --- vaibify/docker/dockerConnection.py: read / cache ---
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
+    # Whether a local image tag exists: a daemon lookup that runs no
+    # program anywhere, over a tag the caller composes from a validated
+    # project name. The start guard that asks may refuse only on its
+    # positive "missing" answer.
+    "fsImageState": S_ACCESS_TYPED_READ,
     "fcontainerGetById": S_ACCESS_TYPED_READ,
     "fbaFetchFile": S_ACCESS_TYPED_READ,
     "fbaFetchCredentialFile": S_ACCESS_TYPED_READ,

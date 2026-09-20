@@ -235,6 +235,35 @@ DICT_NAMED_AUTHORITIES = {
             "Host preflight: probes the docker CLI and daemon before a "
             "run is attempted, so a failure is reported rather than hit.",
         ),
+    "cli/commandStart.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http"],
+            "The start pre-flight (ports, image, container name, bind "
+            "mounts) that `vaibify start` runs on the host, and that the "
+            "dashboard's diagnosis (gui/routes/systemRoutes.py, "
+            "GET /api/system/doctor) reaches through cli/commandDoctor.py "
+            "so the browser reports the same checks the terminal does. "
+            "Every launch is a read-only docker probe over fixed argv.",
+        ),
+    "docker/bridgeGateway.py|fsResolveDockerBridgeGateway|docker-client|"
+    "docker|import|0":
+        _fdictAuthority(
+            ["host-cli", "http"],
+            "Asks the daemon for its bridge gateway address, which is "
+            "how the hub binds beside loopback on Linux; reached from "
+            "the dashboard through the doctor route's host checks. A "
+            "read of daemon facts, never a container operation.",
+        ),
+    "docker/dockerConnection.py|fsImageState|docker-client|"
+    "docker.errors.ImageNotFound|import-from|0":
+        _fdictAuthority(
+            ["http"],
+            "The exception class the gateway's image lookup uses to tell "
+            "a positive 'missing' from a daemon that did not answer, so "
+            "the start route can refuse an unbuilt project with a "
+            "sentence about building. The lookup runs no program in any "
+            "container and is a typed read in DICT_PRIMITIVE_ACCESS.",
+        ),
     "config/keepAliveManager.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["http", "background"],
