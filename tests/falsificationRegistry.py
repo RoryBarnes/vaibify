@@ -9223,16 +9223,16 @@ def _fdictEntry(sRel):
         # shortcut, and wrong because it never consults the MODE. Every
         # container project would search its own config folder.
         old=(
-            '        sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
-            '            sContainerId, '
+            '            sSearchRoot = projectRoots.fsResolveProjectRoot(\n'
+            '                sContainerId, '
             'workflowManager.DEFAULT_SEARCH_ROOT,\n'
-            '        )\n'
+            '            )\n'
         ),
         new=(
-            '        from vaibify.config import registryManager\n'
-            '        sSearchRoot = (registryManager.fdictGetProject('
+            '            from vaibify.config import registryManager\n'
+            '            sSearchRoot = (registryManager.fdictGetProject('
             'sContainerId) or {}).get(\n'
-            '            "sDirectory", '
+            '                "sDirectory", '
             'workflowManager.DEFAULT_SEARCH_ROOT)\n'
         ),
     ),
@@ -11004,7 +11004,7 @@ def _fdictEntry(sRel):
             '                if (await _fbReclaimAndRetryOnce(\n'
             '                    sId, sWorkflowPathArg, sWorkflowName,\n'
             '                    iThisGeneration\n'
-            '                )) return;\n'
+            '                )) return true;\n'
         ),
         new='',
     ),

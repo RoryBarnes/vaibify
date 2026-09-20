@@ -70,6 +70,20 @@ verification indicator. If you add a new render path, call it.
   backend is slow or a step is failing, show it. See "The rules with
   no trigger" in `../../../AGENTS.md`, and the
   `dashboard-state-honesty` skill.
+- **A failure the researcher can see ends in a next step.** Report it
+  through `VaibifyDiagnosis.fnReportFailure` /
+  `fnReportFailureFromError` (`scriptDiagnosis.js`), whose toast ends
+  in "Click to run a diagnosis" and opens the host checks of
+  `vaibify doctor` through `GET /api/system/doctor`; never a bare
+  `fnShowToast(fsSanitizeErrorForUser(error.message), "error")`, which
+  is the shape the 2026-09-18 audit found on every hub action. A
+  silent `return` on a failed request is a dead click, not a design.
+  The server explains Docker's own text at the boundary
+  (`dockerErrorDiagnosis.fsExplainContainerOperationFailure` /
+  `fsExplainBuildFailure`) and keeps the daemon's words after
+  "Docker said:" as evidence, so `fsSanitizeErrorForUser` must pass
+  such a sentence through -- its substring rewrites match exactly
+  that evidence and would replace the remedy with the symptom.
 - **HTTP goes through `VaibifyApi`.** Do not call `fetch()` directly
   from feature modules; route through `scriptApiClient.js`. This
   centralizes error handling, auth, and response sanitization.

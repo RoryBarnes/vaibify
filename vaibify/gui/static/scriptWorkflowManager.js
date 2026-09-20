@@ -97,8 +97,74 @@ var VaibifyWorkflowManager = (function () {
 
     /* --- Workflow Creation --- */
 
+    var _S_NO_ENVIRONMENT_OPEN =
+        "No environment is open. Go Back and open one from the list.";
+
+    function fnShowProjectHubHelp() {
+        VaibifyModals.fnShowInfoModal(
+            "Project hub \u2014 Help", _S_PROJECT_HUB_HELP);
+    }
+
+    var _S_PROJECT_HUB_HELP =
+        '<details class="hub-help-section">' +
+        '<summary>Using the Project Hub</summary>' +
+        '<p>You are inside one environment. Each card is a ' +
+        '<strong>Project</strong>: a pipeline description ' +
+        '(<code>project.json</code>) kept under a git repository in ' +
+        'this environment. Click a card to open its dashboard.</p>' +
+        '<p><strong>Blank Project</strong> opens the environment with ' +
+        'no pipeline: a terminal and the file tree, for work that has ' +
+        'no steps yet. <strong>New Project</strong> is a three-step ' +
+        'wizard: a name, a location (an existing git directory, or a ' +
+        'new one vaibify creates and initializes), then confirm.</p>' +
+        '<p><strong>Back</strong> returns to the environment list and ' +
+        'releases this environment for other tabs. \u21bb reloads ' +
+        'the list; \u29C9 opens a second vaibify window.</p>' +
+        '</details><details class="hub-help-section">' +
+        '<summary>Legend</summary>' +
+        '<div class="hub-help-legend">' +
+        '<p><span class="container-card" style="display:inline-block;' +
+        'padding:4px 10px;"><span class="name">Project name</span> ' +
+        '<span class="image">repository</span></span> &nbsp; a Project ' +
+        'card: its name, then the repository it lives in</p>' +
+        '<p><span class="host-mode-badge">HOST MODE \u2014 ' +
+        'uncontained</span> &nbsp; this environment runs on this ' +
+        'machine, with your full user authority; PROOF Level 3 is ' +
+        'unavailable here</p>' +
+        '<p><span class="workflow-loading-spinner" ' +
+        'style="display:inline-block;vertical-align:middle;"></span> ' +
+        '&nbsp; a large Project is loading; the banner names it</p>' +
+        '<p>Error toasts end with <em>Click to run a diagnosis</em>, ' +
+        'which runs the checks of <code>vaibify doctor</code> on this ' +
+        'machine.</p></div>' +
+        '</details><details class="hub-help-section">' +
+        '<summary>Troubleshooting</summary>' +
+        '<p><strong>"This project is no longer claimed by this ' +
+        'session."</strong> A tab that pauses on this list for a while ' +
+        'gives the environment up; vaibify reclaims it and retries by ' +
+        'itself. If that fails, go Back and open the environment ' +
+        'again.</p>' +
+        '<p><strong>"Container is not running."</strong> Go Back and ' +
+        'choose Start from the tile\'s \u22ee menu.</p>' +
+        '<p><strong>"The project file could not be loaded."</strong> ' +
+        'The sentence names what is wrong with the file: a missing ' +
+        'key, or a file written by a newer vaibify. Fix the file, or ' +
+        'upgrade vaibify.</p>' +
+        '<p><strong>"A project named \u2026 already exists."</strong> ' +
+        'The wizard returns to the name; pick another.</p>' +
+        '<p><strong>"\u2026 is not a git repository."</strong> Choose ' +
+        'a new directory in the wizard, which vaibify initializes, or ' +
+        'run <code>git init</code> in that directory first.</p>' +
+        '<p><strong>"The project list could not be refreshed."</strong> ' +
+        'What you see is the last state vaibify saw; click the toast ' +
+        'for a diagnosis, or press \u21bb.</p>' +
+        '</details>';
+
     function fnCreateNewWorkflow(sContainerId) {
-        if (!sContainerId) return;
+        if (!sContainerId) {
+            VaibifyApp.fnShowToast(_S_NO_ENVIRONMENT_OPEN, "warning");
+            return;
+        }
         VaibifyNewWorkflowWizard.fnLaunch(sContainerId);
     }
 
@@ -162,26 +228,26 @@ var VaibifyWorkflowManager = (function () {
         try {
             var dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
-            if (iThisGeneration !== _iWorkflowGeneration) return;
+            if (iThisGeneration !== _iWorkflowGeneration) return true;
             VaibifyApp.fnActivateWorkflow(
                 sId, dictResult, sWorkflowName);
             // The drift check rides the open-time chain in
             // scriptApplication now: fired from here it held the
             // git-fetch carrier while the readiness probe asked for
             // the drain, and the probe pauses rather than queues.
+            return true;
         } catch (error) {
-            if (iThisGeneration !== _iWorkflowGeneration) return;
+            if (iThisGeneration !== _iWorkflowGeneration) return true;
             if (_fbClaimWasLost(error)) {
                 if (await _fbReclaimAndRetryOnce(
                     sId, sWorkflowPathArg, sWorkflowName,
                     iThisGeneration
-                )) return;
+                )) return true;
                 _fnReturnToProjectList(error);
-                return;
+                return false;
             }
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return false;
         } finally {
             if (iThisGeneration === _iWorkflowGeneration) {
                 _fnHideLargeWorkflowLoadingBanner();
@@ -222,6 +288,10 @@ var VaibifyWorkflowManager = (function () {
             dictResult = await _fdictFetchWorkflow(
                 sId, sWorkflowPathArg);
         } catch (errorRetry) {
+            /* The retry's own reason used to be discarded, and the
+               researcher walked back a screen having read only the
+               original "no longer claimed" sentence. */
+            VaibifyDiagnosis.fnReportFailureFromError(errorRetry);
             return false;
         }
         if (iThisGeneration !== _iWorkflowGeneration) return true;
@@ -237,7 +307,11 @@ var VaibifyWorkflowManager = (function () {
            claim control, one screen back. Reached only when the
            automatic reclaim could not recover. */
         var dictDetail = (error && error.dictDetail) || {};
-        VaibifyApp.fnShowToast(dictDetail.sMessage, "warning");
+        VaibifyApp.fnShowToast(
+            (dictDetail.sMessage || VaibifyUtilities.fsSanitizeErrorForUser(
+                error && error.message)) +
+            " Open the environment again from the list to claim it.",
+            "warning");
         VaibifyApp.fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
     }
@@ -606,8 +680,9 @@ var VaibifyWorkflowManager = (function () {
             _fnRenderWorkflowDropdown(listWorkflows);
             elDropdown.classList.add("active");
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                "Could not load projects", "error");
+            VaibifyDiagnosis.fnReportFailure(
+                "The project list could not be loaded: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message));
         }
     }
 
@@ -705,8 +780,9 @@ var VaibifyWorkflowManager = (function () {
                 encodeURIComponent(sWorkflowPath)
             );
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                "Could not save project", "error");
+            VaibifyDiagnosis.fnReportFailure(
+                "The project's current state could not be saved: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message));
         }
     }
 
@@ -2972,6 +3048,8 @@ var VaibifyWorkflowManager = (function () {
     return {
         fnRenderWorkflowList: fnRenderWorkflowList,
         fnCreateNewWorkflow: fnCreateNewWorkflow,
+        fnShowProjectHubHelp: fnShowProjectHubHelp,
+        S_NO_ENVIRONMENT_OPEN: _S_NO_ENVIRONMENT_OPEN,
         fnSelectWorkflow: fnSelectWorkflow,
         fnRefreshWorkflow: fnRefreshWorkflow,
         fnCheckOriginDrift: fnCheckOriginDrift,

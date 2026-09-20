@@ -16,6 +16,7 @@ var VaibifyNewWorkflowWizard = (function () {
     var _dictWizardState = _fdictBuildEmptyState();
     var _dictRepoStatus = null;
     var _bSubmitting = false;
+    var _bLocationInitialized = false;
     var _dictAgentRequest = null;
 
     /* ---------- Public API ---------- */
@@ -59,6 +60,7 @@ var VaibifyNewWorkflowWizard = (function () {
     }
 
     function _fnResetWorkflowState() {
+        _bLocationInitialized = false;
         _sContainerId = "";
         _iWizardStep = 0;
         _dictWizardState = _fdictBuildEmptyState();
@@ -127,7 +129,12 @@ var VaibifyNewWorkflowWizard = (function () {
     }
 
     function _fnHandleCancel() {
-        if (_bSubmitting) return;
+        if (_bSubmitting) {
+            VaibifyApp.fnShowToast(
+                "The project is being created; wait for it to finish.",
+                "warning");
+            return;
+        }
         _fnHideModal();
         _fnResetWorkflowState();
     }
@@ -291,6 +298,7 @@ var VaibifyNewWorkflowWizard = (function () {
                 "/api/repos/" + _sContainerId + "/status");
         } catch (error) {
             elContent.innerHTML = _fsBuildLoadErrorHtml(error);
+            _fnBindLoadErrorControls(elContent);
             return;
         }
         elContent.innerHTML = _fsBuildLocationHtml(_dictRepoStatus);
@@ -300,9 +308,29 @@ var VaibifyNewWorkflowWizard = (function () {
     function _fsBuildLoadErrorHtml(error) {
         var sMessage = VaibifyUtilities.fsSanitizeErrorForUser(
             (error && error.message) || "");
-        return '<div class="wizard-helper-text">' +
-            'Failed to load directories: ' +
-            VaibifyUtilities.fnEscapeHtml(sMessage) + '</div>';
+        return '<div class="wizard-load-error">' +
+            'The directories could not be listed: ' +
+            VaibifyUtilities.fnEscapeHtml(sMessage) + ' ' +
+            '<button type="button" class="btn-link" ' +
+            'id="newWorkflowLocationRetry">Try again</button> or ' +
+            '<button type="button" class="btn-link" ' +
+            'id="newWorkflowLocationDiagnose">run a diagnosis</button>.' +
+            '</div>';
+    }
+
+    function _fnBindLoadErrorControls(elContent) {
+        var elRetry = document.getElementById("newWorkflowLocationRetry");
+        if (elRetry) {
+            elRetry.addEventListener("click", function () {
+                _fnRenderLocationStep(elContent);
+            });
+        }
+        var elDiagnose = document.getElementById(
+            "newWorkflowLocationDiagnose");
+        if (elDiagnose) {
+            elDiagnose.addEventListener(
+                "click", VaibifyDiagnosis.fnShowDoctorReport);
+        }
     }
 
     function _fsBuildLocationHtml(dictStatus) {
@@ -458,7 +486,9 @@ var VaibifyNewWorkflowWizard = (function () {
         var sActions = _fsBuildConfirmActions(bWillInit, sSlug);
         elContent.innerHTML =
             '<div class="wizard-summary">' + sLines + '</div>' +
-            sActions;
+            sActions +
+            '<div id="newWorkflowSubmitError" class="wizard-submit-error" ' +
+            'hidden></div>';
     }
 
     function _fsResolveLocationName() {
@@ -506,15 +536,25 @@ var VaibifyNewWorkflowWizard = (function () {
         _bSubmitting = true;
         _fnUpdateButtons();
         try {
-            if (_fbLocationNeedsInit()) {
+            if (_fbLocationNeedsInit() && !_bLocationInitialized) {
                 await _fnRunInitProjectRepo();
+                /* Remembered so that a create that then fails can be
+                   retried without initializing the directory twice,
+                   which the server refuses as "already a git
+                   repository" forever. */
+                _bLocationInitialized = true;
             }
             var dictResult = await _fnRunCreateWorkflow();
             _fnHideModal();
-            await VaibifyWorkflowManager.fnSelectWorkflow(
+            var bOpened = await VaibifyWorkflowManager.fnSelectWorkflow(
                 _sContainerId, dictResult.sPath, dictResult.sName);
             VaibifyApp.fnAnimateProjectBirth();
-            VaibifyApp.fnShowToast("Project created", "success");
+            VaibifyApp.fnShowToast(
+                bOpened
+                    ? "Project created"
+                    : "Project created. It could not be opened just " +
+                      "now; open it from the list.",
+                bOpened ? "success" : "warning");
             _fnResetWorkflowState();
         } catch (error) {
             _fnHandleSubmitError(error);
@@ -551,7 +591,12 @@ var VaibifyNewWorkflowWizard = (function () {
     function _fnHandleSubmitError(error) {
         var sMessage = VaibifyUtilities.fsSanitizeErrorForUser(
             (error && error.message) || "");
-        VaibifyApp.fnShowToast(sMessage, "error");
+        VaibifyDiagnosis.fnReportFailure(sMessage);
+        var elError = document.getElementById("newWorkflowSubmitError");
+        if (elError) {
+            elError.textContent = sMessage;
+            elError.hidden = false;
+        }
         if (_fbErrorIsNameCollision(sMessage)) {
             _iWizardStep = 0;
             _fnRenderStep();
@@ -564,9 +609,12 @@ var VaibifyNewWorkflowWizard = (function () {
     }
 
     function _fbErrorIsNameCollision(sMessage) {
+        /* The server says "A project named '...' already exists at
+           ..." and "A project file already exists at ...". A test for
+           the word "workflow" beside it matched neither, so the return
+           to the name field never fired. */
         var sLower = (sMessage || "").toLowerCase();
-        if (sLower.indexOf("already exists") === -1) return false;
-        return sLower.indexOf("workflow") !== -1;
+        return sLower.indexOf("already exists") !== -1;
     }
 
     return {
