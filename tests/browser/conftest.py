@@ -223,6 +223,19 @@ def fnOpenTheSeededHostWorkflow(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]',
         timeout=15000,
     )
+    # The previous test's page may still hold the tile: a context close
+    # does not release a claim (release is decided by the WebSocket
+    # closing and the grace reaper, never by an unload beacon), and the
+    # hub counts that socket live until its close frame or ping timeout
+    # arrives. A test that opened the tile 0.6 s after its neighbour
+    # closed clicked a locked tile for thirty seconds (browser-chromium,
+    # 2026-09-20). Wait for the tile to be claimable; the bound exceeds
+    # the socket ping timeout plus the reap grace.
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]'
+        ':not(.container-tile--locked)',
+        timeout=90000,
+    )
     pageDashboard.click(
         f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
         '.container-tile-main',

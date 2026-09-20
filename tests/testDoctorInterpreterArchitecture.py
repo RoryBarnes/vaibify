@@ -28,7 +28,7 @@ from vaibify.cli.preflightResult import (
 )
 
 
-S_PROBE = "vaibify.cli.doctorHostChecks._fbInterpreterRunsTranslated"
+S_PROBE = "vaibify.cli.doctorHostChecks.fbInterpreterRunsTranslated"
 
 
 def _fpreflightOnMacOs(bTranslated):
@@ -77,6 +77,30 @@ def test_the_check_runs_ahead_of_every_scope_including_host_projects():
         listResults = flistRunDoctorChecks(object(), False, False)
     listNames = [preflightResult.sName for preflightResult in listResults]
     assert listNames[:2] == ["installed-checkout", "interpreter-architecture"]
+
+
+@pytest.mark.falsification
+def test_the_probe_never_touches_libc_off_macos():
+    """The build preflight reaches the probe on every platform.
+
+    glibc exports no ``sysctlbyname``, so a ctypes lookup of it raises;
+    on a Linux CI runner that traceback ended ``vaibify build`` before
+    the preflight had reported anything (fresh-image-build, 2026-09-20).
+    The doctor's own caller checked the platform first, which is how
+    the probe stayed unguarded until a second caller arrived.
+
+    Kills: dropping the platform test from the probe, so the libc
+    lookup runs on Linux and raises where the fake below raises.
+    """
+    from vaibify.cli import doctorHostChecks
+
+    def fnRaiseMissingSymbol(*args, **kwargs):
+        raise AttributeError("libc.so.6: undefined symbol: sysctlbyname")
+
+    with patch(
+        "vaibify.cli.doctorHostChecks.sys.platform", "linux",
+    ), patch.object(doctorHostChecks.ctypes, "CDLL", fnRaiseMissingSymbol):
+        assert doctorHostChecks.fbInterpreterRunsTranslated() is False
 
 
 @pytest.mark.skipif(

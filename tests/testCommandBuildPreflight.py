@@ -3,6 +3,8 @@
 import json
 import subprocess
 
+import pytest
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -157,9 +159,35 @@ def test_fsNormalizeArch_handles_known_aliases():
     assert _fsNormalizeArch("riscv") == ""
 
 
+@patch("vaibify.cli.commandBuild.fbInterpreterRunsTranslated",
+       return_value=False)
 @patch("vaibify.cli.commandBuild.platform.machine", return_value="arm64")
-def test_fsHostArch_arm64_mac(mockMachine):
+def test_fsHostArch_arm64_mac(mockMachine, mockTranslated):
     assert fsHostArch() == "arm64"
+
+
+@pytest.mark.falsification
+@patch("vaibify.cli.commandBuild.fbInterpreterRunsTranslated",
+       return_value=True)
+@patch("vaibify.cli.commandBuild.platform.machine", return_value="x86_64")
+def test_fsHostArch_reads_through_rosetta(mockMachine, mockTranslated):
+    """An x86_64 interpreter under Rosetta runs on an arm64 machine.
+
+    platform.machine() names the interpreter's build, and the arch
+    preflight compared that against the daemon and stayed silent about
+    an emulated build on exactly the machine it exists for.
+
+    Kills: reading platform.machine() alone, which answers x86_64 for
+    a translated interpreter and reports the machine as amd64.
+    """
+    assert fsHostArch() == "arm64"
+
+
+@patch("vaibify.cli.commandBuild.fbInterpreterRunsTranslated",
+       return_value=False)
+@patch("vaibify.cli.commandBuild.platform.machine", return_value="x86_64")
+def test_fsHostArch_native_intel_stays_amd64(mockMachine, mockTranslated):
+    assert fsHostArch() == "amd64"
 
 
 @patch("subprocess.run")

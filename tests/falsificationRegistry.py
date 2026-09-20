@@ -13981,11 +13981,17 @@ def _fdictEntry(sRel):
         # edit can drop them silently. This is the guard that keeps a
         # rebuild from swapping a compiler without telling anyone.
         source='vaibify/containerImage/Dockerfile',
-        old='            rpcsvc-proto=1.4.2-0ubuntu7; then \\\n',
+        # Both architecture blocks close the same way; waiving one
+        # would leave the other enforced, so the mutation waives both.
+        old=(
+            '            rpcsvc-proto=1.4.2-0ubuntu7; then '
+            'bToolchainInstalled=false; fi \\\n'
+        ),
         new=(
             '            rpcsvc-proto=1.4.2-0ubuntu7; then '
-            '# allow-unpinned \\\n'
+            'bToolchainInstalled=false; fi # allow-unpinned \\\n'
         ),
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -21694,5 +21700,168 @@ def _fdictEntry(sRel):
             '        }\n'
         ),
         new='',
+    ),
+    # --- 2026-09-20: the open list from the hub failure-modes audit ---
+    Falsification(
+        nodeid=(
+            'tests/testToolchainEpoch.py::'
+            'testTheArchitectureListsCarryOneVersionPerPackage'
+        ),
+        # the arm64 list moves make alone; the image would compile with
+        # a different toolchain depending on which daemon built it
+        source='vaibify/containerImage/Dockerfile',
+        old=(
+            '            linux-libc-dev=6.8.0-139.139 \\\n'
+            '            make=4.3-4.1build2 \\\n'
+            '            rpcsvc-proto=1.4.2-0ubuntu7; then '
+            'bToolchainInstalled=false; fi \\\n'
+            '    && if [ "${bToolchainInstalled}" = "false" ]; then \\\n'
+        ),
+        new=(
+            '            linux-libc-dev=6.8.0-139.139 \\\n'
+            '            make=4.3-4.1build3 \\\n'
+            '            rpcsvc-proto=1.4.2-0ubuntu7; then '
+            'bToolchainInstalled=false; fi \\\n'
+            '    && if [ "${bToolchainInstalled}" = "false" ]; then \\\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSleepPreventionFollowsWork.py::'
+            'testADaemonOutageIsReportedOnceAndWithoutATraceback'
+        ),
+        # every tick of the outage logs again
+        source='vaibify/gui/sleepPrevention.py',
+        old='        if not _bDaemonListingFailed:\n            logger.warning(\n',
+        new='        if True:\n            logger.warning(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSleepPreventionFollowsWork.py::'
+            'testARouterWithNoDaemonLegIsNeverAsked'
+        ),
+        # the reachability question is skipped and the router is listed
+        source='vaibify/gui/sleepPrevention.py',
+        old='    if not fbDockerReachable(connectionDocker):\n        return\n',
+        new='    if connectionDocker is None:\n        return\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommandBuildPreflight.py::'
+            'test_fsHostArch_reads_through_rosetta'
+        ),
+        # the interpreter's build is reported as the machine's
+        source='vaibify/cli/commandBuild.py',
+        old=(
+            '    if fbInterpreterRunsTranslated():\n'
+            '        return "arm64"\n'
+            '    return _fsNormalizeArch(platform.machine())\n'
+        ),
+        new='    return _fsNormalizeArch(platform.machine())\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testServerLaunchContract.py::'
+            'test_a_signal_that_ends_the_hub_is_logged_by_name'
+        ),
+        # the signal is handled as before and nothing is written
+        source='vaibify/cli/serverLaunch.py',
+        old=(
+            '            logger.warning(\n'
+            '                "Hub received %s (pid %d); shutting down",\n'
+            '                _fsSignalName(iSignal), os.getpid(),\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testServerLaunchContract.py::'
+            'test_the_launcher_installs_the_signal_log_on_the_server_it_runs'
+        ),
+        # the helper exists and nobody calls it
+        source='vaibify/cli/serverLaunch.py',
+        old='    ServerLoggingExitSignals(configUvicorn).run(sockets=listSockets)\n',
+        new='    uvicorn.Server(configUvicorn).run(sockets=listSockets)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHubIdleWatchdog.py::'
+            'test_the_idle_self_exit_is_logged_before_the_sigterm'
+        ),
+        # the hub SIGTERMs itself silently, as it did before
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '                logger.warning(\n'
+            '                    "Hub idle for longer than its %s s timeout '
+            'with no "\n'
+            '                    "browser, running work, or council; '
+            'exiting",\n'
+            '                    fLiveTimeout,\n'
+            '                )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowRoutesCoverage.py::TestWorkflowSearchRoute::'
+            'test_a_name_conflict_is_not_read_as_a_stopped_container'
+        ),
+        # the classifier reads the words "409" and "conflict" again
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old='    return fbErrorMeansContainerGone(error)\n',
+        new=(
+            '    sMessage = str(error).lower()\n'
+            '    return "409" in sMessage and "conflict" in sMessage\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testInlineFailuresCarryTheDiagnosis.py::'
+            'testTheFilesPanelShowsTheRefusalAndOffersTheDiagnosis'
+        ),
+        # the panel writes its label over the server's sentence again
+        source='vaibify/gui/static/scriptFiles.js',
+        old=(
+            '            VaibifyDiagnosis.fnRenderFailureInline(\n'
+            '                elFailure, "This directory could not be listed: ",'
+            ' error);\n'
+        ),
+        new='            elFailure.textContent = "Error loading directory";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testInlineFailuresCarryTheDiagnosis.py::'
+            'testTheReproduceCardShowsTheServersSentenceAndOffersTheDiagnosis'
+        ),
+        # both card stages write the raw message with no next step
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='            VaibifyDiagnosis.fnRenderFailureInline(elError, "", error);\n',
+        new='            elError.textContent = error.message || String(error);\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testInlineFailuresCarryTheDiagnosis.py::'
+            'testAServerSentenceQuotingDaemonEvidenceIsNotRewritten'
+        ),
+        # every sentence goes through the phrase sanitizer again
+        source='vaibify/gui/static/scriptDiagnosis.js',
+        old='        if (dictDetail.sMessage) return dictDetail.sMessage;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDoctorInterpreterArchitecture.py::'
+            'test_the_probe_never_touches_libc_off_macos'
+        ),
+        # the probe looks up sysctlbyname on every platform again
+        source='vaibify/cli/doctorHostChecks.py',
+        old=(
+            '    if sys.platform != "darwin":\n'
+            '        return False\n'
+            '    fiSysctlByName = ctypes.CDLL(\n'
+        ),
+        new='    fiSysctlByName = ctypes.CDLL(\n',
     ),
 ]

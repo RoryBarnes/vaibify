@@ -592,10 +592,31 @@ def _fbPytestIsInvokableAsTheDashboardInvokesIt():
     when it is false the machine genuinely cannot run the thing under
     test, and the reason is printed.
     """
-    return subprocess.run(
-        ["python", "-m", "pytest", "--version"],
-        capture_output=True,
-    ).returncode == 0
+    try:
+        processResult = subprocess.run(
+            ["python", "-m", "pytest", "--version"],
+            capture_output=True,
+        )
+    except OSError:
+        # No ``python`` on PATH at all (a machine whose only interpreter
+        # is ``python3``) is the same environment fact, not an error in
+        # the test.
+        return False
+    return processResult.returncode == 0
+
+
+def testTheDashboardInvocationGuardReadsAMissingInterpreterAsAbsent(
+    monkeypatch,
+):
+    """A machine with no ``python`` on PATH at all (only ``python3``) is
+    the environment fact the guard exists to report; it used to escape
+    as FileNotFoundError and fail the test instead of skipping it."""
+
+    def fnRaiseMissing(*args, **kwargs):
+        raise FileNotFoundError("python")
+
+    monkeypatch.setattr(subprocess, "run", fnRaiseMissing)
+    assert _fbPytestIsInvokableAsTheDashboardInvokesIt() is False
 
 
 def testAHostProjectsTestRunLeavesAMarkerTheDashboardCanRead(

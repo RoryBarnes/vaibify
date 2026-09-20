@@ -1,6 +1,7 @@
 """Tests for uncovered lines in vaibify.gui.routes.workflowRoutes."""
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, HTTPException
@@ -121,6 +122,47 @@ class TestWorkflowSearchRoute:
             client = TestClient(app)
             response = client.get("/api/workflows/cid1")
             assert response.status_code == 500
+
+    def _fresponseSearchFailingWith(self, error):
+        app = FastAPI()
+        dictCtx = {"docker": MagicMock(), "require": MagicMock()}
+        with patch(
+            "vaibify.gui.routes.workflowRoutes.workflowManager"
+        ) as mockWm:
+            mockWm.flistFindWorkflowsInContainer.side_effect = error
+            fnRegisterAll(app, dictCtx)
+            return TestClient(app).get("/api/workflows/cid1")
+
+    def test_a_daemon_answer_that_the_container_is_not_running_is_a_409(self):
+        """The daemon's 409 'is not running' names a stopped container,
+        and the remedy is to start it."""
+        error = RuntimeError(
+            "409 Client Error: Conflict (container cid1 is not running)",
+        )
+        error.response = SimpleNamespace(status_code=409)
+        response = self._fresponseSearchFailingWith(error)
+        assert response.status_code == 409
+        assert "Start it" in response.json()["detail"]
+
+    @pytest.mark.falsification
+    def test_a_name_conflict_is_not_read_as_a_stopped_container(self):
+        """A create-time name conflict is also a 409 Conflict. Reading
+        '409' and 'conflict' in the prose as 'stopped' sent a researcher
+        to start a container that was already running; the classifier
+        reads the daemon's status code and its 'not running' answer.
+
+        Kills: classifying by the words '409' and 'conflict' in the
+        message again, under which this name conflict is a 409 'not
+        running'.
+        """
+        error = RuntimeError(
+            "409 Client Error: Conflict (Conflict. The container name "
+            "\"/cid1\" is already in use)",
+        )
+        error.response = SimpleNamespace(status_code=409)
+        response = self._fresponseSearchFailingWith(error)
+        assert response.status_code == 500
+        assert "Search failed" in response.json()["detail"]
 
     def test_search_success(self):
         """Happy path."""

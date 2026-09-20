@@ -675,9 +675,15 @@ async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
             _fnReapIdleOwnershipsForApp(app, dictCtx)
             _fnSweepSleepPreventionForApp(app, dictCtx)
             from . import pipelineServer
+            fLiveTimeout = _ffCurrentIdleTimeout(app, fTimeout)
             if pipelineServer._fbHubShouldSelfExit(
-                app, dictCtx, _ffCurrentIdleTimeout(app, fTimeout),
+                app, dictCtx, fLiveTimeout,
             ):
+                logger.warning(
+                    "Hub idle for longer than its %s s timeout with no "
+                    "browser, running work, or council; exiting",
+                    fLiveTimeout,
+                )
                 os.kill(os.getpid(), signal.SIGTERM)
                 return
         except asyncio.CancelledError:

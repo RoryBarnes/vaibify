@@ -42,6 +42,9 @@ from pathlib import Path
 
 __all__ = [
     "fnMain",
+    "T_PINNED_ARCHITECTURES",
+    "fsToolchainBlockMarker",
+    "fsExtractToolchainBlock",
     "fdictParsePinnedVersions",
     "fsParseBaseImage",
     "fbIsDocumentationMember",
@@ -63,6 +66,11 @@ PATH_DOCKERFILE = REPO_ROOT / "vaibify" / "containerImage" / "Dockerfile"
 S_VERDICT_IDENTICAL = "IDENTICAL"
 S_VERDICT_CHANGED = "CHANGED"
 S_VERDICT_UNCOMPARABLE = "UNCOMPARABLE"
+
+# The architectures the Dockerfile carries a pin list for, each opened
+# by its own shell test. Any other architecture is refused by the
+# Dockerfile before apt runs.
+T_PINNED_ARCHITECTURES = ("amd64", "arm64")
 
 S_ARCHIVE_BASE = "http://archive.ubuntu.com/ubuntu/"
 S_SNAPSHOT_BASE = "https://snapshot.ubuntu.com/ubuntu/"
@@ -113,33 +121,47 @@ def fsParseBaseImage(sDockerfileText):
     return matchBase.group(1)
 
 
-def fsExtractToolchainBlock(sDockerfileText):
-    """Return just the pinned apt block, so no other RUN is scanned.
+def fsToolchainBlockMarker(sArchitecture):
+    """Return the shell test that opens one architecture's pin list."""
+    return (
+        f'[ "${{sArchitecture}}" = "{sArchitecture}" ] && ! apt-get install'
+    )
 
-    Anchored on the `if !` test rather than on the `RUN` line that
-    precedes it. The preamble grew a sources swap when the toolchain
-    moved to a frozen archive snapshot, and an anchor that spelled out
-    `RUN apt-get update` stopped matching -- correctly refusing rather
-    than scanning nothing, which is the property to keep. What follows
-    the marker is the pin list either way, so this anchor survives an
-    edit to the lines above it without becoming permissive.
+
+def fsExtractToolchainBlock(sDockerfileText, sArchitecture):
+    """Return one architecture's pinned apt block, so no other RUN is scanned.
+
+    Anchored on the architecture test that opens the block rather than
+    on the `RUN` line that precedes it. The preamble grew a sources
+    swap when the toolchain moved to a frozen archive snapshot, and an
+    anchor that spelled out `RUN apt-get update` stopped matching --
+    correctly refusing rather than scanning nothing, which is the
+    property to keep. There is one block per architecture since the
+    arm64 list arrived, and a marker that did not name the
+    architecture would return the first block for every caller, so
+    the arm64 list would be graded against the amd64 pins forever.
     """
-    sMarker = "&& if ! apt-get install"
+    if sArchitecture not in T_PINNED_ARCHITECTURES:
+        raise ValueError(
+            f"the Dockerfile pins no toolchain for {sArchitecture!r}; "
+            f"the pinned architectures are {T_PINNED_ARCHITECTURES}"
+        )
+    sMarker = fsToolchainBlockMarker(sArchitecture)
     if sMarker not in sDockerfileText:
         raise ValueError(
             "the Dockerfile no longer contains the pinned toolchain "
-            "apt block this tool compares against"
+            f"apt block for {sArchitecture} this tool compares against"
         )
     return sDockerfileText.split(sMarker, 1)[1].split("; then", 1)[0]
 
 
-def fdictParsePinnedVersions(sDockerfileText):
-    """Return {package: pinned version} for the toolchain block.
+def fdictParsePinnedVersions(sDockerfileText, sArchitecture):
+    """Return {package: pinned version} for one architecture's block.
 
     Parsed from the shipped Dockerfile rather than a second list, so
     the tool can never grade a pin set the image does not use.
     """
-    sBlock = fsExtractToolchainBlock(sDockerfileText)
+    sBlock = fsExtractToolchainBlock(sDockerfileText, sArchitecture)
     dictPinned = dict(REGEX_PIN.findall(sBlock))
     # A PARTIAL parse is the dangerous outcome, not an empty one. One
     # extra space on a pin line drops that package from the checked set
@@ -333,10 +355,10 @@ def ftComparePackagePayloads(baOld, baNew):
     return S_VERDICT_IDENTICAL, []
 
 
-def flistRunInBaseImage(sBaseImage, sScript):
+def flistRunInBaseImage(sBaseImage, sScript, sArchitecture):
     """Return the stdout lines of a shell script run in the base image."""
     listCommand = [
-        "docker", "run", "--rm", "--platform", "linux/amd64",
+        "docker", "run", "--rm", "--platform", f"linux/{sArchitecture}",
         sBaseImage, "bash", "-c", sScript,
     ]
     processResult = subprocess.run(
@@ -351,7 +373,7 @@ def flistRunInBaseImage(sBaseImage, sScript):
     return processResult.stdout.splitlines()
 
 
-def fdictResolveCurrentClosure(sBaseImage):
+def fdictResolveCurrentClosure(sBaseImage, sArchitecture):
     """Return {package: version} apt would install today.
 
     Asks apt itself rather than reimplementing candidate selection, and
@@ -362,6 +384,7 @@ def fdictResolveCurrentClosure(sBaseImage):
         sBaseImage,
         "apt-get update -qq >/dev/null && "
         "apt-get install -s -y --no-install-recommends gcc g++ make",
+        sArchitecture,
     )
     dictResolved = dict(REGEX_SIMULATED_INSTALL.findall("\n".join(listLines)))
     if not dictResolved:
@@ -369,7 +392,9 @@ def fdictResolveCurrentClosure(sBaseImage):
     return dictResolved
 
 
-def fdictResolvePoolPaths(sBaseImage, listPackages, dictNewVersions):
+def fdictResolvePoolPaths(
+    sBaseImage, listPackages, dictNewVersions, sArchitecture,
+):
     """Return {package: archive pool path} for the replacement packages."""
     sQueries = " ".join(
         f"{sPackage}={dictNewVersions[sPackage]}" for sPackage in listPackages
@@ -378,6 +403,7 @@ def fdictResolvePoolPaths(sBaseImage, listPackages, dictNewVersions):
         sBaseImage,
         "apt-get update -qq >/dev/null && "
         f"for P in {sQueries}; do apt-cache show \"$P\" | grep '^Filename:'; done",
+        sArchitecture,
     )
     listPaths = REGEX_POOL_FILENAME.findall("\n".join(listLines))
     dictPaths = {}
@@ -492,22 +518,34 @@ def ftJudgeOnePin(sBaseImage, sPackage, sOldVersion, sNewVersion, dictPoolPaths)
 def fsApplyPinBumps(sDockerfileText, listBumps):
     """Return the Dockerfile text with the named pins bumped.
 
-    Rewrites only inside the toolchain block, and only a line that
+    Rewrites only inside the toolchain blocks, and only a line that
     still carries the exact pinned version, so a package named
-    elsewhere in the file cannot be rewritten by accident.
+    elsewhere in the file cannot be rewritten by accident. Every
+    architecture's block that pins the package is bumped together,
+    because the lists carry one version per package by construction
+    (one Ubuntu source upload builds every architecture) and bumping
+    one list alone would leave the other stale. A block that does not
+    pin the package at all is left alone: libquadmath0 has no aarch64
+    build.
     """
-    sBlock = fsExtractToolchainBlock(sDockerfileText)
-    sUpdatedBlock = sBlock
-    for sPackage, sOldVersion, sNewVersion in listBumps:
-        sOldPin = f"{sPackage}={sOldVersion}"
-        sNewPin = f"{sPackage}={sNewVersion}"
-        if sUpdatedBlock.count(sOldPin) != 1:
-            raise ValueError(
-                f"expected exactly one {sOldPin!r} in the toolchain block; "
-                f"found {sUpdatedBlock.count(sOldPin)}"
-            )
-        sUpdatedBlock = sUpdatedBlock.replace(sOldPin, sNewPin)
-    return sDockerfileText.replace(sBlock, sUpdatedBlock, 1)
+    sUpdatedText = sDockerfileText
+    for sArchitecture in T_PINNED_ARCHITECTURES:
+        sBlock = fsExtractToolchainBlock(sUpdatedText, sArchitecture)
+        sUpdatedBlock = sBlock
+        for sPackage, sOldVersion, sNewVersion in listBumps:
+            if f" {sPackage}=" not in sUpdatedBlock:
+                continue
+            sOldPin = f"{sPackage}={sOldVersion}"
+            sNewPin = f"{sPackage}={sNewVersion}"
+            if sUpdatedBlock.count(sOldPin) != 1:
+                raise ValueError(
+                    f"expected exactly one {sOldPin!r} in the "
+                    f"{sArchitecture} toolchain block; found "
+                    f"{sUpdatedBlock.count(sOldPin)}"
+                )
+            sUpdatedBlock = sUpdatedBlock.replace(sOldPin, sNewPin)
+        sUpdatedText = sUpdatedText.replace(sBlock, sUpdatedBlock, 1)
+    return sUpdatedText
 
 
 def fnReportOnePin(sPackage, sOldVersion, sNewVersion, sVerdict, listDetail):
@@ -527,13 +565,19 @@ def fnMain(listArgv=None):
         action="store_true",
         help="apply the bumps whose payloads are provably identical",
     )
+    parserArguments.add_argument(
+        "--architecture", dest="sArchitecture",
+        choices=T_PINNED_ARCHITECTURES, default="amd64",
+        help="which architecture's pin list and archive pool to compare",
+    )
     namespaceArguments = parserArguments.parse_args(listArgv)
+    sArchitecture = namespaceArguments.sArchitecture
 
     sDockerfileText = fsReadDockerfile()
     sBaseImage = fsParseBaseImage(sDockerfileText)
-    dictPinned = fdictParsePinnedVersions(sDockerfileText)
+    dictPinned = fdictParsePinnedVersions(sDockerfileText, sArchitecture)
     try:
-        dictResolved = fdictResolveCurrentClosure(sBaseImage)
+        dictResolved = fdictResolveCurrentClosure(sBaseImage, sArchitecture)
     except RuntimeError as errorResolve:
         print(f"Could not resolve the current closure: {errorResolve}")
         return 1
@@ -553,7 +597,8 @@ def fnMain(listArgv=None):
 
     print(f"Pin drift on {len(listDrift)} of {len(dictPinned)} pinned packages.")
     dictPoolPaths = fdictResolvePoolPaths(
-        sBaseImage, [sPackage for sPackage, _, _ in listDrift], dictResolved
+        sBaseImage, [sPackage for sPackage, _, _ in listDrift],
+        dictResolved, sArchitecture,
     )
     listInert, listEscalate = [], []
     for sPackage, sOldVersion, sNewVersion in listDrift:

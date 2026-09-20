@@ -27,8 +27,17 @@ var VaibifyFiles = (function () {
             fnRenderFileList(listEntries);
             _sRenderedFingerprint = _fsListingFingerprint(listEntries);
         } catch (error) {
-            document.getElementById("listFiles").innerHTML =
-                '<p style="padding:14px;color:var(--text-muted)">Error loading directory</p>';
+            /* "Error loading directory" hid the reason. The reason is
+               usually actionable -- a refused claim names the tile to
+               click, a stopped container names the start -- and the
+               panel is where the researcher is looking. */
+            var elList = document.getElementById("listFiles");
+            elList.innerHTML = "";
+            var elFailure = document.createElement("p");
+            elFailure.className = "files-panel-failure";
+            VaibifyDiagnosis.fnRenderFailureInline(
+                elFailure, "This directory could not be listed: ", error);
+            elList.appendChild(elFailure);
             _sRenderedFingerprint = "";
         }
     }
