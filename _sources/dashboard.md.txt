@@ -682,6 +682,13 @@ been built, a port another program holds, a container name left from
 an earlier start, a full disk) with Docker's words kept in
 parentheses as evidence.
 
+The Project Hub, the list of Projects inside an opened environment,
+has the same **?** with three folding blocks: using the Project Hub,
+a legend, and troubleshooting. Its failures carry the same diagnosis
+click, its automatic list refresh says when it could not refresh, and
+a New Project whose directory or name the server refuses says why in
+the wizard itself.
+
 ## The Help panel
 
 The **?** button beside the project name opens the Help panel. It

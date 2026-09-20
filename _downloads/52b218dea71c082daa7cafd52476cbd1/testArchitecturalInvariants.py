@@ -5814,7 +5814,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # credential-only flag a promotion needs. Both are fields on
     # shapes this module already owns.
     # +1 (2026-09-14): the promotion-recovery route module registers.
-    "pipelineServer.py": 3368,
+    "pipelineServer.py": 3391,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
