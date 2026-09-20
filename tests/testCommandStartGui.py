@@ -1,5 +1,6 @@
 """Coverage tests for vaibify.cli.commandStart.fnLaunchGui."""
 
+import contextlib
 import sys
 import types
 
@@ -31,6 +32,26 @@ def fnNoRealSockets():
 def _fmockRunOf(mockUvicorn):
     """The launcher builds a Server from the config and calls its run."""
     return mockUvicorn.Server.return_value.run
+
+
+@contextlib.contextmanager
+def _fcontextPatchLauncherModules(mockCreate, mockUvicorn):
+    """Replace the app factory and the launcher's uvicorn, so no server runs.
+
+    The launcher imports uvicorn at module load and derives its logging
+    server class from ``uvicorn.Server`` there, so swapping the module
+    in ``sys.modules`` alone would leave the real class bound; the
+    launcher's own two names are replaced beside it.
+    """
+    with patch.dict(
+        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
+    ), patch(
+        "vaibify.cli.serverLaunch.uvicorn", mockUvicorn,
+    ), patch(
+        "vaibify.cli.serverLaunch.ServerLoggingExitSignals",
+        mockUvicorn.Server,
+    ):
+        yield
 
 
 def _fdictPatchSysModules(mockCreate, mockUvicorn):
@@ -81,9 +102,7 @@ def test_fnLaunchGui_calls_uvicorn_with_app(capsys):
     mockUvicorn = MagicMock()
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, None)
     mockCreate.assert_called_once_with(
@@ -107,9 +126,7 @@ def test_fnLaunchGui_uvicorn_failure_propagates():
     mockCreate = MagicMock(return_value=MagicMock())
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         with pytest.raises(OSError, match="port in use"):
             fnLaunchGui(config, None)
@@ -125,9 +142,7 @@ def test_fnLaunchGui_uses_workspace_root_from_config():
     mockUvicorn = MagicMock()
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, None)
     mockCreate.assert_called_once_with(
@@ -145,9 +160,7 @@ def test_fnLaunchGui_passes_explicit_port_to_uvicorn():
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort(
          iResolvedPort=8062,
      )
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, 8062)
     mockCreate.assert_called_once_with(
@@ -179,9 +192,7 @@ def test_fnLaunchGui_exits_when_container_locked():
     patchReleaseSlot = patch(
         "vaibify.config.sessionRegistry.fnReleaseSessionSlot",
     )
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None)
@@ -216,9 +227,7 @@ def test_fnLaunchGui_releases_lock_on_uvicorn_exit():
     patchReleaseSlot = patch(
         "vaibify.config.sessionRegistry.fnReleaseSessionSlot",
     )
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, None)
     mockRelease.assert_called_once_with(mockLockHandle)
@@ -237,9 +246,7 @@ def test_fnLaunchGui_exits_when_port_held_by_foreign_process():
             8050, "demo", {"iPid": 9999, "sProjectName": "other"},
         ),
     )
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchResolve:
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchResolve:
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None, "/tmp/vaibify.yml")
     assert exitInfo.value.code == 1
@@ -254,9 +261,7 @@ def test_fnLaunchGui_sets_graceful_shutdown_timeout():
     mockUvicorn = MagicMock()
     (patchAcquire, patchRelease, patchResolvePort,
      patchAcquireSlot, patchReleaseSlot) = _fnPatchLockAndPort()
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchAcquire, patchRelease, patchResolvePort, \
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchAcquire, patchRelease, patchResolvePort, \
             patchAcquireSlot, patchReleaseSlot:
         fnLaunchGui(config, None, "/tmp/vaibify.yml")
     _, dictKwargs = mockUvicorn.Config.call_args
@@ -278,9 +283,7 @@ def test_fnLaunchGui_exits_when_session_limit_reached():
         "vaibify.config.sessionRegistry.ffileAcquireSessionSlot",
         side_effect=SessionLimitExceededError(99, 99),
     )
-    with patch.dict(
-        sys.modules, _fdictPatchSysModules(mockCreate, mockUvicorn),
-    ), patchResolvePort, patchAcquireSlot:
+    with _fcontextPatchLauncherModules(mockCreate, mockUvicorn), patchResolvePort, patchAcquireSlot:
         with pytest.raises(SystemExit) as exitInfo:
             fnLaunchGui(config, None)
     assert exitInfo.value.code == 1

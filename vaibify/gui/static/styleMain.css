@@ -434,6 +434,21 @@ html, body {
     user-select: all;
 }
 
+.diagnosis-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-pale-blue);
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+}
+
+.files-panel-failure {
+    padding: 14px;
+    color: var(--text-muted);
+}
+
 .diagnosis-footer {
     margin-top: 12px;
     font-size: 12px;

@@ -123,7 +123,7 @@ var VaibifyReproducePublished = (function () {
             _fnRenderConfirmation(dictResponse);
             _fnShowStage("Confirm");
         } catch (error) {
-            elError.textContent = error.message || String(error);
+            VaibifyDiagnosis.fnRenderFailureInline(elError, "", error);
         } finally {
             _bStaging = false;
             elButton.disabled = false;
@@ -209,7 +209,7 @@ var VaibifyReproducePublished = (function () {
                 "/api/reproductions/" + encodeURIComponent(_sJobId) + "/run",
                 {bAllowEmulation: bAllowEmulation});
         } catch (error) {
-            elError.textContent = error.message || String(error);
+            VaibifyDiagnosis.fnRenderFailureInline(elError, "", error);
             return;
         }
         _bRunStarted = true;
@@ -244,7 +244,7 @@ var VaibifyReproducePublished = (function () {
         _iPollFailures += 1;
         if (!bGone && _iPollFailures < _I_POLL_FAILURES_TOLERATED) {
             _fnRenderProgress({sPhase: "unreachable", bLive: true,
-                sFailure: error.message || String(error)});
+                sFailure: VaibifyDiagnosis.fsExplainError(error)});
             return;
         }
         _fnDisarmPoll();
@@ -253,7 +253,7 @@ var VaibifyReproducePublished = (function () {
                 + "live only as long as the hub that started them; the "
                 + "report, if the run reached one, is still on disk."
             : "The hub stopped answering: "
-                + (error.message || String(error))});
+                + VaibifyDiagnosis.fsExplainError(error)});
         _fnShowStage("Result");
     }
 

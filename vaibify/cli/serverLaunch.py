@@ -33,10 +33,13 @@ loopback would be.
 """
 
 import logging
+import os
 import platform
+import signal
 import socket
 
 import click
+import uvicorn
 
 from vaibify.docker.bridgeGateway import fsResolveDockerBridgeGateway
 
@@ -65,6 +68,7 @@ __all__ = [
     "S_LOOPBACK_HOST",
     "flistBindServerSockets",
     "flistResolveBindAddresses",
+    "ServerLoggingExitSignals",
     "fnRunServer",
 ]
 
@@ -159,6 +163,43 @@ def _fnAnnounceBridgeBinding(listSockets, iPort):
     )
 
 
+def _fsSignalName(iSignal):
+    """Return the symbolic name of a signal number, or the number itself."""
+    try:
+        return signal.Signals(iSignal).name
+    except ValueError:
+        return str(iSignal)
+
+
+class ServerLoggingExitSignals(uvicorn.Server):
+    """A uvicorn server that logs which signal ended the hub.
+
+    uvicorn answers SIGINT and SIGTERM by setting ``should_exit`` and
+    says so only below the warning level this hub logs at, so a hub
+    that vanished left no line naming why -- a researcher's hub exited
+    with no logged reason while a browser lane started on the same
+    machine (2026-09-18), and nothing recorded whether the cause was a
+    signal at all. ``handle_exit`` is the one hook uvicorn's signal
+    capture calls; it is wrapped on the instance at construction, so
+    the line is written before uvicorn's own handling, which then runs
+    unchanged. Wrapped rather than overridden because the hook's name
+    is uvicorn's, outside this project's naming contract.
+    """
+
+    def __init__(self, configUvicorn):
+        super().__init__(configUvicorn)
+        fnHandleExit = self.handle_exit
+
+        def fnHandleExitLogged(iSignal, _):
+            logger.warning(
+                "Hub received %s (pid %d); shutting down",
+                _fsSignalName(iSignal), os.getpid(),
+            )
+            fnHandleExit(iSignal, _)
+
+        self.handle_exit = fnHandleExitLogged
+
+
 def fnRunServer(app, iPort, sHost=S_LOOPBACK_HOST):
     """Serve app on loopback (and the Linux bridge gateway) until stopped.
 
@@ -175,7 +216,6 @@ def fnRunServer(app, iPort, sHost=S_LOOPBACK_HOST):
     then descriptive — uvicorn reads them for its own log line, never
     to bind — and are kept truthful for that reason.
     """
-    import uvicorn
     listSockets = flistBindServerSockets(
         flistResolveBindAddresses(sHost), iPort,
     )
@@ -187,4 +227,5 @@ def fnRunServer(app, iPort, sHost=S_LOOPBACK_HOST):
         ws_ping_interval=F_WEBSOCKET_PING_INTERVAL_SECONDS,
         ws_ping_timeout=F_WEBSOCKET_PING_TIMEOUT_SECONDS,
     )
-    uvicorn.Server(configUvicorn).run(sockets=listSockets)
+    ServerLoggingExitSignals(configUvicorn).run(sockets=listSockets)
+    logger.info("Hub server loop ended on port %d; the process is exiting", iPort)

@@ -21,9 +21,11 @@ daemon VM forwards ``host.docker.internal`` to loopback — never does.
 """
 
 import http.client
+import logging
 import pathlib
 import platform
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -68,15 +70,62 @@ def _fdictRunLauncherWithDoubles(listAddresses):
         serverLaunch, "flistBindServerSockets", side_effect=fnFakeBind,
     ), patch.object(
         serverLaunch, "_fnAnnounceBridgeBinding",
-    ), patch("uvicorn.Config") as mockConfig, patch(
-        "uvicorn.Server",
+    ), patch.object(
+        serverLaunch.uvicorn, "Config",
+    ) as mockConfig, patch.object(
+        serverLaunch, "ServerLoggingExitSignals",
     ) as mockServer:
         serverLaunch.fnRunServer(object(), 8050)
     dictSeen["dictConfigKwargs"] = mockConfig.call_args[1]
     dictSeen["listSockets"] = (
         mockServer.return_value.run.call_args[1]["sockets"]
     )
+    dictSeen["serverUvicorn"] = mockServer.return_value
     return dictSeen
+
+
+@pytest.mark.falsification
+def test_a_signal_that_ends_the_hub_is_logged_by_name(caplog):
+    """A hub that vanished left no line saying why (2026-09-18). uvicorn
+    handles the signal below the level the hub logs at, so the name is
+    recorded here, and uvicorn's own handling still runs afterwards.
+
+    Kills: dropping the log line from the wrapper. The signal is still
+    handled and the exit is silent again.
+    """
+    listSignalsHandled = []
+    with patch.object(
+        serverLaunch.uvicorn.Server, "handle_exit",
+        lambda self, iSignal, frame: listSignalsHandled.append(iSignal),
+    ):
+        with caplog.at_level(logging.WARNING, logger="vaibify"):
+            serverLaunch.ServerLoggingExitSignals(
+                serverLaunch.uvicorn.Config(object(), port=8050),
+            ).handle_exit(signal.SIGTERM, None)
+    assert listSignalsHandled == [signal.SIGTERM]
+    listLogged = [
+        recordLog.getMessage() for recordLog in caplog.records
+        if "SIGTERM" in recordLog.getMessage()
+    ]
+    assert listLogged, [
+        recordLog.getMessage() for recordLog in caplog.records
+    ]
+
+
+@pytest.mark.falsification
+def test_the_launcher_installs_the_signal_log_on_the_server_it_runs(caplog):
+    """The logging class exists for the server the launcher actually
+    runs; a class nobody constructs records nothing.
+
+    Kills: the launcher running a plain ``uvicorn.Server`` again, with
+    the logging class defined and unused.
+    """
+    dictSeen = _fdictRunLauncherWithDoubles(["127.0.0.1"])
+    assert dictSeen["serverUvicorn"] is not None
+    sSource = pathlib.Path(serverLaunch.__file__).read_text(encoding="utf-8")
+    sBody = sSource.split("def fnRunServer(", 1)[1]
+    assert "ServerLoggingExitSignals(configUvicorn).run(" in sBody
+    assert "uvicorn.Server(configUvicorn)" not in sBody
 
 
 def test_the_launcher_configures_both_ping_settings():

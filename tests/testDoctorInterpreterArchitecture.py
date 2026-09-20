@@ -28,7 +28,7 @@ from vaibify.cli.preflightResult import (
 )
 
 
-S_PROBE = "vaibify.cli.doctorHostChecks._fbInterpreterRunsTranslated"
+S_PROBE = "vaibify.cli.doctorHostChecks.fbInterpreterRunsTranslated"
 
 
 def _fpreflightOnMacOs(bTranslated):

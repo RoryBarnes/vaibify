@@ -54,8 +54,16 @@ __all__ = [
 import logging
 
 from vaibify.config import keepAliveManager
+from vaibify.config.connectionAvailability import fbDockerReachable
 
 logger = logging.getLogger("vaibify")
+
+# Whether the previous sweep failed to list the daemon. A daemon that
+# is down stays down for many sixty-second ticks, and a traceback on
+# every one of them buried the log of the hub that was actually
+# failing (measured, 2026-09-18); the outage is reported once, and its
+# end once.
+_bDaemonListingFailed = False
 
 # Docker container names match [a-zA-Z0-9][a-zA-Z0-9_.-]*, so "@" cannot
 # occur in one. A work-lane registry name is therefore unreachable by
@@ -117,7 +125,7 @@ def fnSweepWorkLaneKeepAlives(appState, dictCtx):
     if not keepAliveManager.fbPlatformSupportsKeepAlive():
         return
     connectionDocker = dictCtx.get("docker") if dictCtx else None
-    if connectionDocker is None:
+    if not fbDockerReachable(connectionDocker):
         return
     dictRunningIdByName = _fdictRunningContainerIdsByName(connectionDocker)
     if dictRunningIdByName is None:
@@ -143,15 +151,21 @@ def _fdictRunningContainerIdsByName(connectionDocker):
     as "nothing is running": answering it as an empty set would stop
     every work lane on the host the first time Docker hiccuped.
     """
+    global _bDaemonListingFailed
     try:
         listContainers = connectionDocker.flistGetRunningContainers()
-    except Exception:
-        logger.warning(
-            "Could not list running containers for the sleep-prevention "
-            "sweep; leaving every work-lane keep-alive as it is",
-            exc_info=True,
-        )
+    except Exception as error:
+        if not _bDaemonListingFailed:
+            logger.warning(
+                "Could not list running containers for the sleep-prevention "
+                "sweep (%s); leaving every work-lane keep-alive as it is "
+                "until the daemon answers again", error,
+            )
+        _bDaemonListingFailed = True
         return None
+    if _bDaemonListingFailed:
+        logger.info("The daemon answers the sleep-prevention sweep again")
+    _bDaemonListingFailed = False
     return {
         dictRow.get("sName", ""): dictRow.get("sContainerId", "")
         for dictRow in listContainers

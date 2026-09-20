@@ -335,9 +335,9 @@ archive at build time, not of anything vaibify chose.
 
 ### What is pinned in the image, and what floats
 
-The **entire toolchain closure** is version-pinned — all 45 packages
+The **entire toolchain closure** is version-pinned — every package
 that `apt-get install --no-install-recommends gcc g++ make` resolves on
-top of the pinned base image. Nothing in the compile-and-link path is
+top of the pinned base image, once per architecture the image builds on. Nothing in the compile-and-link path is
 left floating:
 
 | Group | Examples | Why it is pinned |
@@ -367,10 +367,15 @@ the digest holds. Also unpinned are the packages that cannot reach a
 numerical result (editors, viewers, `graphviz`, `poppler-utils`, LaTeX,
 X11); their apt blocks carry an explicit `# allow-unpinned` marker.
 
-### Regenerating the pin list after a base-image bump
+### Regenerating the pin lists after a base-image bump
+
+There is one list per architecture the image builds on (amd64 and
+arm64), selected at build time by `dpkg --print-architecture`.
+Regenerate each with its own platform:
 
 ```
-docker run --rm <BASE_IMAGE> sh -c 'apt-get update -qq >/dev/null \
+docker run --rm --platform linux/<amd64|arm64> <BASE_IMAGE> sh -c \
+  'apt-get update -qq >/dev/null \
   && apt-get install -s -y --no-install-recommends gcc g++ make \
   | grep "^Inst "'
 ```
@@ -381,16 +386,21 @@ bracketed field pins the version being *replaced*. `libc6` and
 `libc-bin` are upgrades from the base image and are exactly the two
 this gets silently wrong.
 
-The `-x86-64-linux-gnu` package names are safe to pin because the
-pinned base digest resolves to a single-architecture `linux/amd64`
-image, not a multi-arch manifest list. Repointing `BASE_IMAGE` at
-another architecture requires regenerating the whole list; the build
-diagnostic says so, because otherwise that failure looks identical to a
-withdrawn version.
+The pinned base digest is a multi-architecture index, so the daemon
+pulls the manifest for its own platform and the toolchain packages
+carry that platform in their names (`gcc-13-x86-64-linux-gnu` on
+amd64, `gcc-13-aarch64-linux-gnu` on arm64). The two lists carry the
+same versions, because one Ubuntu source upload builds every
+architecture, and differ only in those suffixed names and in
+`libquadmath0`, which has no aarch64 build;
+`python tools/checkToolchainEpoch.py --verify` fails if the lists ever
+disagree on a version. A daemon of any other architecture is refused
+before apt runs, with its own message, so that refusal can never look
+like a withdrawn version.
 
 ### The toolchain epoch
 
-The 45 pinned package versions answer "which compiler built this?".
+The pinned package versions answer "which compiler built this?".
 They left a second question unanswered for a while: **which archive
 were they fetched from?** Ubuntu drops superseded versions from its
 pool within weeks, so a pin that was correct in September stops
@@ -435,12 +445,13 @@ at any time:
 
 ```console
 $ python tools/checkToolchainEpoch.py --propose
-Moving the epoch 20260909 -> 20260911 changes 4 of 45 pinned packages:
-
+[amd64] 4 of 45 pins move:
   libc-bin: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
   libc-dev-bin: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
   libc6: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
   libc6-dev: 2.39-0ubuntu8.8 -> ['2.39-0ubuntu8', '2.39-0ubuntu8.9']
+[arm64] 4 of 44 pins move:
+  ...
 ```
 
 Note that it lists *every* candidate version rather than choosing one.
@@ -454,8 +465,12 @@ and re-verify the results built on the old epoch.
 
 ```console
 $ python tools/checkToolchainEpoch.py --verify
-All 45 pins resolve at snapshot 20260909.
+[amd64] All 45 pins resolve at snapshot 20260909.
+[arm64] All 44 pins resolve at snapshot 20260909.
 ```
+
+The check reads every architecture's list by default (`--architecture`
+narrows it) and fails first if the lists disagree on any version.
 
 That check also runs in `fresh-image-build` before the hour-long
 build, because a Dockerfile whose date and pins were edited apart
@@ -487,11 +502,11 @@ affected packages. The likely causes, in order:
    `python tools/checkToolchainEpoch.py --verify` says so directly.
 2. **`snapshot.ubuntu.com` is unreachable.** A frozen archive is still
    a network dependency; this is the price of the guarantee.
-3. **`BASE_IMAGE` was repointed at a different architecture.** The
-   `-x86-64-linux-gnu` package names do not exist there, and the whole
-   pin list has to be regenerated. The diagnostic calls this out
-   separately because it produces the same apt message as a withdrawn
-   version and the fixes are nothing alike.
+3. **The daemon's architecture has no pin list.** The Dockerfile
+   carries lists for amd64 and arm64 and refuses any other
+   architecture before apt runs, with a message naming it -- so that
+   refusal is never mistaken for a withdrawn version, which produces a
+   different apt message and a fix that is nothing alike.
 
 Whatever the cause, the response is never to unpin. If you only need
 to *verify* published work, you do not need this block at all — pull

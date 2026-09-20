@@ -15,6 +15,8 @@ The caffeinate spawn itself is stubbed — the test must not fight the
 researcher's power management — but every decision above it is real.
 """
 
+import logging
+
 import pytest
 
 from vaibify.config import keepAliveManager
@@ -95,6 +97,8 @@ def fnStubCaffeinateSpawn(monkeypatch):
     monkeypatch.setattr(
         keepAliveManager, "fbPlatformSupportsKeepAlive", lambda: True,
     )
+    # The outage flag is process state; a test must not inherit one.
+    monkeypatch.setattr(sleepPrevention, "_bDaemonListingFailed", False)
 
 
 def _fbWorkLaneIsUp(sName):
@@ -282,3 +286,68 @@ def testTheTwoLanesCannotStopEachOther():
     assert _fbWorkLaneIsUp("proj"), (
         "stopping the SESSION lane must leave the work lane standing"
     )
+
+
+class ConnectionRouterWithoutDaemon:
+    """A connection router whose Docker leg is absent (host mode, or a
+    daemon that never came up). Listing it is the mistake under test."""
+
+    def fbDockerLegPresent(self):
+        return False
+
+    def flistGetRunningContainers(self):
+        raise AssertionError(
+            "the sweep listed a router that reports no daemon leg",
+        )
+
+
+@pytest.mark.falsification
+def testARouterWithNoDaemonLegIsNeverAsked(caplog):
+    """A hub with no daemon used to raise through the router every sixty
+    seconds and log a traceback each time. The reachability question is
+    asked first, the same way every other Docker-lane site asks it.
+
+    Kills: guarding on ``is None`` again. The router is never None, so
+    the sweep lists it, the router raises, and the fake here asserts.
+    """
+    with caplog.at_level(logging.WARNING, logger="vaibify"):
+        sleepPrevention.fnSweepWorkLaneKeepAlives(
+            StateAppFake(), {"docker": ConnectionRouterWithoutDaemon()},
+        )
+    assert caplog.records == []
+
+
+@pytest.mark.falsification
+def testADaemonOutageIsReportedOnceAndWithoutATraceback(caplog):
+    """A daemon that is down stays down for many ticks; the log carries
+    the outage once, its reason in the sentence, and its end once.
+
+    Kills: dropping the once-per-outage guard, so every tick warns
+    again -- the sixty-second traceback that buried the hub's log.
+    """
+
+    class ConnectionDockerDown:
+        def flistGetRunningContainers(self):
+            raise RuntimeError("daemon unreachable")
+
+    with caplog.at_level(logging.INFO, logger="vaibify"):
+        for _ in range(3):
+            sleepPrevention.fnSweepWorkLaneKeepAlives(
+                StateAppFake(), {"docker": ConnectionDockerDown()},
+            )
+        listOutage = [
+            recordLog for recordLog in caplog.records
+            if "sleep-prevention" in recordLog.getMessage()
+        ]
+        assert len(listOutage) == 1
+        assert listOutage[0].levelno == logging.WARNING
+        assert "daemon unreachable" in listOutage[0].getMessage()
+        assert listOutage[0].exc_info is None
+        sleepPrevention.fnSweepWorkLaneKeepAlives(
+            StateAppFake(), {"docker": ConnectionDockerFake({})},
+        )
+    listRecovered = [
+        recordLog for recordLog in caplog.records
+        if "answers the sleep-prevention sweep again" in recordLog.getMessage()
+    ]
+    assert len(listRecovered) == 1

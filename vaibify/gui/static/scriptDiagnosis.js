@@ -9,10 +9,16 @@
    prints, so the browser never says something the terminal would not.
 
    Public surface:
+   - VaibifyDiagnosis.fsExplainError(error)
+       The sentence to show for a thrown API error: the server's own
+       structured sentence when it wrote one, else the raw message
+       through the sanitizer.
    - VaibifyDiagnosis.fnReportFailure(sMessage)
        An error toast carrying the diagnosis click.
    - VaibifyDiagnosis.fnReportFailureFromError(error)
-       The same, from a thrown API error (its message sanitized).
+       The same, from a thrown API error.
+   - VaibifyDiagnosis.fnRenderFailureInline(elTarget, sPrefix, error)
+       The same next step inside a card or panel rather than a toast.
    - VaibifyDiagnosis.fnShowDoctorReport()
        Runs the checks and opens the report modal.
 */
@@ -36,9 +42,37 @@ var VaibifyDiagnosis = (function () {
             "error", fnShowDoctorReport);
     }
 
+    function fsExplainError(error) {
+        /* A sentence the SERVER wrote (a refusal's dictDetail.sMessage,
+           written for the researcher) passes untouched. The sanitizer
+           exists for raw daemon and transport text, and it matches on
+           phrases -- so a server sentence quoting a git clone's
+           "connection refused" used to be replaced by "Cannot connect
+           to Docker", a remedy for a different failure. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sMessage) return dictDetail.sMessage;
+        return VaibifyUtilities.fsSanitizeErrorForUser(
+            error && error.message);
+    }
+
     function fnReportFailureFromError(error) {
-        fnReportFailure(VaibifyUtilities.fsSanitizeErrorForUser(
-            error && error.message));
+        fnReportFailure(fsExplainError(error));
+    }
+
+    function fnRenderFailureInline(elTarget, sPrefix, error) {
+        /* A failure shown inside a card keeps the same next step as a
+           toast. The text is set as text, never markup: the sentence
+           may quote whatever the server was told. */
+        if (!elTarget) return;
+        elTarget.textContent = "";
+        elTarget.appendChild(document.createTextNode(
+            (sPrefix || "") + fsExplainError(error) + " "));
+        var elButton = document.createElement("button");
+        elButton.type = "button";
+        elButton.className = "diagnosis-link";
+        elButton.textContent = "Run a diagnosis";
+        elButton.addEventListener("click", fnShowDoctorReport);
+        elTarget.appendChild(elButton);
     }
 
     function _fsRenderFinding(dictFinding) {
@@ -103,8 +137,10 @@ var VaibifyDiagnosis = (function () {
     }
 
     return {
+        fsExplainError: fsExplainError,
         fnReportFailure: fnReportFailure,
         fnReportFailureFromError: fnReportFailureFromError,
+        fnRenderFailureInline: fnRenderFailureInline,
         fnShowDoctorReport: fnShowDoctorReport,
     };
 })();

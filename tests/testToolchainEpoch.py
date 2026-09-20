@@ -23,17 +23,24 @@ import pytest
 
 from tools.checkToolchainEpoch import (
     fdictReadToolchainPins,
+    fdictReadToolchainPinsByArchitecture,
     flistFindUnresolvablePins,
+    flistFindVersionDisagreements,
     flistProposeEpochChanges,
     fsReadSnapshotDate,
     fsSnapshotBaseUrl,
 )
+from tools.checkToolchainPinDrift import T_PINNED_ARCHITECTURES
 
 
 __all__ = [
     "testTheDockerfilePinsASnapshotDate",
     "testTheDockerfilesPinsAreAllParsed",
     "testEveryParsedPinLooksLikeAPackageVersion",
+    "testEachArchitectureBlockCarriesItsOwnPlatformNames",
+    "testTheArchitectureListsCarryOneVersionPerPackage",
+    "testTheArm64ListIsTheAmd64ListRenamedForItsPlatform",
+    "testAVersionDisagreementNamesThePackageAndEveryVersion",
     "testAMissingSnapshotDateIsRefusedNotDefaulted",
     "testAPinBlockThatMatchesNothingRaises",
     "testTheSnapshotUrlIsTheUbuntuSnapshotService",
@@ -57,23 +64,81 @@ def testTheDockerfilePinsASnapshotDate():
     assert re.fullmatch(r"\d{8}", sDate), sDate
 
 
-def testTheDockerfilesPinsAreAllParsed():
+@pytest.mark.parametrize("sArchitecture", T_PINNED_ARCHITECTURES)
+def testTheDockerfilesPinsAreAllParsed(sArchitecture):
     """The count is not asserted -- it moves with a legitimate edit --
     but an empty or tiny parse means the regex stopped matching."""
-    dictPins = fdictReadToolchainPins(S_DOCKERFILE_TEXT)
+    dictPins = fdictReadToolchainPins(S_DOCKERFILE_TEXT, sArchitecture)
     assert len(dictPins) > 40, f"parsed only {len(dictPins)} pins"
     for sExpected in ("gcc", "libc6", "make", "linux-libc-dev"):
         assert sExpected in dictPins, f"{sExpected} was not parsed"
 
 
-def testEveryParsedPinLooksLikeAPackageVersion():
+@pytest.mark.parametrize("sArchitecture", T_PINNED_ARCHITECTURES)
+def testEveryParsedPinLooksLikeAPackageVersion(sArchitecture):
     """A regex that over-matches captures shell fragments as versions."""
     for sPackage, sVersion in fdictReadToolchainPins(
-        S_DOCKERFILE_TEXT,
+        S_DOCKERFILE_TEXT, sArchitecture,
     ).items():
         assert re.fullmatch(r"[0-9][A-Za-z0-9:.~+-]*", sVersion), (
             f"{sPackage}={sVersion} is not a Debian version"
         )
+
+
+def testEachArchitectureBlockCarriesItsOwnPlatformNames():
+    """A marker that did not name the architecture would hand every
+    caller the first block, and the arm64 list would be graded against
+    amd64 names forever."""
+    dictAmd64 = fdictReadToolchainPins(S_DOCKERFILE_TEXT, "amd64")
+    dictArm64 = fdictReadToolchainPins(S_DOCKERFILE_TEXT, "arm64")
+    assert "gcc-13-x86-64-linux-gnu" in dictAmd64
+    assert "gcc-13-aarch64-linux-gnu" not in dictAmd64
+    assert "gcc-13-aarch64-linux-gnu" in dictArm64
+    assert "gcc-13-x86-64-linux-gnu" not in dictArm64
+
+
+@pytest.mark.falsification
+def testTheArchitectureListsCarryOneVersionPerPackage():
+    """One Ubuntu source upload builds every architecture, so a package
+    pinned at two versions across the lists is a list edited alone.
+
+    Kills: moving ``make`` in the arm64 block alone. The image would
+    then compile with a different toolchain depending on which daemon
+    built it, and nothing else reads the two lists against each other.
+    """
+    dictPinsByArchitecture = fdictReadToolchainPinsByArchitecture(
+        S_DOCKERFILE_TEXT, T_PINNED_ARCHITECTURES,
+    )
+    assert flistFindVersionDisagreements(dictPinsByArchitecture) == []
+
+
+def testTheArm64ListIsTheAmd64ListRenamedForItsPlatform():
+    """The two closures differ only by the platform suffix in nine
+    package names and by libquadmath0, which has no aarch64 build
+    (measured with ``apt-get install -s`` against the pinned snapshot on
+    both platforms, 2026-09-20). Anything else missing or extra is a
+    list that stopped describing the closure it installs."""
+    dictAmd64 = fdictReadToolchainPins(S_DOCKERFILE_TEXT, "amd64")
+    dictArm64 = fdictReadToolchainPins(S_DOCKERFILE_TEXT, "arm64")
+    dictExpectedArm64 = {
+        sPackage.replace("-x86-64-linux-gnu", "-aarch64-linux-gnu"): sVersion
+        for sPackage, sVersion in dictAmd64.items()
+        if sPackage != "libquadmath0"
+    }
+    assert dictArm64 == dictExpectedArm64
+
+
+def testAVersionDisagreementNamesThePackageAndEveryVersion():
+    """A package absent from one list is not a disagreement; a package
+    pinned differently is, and the report carries both versions so
+    the maintainer can see which list moved."""
+    listFound = flistFindVersionDisagreements({
+        "amd64": {"make": "4.3-4.1build2", "libquadmath0": "14.2.0-1"},
+        "arm64": {"make": "4.3-4.1build3"},
+    })
+    assert listFound == [
+        ("make", {"amd64": "4.3-4.1build2", "arm64": "4.3-4.1build3"}),
+    ]
 
 
 def testAMissingSnapshotDateIsRefusedNotDefaulted():
@@ -83,8 +148,8 @@ def testAMissingSnapshotDateIsRefusedNotDefaulted():
 
 
 def testAPinBlockThatMatchesNothingRaises():
-    with pytest.raises(ValueError, match="no toolchain pins"):
-        fdictReadToolchainPins("FROM ubuntu:24.04\n")
+    with pytest.raises(ValueError, match="no longer contains the pinned"):
+        fdictReadToolchainPins("FROM ubuntu:24.04\n", "amd64")
 
 
 def testTheSnapshotUrlIsTheUbuntuSnapshotService():

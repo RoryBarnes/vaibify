@@ -26,6 +26,7 @@ from ..routeScope import (
     ffnRouteScope,
     fsLeaseFromRequest,
 )
+from vaibify.docker.dockerConnection import fbErrorMeansContainerGone
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
     CreateWorkflowRequest,
@@ -74,9 +75,14 @@ def _fsValidateAndNormalizeFileName(sFileName):
 
 
 def _fbIsContainerStopped(error):
-    """Return True if the error indicates a stopped container."""
-    sMessage = str(error).lower()
-    return "409" in sMessage and "conflict" in sMessage
+    """Return True when the daemon's answer proves the container is not running.
+
+    Read from the status code the daemon attached, not from the words
+    "409" and "conflict" in the message: a name conflict on create is
+    also a 409 Conflict, and reading it as "stopped" sent a researcher
+    to start a container that was already running.
+    """
+    return fbErrorMeansContainerGone(error)
 
 
 def _fnRejectDuplicateWorkflowName(

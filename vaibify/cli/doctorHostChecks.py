@@ -45,6 +45,7 @@ from .preflightResult import (
 
 
 __all__ = [
+    "fbInterpreterRunsTranslated",
     "flistCheckDepositScratchSpace", "flistCheckResourceAllocation",
     "fpreflightInterpreterArchitecture",
 ]
@@ -251,7 +252,7 @@ def flistCheckResourceAllocation(config):
     return listResults
 
 
-def _fbInterpreterRunsTranslated():
+def fbInterpreterRunsTranslated():
     """True when the kernel reports THIS process as CPU-translated.
 
     Asks the running process about itself rather than spawning a
@@ -289,7 +290,7 @@ def fpreflightInterpreterArchitecture():
         "own build architecture from platform.machine()."
     )
     sMachine = platform.machine()
-    if not _fbInterpreterRunsTranslated():
+    if not fbInterpreterRunsTranslated():
         return PreflightResult(
             sName="interpreter-architecture", sLevel=S_LEVEL_OK,
             sScope=S_SCOPE_HOST,

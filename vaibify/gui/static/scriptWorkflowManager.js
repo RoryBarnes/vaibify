@@ -306,10 +306,8 @@ var VaibifyWorkflowManager = (function () {
            somewhere they can perform it: the project TILE is the
            claim control, one screen back. Reached only when the
            automatic reclaim could not recover. */
-        var dictDetail = (error && error.dictDetail) || {};
         VaibifyApp.fnShowToast(
-            (dictDetail.sMessage || VaibifyUtilities.fsSanitizeErrorForUser(
-                error && error.message)) +
+            VaibifyDiagnosis.fsExplainError(error) +
             " Open the environment again from the list to claim it.",
             "warning");
         VaibifyApp.fnShowContainerLanding();
@@ -338,9 +336,7 @@ var VaibifyWorkflowManager = (function () {
                 "Project refreshed", "info");
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return;
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             _bRefreshing = false;
         }
@@ -379,9 +375,7 @@ var VaibifyWorkflowManager = (function () {
             _fnHideDriftBanner();
             await fnRefreshWorkflow();
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -446,9 +440,7 @@ var VaibifyWorkflowManager = (function () {
                 "info");
             await fdictPullProjectRepo();
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 
@@ -596,9 +588,7 @@ var VaibifyWorkflowManager = (function () {
             _fnHideDriftBanner();
             await fnRefreshWorkflow();
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
+            VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }
 

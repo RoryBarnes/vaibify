@@ -409,10 +409,11 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
         return {
             "sHint": (
                 "vaibify's pinned compiler toolchain could not be installed "
-                "from Ubuntu's archive. This is vaibify's own pin, not your "
-                "project's packages: the pinned names are x86-64 only, so "
-                "an arm64 daemon (Apple Silicon) cannot install them, and "
-                "on any machine the pin rotates about monthly. Update "
+                "from Ubuntu's archive snapshot. This is vaibify's own pin, "
+                "not your project's packages: either the pin list and the "
+                "snapshot date in vaibify's Dockerfile disagree, "
+                "snapshot.ubuntu.com could not be reached, or the daemon's "
+                "architecture has no pin list (amd64 and arm64 do). Update "
                 "vaibify, or report the build output, which lists what "
                 "the archive offers."
             ),

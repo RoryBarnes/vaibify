@@ -519,7 +519,12 @@ def test_the_toolchain_pin_failure_is_named_as_vaibifys_not_the_projects():
         S_TOOLCHAIN_BUILD_TAIL,
     )
     assert sSentence.startswith("Build of 'fillet' failed. vaibify's pinned")
-    assert "x86-64 only" in sSentence
+    assert "not your project's packages" in sSentence
+    # The catalog once said the names were x86-64 only. The Dockerfile
+    # has carried an arm64 list since 2026-09-20, so that sentence would
+    # send an Apple Silicon researcher to fight an architecture that is
+    # supported.
+    assert "x86-64 only" not in sSentence
     assert "Command: python tools/checkToolchainEpoch.py --verify" in sSentence
     assert "(Docker said: " in sSentence
     assert "docker buildx build" not in sSentence

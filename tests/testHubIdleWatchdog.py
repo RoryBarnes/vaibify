@@ -7,10 +7,13 @@ watchdog loop that self-SIGTERMs only when genuinely abandoned.
 """
 
 import asyncio
+import logging
 import math
 import os
 import signal
 import time
+import pytest
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -585,3 +588,39 @@ def test_viewer_idle_served_container_self_exits():
     ):
         assert pipelineServer._fbHubShouldSelfExit(
             app, {"docker": None}, 10.0) is True
+
+
+@pytest.mark.falsification
+def test_the_idle_self_exit_is_logged_before_the_sigterm(caplog):
+    """An idle hub SIGTERMs itself; the log must say so, or the exit is
+    indistinguishable from a signal that came from outside.
+
+    Kills: dropping the warning before ``os.kill``. The hub still
+    retires, silently, as it did before 2026-09-20.
+    """
+    app = _fappBuildFakeApp(
+        fLastActivityMonotonic=time.monotonic() - 100.0,
+        fIdleTimeoutSeconds=1.0,
+    )
+    listSignalsSent = []
+
+    async def fnDrive():
+        with patch.object(
+            serverLifespan.os, "kill",
+            lambda iPid, iSignal: listSignalsSent.append(iSignal),
+        ):
+            await serverLifespan._fnIdleShutdownWatchdogLoop(
+                app, {"docker": None}, 0.01, 1.0,
+            )
+
+    with caplog.at_level(logging.WARNING, logger="vaibify"):
+        asyncio.run(fnDrive())
+    assert listSignalsSent == [signal.SIGTERM]
+    listIdleLines = [
+        recordLog.getMessage() for recordLog in caplog.records
+        if "idle" in recordLog.getMessage()
+        and "exiting" in recordLog.getMessage()
+    ]
+    assert listIdleLines, [
+        recordLog.getMessage() for recordLog in caplog.records
+    ]

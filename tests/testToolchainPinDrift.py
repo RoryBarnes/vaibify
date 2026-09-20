@@ -194,11 +194,24 @@ def test_an_unknown_pool_path_escalates():
 
 def test_the_pins_are_read_from_the_shipped_dockerfile():
     """The tool grades the real pin set, not a retyped copy."""
-    dictPinned = moduleJudge.fdictParsePinnedVersions(moduleJudge.fsReadDockerfile())
-    assert len(dictPinned) >= 40
-    for sPackage in ("gcc", "gcc-13", "libc6", "linux-libc-dev", "make"):
-        assert sPackage in dictPinned, f"{sPackage} missing from the parsed pins"
-    assert dictPinned["gcc-13"].startswith("13.")
+    for sArchitecture in moduleJudge.T_PINNED_ARCHITECTURES:
+        dictPinned = moduleJudge.fdictParsePinnedVersions(
+            moduleJudge.fsReadDockerfile(), sArchitecture,
+        )
+        assert len(dictPinned) >= 40
+        for sPackage in ("gcc", "gcc-13", "libc6", "linux-libc-dev", "make"):
+            assert sPackage in dictPinned, (
+                f"{sPackage} missing from the parsed {sArchitecture} pins"
+            )
+        assert dictPinned["gcc-13"].startswith("13.")
+
+
+def test_an_architecture_with_no_pin_list_is_refused():
+    """Grading a list that does not exist would grade the empty set."""
+    with pytest.raises(ValueError, match="pins no toolchain"):
+        moduleJudge.fdictParsePinnedVersions(
+            moduleJudge.fsReadDockerfile(), "riscv64",
+        )
 
 
 def test_the_base_image_is_read_with_its_digest():
@@ -219,15 +232,38 @@ def test_drift_detection_names_only_moved_pins():
 def test_applying_a_bump_rewrites_exactly_one_pin():
     """The rewrite must not disturb a neighbouring package's version."""
     sText = moduleJudge.fsReadDockerfile()
-    dictBefore = moduleJudge.fdictParsePinnedVersions(sText)
+    dictBefore = moduleJudge.fdictParsePinnedVersions(sText, "amd64")
     sUpdated = moduleJudge.fsApplyPinBumps(
         sText, [("linux-libc-dev", dictBefore["linux-libc-dev"], "9.9.9-9.9")]
     )
-    dictAfter = moduleJudge.fdictParsePinnedVersions(sUpdated)
+    dictAfter = moduleJudge.fdictParsePinnedVersions(sUpdated, "amd64")
     assert dictAfter["linux-libc-dev"] == "9.9.9-9.9"
     assert {k: v for k, v in dictAfter.items() if k != "linux-libc-dev"} == {
         k: v for k, v in dictBefore.items() if k != "linux-libc-dev"
     }
+
+
+def test_a_bump_moves_every_architecture_that_pins_the_package():
+    """The lists carry one version per package; a bump that moved one
+    list alone would leave the image compiling with a different
+    toolchain depending on which daemon built it. A package one list
+    does not pin (libquadmath0 has no aarch64 build) is left alone."""
+    sText = moduleJudge.fsReadDockerfile()
+    dictAmd64 = moduleJudge.fdictParsePinnedVersions(sText, "amd64")
+    dictArm64 = moduleJudge.fdictParsePinnedVersions(sText, "arm64")
+    sUpdated = moduleJudge.fsApplyPinBumps(sText, [
+        ("make", dictAmd64["make"], "9.9-9"),
+        ("libquadmath0", dictAmd64["libquadmath0"], "8.8-8"),
+    ])
+    assert moduleJudge.fdictParsePinnedVersions(sUpdated, "amd64")["make"] == "9.9-9"
+    assert moduleJudge.fdictParsePinnedVersions(sUpdated, "arm64")["make"] == "9.9-9"
+    assert moduleJudge.fdictParsePinnedVersions(
+        sUpdated, "amd64",
+    )["libquadmath0"] == "8.8-8"
+    assert "libquadmath0" not in dictArm64
+    assert "libquadmath0" not in moduleJudge.fdictParsePinnedVersions(
+        sUpdated, "arm64",
+    )
 
 
 def test_applying_a_bump_refuses_a_version_that_is_not_there():
@@ -323,8 +359,9 @@ def test_a_pin_line_the_parser_cannot_read_raises():
         "            make=4.3-4.1build2 \\", "            make=4.3-4.1build2  \\"
     )
     assert sBroken != sText, "the fixture no longer matches the Dockerfile"
-    with pytest.raises(ValueError, match="silently exempt"):
-        moduleJudge.fdictParsePinnedVersions(sBroken)
+    for sArchitecture in moduleJudge.T_PINNED_ARCHITECTURES:
+        with pytest.raises(ValueError, match="silently exempt"):
+            moduleJudge.fdictParsePinnedVersions(sBroken, sArchitecture)
 
 
 def test_a_package_entering_the_closure_is_reported():
