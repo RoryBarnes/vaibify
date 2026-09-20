@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.14.dev51 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.14.dev55 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a0a2c39e"></script>
+      <script src="_static/documentation_options.js?v=5cd3d939"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -75,7 +75,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#the-dockerfile-is-provenance-the-digest-is-reproduction">The Dockerfile is provenance; the digest is reproduction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-is-pinned-in-the-image-and-what-floats">What is pinned in the image, and what floats</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#regenerating-the-pin-list-after-a-base-image-bump">Regenerating the pin list after a base-image bump</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#regenerating-the-pin-lists-after-a-base-image-bump">Regenerating the pin lists after a base-image bump</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-toolchain-epoch">The toolchain epoch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#moving-the-epoch">Moving the epoch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#when-a-pin-does-not-resolve-anyway">When a pin does not resolve anyway</a></li>
@@ -457,9 +457,9 @@ archive at build time, not of anything vaibify chose.</p>
 </section>
 <section id="what-is-pinned-in-the-image-and-what-floats">
 <h3>What is pinned in the image, and what floats<a class="headerlink" href="#what-is-pinned-in-the-image-and-what-floats" title="Link to this heading"></a></h3>
-<p>The <strong>entire toolchain closure</strong> is version-pinned — all 45 packages
+<p>The <strong>entire toolchain closure</strong> is version-pinned — every package
 that <code class="docutils literal notranslate"><span class="pre">apt-get</span> <span class="pre">install</span> <span class="pre">--no-install-recommends</span> <span class="pre">gcc</span> <span class="pre">g++</span> <span class="pre">make</span></code> resolves on
-top of the pinned base image. Nothing in the compile-and-link path is
+top of the pinned base image, once per architecture the image builds on. Nothing in the compile-and-link path is
 left floating:</p>
 <table class="docutils align-default">
 <thead>
@@ -511,9 +511,13 @@ the digest holds. Also unpinned are the packages that cannot reach a
 numerical result (editors, viewers, <code class="docutils literal notranslate"><span class="pre">graphviz</span></code>, <code class="docutils literal notranslate"><span class="pre">poppler-utils</span></code>, LaTeX,
 X11); their apt blocks carry an explicit <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">allow-unpinned</span></code> marker.</p>
 </section>
-<section id="regenerating-the-pin-list-after-a-base-image-bump">
-<h3>Regenerating the pin list after a base-image bump<a class="headerlink" href="#regenerating-the-pin-list-after-a-base-image-bump" title="Link to this heading"></a></h3>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">run</span> <span class="o">--</span><span class="n">rm</span> <span class="o">&lt;</span><span class="n">BASE_IMAGE</span><span class="o">&gt;</span> <span class="n">sh</span> <span class="o">-</span><span class="n">c</span> <span class="s1">'apt-get update -qq &gt;/dev/null </span><span class="se">\</span>
+<section id="regenerating-the-pin-lists-after-a-base-image-bump">
+<h3>Regenerating the pin lists after a base-image bump<a class="headerlink" href="#regenerating-the-pin-lists-after-a-base-image-bump" title="Link to this heading"></a></h3>
+<p>There is one list per architecture the image builds on (amd64 and
+arm64), selected at build time by <code class="docutils literal notranslate"><span class="pre">dpkg</span> <span class="pre">--print-architecture</span></code>.
+Regenerate each with its own platform:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">run</span> <span class="o">--</span><span class="n">rm</span> <span class="o">--</span><span class="n">platform</span> <span class="n">linux</span><span class="o">/&lt;</span><span class="n">amd64</span><span class="o">|</span><span class="n">arm64</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="n">BASE_IMAGE</span><span class="o">&gt;</span> <span class="n">sh</span> <span class="o">-</span><span class="n">c</span> \
+  <span class="s1">'apt-get update -qq &gt;/dev/null </span><span class="se">\</span>
 <span class="s1">  &amp;&amp; apt-get install -s -y --no-install-recommends gcc g++ make </span><span class="se">\</span>
 <span class="s1">  | grep "^Inst "'</span>
 </pre></div>
@@ -523,16 +527,21 @@ upgrade line reads <code class="docutils literal notranslate"><span class="pre">
 bracketed field pins the version being <em>replaced</em>. <code class="docutils literal notranslate"><span class="pre">libc6</span></code> and
 <code class="docutils literal notranslate"><span class="pre">libc-bin</span></code> are upgrades from the base image and are exactly the two
 this gets silently wrong.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">-x86-64-linux-gnu</span></code> package names are safe to pin because the
-pinned base digest resolves to a single-architecture <code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>
-image, not a multi-arch manifest list. Repointing <code class="docutils literal notranslate"><span class="pre">BASE_IMAGE</span></code> at
-another architecture requires regenerating the whole list; the build
-diagnostic says so, because otherwise that failure looks identical to a
-withdrawn version.</p>
+<p>The pinned base digest is a multi-architecture index, so the daemon
+pulls the manifest for its own platform and the toolchain packages
+carry that platform in their names (<code class="docutils literal notranslate"><span class="pre">gcc-13-x86-64-linux-gnu</span></code> on
+amd64, <code class="docutils literal notranslate"><span class="pre">gcc-13-aarch64-linux-gnu</span></code> on arm64). The two lists carry the
+same versions, because one Ubuntu source upload builds every
+architecture, and differ only in those suffixed names and in
+<code class="docutils literal notranslate"><span class="pre">libquadmath0</span></code>, which has no aarch64 build;
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/checkToolchainEpoch.py</span> <span class="pre">--verify</span></code> fails if the lists ever
+disagree on a version. A daemon of any other architecture is refused
+before apt runs, with its own message, so that refusal can never look
+like a withdrawn version.</p>
 </section>
 <section id="the-toolchain-epoch">
 <h3>The toolchain epoch<a class="headerlink" href="#the-toolchain-epoch" title="Link to this heading"></a></h3>
-<p>The 45 pinned package versions answer “which compiler built this?”.
+<p>The pinned package versions answer “which compiler built this?”.
 They left a second question unanswered for a while: <strong>which archive
 were they fetched from?</strong> Ubuntu drops superseded versions from its
 pool within weeks, so a pin that was correct in September stops
@@ -569,12 +578,13 @@ moved past the pinned date and, if so, opens a single standing issue
 describing exactly what would change. You can ask the same question
 at any time:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>python<span class="w"> </span>tools/checkToolchainEpoch.py<span class="w"> </span>--propose
-<span class="go">Moving the epoch 20260909 -&gt; 20260911 changes 4 of 45 pinned packages:</span>
-
+<span class="go">[amd64] 4 of 45 pins move:</span>
 <span class="go">  libc-bin: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
 <span class="go">  libc-dev-bin: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
 <span class="go">  libc6: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
 <span class="go">  libc6-dev: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
+<span class="go">[arm64] 4 of 44 pins move:</span>
+<span class="go">  ...</span>
 </pre></div>
 </div>
 <p>Note that it lists <em>every</em> candidate version rather than choosing one.
@@ -585,9 +595,12 @@ nobody reviewed.</p>
 confirm the two halves still agree, open a pull request, and re-run
 and re-verify the results built on the old epoch.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>python<span class="w"> </span>tools/checkToolchainEpoch.py<span class="w"> </span>--verify
-<span class="go">All 45 pins resolve at snapshot 20260909.</span>
+<span class="go">[amd64] All 45 pins resolve at snapshot 20260909.</span>
+<span class="go">[arm64] All 44 pins resolve at snapshot 20260909.</span>
 </pre></div>
 </div>
+<p>The check reads every architecture’s list by default (<code class="docutils literal notranslate"><span class="pre">--architecture</span></code>
+narrows it) and fails first if the lists disagree on any version.</p>
 <p>That check also runs in <code class="docutils literal notranslate"><span class="pre">fresh-image-build</span></code> before the hour-long
 build, because a Dockerfile whose date and pins were edited apart
 produces an image that cannot build, and discovering that in thirty
@@ -615,11 +628,11 @@ affected packages. The likely causes, in order:</p>
 <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/checkToolchainEpoch.py</span> <span class="pre">--verify</span></code> says so directly.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">snapshot.ubuntu.com</span></code> is unreachable.</strong> A frozen archive is still
 a network dependency; this is the price of the guarantee.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">BASE_IMAGE</span></code> was repointed at a different architecture.</strong> The
-<code class="docutils literal notranslate"><span class="pre">-x86-64-linux-gnu</span></code> package names do not exist there, and the whole
-pin list has to be regenerated. The diagnostic calls this out
-separately because it produces the same apt message as a withdrawn
-version and the fixes are nothing alike.</p></li>
+<li><p><strong>The daemon’s architecture has no pin list.</strong> The Dockerfile
+carries lists for amd64 and arm64 and refuses any other
+architecture before apt runs, with a message naming it – so that
+refusal is never mistaken for a withdrawn version, which produces a
+different apt message and a fix that is nothing alike.</p></li>
 </ol>
 <p>Whatever the cause, the response is never to unpin. If you only need
 to <em>verify</em> published work, you do not need this block at all — pull

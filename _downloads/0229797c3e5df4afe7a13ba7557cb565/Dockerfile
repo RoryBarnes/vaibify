@@ -25,7 +25,7 @@ ARG VC_PROJECT_NAME=Vaibify
 
 # THE ARCHIVE THE PINNED TOOLCHAIN COMES FROM, frozen to a date.
 #
-# The 45 versions below were pinned so a rebuild cannot swap the
+# The versions below were pinned so a rebuild cannot swap the
 # compiler silently. That guarantee had a hole: Ubuntu drops
 # superseded versions from its pool within weeks, so the pins stopped
 # RESOLVING on roughly a monthly cadence and every unrelated pull
@@ -137,22 +137,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # appears in `gcc --version`, and in .vaibify/environment.json's
 # dictSystemTools.sGcc, is gcc-13's.
 #
-# THE WHOLE CLOSURE IS PINNED, not just the compiler. All 45 packages
+# THE WHOLE CLOSURE IS PINNED, not just the compiler. Every package
 # that `apt-get install --no-install-recommends gcc g++ make` resolves
-# on top of the pinned base are listed, including the assembler and
+# on top of the pinned base is listed, including the assembler and
 # linker (binutils), the C library and its headers (libc6, libc6-dev,
 # linux-libc-dev), gcc's internal arbitrary-precision libraries
 # (libisl23, libmpc3, libmpfr6 -- these participate in constant
 # folding, so they can change emitted values) and the runtime
 # libraries. An earlier revision pinned only gcc/g++/make and called
 # the rest a maintenance battle; that was hand-waving. The closure is
-# finite, it is 45 lines, and a partial pin is the worst of the three
-# options -- it can also make apt UNSATISFIABLE, because a pinned
-# libc6-dev whose libc6 has moved on is a conflict rather than a
-# resolution.
+# finite, it is a few dozen lines, and a partial pin is the worst of
+# the three options -- it can also make apt UNSATISFIABLE, because a
+# pinned libc6-dev whose libc6 has moved on is a conflict rather than
+# a resolution.
 #
-# Regenerate the list after any base-image bump with:
-#   docker run --rm <BASE_IMAGE> sh -c 'apt-get update -qq >/dev/null
+# Regenerate the lists after any base-image bump, once per
+# architecture, with:
+#   docker run --rm --platform linux/<amd64|arm64> <BASE_IMAGE> sh -c
+#     'apt-get update -qq >/dev/null
 #     && apt-get install -s -y --no-install-recommends gcc g++ make
 #     | grep "^Inst "'
 # taking the version in PARENTHESES, not the one in brackets: an
@@ -161,11 +163,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # are upgrades from the base image, so they are exactly the two this
 # would silently get wrong.
 #
-# The `-x86-64-linux-gnu` names are safe to pin because the base image
-# digest above resolves to a single-architecture linux/amd64 image
-# (verified: `docker image inspect` reports amd64), not a manifest
-# list. Repointing BASE_IMAGE at another architecture requires
-# regenerating this whole list, and the diagnostic below says so.
+# THERE IS ONE LIST PER ARCHITECTURE, because the base image digest
+# above is a multi-architecture index: the daemon pulls the manifest
+# for its own platform, and the toolchain packages carry the platform
+# in their names (`gcc-13-x86-64-linux-gnu` on amd64,
+# `gcc-13-aarch64-linux-gnu` on arm64). A single amd64 list stopped
+# every native build on an Apple Silicon daemon at this step (met
+# 2026-09-18). The shell selects the list matching
+# `dpkg --print-architecture`; the two lists carry the SAME versions,
+# as Ubuntu builds every architecture from one source upload, and
+# differ only in those platform-suffixed names and in libquadmath0,
+# which has no aarch64 build. An architecture with no list is refused
+# before apt runs, so that refusal can never read as a withdrawn
+# version.
 #
 # Still NOT pinned, and named so the boundary is stated rather than
 # implied: anything already present in the base image and not upgraded
@@ -193,7 +203,20 @@ RUN set -eu; \
             >> /etc/apt/sources.list.d/vaibifyToolchainSnapshot.list; \
     done; \
     apt-get update \
-    && if ! apt-get install -y --no-install-recommends \
+    && sArchitecture="$(dpkg --print-architecture)" \
+    && case "${sArchitecture}" in \
+        amd64|arm64) ;; \
+        *) \
+            printf '\n%s\n' \
+                "vaibify: no pinned compiler toolchain exists for the '${sArchitecture}' architecture." >&2; \
+            printf '%s\n' \
+                "This image pins its toolchain for amd64 and arm64 only. Build on one" >&2; \
+            printf '%s\n' \
+                "of those, or pull the published image by digest to reproduce." >&2; \
+            exit 1 ;; \
+    esac \
+    && bToolchainInstalled=true \
+    && if [ "${sArchitecture}" = "amd64" ] && ! apt-get install -y --no-install-recommends \
             binutils=2.42-4ubuntu2.10 \
             binutils-common=2.42-4ubuntu2.10 \
             binutils-x86-64-linux-gnu=2.42-4ubuntu2.10 \
@@ -238,7 +261,53 @@ RUN set -eu; \
             libubsan1=14.2.0-4ubuntu2~24.04.1 \
             linux-libc-dev=6.8.0-139.139 \
             make=4.3-4.1build2 \
-            rpcsvc-proto=1.4.2-0ubuntu7; then \
+            rpcsvc-proto=1.4.2-0ubuntu7; then bToolchainInstalled=false; fi \
+    && if [ "${sArchitecture}" = "arm64" ] && ! apt-get install -y --no-install-recommends \
+            binutils-aarch64-linux-gnu=2.42-4ubuntu2.10 \
+            binutils-common=2.42-4ubuntu2.10 \
+            binutils=2.42-4ubuntu2.10 \
+            cpp-13-aarch64-linux-gnu=13.3.0-6ubuntu2~24.04.1 \
+            cpp-13=13.3.0-6ubuntu2~24.04.1 \
+            cpp-aarch64-linux-gnu=4:13.2.0-7ubuntu1 \
+            cpp=4:13.2.0-7ubuntu1 \
+            g++-13-aarch64-linux-gnu=13.3.0-6ubuntu2~24.04.1 \
+            g++-13=13.3.0-6ubuntu2~24.04.1 \
+            g++-aarch64-linux-gnu=4:13.2.0-7ubuntu1 \
+            g++=4:13.2.0-7ubuntu1 \
+            gcc-13-aarch64-linux-gnu=13.3.0-6ubuntu2~24.04.1 \
+            gcc-13-base=13.3.0-6ubuntu2~24.04.1 \
+            gcc-13=13.3.0-6ubuntu2~24.04.1 \
+            gcc-aarch64-linux-gnu=4:13.2.0-7ubuntu1 \
+            gcc=4:13.2.0-7ubuntu1 \
+            libasan8=14.2.0-4ubuntu2~24.04.1 \
+            libatomic1=14.2.0-4ubuntu2~24.04.1 \
+            libbinutils=2.42-4ubuntu2.10 \
+            libc-bin=2.39-0ubuntu8.9 \
+            libc-dev-bin=2.39-0ubuntu8.9 \
+            libc6-dev=2.39-0ubuntu8.9 \
+            libc6=2.39-0ubuntu8.9 \
+            libcc1-0=14.2.0-4ubuntu2~24.04.1 \
+            libcrypt-dev=1:4.4.36-4build1 \
+            libctf-nobfd0=2.42-4ubuntu2.10 \
+            libctf0=2.42-4ubuntu2.10 \
+            libgcc-13-dev=13.3.0-6ubuntu2~24.04.1 \
+            libgomp1=14.2.0-4ubuntu2~24.04.1 \
+            libgprofng0=2.42-4ubuntu2.10 \
+            libhwasan0=14.2.0-4ubuntu2~24.04.1 \
+            libisl23=0.26-3build1.1 \
+            libitm1=14.2.0-4ubuntu2~24.04.1 \
+            libjansson4=2.14-2build2 \
+            liblsan0=14.2.0-4ubuntu2~24.04.1 \
+            libmpc3=1.3.1-1build1.1 \
+            libmpfr6=4.2.1-1build1.1 \
+            libsframe1=2.42-4ubuntu2.10 \
+            libstdc++-13-dev=13.3.0-6ubuntu2~24.04.1 \
+            libtsan2=14.2.0-4ubuntu2~24.04.1 \
+            libubsan1=14.2.0-4ubuntu2~24.04.1 \
+            linux-libc-dev=6.8.0-139.139 \
+            make=4.3-4.1build2 \
+            rpcsvc-proto=1.4.2-0ubuntu7; then bToolchainInstalled=false; fi \
+    && if [ "${bToolchainInstalled}" = "false" ]; then \
         printf '\n%s\n' \
             "=============================================================" >&2; \
         printf '%s\n' \
@@ -246,19 +315,19 @@ RUN set -eu; \
         printf '%s\n' \
             "" >&2; \
         printf '%s\n' \
-            "Ubuntu has removed one of the 45 pinned toolchain versions" >&2; \
+            "One of the toolchain versions pinned for the ${sArchitecture}" >&2; \
         printf '%s\n' \
-            "from its archive. apt names the offender directly above this" >&2; \
+            "architecture could not be installed. apt names the offender" >&2; \
         printf '%s\n' \
-            "banner ('Version ... was not found')." >&2; \
+            "directly above this banner ('Version ... was not found')." >&2; \
         printf '%s\n' \
             "" >&2; \
         printf '%s\n' \
-            "(If you repointed BASE_IMAGE at a different ARCHITECTURE, the" >&2; \
+            "(This is not an ARCHITECTURE mismatch: the pin list matching" >&2; \
         printf '%s\n' \
-            " cause is different: the '-x86-64-linux-gnu' package names do" >&2; \
+            " this daemon was selected above, and a daemon with no list is" >&2; \
         printf '%s\n' \
-            " not exist there. Regenerate the whole pin list for that arch.)" >&2; \
+            " refused before apt runs, with a different message.)" >&2; \
         printf '%s\n' \
             "" >&2; \
         printf '%s\n' \
@@ -315,7 +384,7 @@ RUN set -eu; \
     fi; \
     rm -rf /etc/apt/vaibifyLiveSources /var/lib/apt/lists/*
 
-# Which archive the 45 pins above came from, recorded ON the image so a
+# Which archive the pins above came from, recorded ON the image so a
 # researcher can ask what they are running rather than inferring it
 # from whichever vaibify happens to be installed today. Kept next to
 # the block it describes: a label stamped elsewhere drifts from the ARG

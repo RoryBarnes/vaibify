@@ -18,6 +18,7 @@ from .configLoader import (
     fsDockerDir,
     fsResolveProjectConfigPath,
 )
+from .doctorHostChecks import fbInterpreterRunsTranslated
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .preflightResult import (
     S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
@@ -762,7 +763,18 @@ def _fsNormalizeArch(sArch):
 
 
 def fsHostArch():
-    """Return the canonical host architecture, '' if unrecognized."""
+    """Return the canonical host architecture, '' if unrecognized.
+
+    ``platform.machine()`` names the INTERPRETER's architecture, which
+    is the machine's only when the interpreter runs natively. An x86_64
+    Python under Rosetta answers x86_64 on an arm64 Mac, so the arch
+    preflight compared the wrong pair and never warned about the
+    emulated build it was there to catch (measured, 2026-09-18). Only
+    macOS translates, and it translates one way, so a translated
+    interpreter proves an arm64 machine.
+    """
+    if fbInterpreterRunsTranslated():
+        return "arm64"
     return _fsNormalizeArch(platform.machine())
 
 
