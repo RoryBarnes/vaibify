@@ -17,8 +17,8 @@ the detail for this subsystem.
 
 ## The toolchain epoch is pinned on three axes
 
-The Dockerfile pins the base image by DIGEST, the 45 toolchain
-packages by VERSION, and the archive they come from by DATE
+The Dockerfile pins the base image by DIGEST, the toolchain packages
+by VERSION, and the archive they come from by DATE
 (`ARG APT_SNAPSHOT_DATE`, served by `snapshot.ubuntu.com`). The third
 axis was added because the first two were not enough: Ubuntu drops
 superseded versions from its pool within weeks, so the pins stopped
@@ -27,19 +27,27 @@ red waiting for a maintainer to approve something nobody can evaluate
 -- a glibc SRU changes real bytes, and no review separates "this moves
 a number" from "this does not".
 
-The pin list is amd64 by construction: nine of its names carry
-`-x86-64-linux-gnu`, and `tools/checkToolchainEpoch.py` reads the
-`binary-amd64` index. A native build on an arm64 daemon (Apple
-Silicon under Colima) therefore stops at the pinned step every time,
-which a researcher met on 2026-09-18 as Docker Hub's "pull access
-denied" one build later. The build-failure catalog
-(`dockerErrorDiagnosis.fsExplainBuildFailure`) names this cause; the
-Dockerfile still has no arm64 list, and adding one is an
-architecture-selected second pin block plus an architecture parameter
-on the epoch tool -- an epoch decision, not a chore. Two more traps in
-the same block, both met the same week: the base image is pinned by
-digest, so when that digest already ships a NEWER libc than the pins
-name, apt refuses the install as a downgrade
+There is one pin list per architecture the image builds on, amd64 and
+arm64, and the shell selects the list matching
+`dpkg --print-architecture`. The base digest is a multi-architecture
+index, so a daemon pulls the manifest for its own platform and the
+toolchain packages carry that platform in their names
+(`gcc-13-x86-64-linux-gnu`, `gcc-13-aarch64-linux-gnu`); a single
+amd64 list stopped every native build on an Apple Silicon daemon at
+that step (met 2026-09-18). The two lists carry the SAME versions,
+because one Ubuntu source upload builds every architecture, and
+differ only in those suffixed names and in `libquadmath0`, which has
+no aarch64 build. Any other architecture is refused before apt runs,
+with its own message, so that refusal can never read as a withdrawn
+version. `tools/checkToolchainEpoch.py --verify` reads every list
+against its own `binary-<arch>` index and fails first if the lists
+disagree on a version; `--architecture` narrows either tool, and
+`checkToolchainPinDrift --write` bumps every list that pins the
+package. Regenerate a list with `apt-get install -s` under
+`--platform linux/<arch>`, per the Dockerfile's comment. Two more
+traps in the same block, both met the same week: the base image is
+pinned by digest, so when that digest already ships a NEWER libc than
+the pins name, apt refuses the install as a downgrade
 ("Packages were downgraded and -y was used without --allow-downgrades")
 and the answer is an epoch bump, never `--allow-downgrades`; and
 BuildKit ends a failed build by echoing the whole sixty-line step, so
@@ -62,11 +70,15 @@ Four things not to undo:
   pull request because choosing between candidate versions needs dpkg
   ordering plus a judgment about what results rest on.
   `testTheLiveArchiveComparisonIsNotOnThePullRequestPath` is the guard.
-- **`fsExtractToolchainBlock` anchors on the `if !` test**, not on the
-  `RUN` line, because the preamble grew a sources swap. It refused
-  rather than scanning nothing when that happened, which is the
-  property to keep -- a permissive anchor would have silently graded
-  the empty set.
+- **`fsExtractToolchainBlock` anchors on the architecture test that
+  opens each list** (`[ "${sArchitecture}" = "<arch>" ] && ! apt-get
+  install`), not on the `RUN` line, because the preamble grew a
+  sources swap. It refused rather than scanning nothing when that
+  happened, which is the property to keep -- a permissive anchor
+  would have silently graded the empty set, and one that did not name
+  the architecture would hand every caller the first list. It is the
+  ONE parser of the block: the epoch tool imports it rather than
+  keeping a whole-file regex, which would merge both lists.
 
 **`introspectionScript.py` is an f-string executed inside containers.**
 Editing it as ordinary Python loses escape sequences and string
