@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev55 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev58 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5cd3d939"></script>
+      <script src="_static/documentation_options.js?v=27497488"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -201,9 +201,9 @@ progressively more reality, and each proves something the others do not.</p>
 <td><p>a real container answers the commands the browser lane’s fake models</p></td>
 </tr>
 <tr class="row-even"><td><p>fresh image (<code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code>)</p></td>
-<td><p>full build from scratch</p></td>
+<td><p>full build from scratch, one leg per pinned architecture (amd64 and arm64)</p></td>
 <td><p>weekly / on <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/**</span></code> PRs</p></td>
-<td><p>the image still builds; the container user is unprivileged</p></td>
+<td><p>the image still builds on both architectures; the container user is unprivileged</p></td>
 </tr>
 </tbody>
 </table>
