@@ -22409,4 +22409,108 @@ def _fdictEntry(sRel):
         old='        clientDocker = fdockerCreateDisposableClient()\n',
         new='        import docker\n        clientDocker = docker.from_env()\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheToolbarControlsStayOneCluster.py::'
+            'testEveryToolbarControlIsOneRunAgainstTheRightEdge'
+        ),
+        # a second auto margin splits the bar's slack instead of pushing
+        source='vaibify/gui/static/styleMain.css',
+        old='.host-settings-button {\n    background: transparent;\n',
+        new=(
+            '.host-settings-button {\n    margin-left: auto;\n'
+            '    background: transparent;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliStatusDestroy.py::'
+            'testDestroyRemovesEveryTagAProjectBuildLeft'
+        ),
+        # destroy goes back to untagging only the tip of the chain
+        source='vaibify/cli/commandDestroy.py',
+        old=(
+            '        listReferences = imageBuilder.flistProjectImageReferences(\n'
+            '            sProjectName,\n'
+            '        )\n'
+        ),
+        new='        listReferences = [sProjectName + ":" + "latest"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliStatusDestroy.py::'
+            'testTheCliAndTheDashboardAskOneAuthorityWhichImagesAreTheProjects'
+        ),
+        # the CLI derives the project's image set for itself again
+        source='vaibify/cli/commandDestroy.py',
+        old='        listReferences = imageBuilder.flistProjectImageReferences(\n',
+        new='        listReferences = [f"{sProjectName}:latest"]\n        _unused = (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGatesRunOnEveryPullRequest.py::'
+            'testEveryGateSupersedesItsOwnSupersededRun'
+        ),
+        # the widest matrix queues behind the run it just superseded
+        source='.github/workflows/tests-macos.yml',
+        old='concurrency:\n  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testAProjectWhoseNameIsAPrefixOfAnotherIsNeverTouched'
+        ),
+        # a prefix match sweeps a neighbouring project's build contexts
+        source='vaibify/config/hostResidue.py',
+        old="_REGEX_MKDTEMP_SUFFIX = re.compile(r\"^[A-Za-z0-9_]{8}$\")",
+        new="_REGEX_MKDTEMP_SUFFIX = re.compile(r\"^[A-Za-z0-9_-]+$\")",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testARegisteredNeighbourWinsEvenIfTheNamingRuleWouldNot'
+        ),
+        # the registry cross-check is dropped, leaving one line of defence
+        source='vaibify/config/hostResidue.py',
+        old=(
+            '            if _fbAnotherProjectCouldOwn(\n'
+            '                sEntryName, sProjectName, listRegisteredNames,\n'
+            '            ):\n'
+        ),
+        new='            if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testAHostileProjectNameReachesNothing'
+        ),
+        # a residue path is composed by join with no root check
+        source='vaibify/config/hostResidue.py',
+        old=(
+            '            if os.path.dirname(os.path.abspath(sPath)) != sRoot:\n'
+            '                continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testASymlinkIsUnlinkedRatherThanFollowed'
+        ),
+        # the sweep follows a symlink out of its own tree
+        source='vaibify/config/hostResidue.py',
+        old='            if os.path.isdir(sPath) and not os.path.islink(sPath):\n',
+        new='            if os.path.isdir(sPath):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testOrphanedResidueIsDescribedAndNeverRemoved'
+        ),
+        # the orphan path starts removing what "Remove from list" kept
+        source='vaibify/config/hostResidue.py',
+        old='    setRegistered = set(listRegisteredNames or [])\n',
+        new='    shutil.rmtree("/nonexistent", ignore_errors=True)\n    setRegistered = set(listRegisteredNames or [])\n',
+    ),
 ]

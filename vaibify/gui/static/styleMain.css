@@ -7471,12 +7471,23 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 /* --- Section G: legend mechanism. A fixed-position panel anchored
    beneath the dashboard header help button. ``aria-hidden=true`` by
    default; the JS toggles ``.is-open`` to reveal it. */
-/* The host-settings gear and its panel. The gear takes the toolbar's
-   right-hand slack so it and the help button sit together; the panel
-   also carries .global-settings, so its rows come from the one set of
-   settings-row rules rather than a second copy that could drift. */
+/* The host-settings gear and its panel.
+
+   NEITHER the gear nor the help button carries a margin of its own.
+   ``.toolbar-title-group`` already owns the bar's free space with
+   ``margin-right: auto``, and a SECOND auto margin does not move a
+   thing to the right -- flexbox splits the free space equally between
+   every auto margin, so adding one here tore the right-hand controls
+   away from the buttons they belong with and parked them across a gap.
+   A fixed ``margin-left`` is the same mistake in miniature: it stacks
+   on top of the toolbar's own ``gap: 8px``, which is how the help
+   button came to sit 16px from its neighbour while every other pair in
+   the bar sat at 8px. One slack owner, one gap rule.
+
+   The panel also carries .global-settings, so its rows come from the
+   one set of settings-row rules rather than a second copy that could
+   drift. */
 .host-settings-button {
-    margin-left: auto;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-primary);
@@ -7512,7 +7523,6 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .proof-help-button {
-    margin-left: 8px;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-primary);

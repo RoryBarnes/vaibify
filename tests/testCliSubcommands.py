@@ -17,7 +17,7 @@ from vaibify.cli.commandDestroy import (
     fnDestroyCommand,
     fnRequireDocker,
     fnRemoveVolume,
-    fnRemoveImage,
+    flistRemoveProjectImages,
 )
 from vaibify.cli.commandInit import (
     fnInitCommand,

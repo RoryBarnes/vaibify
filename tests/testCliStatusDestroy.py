@@ -1,5 +1,7 @@
 """Tests for commandStatus and commandDestroy uncovered paths."""
 
+import re
+
 import sys
 
 import pytest
@@ -17,7 +19,7 @@ from vaibify.cli.commandStatus import (
 from vaibify.cli.commandDestroy import (
     fnDestroyCommand,
     fnRemoveVolume,
-    fnRemoveImage,
+    flistRemoveProjectImages,
 )
 
 
@@ -219,37 +221,85 @@ def test_fnRemoveVolume_api_error():
 
 
 # -----------------------------------------------------------------------
-# fnRemoveImage
+# flistRemoveProjectImages
 # -----------------------------------------------------------------------
 
 
-def test_fnRemoveImage_success(capsys):
-    mockDocker = _fMockDockerModule()
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnRemoveImage("testproj:latest")
-    sCaptured = capsys.readouterr().out
-    assert "Removed" in sCaptured
+@pytest.mark.falsification
+def testDestroyRemovesEveryTagAProjectBuildLeft():
+    """A build leaves a chain, so destroying one tag destroys nothing much.
 
+    The independent oracle is the builder's own tagging, stated in
+    ``imageBuilder.fnBuildImage``: it tags ``:base``, then one tag per
+    overlay in order, then ``:latest``. Removing only ``:latest``
+    untags the tip and leaves every layer beneath it held by its own
+    tag -- on a real six-tag project that is most of the bytes, with
+    the command reporting success.
 
-def test_fnRemoveImage_not_found(capsys):
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env().images.remove.side_effect = (
-        mockDocker.errors.ImageNotFound("nope")
+    Kills: narrowing the CLI's removal back to ``<project>:latest``.
+    """
+    listReferences = [
+        "proj:base", "proj:claude", "proj:codex", "proj:latest",
+    ]
+    listAsked = []
+    with patch(
+        "vaibify.docker.imageBuilder.flistProjectImageReferences",
+        return_value=listReferences,
+    ), patch(
+        "vaibify.docker.imageBuilder.fbRemoveImage",
+        side_effect=lambda sReference: (
+            listAsked.append(sReference) or True
+        ),
+    ):
+        listRemoved = flistRemoveProjectImages("proj")
+    assert listAsked == listReferences, (
+        "every tag the build left must be removed, not only the tip"
     )
-    with patch.dict("sys.modules", {"docker": mockDocker}):
-        fnRemoveImage("testproj:latest")
+    assert listRemoved == listReferences
+
+
+def test_flistRemoveProjectImages_reports_each_removal(capsys):
+    with patch(
+        "vaibify.docker.imageBuilder.flistProjectImageReferences",
+        return_value=["proj:base", "proj:latest"],
+    ), patch(
+        "vaibify.docker.imageBuilder.fbRemoveImage", return_value=True,
+    ):
+        flistRemoveProjectImages("proj")
     sCaptured = capsys.readouterr().out
-    assert "does not exist" in sCaptured
+    assert "Removed image: proj:base" in sCaptured
+    assert "Removed image: proj:latest" in sCaptured
 
 
-def test_fnRemoveImage_api_error():
-    mockDocker = _fMockDockerModule()
-    mockDocker.from_env().images.remove.side_effect = (
-        mockDocker.errors.APIError("problem")
-    )
-    with patch.dict("sys.modules", {"docker": mockDocker}):
+def test_flistRemoveProjectImages_says_when_there_are_none(capsys):
+    with patch(
+        "vaibify.docker.imageBuilder.flistProjectImageReferences",
+        return_value=[],
+    ):
+        assert flistRemoveProjectImages("proj") == []
+    assert "No images found" in capsys.readouterr().out
+
+
+def test_flistRemoveProjectImages_names_a_tag_it_could_not_remove(capsys):
+    with patch(
+        "vaibify.docker.imageBuilder.flistProjectImageReferences",
+        return_value=["proj:base", "proj:latest"],
+    ), patch(
+        "vaibify.docker.imageBuilder.fbRemoveImage",
+        side_effect=[False, True],
+    ):
+        assert flistRemoveProjectImages("proj") == ["proj:latest"]
+    sCaptured = capsys.readouterr().out
+    assert "Could not remove the image proj:base" in sCaptured
+
+
+def test_flistRemoveProjectImages_exits_when_the_listing_fails():
+    with patch(
+        "vaibify.docker.imageBuilder.flistProjectImageReferences",
+        side_effect=RuntimeError("docker images failed"),
+    ):
         with pytest.raises(SystemExit):
-            fnRemoveImage("testproj:latest")
+            flistRemoveProjectImages("proj")
 
 
 # -----------------------------------------------------------------------
@@ -290,7 +340,7 @@ def test_destroy_confirm_no(mockLoad, mockAvail):
        return_value=True)
 @patch("vaibify.cli.commandDestroy.fconfigResolveProject")
 @patch("vaibify.cli.commandDestroy.fnRemoveVolume")
-@patch("vaibify.cli.commandDestroy.fnRemoveImage")
+@patch("vaibify.cli.commandDestroy.flistRemoveProjectImages")
 def test_destroy_also_image(
     mockRemoveImg, mockRemoveVol, mockLoad, mockAvail,
 ):
@@ -397,3 +447,44 @@ def test_status_json_flag_emits_one_object():
     dictOut = jsonlib.loads(result.output)
     assert dictOut["dictEnvironment"]["sProjectName"] == "proj"
     assert dictOut["dictProof"]["iProofLevel"] == 2
+
+
+@pytest.mark.falsification
+def testTheCliAndTheDashboardAskOneAuthorityWhichImagesAreTheProjects():
+    """Two callers, one answer, and no private copy on either side.
+
+    This is the divergence bug that had already happened: the
+    dashboard's Delete asked ``imageBuilder`` which references a
+    project owns and removed them all, while the CLI formatted
+    ``f"{name}:latest"`` for itself and removed one. Both were
+    internally consistent; only one was right, and the difference was
+    invisible until a researcher's disk filled.
+
+    The oracle is the rule this repository states for exactly this
+    case: when two things that must agree have drifted, the fix is one
+    authority, not a second correction. So what is asserted is not
+    "the CLI removes several tags" -- a private loop could satisfy
+    that -- but that neither caller derives the set at all.
+
+    Kills: reintroducing a locally-formatted ``:latest`` reference in
+    the destroy command.
+    """
+    import pathlib
+    for sPath in (
+        "vaibify/cli/commandDestroy.py",
+        "vaibify/gui/environmentDeletion.py",
+    ):
+        sSource = pathlib.Path(sPath).read_text(encoding="utf-8")
+        # Prose may name the tags to explain the chain; CODE may not
+        # build one.
+        sCode = re.sub(r'"""[\s\S]*?"""', "", sSource)
+        sCode = re.sub(r"^\s*#.*$", "", sCode, flags=re.M)
+        assert "flistProjectImageReferences" in sSource, (
+            f"{sPath} must ask imageBuilder which images are the "
+            "project's rather than deriving them"
+        )
+        assert ":latest" not in sCode, (
+            f"{sPath} formats an image tag of its own; a build leaves a "
+            "chain, and a second derivation of that set is how the CLI "
+            "and the dashboard came to disagree"
+        )

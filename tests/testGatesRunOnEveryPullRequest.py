@@ -96,3 +96,49 @@ def test_every_network_setup_step_in_a_gate_is_bounded(sName):
         f"{sName} has network setup steps with no timeout-minutes, so "
         f"a stalled runner reports nothing for hours: {listOffenders}"
     )
+
+
+@pytest.mark.falsification
+def testEveryGateSupersedesItsOwnSupersededRun():
+    """A push replaces the run before it; it must not queue behind it.
+
+    The third instance of this file's shape, and the same lesson from
+    the other side: a check that cannot say what it did not do. Here
+    the check says nothing because it never starts. Every push to an
+    open pull request queued another full matrix, and nothing cancelled
+    the run it had just made irrelevant -- so on the macOS legs, the
+    scarcest runners and the widest matrix, twelve unit jobs sat at
+    QUEUED for two hours behind a superseded run while the PR page
+    showed them as pending (2026-09-21). Pending and never-started are
+    indistinguishable on that page, which is precisely the failure this
+    file exists for.
+
+    The oracle is the two properties that make cancelling safe rather
+    than merely fast, and both are asserted: the group must be keyed on
+    the PULL REQUEST, so two different pull requests never cancel each
+    other, and cancelling must be switched OFF for anything that is not
+    a pull request, because a push to main and a manual dispatch are
+    results somebody wants rather than drafts to replace.
+
+    Kills: dropping the ``concurrency`` block from a gating workflow,
+    which puts its next run back in the queue behind the last one.
+    """
+    for sName in sorted(T_PRE_MERGE_WORKFLOWS):
+        dictWorkflow = _fdictLoadWorkflow(sName)
+        dictConcurrency = dictWorkflow.get("concurrency")
+        assert dictConcurrency, (
+            f"{sName} has no concurrency group, so a new push queues "
+            "behind the run it just superseded"
+        )
+        sGroup = str(dictConcurrency.get("group", ""))
+        assert "pull_request.number" in sGroup, (
+            f"{sName}'s concurrency group must be keyed on the pull "
+            f"request, or two unrelated pull requests cancel each "
+            f"other: {sGroup!r}"
+        )
+        sCancel = str(dictConcurrency.get("cancel-in-progress", ""))
+        assert "pull_request" in sCancel, (
+            f"{sName} cancels unconditionally; a push to main and a "
+            f"manual dispatch are results somebody asked for: "
+            f"{sCancel!r}"
+        )

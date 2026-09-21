@@ -41,6 +41,21 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Supersede, do not pile up. Every push to an open pull request used to
+# queue another full matrix behind the last one, and nothing cancelled
+# the run it had just made irrelevant. On the macOS legs -- the
+# scarcest runners and the widest matrix -- that meant twelve unit jobs
+# sitting at QUEUED for two hours while a superseded run from the
+# previous push held the machines (2026-09-21).
+#
+# Keyed on the PULL REQUEST, so two different PRs never contend, and
+# cancelling is switched off for anything that is not a pull request:
+# a push to main and a manual dispatch are results somebody wants, not
+# drafts to be replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   security:
     # Named like the tests-linux / tests-macos / falsification matrix
