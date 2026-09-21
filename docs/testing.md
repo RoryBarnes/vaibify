@@ -343,7 +343,7 @@ doubles the wait for no extra signal.
 |---|---|---|
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
-| `freshImageBuild.yml` | a full image build from scratch, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
+| `freshImageBuild.yml` | a full image build from scratch on an amd64 and an arm64 runner, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change | monthly + manual |
 
 `tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back

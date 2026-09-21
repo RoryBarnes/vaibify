@@ -78,7 +78,7 @@ progressively more reality, and each proves something the others do not.
 | browser-firefox (`browser-firefox.yml`) | the same journeys in Firefox | every PR | the engine the maintainer actually uses executes the frontend; clipboard-permission tests are deselected (Chromium only) |
 | browser-webkit (`browser-webkit.yml`) | the same journeys in WebKit | every PR | Safari's engine executes the frontend; clipboard-permission tests are deselected (Chromium only) |
 | container acceptance (`containerAcceptance.yml`) | a real container, image keyed by build-input hash | nightly / manual | a real container answers the commands the browser lane's fake models |
-| fresh image (`freshImageBuild.yml`) | full build from scratch | weekly / on `vaibify/containerImage/**` PRs | the image still builds; the container user is unprivileged |
+| fresh image (`freshImageBuild.yml`) | full build from scratch, one leg per pinned architecture (amd64 and arm64) | weekly / on `vaibify/containerImage/**` PRs | the image still builds on both architectures; the container user is unprivileged |
 
 Run the browser lane locally when you want the fast signal:
 
