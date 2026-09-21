@@ -4263,7 +4263,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # became their second caller -- an unhydrated readiness snapshot
     # had the pre-flight reporting a complete manifest as incomplete.
     # Cross-route request helpers are this module's stated purpose.
-    "routeContext.py": 873,
+    # RAISED to 893 (2026-09-21): one more refusal of exactly that
+    # kind -- fnRefuseUnusableContainerFields, which grades a create
+    # request's container-identity fields with the build preflight's
+    # own check. It landed here rather than in registryRoutes
+    # precisely BECAUSE that module is the one this ratchet exists to
+    # contain, and registryRoutes falls to 2328 in the same commit.
+    "routeContext.py": 893,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -6600,7 +6606,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2338,
+    "registryRoutes.py": 2328,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

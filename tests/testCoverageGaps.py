@@ -1358,7 +1358,9 @@ def test_fdictTemplateToWizardFormat():
 
 
 def test_fsRepoNameFromUrl():
-    from vaibify.install.setupServer import _fsRepoNameFromUrl
+    from vaibify.cli.repositoryPreflight import (
+    fsRepositoryNameFromUrl as _fsRepoNameFromUrl,
+)
     assert _fsRepoNameFromUrl(
         "https://github.com/user/repo.git"
     ) == "repo"

@@ -321,13 +321,23 @@ def test_exit_trap_preserves_existing_ok_marker(tmp_path):
 
 
 def test_pip_install_failure_appends_warning(tmp_path):
-    """A failing pip invocation in fnPipInstall appends a pip-install warning."""
+    """A failing pip invocation in fnPipInstall appends a pip-install warning.
+
+    The repository must hold a Python project file, or pip is never
+    reached: since 2026-09-21 a repository with no ``setup.py`` or
+    ``pyproject.toml`` is reported as having nothing to install rather
+    than as a failed install, and this test's ``/nonexistent`` path
+    took that branch instead of the one it is about.
+    """
     sWorkspace = str(tmp_path)
+    sRepo = tmp_path / "demoRepo"
+    sRepo.mkdir()
+    (sRepo / "pyproject.toml").write_text("[project]\nname='demo'\n")
     # Override pip to always fail; the warning helper must still record.
     sBody = (
         'pip() { return 1; }\n'
         'export -f pip\n'
-        'fnPipInstall "/nonexistent" "demoRepo" --no-deps\n'
+        f'fnPipInstall "{sRepo}" "demoRepo" --no-deps\n'
         'fnWriteReadinessMarker "ok" ""\n'
     )
     resultProc = _fsRunHelperScript(sWorkspace, sBody)

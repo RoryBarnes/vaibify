@@ -30,6 +30,7 @@ from vaibify.gui import environmentDeletionRoutes
 from vaibify.gui import pinnedEnvironmentConversion
 from vaibify.gui.actionCatalog import ffnAgentAction
 from vaibify.gui.routeContext import (
+    fnRefuseUnusableContainerFields,
     fnRefuseContainerOnlyForHostProject,
     fnRefuseHostOnlyForContainerProject,
     fnRejectAgentTokenLane,
@@ -1590,6 +1591,7 @@ def _fnRegisterCreateProject(app, dictCtx):
     async def fdictCreateProject(request: CreateProjectRequest):
         _fnValidateCreateDirectory(request.sDirectory)
         _fnRequireValidProjectName(request.sProjectName, request.sMode)
+        fnRefuseUnusableContainerFields(request)
         _fnRequireValidResourceLimits(
             request.iCpuLimit, request.fMemoryLimitGigabytes,
         )
@@ -2308,24 +2310,13 @@ def _flistSecretsFromAuthFlag(bUseGithubAuth):
 
 
 def _flistRepositoriesFromUrls(listUrls):
-    """Convert a list of git URL strings to vaibify.yml repository dicts."""
-    listRepositories = []
-    for sUrl in listUrls:
-        listRepositories.append({
-            "name": _fsRepositoryNameFromUrl(sUrl),
-            "url": sUrl,
-            "branch": "main",
-            "installMethod": "pip_editable",
-        })
-    return listRepositories
+    """Return vaibify.yml repository entries, through the one authority.
 
-
-def _fsRepositoryNameFromUrl(sUrl):
-    """Extract a repository name from a git URL."""
-    sName = sUrl.rstrip("/").rsplit("/", 1)[-1]
-    if sName.endswith(".git"):
-        sName = sName[:-4]
-    return sName
+    This wizard held a second copy writing blind defaults; the
+    authority's own docstring carries the account.
+    """
+    from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
+    return flistRepositoryEntriesFromUrls(listUrls)
 
 
 def _fnRegisterNewProject(sDirectory, sMode="container"):

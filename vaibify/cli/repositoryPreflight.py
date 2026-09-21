@@ -12,6 +12,7 @@ network miss is not evidence about a branch.
 """
 
 import os
+import re
 import subprocess
 
 from .preflightResult import (
@@ -21,11 +22,18 @@ from .preflightResult import (
 
 __all__ = [
     "RemoteUnreachableError",
+    "S_FILE_ABSENT",
+    "S_FILE_PRESENT",
+    "S_FILE_UNKNOWN",
     "S_PREFLIGHT_NAME",
+    "fsGithubProjectFileVerdict",
     "fdictProbeRepositoryBranch",
     "flistMissingBranches",
+    "flistRepositoryEntriesFromUrls",
     "fpreflightRepositoryBranches",
     "fsDefaultBranchOfRemote",
+    "fsInstallMethodForRepository",
+    "fsRepositoryNameFromUrl",
 ]
 
 
@@ -35,6 +43,105 @@ F_REMOTE_TIMEOUT_SECONDS = 20.0
 
 class RemoteUnreachableError(Exception):
     """The remote gave no answer; nothing is known about its branches."""
+
+
+# Only GitHub serves a single file by URL without a clone, which is
+# what lets the wizard tell a Python project from a protocol or Julia
+# one before anything is built.
+_REGEX_GITHUB_REPOSITORY = re.compile(
+    r"^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$",
+)
+_T_PYTHON_PROJECT_FILES = ("pyproject.toml", "setup.py")
+F_GITHUB_TIMEOUT_SECONDS = 5.0
+
+
+def fsRepositoryNameFromUrl(sUrl):
+    """Return the directory name a repository URL clones into."""
+    sName = (sUrl or "").rstrip("/").rsplit("/", 1)[-1]
+    if sName.endswith(".git"):
+        sName = sName[:-4]
+    return sName
+
+
+S_FILE_PRESENT = "present"
+S_FILE_ABSENT = "absent"
+S_FILE_UNKNOWN = "unknown"
+
+
+def fsGithubProjectFileVerdict(sRawUrl):
+    """Return present/absent/unknown for a raw GitHub URL.
+
+    Three answers, not a boolean: only a 404 proves the file is not
+    there, and every other failure proves nothing. A predicate would
+    have to answer None for that third case, which a caller reading it
+    as a boolean would take for "absent" and act on.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(sRawUrl, method="HEAD"),
+            timeout=F_GITHUB_TIMEOUT_SECONDS,
+        ):
+            return S_FILE_PRESENT
+    except urllib.error.HTTPError as errorHttp:
+        return S_FILE_ABSENT if errorHttp.code == 404 else S_FILE_UNKNOWN
+    except (urllib.error.URLError, OSError):
+        return S_FILE_UNKNOWN
+
+
+def fsInstallMethodForRepository(sUrl, sBranch, fsFileVerdict=None):
+    """Return ``reference`` for a GitHub repository with no Python project file.
+
+    ``pip install -e`` on a repository with no ``setup.py`` or
+    ``pyproject.toml`` fails at EVERY container start; two such
+    repositories were written as ``pip_editable`` and warned on every
+    start (2026-09-21). Any host other than GitHub, and any answer
+    other than a clear "not there" for both files, keeps
+    ``pip_editable``: the container's own start reports the truth
+    either way, and guessing ``reference`` for a real package would
+    silently stop installing it.
+    """
+    if fsFileVerdict is None:
+        fsFileVerdict = fsGithubProjectFileVerdict
+    matchRepository = _REGEX_GITHUB_REPOSITORY.match((sUrl or "").strip())
+    if matchRepository is None:
+        return "pip_editable"
+    sOwner, sRepository = matchRepository.groups()
+    for sFile in _T_PYTHON_PROJECT_FILES:
+        sVerdict = fsFileVerdict(
+            f"https://raw.githubusercontent.com/{sOwner}/{sRepository}/"
+            f"{sBranch}/{sFile}"
+        )
+        if sVerdict != S_FILE_ABSENT:
+            return "pip_editable"
+    return "reference"
+
+
+def flistRepositoryEntriesFromUrls(listUrls):
+    """Return vaibify.yml repository entries for a list of git URLs.
+
+    THE ONE PLACE either wizard turns a URL into an entry. There were
+    two, and the fix for a wizard-written ``branch: main`` meeting a
+    ``master`` remote landed in the standalone wizard while the hub's
+    create wizard -- the one a researcher actually used -- kept writing
+    the blind default (2026-09-21). That is the divergence this
+    function exists to end; neither caller may keep a private copy.
+
+    The branch is the remote's own default, with ``main`` only when the
+    remote cannot be asked, and the install method is asked of the
+    repository rather than assumed.
+    """
+    listEntries = []
+    for sUrl in listUrls or []:
+        sBranch = fsDefaultBranchOfRemote(sUrl) or "main"
+        listEntries.append({
+            "name": fsRepositoryNameFromUrl(sUrl),
+            "url": sUrl,
+            "branch": sBranch,
+            "installMethod": fsInstallMethodForRepository(sUrl, sBranch),
+        })
+    return listEntries
 
 
 def _fdictParseLsRemote(sStdout, sBranch):

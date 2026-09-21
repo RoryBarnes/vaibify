@@ -167,12 +167,31 @@ name|url|branch|install_method
 | `scripts_only` | Add to `PYTHONPATH` and `PATH` only              |
 | `reference`    | Clone for reference, do not install              |
 
-Before a build, `branch` is checked against each remote with
-`git ls-remote`; a branch the remote does not have is refused, and the
-refusal names the remote's default branch. The setup wizard writes the
-remote's default branch rather than assuming `main`, and writes
-`reference` for a GitHub repository it can see has no Python project
-file.
+### What is checked before a build starts
+
+A build takes an hour, and every failure below used to be discovered
+somewhere inside it. Both `vaibify build` and the dashboard's Build now
+ask the same questions first, of the authority that actually answers
+them:
+
+| Field | Asked of | A failure means |
+|---|---|---|
+| `containerUser`, `pythonVersion`, `workspaceRoot` | their own format | the image recipe cannot use the value (`pythonVersion` becomes the apt package `python3.12`, so `3.12.1` is refused) |
+| `systemPackages` | Launchpad, for the series `baseImage` names | Ubuntu publishes no such package |
+| `pythonPackages` | pypi.org's simple index | the index serves no such project |
+| `repositories[].branch` | `git ls-remote` against the remote | the remote has no such branch; the refusal names its default |
+
+Three answers are deliberately **not** refusals, because none of them
+is evidence about the value: an index, archive or remote that cannot be
+reached, a `pipInstallFlags` naming an index other than pypi.org, and a
+`baseImage` outside the Ubuntu releases vaibify knows. Each reports
+"not checked" and the build goes ahead and asks for itself.
+
+Both setup wizards apply the same field rules when they SAVE, so a
+value the build would refuse is refused at the form. They also write
+each repository's branch by asking the remote for its default rather
+than assuming `main`, and write `reference` for a GitHub repository
+they can see has no Python project file.
 
 ### Example
 

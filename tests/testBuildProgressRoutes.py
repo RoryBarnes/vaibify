@@ -418,3 +418,77 @@ def test_a_preflight_only_request_still_refuses(fixtureClient):
     assert response.json()["detail"]["sRefusal"] == (
         buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
     )
+
+
+def _fresponseBuildWithConfig(fixtureClient, configProject, dictPatches=None):
+    """POST a build with the project's config replaced; return the response."""
+    from unittest.mock import patch as patchObject
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: None,
+    )
+    listPatches[1] = patchObject(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=configProject,
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with (dictPatches or patchObject(
+            "vaibify.gui.buildRoutes.logger",
+        )):
+            return fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+
+
+@pytest.mark.falsification
+def test_a_build_naming_an_unpublished_system_package_is_refused(
+    fixtureClient,
+):
+    """Kills: dropping the system-package check from the route's table,
+    under which apt discovers the typo after the base image is fetched."""
+    from types import SimpleNamespace
+    from vaibify.cli import systemPackagePreflight
+
+    response = _fresponseBuildWithConfig(
+        fixtureClient,
+        SimpleNamespace(
+            listSystemPackages=["gcc", "libopnmpi-dev"],
+            sBaseImage="ubuntu:24.04",
+        ),
+        patch.object(
+            systemPackagePreflight, "fbPackageExistsInArchive",
+            lambda sName, sSeries: sName == "gcc",
+        ),
+    )
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'libopnmpi-dev'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE
+    )
+
+
+@pytest.mark.falsification
+def test_a_build_whose_fields_cannot_make_a_container_is_refused(
+    fixtureClient,
+):
+    """Kills: dropping the configuration-field check from the route's
+    table, under which `apt-get install python3.12.1` reports the typo
+    minutes into the build and never names the field."""
+    from types import SimpleNamespace
+
+    response = _fresponseBuildWithConfig(
+        fixtureClient,
+        SimpleNamespace(
+            sContainerUser="researcher", sPythonVersion="3.12.1",
+            sWorkspaceRoot="/workspace",
+        ),
+    )
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "pythonVersion" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNUSABLE_CONFIGURATION
+    )

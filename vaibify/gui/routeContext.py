@@ -26,6 +26,7 @@ __all__ = [
     "RouteContext",
     "fdictCarryARefusalBackInsteadOfRaising",
     "fnRefuseContainerOnlyForHostProject",
+    "fnRefuseUnusableContainerFields",
     "fnRefuseHostOnlyForContainerProject",
     "fdictRequireLaneTupleForCommit",
     "fdictRunAutomaticReadUnderTheDrain",
@@ -106,6 +107,25 @@ S_UNAVAILABLE_SNAPSHOT_TOO_LARGE = "snapshot-too-large"
 # Distinct from the size marker because the action differs — one
 # shrinks a repository, the other names one.
 S_UNAVAILABLE_NO_DOMINANT_DIRECTORY = "no-dominant-directory"
+
+
+def fnRefuseUnusableContainerFields(request):
+    """Raise 400 when a request's container-identity fields cannot build.
+
+    Server-side for the same reason as the refusal below: the create
+    and convert routes are reachable without the wizard's form. It runs
+    the build preflight's own check at SAVE time, because a wizard that
+    writes a value the build then refuses has only moved the discovery
+    to the end of an hour -- which is how a project was created naming
+    a branch its remote does not have (2026-09-21). The request carries
+    the config's own attribute names, so one function grades both.
+    """
+    from vaibify.cli.configFieldPreflight import flistDescribeInvalidFields
+    listComplaints = flistDescribeInvalidFields(request)
+    if listComplaints:
+        raise HTTPException(400, detail={
+            "sMessage": "; ".join(listComplaints) + ".",
+        })
 
 
 def fnRefuseContainerOnlyForHostProject(sName, sCapability):

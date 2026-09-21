@@ -134,6 +134,51 @@ def testCreateProjectSuccess(
 
 
 @pytest.mark.falsification
+def testCreateRefusesAFieldTheBuildCouldNotUse(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """A field the image build cannot use is refused at CREATE.
+
+    pythonVersion becomes the apt package ``python<version>``, so
+    '3.12.1' would fail the build minutes in with apt's words and
+    never name the field. Driven through the ROUTE, because a test
+    that called the refusal helper directly survived the route
+    dropping the call (measured, 2026-09-21).
+
+    Kills: the create route dropping its field check, which is the
+    wizard a researcher's project was created by.
+    """
+    sTemplateDir = str(tmp_path / "templates" / "sandbox")
+    os.makedirs(sTemplateDir)
+    with open(os.path.join(sTemplateDir, "container.conf"), "w") as fileHandle:
+        fileHandle.write("")
+    monkeypatch.setattr(
+        "vaibify.config.templateManager._PATH_TEMPLATES",
+        tmp_path / "templates",
+    )
+    monkeypatch.setattr(
+        "vaibify.gui.registryRoutes.os.path.expanduser",
+        lambda _: str(tmp_path),
+    )
+    sProjectDir = str(tmp_path / "my-project")
+    response = fixtureClient.post(
+        "/api/projects/create",
+        json={
+            "sDirectory": sProjectDir,
+            "sProjectName": "my-project",
+            "sTemplateName": "sandbox",
+            "sPythonVersion": "3.12.1",
+            "listRepositories": [],
+        },
+    )
+    assert response.status_code == 400, response.text
+    assert "pythonVersion" in response.json()["detail"]["sMessage"]
+    assert not os.path.exists(sProjectDir), (
+        "the project was scaffolded before its fields were graded"
+    )
+
+
+@pytest.mark.falsification
 def testCreateScaffoldsTheProjectFileWhereDiscoveryLooks(
     fixtureClient, tmp_path, monkeypatch,
 ):

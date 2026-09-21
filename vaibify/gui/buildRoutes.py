@@ -107,8 +107,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
         dictProject = _fdictRequireProject(sName)
         _fnRefuseBuildOfObtainedImage(dictProject)
         _fnRefuseWhileABuildIsLive(sName)
-        await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)
-        await asyncio.to_thread(_fnRefuseUnknownRepositoryBranches, dictProject)
+        await asyncio.to_thread(_fnRefuseUnbuildableConfiguration, dictProject)
         await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)
         if bPreflightOnly:
             # The Rebuild flow stops the container -- a `docker rm` --
@@ -137,91 +136,83 @@ def _fnRegisterBuildContainer(app, dictCtx):
 S_REFUSAL_UNKNOWN_PYTHON_PACKAGE = "unknown-python-package"
 S_REFUSAL_DAEMON_DISK_FULL = "daemon-disk-full"
 S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH = "unknown-repository-branch"
+S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE = "unknown-system-package"
+S_REFUSAL_UNUSABLE_CONFIGURATION = "unusable-configuration"
 
 
-def _fnRefuseUnknownRepositoryBranches(dictProject):
-    """409 a build whose repositories name a branch the remote lacks.
+def _flistConfigurationPreflights():
+    """Return ``(check, refusal code)`` for every config-scoped preflight.
 
-    The same check the CLI runs. The container would otherwise start
-    without that repository after the whole build, with a warning that
-    names the branch and not the remedy.
+    One table rather than a helper per check: five checks with the same
+    shape were three copies of the same twelve lines away from being
+    unmaintainable, and a sixth would have been written the same way.
+    Each check answers for the researcher's vaibify.yml and is the same
+    one ``vaibify build`` runs, so the two lanes cannot drift.
+    """
+    from vaibify.cli.configFieldPreflight import fpreflightConfigurationFields
+    from vaibify.cli.pythonPackagePreflight import (
+        fpreflightPythonPackageNames,
+    )
+    from vaibify.cli.repositoryPreflight import fpreflightRepositoryBranches
+    from vaibify.cli.systemPackagePreflight import fpreflightSystemPackageNames
+    return [
+        (fpreflightConfigurationFields, S_REFUSAL_UNUSABLE_CONFIGURATION),
+        (fpreflightSystemPackageNames, S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE),
+        (fpreflightPythonPackageNames, S_REFUSAL_UNKNOWN_PYTHON_PACKAGE),
+        (fpreflightRepositoryBranches, S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH),
+    ]
+
+
+def _fnRefuseOnFailedPreflight(preflightResult, sRefusal):
+    """409 a build on a failed preflight; log anything weaker and go on.
+
+    The refusal carries a CODE because the dashboard reads a bare 409
+    from this route as "a build is already running" and attaches to it:
+    a refusal that is not a build must say so or it renders as one. A
+    not-checked answer -- an index, archive or remote that could not be
+    asked -- is never a refusal.
+    """
+    from vaibify.cli.preflightResult import S_LEVEL_FAIL
+    if preflightResult is None:
+        return
+    if preflightResult.sLevel != S_LEVEL_FAIL:
+        logger.info("Build preflight: %s", preflightResult.sMessage)
+        return
+    raise HTTPException(409, detail={
+        "sMessage": (
+            f"{preflightResult.sMessage} {preflightResult.sRemediation}"
+        ),
+        "sRefusal": sRefusal,
+    })
+
+
+def _fnRefuseUnbuildableConfiguration(dictProject):
+    """409 a build whose own vaibify.yml cannot produce a container.
+
+    The config is loaded ONCE for every check. An unreadable
+    vaibify.yml is the build's own failure to report, inside the
+    progress record the researcher watches; these checks have nothing
+    to say about a file they cannot read.
     """
     from vaibify.cli.configLoader import fconfigLoadFromPath
-    from vaibify.cli.preflightResult import S_LEVEL_FAIL
-    from vaibify.cli.repositoryPreflight import fpreflightRepositoryBranches
     try:
         configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
     except Exception:
         return
-    preflightBranches = fpreflightRepositoryBranches(configProject)
-    if preflightBranches is None:
-        return
-    if preflightBranches.sLevel != S_LEVEL_FAIL:
-        logger.info("Build preflight: %s", preflightBranches.sMessage)
-        return
-    raise HTTPException(409, detail={
-        "sMessage": (
-            f"{preflightBranches.sMessage} {preflightBranches.sRemediation}"
-        ),
-        "sRefusal": S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH,
-    })
+    for fnPreflight, sRefusal in _flistConfigurationPreflights():
+        _fnRefuseOnFailedPreflight(fnPreflight(configProject), sRefusal)
 
 
 def _fnRefuseWhenDaemonDiskIsFull():
     """409 a build the daemon's disk cannot hold, before a layer is written.
 
-    The same check the CLI runs. A disk that cannot be measured, or one
-    that is merely low, is logged and the build proceeds; only a disk
-    the build cannot finish on is refused, with the refusal code the
-    dashboard needs to show a sentence rather than attach to a build.
+    Host-scoped rather than config-scoped: it answers for the machine,
+    not the project, which is why it stands outside the table above.
     """
     from vaibify.cli.daemonDiskPreflight import fpreflightDaemonFreeDisk
-    from vaibify.cli.preflightResult import S_LEVEL_FAIL
-    preflightFreeDisk = fpreflightDaemonFreeDisk()
-    if preflightFreeDisk is None:
-        return
-    if preflightFreeDisk.sLevel != S_LEVEL_FAIL:
-        logger.info("Build preflight: %s", preflightFreeDisk.sMessage)
-        return
-    raise HTTPException(409, detail={
-        "sMessage": (
-            f"{preflightFreeDisk.sMessage} {preflightFreeDisk.sRemediation}"
-        ),
-        "sRefusal": S_REFUSAL_DAEMON_DISK_FULL,
-    })
-
-
-def _fnRefuseUnknownPythonPackages(dictProject):
-    """409 a build whose pythonPackages name something pypi.org lacks.
-
-    The same check the CLI runs before its build. Carries a refusal
-    code because the dashboard reads a bare 409 from this route as "a
-    build is already running" and attaches to it; a refusal that is
-    not a build must say so or it renders as one. An index that cannot
-    be asked is not a refusal: the build goes ahead and pip asks it.
-    """
-    from vaibify.cli.configLoader import fconfigLoadFromPath
-    from vaibify.cli.preflightResult import S_LEVEL_FAIL
-    from vaibify.cli.pythonPackagePreflight import (
-        fpreflightPythonPackageNames,
+    _fnRefuseOnFailedPreflight(
+        fpreflightDaemonFreeDisk(), S_REFUSAL_DAEMON_DISK_FULL,
     )
-    try:
-        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
-    except Exception:
-        # An unreadable vaibify.yml is the build's own failure to
-        # report, inside the progress record the researcher watches;
-        # this check has nothing to say about names it cannot read.
-        return
-    preflightNames = fpreflightPythonPackageNames(configProject)
-    if preflightNames is None:
-        return
-    if preflightNames.sLevel != S_LEVEL_FAIL:
-        logger.info("Build preflight: %s", preflightNames.sMessage)
-        return
-    raise HTTPException(409, detail={
-        "sMessage": f"{preflightNames.sMessage} {preflightNames.sRemediation}",
-        "sRefusal": S_REFUSAL_UNKNOWN_PYTHON_PACKAGE,
-    })
 
 
 def _fnRefuseWhileABuildIsLive(sName):

@@ -6,7 +6,6 @@ result to a vaibify.yml configuration file.
 """
 
 import os
-import re
 from pathlib import Path
 
 import yaml
@@ -297,82 +296,20 @@ def _fdictFeaturesFromList(listFeatures):
 
 
 def _flistReposFromUrls(listUrls):
-    """Convert a list of repo URL strings to vaibify.yml format.
-
-    The branch is the remote's own default, asked through
-    ``git ls-remote``, with ``main`` only when the remote cannot be
-    asked; ``main`` written blind met a ``master`` remote and the
-    container started without that repository (2026-09-21). The
-    install method is ``reference`` when the remote can be seen to hold
-    no ``setup.py`` or ``pyproject.toml`` -- a protocol repository, a
-    Julia one -- since ``pip install -e`` on those fails at every start.
-    """
-    from vaibify.cli.repositoryPreflight import fsDefaultBranchOfRemote
-    listRepos = []
-    for sUrl in listUrls:
-        sBranch = fsDefaultBranchOfRemote(sUrl) or "main"
-        listRepos.append({
-            "name": _fsRepoNameFromUrl(sUrl),
-            "url": sUrl,
-            "branch": sBranch,
-            "installMethod": _fsInstallMethodForRepository(sUrl, sBranch),
-        })
-    return listRepos
-
-
-_REGEX_GITHUB_REPOSITORY = re.compile(
-    r"^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$",
-)
-
-
-def _fsInstallMethodForRepository(sUrl, sBranch):
-    """Return ``reference`` for a GitHub repository with no Python project file.
-
-    Only GitHub exposes a file by URL without a clone. Any other host,
-    and any answer other than a clear "not there" for both files,
-    keeps ``pip_editable``: the container's own start reports the
-    truth either way.
-    """
-    matchRepository = _REGEX_GITHUB_REPOSITORY.match(sUrl.strip())
-    if matchRepository is None:
-        return "pip_editable"
-    sOwner, sRepository = matchRepository.groups()
-    for sFile in ("pyproject.toml", "setup.py"):
-        sRawUrl = (
-            f"https://raw.githubusercontent.com/{sOwner}/{sRepository}/"
-            f"{sBranch}/{sFile}"
-        )
-        bPresent = _fbGithubFileExists(sRawUrl)
-        if bPresent is None or bPresent:
-            return "pip_editable"
-    return "reference"
-
-
-def _fbGithubFileExists(sRawUrl):
-    """Return True/False from a HEAD of a raw GitHub URL, None when unknown."""
-    import urllib.error
-    import urllib.request
-    try:
-        with urllib.request.urlopen(
-            urllib.request.Request(sRawUrl, method="HEAD"), timeout=5.0,
-        ):
-            return True
-    except urllib.error.HTTPError as errorHttp:
-        return False if errorHttp.code == 404 else None
-    except (urllib.error.URLError, OSError):
-        return None
-
-
-def _fsRepoNameFromUrl(sUrl):
-    """Extract a repository name from a git URL."""
-    sName = sUrl.rstrip("/").rsplit("/", 1)[-1]
-    if sName.endswith(".git"):
-        sName = sName[:-4]
-    return sName
+    """Return vaibify.yml repository entries, through the one authority."""
+    from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
+    return flistRepositoryEntriesFromUrls(listUrls)
 
 
 def _flistCollectErrors(request):
-    """Return a list of validation error strings."""
+    """Return a list of validation error strings.
+
+    The container-identity fields are graded by the same function the
+    build preflight uses: the request carries the same attribute names
+    as the config, and a wizard that wrote a value the build then
+    refuses would only move the discovery later.
+    """
+    from vaibify.cli.configFieldPreflight import flistDescribeInvalidFields
     listErrors = []
     if not request.sProjectName.strip():
         listErrors.append("projectName is required")
@@ -380,6 +317,7 @@ def _flistCollectErrors(request):
         listErrors.append(
             f"Invalid packageManager: '{request.sPackageManager}'"
         )
+    listErrors.extend(flistDescribeInvalidFields(request))
     return listErrors
 
 

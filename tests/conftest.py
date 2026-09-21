@@ -215,7 +215,11 @@ def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
         pythonPackagePreflight, "fbNameExistsOnIndex",
         lambda sName, *aArgs, **kwargs: True,
     )
-    from vaibify.cli import repositoryPreflight
+    from vaibify.cli import repositoryPreflight, systemPackagePreflight
+    monkeypatch.setattr(
+        systemPackagePreflight, "fbPackageExistsInArchive",
+        lambda sName, sSeries, *aArgs, **kwargs: True,
+    )
     monkeypatch.setattr(
         repositoryPreflight, "fdictProbeRepositoryBranch",
         lambda sUrl, sBranch, *aArgs, **kwargs: {

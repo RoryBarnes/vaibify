@@ -21918,9 +21918,9 @@ def _fdictEntry(sRel):
             'tests/testBuildProgressRoutes.py::'
             'test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts'
         ),
-        # the GUI build never asks the index
+        # the python-package check leaves the route's table
         source='vaibify/gui/buildRoutes.py',
-        old='        await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)\n',
+        old='        (fpreflightPythonPackageNames, S_REFUSAL_UNKNOWN_PYTHON_PACKAGE),\n',
         new='',
     ),
     Falsification(
@@ -22025,30 +22025,10 @@ def _fdictEntry(sRel):
             'tests/testBuildProgressRoutes.py::'
             'test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts'
         ),
-        # the GUI build never asks the remotes
+        # the branch check leaves the route's table
         source='vaibify/gui/buildRoutes.py',
-        old='        await asyncio.to_thread(_fnRefuseUnknownRepositoryBranches, dictProject)\n',
+        old='        (fpreflightRepositoryBranches, S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH),\n',
         new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testWizardRepositoryDefaults.py::'
-            'test_the_branch_is_the_remotes_default_not_main'
-        ),
-        # main, written blind, for every repository
-        source='vaibify/install/setupServer.py',
-        old='        sBranch = fsDefaultBranchOfRemote(sUrl) or "main"\n',
-        new='        sBranch = "main"\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testWizardRepositoryDefaults.py::'
-            'test_a_github_repository_with_no_python_project_file_is_a_reference'
-        ),
-        # pip_editable for every repository again
-        source='vaibify/install/setupServer.py',
-        old='            "installMethod": _fsInstallMethodForRepository(sUrl, sBranch),\n',
-        new='            "installMethod": "pip_editable",\n',
     ),
     Falsification(
         nodeid=(
@@ -22080,5 +22060,134 @@ def _fdictEntry(sRel):
         old='                if (!(await _fbBuildPreflightPasses(sName))) return;\n',
         new='',
         iExpectedOccurrences=2,
+    ),
+    # --- 2026-09-21: the wizard audit ---
+    Falsification(
+        nodeid=(
+            'tests/testWizardsShareOneRepositoryAuthority.py::'
+            'test_both_wizards_write_the_branch_the_remote_actually_has'
+        ),
+        # the hub wizard keeps its own copy writing the blind default --
+        # the copy that shipped the defect a researcher met
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    from vaibify.cli.repositoryPreflight import '
+            'flistRepositoryEntriesFromUrls\n'
+            '    return flistRepositoryEntriesFromUrls(listUrls)\n'
+        ),
+        new=(
+            '    return [{"name": sUrl.rstrip("/").rsplit("/", 1)[-1],\n'
+            '             "url": sUrl, "branch": "main",\n'
+            '             "installMethod": "pip_editable"}\n'
+            '            for sUrl in listUrls]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWizardsShareOneRepositoryAuthority.py::'
+            'test_a_repository_with_no_python_project_file_is_a_reference'
+        ),
+        # every repository is assumed to be a Python package again
+        source='vaibify/cli/repositoryPreflight.py',
+        old='            "installMethod": fsInstallMethodForRepository(sUrl, sBranch),\n',
+        new='            "installMethod": "pip_editable",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_a_name_ubuntu_does_not_publish_is_refused'
+        ),
+        # the walk passes every apt name
+        source='vaibify/cli/systemPackagePreflight.py',
+        old='        if sName and not fbPackageExists(sName, sSeries):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_a_base_image_outside_the_known_releases_is_not_graded'
+        ),
+        # every base image is graded against noble
+        source='vaibify/cli/systemPackagePreflight.py',
+        old='    sSeries = fsSeriesForBaseImage(getattr(config, "sBaseImage", ""))\n',
+        new='    sSeries = fsSeriesForBaseImage(getattr(config, "sBaseImage", "")) or "noble"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_an_archive_that_does_not_answer_never_refuses'
+        ),
+        # an unreachable archive is read as "the name does not exist"
+        source='vaibify/cli/systemPackagePreflight.py',
+        old=(
+            '    except ArchiveUnreachableError as errorArchive:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except ArchiveUnreachableError as errorArchive:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigFieldPreflight.py::'
+            'test_a_python_version_apt_cannot_install_is_refused'
+        ),
+        # any pythonVersion is accepted, as before
+        source='vaibify/cli/configFieldPreflight.py',
+        old='_REGEX_PYTHON_VERSION = re.compile(r"^3\\.\\d{1,2}$")\n',
+        new='_REGEX_PYTHON_VERSION = re.compile(r"^.*$")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigFieldPreflight.py::'
+            'test_root_is_refused_as_the_container_user'
+        ),
+        # root is admitted as the container user
+        source='vaibify/cli/configFieldPreflight.py',
+        old='    if sContainerUser == "root" or not sContainerUser:\n',
+        new='    if not sContainerUser:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBothBuildLanesPreflightAlike.py::'
+            'test_both_build_lanes_run_the_same_configuration_checks'
+        ),
+        # the dashboard stops asking a question the command line asks
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightSystemPackageNames, S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_an_unpublished_system_package_is_refused'
+        ),
+        # the config-scoped checks never run on the dashboard's build
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseUnbuildableConfiguration, dictProject)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_whose_fields_cannot_make_a_container_is_refused'
+        ),
+        # a failed preflight is logged and the build runs anyway
+        source='vaibify/gui/buildRoutes.py',
+        old='    if preflightResult.sLevel != S_LEVEL_FAIL:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCreationWizardRoutes.py::'
+            'testCreateRefusesAFieldTheBuildCouldNotUse'
+        ),
+        # the hub create wizard writes the file and lets the build refuse it
+        source='vaibify/gui/registryRoutes.py',
+        old='        fnRefuseUnusableContainerFields(request)\n',
+        new='',
     ),
 ]
