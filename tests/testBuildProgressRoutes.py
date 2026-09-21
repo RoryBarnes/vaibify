@@ -364,3 +364,57 @@ def test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts(
     assert "'master'" in dictDetail["sMessage"]
     assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH
     assert listBuilds == []
+
+
+@pytest.mark.falsification
+def test_a_preflight_only_request_answers_the_refusals_and_builds_nothing(
+    fixtureClient,
+):
+    """The Rebuild flow asks this before it stops the container, because
+    a stop is a `docker rm` and a refusal raised only by the build left
+    the researcher with no container and no build (2026-09-21).
+
+    Kills: ignoring bPreflightOnly, under which the request builds.
+    """
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        response = fixtureClient.post(
+            "/api/containers/proj/build?bPreflightOnly=true",
+        )
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 200, response.text
+    assert response.json() == {"bReady": True}
+    assert listBuilds == []
+    assert fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()["bKnown"] is False
+
+
+def test_a_preflight_only_request_still_refuses(fixtureClient):
+    from vaibify.cli import daemonDiskPreflight
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: None,
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+        ):
+            response = fixtureClient.post(
+                "/api/containers/proj/build?bPreflightOnly=true",
+            )
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409
+    assert response.json()["detail"]["sRefusal"] == (
+        buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    )

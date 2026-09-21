@@ -1931,6 +1931,28 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    async function _fbBuildPreflightPasses(sName) {
+        /* A Rebuild stops the container (a docker rm) before it builds,
+           and a build refused AFTER that stop left the researcher with
+           no container and no build. The route answers its refusals
+           without building when asked, so they are asked first; only a
+           refusal that names itself blocks -- anything else is left for
+           the build itself to report as it always did. */
+        try {
+            await VaibifyApi.fdictPostRaw(
+                "/api/containers/" + encodeURIComponent(sName) +
+                "/build?bPreflightOnly=true");
+            return true;
+        } catch (error) {
+            if (_fbRefusalIsNotABuild(error) || _fbRefusalNamesTheSwitch(error)) {
+                VaibifyApp.fnShowToast(
+                    VaibifyDiagnosis.fsExplainError(error), "error");
+                return false;
+            }
+            return true;
+        }
+    }
+
     async function _fbStoppedBefore(sName, sAction) {
         /* Every transition that begins with a stop used to end silently
            when the stop failed: the stop's own toast was the only word,
@@ -1975,6 +1997,7 @@ var VaibifyContainerManager = (function () {
             "container. Open terminal sessions will close. " +
             "Workspace files are preserved.",
             async function () {
+                if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Rebuild"))) return;
                 await fnBuildContainer(sName, false);
@@ -1998,6 +2021,7 @@ var VaibifyContainerManager = (function () {
             "ignoring the build cache. This can take several " +
             "minutes. Workspace files are preserved.",
             async function () {
+                if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Force Rebuild"))) return;
                 await fnBuildContainer(sName, true);

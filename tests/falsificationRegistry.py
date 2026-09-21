@@ -22060,4 +22060,25 @@ def _fdictEntry(sRel):
         old='    if [ ! -f "${sRepoPath}/setup.py" ] && [ ! -f "${sRepoPath}/pyproject.toml" ]; then\n',
         new='    if false; then\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_preflight_only_request_answers_the_refusals_and_builds_nothing'
+        ),
+        # the flag is ignored and the request builds
+        source='vaibify/gui/buildRoutes.py',
+        old='        if bPreflightOnly:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testABuildRefusalIsNotARunningBuild.py::'
+            'testARefusedRebuildNeverStopsTheContainer'
+        ),
+        # both Rebuild flows stop first and hear the refusal after
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                if (!(await _fbBuildPreflightPasses(sName))) return;\n',
+        new='',
+        iExpectedOccurrences=2,
+    ),
 ]

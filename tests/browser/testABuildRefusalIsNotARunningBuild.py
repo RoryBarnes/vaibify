@@ -65,3 +65,46 @@ def testARefusedBuildShowsTheSentenceAndAttachesToNothing(
         "#modalBuildProgress", state="hidden", timeout=10000,
     )
     assert "already running" not in pageDashboard.locator("body").inner_text()
+
+
+@pytest.mark.falsification
+def testARefusedRebuildNeverStopsTheContainer(pageDashboard, serverHub):
+    """A Stop is a `docker rm`. A Rebuild used to stop first and hear the
+    refusal after, leaving no container and no build; the refusals are
+    asked before anything is stopped.
+
+    Kills: dropping the preflight ask from the Rebuild flows, under
+    which the stop request is sent and the refusal arrives afterwards.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(S_TILE, timeout=15000)
+    listStops = []
+    pageDashboard.route(
+        f"**/api/containers/{S_CONTAINER_NAME}/stop",
+        lambda routeIntercepted: (
+            listStops.append(routeIntercepted.request.url),
+            routeIntercepted.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"bSuccess": True}),
+            ),
+        ),
+    )
+    pageDashboard.route(
+        f"**/api/containers/{S_CONTAINER_NAME}/build**",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=409, content_type="application/json",
+            body=json.dumps({"detail": {
+                "sMessage": S_REFUSAL, "sRefusal": "unknown-python-package",
+            }}),
+        ),
+    )
+    pageDashboard.click(f"{S_TILE} .container-tile-actions")
+    pageDashboard.wait_for_selector(
+        f"{S_TILE} .container-tile-menu", state="visible", timeout=5000,
+    )
+    pageDashboard.click(f'{S_TILE} [data-action="rebuild"]')
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector(".toast.error", timeout=10000)
+    assert "'matplolib'" in pageDashboard.locator(".toast.error").first.inner_text()
+    assert listStops == [], "the container was stopped before the refusal"

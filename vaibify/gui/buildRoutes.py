@@ -92,7 +92,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
 
     @app.post("/api/containers/{sName}/build")
     async def fdictBuildContainer(
-        sName: str, bNoCache: bool = False,
+        sName: str, bNoCache: bool = False, bPreflightOnly: bool = False,
     ):
         from vaibify.gui.registryRoutes import _fdictRequireProject
         from vaibify.gui.routeContext import (
@@ -110,6 +110,12 @@ def _fnRegisterBuildContainer(app, dictCtx):
         await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)
         await asyncio.to_thread(_fnRefuseUnknownRepositoryBranches, dictProject)
         await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)
+        if bPreflightOnly:
+            # The Rebuild flow stops the container -- a `docker rm` --
+            # before it builds, so a refusal raised only by the build
+            # left the researcher with no container and no build
+            # (2026-09-21). Asked first, the same refusals cost nothing.
+            return {"bReady": True}
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
             await asyncio.to_thread(
