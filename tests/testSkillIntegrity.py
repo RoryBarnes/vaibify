@@ -301,3 +301,63 @@ def testSymbolExtractorIgnoresScaffoldsAndPlaceholders():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.falsification
+def testAGitIgnoredFileNeverMakesAReferenceResolve(tmp_path):
+    """A reference may not resolve against a file only this machine has.
+
+    The oracle is what the checker is FOR: it fails CI when a document
+    names a path that no longer exists, so a resolution that depends on
+    a file CI does not have inverts the tool — it reports clean exactly
+    where it should report broken. `.gitignore` is the authority on
+    which files those are, and a maintainer's own `vaibify.yml` for
+    this repository is one of them by design.
+
+    This is not hypothetical. Three references to `vaibify.yml` in two
+    skills resolved on the machine that wrote them and turned 32 CI
+    checks red (2026-09-21) — against a tool whose own comments already
+    warned, in prose, that "an untracked scratch copy can make one
+    resolve locally and not in CI, which is how the gap ships". Prose
+    is not enforcement.
+
+    Kills: resolving a reference by existence alone
+    (``_fbExistsAndIsTracked`` reduced to ``pathCandidate.exists()``).
+    """
+    modulePathChecker = fmoduleLoadPathChecker()
+    pathIgnored = REPO_ROOT / "vaibify.yml"
+    assert modulePathChecker.fbPathIsGitIgnored(pathIgnored), (
+        "vaibify.yml must be gitignored for this test to mean anything; "
+        "if that changed, this test needs a different ignored path"
+    )
+    # Create it if this machine has none, so the test asserts the same
+    # thing on a maintainer's laptop and on a CI runner.
+    bCreated = False
+    if not pathIgnored.exists():
+        pathIgnored.write_text("projectName: scratch\n", encoding="utf-8")
+        bCreated = True
+    try:
+        pathDoc = tmp_path / "AGENTS.md"
+        pathDoc.write_text("See `vaibify.yml`.\n", encoding="utf-8")
+        assert modulePathChecker.fbBareFilenameResolves(
+            pathDoc, "vaibify.yml",
+        ) is False, (
+            "a gitignored file made a reference resolve; on CI, which "
+            "has no such file, the same reference is broken"
+        )
+        assert modulePathChecker.fbReferenceResolves(
+            pathDoc, "vaibify.yml",
+        ) is False
+    finally:
+        if bCreated:
+            pathIgnored.unlink()
+
+
+def testATrackedFileStillMakesAReferenceResolve(tmp_path):
+    """The guard must not answer False for everything."""
+    modulePathChecker = fmoduleLoadPathChecker()
+    pathDoc = tmp_path / "AGENTS.md"
+    pathDoc.write_text("See `pyproject.toml`.\n", encoding="utf-8")
+    assert modulePathChecker.fbReferenceResolves(
+        pathDoc, "pyproject.toml",
+    ) is True

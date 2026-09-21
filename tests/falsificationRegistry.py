@@ -22512,4 +22512,18 @@ def _fdictEntry(sRel):
         old='    setRegistered = set(listRegisteredNames or [])\n',
         new='    shutil.rmtree("/nonexistent", ignore_errors=True)\n    setRegistered = set(listRegisteredNames or [])\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testSkillIntegrity.py::'
+            'testAGitIgnoredFileNeverMakesAReferenceResolve'
+        ),
+        # a reference resolves against a file only this machine has
+        source='tools/checkAgentDocsPaths.py',
+        old=(
+            '    if not pathCandidate.exists():\n'
+            '        return False\n'
+            '    return not fbPathIsGitIgnored(pathCandidate)\n'
+        ),
+        new='    return pathCandidate.exists()\n',
+    ),
 ]
