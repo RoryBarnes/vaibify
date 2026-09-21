@@ -193,23 +193,33 @@ def testTheRenewRouteIsBrowserOnlyAndRenewsThePresenterAlone():
     assert dictPayload["bRenewed"] is True
     assert dictPayload["bSessionKnown"] is True
 
-    app.state.dictContainerOwners["renewal-probe"] = (
-        containerOwnership.OwnerRecord(
-            sLeaseId=containerOwnership.fsMintLease(),
-            fileHandleLock=None,
-            sAgentToken="agent-token-for-renewal-tests",
-            sContainerId="cid_renewal_probe",
-            sBrowserSessionId="",
-        )
+    del containerOwnership
+    # The HANDLER's own refusal, driven with no middleware in front of
+    # it. On the real hub two refusals stack and the middleware answers
+    # first, which means an assertion made through the full app passes
+    # whether or not the handler refuses at all -- it reports on the
+    # middleware. This mounts the session routes bare, so the only
+    # thing that can refuse is the thing under test.
+    from fastapi import FastAPI
+    from vaibify.gui import browserSession as moduleSessions
+    from vaibify.gui.routes import sessionRoutes
+    appBare = FastAPI()
+    appBare.state.dictBrowserSessions = (
+        moduleSessions.fdictCreateBrowserSessionStore()
     )
-    clientAgent = TestClient(app, headers={
+    sessionRoutes.fnRegisterAll(appBare, {})
+    clientBare = TestClient(appBare, raise_server_exceptions=False)
+    assert clientBare.post("/api/session/renew").status_code == 200, (
+        "a browser-origin caller reaches the handler"
+    )
+    responseAgent = clientBare.post("/api/session/renew", headers={
         "X-Vaibify-Session": "agent-token-for-renewal-tests",
-        "Host": "host.docker.internal:8050",
     })
-    assert clientAgent.post("/api/session/renew").status_code in (401, 403), (
+    assert responseAgent.status_code == 403, (
         "the in-container agent must never extend the researcher's "
-        "credential"
+        "credential, and the handler must be the one to say so"
     )
+    assert "no browser session" in responseAgent.json()["detail"]
 
 
 def testTheDashboardHoldsNoCopyOfTheWarningThresholds():
