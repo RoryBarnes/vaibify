@@ -22485,13 +22485,16 @@ def _fdictEntry(sRel):
             'tests/testHostResidueStaysInsideOneProject.py::'
             'testAHostileProjectNameReachesNothing'
         ),
-        # a residue path is composed by join with no root check
+        # the hash path is built from the NAME instead of a listing,
+        # which is the obvious implementation and the one that lets a
+        # traversal out of the tree
         source='vaibify/config/hostResidue.py',
-        old=(
-            '            if os.path.dirname(os.path.abspath(sPath)) != sRoot:\n'
-            '                continue\n'
+        old='        for sEntryName in _flistEntriesIn(sRoot):\n',
+        new=(
+            '        for sEntryName in (_flistEntriesIn(sRoot) + [\n'
+            '            sProjectName + _S_HASH_SUFFIX,\n'
+            '        ] if sRoot == S_BUILD_HASH_ROOT else _flistEntriesIn(sRoot)):\n'
         ),
-        new='',
     ),
     Falsification(
         nodeid=(

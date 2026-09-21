@@ -80,8 +80,16 @@ def testAProjectWhoseNameIsAPrefixOfAnotherIsNeverTouched(
         ],
         listHashNames=["fillet-arg-hash", "fillet-extra-arg-hash"],
     )
+    # THE NEIGHBOUR IS NOT REGISTERED, and that is the point. Rule 2
+    # (the registry cross-check) would rescue a registered neighbour
+    # and hide a broken rule 1 -- the defence-in-depth trap this
+    # repository records: disabling either copy alone changes nothing
+    # a caller can observe. It is also the real case: "Remove from
+    # list" un-registers a project and KEEPS its bytes, so an
+    # un-registered fillet-extra still has contexts on disk, and
+    # deleting fillet must not take them.
     listRemoved = hostResidue.flistRemoveResidueForProject(
-        "fillet", ["fillet", "fillet-extra"],
+        "fillet", ["fillet"],
     )
     assert sorted(os.path.basename(s) for s in listRemoved) == [
         f"fillet-{S_SUFFIX_A}", "fillet-arg-hash",
@@ -133,8 +141,15 @@ def testAHostileProjectNameReachesNothing(fnBuildResidueTree):
     intended root before being opened. A project name comes from a
     registry entry the researcher wrote, so it is such a source.
 
-    Kills: composing a residue path by string join without checking
-    that it lands directly beneath its root.
+    The realistic error is not exotic: the obvious implementation
+    builds the hash path straight from the name
+    (``join(root, name + "-arg-hash")``) instead of matching it
+    against a listing of the directory. Do that and a project named
+    ``../../../etc`` addresses a path outside the tree. The root check
+    is what stands between the two.
+
+    Kills: composing a residue path by string join from the project
+    name rather than selecting it from a listing of the root.
     """
     pathBuild, pathCache = fnBuildResidueTree(
         listContextNames=[f"fillet-{S_SUFFIX_A}"],
