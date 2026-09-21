@@ -65,9 +65,25 @@ permissions:
 
 jobs:
   freshbuild:
-    name: 'image build from scratch'
-    runs-on: ubuntu-24.04
+    # One job per architecture the Dockerfile carries a toolchain pin
+    # list for. The daemon builds the base image's manifest for its own
+    # platform, so an amd64 runner never installs the arm64 list: the
+    # list a researcher's Apple Silicon daemon uses was verified only by
+    # hand until this leg existed (2026-09-20). The amd64 leg keeps its
+    # historical check name.
+    name: ${{ matrix.sJobName }}
+    runs-on: ${{ matrix.sRunner }}
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sRunner: ubuntu-24.04
+            sArchitecture: amd64
+            sJobName: 'image build from scratch'
+          - sRunner: ubuntu-24.04-arm
+            sArchitecture: arm64
+            sJobName: 'image build from scratch (arm64)'
 
     steps:
       - uses: actions/checkout@v5
@@ -110,6 +126,15 @@ jobs:
       # to a maintainer on their own cadence.
       - name: The snapshot date and the pins agree
         run: python tools/checkToolchainEpoch.py --verify
+
+      - name: The runner is the architecture this leg claims to build
+        run: |
+          sArchitecture=$(docker info --format '{{.Architecture}}')
+          echo "daemon architecture: ${sArchitecture}"
+          case "${{ matrix.sArchitecture }}:${sArchitecture}" in
+            amd64:x86_64|arm64:aarch64) ;;
+            *) echo "this leg expects ${{ matrix.sArchitecture }}" >&2; exit 1 ;;
+          esac
 
       - name: Build the image from scratch
         run: |

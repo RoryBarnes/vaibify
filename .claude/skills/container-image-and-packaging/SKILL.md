@@ -44,7 +44,10 @@ against its own `binary-<arch>` index and fails first if the lists
 disagree on a version; `--architecture` narrows either tool, and
 `checkToolchainPinDrift --write` bumps every list that pins the
 package. Regenerate a list with `apt-get install -s` under
-`--platform linux/<arch>`, per the Dockerfile's comment. Two more
+`--platform linux/<arch>`, per the Dockerfile's comment.
+`fresh-image-build` runs one leg per list (an amd64 and an arm64
+runner), because a daemon only ever installs the list for its own
+platform, so a single-architecture lane verifies half the file. Two more
 traps in the same block, both met the same week: the base image is
 pinned by digest, so when that digest already ships a NEWER libc than
 the pins name, apt refuses the install as a downgrade
