@@ -18,7 +18,7 @@ RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
         echo "" >&2; \
         printf '%s\n' "vaibify build (antigravity overlay): cannot download the Antigravity CLI installer." >&2; \
         printf '%s\n' "  - The installer lives at antigravity.google/cli/install.sh." >&2; \
-        printf '%s\n' "  - Resolve this build host's network path to antigravity.google" >&2; \
+        printf '%s\n' "  - If curl's message above names the network, resolve this build host's path to antigravity.google" >&2; \
         printf '%s\n' "    or disable the overlay (features: { antigravity: false })." >&2; \
         echo "" >&2; \
         exit 1; \

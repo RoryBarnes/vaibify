@@ -1,0 +1,280 @@
+"""Every container a test lane creates must be reclaimable later.
+
+A live lane tears its containers down in a fixture. A lane that is
+KILLED — a CI cancel, a ``^C``, a harness timeout — never reaches that
+teardown, so the container outlives the run. Ten of them accumulated on
+one researcher's daemon (2026-09-21), with names like ``host-only``,
+``acceptance`` and ``fresh-image`` that read like research environments
+rather than like litter, so nobody dared delete them.
+
+A sweep can only act on evidence, and the only evidence that
+distinguishes a suite's container from a researcher's is a label the
+suite wrote. This test is what keeps that evidence universal: a new
+lane that creates a container without the label creates one nothing
+can ever reclaim, and it fails here rather than on somebody's daemon
+three weeks later.
+"""
+
+import ast
+import pathlib
+import re
+
+import pytest
+
+from tests.liveContainerLabels import S_LIVE_LANE_LABEL
+
+
+S_TESTS_DIRECTORY = pathlib.Path("tests")
+
+# A creation the label cannot ride: these construct an argv to ASSERT
+# on it, or drive a stand-in, and never reach a daemon. Each entry is a
+# claim that the file creates no real container; adding one is a claim
+# somebody must be able to check by reading the file.
+SET_FILES_THAT_CREATE_NO_CONTAINER = frozenset({
+    "testContainerManagerFull.py",
+    "testCoverageBroadGaps.py",
+    "testDaemonDiskPreflight.py",
+    "testDockerConnection.py",
+    "testContainerManager.py",
+    "testStartLaunchCommands.py",
+    "testConvertToContainerRoute.py",
+    "testDisposableContainer.py",
+    "liveContainerLabels.py",
+    "testLiveLanesLabelWhatTheyCreate.py",
+})
+
+_REGEX_SDK_CREATION = re.compile(r"containers\.(?:run|create)\(")
+_REGEX_CLI_CREATION = re.compile(r'"docker",\s*"run"')
+
+
+def _flistFindCreatingFiles():
+    """Return every tests/ file that creates a container on a daemon."""
+    listCreating = []
+    for pathFile in sorted(S_TESTS_DIRECTORY.glob("*.py")):
+        if pathFile.name in SET_FILES_THAT_CREATE_NO_CONTAINER:
+            continue
+        sText = pathFile.read_text(encoding="utf-8")
+        if _REGEX_SDK_CREATION.search(sText) or (
+            _REGEX_CLI_CREATION.search(sText)
+        ):
+            listCreating.append(pathFile)
+    return listCreating
+
+
+def testThereAreLiveLanesToGovern():
+    """A guard that governs nothing has stopped being a guard."""
+    assert _flistFindCreatingFiles(), (
+        "no test file appears to create a container; the creation "
+        "patterns this test scans for have probably changed"
+    )
+
+
+@pytest.mark.parametrize(
+    "pathFile", _flistFindCreatingFiles(), ids=lambda p: p.name,
+)
+def testALaneThatCreatesAContainerLabelsIt(pathFile):
+    """Each creating lane must reach the shared labelling helper.
+
+    The sweep destroys what carries the label and nothing else — never
+    a name pattern, never an age — because a researcher's container
+    must be untouchable. That contract only reclaims a lane's
+    containers if the lane wrote the label, so "every creating lane
+    labels" is not a style rule, it is the precondition the sweep's
+    safety rests on.
+    """
+    sText = pathFile.read_text(encoding="utf-8")
+    assert "liveContainerLabels" in sText, (
+        f"{pathFile.name} creates a container but never imports the "
+        "shared label; a killed run would strand it with nothing able "
+        "to tell it from a researcher's own container"
+    )
+    iCreations = len(_REGEX_SDK_CREATION.findall(sText)) + len(
+        _REGEX_CLI_CREATION.findall(sText))
+    iLabellings = sText.count("flistLabelArguments()") + sText.count(
+        "labels=fdictLabels(")
+    assert iLabellings >= iCreations, (
+        f"{pathFile.name} makes {iCreations} container creation(s) but "
+        f"labels {iLabellings}; every one must be reclaimable"
+    )
+
+
+def testTheSweepActsOnTheLabelAndNothingElse():
+    """Never a name, never an age — the label is the only evidence."""
+    sText = (S_TESTS_DIRECTORY / "liveContainerLabels.py").read_text(
+        encoding="utf-8")
+    assert 'filters={"label": S_LIVE_LANE_LABEL}' in sText, (
+        "the sweep must select on the live-lane label"
+    )
+    assert S_LIVE_LANE_LABEL == "vaibify-live-test-lane", (
+        "the label names the suite, so a researcher reading docker ps "
+        "can see at a glance what wrote it"
+    )
+    for sForbidden in ("name=", "since=", "before=", "status="):
+        assert f'filters={{"{sForbidden.rstrip("=")}"' not in sText, (
+            f"selecting containers by {sForbidden} would let the sweep "
+            "destroy a researcher's own container"
+        )
+
+
+def testTheSessionSweepRunsAtBothEndsOfALiveRun():
+    """The start is the only end a killed run will reach again."""
+    sConftest = (S_TESTS_DIRECTORY / "conftest.py").read_text(
+        encoding="utf-8")
+    iStart = sConftest.index("def fnSweepContainersLeftByAKilledLiveLane")
+    sBody = sConftest[iStart:iStart + 2000]
+    iYield = sBody.index("\n    yield\n    flistSweepLiveLaneContainers()")
+    assert "flistSweepLiveLaneContainers()" in sBody[:iYield], (
+        "sweeping only at the end reclaims nothing from the run that "
+        "was killed before its end"
+    )
+
+
+def testAUnitRunNeverTouchesTheDaemon():
+    """A selection with no live test must not reach Docker at all."""
+    sConftest = (S_TESTS_DIRECTORY / "conftest.py").read_text(
+        encoding="utf-8")
+    assert "_fbSelectionRunsLiveDockerTests" in sConftest
+    assert "docker_live" in sConftest
+
+
+class _FakeContainer:
+    """A stand-in for one container on the daemon."""
+
+    def __init__(self, sName, dictLabels):
+        self.name = sName
+        self.labels = dictLabels
+        self.bRemoved = False
+
+    def remove(self, force=False):
+        del force
+        self.bRemoved = True
+
+
+class _FakeContainerCollection:
+    """The ``containers`` half of a Docker client stand-in."""
+
+    def __init__(self, listContainers):
+        self.listContainers = list(listContainers)
+
+    def list(self, all=False, filters=None):  # noqa: A002 — SDK's name
+        del all
+        sLabel = (filters or {}).get("label")
+        return [
+            containerFound for containerFound in self.listContainers
+            if not sLabel or sLabel in containerFound.labels
+        ]
+
+
+@pytest.mark.falsification
+def testTheSweepTakesTheSuitesContainersAndLeavesTheResearchersAlone(
+    monkeypatch,
+):
+    """Label-scoped, both directions, because only one direction is safe.
+
+    The independent oracle is what the researcher actually lost: not
+    disk, but the ability to tell their own containers from the
+    suite's. A sweep that took a researcher's ``vaibify-vplanet``
+    would be strictly worse than the leak it replaces — this
+    repository has already offered one broad ``docker rm`` filter that
+    matched a live research container, and it was the researcher who
+    caught it.
+
+    Kills: widening the sweep's selection beyond the label — dropping
+    the ``filters`` argument, so every container on the daemon is
+    listed and removed.
+    """
+    containerSuite = _FakeContainer(
+        "suiteThrowaway", {S_LIVE_LANE_LABEL: "1"})
+    containerResearcher = _FakeContainer("vaibify-vplanet", {})
+
+    from vaibify.docker import disposableContainer
+    monkeypatch.setattr(
+        disposableContainer, "fdockerCreateDisposableClient",
+        lambda: type("ClientFake", (), {
+            "containers": _FakeContainerCollection(
+                [containerSuite, containerResearcher]),
+        })(),
+    )
+    from tests.liveContainerLabels import flistSweepLiveLaneContainers
+    listRemoved = flistSweepLiveLaneContainers()
+    assert listRemoved == ["suiteThrowaway"]
+    assert containerSuite.bRemoved is True
+    assert containerResearcher.bRemoved is False, (
+        "a container the suite did not label is the researcher's, and "
+        "the sweep must never touch it"
+    )
+
+
+def testTheSweepReachesTheDaemonTheWayProductionDoes():
+    """``docker.from_env()`` is not how this codebase finds a daemon.
+
+    It reads the environment alone, so on a machine whose Docker is
+    colima -- or any non-default context -- it raises, the sweep
+    swallowed it, and a daemon with leftovers on it was reported as
+    clean. Measured on a researcher's own machine, 2026-09-21: the
+    sweep answered "nothing swept" while the container it was written
+    to remove was running. The production factory resolves the host
+    first, and is the only thing that may be used here.
+    """
+    sText = (S_TESTS_DIRECTORY / "liveContainerLabels.py").read_text(
+        encoding="utf-8")
+    assert "fdockerCreateDisposableClient" in sText
+    # Comments may name the trap; CODE may not walk into it.
+    sCode = re.sub(r"^\s*#.*$", "", sText, flags=re.M)
+    assert "from_env" not in sCode, (
+        "from_env cannot see a non-default Docker context, and a "
+        "hygiene step that silently does nothing is also a false claim"
+    )
+
+
+_REGEX_HOST_TEST_IMPORT = re.compile(
+    r"^\s*(?:from\s+tests[\s.]|import\s+tests\b)", re.M,
+)
+
+
+@pytest.mark.falsification
+def testNoContainerSideScriptImportsAHostTestModule():
+    """A script embedded in a string runs somewhere else, and knows nothing.
+
+    The oracle is where the code executes. This repository already
+    states it for ``introspectionScript.py``: a script held in a string
+    is executed INSIDE a container, which has no checkout, no
+    ``tests`` package and no PYTHONPATH pointing at one. An import of a
+    host test module placed there cannot resolve, and — the part that
+    makes it worth a permanent guard rather than a fix — it fails at a
+    distance: the script dies inside a container, the runner produces
+    nothing, and the test that surfaces says
+    ``noParticipantCouldSynthesize``, which names neither the import
+    nor the file.
+
+    That is not hypothetical. Adding the shared container label to
+    every live lane put one import inside a fake provider's script
+    string, and it cost four red checks whose messages pointed
+    somewhere else entirely (2026-09-21).
+
+    Kills: placing ``from tests.liveContainerLabels import fdictLabels``
+    inside ``S_FAKE_PROVIDER_SCRIPT``.
+    """
+    listOffenders = []
+    for pathFile in sorted(S_TESTS_DIRECTORY.glob("*.py")):
+        # The mutation registry RECORDS this mistake in order to prove
+        # the guard still catches it; its strings are replayed into
+        # other files, never executed here.
+        if pathFile.name == "falsificationRegistry.py":
+            continue
+        treeModule = ast.parse(pathFile.read_text(encoding="utf-8"))
+        for nodeAny in ast.walk(treeModule):
+            if not isinstance(nodeAny, ast.Constant):
+                continue
+            if not isinstance(nodeAny.value, str):
+                continue
+            if _REGEX_HOST_TEST_IMPORT.search(nodeAny.value):
+                listOffenders.append(
+                    f"{pathFile.name}:{nodeAny.lineno}"
+                )
+    assert not listOffenders, (
+        "a script held in a string literal runs inside a container, "
+        "which has no tests package to import from; the failure "
+        "surfaces far from the line that caused it: "
+        + ", ".join(listOffenders)
+    )

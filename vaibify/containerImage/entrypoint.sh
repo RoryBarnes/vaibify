@@ -644,6 +644,15 @@ fnPipInstall() {
     local sRepoPath="$1"
     local sName="$2"
     shift 2
+    if [ ! -f "${sRepoPath}/setup.py" ] && [ ! -f "${sRepoPath}/pyproject.toml" ]; then
+        # A protocol repository or a Julia one has nothing pip can
+        # install; pip's own refusal read as a broken install. Say what
+        # is missing and which line in vaibify.yml resolves it.
+        echo "[vaib]   WARNING: ${sName} has no setup.py or pyproject.toml, so there is nothing to pip install; cloned only."
+        fnAppendStartupWarning "${sName}" "pip-not-a-package" \
+            "no setup.py or pyproject.toml; cloned only. Set installMethod: reference in vaibify.yml"
+        return
+    fi
     echo "[vaib] Installing ${sName}..."
     if ! pip install -e "${sRepoPath}" "$@" -q; then
         echo "[vaib]   WARNING: Failed to install ${sName}. Continuing."

@@ -44,6 +44,7 @@ lane and the council share one container lifecycle rather than two that
 drift.
 """
 
+import logging
 import posixpath
 import secrets
 import socket
@@ -54,6 +55,8 @@ from vaibify.docker.dockerConnection import (
     _fnEnsureDockerHost,
 )
 from vaibify.docker import disposableSpecification
+
+logger = logging.getLogger("vaibify")
 
 
 __all__ = [
@@ -78,6 +81,8 @@ __all__ = [
     "fdictDestroyContainerAndProveAbsence",
     "flistDiscoverLabeledContainers",
     "fdictSweepLabeledSurvivors",
+    "fdictSweepSurvivorsOfVanishedResources",
+    "fdictReclaimStrandedDisposables",
 ]
 
 
@@ -845,6 +850,116 @@ def flistDiscoverLabeledContainers(dockerDisposable):
             "sStatus": containerFound.status,
         })
     return listDiscovered
+
+
+def fdictReclaimStrandedDisposables():
+    """Connect, sweep vanished-resource survivors, and log what went.
+
+    The hub's ten-minute reclaim calls exactly this. Silent about an
+    unreachable daemon on purpose: a hub with no Docker is an ordinary
+    state (host mode), and a warning every ten minutes about a lane
+    with nothing to clean is noise a researcher learns to ignore. A
+    pass that DID destroy something says so, because a container
+    disappearing with no record of who removed it is the sort of thing
+    that gets blamed on the science.
+    """
+    try:
+        dockerDisposable = fdockerCreateDisposableClient()
+        dictSwept = fdictSweepSurvivorsOfVanishedResources(dockerDisposable)
+    except Exception:
+        return {"listSettled": [], "iQuarantined": 0}
+    if dictSwept["listSettled"]:
+        logger.info(
+            "Reclaimed %d disposable container(s) stranded by a crash; "
+            "%d could not be proven gone.",
+            len(dictSwept["listSettled"]), dictSwept["iQuarantined"],
+        )
+    return dictSwept
+
+
+def _fbStampNamesAContainerId(sResourceName):
+    """Return True when a resource stamp is a Docker container id.
+
+    The project-container lane stamps its shadows with the container id
+    the rerun was driven from; the published-reproduction lane stamps a
+    job token instead. Only the first kind names something the daemon
+    can be asked about, and this predicate is what separates them. It
+    is deliberately strict — lowercase hex, at least a short id's worth
+    — because the cost of a false positive is destroying a container on
+    evidence the daemon never gave.
+    """
+    sStamp = str(sResourceName or "")
+    if len(sStamp) < 12:
+        return False
+    return all(sCharacter in "0123456789abcdef" for sCharacter in sStamp)
+
+
+def _fbStampedResourceIsGone(sResourceName, setContainerIds):
+    """Return True when the daemon holds no container answering this stamp."""
+    for sContainerId in setContainerIds:
+        if sContainerId.startswith(sResourceName) or (
+            sResourceName.startswith(sContainerId)
+        ):
+            return False
+    return True
+
+
+def fdictSweepSurvivorsOfVanishedResources(dockerDisposable):
+    """Destroy survivors whose stamped container the daemon no longer holds.
+
+    The crash path the narrowed sweep cannot reach. A disposable is
+    destroyed in a ``finally``, so the only survivors are the ones a
+    killed process left behind, and
+    :func:`fdictSweepLabeledSurvivors` reclaims those at the START of
+    the next job for the SAME resource -- which, for a project whose
+    researcher never runs another attestation, is never. One shadow
+    from a crashed rerun sat on a researcher's daemon for a fortnight
+    that way.
+
+    What makes a sweep safe without a resource to narrow it to is
+    evidence the daemon itself supplies: a survivor stamped with a
+    container id that no longer exists cannot belong to any live job,
+    because the job it was stamped for was driven from a container
+    that is gone. A live peer hub's shadows are protected by
+    construction -- their stamp names a container the daemon still
+    holds -- which is the property that makes this safe to run on a
+    shared daemon, and the reason it does not simply sweep everything
+    old.
+
+    Survivors whose stamp is NOT a container id (the published
+    reproduction lane stamps a job token) are left alone: the daemon
+    cannot adjudicate them, and destroying on no evidence is the
+    mistake this whole module is written to avoid. Unstamped survivors
+    are left to the narrowed sweep for the same reason -- it knows
+    whose they are not.
+    """
+    listSurvivors = flistDiscoverLabeledContainers(dockerDisposable)
+    if not listSurvivors:
+        return {"listSettled": [], "iQuarantined": 0}
+    setContainerIds = {
+        containerFound.id
+        for containerFound in dockerDisposable.containers.list(all=True)
+    }
+    listSettled = []
+    for dictSurvivor in listSurvivors:
+        sStamped = dictSurvivor["sResourceName"]
+        if not _fbStampNamesAContainerId(sStamped):
+            continue
+        if not _fbStampedResourceIsGone(sStamped, setContainerIds):
+            continue
+        dictOutcome = fdictDestroyContainerAndProveAbsence(
+            dockerDisposable, dictSurvivor["sContainerId"])
+        listSettled.append({
+            "sContainerId": dictSurvivor["sContainerId"],
+            "sContainerName": dictSurvivor["sContainerName"],
+            "sOutcome": dictOutcome["sOutcome"],
+            "sReason": dictOutcome["sReason"],
+        })
+    return {"listSettled": listSettled,
+            "iQuarantined": len([
+                dictSettled for dictSettled in listSettled
+                if dictSettled["sOutcome"]
+                == disposableSpecification.S_OUTCOME_QUARANTINED])}
 
 
 def fdictSweepLabeledSurvivors(dockerDisposable, sResourceName=""):

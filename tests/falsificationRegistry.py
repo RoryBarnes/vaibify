@@ -21864,4 +21864,549 @@ def _fdictEntry(sRel):
         ),
         new='    fiSysctlByName = ctypes.CDLL(\n',
     ),
+    # --- 2026-09-21: a misspelled pythonPackages name cost a full build ---
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_a_misspelled_name_is_refused_before_the_build'
+        ),
+        # the walk passes every name
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old='        if sName and not fbNameExists(sName):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_a_custom_index_is_not_judged_by_pypi'
+        ),
+        # a private index's package is refused for being unknown to pypi.org
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old='    if fbIndexIsOverridden(getattr(config, "sPipInstallFlags", "")):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_an_index_that_does_not_answer_never_refuses'
+        ),
+        # an unreachable index is read as "the name does not exist"
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old=(
+            '    except IndexUnreachableError as errorIndex:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except IndexUnreachableError as errorIndex:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_missing_python_package_is_named_in_the_sentence'
+        ),
+        # the generic sentence again, with pip's line left in the evidence
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    matchName = _REGEX_PIP_MISSING_DISTRIBUTION.search(sStderrTail or "")\n',
+        new='    matchName = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts'
+        ),
+        # the python-package check leaves the route's table
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightPythonPackageNames, S_REFUSAL_UNKNOWN_PYTHON_PACKAGE),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testABuildRefusalIsNotARunningBuild.py::'
+            'testARefusedBuildShowsTheSentenceAndAttachesToNothing'
+        ),
+        # the refusal is read as a running build and attached to
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '        return Boolean(error && error.iStatus === 409 && error.dictDetail &&\n'
+            '            error.dictDetail.sRefusal);\n'
+        ),
+        new='        return false;\n',
+    ),
+    # --- 2026-09-21: a full daemon disk blamed on the network ---
+    Falsification(
+        nodeid=(
+            'tests/testOverlayBannersReadTheStepFirst.py::'
+            'test_no_overlay_banner_asserts_a_network_cause_for_any_exit'
+        ),
+        # the installer banner blames the network for any exit again
+        source='vaibify/containerImage/Dockerfile.claude',
+        old=(
+            '        printf \'%s\\n\' "  - The installer\'s own message is directly above this banner; read it first." >&2; \\\n'
+        ),
+        new=(
+            '        printf \'%s\\n\' "  - Download failed (likely a TLS or network failure)." >&2; \\\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildTailKeepsTheReason.py::'
+            'test_the_reason_survives_a_post_mortem_longer_than_the_window'
+        ),
+        # one window again; the echo evicts the reason
+        source='vaibify/docker/imageBuilder.py',
+        old='    return bool(_RE_BUILDKIT_POST_MORTEM.match(sLine))\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_full_daemon_disk_is_named_before_any_other_cause'
+        ),
+        # the disk branch is gone; the banner's own words are the sentence
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    if "no space left on device" in sLower:\n        # Judged before every other cause',
+        new='    if False:\n        # Judged before every other cause',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDaemonDiskPreflight.py::'
+            'test_a_full_daemon_disk_fails_the_preflight_with_the_remedy'
+        ),
+        # a few hundred megabytes is called room enough
+        source='vaibify/cli/daemonDiskPreflight.py',
+        old='I_DAEMON_FREE_DISK_FAIL_BYTES = 4 * (2 ** 30)\n',
+        new='I_DAEMON_FREE_DISK_FAIL_BYTES = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_the_daemon_disk_cannot_hold_is_refused_before_it_starts'
+        ),
+        # the GUI build never asks the disk
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)\n',
+        new='',
+    ),
+    # --- 2026-09-21: a branch the remote lacks, and nothing to pip install ---
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::'
+            'test_a_branch_the_remote_lacks_is_refused_and_the_default_is_named'
+        ),
+        # every branch passes
+        source='vaibify/cli/repositoryPreflight.py',
+        old='        if not dictAnswer["bBranchExists"]:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::'
+            'test_a_remote_that_cannot_be_asked_never_refuses'
+        ),
+        # an unreachable remote is read as a missing branch
+        source='vaibify/cli/repositoryPreflight.py',
+        old=(
+            '    except RemoteUnreachableError as errorRemote:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except RemoteUnreachableError as errorRemote:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts'
+        ),
+        # the branch check leaves the route's table
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightRepositoryBranches, S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointPipNotAPackage.py::'
+            'test_a_repository_with_nothing_to_install_is_said_so_and_pip_is_not_run'
+        ),
+        # pip is run on a repository with nothing to install; its refusal is "failed"
+        source='vaibify/containerImage/entrypoint.sh',
+        old='    if [ ! -f "${sRepoPath}/setup.py" ] && [ ! -f "${sRepoPath}/pyproject.toml" ]; then\n',
+        new='    if false; then\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_preflight_only_request_answers_the_refusals_and_builds_nothing'
+        ),
+        # the flag is ignored and the request builds
+        source='vaibify/gui/buildRoutes.py',
+        old='        if bPreflightOnly:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testABuildRefusalIsNotARunningBuild.py::'
+            'testARefusedRebuildNeverStopsTheContainer'
+        ),
+        # both Rebuild flows stop first and hear the refusal after
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                if (!(await _fbBuildPreflightPasses(sName))) return;\n',
+        new='',
+        iExpectedOccurrences=2,
+    ),
+    # --- 2026-09-21: the wizard audit ---
+    Falsification(
+        nodeid=(
+            'tests/testWizardsShareOneRepositoryAuthority.py::'
+            'test_both_wizards_write_the_branch_the_remote_actually_has'
+        ),
+        # the hub wizard keeps its own copy writing the blind default --
+        # the copy that shipped the defect a researcher met
+        source='vaibify/gui/registryRoutes.py',
+        old=(
+            '    from vaibify.cli.repositoryPreflight import '
+            'flistRepositoryEntriesFromUrls\n'
+            '    return flistRepositoryEntriesFromUrls(listUrls)\n'
+        ),
+        new=(
+            '    return [{"name": sUrl.rstrip("/").rsplit("/", 1)[-1],\n'
+            '             "url": sUrl, "branch": "main",\n'
+            '             "installMethod": "pip_editable"}\n'
+            '            for sUrl in listUrls]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWizardsShareOneRepositoryAuthority.py::'
+            'test_a_repository_with_no_python_project_file_is_a_reference'
+        ),
+        # every repository is assumed to be a Python package again
+        source='vaibify/cli/repositoryPreflight.py',
+        old='            "installMethod": fsInstallMethodForRepository(sUrl, sBranch),\n',
+        new='            "installMethod": "pip_editable",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_a_name_ubuntu_does_not_publish_is_refused'
+        ),
+        # the walk passes every apt name
+        source='vaibify/cli/systemPackagePreflight.py',
+        old='        if sName and not fbPackageExists(sName, sSeries):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_a_base_image_outside_the_known_releases_is_not_graded'
+        ),
+        # every base image is graded against noble
+        source='vaibify/cli/systemPackagePreflight.py',
+        old='    sSeries = fsSeriesForBaseImage(getattr(config, "sBaseImage", ""))\n',
+        new='    sSeries = fsSeriesForBaseImage(getattr(config, "sBaseImage", "")) or "noble"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSystemPackagePreflight.py::'
+            'test_an_archive_that_does_not_answer_never_refuses'
+        ),
+        # an unreachable archive is read as "the name does not exist"
+        source='vaibify/cli/systemPackagePreflight.py',
+        old=(
+            '    except ArchiveUnreachableError as errorArchive:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except ArchiveUnreachableError as errorArchive:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigFieldPreflight.py::'
+            'test_a_python_version_apt_cannot_install_is_refused'
+        ),
+        # any pythonVersion is accepted, as before
+        source='vaibify/cli/configFieldPreflight.py',
+        old='_REGEX_PYTHON_VERSION = re.compile(r"^3\\.\\d{1,2}$")\n',
+        new='_REGEX_PYTHON_VERSION = re.compile(r"^.*$")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigFieldPreflight.py::'
+            'test_root_is_refused_as_the_container_user'
+        ),
+        # root is admitted as the container user
+        source='vaibify/cli/configFieldPreflight.py',
+        old='    if sContainerUser == "root" or not sContainerUser:\n',
+        new='    if not sContainerUser:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBothBuildLanesPreflightAlike.py::'
+            'test_both_build_lanes_run_the_same_configuration_checks'
+        ),
+        # the dashboard stops asking a question the command line asks
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightSystemPackageNames, S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_an_unpublished_system_package_is_refused'
+        ),
+        # the config-scoped checks never run on the dashboard's build
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseUnbuildableConfiguration, dictProject)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_whose_fields_cannot_make_a_container_is_refused'
+        ),
+        # a failed preflight is logged and the build runs anyway
+        source='vaibify/gui/buildRoutes.py',
+        old='    if preflightResult.sLevel != S_LEVEL_FAIL:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCreationWizardRoutes.py::'
+            'testCreateRefusesAFieldTheBuildCouldNotUse'
+        ),
+        # the hub create wizard writes the file and lets the build refuse it
+        source='vaibify/gui/registryRoutes.py',
+        old='        fnRefuseUnusableContainerFields(request)\n',
+        new='',
+    ),
+    # --- 2026-09-21: the evening's reports. A banner nobody could
+    # read, a setting nobody could reach in the mode that needed it, a
+    # cap that ended a working week, a container older than the file it
+    # was built from, and lanes whose litter outlived them.
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testRuntimeOnlyFieldsNeverDemandARebuild'
+        ),
+        # a port publish now demands an hour-long rebuild
+        source='vaibify/config/configurationFingerprint.py',
+        old='    "features",\n)',
+        new='    "features",\n    "listPorts",\n)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testAnUnlabelledImageIsNeverReportedAsDrifted'
+        ),
+        # an image built before the label reads as drifted
+        source='vaibify/config/configurationFingerprint.py',
+        old='    if not sStamped or config is None:',
+        new='    if config is None:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testTheBannerRendersTheServersVerdictAndNothingElse'
+        ),
+        # the banner paints itself whenever the key is present
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!listLines || listLines.length === 0) {',
+        new='        if (!listLines) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDisposableSurvivorReclaim.py::'
+            'testASweepDestroysTheStrandedSurvivorAndSparesThePeers'
+        ),
+        # the reclaim destroys a live peer hub's shadow
+        source='vaibify/docker/disposableContainer.py',
+        old=(
+            '        if not _fbStampedResourceIsGone('
+            'sStamped, setContainerIds):\n            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDisposableSurvivorReclaim.py::'
+            'testAJobTokenStampIsNeverAdjudicatedByTheDaemon'
+        ),
+        # a reproduction job's stamp is treated as a vanished container
+        source='vaibify/docker/disposableContainer.py',
+        old='    if len(sStamp) < 12:\n        return False\n',
+        new='    if not sStamp:\n        return False\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testTheDefaultCapOutlivesAWorkingWeek'
+        ),
+        # the default cap goes back to ending a session inside a week
+        source='vaibify/gui/sessionLifecycle.py',
+        old='        S_ABSOLUTE_SESSION_CAP_ENV, 604800.0,',
+        new='        S_ABSOLUTE_SESSION_CAP_ENV, 43200.0,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testRenewalRestartsTheClockAndOnlyForThePresentingSession'
+        ),
+        # the renewal reports success and winds no clock back
+        source='vaibify/gui/browserSession.py',
+        old='        recordSession.fCreatedMonotonic = fNow\n        return True',
+        new='        return True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testTheRenewRouteIsBrowserOnlyAndRenewsThePresenterAlone'
+        ),
+        # the renew route stops refusing the in-container agent
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old=(
+            '        _fnRejectContainerAgentCallers(\n'
+            '            request,\n'
+            '            sDetail="The in-container agent holds no browser '
+            'session, "\n'
+            '            "so it has no session lifetime to renew.",\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheDashboardSettingsReachEveryMode.py::'
+            'testTheProjectBannerWritesTextRatherThanMarkup'
+        ),
+        # the project banner writes an unstyled anchor again
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        elName.textContent = iAvailable > 0\n'
+            '            ? "None \\u2014 " + iAvailable + " available"\n'
+            '            : "None";\n'
+        ),
+        new=(
+            '        elName.innerHTML = iAvailable > 0\n'
+            '            ? \'<a class="toolkit-banner-switch">None</a>\'\n'
+            '            : "None";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheDashboardSettingsReachEveryMode.py::'
+            'testTheHostTimeoutsAreReachableWithoutAnOpenProject'
+        ),
+        # the host timeouts move back behind the project settings gear
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            "the run is never stopped. 0 = no limit") +\n'
+            '            fsAgentSettingsHtml();\n'
+        ),
+        new=(
+            '            "the run is never stopped. 0 = no limit") +\n'
+            '            fsTimeoutSettingsRowsHtml() +\n'
+            '            fsAgentSettingsHtml();\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testTheSweepTakesTheSuitesContainersAndLeavesTheResearchersAlone'
+        ),
+        # the sweep stops scoping to the label and takes the daemon
+        source='tests/liveContainerLabels.py',
+        old='            all=True, filters={"label": S_LIVE_LANE_LABEL},\n',
+        new='            all=True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheProjectBannerIsLegibleAgainstTheToolbar'
+        ),
+        # the banner takes the browser's default link colour again
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        elName.textContent = iAvailable > 0\n'
+            '            ? "None \\u2014 " + iAvailable + " available"\n'
+            '            : "None";\n'
+        ),
+        new=(
+            '        elName.innerHTML = iAvailable > 0\n'
+            '            ? \'<a href="#">None &mdash; \' + iAvailable\n'
+            '              + \' available</a>\'\n'
+            '            : "None";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheSessionLifetimeIsReachableFromABlankProject'
+        ),
+        # the host gear is never bound, so it opens nothing
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        VaibifyEventBindings.fnBindHostSettingsToggle();\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheGearCarriesARenewalAWarningCanBeDismissedPastOf'
+        ),
+        # the renewal is reachable only from a dismissible toast
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            \'<div class="gs-section-heading">This tab'
+            '</div>\' +\n'
+            '            fsSettingsRowHtml("Session",\n'
+            '                \'<span id="gsSessionRemaining" '
+            'class="gs-idle-note">\' +\n'
+            '                "Reading\\u2026</span>" +\n'
+            '                \'<button type="button" class="btn" \' +\n'
+            '                \'id="btnRenewSession">Renew</button>\',\n'
+            '                "How much of this tab\'s session lifetime is '
+            'left, and " +\n'
+            '                "a button to restart the clock without losing '
+            'the " +\n'
+            '                "page. The expiry warnings offer the same '
+            'thing; this " +\n'
+            '                "row is where to find it once a warning has '
+            'been " +\n'
+            '                "dismissed.");\n'
+        ),
+        new='            "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testNoContainerSideScriptImportsAHostTestModule'
+        ),
+        # an import lands inside a script that runs in a container
+        source='tests/testAgentCouncilProvidersLive.py',
+        old="S_FAKE_PROVIDER_SCRIPT = r'''\nimport sys, json\n",
+        new=(
+            "S_FAKE_PROVIDER_SCRIPT = r'''\nimport sys, json\n"
+            "from tests.liveContainerLabels import fdictLabels\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testTheSweepReachesTheDaemonTheWayProductionDoes'
+        ),
+        # the sweep goes back to a client that cannot see a colima daemon
+        source='tests/liveContainerLabels.py',
+        old='        clientDocker = fdockerCreateDisposableClient()\n',
+        new='        import docker\n        clientDocker = docker.from_env()\n',
+    ),
 ]

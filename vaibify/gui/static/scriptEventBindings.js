@@ -1330,6 +1330,28 @@ var VaibifyEventBindings = (function () {
         );
     }
 
+    function fnBindHostSettingsToggle() {
+        /* Toolbar gear, bound once at startup and never re-bound per
+           mode: the host timeouts are the same question with a project
+           open and without one, and a binding that depended on the
+           dashboard mode is how this control came to be unreachable in
+           the mode that needed it. */
+        var elButton = document.getElementById("btnHostSettings");
+        var elPanel = document.getElementById("hostSettingsPanel");
+        if (!elButton || !elPanel) return;
+        elButton.addEventListener("click", function (event) {
+            event.stopPropagation();
+            var bExpanded = elPanel.classList.toggle("expanded");
+            if (bExpanded) VaibifyApp.fnRenderHostSettings();
+        });
+        elPanel.addEventListener("click", function (event) {
+            event.stopPropagation();
+        });
+        document.addEventListener("click", function () {
+            elPanel.classList.remove("expanded");
+        });
+    }
+
     /* --- Refresh Remote Status --- */
 
     function fnBindRefreshRemoteStatus() {
@@ -1376,6 +1398,7 @@ var VaibifyEventBindings = (function () {
         fnBindLeftPanelTabs: fnBindLeftPanelTabs,
         fnBindResizeHandles: fnBindResizeHandles,
         fnBindGlobalSettingsToggle: fnBindGlobalSettingsToggle,
+        fnBindHostSettingsToggle: fnBindHostSettingsToggle,
         fnBindRefreshRemoteStatus: fnBindRefreshRemoteStatus,
         fnBindErrorModal: fnBindErrorModal,
     };

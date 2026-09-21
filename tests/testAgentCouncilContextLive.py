@@ -28,6 +28,7 @@ import threading
 import pytest
 
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
+from tests.liveContainerLabels import fdictLabels
 
 
 pytestmark = pytest.mark.docker_live
@@ -90,6 +91,7 @@ def tLiveProjectContainer():
     sName = f"vaibifyCouncilContext{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
         S_THROWAWAY_IMAGE, ["sleep", "600"], name=sName, detach=True,
+        labels=fdictLabels(),
     )
     try:
         iExitCode, _ = container.exec_run(

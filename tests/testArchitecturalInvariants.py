@@ -4258,12 +4258,29 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 852 (2026-09-21): a fourth background loop — the
+    # ten-minute reclaim of disposable containers a crashed process
+    # stranded. It belongs with the other three: this module's stated
+    # purpose is lifespan registration and the loops that hang off it,
+    # and the loop's Docker half was deliberately pushed down into
+    # disposableContainer so only the schedule lives here. The real
+    # seam in this file is the idle-shutdown watchdog — its busy
+    # predicates are close to half the module and change for entirely
+    # different reasons from lifespan plumbing — and splitting THAT is
+    # the conversation this entry is deferring, not avoiding.
+    "serverLifespan.py": 852,
     # NEW at 873 (2026-09-16): the manifest-body hydration helpers
     # moved here from pipelineRoutes when the readiness snapshot seam
     # became their second caller -- an unhydrated readiness snapshot
     # had the pre-flight reporting a complete manifest as incomplete.
     # Cross-route request helpers are this module's stated purpose.
-    "routeContext.py": 873,
+    # RAISED to 893 (2026-09-21): one more refusal of exactly that
+    # kind -- fnRefuseUnusableContainerFields, which grades a create
+    # request's container-identity fields with the build preflight's
+    # own check. It landed here rather than in registryRoutes
+    # precisely BECAUSE that module is the one this ratchet exists to
+    # contain, and registryRoutes falls to 2328 in the same commit.
+    "routeContext.py": 893,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -6049,7 +6066,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module already owns — deciding when a browser session ends —
     # and moving them out would put the policy in one file and the
     # numbers it reads in another.
-    "sessionLifecycle.py": 1758,
+    # 1758 -> 1825 (2026-09-21): the warning became a sequence of
+    # FRACTIONS of the cap rather than a fixed lead, and gained the
+    # renewal the researcher can answer it with. All three additions
+    # read or write the same clock this module already owns: the two
+    # band helpers answer "how far through its cap is this session",
+    # the renewal restarts that clock, and every one of them is
+    # meaningless away from the cap resolver above them. Homing the
+    # bands elsewhere is the specific mistake the frontend is forbidden
+    # to make — a second copy of the thresholds firing at a moment the
+    # server does not believe in. The band a session is in, and how
+    # loudly to announce it, are both decided here for that reason.
+    "sessionLifecycle.py": 1835,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6600,7 +6628,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2338,
+    "registryRoutes.py": 2328,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6767,7 +6795,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a list, all bAgentSafe False.
     # +11 (2026-09-15): merge-upstream, one row, bAgentSafe False --
     # it writes a merge commit into the researcher's history.
-    "actionCatalog.py": 1334,
+    # +5 (2026-09-21): session renewal joins the excluded set. An
+    # agent that could restart the researcher's session clock could
+    # keep a credential alive past the attention it exists to track.
+    "actionCatalog.py": 1339,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7187,7 +7218,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher out of the remedy. Another row in a map of rows.
     # +6 (2026-09-14): the promotion-recovery read joins the frozen
     # container-read allowlist, with the reason it is a read.
-    "routeScope.py": 1024,
+    # +6 (2026-09-21): session renewal is browser-hub scoped, with the
+    # reason it must NOT be container-scoped -- a session on the picker
+    # or in a Blank Project is under the same cap, and a container
+    # scope would leave exactly those researchers unable to answer the
+    # warning they were shown.
+    "routeScope.py": 1030,
 }
 
 

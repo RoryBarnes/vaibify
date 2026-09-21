@@ -934,9 +934,39 @@ settable by environment and preference only, with no row: it is
 refreshed by every request and vetoed by a live socket, so a dashboard
 in use never approaches it.
 
+**The cap's default and its notice were both the wrong shape**, and
+they were wrong together. The default was twelve hours, which bounds a
+researcher's working week rather than the unattended tab the cap exists
+for — and reaching it ends the agent conversations the session was
+holding, so the cost of the bound was days of context. The notice was a
+fixed fifteen-minute lead, which is most of a one-hour cap and a
+rounding error in a seven-day one: the same constant meant "plenty of
+notice" and "no notice" depending on a number set elsewhere. The
+default is now seven days, and the notice is three FRACTIONS of
+whatever cap is in force (`T_EXPIRY_WARNING_FRACTIONS`), so it stays
+proportional to the thing it warns about. Each warning carries a
+renewal (`POST /api/session/renew`), because a warning whose only
+remedy is "lose your tab" is a countdown rather than a warning. Two
+properties hold the renewal honest: it grants nothing the researcher
+could not already grant themselves by setting the cap to Never, and it
+is reachable **only** from an explicit click — never a poll, never the
+in-container agent, either of which would delete the cap while the
+Settings control went on claiming one existed. Which band a session is
+in is decided on the server and shipped in the payload; the dashboard
+holds no copy of the thresholds, for the same reason the determinism
+row renders its gate's verdict rather than re-deriving it.
+
+**Host-global settings live in the toolbar, not in the project panel.**
+Both timeouts were rendered into the Steps panel's project gear, whose
+renderer returns early with no open project — and Blank Project mode
+does not render that panel at all. So the researcher whose
+blank-project session had just timed out was the one researcher who
+could not reach the control that prevents it. The toolbar gear
+(`fnRenderHostSettings`) is rendered in every dashboard mode, and
+`fnApplyToolbarVisibility` may never hide it.
+
 The designed mitigation for the cap is the pre-expiry dashboard
-warning (`fdictSessionExpiryView`, lead
-`F_EXPIRY_WARNING_LEAD_SECONDS`). **It assumes an audience it
+warning (`fdictSessionExpiryView`). **It assumes an audience it
 structurally may not have**: a cap started in the afternoon expires in
 the small hours. So the hub also answers afterwards. Revocation
 records the sentence and the wall-clock time on the session record

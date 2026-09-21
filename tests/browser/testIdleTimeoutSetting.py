@@ -1,7 +1,7 @@
 """The gear-menu idle-shutdown control reads and applies the timeout live.
 
 Drives the REAL control in a real browser: the panel renders through
-``fnRenderGlobalSettings``, the select is populated from a GET on open,
+``fnRenderHostSettings``, the select is populated from a GET on open,
 a change PUTs the chosen value, and the control reflects the server's
 answer. Only the two idle-timeout endpoints are stubbed, so the frontend
 path exercised here -- render, GET, change handler, PUT, reflect -- is
@@ -42,27 +42,29 @@ def _fnRouteIdleTimeout(page, listPutBodies, dictGet, dictPut):
     page.route(S_IDLE_ROUTE_GLOB, fnHandle)
 
 
-def _fnOpenSettingsWithWorkflow(page, serverHub):
-    """Load the dashboard, seed a minimal workflow, open the gear panel.
+def _fnOpenTheHostSettingsPanel(page, serverHub):
+    """Load the dashboard and open the TOOLBAR gear's host panel.
 
-    The panel is rendered through the real ``fnRenderGlobalSettings`` and
+    The panel is rendered through the real ``fnRenderHostSettings`` and
     marked ``expanded`` the way the gear toggle marks it, so the idle
     control's own load path (GET on render, change handler, PUT) is the
     production one. The change is delivered as a real ``change`` event on
     the real select, which is what the bound handler listens for.
+
+    NO WORKFLOW IS SEEDED, and that is the point of the move: these are
+    settings of this computer, not of a project, and they used to live
+    in a panel that needed an open project to render at all -- which
+    left them unreachable in Blank Project mode, where a researcher's
+    session timed out with the remedy behind a door that mode does not
+    draw.
     """
     page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     page.wait_for_selector(".container-tile", timeout=10000)
     page.evaluate(
         """() => {
-            VaibifyApp.fnRefreshWorkflowData({
-                dictWorkflow: {listSteps: [], sPlotDirectory: 'Plot',
-                    sFigureType: 'pdf'},
-                sWorkflowPath: 'x',
-            });
-            document.getElementById('globalSettingsPanel')
+            document.getElementById('hostSettingsPanel')
                 .classList.add('expanded');
-            VaibifyApp.fnRenderGlobalSettings();
+            VaibifyApp.fnRenderHostSettings();
         }"""
     )
     page.wait_for_function(
@@ -79,7 +81,7 @@ def testIdleTimeoutControlReflectsAndAppliesLive(pageDashboard, serverHub):
         dictPut={"bNever": False, "fSeconds": 1800.0,
                  "sStoredPreference": "1800", "bEnvOverride": False},
     )
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     # GET on open populated the select from the server's "never".
     pageDashboard.wait_for_function(
         "() => document.getElementById('gsIdleTimeout').value === 'never'",
@@ -110,7 +112,7 @@ def testIdleTimeoutControlShowsEnvOverride(pageDashboard, serverHub):
                  "sStoredPreference": None, "bEnvOverride": True},
         dictPut={},
     )
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     pageDashboard.wait_for_function(
         "() => document.getElementById('gsIdleTimeout').disabled === true",
         timeout=10000)

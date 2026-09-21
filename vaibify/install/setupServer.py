@@ -296,29 +296,20 @@ def _fdictFeaturesFromList(listFeatures):
 
 
 def _flistReposFromUrls(listUrls):
-    """Convert a list of repo URL strings to vaibify.yml format."""
-    listRepos = []
-    for sUrl in listUrls:
-        sName = _fsRepoNameFromUrl(sUrl)
-        listRepos.append({
-            "name": sName,
-            "url": sUrl,
-            "branch": "main",
-            "installMethod": "pip_editable",
-        })
-    return listRepos
-
-
-def _fsRepoNameFromUrl(sUrl):
-    """Extract a repository name from a git URL."""
-    sName = sUrl.rstrip("/").rsplit("/", 1)[-1]
-    if sName.endswith(".git"):
-        sName = sName[:-4]
-    return sName
+    """Return vaibify.yml repository entries, through the one authority."""
+    from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
+    return flistRepositoryEntriesFromUrls(listUrls)
 
 
 def _flistCollectErrors(request):
-    """Return a list of validation error strings."""
+    """Return a list of validation error strings.
+
+    The container-identity fields are graded by the same function the
+    build preflight uses: the request carries the same attribute names
+    as the config, and a wizard that wrote a value the build then
+    refuses would only move the discovery later.
+    """
+    from vaibify.cli.configFieldPreflight import flistDescribeInvalidFields
     listErrors = []
     if not request.sProjectName.strip():
         listErrors.append("projectName is required")
@@ -326,6 +317,7 @@ def _flistCollectErrors(request):
         listErrors.append(
             f"Invalid packageManager: '{request.sPackageManager}'"
         )
+    listErrors.extend(flistDescribeInvalidFields(request))
     return listErrors
 
 

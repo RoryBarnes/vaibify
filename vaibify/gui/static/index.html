@@ -540,13 +540,32 @@
             </div>
         </div>
 
-        <!-- The ONE help button, last in the toolbar and pushed to the
-             far right by margin-left:auto, because that is where a
-             researcher looks for help and where the panel already
-             opens (fixed, top-right). It used to sit between the
+        <!-- The right-hand pair. The host-settings gear takes the
+             toolbar's slack (margin-left:auto) and the help button
+             follows it, because that far-right corner is where a
+             researcher looks for both and where both panels already
+             open (fixed, top-right). Help used to sit between the
              project name and the PROOF checkmarks, which put it in the
              middle of an identity readout it says nothing about, and
              left the checkmarks detached from the name they describe. -->
+        <!-- Host settings, always in the toolbar. The two timeouts
+             that can END a session are HOST-global, not project
+             settings, but they lived only in the Steps panel's project
+             gear -- and the Blank Project mode does not render that
+             panel at all, so the researcher whose blank-project
+             session had just timed out was the one researcher who
+             could not reach the control that prevents it. The toolbar
+             is rendered in every mode, so this gear is reachable in
+             every mode. The project gear keeps the project settings;
+             neither shows the other's rows, so there is one home for
+             each. -->
+        <button id="btnHostSettings" type="button"
+                class="host-settings-button"
+                title="Host settings: session lifetime and idle shutdown"
+                aria-label="Host settings">&#9881;</button>
+        <div id="hostSettingsPanel"
+             class="global-settings host-settings-panel"
+             role="dialog" aria-label="Host settings"></div>
         <button id="proofLegendButton" type="button"
                 class="proof-help-button"
                 title="Help">?</button>
@@ -568,6 +587,13 @@
         <!-- Banners visible above all sub-panels.
              Drift banner first so it stacks above build-warnings. -->
         <div id="driftBanner" class="drift-banner" hidden></div>
+        <!-- vaibify.yml edited after the image was built. Its own
+             banner, not a row in the build-warnings list: that list is
+             headed "from the most recent container start", and this is
+             about a file the researcher changed since. -->
+        <div id="configurationDriftBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
 

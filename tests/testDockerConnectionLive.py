@@ -25,6 +25,7 @@ import os
 import pytest
 
 from vaibify.docker.dockerConnection import _fnEnsureDockerHost
+from tests.liveContainerLabels import fdictLabels
 
 
 pytestmark = pytest.mark.docker_live
@@ -151,6 +152,7 @@ def test_running_exec_evidence_survives_the_death_of_its_client():
     clientDocker = docker.from_env()
     container = clientDocker.containers.run(
         "alpine:3.20", ["sleep", "120"], detach=True, remove=False,
+        labels=fdictLabels(),
     )
     try:
         connectionStarting = DockerConnection()

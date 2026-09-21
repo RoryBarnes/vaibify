@@ -60,26 +60,27 @@ def _fdictAnswer(bNever, fSeconds, bEnvOverride=False):
     }
 
 
-def _fnOpenSettingsWithWorkflow(page, serverHub):
-    """Load the dashboard, seed a minimal workflow, open the gear panel.
+def _fnOpenTheHostSettingsPanel(page, serverHub):
+    """Load the dashboard and open the TOOLBAR gear's host panel.
 
-    The panel renders through the real ``fnRenderGlobalSettings`` and is
+    The panel renders through the real ``fnRenderHostSettings`` and is
     marked expanded the way the gear toggle marks it, so each control's
     own load path (GET on render, change handler, PUT) is the
     production one.
+
+    NO WORKFLOW IS SEEDED. Both timeouts are properties of this
+    computer, and they used to be rendered by a panel that returns
+    early without an open project, inside a tab Blank Project mode does
+    not draw -- so the researcher whose blank-project session timed out
+    was the one researcher who could not reach them.
     """
     page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     page.wait_for_selector(".container-tile", timeout=10000)
     page.evaluate(
         """() => {
-            VaibifyApp.fnRefreshWorkflowData({
-                dictWorkflow: {listSteps: [], sPlotDirectory: 'Plot',
-                    sFigureType: 'pdf'},
-                sWorkflowPath: 'x',
-            });
-            document.getElementById('globalSettingsPanel')
+            document.getElementById('hostSettingsPanel')
                 .classList.add('expanded');
-            VaibifyApp.fnRenderGlobalSettings();
+            VaibifyApp.fnRenderHostSettings();
         }"""
     )
     page.wait_for_function(
@@ -97,7 +98,7 @@ def testBothTimeoutsAreOfferedAndShowTheirOwnServerValue(
     _fnRoutePreference(
         pageDashboard, S_CAP_GLOB, listCapPuts,
         _fdictAnswer(False, 43200.0), {})
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     pageDashboard.wait_for_function(
         "() => document.getElementById('gsIdleTimeout').value === 'never'"
         " && document.getElementById('gsSessionCap').value === '43200'",
@@ -122,7 +123,7 @@ def testChangingTheSessionCapPutsToItsOwnEndpointOnly(
     _fnRoutePreference(
         pageDashboard, S_CAP_GLOB, listCapPuts,
         _fdictAnswer(False, 43200.0), _fdictAnswer(True, None))
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     pageDashboard.wait_for_function(
         "() => document.getElementById('gsSessionCap').value === '43200'",
         timeout=10000)
@@ -154,7 +155,7 @@ def testChangingIdleShutdownStillPutsToItsOwnEndpointOnly(
     _fnRoutePreference(
         pageDashboard, S_CAP_GLOB, listCapPuts,
         _fdictAnswer(False, 43200.0), {})
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     pageDashboard.evaluate(
         """() => {
             const elSelect = document.getElementById('gsIdleTimeout');
@@ -181,7 +182,7 @@ def testEachControlNamesItsOwnEnvironmentOverride(pageDashboard, serverHub):
     _fnRoutePreference(
         pageDashboard, S_CAP_GLOB, listCapPuts,
         _fdictAnswer(False, 90.0, bEnvOverride=True), {})
-    _fnOpenSettingsWithWorkflow(pageDashboard, serverHub)
+    _fnOpenTheHostSettingsPanel(pageDashboard, serverHub)
     pageDashboard.wait_for_function(
         "() => document.getElementById('gsSessionCap').disabled === true",
         timeout=10000)

@@ -1204,6 +1204,15 @@ body.proof-level-3 .toolbar-label {
     font-size: 13px;
 }
 
+/* The configuration-drift banner wears the build-warning shape with a
+   different accent: it is not a warning the last start produced, it is
+   a statement that the running container is older than the file on
+   disk, and the two should not read as the same kind of thing. */
+.configuration-drift-banner {
+    background: rgba(52, 152, 219, 0.10);
+    border-left-color: #3498db;
+}
+
 .build-warnings-banner-header {
     display: flex;
     align-items: center;
@@ -7462,8 +7471,48 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 /* --- Section G: legend mechanism. A fixed-position panel anchored
    beneath the dashboard header help button. ``aria-hidden=true`` by
    default; the JS toggles ``.is-open`` to reveal it. */
-.proof-help-button {
+/* The host-settings gear and its panel. The gear takes the toolbar's
+   right-hand slack so it and the help button sit together; the panel
+   also carries .global-settings, so its rows come from the one set of
+   settings-row rules rather than a second copy that could drift. */
+.host-settings-button {
     margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    line-height: 1;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.host-settings-button:hover {
+    background: var(--bg-hover);
+}
+
+.host-settings-panel {
+    position: fixed;
+    top: 60px;
+    right: 24px;
+    width: 420px;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--bg-modal);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    z-index: 5000;
+}
+
+.host-settings-panel .gs-label {
+    width: 130px;
+}
+
+.proof-help-button {
+    margin-left: 8px;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-primary);

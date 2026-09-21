@@ -20,6 +20,11 @@ from .configLoader import (
 )
 from .doctorHostChecks import fbInterpreterRunsTranslated
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
+from .daemonDiskPreflight import fpreflightDaemonFreeDisk
+from .configFieldPreflight import fpreflightConfigurationFields
+from .pythonPackagePreflight import fpreflightPythonPackageNames
+from .repositoryPreflight import fpreflightRepositoryBranches
+from .systemPackagePreflight import fpreflightSystemPackageNames
 from .preflightResult import (
     S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
 )
@@ -1050,7 +1055,40 @@ def flistRunBuildPreflight(config):
     resultColimaVersion = fpreflightColimaVersion()
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)
+    listResults.extend(_flistPreflightConfiguration(config))
+    preflightFreeDisk = fpreflightDaemonFreeDisk()
+    if preflightFreeDisk is not None:
+        listResults.append(preflightFreeDisk)
     return listResults
+
+
+# The config-scoped checks, named once so the dashboard's build route
+# can be held to the SAME set: two lanes that each listed their own
+# would drift, and the lane a researcher used would be the one missing
+# a check. testBothBuildLanesRunTheSameConfigurationChecks binds them.
+T_CONFIGURATION_PREFLIGHTS = (
+    fpreflightConfigurationFields,
+    fpreflightSystemPackageNames,
+    fpreflightPythonPackageNames,
+    fpreflightRepositoryBranches,
+)
+
+
+def _flistPreflightConfiguration(config):
+    """Return every config-scoped preflight result, in reporting order.
+
+    The same four checks the dashboard's build route runs, named here
+    once: each asks an external authority (the field's own format,
+    Ubuntu's archive, pypi.org, each git remote) whether the build's
+    inputs resolve, so an hour is not spent discovering that one does
+    not.
+    """
+    listConfigurationResults = []
+    for fnPreflight in T_CONFIGURATION_PREFLIGHTS:
+        preflightResult = fnPreflight(config)
+        if preflightResult is not None:
+            listConfigurationResults.append(preflightResult)
+    return listConfigurationResults
 
 
 def _fnPrintWarningsIfAny(listResults):

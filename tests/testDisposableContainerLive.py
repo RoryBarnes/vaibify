@@ -31,6 +31,7 @@ import pytest
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.docker import disposableContainer
 from vaibify.docker import disposableSpecification
+from tests.liveContainerLabels import fdictLabels
 
 
 pytestmark = pytest.mark.docker_live
@@ -241,6 +242,7 @@ def test_destruction_refuses_a_container_this_lane_did_not_create(
     containerBystander = dockerDisposable.containers.create(
         S_PROBE_IMAGE, entrypoint=["/bin/sh"],
         command=["-c", "sleep 120"], network_mode="none",
+        labels=fdictLabels(),
     )
     containerBystander.start()
     try:

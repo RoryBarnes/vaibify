@@ -25,6 +25,7 @@ import tarfile
 
 import pytest
 
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.gui import agentCouncilDockerGateway as moduleGateway
 from vaibify.gui import agentCouncilRegistry as registry
@@ -436,7 +437,8 @@ def testTheCredentialCeilingHoldsAtTheExactBoundaryLive():
     clientDocker = moduleDocker.from_env()
     sName = f"vaibifyCouncilCap{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
-        S_RUNNER_TEST_IMAGE, ["sleep", "120"], name=sName, detach=True)
+        S_RUNNER_TEST_IMAGE, ["sleep", "120"], name=sName, detach=True,
+        labels=fdictLabels())
     try:
         # A login document padded to EXACTLY the ceiling, and a second
         # one byte longer. The padding rides a JSON field so the

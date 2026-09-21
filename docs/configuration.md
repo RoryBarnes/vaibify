@@ -54,7 +54,9 @@ validation. The image installs Miniforge, but there is no
 `conda install` step and no build argument carries the list, so
 accepting the field would produce a container without the requested
 packages and say nothing. Refusing is the honest interim until the
-install step is wired; install what you need with `pythonPackages`, or
+install step is wired; install what you need with `pythonPackages` (every
+name is checked against pypi.org before the build starts, so a misspelling
+is refused in seconds rather than after the toolchain has installed), or
 add a `conda install` line to `container.conf`.
 ```
 
@@ -161,9 +163,35 @@ name|url|branch|install_method
 |----------------|-------------------------------------------------|
 | `c_and_pip`    | `make opt` then `pip install -e . --no-deps`    |
 | `pip_no_deps`  | `pip install -e . --no-deps`                     |
-| `pip_editable` | `pip install -e .`                                |
+| `pip_editable` | `pip install -e .` (needs a `setup.py` or `pyproject.toml`; a repository without one is cloned only, with a warning naming this table) |
 | `scripts_only` | Add to `PYTHONPATH` and `PATH` only              |
 | `reference`    | Clone for reference, do not install              |
+
+### What is checked before a build starts
+
+A build takes an hour, and every failure below used to be discovered
+somewhere inside it. Both `vaibify build` and the dashboard's Build now
+ask the same questions first, of the authority that actually answers
+them:
+
+| Field | Asked of | A failure means |
+|---|---|---|
+| `containerUser`, `pythonVersion`, `workspaceRoot` | their own format | the image recipe cannot use the value (`pythonVersion` becomes the apt package `python3.12`, so `3.12.1` is refused) |
+| `systemPackages` | Launchpad, for the series `baseImage` names | Ubuntu publishes no such package |
+| `pythonPackages` | pypi.org's simple index | the index serves no such project |
+| `repositories[].branch` | `git ls-remote` against the remote | the remote has no such branch; the refusal names its default |
+
+Three answers are deliberately **not** refusals, because none of them
+is evidence about the value: an index, archive or remote that cannot be
+reached, a `pipInstallFlags` naming an index other than pypi.org, and a
+`baseImage` outside the Ubuntu releases vaibify knows. Each reports
+"not checked" and the build goes ahead and asks for itself.
+
+Both setup wizards apply the same field rules when they SAVE, so a
+value the build would refuse is refused at the form. They also write
+each repository's branch by asking the remote for its default rather
+than assuming `main`, and write `reference` for a GitHub repository
+they can see has no Python project file.
 
 ### Example
 
@@ -230,16 +258,31 @@ step are untouched, and `vaibify open` gives you a fresh tab.
 It accepts the same vocabulary as the idle timeout — a non-negative
 number of seconds, or `never` (also `off`, `none`, `disabled`) — and
 resolves across the same three tiers: this variable, then the stored
-host-global Settings preference (the gear menu's **Session lifetime**
-control), then the built-in default of `43200` (12 hours). Resolution
-happens on every evaluation, so a change applies without relaunching
-the hub, and *raising* the cap rescues a session that has not expired
-yet.
+host-global Settings preference (the toolbar gear's **Session
+lifetime** control), then the built-in default of `604800` (7 days).
+Resolution happens on every evaluation, so a change applies without
+relaunching the hub, and *raising* the cap rescues a session that has
+not expired yet.
+
+The default was twelve hours until 2026-09-21. What twelve hours
+actually bounded was a researcher's working week: reaching the cap ends
+the browser session, and with it the agent conversations that session
+was holding, which is a loss measured in days of context paid to
+retire a credential on your own machine.
 
 ```bash
-VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=never vaibify   # never sign out
-VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=86400 vaibify   # 24 hours
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=never vaibify     # never sign out
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=2592000 vaibify   # 30 days
 ```
+
+You are warned as the cap approaches, at three quarters, nine tenths
+and nineteen twentieths of the way through it — fractions rather than a
+fixed lead, so the notice stays proportional to a cap you set. **Each
+warning offers to renew the session**: clicking it restarts the clock
+in place, keeping the open panels and agent conversations a fresh tab
+would lose. Renewal is only ever a click; nothing renews on a timer,
+because an automatic renewal would delete the cap while this control
+went on claiming one existed.
 
 Unlike the idle timeout, a live WebSocket does **not** veto this
 window. That asymmetry is deliberate — the case the cap exists to bound

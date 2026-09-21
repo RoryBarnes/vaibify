@@ -66,6 +66,42 @@ def fnRedirectVaibifyLogFileForTests(tmp_path_factory):
     _fnRemoveFileHandlersFromVaibifyLogger()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def fnSweepContainersLeftByAKilledLiveLane(request):
+    """Reclaim labelled throwaway containers at both ends of a session.
+
+    The live lanes tear their containers down in fixtures. A lane that
+    is KILLED -- a CI cancel, a ``^C``, a harness timeout -- never
+    reaches that teardown, so its container outlives the run. Ten of
+    them accumulated on one researcher's daemon, with names that read
+    like research environments (2026-09-21).
+
+    Swept at the START as well as the end, because the start is the
+    only one a killed run will ever reach again. Scoped to the label
+    ``tests/liveContainerLabels`` writes and to nothing else: never a
+    name pattern, never an age. And skipped entirely unless this
+    selection actually contains live-daemon tests -- a unit run must
+    not touch the researcher's daemon at all, which is the same rule
+    the per-test Docker stubs above follow.
+    """
+    from tests.liveContainerLabels import flistSweepLiveLaneContainers
+    if not _fbSelectionRunsLiveDockerTests(request):
+        yield
+        return
+    flistSweepLiveLaneContainers()
+    yield
+    flistSweepLiveLaneContainers()
+
+
+def _fbSelectionRunsLiveDockerTests(request):
+    """Return True when this pytest selection includes a live-daemon test."""
+    for itemTest in getattr(request.session, "items", []) or []:
+        for sMarker in ("docker", "docker_live", "dockerProbeUnderTest"):
+            if itemTest.get_closest_marker(sMarker) is not None:
+                return True
+    return False
+
+
 class _FakeInMemoryKeyring:
     """Dict-backed stand-in for the OS keyring, one instance per test."""
 
@@ -194,6 +230,38 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     # constant to patch), and its own tests exercise that real behaviour
     # — a blanket patch here broke them. It carries its own isolation.
     yield sHome
+
+
+@pytest.fixture(autouse=True)
+def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
+    """The build preflight asks the daemon's disk and pypi.org; no unit
+    test may. Both probes answer "room enough" and "the name exists"
+    here, so a test on a full machine or an offline one reads the same
+    as CI; the probes' own tests hold the original functions and drive
+    them with fakes, and a test wanting a refusal patches the module
+    attribute itself (2026-09-21: the real disk probe refused every
+    route test on a daemon whose disk was actually full).
+    """
+    from vaibify.cli import daemonDiskPreflight, pythonPackagePreflight
+    monkeypatch.setattr(
+        daemonDiskPreflight, "fiDaemonFreeDiskBytes",
+        lambda fnRun=None: daemonDiskPreflight.I_DAEMON_FREE_DISK_WARN_BYTES,
+    )
+    monkeypatch.setattr(
+        pythonPackagePreflight, "fbNameExistsOnIndex",
+        lambda sName, *aArgs, **kwargs: True,
+    )
+    from vaibify.cli import repositoryPreflight, systemPackagePreflight
+    monkeypatch.setattr(
+        systemPackagePreflight, "fbPackageExistsInArchive",
+        lambda sName, sSeries, *aArgs, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        repositoryPreflight, "fdictProbeRepositoryBranch",
+        lambda sUrl, sBranch, *aArgs, **kwargs: {
+            "bBranchExists": True, "sDefaultBranch": "main",
+        },
+    )
 
 
 @pytest.fixture(autouse=True)

@@ -18,7 +18,7 @@ const VaibifyApp = (function () {
         dictDashboardMode: null,
         sLeaseId: "",
         sLeaseContainerName: null,
-        bSessionExpiryWarned: false,
+        fSessionExpiryWarnedFraction: 0,
         /* The server's answer, stored so panels that must speak
            differently about a host project ask one place rather than
            each inferring the mode for themselves. Defaults to the
@@ -440,30 +440,82 @@ const VaibifyApp = (function () {
     }
 
     function _fnHandleSessionLifetime(dictLifetime) {
-        /* The server says how long this browser session has before its
-         * absolute cap; every number here comes from that payload, so
-         * the warning cannot drift from the deadline it describes.
-         * Warned once per crossing: the poll repeats every minute and
-         * a toast a minute would be noise, but if the server ever
-         * reports the session as no longer near its cap (a transfer
-         * minted a fresh one) the latch reopens for the new one. */
+        /* The server says how far through its cap this session is and
+         * WHICH warning band that puts it in; every number here comes
+         * from that payload, so the warning cannot fire at a threshold
+         * the server does not believe in. The bands themselves are
+         * deliberately not mirrored here.
+         *
+         * Warned once per BAND, not once per crossing: the poll
+         * repeats every minute, and the researcher who ignored the
+         * first notice still deserves the louder one later. A session
+         * that reports a lower band than the one already warned has
+         * been renewed or replaced, so the latch falls back with it.
+         */
         if (!dictLifetime || !dictLifetime.bSessionKnown ||
                 !dictLifetime.bExpiringSoon) {
-            _dictSessionState.bSessionExpiryWarned = false;
+            _dictSessionState.fSessionExpiryWarnedFraction = 0;
             return;
         }
-        if (_dictSessionState.bSessionExpiryWarned) return;
-        _dictSessionState.bSessionExpiryWarned = true;
-        var iMinutes = Math.max(1, Math.round(
-            dictLifetime.fSecondsUntilSessionCap / 60));
+        var fBand = dictLifetime.fWarningFraction || 0;
+        if (fBand <= _dictSessionState.fSessionExpiryWarnedFraction) {
+            _dictSessionState.fSessionExpiryWarnedFraction = fBand;
+            return;
+        }
+        _dictSessionState.fSessionExpiryWarnedFraction = fBand;
         fnShowToast(
             "This browser session reaches its maximum lifetime in " +
-            "about " + iMinutes + " minute" +
-            (iMinutes === 1 ? "" : "s") + ". Run 'vaibify open' to " +
-            "continue in a fresh tab — your container and any running " +
-            "step keep going. To stop this happening, raise or disable " +
-            "Session lifetime under Settings.",
-            "warning");
+            _fsDescribeRemainingLifetime(
+                dictLifetime.fSecondsUntilSessionCap) +
+            " (" + Math.round(fBand * 100) + "% of the way through). " +
+            "Click to renew it — your open panels and agent " +
+            "conversations stay as they are. Otherwise run " +
+            "'vaibify open' for a fresh tab; the container and any " +
+            "running step keep going either way. Session lifetime is " +
+            "under the toolbar gear.",
+            dictLifetime.bFinalWarning ? "error" : "warning",
+            _fnRenewSessionLifetime);
+    }
+
+    function _fsDescribeRemainingLifetime(fSeconds) {
+        /* Days, hours or minutes — whichever the number actually is.
+         * A seven-day cap warned at three quarters has forty-two hours
+         * left, and "about 2520 minutes" is a number nobody reads. */
+        var iMinutes = Math.max(1, Math.round(fSeconds / 60));
+        if (iMinutes < 90) {
+            return "about " + iMinutes + " minute" +
+                (iMinutes === 1 ? "" : "s");
+        }
+        var iHours = Math.round(iMinutes / 60);
+        if (iHours < 48) {
+            return "about " + iHours + " hours";
+        }
+        return "about " + Math.round(iHours / 24) + " days";
+    }
+
+    async function _fnRenewSessionLifetime() {
+        /* Only ever from the researcher's own click. Nothing in the
+         * polling path may call this: a renewal on a timer would
+         * delete the cap while the setting went on claiming one. */
+        try {
+            var dictRenewed = await VaibifyApi.fdictPost(
+                "/api/session/renew", {});
+            if (!dictRenewed || !dictRenewed.bRenewed) {
+                fnShowToast(
+                    "This session could not be renewed — it has " +
+                    "already ended. Run 'vaibify open' for a fresh " +
+                    "tab.", "error");
+                return;
+            }
+            _dictSessionState.fSessionExpiryWarnedFraction = 0;
+            fnShowToast(
+                "Session renewed — " +
+                _fsDescribeRemainingLifetime(
+                    dictRenewed.fSecondsUntilSessionCap) +
+                " from now.", "success");
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+        }
     }
 
     /* --- Initialization --- */
@@ -518,6 +570,7 @@ const VaibifyApp = (function () {
         VaibifyEventBindings.fnBindLeftPanelTabs();
         VaibifyEventBindings.fnBindResizeHandles();
         VaibifyEventBindings.fnBindGlobalSettingsToggle();
+        VaibifyEventBindings.fnBindHostSettingsToggle();
         VaibifyEventBindings.fnBindRefreshRemoteStatus();
         /* A start outlives the request that asked for it, so a reload
            mid-start must pick the poll back up. Deliberately NOT
@@ -1052,27 +1105,22 @@ const VaibifyApp = (function () {
     }
 
     function _fnRenderToolkitBanner(iAvailable) {
+        /* TEXT, never markup. This banner used to write an <a> into
+           the span, which took the browser's default link colour --
+           dark blue on the dark toolbar, illegible -- because no
+           stylesheet rule ever named its class. The span it sits in
+           already carries the toolbar font, the "\u25BE" ::before
+           chevron and the click binding that opens the switcher, so
+           the anchor contributed a second chevron, a second toggle
+           that fetched the project list twice, and the one thing the
+           researcher could not read. Anything rendered here must
+           inherit .toolbar-workflow rather than introduce an element
+           with styling of its own. */
         var elName = document.getElementById("activeWorkflowName");
         if (!elName) return;
-        if (iAvailable > 0) {
-            elName.innerHTML =
-                '<a href="#" id="toolkitBannerSwitch" '
-                + 'class="toolkit-banner-switch">'
-                + 'None &mdash; ' + iAvailable
-                + ' available <span aria-hidden="true">&#9662;</span>'
-                + '</a>';
-            var elLink = document.getElementById(
-                "toolkitBannerSwitch");
-            if (elLink) {
-                elLink.addEventListener("click", function (event) {
-                    event.preventDefault();
-                    VaibifyWorkflowManager
-                        .fnToggleWorkflowDropdown();
-                });
-            }
-        } else {
-            elName.textContent = "None";
-        }
+        elName.textContent = iAvailable > 0
+            ? "None \u2014 " + iAvailable + " available"
+            : "None";
     }
 
     function fnProcessWorkflowDiscovery(dictResponse) {
@@ -1509,7 +1557,6 @@ const VaibifyApp = (function () {
             "step without its own (right-click a step to set one); " +
             "a longer-running step is flagged as possibly hung — " +
             "the run is never stopped. 0 = no limit") +
-            fsTimeoutSettingsRowsHtml() +
             fsAgentSettingsHtml();
     }
 
@@ -1526,7 +1573,14 @@ const VaibifyApp = (function () {
        shape and a "never" vocabulary because the backend already
        resolves all three tiers through one parser; a second copy of
        this control would be where the two start to disagree about what
-       never means. */
+       never means.
+
+       They live in the TOOLBAR gear, not the project gear. Both are
+       properties of this computer rather than of a project, and the
+       project gear sits in a panel that Blank Project mode does not
+       render -- which left the researcher whose blank-project session
+       had just timed out unable to reach the control that prevents
+       it. */
     var _LIST_TIMEOUT_SETTINGS = [
         {
             sElementId: "gsIdleTimeout",
@@ -1551,14 +1605,19 @@ const VaibifyApp = (function () {
             sLabel: "Session lifetime",
             sEnvironmentName: "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS",
             listChoices: [
-                ["never", "Never"], ["14400", "4 hours"],
-                ["43200", "12 hours"], ["86400", "24 hours"],
+                ["never", "Never"], ["43200", "12 hours"],
+                ["86400", "24 hours"], ["604800", "7 days"],
+                ["1209600", "14 days"], ["2592000", "30 days"],
             ],
             sHelp: "How long one browser tab's credential lives, " +
                 "counted from when the tab was opened and whether or " +
                 "not you are using it. Reaching it ends the tab's " +
-                "session; the container and any running step keep " +
-                "going. Never means the tab is never signed out. " +
+                "session — and with it the agent conversations that " +
+                "session was holding; the container and any running " +
+                "step keep going. You are warned at three quarters, " +
+                "nine tenths and nineteen twentieths of the way " +
+                "through, and each warning offers to restart the " +
+                "clock. Never means the tab is never signed out. " +
                 "Applies on the next check, no relaunch.",
         },
     ];
@@ -1749,7 +1808,65 @@ const VaibifyApp = (function () {
             inp.addEventListener("change", fnSaveGlobalSettings);
         });
         fnBindSettingsSliders();
+    }
+
+    function fnRenderHostSettings() {
+        /* The host-global timeouts, rendered into the toolbar gear.
+           They are NOT in the project settings panel: that panel
+           returns early without an open project, and its whole tab is
+           hidden in Blank Project mode, so a researcher working
+           directly in a container could not reach the control that
+           decides when their session ends. Rendered on each open so
+           the selects show what the server currently resolves rather
+           than what it resolved when the tab loaded. */
+        var el = document.getElementById("hostSettingsPanel");
+        if (!el) return;
+        el.innerHTML =
+            '<div class="gs-section-heading">This computer</div>' +
+            fsTimeoutSettingsRowsHtml() +
+            '<div class="gs-section-heading">This tab</div>' +
+            fsSettingsRowHtml("Session",
+                '<span id="gsSessionRemaining" class="gs-idle-note">' +
+                "Reading\u2026</span>" +
+                '<button type="button" class="btn" ' +
+                'id="btnRenewSession">Renew</button>',
+                "How much of this tab's session lifetime is left, and " +
+                "a button to restart the clock without losing the " +
+                "page. The expiry warnings offer the same thing; this " +
+                "row is where to find it once a warning has been " +
+                "dismissed.");
         fnLoadTimeoutSettings();
+        _fnLoadSessionRemaining();
+        var elRenew = document.getElementById("btnRenewSession");
+        if (elRenew) {
+            elRenew.addEventListener("click", async function () {
+                await _fnRenewSessionLifetime();
+                _fnLoadSessionRemaining();
+            });
+        }
+    }
+
+    async function _fnLoadSessionRemaining() {
+        /* The server's own countdown, read fresh each time the panel
+           opens. A page that counted down on its own clock would drift
+           and would keep counting after a hub restart replaced the
+           session entirely. */
+        var elRemaining = document.getElementById("gsSessionRemaining");
+        if (!elRemaining) return;
+        try {
+            var dictLifetime = await VaibifyApi.fdictGet(
+                "/api/session/lifetime");
+            if (!dictLifetime || !dictLifetime.bSessionKnown) {
+                elRemaining.textContent = "Not known";
+                return;
+            }
+            elRemaining.textContent = dictLifetime.bNeverExpires
+                ? "Never expires"
+                : _fsDescribeRemainingLifetime(
+                    dictLifetime.fSecondsUntilSessionCap) + " left";
+        } catch (error) {
+            elRemaining.textContent = "Could not be read";
+        }
     }
 
     function fnLoadTimeoutSettings() {
@@ -6914,6 +7031,7 @@ const VaibifyApp = (function () {
             }
         },
         fnRenderGlobalSettings: fnRenderGlobalSettings,
+        fnRenderHostSettings: fnRenderHostSettings,
         fnCommitNewItem: fnCommitNewItem,
         fnShowOutputNotAvailable: fnShowOutputNotAvailable,
         fnShowBinaryNotViewable: fnShowBinaryNotViewable,

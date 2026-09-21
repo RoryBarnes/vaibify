@@ -8,6 +8,8 @@ non-empty hint and the verbatim error must travel along separately
 
 from unittest.mock import patch
 
+import pytest
+
 from vaibify.docker.dockerContext import (
     S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP, S_RUNTIME_LINUX_ROOTFUL,
     S_RUNTIME_LINUX_ROOTLESS, S_RUNTIME_UNKNOWN,
@@ -546,3 +548,69 @@ def test_an_unrecognised_build_failure_shows_its_decisive_lines_not_the_argv():
 def test_a_build_with_no_output_falls_back_to_the_raw_error():
     sSentence = fsExplainBuildFailure("proj", "config not found", "")
     assert sSentence == "Build of 'proj' failed: config not found"
+
+
+S_MISSING_DISTRIBUTION_BUILD_TAIL = """0.600 [notice] A new release of pip is available: 26.1.2 -> 26.2.1
+0.600 ERROR: No matching distribution found for matplolib
+ERROR: failed to solve: process "/bin/bash -o pipefail -c mkdir -p /etc/vaibify && pip install --no-cache-dir ${PIP_FLAGS} -r /tmp/requirements.txt" did not complete successfully: exit code: 1
+"""
+
+
+@pytest.mark.falsification
+def test_a_missing_python_package_is_named_in_the_sentence():
+    """pip's own line names the requirement; the sentence must too.
+
+    A researcher read "A name or version under pythonPackages ... does
+    not exist" and was left to reread every name, while pip had said
+    "matplolib" three lines up (live build, 2026-09-21).
+
+    Kills: dropping the name from the sentence and sending the
+    researcher back to the generic rereading.
+    """
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        S_MISSING_DISTRIBUTION_BUILD_TAIL,
+    )
+    assert sSentence.startswith("Build of 'fillet' failed. 'matplolib' under")
+    assert "pythonPackages in vaibify.yml" in sSentence
+    assert "(Docker said: " in sSentence
+
+
+def test_a_missing_distribution_line_the_tail_lost_keeps_the_generic_sentence():
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        "ERROR: no matching distribution\n",
+    )
+    assert "A name or version under pythonPackages" in sSentence
+
+
+S_FULL_DISK_OVERLAY_BUILD_TAIL = """#7 0.402 mkdir: cannot create directory '/home/researcher/.claude': No space left on device
+#7 0.418 
+#7 0.418 vaibify build (claude overlay): Claude Code installer failed.
+#7 0.418   - The installer's own message is directly above this banner; read it first.
+#7 0.418 Pick one workaround:
+#7 0.418   1. Disable the Claude overlay (features: { claude: false }).
+#7 ERROR: process "/bin/bash -o pipefail -c if ! curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh; then exit 1; fi" did not complete successfully: exit code: 1
+------
+ > [2/2] RUN if ! curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh; then exit 1; fi:
+------
+ERROR: failed to solve: process "/bin/bash -o pipefail -c if ! curl" did not complete successfully: exit code: 1
+"""
+
+
+@pytest.mark.falsification
+def test_a_full_daemon_disk_is_named_before_any_other_cause():
+    """The step that could not write fails however it fails, and its
+    own banner may blame something else; the disk is judged first.
+
+    Kills: dropping the disk branch, under which the sentence carries
+    only the overlay's banner and the researcher debugs the network.
+    """
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        S_FULL_DISK_OVERLAY_BUILD_TAIL,
+    )
+    sHint = sSentence.split("(Docker said:", 1)[0]
+    assert "disk is full" in sHint
+    assert "docker builder prune" in sSentence
+    assert "network" not in sHint

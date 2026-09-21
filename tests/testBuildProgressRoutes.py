@@ -240,3 +240,255 @@ def test_sink_failure_does_not_fail_the_stream(capsys):
     finally:
         imageBuilder.fnSetThreadBuildLineSink(None)
     assert "one line" in sTail
+
+
+@pytest.mark.falsification
+def test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """The GUI build runs the same name check as the CLI, first.
+
+    The refusal carries a code because the dashboard reads a bare 409
+    from this route as "a build is already running" and attaches to
+    it; and no progress record opens, so nothing later says a build
+    happened.
+
+    Kills: dropping the refusal from the route, under which the build
+    runs and pip discovers the name minutes later.
+    """
+    from types import SimpleNamespace
+    from vaibify.cli import pythonPackagePreflight
+
+    listBuilds = []
+
+    def fnBuildNeverExpected(*aArgs, **kwargs):
+        listBuilds.append(aArgs)
+
+    listPatches = _fdictPatchedBuildDependencies(fnBuildNeverExpected)
+    listPatches[1] = patch(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=SimpleNamespace(
+            listPythonPackages=["numpy", "matplolib"], sPipInstallFlags="",
+        ),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            pythonPackagePreflight, "fbNameExistsOnIndex",
+            lambda sName: sName == "numpy",
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'matplolib'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_UNKNOWN_PYTHON_PACKAGE
+    assert listBuilds == []
+    dictProgress = fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()
+    assert dictProgress["bKnown"] is False
+
+
+@pytest.mark.falsification
+def test_a_build_the_daemon_disk_cannot_hold_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """Kills: dropping the disk refusal from the route, under which the
+    build runs for minutes and fails at whichever step next writes."""
+    from vaibify.cli import daemonDiskPreflight
+
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "0.0 GB free" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    assert listBuilds == []
+    assert fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()["bKnown"] is False
+
+
+@pytest.mark.falsification
+def test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """Kills: dropping the branch refusal from the route, under which the
+    container starts without the repository after the whole build."""
+    from types import SimpleNamespace
+    from vaibify.cli import repositoryPreflight
+
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    listPatches[1] = patch(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=SimpleNamespace(listRepositories=[
+            {"name": "hextor", "url": "https://host.example/g/hextor",
+             "branch": "main"},
+        ]),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            repositoryPreflight, "fdictProbeRepositoryBranch",
+            lambda sUrl, sBranch, *aArgs, **kwargs: {
+                "bBranchExists": False, "sDefaultBranch": "master",
+            },
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'hextor' names branch 'main'" in dictDetail["sMessage"]
+    assert "'master'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH
+    assert listBuilds == []
+
+
+@pytest.mark.falsification
+def test_a_preflight_only_request_answers_the_refusals_and_builds_nothing(
+    fixtureClient,
+):
+    """The Rebuild flow asks this before it stops the container, because
+    a stop is a `docker rm` and a refusal raised only by the build left
+    the researcher with no container and no build (2026-09-21).
+
+    Kills: ignoring bPreflightOnly, under which the request builds.
+    """
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        response = fixtureClient.post(
+            "/api/containers/proj/build?bPreflightOnly=true",
+        )
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 200, response.text
+    assert response.json() == {"bReady": True}
+    assert listBuilds == []
+    assert fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()["bKnown"] is False
+
+
+def test_a_preflight_only_request_still_refuses(fixtureClient):
+    from vaibify.cli import daemonDiskPreflight
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: None,
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+        ):
+            response = fixtureClient.post(
+                "/api/containers/proj/build?bPreflightOnly=true",
+            )
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409
+    assert response.json()["detail"]["sRefusal"] == (
+        buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    )
+
+
+def _fresponseBuildWithConfig(fixtureClient, configProject, dictPatches=None):
+    """POST a build with the project's config replaced; return the response."""
+    from unittest.mock import patch as patchObject
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: None,
+    )
+    listPatches[1] = patchObject(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=configProject,
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with (dictPatches or patchObject(
+            "vaibify.gui.buildRoutes.logger",
+        )):
+            return fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+
+
+@pytest.mark.falsification
+def test_a_build_naming_an_unpublished_system_package_is_refused(
+    fixtureClient,
+):
+    """Kills: dropping the system-package check from the route's table,
+    under which apt discovers the typo after the base image is fetched."""
+    from types import SimpleNamespace
+    from vaibify.cli import systemPackagePreflight
+
+    response = _fresponseBuildWithConfig(
+        fixtureClient,
+        SimpleNamespace(
+            listSystemPackages=["gcc", "libopnmpi-dev"],
+            sBaseImage="ubuntu:24.04",
+        ),
+        patch.object(
+            systemPackagePreflight, "fbPackageExistsInArchive",
+            lambda sName, sSeries: sName == "gcc",
+        ),
+    )
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'libopnmpi-dev'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE
+    )
+
+
+@pytest.mark.falsification
+def test_a_build_whose_fields_cannot_make_a_container_is_refused(
+    fixtureClient,
+):
+    """Kills: dropping the configuration-field check from the route's
+    table, under which `apt-get install python3.12.1` reports the typo
+    minutes into the build and never names the field."""
+    from types import SimpleNamespace
+
+    response = _fresponseBuildWithConfig(
+        fixtureClient,
+        SimpleNamespace(
+            sContainerUser="researcher", sPythonVersion="3.12.1",
+            sWorkspaceRoot="/workspace",
+        ),
+    )
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "pythonVersion" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNUSABLE_CONFIGURATION
+    )

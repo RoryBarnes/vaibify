@@ -400,10 +400,11 @@ def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
 
     The countdown is the ABSOLUTE CAP's remaining lifetime measured
     from the presenting credential's creation stamp — the deadline
-    that has no socket veto — and it crosses ``bExpiringSoon`` exactly
-    at the configured lead. A credential the store does not know, or
-    one already revoked, is answered ``bSessionKnown`` False with a
-    zero countdown, never another session's clocks.
+    that has no socket veto — and the warning bands are FRACTIONS of
+    that cap, so the notice stays proportional to a cap the researcher
+    sets. A credential the store does not know, or one already
+    revoked, is answered ``bSessionKnown`` False with a zero
+    countdown, never another session's clocks.
 
     Kills: reporting the sliding-idle clock instead of the
     absolute-cap clock in ``sessionLifecycle.fdictSessionExpiryView``
@@ -416,9 +417,8 @@ def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
     )
     assert dictFresh["bSessionKnown"] is True
     assert dictFresh["bExpiringSoon"] is False
-    assert dictFresh["fWarningLeadSeconds"] == (
-        sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
-    )
+    assert dictFresh["fWarningFraction"] is None
+    assert dictFresh["fElapsedFraction"] == pytest.approx(0.0, abs=1e-3)
     assert dictFresh["fSecondsUntilSessionCap"] == pytest.approx(
         sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS, abs=5.0,
     )
@@ -430,18 +430,28 @@ def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
     )["bExpiringSoon"] is False, (
         "the countdown must track the capped deadline, not idleness"
     )
+    # Each band reports ITSELF, not merely "soon": a dashboard told
+    # only "expiring" cannot warn once per band, and re-warning every
+    # poll is the noise the single latch was introduced to stop.
+    fCap = sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS
+    for fBand in sessionLifecycle.T_EXPIRY_WARNING_FRACTIONS:
+        _fnAgeSessionBy(stateApp, sCredential, fCap * fBand + 1.0)
+        dictWarned = sessionLifecycle.fdictSessionExpiryView(
+            stateApp, sCredential,
+        )
+        assert dictWarned["bExpiringSoon"] is True
+        assert dictWarned["fWarningFraction"] == fBand
+        assert 0.0 < dictWarned["fSecondsUntilSessionCap"] <= (
+            fCap * (1.0 - fBand)
+        )
+    # Just below the first band is not a warning at all.
     _fnAgeSessionBy(
         stateApp, sCredential,
-        sessionLifecycle.F_ABSOLUTE_SESSION_CAP_SECONDS
-        - sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS + 60.0,
+        fCap * sessionLifecycle.T_EXPIRY_WARNING_FRACTIONS[0] - 60.0,
     )
-    dictWarned = sessionLifecycle.fdictSessionExpiryView(
+    assert sessionLifecycle.fdictSessionExpiryView(
         stateApp, sCredential,
-    )
-    assert dictWarned["bExpiringSoon"] is True
-    assert 0.0 < dictWarned["fSecondsUntilSessionCap"] <= (
-        sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
-    )
+    )["bExpiringSoon"] is False
     dictUnknown = sessionLifecycle.fdictSessionExpiryView(
         stateApp, "not-a-credential",
     )
@@ -449,10 +459,11 @@ def testExpiryViewCountsDownTheCapForThePresentingSessionOnly():
         "bSessionKnown": False,
         "bNeverExpires": False,
         "fSecondsUntilSessionCap": 0.0,
-        "fWarningLeadSeconds": (
-            sessionLifecycle.F_EXPIRY_WARNING_LEAD_SECONDS
-        ),
+        "fCapSeconds": None,
+        "fElapsedFraction": None,
+        "fWarningFraction": None,
         "bExpiringSoon": False,
+        "bFinalWarning": False,
     }
 
 
