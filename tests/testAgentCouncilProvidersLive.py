@@ -25,6 +25,7 @@ import tarfile
 
 import pytest
 
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.gui import agentCouncilDockerGateway as moduleGateway
 from vaibify.gui import agentCouncilRegistry as registry
@@ -51,7 +52,6 @@ I_MEBIBYTE = 1024 * 1024
 # through stdin, not argv.
 S_FAKE_PROVIDER_SCRIPT = r'''
 import sys, json
-from tests.liveContainerLabels import fdictLabels
 saArgv = sys.argv[1:]
 sModel = saArgv[saArgv.index("--model") + 1] if "--model" in saArgv else ""
 baStdin = sys.stdin.buffer.read()

@@ -22386,4 +22386,27 @@ def _fdictEntry(sRel):
         ),
         new='            "";\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testNoContainerSideScriptImportsAHostTestModule'
+        ),
+        # an import lands inside a script that runs in a container
+        source='tests/testAgentCouncilProvidersLive.py',
+        old="S_FAKE_PROVIDER_SCRIPT = r'''\nimport sys, json\n",
+        new=(
+            "S_FAKE_PROVIDER_SCRIPT = r'''\nimport sys, json\n"
+            "from tests.liveContainerLabels import fdictLabels\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testTheSweepReachesTheDaemonTheWayProductionDoes'
+        ),
+        # the sweep goes back to a client that cannot see a colima daemon
+        source='tests/liveContainerLabels.py',
+        old='        clientDocker = fdockerCreateDisposableClient()\n',
+        new='        import docker\n        clientDocker = docker.from_env()\n',
+    ),
 ]

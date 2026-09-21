@@ -53,8 +53,18 @@ def flistSweepLiveLaneContainers():
     """
     listRemoved = []
     try:
-        import docker
-        clientDocker = docker.from_env()
+        # The PRODUCTION client factory, not ``docker.from_env()``.
+        # from_env reads the environment alone, and a researcher whose
+        # daemon is colima (or any non-default context) has no
+        # DOCKER_SOCKET in it -- so from_env raises, this swallowed it,
+        # and the sweep reported "nothing to clean" on a daemon with
+        # leftovers on it. Measured, on the machine this was written
+        # for. A hygiene step that silently does nothing is worse than
+        # no hygiene step, because it is also a claim.
+        from vaibify.docker.disposableContainer import (
+            fdockerCreateDisposableClient,
+        )
+        clientDocker = fdockerCreateDisposableClient()
         listContainers = clientDocker.containers.list(
             all=True, filters={"label": S_LIVE_LANE_LABEL},
         )

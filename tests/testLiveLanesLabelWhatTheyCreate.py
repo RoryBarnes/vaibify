@@ -15,6 +15,7 @@ can ever reclaim, and it fails here rather than on somebody's daemon
 three weeks later.
 """
 
+import ast
 import pathlib
 import re
 
@@ -186,16 +187,14 @@ def testTheSweepTakesTheSuitesContainersAndLeavesTheResearchersAlone(
         "suiteThrowaway", {S_LIVE_LANE_LABEL: "1"})
     containerResearcher = _FakeContainer("vaibify-vplanet", {})
 
-    class _FakeDockerModule:
-        @staticmethod
-        def from_env():
-            return type("ClientFake", (), {
-                "containers": _FakeContainerCollection(
-                    [containerSuite, containerResearcher]),
-            })()
-
-    import sys
-    monkeypatch.setitem(sys.modules, "docker", _FakeDockerModule)
+    from vaibify.docker import disposableContainer
+    monkeypatch.setattr(
+        disposableContainer, "fdockerCreateDisposableClient",
+        lambda: type("ClientFake", (), {
+            "containers": _FakeContainerCollection(
+                [containerSuite, containerResearcher]),
+        })(),
+    )
     from tests.liveContainerLabels import flistSweepLiveLaneContainers
     listRemoved = flistSweepLiveLaneContainers()
     assert listRemoved == ["suiteThrowaway"]
@@ -203,4 +202,79 @@ def testTheSweepTakesTheSuitesContainersAndLeavesTheResearchersAlone(
     assert containerResearcher.bRemoved is False, (
         "a container the suite did not label is the researcher's, and "
         "the sweep must never touch it"
+    )
+
+
+def testTheSweepReachesTheDaemonTheWayProductionDoes():
+    """``docker.from_env()`` is not how this codebase finds a daemon.
+
+    It reads the environment alone, so on a machine whose Docker is
+    colima -- or any non-default context -- it raises, the sweep
+    swallowed it, and a daemon with leftovers on it was reported as
+    clean. Measured on a researcher's own machine, 2026-09-21: the
+    sweep answered "nothing swept" while the container it was written
+    to remove was running. The production factory resolves the host
+    first, and is the only thing that may be used here.
+    """
+    sText = (S_TESTS_DIRECTORY / "liveContainerLabels.py").read_text(
+        encoding="utf-8")
+    assert "fdockerCreateDisposableClient" in sText
+    # Comments may name the trap; CODE may not walk into it.
+    sCode = re.sub(r"^\s*#.*$", "", sText, flags=re.M)
+    assert "from_env" not in sCode, (
+        "from_env cannot see a non-default Docker context, and a "
+        "hygiene step that silently does nothing is also a false claim"
+    )
+
+
+_REGEX_HOST_TEST_IMPORT = re.compile(
+    r"^\s*(?:from\s+tests[\s.]|import\s+tests\b)", re.M,
+)
+
+
+@pytest.mark.falsification
+def testNoContainerSideScriptImportsAHostTestModule():
+    """A script embedded in a string runs somewhere else, and knows nothing.
+
+    The oracle is where the code executes. This repository already
+    states it for ``introspectionScript.py``: a script held in a string
+    is executed INSIDE a container, which has no checkout, no
+    ``tests`` package and no PYTHONPATH pointing at one. An import of a
+    host test module placed there cannot resolve, and — the part that
+    makes it worth a permanent guard rather than a fix — it fails at a
+    distance: the script dies inside a container, the runner produces
+    nothing, and the test that surfaces says
+    ``noParticipantCouldSynthesize``, which names neither the import
+    nor the file.
+
+    That is not hypothetical. Adding the shared container label to
+    every live lane put one import inside a fake provider's script
+    string, and it cost four red checks whose messages pointed
+    somewhere else entirely (2026-09-21).
+
+    Kills: placing ``from tests.liveContainerLabels import fdictLabels``
+    inside ``S_FAKE_PROVIDER_SCRIPT``.
+    """
+    listOffenders = []
+    for pathFile in sorted(S_TESTS_DIRECTORY.glob("*.py")):
+        # The mutation registry RECORDS this mistake in order to prove
+        # the guard still catches it; its strings are replayed into
+        # other files, never executed here.
+        if pathFile.name == "falsificationRegistry.py":
+            continue
+        treeModule = ast.parse(pathFile.read_text(encoding="utf-8"))
+        for nodeAny in ast.walk(treeModule):
+            if not isinstance(nodeAny, ast.Constant):
+                continue
+            if not isinstance(nodeAny.value, str):
+                continue
+            if _REGEX_HOST_TEST_IMPORT.search(nodeAny.value):
+                listOffenders.append(
+                    f"{pathFile.name}:{nodeAny.lineno}"
+                )
+    assert not listOffenders, (
+        "a script held in a string literal runs inside a container, "
+        "which has no tests package to import from; the failure "
+        "surfaces far from the line that caused it: "
+        + ", ".join(listOffenders)
     )
