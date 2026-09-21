@@ -400,6 +400,32 @@ def flistDecisiveBuildLines(sStderrTail, iLimit=6):
     return listDecisive[-iLimit:]
 
 
+_REGEX_PIP_MISSING_DISTRIBUTION = re.compile(
+    r"No matching distribution found for (\S+)"
+    r"|Could not find a version that satisfies the requirement (\S+)",
+)
+
+
+def _fsExplainMissingDistribution(sStderrTail):
+    """Name the requirement pip refused, when its line survives the tail.
+
+    The generic sentence sent a researcher to reread every name in
+    vaibify.yml while pip's own line, three lines up, said "matplolib".
+    """
+    matchName = _REGEX_PIP_MISSING_DISTRIBUTION.search(sStderrTail or "")
+    if matchName is None:
+        return (
+            "A name or version under pythonPackages in vaibify.yml does "
+            "not exist on the package index. Fix it, then rebuild."
+        )
+    sRequirement = (matchName.group(1) or matchName.group(2)).strip("'\"")
+    return (
+        f"'{sRequirement}' under pythonPackages in vaibify.yml does not "
+        "exist on the package index, or no release of it matches. Fix "
+        "the name or version in vaibify.yml, then rebuild."
+    )
+
+
 def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
     """Return ``{sHint, sCommand}`` for a failed image build, or None."""
     sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
@@ -429,14 +455,7 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
             "sCommand": "",
         }
     if "no matching distribution" in sLower or "could not find a version" in sLower:
-        return {
-            "sHint": (
-                "A name or version under pythonPackages in vaibify.yml "
-                "does not exist on the package index. Fix it, then "
-                "rebuild."
-            ),
-            "sCommand": "",
-        }
+        return {"sHint": _fsExplainMissingDistribution(sStderrTail), "sCommand": ""}
     if (
         "could not resolve" in sLower or "temporary failure resolving" in sLower
         or "failed to fetch" in sLower or "timed out" in sLower

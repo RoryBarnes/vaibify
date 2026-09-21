@@ -20,6 +20,7 @@ from .configLoader import (
 )
 from .doctorHostChecks import fbInterpreterRunsTranslated
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
+from .pythonPackagePreflight import fpreflightPythonPackageNames
 from .preflightResult import (
     S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
 )
@@ -1050,6 +1051,9 @@ def flistRunBuildPreflight(config):
     resultColimaVersion = fpreflightColimaVersion()
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)
+    preflightPackageNames = fpreflightPythonPackageNames(config)
+    if preflightPackageNames is not None:
+        listResults.append(preflightPackageNames)
     return listResults
 
 

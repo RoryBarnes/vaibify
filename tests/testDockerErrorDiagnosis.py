@@ -8,6 +8,8 @@ non-empty hint and the verbatim error must travel along separately
 
 from unittest.mock import patch
 
+import pytest
+
 from vaibify.docker.dockerContext import (
     S_RUNTIME_COLIMA, S_RUNTIME_DOCKER_DESKTOP, S_RUNTIME_LINUX_ROOTFUL,
     S_RUNTIME_LINUX_ROOTLESS, S_RUNTIME_UNKNOWN,
@@ -546,3 +548,37 @@ def test_an_unrecognised_build_failure_shows_its_decisive_lines_not_the_argv():
 def test_a_build_with_no_output_falls_back_to_the_raw_error():
     sSentence = fsExplainBuildFailure("proj", "config not found", "")
     assert sSentence == "Build of 'proj' failed: config not found"
+
+
+S_MISSING_DISTRIBUTION_BUILD_TAIL = """0.600 [notice] A new release of pip is available: 26.1.2 -> 26.2.1
+0.600 ERROR: No matching distribution found for matplolib
+ERROR: failed to solve: process "/bin/bash -o pipefail -c mkdir -p /etc/vaibify && pip install --no-cache-dir ${PIP_FLAGS} -r /tmp/requirements.txt" did not complete successfully: exit code: 1
+"""
+
+
+@pytest.mark.falsification
+def test_a_missing_python_package_is_named_in_the_sentence():
+    """pip's own line names the requirement; the sentence must too.
+
+    A researcher read "A name or version under pythonPackages ... does
+    not exist" and was left to reread every name, while pip had said
+    "matplolib" three lines up (live build, 2026-09-21).
+
+    Kills: dropping the name from the sentence and sending the
+    researcher back to the generic rereading.
+    """
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        S_MISSING_DISTRIBUTION_BUILD_TAIL,
+    )
+    assert sSentence.startswith("Build of 'fillet' failed. 'matplolib' under")
+    assert "pythonPackages in vaibify.yml" in sSentence
+    assert "(Docker said: " in sSentence
+
+
+def test_a_missing_distribution_line_the_tail_lost_keeps_the_generic_sentence():
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        "ERROR: no matching distribution\n",
+    )
+    assert "A name or version under pythonPackages" in sSentence

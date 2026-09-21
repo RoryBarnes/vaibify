@@ -21864,4 +21864,76 @@ def _fdictEntry(sRel):
         ),
         new='    fiSysctlByName = ctypes.CDLL(\n',
     ),
+    # --- 2026-09-21: a misspelled pythonPackages name cost a full build ---
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_a_misspelled_name_is_refused_before_the_build'
+        ),
+        # the walk passes every name
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old='        if sName and not fbNameExists(sName):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_a_custom_index_is_not_judged_by_pypi'
+        ),
+        # a private index's package is refused for being unknown to pypi.org
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old='    if fbIndexIsOverridden(getattr(config, "sPipInstallFlags", "")):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPythonPackagePreflight.py::'
+            'test_an_index_that_does_not_answer_never_refuses'
+        ),
+        # an unreachable index is read as "the name does not exist"
+        source='vaibify/cli/pythonPackagePreflight.py',
+        old=(
+            '    except IndexUnreachableError as errorIndex:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except IndexUnreachableError as errorIndex:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_missing_python_package_is_named_in_the_sentence'
+        ),
+        # the generic sentence again, with pip's line left in the evidence
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    matchName = _REGEX_PIP_MISSING_DISTRIBUTION.search(sStderrTail or "")\n',
+        new='    matchName = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts'
+        ),
+        # the GUI build never asks the index
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testABuildRefusalIsNotARunningBuild.py::'
+            'testARefusedBuildShowsTheSentenceAndAttachesToNothing'
+        ),
+        # the refusal is read as a running build and attached to
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '        return Boolean(error && error.iStatus === 409 && error.dictDetail &&\n'
+            '            error.dictDetail.sRefusal);\n'
+        ),
+        new='        return false;\n',
+    ),
 ]

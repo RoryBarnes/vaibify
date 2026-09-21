@@ -240,3 +240,54 @@ def test_sink_failure_does_not_fail_the_stream(capsys):
     finally:
         imageBuilder.fnSetThreadBuildLineSink(None)
     assert "one line" in sTail
+
+
+@pytest.mark.falsification
+def test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """The GUI build runs the same name check as the CLI, first.
+
+    The refusal carries a code because the dashboard reads a bare 409
+    from this route as "a build is already running" and attaches to
+    it; and no progress record opens, so nothing later says a build
+    happened.
+
+    Kills: dropping the refusal from the route, under which the build
+    runs and pip discovers the name minutes later.
+    """
+    from types import SimpleNamespace
+    from vaibify.cli import pythonPackagePreflight
+
+    listBuilds = []
+
+    def fnBuildNeverExpected(*aArgs, **kwargs):
+        listBuilds.append(aArgs)
+
+    listPatches = _fdictPatchedBuildDependencies(fnBuildNeverExpected)
+    listPatches[1] = patch(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=SimpleNamespace(
+            listPythonPackages=["numpy", "matplolib"], sPipInstallFlags="",
+        ),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            pythonPackagePreflight, "fbNameExistsOnIndex",
+            lambda sName: sName == "numpy",
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'matplolib'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_UNKNOWN_PYTHON_PACKAGE
+    assert listBuilds == []
+    dictProgress = fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()
+    assert dictProgress["bKnown"] is False

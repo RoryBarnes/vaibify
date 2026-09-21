@@ -54,7 +54,9 @@ validation. The image installs Miniforge, but there is no
 `conda install` step and no build argument carries the list, so
 accepting the field would produce a container without the requested
 packages and say nothing. Refusing is the honest interim until the
-install step is wired; install what you need with `pythonPackages`, or
+install step is wired; install what you need with `pythonPackages` (every
+name is checked against pypi.org before the build starts, so a misspelling
+is refused in seconds rather than after the toolchain has installed), or
 add a `conda install` line to `container.conf`.
 ```
 

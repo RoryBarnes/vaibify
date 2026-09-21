@@ -107,6 +107,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
         dictProject = _fdictRequireProject(sName)
         _fnRefuseBuildOfObtainedImage(dictProject)
         _fnRefuseWhileABuildIsLive(sName)
+        await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
             await asyncio.to_thread(
@@ -123,6 +124,42 @@ def _fnRegisterBuildContainer(app, dictCtx):
                 500, detail=_fdictBuildFailureDetail(error, sTail, sName),
             )
         return {"bSuccess": True, "sMessage": "Build complete"}
+
+
+S_REFUSAL_UNKNOWN_PYTHON_PACKAGE = "unknown-python-package"
+
+
+def _fnRefuseUnknownPythonPackages(dictProject):
+    """409 a build whose pythonPackages name something pypi.org lacks.
+
+    The same check the CLI runs before its build. Carries a refusal
+    code because the dashboard reads a bare 409 from this route as "a
+    build is already running" and attaches to it; a refusal that is
+    not a build must say so or it renders as one. An index that cannot
+    be asked is not a refusal: the build goes ahead and pip asks it.
+    """
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    from vaibify.cli.preflightResult import S_LEVEL_FAIL
+    from vaibify.cli.pythonPackagePreflight import (
+        fpreflightPythonPackageNames,
+    )
+    try:
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+    except Exception:
+        # An unreadable vaibify.yml is the build's own failure to
+        # report, inside the progress record the researcher watches;
+        # this check has nothing to say about names it cannot read.
+        return
+    preflightNames = fpreflightPythonPackageNames(configProject)
+    if preflightNames is None:
+        return
+    if preflightNames.sLevel != S_LEVEL_FAIL:
+        logger.info("Build preflight: %s", preflightNames.sMessage)
+        return
+    raise HTTPException(409, detail={
+        "sMessage": f"{preflightNames.sMessage} {preflightNames.sRemediation}",
+        "sRefusal": S_REFUSAL_UNKNOWN_PYTHON_PACKAGE,
+    })
 
 
 def _fnRefuseWhileABuildIsLive(sName):

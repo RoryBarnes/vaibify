@@ -1354,6 +1354,13 @@ var VaibifyContainerManager = (function () {
                progress poll fails and says contact was lost. */
             if (_fbRefusalNamesTheSwitch(error)) {
                 _fnReportSwitchRefusal(error);
+            } else if (_fbRefusalIsNotABuild(error)) {
+                /* The route refused before any build started (a
+                   pythonPackages name pypi.org does not know). There
+                   is nothing to attach to; the sentence names the
+                   fix. */
+                VaibifyApp.fnShowToast(
+                    VaibifyDiagnosis.fsExplainError(error), "error");
             } else if (error.iStatus === 409) {
                 bBuiltAndRunning = await _fnWatchRunningBuild(
                     sName, _S_BUILD_ALREADY_RUNNING);
@@ -1369,6 +1376,11 @@ var VaibifyContainerManager = (function () {
             fnLoadContainers();
         }
         return bBuiltAndRunning;
+    }
+
+    function _fbRefusalIsNotABuild(error) {
+        return Boolean(error && error.iStatus === 409 && error.dictDetail &&
+            error.dictDetail.sRefusal);
     }
 
     function _fbRefusalNamesTheSwitch(error) {
