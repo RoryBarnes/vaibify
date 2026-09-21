@@ -8,10 +8,12 @@ what is asserted here is the rendered result, in a real browser, in
 the mode that hid them.
 """
 
+import json
 import os
 import subprocess
 
 import pytest
+
 
 
 pytestmark = pytest.mark.browser
@@ -45,7 +47,7 @@ def _fnSeedBlankSandbox(serverHub, sSandboxName):
 
 
 def _fnEnterTheBlankProject(page, serverHub, sSandboxName):
-    """Warn, continue, and enter the workflow-less Blank Project view."""
+    """Warn, continue, and enter the Blank Project view."""
     page.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     page.wait_for_selector(
         f'.container-tile[data-name="{sSandboxName}"]', timeout=15000,
@@ -78,9 +80,38 @@ def testTheProjectBannerIsLegibleAgainstTheToolbar(
     element the stylesheet does not name takes the browser default and
     stops matching its own toolbar.
     """
+    # The banner's "N available" line renders only when a project
+    # EXISTS and the researcher chose to work without it -- which is
+    # the exact screen the report came from. Discovery reads the
+    # CONTAINER, and this lane's Docker adapter is fail-closed, so the
+    # count is supplied here. Everything the assertion touches
+    # afterwards -- the render, the cascade, the theme -- is real.
+    pageDashboard.route(
+        "**/workflow-discovery",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "listAvailableWorkflows": [{
+                    "sPath": "/workspace/demo/.vaibify/projects/d.json",
+                    "sName": "Demo", "iSizeBytes": 128,
+                }],
+                "bWorkflowsChanged": False,
+                "listNewWorkflowPaths": [],
+                "dictProjectCreationRequest": None,
+            }),
+        ),
+    )
     _fnSeedBlankSandbox(serverHub, S_BANNER_SANDBOX)
     _fnEnterTheBlankProject(pageDashboard, serverHub, S_BANNER_SANDBOX)
     pageDashboard.wait_for_selector("#activeWorkflowName", timeout=15000)
+    # The line the researcher could not read, not the empty span. A
+    # sandbox with no project renders the bare word "None", under which
+    # a defective banner and a correct one look identical.
+    pageDashboard.wait_for_function(
+        "() => (document.getElementById('activeWorkflowName')"
+        ".textContent || '').indexOf('available') !== -1",
+        timeout=20000,
+    )
     sBannerColour = pageDashboard.evaluate(
         "() => getComputedStyle("
         "document.getElementById('activeWorkflowName')).color",

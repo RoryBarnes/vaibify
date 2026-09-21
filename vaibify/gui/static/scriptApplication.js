@@ -1837,11 +1837,13 @@ const VaibifyApp = (function () {
                 "dismissed.");
         fnLoadTimeoutSettings();
         _fnLoadSessionRemaining();
-        document.getElementById("btnRenewSession").addEventListener(
-            "click", async function () {
+        var elRenew = document.getElementById("btnRenewSession");
+        if (elRenew) {
+            elRenew.addEventListener("click", async function () {
                 await _fnRenewSessionLifetime();
                 _fnLoadSessionRemaining();
             });
+        }
     }
 
     async function _fnLoadSessionRemaining() {

@@ -22365,7 +22365,25 @@ def _fdictEntry(sRel):
         ),
         # the renewal is reachable only from a dismissible toast
         source='vaibify/gui/static/scriptApplication.js',
-        old="            '<div class=\"gs-section-heading\">This tab</div>' +\n",
-        new='',
+        old=(
+            '            \'<div class="gs-section-heading">This tab'
+            '</div>\' +\n'
+            '            fsSettingsRowHtml("Session",\n'
+            '                \'<span id="gsSessionRemaining" '
+            'class="gs-idle-note">\' +\n'
+            '                "Reading\\u2026</span>" +\n'
+            '                \'<button type="button" class="btn" \' +\n'
+            '                \'id="btnRenewSession">Renew</button>\',\n'
+            '                "How much of this tab\'s session lifetime is '
+            'left, and " +\n'
+            '                "a button to restart the clock without losing '
+            'the " +\n'
+            '                "page. The expiry warnings offer the same '
+            'thing; this " +\n'
+            '                "row is where to find it once a warning has '
+            'been " +\n'
+            '                "dismissed.");\n'
+        ),
+        new='            "";\n',
     ),
 ]
