@@ -258,16 +258,31 @@ step are untouched, and `vaibify open` gives you a fresh tab.
 It accepts the same vocabulary as the idle timeout — a non-negative
 number of seconds, or `never` (also `off`, `none`, `disabled`) — and
 resolves across the same three tiers: this variable, then the stored
-host-global Settings preference (the gear menu's **Session lifetime**
-control), then the built-in default of `43200` (12 hours). Resolution
-happens on every evaluation, so a change applies without relaunching
-the hub, and *raising* the cap rescues a session that has not expired
-yet.
+host-global Settings preference (the toolbar gear's **Session
+lifetime** control), then the built-in default of `604800` (7 days).
+Resolution happens on every evaluation, so a change applies without
+relaunching the hub, and *raising* the cap rescues a session that has
+not expired yet.
+
+The default was twelve hours until 2026-09-21. What twelve hours
+actually bounded was a researcher's working week: reaching the cap ends
+the browser session, and with it the agent conversations that session
+was holding, which is a loss measured in days of context paid to
+retire a credential on your own machine.
 
 ```bash
-VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=never vaibify   # never sign out
-VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=86400 vaibify   # 24 hours
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=never vaibify     # never sign out
+VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS=2592000 vaibify   # 30 days
 ```
+
+You are warned as the cap approaches, at three quarters, nine tenths
+and nineteen twentieths of the way through it — fractions rather than a
+fixed lead, so the notice stays proportional to a cap you set. **Each
+warning offers to renew the session**: clicking it restarts the clock
+in place, keeping the open panels and agent conversations a fresh tab
+would lose. Renewal is only ever a click; nothing renews on a timer,
+because an automatic renewal would delete the cap while this control
+went on claiming one existed.
 
 Unlike the idle timeout, a live WebSocket does **not** veto this
 window. That asymmetry is deliberate — the case the cap exists to bound

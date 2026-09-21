@@ -536,9 +536,9 @@ differ:
 
 **The second half of that message is the useful part.** Every image
 vaibify builds carries a *recipe fingerprint* — a hash over the build
-inputs vaibify controls: the Dockerfile, the package lists, the
-entrypoint, your `vaibify.yml`. Comparing it alongside the digest
-separates two events that look identical from the outside:
+texts vaibify itself ships: the Dockerfile, the overlays, the
+entrypoint. Comparing it alongside the digest separates two events
+that look identical from the outside:
 
 - **The recipe changed too.** You upgraded vaibify, or edited the
   configuration. The environment moved because you moved it.
@@ -550,6 +550,44 @@ The warning is silent when nothing changed, and silent when nothing
 could be determined — a project that has not captured an envelope yet
 has no recorded environment to compare against, and vaibify will not
 invent a claim about an image it never compared.
+
+### Your `vaibify.yml` is stamped too, and read on every entry
+
+The recipe fingerprint covers vaibify's own texts. A second stamp
+covers **yours**: a hash of the configuration fields the build
+consumes — the repository list, the system and Python packages, the
+base image, the Python version, the container user, the workspace
+root, the binaries, the features. It rides the image as
+`vaibify-configuration-sha256`, and every time you enter a container
+vaibify compares it with the same hash computed from `vaibify.yml` as
+it is on disk *now*.
+
+This is the mundane case, and it is the one that costs whole evenings.
+A researcher corrects a misspelled package and a wrong branch, saves
+the file, restarts the container — and meets the same warnings, because
+all of it was baked in at build time. Nothing on screen said so. Now a
+banner does, and it names the remedy:
+
+```
+This container predates your vaibify.yml
+  vaibify.yml has changed since this image was built, so the container
+  is still running the old recipe.
+  Rebuild the environment to apply it. Ports, mounts, secrets and
+  resource limits are not part of this — those apply on the next start
+  and never need a rebuild.
+```
+
+**The second line is as load-bearing as the first.** Ports, bind
+mounts, secrets, network isolation and the CPU/memory ceilings are
+applied by `docker run`, so changing any of them takes effect the next
+time the container starts. They are deliberately outside the
+fingerprint: a warning that sent you through an hour-long rebuild to
+publish a port is how a true warning becomes one people learn to
+ignore.
+
+An image built before this stamp existed carries no label, and that is
+reported as *nothing determined* — no banner. Absence of a label is
+absence of evidence, never evidence of drift.
 
 ### What a changed environment does and does not affect
 

@@ -51,6 +51,7 @@ I_MEBIBYTE = 1024 * 1024
 # through stdin, not argv.
 S_FAKE_PROVIDER_SCRIPT = r'''
 import sys, json
+from tests.liveContainerLabels import fdictLabels
 saArgv = sys.argv[1:]
 sModel = saArgv[saArgv.index("--model") + 1] if "--model" in saArgv else ""
 baStdin = sys.stdin.buffer.read()
@@ -436,7 +437,8 @@ def testTheCredentialCeilingHoldsAtTheExactBoundaryLive():
     clientDocker = moduleDocker.from_env()
     sName = f"vaibifyCouncilCap{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
-        S_RUNNER_TEST_IMAGE, ["sleep", "120"], name=sName, detach=True)
+        S_RUNNER_TEST_IMAGE, ["sleep", "120"], name=sName, detach=True,
+        labels=fdictLabels())
     try:
         # A login document padded to EXACTLY the ceiling, and a second
         # one byte longer. The padding rides a JSON field so the

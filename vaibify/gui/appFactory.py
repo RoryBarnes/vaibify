@@ -155,6 +155,7 @@ def _fnRegisterBackgroundTasks(app, dictCtx):
     serverLifespan._fnRegisterPeriodicContainerSweep(app, dictCtx)
     serverLifespan._fnRegisterIdleShutdownWatchdog(app, dictCtx)
     serverLifespan._fnRegisterSessionLifecycleEvaluator(app)
+    serverLifespan._fnRegisterDisposableReclaim(app, dictCtx)
     serverLifespan._fnRegisterDefaultThreadPoolExecutor(app)
 
 

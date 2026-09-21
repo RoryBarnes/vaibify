@@ -398,10 +398,31 @@ def fnBuildBase(
     saCommand = _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache)
     # Spliced BEFORE the trailing context path: docker build takes the
     # path as its positional argument and it must stay last.
-    saCommand[-1:-1] = _flistRecipeLabelArguments(
-        sRecipeFingerprint, listOverlays,
+    saCommand[-1:-1] = (
+        _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays)
+        + _flistConfigurationLabelArguments(config)
     )
     _fnRunDockerBuild(saCommand)
+
+
+def _flistConfigurationLabelArguments(config):
+    """Return the ``--label`` argv pair naming the configuration built from.
+
+    Stamped on the BASE build only. Docker inherits a parent image's
+    labels, so every overlay built on top carries it, and the final tag
+    answers for the configuration the whole chain was built from. The
+    recipe label is re-stamped per overlay because its VALUE differs
+    per chain; this one does not.
+    """
+    from vaibify.config.configurationFingerprint import (
+        S_CONFIGURATION_IMAGE_LABEL,
+        fsComputeConfigurationFingerprint,
+    )
+    return [
+        "--label",
+        f"{S_CONFIGURATION_IMAGE_LABEL}="
+        + fsComputeConfigurationFingerprint(config),
+    ]
 
 
 def _fsResolveBaseImage(config):

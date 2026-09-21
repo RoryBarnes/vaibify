@@ -20,6 +20,7 @@ import subprocess
 
 import pytest
 
+from tests.liveContainerLabels import flistLabelArguments
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.gui import agentCouncilRegistry
 from vaibify.gui.agentCouncilDockerGateway import (
@@ -108,7 +109,7 @@ except socket.gaierror as errorResolve:
 def fsRunContainerSnippet(saNetworkArguments, dictEnvironment, sSnippet,
                           saArguments):
     """Run a snippet in a throwaway runner container; return its output."""
-    saCommand = ["docker", "run", "--rm"]
+    saCommand = ["docker", "run", "--rm"] + flistLabelArguments()
     saCommand.extend(saNetworkArguments)
     for sKey, sValue in dictEnvironment.items():
         saCommand.extend(["-e", f"{sKey}={sValue}"])
@@ -131,8 +132,9 @@ def fsStartBridgeStandIn(sContainerName):
         + str(I_STAND_IN_PORT)
     )
     subprocess.run(
-        ["docker", "run", "-d", "--rm", "--name", sContainerName,
-         S_RUNNER_IMAGE, "sh", "-c", sServeCommand],
+        ["docker", "run", "-d", "--rm", "--name", sContainerName]
+        + flistLabelArguments()
+        + [S_RUNNER_IMAGE, "sh", "-c", sServeCommand],
         capture_output=True, text=True, timeout=60, check=True,
     )
     processResult = subprocess.run(

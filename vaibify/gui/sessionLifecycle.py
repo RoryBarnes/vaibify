@@ -56,6 +56,7 @@ __all__ = [
     "F_RECONNECT_WINDOW_SECONDS",
     "F_SLIDING_IDLE_SECONDS",
     "F_ABSOLUTE_SESSION_CAP_SECONDS",
+    "T_EXPIRY_WARNING_FRACTIONS",
     "S_SLIDING_IDLE_ENV",
     "S_ABSOLUTE_SESSION_CAP_ENV",
     "ffResolveSessionCapSeconds",
@@ -89,7 +90,9 @@ __all__ = [
     "fnExpireIdleBrowserSessions",
     "fnEvaluateSessionLifecycle",
     "fdictSessionExpiryView",
-    "F_EXPIRY_WARNING_LEAD_SECONDS",
+    "fdictRenewSessionExpiry",
+    "ffElapsedFractionOfCap",
+    "ffHighestWarningFractionCrossed",
 ]
 
 import asyncio
@@ -162,9 +165,18 @@ F_CLAIM_PRESENCE_WINDOW_SECONDS = (
     )
 )
 S_ABSOLUTE_SESSION_CAP_ENV = "VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS"
+# Seven days, not the twelve hours this shipped with. The cap's job is
+# to bound a tab nobody is looking at; what twelve hours actually
+# bounded was a researcher's working week. Reaching it ends the browser
+# session, and with it the agent conversations that session was holding
+# -- a loss measured in days of context, paid to retire a credential on
+# the researcher's own machine. Seven days is the floor the researcher
+# set (2026-09-21); the Settings control offers longer and Never, and
+# the graduated warnings below plus an explicit renewal mean a cap that
+# IS approached announces itself long before it arrives.
 F_ABSOLUTE_SESSION_CAP_SECONDS = (
     containerOwnership.ffReadSecondsFromEnvironment(
-        S_ABSOLUTE_SESSION_CAP_ENV, 43200.0,
+        S_ABSOLUTE_SESSION_CAP_ENV, 604800.0,
     )
 )
 
@@ -234,15 +246,22 @@ F_LIFECYCLE_EVALUATOR_CADENCE_SECONDS = (
     )
 )
 
-# How long before the absolute cap the dashboard is warned (design
-# §11). Generous by design: the warning exists so a researcher whose
-# tab has been open all day can finish, or re-attach with
-# 'vaibify open', rather than discover the cap by being logged out.
-F_EXPIRY_WARNING_LEAD_SECONDS = (
-    containerOwnership.ffReadSecondsFromEnvironment(
-        "VAIBIFY_EXPIRY_WARNING_LEAD_SECONDS", 900.0,
-    )
-)
+# When the dashboard is warned, as FRACTIONS of the configured cap
+# rather than a fixed lead (design §11, revised 2026-09-21).
+#
+# A fixed fifteen-minute lead is the wrong shape for a cap a researcher
+# can set: fifteen minutes is most of a one-hour session and a rounding
+# error in a seven-day one, so the same constant meant "plenty of
+# notice" and "no notice" depending on a number set elsewhere. Warning
+# at fractions makes the notice proportional to the thing it warns
+# about, and three of them make the sequence legible -- the first is a
+# note, the last is now.
+#
+# Ordered ascending; the view reports the HIGHEST fraction crossed, so
+# the dashboard can warn once per band instead of once per poll. Each
+# warning carries the renewal, because a warning whose only remedy is
+# "lose your tab" is a countdown, not a warning.
+T_EXPIRY_WARNING_FRACTIONS = (0.75, 0.90, 0.95)
 
 # Transfer timing (design §6.1). A transfer no longer WAITS for
 # anything: a busy container is refused at once, so the only TTL a
@@ -1649,6 +1668,12 @@ def fdictSessionExpiryView(appState, sCredential):
 
     An unknown or revoked credential answers ``bSessionKnown`` False
     with a zero countdown, never another session's clocks.
+
+    ``fWarningFraction`` is the HIGHEST warning band the session has
+    crossed, or ``None`` below the first. It is resolved here, from the
+    same clock as the countdown, so the dashboard warns from the
+    server's arithmetic rather than re-deriving a band from a fraction
+    and a tuple it would hold a second copy of.
     """
     dictStore = getattr(appState, "dictBrowserSessions", None) or {}
     dictLifetime = browserSession.fdictLifetimeForCredential(
@@ -1659,8 +1684,11 @@ def fdictSessionExpiryView(appState, sCredential):
             "bSessionKnown": False,
             "bNeverExpires": False,
             "fSecondsUntilSessionCap": 0.0,
-            "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
+            "fCapSeconds": None,
+            "fElapsedFraction": None,
+            "fWarningFraction": None,
             "bExpiringSoon": False,
+            "bFinalWarning": False,
         }
     fCapSeconds = ffResolveSessionCapSeconds()
     if math.isinf(fCapSeconds):
@@ -1668,19 +1696,85 @@ def fdictSessionExpiryView(appState, sCredential):
             "bSessionKnown": True,
             "bNeverExpires": True,
             "fSecondsUntilSessionCap": None,
-            "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
+            "fCapSeconds": None,
+            "fElapsedFraction": None,
+            "fWarningFraction": None,
             "bExpiringSoon": False,
+            "bFinalWarning": False,
         }
     fRemainingSeconds = max(
         0.0, fCapSeconds - dictLifetime["fAgeSeconds"],
     )
+    fElapsedFraction = ffElapsedFractionOfCap(
+        dictLifetime["fAgeSeconds"], fCapSeconds,
+    )
+    fWarningFraction = ffHighestWarningFractionCrossed(fElapsedFraction)
     return {
         "bSessionKnown": True,
         "bNeverExpires": False,
         "fSecondsUntilSessionCap": fRemainingSeconds,
-        "fWarningLeadSeconds": F_EXPIRY_WARNING_LEAD_SECONDS,
-        "bExpiringSoon": fRemainingSeconds <= F_EXPIRY_WARNING_LEAD_SECONDS,
+        "fCapSeconds": fCapSeconds,
+        "fElapsedFraction": fElapsedFraction,
+        "fWarningFraction": fWarningFraction,
+        "bExpiringSoon": fWarningFraction is not None,
+        # How LOUD the notice should be, decided here with the bands.
+        # The dashboard chooses a toast severity from this flag rather
+        # than from a number, because comparing the fraction to a
+        # threshold in JavaScript would be a second copy of the band
+        # table -- the mirrored-predicate mistake this codebase has
+        # already shipped once, on the determinism row.
+        "bFinalWarning": (
+            fWarningFraction == T_EXPIRY_WARNING_FRACTIONS[-1]
+        ),
     }
+
+
+def ffElapsedFractionOfCap(fAgeSeconds, fCapSeconds):
+    """Return how far through its cap a session of this age is, 0.0-1.0.
+
+    A cap of zero is a session already over, reported as 1.0 rather
+    than raising: the cap is researcher-settable and zero is a value
+    the parser accepts.
+    """
+    if fCapSeconds <= 0:
+        return 1.0
+    return min(1.0, max(0.0, fAgeSeconds / fCapSeconds))
+
+
+def ffHighestWarningFractionCrossed(fElapsedFraction):
+    """Return the highest warning band this fraction has reached, or None.
+
+    The single place the bands are compared. The dashboard is TOLD
+    which band it is in; it never holds its own copy of the tuple,
+    because a second copy is how a warning comes to fire at a
+    threshold the server does not believe in.
+    """
+    fCrossed = None
+    for fFraction in T_EXPIRY_WARNING_FRACTIONS:
+        if fElapsedFraction >= fFraction:
+            fCrossed = fFraction
+    return fCrossed
+
+
+def fdictRenewSessionExpiry(appState, sCredential):
+    """Restart the presenting session's cap clock and report the result.
+
+    The action behind the warning toast's renewal. It returns the same
+    shape :func:`fdictSessionExpiryView` does, so the dashboard renders
+    one payload either way and cannot show a renewed session a stale
+    countdown.
+
+    A credential the store does not know, or one already revoked,
+    renews nothing and is answered by the ordinary unknown-session
+    view: past the cap is a decision, not a clock to wind back.
+    """
+    dictStore = getattr(appState, "dictBrowserSessions", None) or {}
+    bRenewed = browserSession.fbRenewSessionLifetime(dictStore, sCredential)
+    if bRenewed:
+        logger.info("Browser session lifetime renewed by the researcher.")
+    dictView = fdictSessionExpiryView(appState, sCredential)
+    dictView["bRenewed"] = bRenewed
+    return dictView
 
 
 async def _fnCommitSessionExpiry(

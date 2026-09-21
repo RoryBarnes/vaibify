@@ -28,6 +28,7 @@ from vaibify.cli.doctorNetwork import (
 )
 from vaibify.docker.containerManager import fjsonInspectContainer
 from vaibify.docker.dockerConnection import DockerConnection
+from tests.liveContainerLabels import flistLabelArguments
 
 
 pytestmark = pytest.mark.docker_live
@@ -74,7 +75,8 @@ def _fsStartProbeContainer(saExtraArgs):
     """Start a probe container and return its name."""
     sName = "vaibifyNetProbe" + uuid.uuid4().hex[:8]
     processRun = subprocess.run(
-        ["docker", "run", "-d", "--name", sName] + list(saExtraArgs)
+        ["docker", "run", "-d", "--name", sName]
+        + flistLabelArguments() + list(saExtraArgs)
         + [S_PROBE_IMAGE, "sleep", "300"],
         capture_output=True, text=True,
     )

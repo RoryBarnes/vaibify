@@ -28,6 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 
 pytestmark = pytest.mark.docker_live
@@ -56,6 +57,7 @@ def tLiveContainer():
     sName = f"vaibifyTermContain{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
         S_THROWAWAY_IMAGE, ["sleep", "300"], name=sName, detach=True,
+        labels=fdictLabels(),
     )
     try:
         yield (sName, container.id, DockerConnection())
@@ -439,7 +441,7 @@ def tLiveContainerWithReapingInit():
     sName = f"vaibifyTermContain{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
         S_THROWAWAY_IMAGE, ["sleep", "300"], name=sName, detach=True,
-        init=True,
+        init=True, labels=fdictLabels(),
     )
     try:
         yield (sName, container.id, DockerConnection())

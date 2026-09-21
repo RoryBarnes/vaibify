@@ -1183,6 +1183,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),
     ("POST", "/api/session/spawn"),
+    # Renewing a browser session's absolute cap. The cap bounds a tab
+    # nobody is watching; an agent that could restart its clock could
+    # keep the researcher's credential alive past the attention it is
+    # supposed to track. The route itself 403s the agent lane too.
+    ("POST", "/api/session/renew"),
     ("POST", "/api/workflows/{sContainerId}/create"),
     # Docker-runtime retry — agents run inside the container that
     # needs Docker, so the UI is the only sensible caller.

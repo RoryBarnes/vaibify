@@ -194,6 +194,66 @@ async def _fnRunOneContainerSweep(dictCtx):
     )
 
 
+# How often the hub reclaims disposable containers a crash stranded.
+# Ten minutes, not the sixty seconds the cache sweep runs at: what this
+# reclaims is created by a crash, so it appears rarely, and each pass
+# costs two daemon listings. The cost of waiting is one idle container,
+# never a wrong answer on a screen.
+F_DISPOSABLE_RECLAIM_INTERVAL_SECONDS = 600.0
+
+
+def _fnRegisterDisposableReclaim(app, dictCtx, fInterval=None):
+    """Install the loop that reclaims crash-stranded disposable containers.
+
+    A disposable is destroyed in a ``finally``, so the only survivors
+    are the ones a killed process left behind -- and the lane that
+    creates them only looks for survivors when the SAME project runs
+    another job, which for most projects is never. This loop is the
+    hub's answer to that: it asks the daemon which survivors are
+    stamped with a container that no longer exists, and destroys only
+    those. See ``disposableContainer`` for why that evidence, rather
+    than age, is what makes a sweep safe on a daemon shared with a live
+    peer hub.
+    """
+    del dictCtx
+    fIntervalEffective = (
+        fInterval if fInterval is not None
+        else F_DISPOSABLE_RECLAIM_INTERVAL_SECONDS
+    )
+
+    async def fnStartReclaimTask(app):
+        taskReclaim = asyncio.create_task(
+            _fnDisposableReclaimLoop(fIntervalEffective),
+            name="vaibify-disposable-reclaim",
+        )
+        app.state.taskDisposableReclaim = taskReclaim
+
+    async def fnStopReclaimTask(app):
+        await fnCancelBackgroundTask(app, "taskDisposableReclaim")
+
+    fnRegisterLifespanTask(app, fnStartReclaimTask, fnStopReclaimTask)
+
+
+async def _fnDisposableReclaimLoop(fInterval):
+    """Reclaim stranded disposables forever on a fixed cadence."""
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await asyncio.to_thread(_fdictReclaimOnce)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning(
+                "Disposable reclaim iteration failed", exc_info=True,
+            )
+
+
+def _fdictReclaimOnce():
+    """Run one reclaim pass. Imported here so host mode never needs Docker."""
+    from vaibify.docker import disposableContainer
+    return disposableContainer.fdictReclaimStrandedDisposables()
+
+
 # Docker connection pool ceiling (see ``_fnTuneDockerSessionPool``) is
 # 32 simultaneous in-flight HTTP requests against the daemon. Sizing
 # the event loop's default ThreadPoolExecutor to at least 32 workers

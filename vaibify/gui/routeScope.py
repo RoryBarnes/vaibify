@@ -269,6 +269,13 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/reproductions/{sJobId}/run"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/reproductions/{sJobId}/discard"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
+    # Renewing the presenting session's own absolute cap. Browser-hub
+    # scoped and not container-scoped on purpose: a session sitting on
+    # the picker, or inside a Blank Project, is under the same cap as
+    # one with a project open, and a scope that needed a container
+    # would leave exactly those researchers unable to answer the
+    # warning they were shown.
+    ("POST", "/api/session/renew"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
 }
 

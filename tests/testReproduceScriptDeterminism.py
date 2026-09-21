@@ -32,6 +32,7 @@ import subprocess
 import pytest
 
 from vaibify.gui.determinismEnvironment import fsBuildMatplotlibSaltShell
+from tests.liveContainerLabels import flistLabelArguments
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
     fsRenderReproduceScript,
@@ -126,8 +127,9 @@ def _fbBindMountReachesTheDaemon(pathRepo):
     tResult = subprocess.run(
         [
             "docker", "run", "--rm", "--entrypoint", "ls",
-            "-v", f"{pathRepo}:/work", S_PROBE_IMAGE,
-            "/work/requirements.lock",
+            "-v", f"{pathRepo}:/work",
+        ] + flistLabelArguments() + [
+            S_PROBE_IMAGE, "/work/requirements.lock",
         ],
         capture_output=True, text=True,
     )

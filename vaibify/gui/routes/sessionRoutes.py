@@ -10,6 +10,11 @@ child command line.
 session has before its absolute cap — the backend truth the dashboard's
 pre-expiry warning renders (design §11).
 
+``POST /api/session/renew`` restarts that cap clock for the presenting
+session. It is the remedy the warning offers, and it is triggered by a
+researcher, never by a poll: an automatic renewal would delete the cap
+while the Settings control went on claiming one existed.
+
 Both routes reject requests carrying the in-container agent token: only
 a browser-origin caller may spawn a hub, and the agent holds no browser
 session whose lifetime it could read.
@@ -150,6 +155,39 @@ def _fnRegisterLifetime(app):
         )
 
 
+def _fnRegisterRenewal(app):
+    """Register POST /api/session/renew on the given app.
+
+    The action behind the expiry warning's "Renew" (design §11). It
+    restarts the cap clock for the session whose credential the request
+    presents, resolved from the header exactly as the read is, so no
+    browser can renew another's session and no caller-supplied id is
+    honoured.
+
+    It is deliberately a POST the RESEARCHER triggers. The dashboard
+    must never call it from a poll or on a timer: the cap exists to
+    bound a tab nobody is watching, and an automatic renewal would
+    quietly delete the cap while leaving the setting on screen claiming
+    one exists. The in-container agent is refused for the same reason
+    it is refused the read -- it holds no browser session, and an agent
+    that could extend the researcher's credential could outlive the
+    researcher's attention.
+    """
+
+    @app.post("/api/session/renew")
+    async def fdictRenewSessionLifetime(request: Request):
+        from ..sessionLifecycle import fdictRenewSessionExpiry
+        _fnRejectContainerAgentCallers(
+            request,
+            sDetail="The in-container agent holds no browser session, "
+            "so it has no session lifetime to renew.",
+        )
+        return fdictRenewSessionExpiry(
+            request.app.state,
+            request.headers.get(_S_BROWSER_CREDENTIAL_HEADER_NAME, ""),
+        )
+
+
 def _fnRegisterSpawnedChildShutdown(app):
     """Terminate every spawned hub child when this process shuts down.
 
@@ -178,4 +216,5 @@ def fnRegisterAll(app, dictCtx):
     del dictCtx
     _fnRegisterSpawn(app)
     _fnRegisterLifetime(app)
+    _fnRegisterRenewal(app)
     _fnRegisterSpawnedChildShutdown(app)

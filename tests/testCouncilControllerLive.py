@@ -34,6 +34,7 @@ from vaibify.gui import (
     pipelineServer,
 )
 from tests.sessionTokenTestHelper import fsBootstrapCredential
+from tests.liveContainerLabels import fdictLabels
 from tests.testAgentCouncilProvidersLive import (
     LIST_FAKE_CLI_PROGRAM,
     S_FAKE_PROVIDER_SCRIPT,
@@ -66,7 +67,8 @@ def tLiveProjectFixture():
     clientDocker = docker.from_env()
     sName = f"vaibifyCouncilCtl{secrets.token_hex(4)}"
     container = clientDocker.containers.run(
-        S_THROWAWAY_IMAGE, ["sleep", "600"], name=sName, detach=True)
+        S_THROWAWAY_IMAGE, ["sleep", "600"], name=sName, detach=True,
+        labels=fdictLabels())
     try:
         iExitCode, _ = container.exec_run(
             ["/bin/sh", "-c", "apk add --no-cache git bash python3"])

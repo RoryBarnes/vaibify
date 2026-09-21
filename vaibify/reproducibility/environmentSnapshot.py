@@ -36,6 +36,7 @@ __all__ = [
     "S_SUPERSEDED_ARCHIVE_KEY",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
+    "fsReadContainerConfigurationLabel",
     "fsReadImageToolchainEpoch",
     "fdictCaptureSingleBinary",
     "fdictCaptureSystemTools",
@@ -255,13 +256,45 @@ def fsReadImageRecipeLabel(sImageReference):
     from vaibify.reproducibility.dockerfileComposer import (
         S_RECIPE_IMAGE_LABEL,
     )
+    return _fsReadHexLabel(
+        ["image", "inspect"], sImageReference, S_RECIPE_IMAGE_LABEL,
+    )
+
+
+def fsReadContainerConfigurationLabel(sContainerReference):
+    """Return the configuration fingerprint a CONTAINER carries, or ''.
+
+    Read off the container rather than its image because that is what
+    the caller holds, and Docker merges an image's labels into the
+    container's own ``Config.Labels`` — so this answers for the image
+    the container is actually running, not for whatever tag of the same
+    name exists now. That distinction is the point: a researcher who
+    rebuilt but has not restarted must be told their RUNNING container
+    still predates the edit.
+
+    Empty means the container predates configuration labelling, does
+    not exist, or the daemon is unreachable — each of which reads as
+    "nothing determined" downstream, never as drift.
+    """
+    from vaibify.config.configurationFingerprint import (
+        S_CONFIGURATION_IMAGE_LABEL,
+    )
+    return _fsReadHexLabel(
+        ["inspect"], sContainerReference, S_CONFIGURATION_IMAGE_LABEL,
+    )
+
+
+def _fsReadHexLabel(listInspectVerb, sReference, sLabelName):
+    """Return one SHA-256-shaped label off a docker object, or ''."""
     try:
         _fnEnsureDockerAvailable()
-        sValue = _fsRunCheckedCommand([
-            "docker", "image", "inspect", "--format",
-            '{{index .Config.Labels "' + S_RECIPE_IMAGE_LABEL + '"}}',
-            sImageReference,
-        ])
+        sValue = _fsRunCheckedCommand(
+            ["docker"] + list(listInspectVerb) + [
+                "--format",
+                '{{index .Config.Labels "' + sLabelName + '"}}',
+                sReference,
+            ],
+        )
     except Exception:  # noqa: BLE001 — unreadable reads as undetermined
         return ""
     sStripped = (sValue or "").strip()

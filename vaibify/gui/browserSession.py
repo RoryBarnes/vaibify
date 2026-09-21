@@ -49,6 +49,7 @@ __all__ = [
     "fsSessionIdForCredential",
     "fdictActiveSessionLifetimes",
     "fdictLifetimeForCredential",
+    "fbRenewSessionLifetime",
     "I_CAPABILITY_TTL_SECONDS",
     "I_ACTIVE_SESSION_CAP",
     "I_ARMED_CAPABILITY_CAP",
@@ -608,6 +609,42 @@ def fdictLifetimeForCredential(dictStore, sCredential):
             "fIdleSeconds": fNow - recordSession.fLastSeenMonotonic,
             "fAgeSeconds": fNow - recordSession.fCreatedMonotonic,
         }
+
+
+def fbRenewSessionLifetime(dictStore, sCredential):
+    """Restart the absolute-cap clock for one ACTIVE credential.
+
+    The researcher's explicit "I am still here". The cap exists to
+    bound a tab nobody is looking at, and an unattended tab is
+    precisely the tab that never asks for this — so a human click is
+    the evidence the cap otherwise has no way to collect. It grants
+    nothing the researcher could not already grant themselves by
+    setting the cap to Never in Settings, or by opening a fresh tab;
+    what it saves is the page state that a fresh tab loses.
+
+    Only the PRESENTING credential's own record is touched, resolved
+    here rather than from any caller-supplied session id, and a
+    revoked or unknown credential is refused with False rather than
+    resurrected — a cap that already ended a session is a decision, not
+    a clock to wind back.
+
+    Nothing here may be called from a poll. The renewal must be
+    reachable only from an explicit action, or the cap silently stops
+    existing.
+    """
+    if not sCredential:
+        return False
+    fNow = time.monotonic()
+    with _lockBrowserSessions:
+        recordSession = dictStore.get(
+            "dictSessionsByCredential", {},
+        ).get(sCredential)
+        if recordSession is None or (
+            recordSession.sState != S_SESSION_STATE_ACTIVE
+        ):
+            return False
+        recordSession.fCreatedMonotonic = fNow
+        return True
 
 
 def fsSessionIdForCredential(dictStore, sCredential):

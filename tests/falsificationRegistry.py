@@ -22190,4 +22190,182 @@ def _fdictEntry(sRel):
         old='        fnRefuseUnusableContainerFields(request)\n',
         new='',
     ),
+    # --- 2026-09-21: the evening's reports. A banner nobody could
+    # read, a setting nobody could reach in the mode that needed it, a
+    # cap that ended a working week, a container older than the file it
+    # was built from, and lanes whose litter outlived them.
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testRuntimeOnlyFieldsNeverDemandARebuild'
+        ),
+        # a port publish now demands an hour-long rebuild
+        source='vaibify/config/configurationFingerprint.py',
+        old='    "features",\n)',
+        new='    "features",\n    "listPorts",\n)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testAnUnlabelledImageIsNeverReportedAsDrifted'
+        ),
+        # an image built before the label reads as drifted
+        source='vaibify/config/configurationFingerprint.py',
+        old='    if not sStamped or config is None:',
+        new='    if config is None:',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testTheBannerRendersTheServersVerdictAndNothingElse'
+        ),
+        # the banner paints itself whenever the key is present
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!listLines || listLines.length === 0) {',
+        new='        if (!listLines) {',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDisposableSurvivorReclaim.py::'
+            'testASweepDestroysTheStrandedSurvivorAndSparesThePeers'
+        ),
+        # the reclaim destroys a live peer hub's shadow
+        source='vaibify/docker/disposableContainer.py',
+        old=(
+            '        if not _fbStampedResourceIsGone('
+            'sStamped, setContainerIds):\n            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDisposableSurvivorReclaim.py::'
+            'testAJobTokenStampIsNeverAdjudicatedByTheDaemon'
+        ),
+        # a reproduction job's stamp is treated as a vanished container
+        source='vaibify/docker/disposableContainer.py',
+        old='    if len(sStamp) < 12:\n        return False\n',
+        new='    if not sStamp:\n        return False\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testTheDefaultCapOutlivesAWorkingWeek'
+        ),
+        # the default cap goes back to ending a session inside a week
+        source='vaibify/gui/sessionLifecycle.py',
+        old='        S_ABSOLUTE_SESSION_CAP_ENV, 604800.0,',
+        new='        S_ABSOLUTE_SESSION_CAP_ENV, 43200.0,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testRenewalRestartsTheClockAndOnlyForThePresentingSession'
+        ),
+        # the renewal reports success and winds no clock back
+        source='vaibify/gui/browserSession.py',
+        old='        recordSession.fCreatedMonotonic = fNow\n        return True',
+        new='        return True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSessionRenewalAndWarningBands.py::'
+            'testTheRenewRouteIsBrowserOnlyAndRenewsThePresenterAlone'
+        ),
+        # the renew route stops refusing the in-container agent
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old=(
+            '        _fnRejectContainerAgentCallers(\n'
+            '            request,\n'
+            '            sDetail="The in-container agent holds no browser '
+            'session, "\n'
+            '            "so it has no session lifetime to renew.",\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheDashboardSettingsReachEveryMode.py::'
+            'testTheProjectBannerWritesTextRatherThanMarkup'
+        ),
+        # the project banner writes an unstyled anchor again
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        elName.textContent = iAvailable > 0\n'
+            '            ? "None \\u2014 " + iAvailable + " available"\n'
+            '            : "None";\n'
+        ),
+        new=(
+            '        elName.innerHTML = iAvailable > 0\n'
+            '            ? \'<a class="toolkit-banner-switch">None</a>\'\n'
+            '            : "None";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheDashboardSettingsReachEveryMode.py::'
+            'testTheHostTimeoutsAreReachableWithoutAnOpenProject'
+        ),
+        # the host timeouts move back behind the project settings gear
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            "the run is never stopped. 0 = no limit") +\n'
+            '            fsAgentSettingsHtml();\n'
+        ),
+        new=(
+            '            "the run is never stopped. 0 = no limit") +\n'
+            '            fsTimeoutSettingsRowsHtml() +\n'
+            '            fsAgentSettingsHtml();\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLiveLanesLabelWhatTheyCreate.py::'
+            'testTheSweepTakesTheSuitesContainersAndLeavesTheResearchersAlone'
+        ),
+        # the sweep stops scoping to the label and takes the daemon
+        source='tests/liveContainerLabels.py',
+        old='            all=True, filters={"label": S_LIVE_LANE_LABEL},\n',
+        new='            all=True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheProjectBannerIsLegibleAgainstTheToolbar'
+        ),
+        # the banner takes the browser's default link colour again
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        elName.textContent = iAvailable > 0\n'
+            '            ? "None \\u2014 " + iAvailable + " available"\n'
+            '            : "None";\n'
+        ),
+        new=(
+            '        elName.innerHTML = iAvailable > 0\n'
+            '            ? \'<a href="#">None &mdash; \' + iAvailable\n'
+            '              + \' available</a>\'\n'
+            '            : "None";\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheSessionLifetimeIsReachableFromABlankProject'
+        ),
+        # the host gear is never bound, so it opens nothing
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        VaibifyEventBindings.fnBindHostSettingsToggle();\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testTheGearCarriesARenewalAWarningCanBeDismissedPastOf'
+        ),
+        # the renewal is reachable only from a dismissible toast
+        source='vaibify/gui/static/scriptApplication.js',
+        old="            '<div class=\"gs-section-heading\">This tab</div>' +\n",
+        new='',
+    ),
 ]

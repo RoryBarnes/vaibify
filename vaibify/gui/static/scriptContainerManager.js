@@ -2215,6 +2215,9 @@ var VaibifyContainerManager = (function () {
         _fnRenderBuildWarningsBanner(
             (dictReadiness && dictReadiness.saWarnings) || []
         );
+        _fnRenderConfigurationDriftBanner(
+            (dictReadiness && dictReadiness.listConfigurationDrift) || []
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -2234,6 +2237,38 @@ var VaibifyContainerManager = (function () {
         if (listWarnings.length > 0) {
             _fnShowReadinessWarningBanner(listWarnings);
         }
+    }
+
+    function _fnRenderConfigurationDriftBanner(listLines) {
+        /* Rendered from the server's verdict, never re-derived here.
+           The server compares the fingerprint stamped on the running
+           container with one computed from vaibify.yml as it is now,
+           and answers with NO lines for anything it could not
+           establish -- so an empty list means "no drift or nothing
+           determined", and the banner is simply absent. It is NOT
+           dismissible: the condition it reports does not go away by
+           being acknowledged, and it disappears of its own accord the
+           moment the rebuild it asks for lands. */
+        var elBanner = document.getElementById(
+            "configurationDriftBanner");
+        if (!elBanner) return;
+        if (!listLines || listLines.length === 0) {
+            elBanner.style.display = "none";
+            elBanner.innerHTML = "";
+            return;
+        }
+        elBanner.innerHTML =
+            '<div class="build-warnings-banner-header">' +
+            '<span>This container predates your vaibify.yml</span>' +
+            '</div>' +
+            '<ul class="build-warnings-banner-list">' +
+            listLines.map(function (sLine) {
+                return "<li>"
+                    + VaibifyUtilities.fnEscapeHtml(sLine)
+                    + "</li>";
+            }).join("") +
+            '</ul>';
+        elBanner.style.display = "block";
     }
 
     function _fnRenderBuildWarningsBanner(listWarnings) {

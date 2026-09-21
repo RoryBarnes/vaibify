@@ -383,20 +383,70 @@ def _flistDescribeUnresolvableSecrets(connectionDocker, sContainerId):
         return []
 
 
-def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
-    """Probe readiness, then append the host-side secret warnings.
+def _flistDescribeConfigurationDrift(connectionDocker, sContainerId):
+    """Return the lines saying vaibify.yml moved after the image was built.
 
-    They ride ``saWarnings`` because the dashboard already renders that
-    list as a persistent banner "from the most recent container start"
-    -- which is exactly what an unresolvable secret is. A toast would
-    disappear; the whole point of degrading rather than refusing is
-    that the researcher keeps being told what the container is missing.
+    Every failure mode here answers with NO lines. An unreadable
+    config, an unregistered container, a daemon that will not answer,
+    an image built before the label existed -- each is "nothing
+    determined", and a dashboard that warned from any of them would be
+    telling a researcher to spend an hour rebuilding on no evidence.
+    """
+    from vaibify.config.configurationFingerprint import (
+        fdictCompareConfigurationAgainstImage,
+        flistDescribeConfigurationDrift,
+    )
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.reproducibility.environmentSnapshot import (
+        fsReadContainerConfigurationLabel,
+    )
+    from ..pipelineServer import fsContainerNameForId
+    try:
+        sName = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(sName) if sName else None
+        if not dictProject:
+            return []
+        from vaibify.cli.configLoader import fconfigLoadFromPath
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+        return flistDescribeConfigurationDrift(
+            fdictCompareConfigurationAgainstImage(
+                fsReadContainerConfigurationLabel(sContainerId),
+                configProject,
+            ),
+        )
+    except Exception:
+        return []
+
+
+def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
+    """Probe readiness, then add the two host-side notices.
+
+    The unresolvable secrets ride ``saWarnings`` because the dashboard
+    already renders that list as a persistent banner "from the most
+    recent container start" -- which is exactly what an unresolvable
+    secret is. A toast would disappear; the whole point of degrading
+    rather than refusing is that the researcher keeps being told what
+    the container is missing.
+
+    Both are computed only on a SETTLED answer. The frontend polls this
+    route sixty times while a container boots, and each notice costs a
+    config read and a daemon inspect -- charged once, when there is
+    something true to say.
     """
     dictReadiness = _fdictProbeContainerReadiness(
         connectionDocker, sContainerId,
     )
     if not _fbReadinessHasSettled(dictReadiness):
         return dictReadiness
+    # Configuration drift rides its OWN key, never saWarnings. The
+    # warnings list is titled "from the most recent container start",
+    # and this is a statement about a file the researcher edited since
+    # -- filing it under the start's warnings would make the banner's
+    # own heading false, and would put the one line naming a remedy
+    # among lines that do not.
+    dictReadiness["listConfigurationDrift"] = (
+        _flistDescribeConfigurationDrift(connectionDocker, sContainerId)
+    )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,
     )

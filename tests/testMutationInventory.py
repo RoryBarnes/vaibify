@@ -620,7 +620,16 @@ DICT_UNRESOLVED_BUDGET = {
     "opaque-subprocess-command": 22,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
-    "untraceable-docker-sdk-root": 52,
+    # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the
+    # reclaim asks the daemon which containers still EXIST, so that a
+    # stranded disposable can be told from a live peer hub's. It is a
+    # read -- ``containers.list(all=True)`` with no filter -- inside the
+    # SDK authority for disposable work, through the same root as
+    # flistDiscoverLabeledContainers two functions above it. What makes
+    # it unreadable to the scan is the same thing that makes it correct:
+    # the client is the disposable lane's own, constructed by
+    # fdockerCreateDisposableClient rather than threaded in.
+    "untraceable-docker-sdk-root": 53,
 }
 
 

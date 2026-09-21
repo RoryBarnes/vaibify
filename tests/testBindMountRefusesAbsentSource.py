@@ -27,6 +27,7 @@ import uuid
 import pytest
 
 from vaibify.docker.containerManager import _fnAddBindMounts
+from tests.liveContainerLabels import flistLabelArguments
 
 
 class _ConfigWithMount:
@@ -101,6 +102,7 @@ def test_an_absent_source_is_refused_and_no_directory_appears(tmp_path):
         [
             "docker", "run", "--rm", "--mount",
             f'type=bind,"source={sMissing}","target=/probe"',
+        ] + flistLabelArguments() + [
             "ubuntu:24.04", "true",
         ],
         capture_output=True, text=True,

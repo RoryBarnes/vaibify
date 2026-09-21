@@ -42,6 +42,7 @@ from pathlib import Path
 import pytest
 
 from vaibify.config.projectConfig import fconfigLoadFromFile
+from tests.liveContainerLabels import flistLabelArguments
 from vaibify.config.containerConfig import (
     flistParseContainerConf,
     flistConvertFromProjectConfig,
@@ -299,6 +300,7 @@ class TestImageBuild:
         resultProcess = subprocess.run(
             [
                 "docker", "run", "--rm",
+            ] + flistLabelArguments() + [
                 _fsImageTag(configProject, "latest"),
                 "python", "--version",
             ],
@@ -336,6 +338,7 @@ class TestContainerSmoke:
             [
                 "docker", "run", "-d",
                 "--name", sContainerName,
+            ] + flistLabelArguments() + [
                 _fsImageTag(configProject, "latest"),
                 "sleep", "600",
             ],
