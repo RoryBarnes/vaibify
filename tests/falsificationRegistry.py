@@ -21991,4 +21991,73 @@ def _fdictEntry(sRel):
         old='        await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)\n',
         new='',
     ),
+    # --- 2026-09-21: a branch the remote lacks, and nothing to pip install ---
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::'
+            'test_a_branch_the_remote_lacks_is_refused_and_the_default_is_named'
+        ),
+        # every branch passes
+        source='vaibify/cli/repositoryPreflight.py',
+        old='        if not dictAnswer["bBranchExists"]:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::'
+            'test_a_remote_that_cannot_be_asked_never_refuses'
+        ),
+        # an unreachable remote is read as a missing branch
+        source='vaibify/cli/repositoryPreflight.py',
+        old=(
+            '    except RemoteUnreachableError as errorRemote:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_NOT_CHECKED,\n'
+        ),
+        new=(
+            '    except RemoteUnreachableError as errorRemote:\n'
+            '        return PreflightResult(\n'
+            '            sName=S_PREFLIGHT_NAME, sLevel=S_LEVEL_FAIL,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts'
+        ),
+        # the GUI build never asks the remotes
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseUnknownRepositoryBranches, dictProject)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWizardRepositoryDefaults.py::'
+            'test_the_branch_is_the_remotes_default_not_main'
+        ),
+        # main, written blind, for every repository
+        source='vaibify/install/setupServer.py',
+        old='        sBranch = fsDefaultBranchOfRemote(sUrl) or "main"\n',
+        new='        sBranch = "main"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWizardRepositoryDefaults.py::'
+            'test_a_github_repository_with_no_python_project_file_is_a_reference'
+        ),
+        # pip_editable for every repository again
+        source='vaibify/install/setupServer.py',
+        old='            "installMethod": _fsInstallMethodForRepository(sUrl, sBranch),\n',
+        new='            "installMethod": "pip_editable",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEntrypointPipNotAPackage.py::'
+            'test_a_repository_with_nothing_to_install_is_said_so_and_pip_is_not_run'
+        ),
+        # pip is run on a repository with nothing to install; its refusal is "failed"
+        source='vaibify/containerImage/entrypoint.sh',
+        old='    if [ ! -f "${sRepoPath}/setup.py" ] && [ ! -f "${sRepoPath}/pyproject.toml" ]; then\n',
+        new='    if false; then\n',
+    ),
 ]

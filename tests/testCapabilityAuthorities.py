@@ -246,6 +246,21 @@ DICT_NAMED_AUTHORITIES = {
             "that varies is an image id read back from `docker images "
             "-q`, its own argv element, never a request field.",
         ),
+    "cli/repositoryPreflight.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http"],
+            "Build preflight: asks each repository's remote with `git "
+            "ls-remote --symref <url> HEAD refs/heads/<branch>` whether "
+            "the configured branch exists, so a container that would "
+            "start without the repository is refused before the build. "
+            "Serves `vaibify build`, gui/buildRoutes.py and the setup "
+            "wizard's branch default. One launch site, a fixed argv list "
+            "with no shell; the url and branch are the project's own "
+            "vaibify.yml values, already validated against the "
+            "repository-field character set and transport allow-list, "
+            "each its own argv element. GIT_TERMINAL_PROMPT=0 so a "
+            "private remote fails rather than waits for a password.",
+        ),
     "cli/commandStart.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http"],

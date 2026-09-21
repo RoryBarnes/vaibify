@@ -323,3 +323,44 @@ def test_a_build_the_daemon_disk_cannot_hold_is_refused_before_it_starts(
     assert fixtureClient.get(
         "/api/containers/proj/build/progress"
     ).json()["bKnown"] is False
+
+
+@pytest.mark.falsification
+def test_a_build_naming_a_branch_the_remote_lacks_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """Kills: dropping the branch refusal from the route, under which the
+    container starts without the repository after the whole build."""
+    from types import SimpleNamespace
+    from vaibify.cli import repositoryPreflight
+
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    listPatches[1] = patch(
+        "vaibify.cli.configLoader.fconfigLoadFromPath",
+        return_value=SimpleNamespace(listRepositories=[
+            {"name": "hextor", "url": "https://host.example/g/hextor",
+             "branch": "main"},
+        ]),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            repositoryPreflight, "fdictProbeRepositoryBranch",
+            lambda sUrl, sBranch, *aArgs, **kwargs: {
+                "bBranchExists": False, "sDefaultBranch": "master",
+            },
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "'hextor' names branch 'main'" in dictDetail["sMessage"]
+    assert "'master'" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH
+    assert listBuilds == []

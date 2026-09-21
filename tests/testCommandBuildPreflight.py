@@ -606,3 +606,32 @@ def test_flistRunBuildPreflight_carries_the_free_disk_verdict(
         preflightResult.sName for preflightResult in listResults
         if preflightResult.sLevel == "fail"
     ] == [daemonDiskPreflight.S_PREFLIGHT_NAME]
+
+
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightArch", return_value=[])
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
+def test_flistRunBuildPreflight_carries_the_branch_verdict(
+    mockProbe, mockArch, mockDisk, mockMem,
+):
+    from vaibify.cli import repositoryPreflight
+    config = SimpleNamespace(
+        features=SimpleNamespace(bGpu=False),
+        listRepositories=[{"name": "hextor", "url": "https://h/x",
+                           "branch": "main"}],
+    )
+    with patch.object(
+        repositoryPreflight, "fdictProbeRepositoryBranch",
+        lambda sUrl, sBranch, *aArgs, **kwargs: {
+            "bBranchExists": False, "sDefaultBranch": "master",
+        },
+    ):
+        listResults = flistRunBuildPreflight(config)
+    assert [
+        preflightResult.sName for preflightResult in listResults
+        if preflightResult.sLevel == "fail"
+    ] == [repositoryPreflight.S_PREFLIGHT_NAME]

@@ -215,6 +215,13 @@ def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
         pythonPackagePreflight, "fbNameExistsOnIndex",
         lambda sName, *aArgs, **kwargs: True,
     )
+    from vaibify.cli import repositoryPreflight
+    monkeypatch.setattr(
+        repositoryPreflight, "fdictProbeRepositoryBranch",
+        lambda sUrl, sBranch, *aArgs, **kwargs: {
+            "bBranchExists": True, "sDefaultBranch": "main",
+        },
+    )
 
 
 @pytest.fixture(autouse=True)

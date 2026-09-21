@@ -108,6 +108,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
         _fnRefuseBuildOfObtainedImage(dictProject)
         _fnRefuseWhileABuildIsLive(sName)
         await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)
+        await asyncio.to_thread(_fnRefuseUnknownRepositoryBranches, dictProject)
         await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
@@ -129,6 +130,35 @@ def _fnRegisterBuildContainer(app, dictCtx):
 
 S_REFUSAL_UNKNOWN_PYTHON_PACKAGE = "unknown-python-package"
 S_REFUSAL_DAEMON_DISK_FULL = "daemon-disk-full"
+S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH = "unknown-repository-branch"
+
+
+def _fnRefuseUnknownRepositoryBranches(dictProject):
+    """409 a build whose repositories name a branch the remote lacks.
+
+    The same check the CLI runs. The container would otherwise start
+    without that repository after the whole build, with a warning that
+    names the branch and not the remedy.
+    """
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    from vaibify.cli.preflightResult import S_LEVEL_FAIL
+    from vaibify.cli.repositoryPreflight import fpreflightRepositoryBranches
+    try:
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+    except Exception:
+        return
+    preflightBranches = fpreflightRepositoryBranches(configProject)
+    if preflightBranches is None:
+        return
+    if preflightBranches.sLevel != S_LEVEL_FAIL:
+        logger.info("Build preflight: %s", preflightBranches.sMessage)
+        return
+    raise HTTPException(409, detail={
+        "sMessage": (
+            f"{preflightBranches.sMessage} {preflightBranches.sRemediation}"
+        ),
+        "sRefusal": S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH,
+    })
 
 
 def _fnRefuseWhenDaemonDiskIsFull():

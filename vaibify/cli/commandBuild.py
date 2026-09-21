@@ -22,6 +22,7 @@ from .doctorHostChecks import fbInterpreterRunsTranslated
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .daemonDiskPreflight import fpreflightDaemonFreeDisk
 from .pythonPackagePreflight import fpreflightPythonPackageNames
+from .repositoryPreflight import fpreflightRepositoryBranches
 from .preflightResult import (
     S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
 )
@@ -1058,6 +1059,9 @@ def flistRunBuildPreflight(config):
     preflightFreeDisk = fpreflightDaemonFreeDisk()
     if preflightFreeDisk is not None:
         listResults.append(preflightFreeDisk)
+    preflightBranches = fpreflightRepositoryBranches(config)
+    if preflightBranches is not None:
+        listResults.append(preflightBranches)
     return listResults
 
 

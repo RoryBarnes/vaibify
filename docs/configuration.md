@@ -163,9 +163,16 @@ name|url|branch|install_method
 |----------------|-------------------------------------------------|
 | `c_and_pip`    | `make opt` then `pip install -e . --no-deps`    |
 | `pip_no_deps`  | `pip install -e . --no-deps`                     |
-| `pip_editable` | `pip install -e .`                                |
+| `pip_editable` | `pip install -e .` (needs a `setup.py` or `pyproject.toml`; a repository without one is cloned only, with a warning naming this table) |
 | `scripts_only` | Add to `PYTHONPATH` and `PATH` only              |
 | `reference`    | Clone for reference, do not install              |
+
+Before a build, `branch` is checked against each remote with
+`git ls-remote`; a branch the remote does not have is refused, and the
+refusal names the remote's default branch. The setup wizard writes the
+remote's default branch rather than assuming `main`, and writes
+`reference` for a GitHub repository it can see has no Python project
+file.
 
 ### Example
 
