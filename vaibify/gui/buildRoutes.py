@@ -108,6 +108,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
         _fnRefuseBuildOfObtainedImage(dictProject)
         _fnRefuseWhileABuildIsLive(sName)
         await asyncio.to_thread(_fnRefuseUnknownPythonPackages, dictProject)
+        await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
             await asyncio.to_thread(
@@ -127,6 +128,31 @@ def _fnRegisterBuildContainer(app, dictCtx):
 
 
 S_REFUSAL_UNKNOWN_PYTHON_PACKAGE = "unknown-python-package"
+S_REFUSAL_DAEMON_DISK_FULL = "daemon-disk-full"
+
+
+def _fnRefuseWhenDaemonDiskIsFull():
+    """409 a build the daemon's disk cannot hold, before a layer is written.
+
+    The same check the CLI runs. A disk that cannot be measured, or one
+    that is merely low, is logged and the build proceeds; only a disk
+    the build cannot finish on is refused, with the refusal code the
+    dashboard needs to show a sentence rather than attach to a build.
+    """
+    from vaibify.cli.daemonDiskPreflight import fpreflightDaemonFreeDisk
+    from vaibify.cli.preflightResult import S_LEVEL_FAIL
+    preflightFreeDisk = fpreflightDaemonFreeDisk()
+    if preflightFreeDisk is None:
+        return
+    if preflightFreeDisk.sLevel != S_LEVEL_FAIL:
+        logger.info("Build preflight: %s", preflightFreeDisk.sMessage)
+        return
+    raise HTTPException(409, detail={
+        "sMessage": (
+            f"{preflightFreeDisk.sMessage} {preflightFreeDisk.sRemediation}"
+        ),
+        "sRefusal": S_REFUSAL_DAEMON_DISK_FULL,
+    })
 
 
 def _fnRefuseUnknownPythonPackages(dictProject):

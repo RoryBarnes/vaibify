@@ -431,6 +431,22 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
     sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
     if not sLower:
         return None
+    if "no space left on device" in sLower:
+        # Judged before every other cause: a step that could not write
+        # fails in whatever way it fails, and its own banner may blame
+        # the network (an overlay installer did, 2026-09-21).
+        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
+        dictRemedy = _fdictRuntimeRemedy(
+            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
+        )
+        return {
+            "sHint": (
+                "The Docker daemon's disk is full, so the failing step "
+                "could not write; whatever else that step printed follows "
+                f"from that. {dictRemedy['sHint']}"
+            ),
+            "sCommand": dictRemedy["sCommand"],
+        }
     if "this build stopped on purpose" in sLower or "toolchain" in sLower:
         return {
             "sHint": (

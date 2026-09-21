@@ -17,11 +17,11 @@ RUN if ! curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
         echo "" >&2; \
         printf '%s\n' "vaibify build (rlang overlay): cannot download CRAN signing key." >&2; \
         printf '%s\n' "  - The key lives at cloud.r-project.org." >&2; \
-        printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
-        printf '%s\n' "    this build host and cloud.r-project.org)." >&2; \
+        printf '%s\n' "  - curl's own message is directly above this banner; read it first." >&2; \
+        printf '%s\n' "    A full daemon disk fails here too, and says so there." >&2; \
         printf '%s\n' "Pick one workaround:" >&2; \
         printf '%s\n' "  1. Disable the R overlay (features: { rlang: false })." >&2; \
-        printf '%s\n' "  2. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "  2. If it names the network, resolve your build host's path to" >&2; \
         printf '%s\n' "     cloud.r-project.org (proxy, IPv6, MTU, TLS inspection)" >&2; \
         printf '%s\n' "     and rebuild." >&2; \
         echo "" >&2; \
@@ -47,11 +47,11 @@ RUN if ! Rscript -e "install.packages('IRkernel', repos='https://cran.rstudio.co
         echo "" >&2; \
         printf '%s\n' "vaibify build (rlang overlay): cannot install IRkernel package." >&2; \
         printf '%s\n' "  - Package source lives on cran.rstudio.com." >&2; \
-        printf '%s\n' "  - install.packages failed (likely a TLS or network failure" >&2; \
-        printf '%s\n' "    between this build host and the pinned CRAN mirror)." >&2; \
+        printf '%s\n' "  - R's own message is directly above this banner; read it first." >&2; \
+        printf '%s\n' "    A full daemon disk fails here too, and says so there." >&2; \
         printf '%s\n' "Pick one workaround:" >&2; \
         printf '%s\n' "  1. Disable the R overlay (features: { rlang: false })." >&2; \
-        printf '%s\n' "  2. Resolve your build host's network path to a CRAN mirror" >&2; \
+        printf '%s\n' "  2. If it names the network, resolve your build host's path to a CRAN mirror" >&2; \
         printf '%s\n' "     (proxy, IPv6, MTU, TLS inspection) and rebuild." >&2; \
         echo "" >&2; \
         exit 1; \

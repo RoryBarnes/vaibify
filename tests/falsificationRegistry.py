@@ -21936,4 +21936,59 @@ def _fdictEntry(sRel):
         ),
         new='        return false;\n',
     ),
+    # --- 2026-09-21: a full daemon disk blamed on the network ---
+    Falsification(
+        nodeid=(
+            'tests/testOverlayBannersReadTheStepFirst.py::'
+            'test_no_overlay_banner_asserts_a_network_cause_for_any_exit'
+        ),
+        # the installer banner blames the network for any exit again
+        source='vaibify/containerImage/Dockerfile.claude',
+        old=(
+            '        printf \'%s\\n\' "  - The installer\'s own message is directly above this banner; read it first." >&2; \\\n'
+        ),
+        new=(
+            '        printf \'%s\\n\' "  - Download failed (likely a TLS or network failure)." >&2; \\\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildTailKeepsTheReason.py::'
+            'test_the_reason_survives_a_post_mortem_longer_than_the_window'
+        ),
+        # one window again; the echo evicts the reason
+        source='vaibify/docker/imageBuilder.py',
+        old='    return bool(_RE_BUILDKIT_POST_MORTEM.match(sLine))\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_full_daemon_disk_is_named_before_any_other_cause'
+        ),
+        # the disk branch is gone; the banner's own words are the sentence
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    if "no space left on device" in sLower:\n        # Judged before every other cause',
+        new='    if False:\n        # Judged before every other cause',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDaemonDiskPreflight.py::'
+            'test_a_full_daemon_disk_fails_the_preflight_with_the_remedy'
+        ),
+        # a few hundred megabytes is called room enough
+        source='vaibify/cli/daemonDiskPreflight.py',
+        old='I_DAEMON_FREE_DISK_FAIL_BYTES = 4 * (2 ** 30)\n',
+        new='I_DAEMON_FREE_DISK_FAIL_BYTES = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_a_build_the_daemon_disk_cannot_hold_is_refused_before_it_starts'
+        ),
+        # the GUI build never asks the disk
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseWhenDaemonDiskIsFull)\n',
+        new='',
+    ),
 ]

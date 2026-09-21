@@ -672,18 +672,47 @@ def fnEmitBuildLine(sLine):
         _fnOfferLineToSink(fnLineSink, sLine)
 
 
+_RE_BUILDKIT_POST_MORTEM = re.compile(
+    r"^\s*(?:-{6,}|> \[|Dockerfile[^:\n]*:\d+\s*$|\d+\s*\||ERROR: failed to solve)",
+)
+
+
+def _fbLineIsBuildKitPostMortem(sLine):
+    """Return True for the lines BuildKit adds AFTER the step has failed.
+
+    The separator rules, the ``> [2/2] RUN ...`` header, the
+    ``Dockerfile:23`` locator, the ``23 | >>>`` source echo and the
+    closing ``ERROR: failed to solve``. They restate the recipe, never
+    the reason.
+    """
+    return bool(_RE_BUILDKIT_POST_MORTEM.match(sLine))
+
+
 def _fsStreamAndCaptureStderr(procBuild):
-    """Tee subprocess stderr to sys.stderr; return the captured tail."""
-    dequeTail = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
+    """Tee subprocess stderr to sys.stderr; return the captured tail.
+
+    Two windows, not one. BuildKit ends a failed build by echoing the
+    whole failing step -- sixty lines of source for a long RUN -- and
+    a single window of the last fifty lines held only that echo while
+    the one line that named the cause (``mkdir: ... No space left on
+    device``, three lines before it) had already been evicted (a live
+    build, 2026-09-21). The step's own output and BuildKit's
+    post-mortem are kept apart, so neither can push the other out.
+    """
+    dequeOutput = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
+    dequePostMortem = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
     if procBuild.stderr is None:
         return ""
     fnLineSink = getattr(_threadLocalBuildSink, "fnLineSink", None)
     for sLine in procBuild.stderr:
         sys.stderr.write(sLine)
-        dequeTail.append(sLine)
+        if _fbLineIsBuildKitPostMortem(sLine):
+            dequePostMortem.append(sLine)
+        else:
+            dequeOutput.append(sLine)
         if fnLineSink is not None:
             _fnOfferLineToSink(fnLineSink, sLine)
-    return "".join(dequeTail)
+    return "".join(dequeOutput) + "".join(dequePostMortem)
 
 
 _RE_HTTP_CREDENTIALS = re.compile(r"(https?://)[^@/\s]+@")

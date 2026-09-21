@@ -25,12 +25,12 @@ RUN ARCH="$(uname -m)" \
         echo "" >&2; \
         printf '%s\n' "vaibify build (julia overlay): cannot download Julia ${JULIA_VERSION}." >&2; \
         printf '%s\n' "  - Tarball lives at ${JULIA_URL}." >&2; \
-        printf '%s\n' "  - Download failed (likely a TLS or network failure between" >&2; \
-        printf '%s\n' "    this build host and julialang-s3.julialang.org)." >&2; \
+        printf '%s\n' "  - curl's own message is directly above this banner; read it first." >&2; \
+        printf '%s\n' "    A full daemon disk fails here too, and says so there." >&2; \
         printf '%s\n' "Pick one workaround:" >&2; \
         printf '%s\n' "  1. Test reachability from your host: curl -fI \"${JULIA_URL}\"" >&2; \
         printf '%s\n' "  2. Disable the Julia overlay (features: { julia: false })." >&2; \
-        printf '%s\n' "  3. Resolve your build host's network path to" >&2; \
+        printf '%s\n' "  3. If it names the network, resolve your build host's path to" >&2; \
         printf '%s\n' "     julialang-s3.julialang.org (proxy, IPv6, MTU, TLS" >&2; \
         printf '%s\n' "     inspection) and rebuild." >&2; \
         echo "" >&2; \

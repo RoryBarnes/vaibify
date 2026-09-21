@@ -235,6 +235,17 @@ DICT_NAMED_AUTHORITIES = {
             "Host preflight: probes the docker CLI and daemon before a "
             "run is attempted, so a failure is reported rather than hit.",
         ),
+    "cli/daemonDiskPreflight.py|<module>|process-launch|subprocess|import|0":
+        _fdictAuthority(
+            ["host-cli", "http"],
+            "Build preflight: measures the daemon's free disk by running "
+            "`df` inside an image the daemon already holds, so a build "
+            "that cannot fit is refused before a layer is written. Serves "
+            "`vaibify build` and gui/buildRoutes.py alike. Two launch "
+            "sites, both a fixed argv list with no shell; the one value "
+            "that varies is an image id read back from `docker images "
+            "-q`, its own argv element, never a request field.",
+        ),
     "cli/commandStart.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http"],

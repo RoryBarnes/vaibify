@@ -582,3 +582,35 @@ def test_a_missing_distribution_line_the_tail_lost_keeps_the_generic_sentence():
         "ERROR: no matching distribution\n",
     )
     assert "A name or version under pythonPackages" in sSentence
+
+
+S_FULL_DISK_OVERLAY_BUILD_TAIL = """#7 0.402 mkdir: cannot create directory '/home/researcher/.claude': No space left on device
+#7 0.418 
+#7 0.418 vaibify build (claude overlay): Claude Code installer failed.
+#7 0.418   - The installer's own message is directly above this banner; read it first.
+#7 0.418 Pick one workaround:
+#7 0.418   1. Disable the Claude overlay (features: { claude: false }).
+#7 ERROR: process "/bin/bash -o pipefail -c if ! curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh; then exit 1; fi" did not complete successfully: exit code: 1
+------
+ > [2/2] RUN if ! curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh; then exit 1; fi:
+------
+ERROR: failed to solve: process "/bin/bash -o pipefail -c if ! curl" did not complete successfully: exit code: 1
+"""
+
+
+@pytest.mark.falsification
+def test_a_full_daemon_disk_is_named_before_any_other_cause():
+    """The step that could not write fails however it fails, and its
+    own banner may blame something else; the disk is judged first.
+
+    Kills: dropping the disk branch, under which the sentence carries
+    only the overlay's banner and the researcher debugs the network.
+    """
+    sSentence = fsExplainBuildFailure(
+        "fillet", "Docker command failed (exit 1): docker buildx build",
+        S_FULL_DISK_OVERLAY_BUILD_TAIL,
+    )
+    sHint = sSentence.split("(Docker said:", 1)[0]
+    assert "disk is full" in sHint
+    assert "docker builder prune" in sSentence
+    assert "network" not in sHint

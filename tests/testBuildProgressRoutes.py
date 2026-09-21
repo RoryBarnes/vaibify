@@ -291,3 +291,35 @@ def test_a_build_naming_an_unknown_python_package_is_refused_before_it_starts(
         "/api/containers/proj/build/progress"
     ).json()
     assert dictProgress["bKnown"] is False
+
+
+@pytest.mark.falsification
+def test_a_build_the_daemon_disk_cannot_hold_is_refused_before_it_starts(
+    fixtureClient,
+):
+    """Kills: dropping the disk refusal from the route, under which the
+    build runs for minutes and fails at whichever step next writes."""
+    from vaibify.cli import daemonDiskPreflight
+
+    listBuilds = []
+    listPatches = _fdictPatchedBuildDependencies(
+        lambda *aArgs, **kwargs: listBuilds.append(aArgs),
+    )
+    for managerPatch in listPatches:
+        managerPatch.start()
+    try:
+        with patch.object(
+            daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+        ):
+            response = fixtureClient.post("/api/containers/proj/build")
+    finally:
+        for managerPatch in listPatches:
+            managerPatch.stop()
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "0.0 GB free" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    assert listBuilds == []
+    assert fixtureClient.get(
+        "/api/containers/proj/build/progress"
+    ).json()["bKnown"] is False

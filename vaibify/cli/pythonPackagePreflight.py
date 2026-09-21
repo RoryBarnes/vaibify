@@ -132,12 +132,16 @@ def flistUnknownPythonPackages(listRequirements, fbNameExists):
     return listUnknown
 
 
-def fpreflightPythonPackageNames(config, fbNameExists=fbNameExistsOnIndex):
+def fpreflightPythonPackageNames(config, fbNameExists=None):
     """Return a fail or not-checked result for the config's names, else None.
 
     None is the silent answer for a config whose every name the index
-    knows, or that names no packages at all.
+    knows, or that names no packages at all. The index probe is looked
+    up at call time, never bound as a default, so a test that replaces
+    it on the module reaches every caller and none touches pypi.org.
     """
+    if fbNameExists is None:
+        fbNameExists = fbNameExistsOnIndex
     listRequirements = getattr(config, "listPythonPackages", None) or []
     if not listRequirements:
         return None

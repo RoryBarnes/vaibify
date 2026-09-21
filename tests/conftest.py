@@ -197,6 +197,27 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def fnKeepBuildPreflightProbesOffTheDaemonAndTheNetwork(monkeypatch):
+    """The build preflight asks the daemon's disk and pypi.org; no unit
+    test may. Both probes answer "room enough" and "the name exists"
+    here, so a test on a full machine or an offline one reads the same
+    as CI; the probes' own tests hold the original functions and drive
+    them with fakes, and a test wanting a refusal patches the module
+    attribute itself (2026-09-21: the real disk probe refused every
+    route test on a daemon whose disk was actually full).
+    """
+    from vaibify.cli import daemonDiskPreflight, pythonPackagePreflight
+    monkeypatch.setattr(
+        daemonDiskPreflight, "fiDaemonFreeDiskBytes",
+        lambda fnRun=None: daemonDiskPreflight.I_DAEMON_FREE_DISK_WARN_BYTES,
+    )
+    monkeypatch.setattr(
+        pythonPackagePreflight, "fbNameExistsOnIndex",
+        lambda sName, *aArgs, **kwargs: True,
+    )
+
+
+@pytest.fixture(autouse=True)
 def fnStubTheDockerBinaryStatusProbes(request, monkeypatch):
     """Keep the ordinary suite off the host's ``docker`` executable.
 
