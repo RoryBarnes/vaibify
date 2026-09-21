@@ -1,6 +1,6 @@
 ---
 name: dashboard-state-honesty
-description: Rules that keep the dashboard from overstating what vaibify knows: a row renders a gate's verdict rather than re-deriving it, a level cell and its rows must fail on the same set, an uncheckable remote is never red, and a configured secret this host cannot resolve degrades loudly. Use when editing a requirement row, a level cell, a badge, or any poll payload the frontend renders.
+description: Rules that keep the dashboard from overstating what vaibify knows: a row renders a gate's verdict rather than re-deriving it, a level cell and its rows must fail on the same set, an uncheckable remote is never red, and a configured secret this host cannot resolve degrades loudly. Use when changing WHAT a requirement row, level cell, badge, or poll payload asserts about container or workflow state. Not for explaining why a badge shows the state it shows, and not for reshaping an endpoint's JSON when every assertion in it stays the same.
 ---
 
 # The dashboard tells the truth or says it does not know
