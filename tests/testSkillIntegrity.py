@@ -361,3 +361,51 @@ def testATrackedFileStillMakesAReferenceResolve(tmp_path):
     assert modulePathChecker.fbReferenceResolves(
         pathDoc, "pyproject.toml",
     ) is True
+
+
+# ---------------------------------------------------------------------
+# Layer 3's grader must be able to run the commands it grades with.
+# ---------------------------------------------------------------------
+
+def _fmoduleLoadOutcomeHarness():
+    """Load the outcome harness by path; tools/ is not a package."""
+    import importlib.util
+    pathHarness = (
+        Path(__file__).resolve().parents[1]
+        / "tools" / "evaluateSkillOutcomes.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "evaluateSkillOutcomes", pathHarness,
+    )
+    moduleHarness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(moduleHarness)
+    return moduleHarness
+
+
+def testTheOutcomeGraderCanRunAPythonGradeCommand():
+    """A grade command saying ``python`` must find an interpreter.
+
+    The grade commands are written the way a researcher types them,
+    and a machine whose only interpreter is ``python3`` -- or whose
+    Python is not on PATH at all -- has no ``python``. Every grade
+    then failed with "command not found" in BOTH arms, and the
+    harness reported that the skill had not steered the agent to a
+    correct result. The verdict was about the machine and blamed the
+    skill, which is worse than no verdict: layer 3 is the only layer
+    that observes real behaviour, so a false red there is a reason to
+    rewrite a skill that was fine.
+
+    Measured on this repository's own maintainer machine, where
+    ``python`` does not exist and every task scored 0/3.
+    """
+    import subprocess
+    moduleHarness = _fmoduleLoadOutcomeHarness()
+    dictEnvironment = moduleHarness.fdictGradingEnvironment()
+    tResult = subprocess.run(
+        'python -c "import sys; sys.exit(0)"',
+        shell=True, capture_output=True, text=True, env=dictEnvironment,
+    )
+    assert tResult.returncode == 0, (
+        "a grade command spelling `python` could not run: "
+        f"{tResult.stderr.strip()[:200]}"
+    )
