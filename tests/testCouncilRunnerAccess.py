@@ -1378,3 +1378,73 @@ def testAStartBuildFaultAnswersAsARefusalNotAServerError(
         asyncio.run(_fnDriveLaunch())
     assert "never reported" in str(error.value), str(error.value)
     assert "record is untouched" in str(error.value), str(error.value)
+
+
+def _fnRunDisposeAgainstASettlingEpilogue(
+        monkeypatch, dictCalls, fEpilogueSeconds):
+    """Dispose a terminal campaign whose drive is still in its epilogue.
+
+    Reproduces the researcher's sequence exactly: the record already
+    reads ARCHIVED (the engine checkpoints a terminal state the instant
+    it transitions) while the drive task is still tearing the egress
+    boundary down. The drive is a REAL task, because the production
+    window is an ``await`` the fake task doubles elsewhere in this file
+    cannot represent.
+    """
+    _fnPatchEgressProvisioning(monkeypatch, dictCalls)
+    dictControllerState = controller.fdictCreateCouncilControllerState()
+
+    async def _fnDispose():
+        async def _fnTearEgressDownSlowly():
+            await asyncio.sleep(fEpilogueSeconds)
+
+        dictControllerState["dictCampaignRuntime"]["campaign-access-1"] = {
+            "sCampaignId": "campaign-access-1",
+            "dictCampaign": {
+                "dictProjectIdentity": {},
+                "sState": agentCouncilCampaign.S_STATE_ARCHIVED},
+            "dictGateway": {"bFakeGateway": True},
+            "dictRunnerAccess": {"dictEgress": {"sNetworkName": "net"}},
+            "taskDrive": asyncio.ensure_future(_fnTearEgressDownSlowly()),
+            "bLaunchInProgress": False,
+        }
+        taskEpilogue = dictControllerState["dictCampaignRuntime"][
+            "campaign-access-1"]["taskDrive"]
+        try:
+            return await controller.fdictDisposeCampaignRuntime(
+                dictControllerState, "campaign-access-1")
+        finally:
+            # The refusal path leaves the teardown running by design;
+            # retire it here so the loop closes on no pending task.
+            taskEpilogue.cancel()
+            await asyncio.gather(taskEpilogue, return_exceptions=True)
+
+    return dictControllerState, asyncio.run(_fnDispose())
+
+
+def testDeleteWaitsOutTheEpilogueOfASettledCampaign(monkeypatch):
+    """A settled campaign is deletable even mid-teardown (2026-09-22).
+
+    One CI leg refused this delete with "the council is deliberating"
+    while the campaign was ARCHIVED. Nothing was deliberating: the
+    refusal came from the drive task's own epilogue, which performs the
+    same egress teardown the delete was about to perform. Waiting on the
+    task is a settlement proof, not a sleep — and the wait must not
+    cancel the teardown it waits on.
+    """
+    dictCalls = {}
+    dictControllerState, dictDisposed = (
+        _fnRunDisposeAgainstASettlingEpilogue(monkeypatch, dictCalls, 0.15))
+    assert dictDisposed["bDisposed"] is True
+    assert dictCalls["listRemovals"] == ["campaign-access-1"]
+    assert dictControllerState["dictCampaignRuntime"] == {}
+
+
+def testDeleteRefusesAnEpilogueThatOutlastsTheDeadline(monkeypatch):
+    """Past the deadline the refusal names release, never deliberation."""
+    monkeypatch.setattr(
+        controller, "F_DRIVE_EPILOGUE_DEADLINE_SECONDS", 0.05)
+    with pytest.raises(controller.CouncilCommandError) as errorInfo:
+        _fnRunDisposeAgainstASettlingEpilogue(monkeypatch, {}, 5.0)
+    assert "still being released" in str(errorInfo.value)
+    assert "deliberating" not in str(errorInfo.value)

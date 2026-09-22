@@ -210,3 +210,65 @@ def test_fbDockerDaemonReachable_no_docker(mockRun):
 def test_fbDockerDaemonReachable_timeout(mockRun):
     from vaibify.docker import fbDockerDaemonReachable
     assert fbDockerDaemonReachable() is False
+
+
+def testAFailedBuildRetainsItsContextAndPrunesTheOlderOnes(
+    tmp_path, monkeypatch,
+):
+    """The retention runs on the real failure path, not just in isolation.
+
+    Driving ``fnBuildFromConfig`` rather than calling the prune directly
+    is the point: a collector that is never reached on the path that
+    creates the litter collects nothing, and no test of the collector
+    alone can see that.
+    """
+    import pytest
+    from vaibify.cli import commandBuild
+    from vaibify.config import hostResidue, registryManager
+
+    pathBuild = tmp_path / "build"
+    pathBuild.mkdir()
+    monkeypatch.setattr(
+        commandBuild, "_S_BUILD_STAGING_DIRECTORY", str(pathBuild))
+    monkeypatch.setattr(
+        hostResidue, "S_BUILD_CONTEXT_ROOT", str(pathBuild))
+    monkeypatch.setattr(
+        registryManager, "flistGetAllProjects",
+        lambda: [{"sName": "testproj"}])
+
+    listOlder = [f"testproj-oooooo{iIndex:02d}" for iIndex in range(4)]
+    for iIndex, sName in enumerate(listOlder):
+        (pathBuild / sName).mkdir()
+        os.utime(pathBuild / sName, (1_600_000_000 - iIndex * 60,) * 2)
+
+    monkeypatch.setattr(
+        commandBuild, "fnCopyPackagedTree",
+        lambda pathSource, pathTarget: pathTarget.mkdir(parents=True))
+    monkeypatch.setattr(
+        commandBuild, "fnPrepareBuildContext",
+        lambda config, sStagedDir, sProjectDirectory=None: None)
+    monkeypatch.setattr(
+        commandBuild, "_ftReadPinnedEnvironment", lambda: ())
+    monkeypatch.setattr(
+        commandBuild, "_fbResolveNoCache", lambda config, bNoCache: False)
+    monkeypatch.setattr(
+        commandBuild, "fnWarnIfBaseImageFloating", lambda config: None)
+
+    def _fnFailTheBuild(config, sStagedDir, bNoCache=False):
+        raise RuntimeError("the daemon refused the build")
+
+    monkeypatch.setattr(
+        commandBuild, "_ffnImportBuildOrExit", lambda: _fnFailTheBuild)
+
+    with pytest.raises(RuntimeError):
+        commandBuild.fnBuildFromConfig(
+            _fConfigForBuild(), "/docker", False)
+
+    listRemaining = sorted(
+        sPath.name for sPath in pathBuild.iterdir() if sPath.is_dir())
+    assert len(listRemaining) == 3, listRemaining
+    # The failure just seen is retained, and it is the newest.
+    listRetainedOlder = [
+        sName for sName in listRemaining if sName in listOlder]
+    assert listRetainedOlder == listOlder[:2], (
+        "the two newest older contexts are kept beside the new one")

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import os
 import pathlib
 import platform
@@ -37,6 +38,8 @@ from vaibify.resources import fnCopyPackagedTree
 # writes there.
 _S_BUILD_STAGING_DIRECTORY = os.path.expanduser("~/.vaibify/build")
 
+logger = logging.getLogger("vaibify")
+
 
 def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
     """Invoke the Docker image builder with the loaded configuration.
@@ -63,6 +66,7 @@ def fnBuildFromConfig(config, sDockerDir, bNoCache, sProjectDirectory=None):
         fnBuildImage(config, sStagedDir, bNoCache=bEffectiveNoCache)
     except BaseException:
         click.echo(f"[vaib] Build context retained at {sStagedDir}")
+        fnPruneOlderBuildContexts(config)
         raise
     fnDiscardBuildContext(sStagedDir)
     fnRecordBaseImageDigestIfFloating(config)
@@ -96,6 +100,49 @@ def fsStageBuildContext(config, sDockerDir):
     pathStaged.rmdir()
     fnCopyPackagedTree(pathlib.Path(sDockerDir), pathStaged)
     return sStagedDir
+
+
+# How many retained build contexts one project keeps. A failed build
+# retains its context on purpose; nothing ever collected them, so one
+# project held four after a single evening. Three is the failure just
+# seen plus the two before it -- the comparison a researcher makes.
+_I_KEPT_BUILD_CONTEXT_LIMIT = 3
+
+
+def fnPruneOlderBuildContexts(config):
+    """Keep the newest retained contexts for this project, drop the rest.
+
+    Runs on the path that CREATES the litter -- a retained context --
+    so the collection cannot fall behind the accumulation. Scoped by
+    ``hostResidue``, which already owns the rule for which directory
+    belongs to which project; re-deriving that rule here is the prefix
+    match that module exists to prevent.
+
+    Never raises: this runs inside the handler for a build that has
+    already failed, and replacing that failure with a housekeeping
+    error would hide the thing the researcher came to read. It is
+    LOGGED rather than swallowed, so a retention rule that has stopped
+    working leaves a trace instead of looking like a project that
+    never fails a build.
+    """
+    from vaibify.config import hostResidue, registryManager
+    try:
+        listRegisteredNames = [
+            dictEntry["sName"]
+            for dictEntry in registryManager.flistGetAllProjects()
+        ]
+        listPruned = hostResidue.flistPruneStagedContextsForProject(
+            config.sProjectName, _I_KEPT_BUILD_CONTEXT_LIMIT,
+            listRegisteredNames,
+        )
+    except Exception as error:  # noqa: BLE001 -- never masks the build
+        logger.error("Could not prune older build contexts: %s", error)
+        return
+    if listPruned:
+        click.echo(
+            f"[vaib] Removed {len(listPruned)} older retained build "
+            f"context(s); the newest {_I_KEPT_BUILD_CONTEXT_LIMIT} are kept."
+        )
 
 
 def fnDiscardBuildContext(sStagedDir):
