@@ -2825,6 +2825,149 @@ def testARefusedProjectCreationLeavesTheContainerUsable(tclientGated):
     )
 
 
+# The directory this lane adopts, seeded into the parent double's
+# existing-path set so the declared typed-read probes answer it.
+S_ADOPTION_SANDBOX_PATH = "/workspace/adoptedSandbox"
+
+
+class DockerDoubleReadyForAdoption(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double, answering the probes adoption makes.
+
+    Corrects ANSWERS and nothing else, so every operation still runs
+    through the real gate in the parent.
+
+    Adoption asks "is this a directory" and "is a project file already
+    here" through the DECLARED typed-read adapters rather than through
+    ``test`` execs, so both are corrected here: the sandbox is a
+    directory, and nothing is at the project path yet. Each still
+    delegates to the parent first, so the read is gated and recorded
+    exactly as it would be -- only the ANSWER is corrected, which is
+    what keeps the correction from exempting the probe. Letting the
+    parent's unconditional False stand would refuse the adoption as a
+    missing directory and the assertions below would never be reached.
+
+    The two git questions are still execs, and are answered here so
+    that no work tree contains the directory and HEAD does not
+    resolve: without that, the repository and commit stages would both
+    short-circuit and the drain would go unexercised.
+    """
+
+    def fbContainerPathIsDirectory(self, sContainerId, sPath):
+        DockerDoubleThatCallsTheRealGates.fbContainerPathIsDirectory(
+            self, sContainerId, sPath,
+        )
+        return sPath == S_ADOPTION_SANDBOX_PATH
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        DockerDoubleThatCallsTheRealGates.fbContainerPathIsFile(
+            self, sContainerId, sPath,
+        )
+        return False
+
+    def ftResultExecuteCommand(
+        self, sContainerId, sCommand, sWorkdir=None,
+    ):
+        tResult = DockerDoubleThatCallsTheRealGates.ftResultExecuteCommand(
+            self, sContainerId, sCommand, sWorkdir,
+        )
+        if "echo yes" in sCommand:
+            # The tracking sidecar's own presence probe, which reads
+            # the WORD rather than the exit status. Answering it with
+            # a bare zero reported the repository missing and refused
+            # the adoption it had just prepared.
+            return (0, "yes")
+        if "rev-parse --show-toplevel" in sCommand:
+            return (128, "not a repository")
+        if "rev-parse --verify HEAD" in sCommand:
+            return (128, "")
+        return tResult
+
+
+@pytest.mark.falsification
+def testAdoptingADirectoryRunsUnderOneDrain():
+    """Adoption's probes AND its writes run under one mode-(b) drain.
+
+    Adoption is four stages and a dozen container commands, and the
+    probes are the half a migration leaves behind: the repository
+    creation and the project-file write are obviously mutations, while
+    ``test -d``, ``rev-parse`` and ``test -e`` are container COMMANDS
+    the gate also treats as mutating, because a primitive handed
+    command text cannot know what the text does.
+
+    One drain across the whole sequence is the point rather than a
+    convenience. The probe that says "no project file here yet" is what
+    licenses the write, so a lock dropped between them lets a second
+    session adopt the same directory in the gap and one of the two
+    silently wins.
+
+    Kills: replacing ``_fdictAdoptUnderTheDrain``'s
+    fdictRunLockHeldMutation call with a direct call to its worker.
+    """
+    client, connectionDocker = _tConnectGatedClient(
+        DockerDoubleReadyForAdoption(),
+    )
+    response = client.post(
+        f"/api/workflows/{S_CONTAINER_ID}/adopt-directory",
+        json={
+            "sDirectory": "adoptedSandbox",
+            "sProjectName": "Adopted Project",
+        },
+    )
+    assert response.status_code == 200, response.text
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+    _fnAssertExecsNamingRanUnder(
+        connectionDocker, "mkdir -p",
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+    )
+
+
+@pytest.mark.falsification
+def testARefusedAdoptionLeavesTheContainerUsable(tclientGated):
+    """A directory that is not there is a 404, not a quarantine.
+
+    Every refusal adoption raises is an expected 4xx raised from inside
+    the carrier's worker thread. A worker that lets one propagate
+    poisons its journal record and marks the container as needing
+    reconciliation -- so an agent that mistyped a directory name would
+    be told to run ``vaibify reconcile``, and the researcher's
+    container would be out of service over a typo. Adoption is agent
+    callable and advertised as idempotent, which makes a retry the
+    NORMAL case, so this is the refusal path most likely to be taken.
+
+    The proof it did not quarantine is the next mutation succeeding
+    against the same container.
+
+    Kills: dropping the ``errorRefused`` return from
+    ``_fdictAdoptUnderTheDrain``'s worker so every ``HTTPException``
+    propagates out of the carrier's thread.
+    """
+    client, _connectionDocker = tclientGated
+    responseRefused = client.post(
+        f"/api/workflows/{S_CONTAINER_ID}/adopt-directory",
+        json={
+            "sDirectory": "neverCreated",
+            "sProjectName": "Absent Project",
+        },
+    )
+    assert responseRefused.status_code == 404, responseRefused.text
+    assert responseRefused.json()["detail"]["sRemedy"], (
+        "the refusal reached the researcher without a next action"
+    )
+    responseAfter = client.put(
+        f"/api/settings/{S_CONTAINER_ID}",
+        json={"iNumberOfCores": DICT_WORKFLOW["iNumberOfCores"] + 1},
+    )
+    assert responseAfter.status_code == 200, (
+        "the refused adoption quarantined the container: a later "
+        f"mutation answered {responseAfter.status_code} -- "
+        f"{responseAfter.text}"
+    )
+
+
 def _fdictWorkflowOneStepBelowTheWarning():
     """Return the draft workflow padded to 99 steps.
 

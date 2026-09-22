@@ -22409,4 +22409,198 @@ def _fdictEntry(sRel):
         old='        clientDocker = fdockerCreateDisposableClient()\n',
         new='        import docker\n        clientDocker = docker.from_env()\n',
     ),
+    # --- 2026-09-21: adopting a directory as a Project. The guards
+    # worth mutating are the ones that protect the researcher's own
+    # repository: the file adoption must not overwrite, the directory
+    # it must not create, the history it must not touch, and the
+    # remedy every refusal owes an agent that cannot see the
+    # dashboard. ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAnExistingProjectFileIsNeverOverwritten'
+        ),
+        # every adoption writes the blank template over what is there
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    if _fbProbePath(\n'
+            '        connectionDocker.fbContainerPathIsFile,\n'
+            '        sContainerId, sTargetPath,\n'
+            '    ):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAMissingDirectoryIsRefusedRatherThanCreated'
+        ),
+        # adoption creates the directory it was asked to adopt
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    fnRefuseAdoption(\n'
+            '        404, "adoption-directory-missing",\n'
+            '        f"There is no directory at \'{sFullPath}\'.",\n'
+            '        "Create the directory first (the Files panel, or'
+            ' \'mkdir\' in "\n'
+            '        "the terminal), then adopt it. Adoption never'
+            ' creates the "\n'
+            '        "directory, so a typo cannot silently produce an'
+            ' empty "\n'
+            '        "project.",\n'
+            '    )\n'
+        ),
+        new=(
+            '    connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, f"mkdir -p {fsShellQuote(sFullPath)}",\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAdoptingASubdirectoryOfARepositoryIsRefused'
+        ),
+        # git init runs inside somebody else's work tree
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    if sExistingRoot and sExistingRoot != sFullPath:\n'
+            '        _fnRefuseDirectoryInsideAnotherRepository('
+            'sFullPath, sExistingRoot)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testARepositoryThatAlreadyHasCommitsGainsNoNewOne'
+        ),
+        # every adoption drops a commit into the researcher's history
+        source='vaibify/gui/projectAdoption.py',
+        old='    if iHeadCode == 0:\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAdoptionIssuesNoHistoryRewritingCommand'
+        ),
+        # the empty root gets grafted beneath existing history, which
+        # is the by-hand repair this module deliberately does not do
+        source='vaibify/gui/projectAdoption.py',
+        old='    if iHeadCode == 0:\n        return False\n',
+        new=(
+            '    if iHeadCode == 0:\n'
+            '        connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId,\n'
+            '            f"git -C {sQuoted} rebase --onto HEAD --root",\n'
+            '        )\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testEveryAdoptionRefusalCarriesARemedy'
+        ),
+        # a refusal stops naming the next action
+        source='vaibify/gui/projectAdoption.py',
+        old='        "sRemedy": sRemedy,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testTheWrittenProjectFileCarriesItsOwnName'
+        ),
+        # the new project file omits its own name, as the template did
+        source='vaibify/gui/projectAdoption.py',
+        old='        "sWorkflowName": sProjectName,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoption.py::'
+            'testAProjectInADifferentRepositoryDoesNotCountAsThisOne'
+        ),
+        # the already-hosts check stops comparing the REPOSITORY, so
+        # the first project in the workspace suppresses adoption
+        # everywhere else -- the name-vs-id bug class
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '        if dictWorkflow.get("sProjectRepoPath") == '
+            'sRepositoryPath:\n'
+            '            return dictWorkflow\n'
+        ),
+        new='        return dictWorkflow\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAdoptingADirectoryRunsUnderOneDrain'
+        ),
+        # the carrier is gone, so the gate refuses the sequence
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        "adopt-directory-as-project", fdictAdoptTheDirectory,\n'
+            '    )\n'
+        ),
+        new='    dictOutcome = {"result": fdictAdoptTheDirectory()}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedAdoptionLeavesTheContainerUsable'
+        ),
+        # the refusal propagates out of the carrier's worker, so a
+        # mistyped directory name quarantines the container
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: projectAdoption'
+            '.fdictAdoptDirectoryAsProject(\n'
+            '                dictCtx["docker"], sContainerId, sDirectory,\n'
+            '                sProjectName, sFileName,\n'
+            '            ),\n'
+            '            setAlsoCarriedStatusCodes=frozenset({500}),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, "objResult":\n'
+            '                projectAdoption'
+            '.fdictAdoptDirectoryAsProject(\n'
+            '                    dictCtx["docker"], sContainerId,\n'
+            '                    sDirectory, sProjectName, sFileName,\n'
+            '                )}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAnOmittedFileNameStillWritesARealProjectFile'
+        ),
+        # the file name is used verbatim, so an omitted one resolves to
+        # the projects DIRECTORY and adoption reports success for a
+        # project it never wrote
+        source='vaibify/gui/projectAdoption.py',
+        old='    sFileName = fsResolveProjectFileName(sFileName, sProjectName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testARetryIsNotMistakenForADuplicateName'
+        ),
+        # a safe retry refuses against the project it created itself
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '        if dictWorkflow["sPath"] == sTargetPath:\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
 ]

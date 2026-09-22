@@ -6798,7 +6798,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +5 (2026-09-21): session renewal joins the excluded set. An
     # agent that could restart the researcher's session clock could
     # keep a credential alive past the attention it exists to track.
-    "actionCatalog.py": 1339,
+    # +28 (2026-09-21): adopt-directory-as-project, one row plus the
+    # comment recording why it is the one project-structure action
+    # that is bAgentSafe True. The policy reversal is the part a
+    # reader will want justified, so it is written beside the row.
+    "actionCatalog.py": 1367,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

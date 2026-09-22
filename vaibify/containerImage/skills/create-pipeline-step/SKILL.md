@@ -8,6 +8,46 @@ description: Author a new, fully wired vaibify pipeline step — scripts, declar
 The goal is a fully wired step with zero untracked files and a
 dependency graph the backend can parse mechanically.
 
+## Phase 0: Is there a project at all?
+
+A step needs a project to live in. If the work is sitting in a plain
+workspace directory — one you or the researcher created, with no
+`project.json` — adopt the directory first:
+
+```
+vaibify-do adopt-directory-as-project '{"sDirectory": "myAnalysis",
+  "sProjectName": "Name the toolbar should show"}'
+```
+
+One action does the whole thing: makes the directory a git repository
+if it is not one, gives it a commit if it has none, writes the
+`project.json`, and registers the repository so the dashboard offers
+the project. `sDirectory` must already exist, directly under
+`/workspace` — adoption never creates it, so a typo refuses instead of
+producing an empty project beside the real one.
+
+It is idempotent. A re-run reports `saStagesPerformed` and
+`saStagesAlreadySatisfied` instead of refusing, and never overwrites an
+existing project file, so retrying after an unclear answer is safe. A
+directory that already hosts a project reports that project rather than
+adding a second one.
+
+**Never hand-write `project.json` to create a project.** The file will
+be real and the repository will still be unregistered, so every
+workflow action refuses with "No project is open" and the researcher
+ends up with directories they cannot open. Hand-editing is for a
+project that already exists, and `vaibify-do` is better even then.
+
+Two things to tell the researcher afterwards, because you cannot do
+them:
+
+- **They open the project** from the Project field in the toolbar.
+  Adoption cannot open it for them; say so explicitly rather than
+  reporting the project as ready to use.
+- If adoption refuses, relay its `sMessage` and `sRemedy` verbatim.
+  Every refusal names the next action, and the `sRefusal` code is
+  stable enough to branch on.
+
 ## Phase 1: Discover context
 
 1. Find the project JSON:
