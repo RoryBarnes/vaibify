@@ -166,3 +166,31 @@ def testAClaimThatStillHoldsOpensTheWorkflow(pageDashboard, serverHub):
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
     pageDashboard.wait_for_selector("#hostModeBadge", timeout=20000)
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+@pytest.mark.falsification
+def testALostClaimIsReclaimedWhenABlankProjectOpens(
+    pageDashboard, serverHub,
+):
+    """The recovery belongs to the REFUSAL, not to the workflow picker.
+
+    ``claim-required`` is raised on ``/api/connect``, and the picker is
+    only one of its callers: opening a Blank Project posts the same
+    route and met the same reaped claim. It reported the refusal's own
+    sentence -- "Select it again on the project list to claim it" --
+    from a screen that is not the project list, naming a control the
+    researcher could not reach. Recovering here is the same claim plus
+    the same retry, so the click just works.
+
+    Kills: recovering only inside the workflow picker, leaving every
+    other ``/api/connect`` caller to print an instruction its
+    researcher cannot act on.
+    """
+    _fnReachTheWorkflowPicker(pageDashboard, serverHub)
+    _fnTakeTheClaimAway(serverHub)
+    pageDashboard.click("#btnNoWorkflow")
+    pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    assert S_HOST_PROJECT_READY in (
+        serverHub.app.state.dictContainerOwners
+    ), "the Blank Project opened without re-claiming the project"
+    assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors

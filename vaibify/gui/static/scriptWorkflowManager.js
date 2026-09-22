@@ -238,9 +238,10 @@ var VaibifyWorkflowManager = (function () {
             return true;
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return true;
-            if (_fbClaimWasLost(error)) {
+            if (VaibifyContainerManager
+                    .fbConnectRefusalIsALostClaim(error)) {
                 if (await _fbReclaimAndRetryOnce(
-                    sId, sWorkflowPathArg, sWorkflowName,
+                    error, sId, sWorkflowPathArg, sWorkflowName,
                     iThisGeneration
                 )) return true;
                 _fnReturnToProjectList(error);
@@ -255,34 +256,16 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
-    var _S_REFUSAL_CLAIM_REQUIRED = "claim-required";
-
-    function _fbClaimWasLost(error) {
-        /* Keyed on the machine-readable code, never the prose: the
-           sibling 409 ("in use in another browser session") has no
-           recovery to offer, and a recovery keyed on the word "claim"
-           would fire for it too. */
-        var dictDetail = (error && error.dictDetail) || {};
-        return dictDetail.sRefusal === _S_REFUSAL_CLAIM_REQUIRED;
-    }
-
     async function _fbReclaimAndRetryOnce(
-        sId, sWorkflowPathArg, sWorkflowName, iThisGeneration
+        error, sId, sWorkflowPathArg, sWorkflowName, iThisGeneration
     ) {
-        /* The refusal's named recovery is "select the project again to
-           claim it" -- a claim plus a retry, which the dashboard can
-           run itself. The reaper collects a claim after thirty
-           socket-less seconds and the workflow picker holds no socket,
-           so a researcher who paused to read the list met this refusal
-           on their very next click (live report, 2026-08-20).
-           Arbitration still governs the reclaim: a project another
-           vaibify process holds refuses it, and the caller then walks
-           back to the project list as before. */
-        var sName = VaibifyContainerManager.fsGetSelectedContainerName();
-        if (!sName) return false;
-        var bClaimed =
-            await VaibifyContainerManager.fbClaimContainer(sName);
-        if (!bClaimed) return false;
+        /* The reclaim itself is shared (VaibifyContainerManager); what
+           is local here is the RETRY, which re-fetches this workflow
+           and activates it. A reclaim the server refuses walks the
+           researcher back to the project list, as before. */
+        if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
+            error
+        )) return false;
         var dictResult;
         try {
             dictResult = await _fdictFetchWorkflow(
@@ -763,17 +746,34 @@ var VaibifyWorkflowManager = (function () {
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var sWorkflowPath = VaibifyApp.fsGetWorkflowPath();
         if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
+        var sUrl = "/api/connect/" + sContainerId + "?sWorkflowPath=" +
+            encodeURIComponent(sWorkflowPath);
         try {
-            await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sContainerId +
-                "?sWorkflowPath=" +
-                encodeURIComponent(sWorkflowPath)
-            );
+            await VaibifyApi.fdictPostRaw(sUrl);
         } catch (error) {
-            VaibifyDiagnosis.fnReportFailure(
-                "The project's current state could not be saved: " +
-                VaibifyUtilities.fsSanitizeErrorForUser(error.message));
+            /* A lapsed claim is recoverable and this save is the step
+               BEFORE a workflow switch: reporting it and moving on
+               discarded the researcher's state over a reaped claim
+               they never saw expire. Reclaim and save again; only a
+               reclaim the server refuses is reported. */
+            if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
+                error
+            )) {
+                _fnReportSaveFailure(error);
+                return;
+            }
+            try {
+                await VaibifyApi.fdictPostRaw(sUrl);
+            } catch (errorRetry) {
+                _fnReportSaveFailure(errorRetry);
+            }
         }
+    }
+
+    function _fnReportSaveFailure(error) {
+        VaibifyDiagnosis.fnReportFailure(
+            "The project's current state could not be saved: " +
+            VaibifyDiagnosis.fsExplainError(error));
     }
 
     /* --- Creation Wizard --- */

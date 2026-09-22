@@ -11002,7 +11002,8 @@ def _fdictEntry(sRel):
         # toast dance of the 2026-08-20 live report restored.
         old=(
             '                if (await _fbReclaimAndRetryOnce(\n'
-            '                    sId, sWorkflowPathArg, sWorkflowName,\n'
+            '                    error, sId, sWorkflowPathArg, '
+            'sWorkflowName,\n'
             '                    iThisGeneration\n'
             '                )) return true;\n'
         ),
@@ -11011,15 +11012,35 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testLostClaimIsRecoverable.py::'
+            'testALostClaimIsReclaimedWhenABlankProjectOpens'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Connect without the reclaim: the Blank-Project open prints
+        # "Select it again on the project list" from a screen that is
+        # not the project list, naming a control out of reach.
+        old=(
+            '            var dictConnect = '
+            'await _fdictConnectReclaimingOnce(sId);\n'
+        ),
+        new=(
+            '            var dictConnect = await VaibifyApi.fdictPostRaw(\n'
+            '                "/api/connect/" + sId);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
             'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
         ),
-        source='vaibify/gui/static/scriptWorkflowManager.js',
+        source='vaibify/gui/static/scriptContainerManager.js',
         # Treat any error as a lost claim: an in-use refusal then runs
         # a doomed reclaim and walks a researcher who cannot fix it
-        # back to a tile that refuses them again.
+        # back to a tile that refuses them again. The predicate now
+        # serves every /api/connect caller, so this mutation reaches
+        # the Blank-Project open and the workflow save too.
         old=(
             '        return dictDetail.sRefusal === '
-            '_S_REFUSAL_CLAIM_REQUIRED;\n'
+            'S_REFUSAL_CLAIM_REQUIRED;\n'
         ),
         new='        return true;\n',
     ),

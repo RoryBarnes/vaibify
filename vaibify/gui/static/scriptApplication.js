@@ -1050,10 +1050,26 @@ const VaibifyApp = (function () {
         _dictWorkflowState.iCachedProofLevel = null;
     }
 
+    async function _fdictConnectReclaimingOnce(sId) {
+        /* Opening a Blank Project meets the same reaped-claim refusal
+           the workflow picker does, and its message names a control --
+           the project tile -- that is one screen away. Recover the way
+           the picker does rather than print an instruction the
+           researcher cannot follow from here; a reclaim the server
+           refuses rethrows, and the caller reports it. */
+        try {
+            return await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
+        } catch (error) {
+            if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
+                error
+            )) throw error;
+            return await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
+        }
+    }
+
     async function fnEnterNoWorkflow(sId) {
         try {
-            var dictConnect = await VaibifyApi.fdictPostRaw(
-                "/api/connect/" + sId);
+            var dictConnect = await _fdictConnectReclaimingOnce(sId);
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
