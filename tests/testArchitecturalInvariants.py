@@ -7234,7 +7234,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # or in a Blank Project is under the same cap, and a container
     # scope would leave exactly those researchers unable to answer the
     # warning they were shown.
-    "routeScope.py": 1030,
+    # 1030 -> 1046 (2026-09-22), MEASURED on the file: the lease may
+    # be presented in the query string on the download path, because a
+    # browser download is an anchor click that carries no headers and
+    # can be given none -- without it the route answered 403 for a
+    # lease the researcher held, and "Download to this computer" could
+    # not work in any browser. The growth is the carve-out plus the
+    # reasoning for it, which a security accommodation has to carry.
+    # It stays in this module because this is where a lease is read;
+    # the path segment itself is browserSession's, so the credential
+    # and lease carve-outs cannot drift apart.
+    "routeScope.py": 1046,
 }
 
 

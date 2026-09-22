@@ -2333,6 +2333,49 @@ class DockerConnection:
         finally:
             fileTar.close()
 
+    def fnCopyHostPathIntoContainer(
+        self, sContainerId, sHostSource, sContainerDestination,
+    ):
+        """Copy one host file or directory in, owned by the container user.
+
+        The composed form of the two writers above, and the reason the
+        CLI's ``vaibify push`` no longer shells out to ``docker cp``:
+        that lands the destination owned by root, and the container
+        user is unprivileged with no sudo by design, so everything
+        pushed became unmodifiable by the researcher and by the
+        in-container agent. It lives HERE rather than beside the CLI
+        because both writers and the directory probe it needs are
+        here, and a copy assembled anywhere else is a mutation-capable
+        reach around the gateway that owns them.
+
+        ``docker cp``'s destination reading is preserved: a
+        destination naming an existing directory receives the source
+        under its own basename; any other destination IS the path to
+        write.
+        """
+        import os
+        import posixpath
+        bDestinationIsDirectory = self.fbContainerPathIsDirectory(
+            sContainerId, sContainerDestination,
+        )
+        if os.path.isdir(sHostSource):
+            self.fnWriteTreeViaTar(
+                sContainerId,
+                sContainerDestination if bDestinationIsDirectory
+                else posixpath.dirname(sContainerDestination),
+                [sHostSource],
+            )
+            return
+        with open(sHostSource, "rb") as fileSource:
+            baContent = fileSource.read()
+        self.fnWriteFileViaTar(
+            sContainerId,
+            posixpath.join(
+                sContainerDestination, os.path.basename(sHostSource),
+            ) if bDestinationIsDirectory else sContainerDestination,
+            baContent,
+        )
+
     @staticmethod
     def _ffileBuildTreeTar(listHostPaths, iUid, iGid):
         """Return a rewound tar of the host paths, owned by the container user.

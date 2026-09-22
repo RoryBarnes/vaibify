@@ -32,6 +32,7 @@ Requires the `claude` CLI on PATH. Exits 1 if any "with"-arm grade fails.
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -100,12 +101,46 @@ def fdictRunAgent(pathWorktree, sPrompt, sPermissionMode, iTimeoutSeconds):
     return {"bCompleted": result.returncode == 0, "sOutputTail": sTail}
 
 
+def fsEnsurePythonShimDirectory():
+    """Return a directory whose ``python`` is the interpreter running us.
+
+    The grade commands are written the way a researcher types them --
+    ``python -m pytest`` -- and plenty of machines have no ``python``
+    at all: only ``python3``, or an interpreter that is not on PATH.
+    Every grade then fails with "command not found" in BOTH arms, and
+    the harness reports that the skill did not steer the agent to a
+    correct result. That verdict is about the machine, not the skill,
+    and a confident wrong verdict is worse than no verdict -- which is
+    what this harness produced on its author's Mac, for every task,
+    until a --dry-run was read carefully (2026-09-22).
+    """
+    pathShim = Path(tempfile.gettempdir()) / "vaibifySkillEvalBin"
+    pathShim.mkdir(parents=True, exist_ok=True)
+    pathPython = pathShim / "python"
+    if not pathPython.exists():
+        pathPython.symlink_to(sys.executable)
+    return str(pathShim)
+
+
+def fdictGradingEnvironment():
+    """Return the environment a grade command runs in."""
+    dictEnvironment = dict(os.environ)
+    dictEnvironment["PATH"] = (
+        fsEnsurePythonShimDirectory()
+        + os.pathsep
+        + dictEnvironment.get("PATH", "")
+    )
+    return dictEnvironment
+
+
 def flistGradeTask(pathWorktree, listGradeCommands):
     """Run each grade command in the worktree; return (sCommand, bPassed) tuples."""
+    dictEnvironment = fdictGradingEnvironment()
     listResults = []
     for sCommand in listGradeCommands:
         result = subprocess.run(
-            sCommand, shell=True, cwd=pathWorktree, capture_output=True, text=True
+            sCommand, shell=True, cwd=pathWorktree, capture_output=True,
+            text=True, env=dictEnvironment,
         )
         listResults.append((sCommand, result.returncode == 0))
     return listResults

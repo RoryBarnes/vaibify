@@ -692,8 +692,23 @@ def _fdictDeclareControlPlaneScope(sScope, sPath=""):
 
 
 def fsLeaseFromRequest(request):
-    """Return the ``X-Vaibify-Lease`` header value, or '' when absent."""
-    return request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
+    """Return the lease the request presents.
+
+    The header is the only presentation for every route but one. A
+    download is performed by the BROWSER -- an anchor click, which
+    carries no custom headers and can be given none -- so it could
+    never satisfy the lease guard and answered 403 to a researcher
+    asking for their own file. It therefore rides the query string on
+    exactly the path the session credential already does, keyed on
+    that module's segment so the two carve-outs cannot drift into
+    admitting different requests. The header wins wherever it exists.
+    """
+    sHeader = request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
+    if sHeader:
+        return sHeader
+    if browserSession.S_QUERY_CREDENTIAL_PATH_SEGMENT in request.url.path:
+        return request.query_params.get("sLeaseId", "")
+    return ""
 
 
 def _ftResolveOwnerTarget(dictContainerOwners, dictScope, sTargetValue):
@@ -739,9 +754,9 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
         ):
             return I_AUTHORIZED
         return I_REJECT_FORBIDDEN
-    sCredential = request.headers.get("x-session-token", "")
     sBrowserSessionId = browserSession.fsSessionIdForCredential(
-        dictBrowserSessions, sCredential,
+        dictBrowserSessions,
+        browserSession.fsBrowserPresentedCredential(request),
     )
     if not sBrowserSessionId:
         return I_REJECT_FORBIDDEN
@@ -779,7 +794,8 @@ def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
     if request.headers.get(actionCatalog.S_SESSION_HEADER_NAME.lower(), ""):
         return I_REJECT_FORBIDDEN
     sBrowserSessionId = browserSession.fsSessionIdForCredential(
-        dictBrowserSessions, request.headers.get("x-session-token", ""),
+        dictBrowserSessions,
+        browserSession.fsBrowserPresentedCredential(request),
     )
     if not sBrowserSessionId:
         return I_REJECT_FORBIDDEN
