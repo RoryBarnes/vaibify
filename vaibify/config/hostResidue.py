@@ -33,6 +33,15 @@ bound the blast radius to the named project:
    non-recursive listing of each, and every returned path is verified
    to sit directly beneath its root. A name is never joined blindly.
 
+The same ownership walk serves a second, non-destructive-path
+disposition: RETENTION. A failed build keeps its context on purpose,
+and nothing collected them, so a living project accrued one per
+failure forever. ``flistPruneStagedContextsForProject`` keeps the
+newest few and removes the rest — it is narrow for the same reason
+and by the same route, because a retention rule that selected by
+prefix or glob would reach a neighbour's contexts exactly as a sweep
+would.
+
 Orphans — residue whose project is no longer registered — are
 DESCRIBED here and never removed. "Remove from list" un-registers a
 project and leaves every byte where it was, by design, so a sweep
@@ -44,6 +53,8 @@ honest; reclaiming them is the researcher's call.
 __all__ = [
     "flistDescribeResidueForProject",
     "flistRemoveResidueForProject",
+    "flistDescribeStagedContextsForProject",
+    "flistPruneStagedContextsForProject",
     "fdictDescribeOrphanedResidue",
     "S_BUILD_CONTEXT_ROOT",
     "S_BUILD_HASH_ROOT",
@@ -111,6 +122,46 @@ def _flistEntriesIn(sRoot):
         return []
 
 
+def _flistOwnedPathsIn(sRoot, sProjectName, listRegisteredNames, fbBelongs):
+    """Return the paths directly under one root this project alone owns.
+
+    Every one of the module's three rules is applied here, so a new
+    disposition cannot acquire a path by a looser route than the
+    existing ones.
+    """
+    listPaths = []
+    for sEntryName in _flistEntriesIn(sRoot):
+        if not fbBelongs(sEntryName):
+            continue
+        if _fbAnotherProjectCouldOwn(
+            sEntryName, sProjectName, listRegisteredNames,
+        ):
+            logger.warning(
+                "Residue %s left alone: another registered project "
+                "could own it.", sEntryName,
+            )
+            continue
+        sPath = os.path.join(sRoot, sEntryName)
+        # The third rule, enforced rather than assumed: a path that
+        # does not sit directly beneath its root is not ours.
+        if os.path.dirname(os.path.abspath(sPath)) != sRoot:
+            continue
+        listPaths.append(sPath)
+    return listPaths
+
+
+def flistDescribeStagedContextsForProject(
+    sProjectName, listRegisteredNames=None,
+):
+    """Return this project's kept build contexts, under the build root."""
+    if not sProjectName:
+        return []
+    return _flistOwnedPathsIn(
+        S_BUILD_CONTEXT_ROOT, sProjectName, listRegisteredNames,
+        lambda sName: _fbNameIsAStagedContextOf(sName, sProjectName),
+    )
+
+
 def flistDescribeResidueForProject(sProjectName, listRegisteredNames=None):
     """Return the absolute paths this project alone owns on the host.
 
@@ -120,31 +171,12 @@ def flistDescribeResidueForProject(sProjectName, listRegisteredNames=None):
     """
     if not sProjectName:
         return []
-    listPaths = []
-    for sRoot, fbBelongs in (
-        (S_BUILD_CONTEXT_ROOT,
-         lambda sName: _fbNameIsAStagedContextOf(sName, sProjectName)),
-        (S_BUILD_HASH_ROOT,
-         lambda sName: sName == sProjectName + _S_HASH_SUFFIX),
-    ):
-        for sEntryName in _flistEntriesIn(sRoot):
-            if not fbBelongs(sEntryName):
-                continue
-            if _fbAnotherProjectCouldOwn(
-                sEntryName, sProjectName, listRegisteredNames,
-            ):
-                logger.warning(
-                    "Residue %s left alone: another registered project "
-                    "could own it.", sEntryName,
-                )
-                continue
-            sPath = os.path.join(sRoot, sEntryName)
-            # The third rule, enforced rather than assumed: a path that
-            # does not sit directly beneath its root is not ours.
-            if os.path.dirname(os.path.abspath(sPath)) != sRoot:
-                continue
-            listPaths.append(sPath)
-    return listPaths
+    return flistDescribeStagedContextsForProject(
+        sProjectName, listRegisteredNames,
+    ) + _flistOwnedPathsIn(
+        S_BUILD_HASH_ROOT, sProjectName, listRegisteredNames,
+        lambda sName: sName == sProjectName + _S_HASH_SUFFIX,
+    )
 
 
 def flistRemoveResidueForProject(sProjectName, listRegisteredNames=None):
@@ -156,10 +188,15 @@ def flistRemoveResidueForProject(sProjectName, listRegisteredNames=None):
     leftover temporary directory would report a deletion that did not
     happen.
     """
-    listRemoved = []
-    for sPath in flistDescribeResidueForProject(
+    return _flistRemoveEach(flistDescribeResidueForProject(
         sProjectName, listRegisteredNames,
-    ):
+    ))
+
+
+def _flistRemoveEach(listPaths):
+    """Remove each path, logging and skipping what will not go."""
+    listRemoved = []
+    for sPath in listPaths:
         try:
             if os.path.isdir(sPath) and not os.path.islink(sPath):
                 shutil.rmtree(sPath)
@@ -169,6 +206,40 @@ def flistRemoveResidueForProject(sProjectName, listRegisteredNames=None):
         except OSError as error:
             logger.error("Could not remove residue %s: %s", sPath, error)
     return listRemoved
+
+
+def _fdModifiedTimeOrZero(sPath):
+    """Return a path's mtime, or 0 for one that cannot be stated."""
+    try:
+        return os.path.getmtime(sPath)
+    except OSError:
+        return 0.0
+
+
+def flistPruneStagedContextsForProject(
+    sProjectName, iKeepMostRecent, listRegisteredNames=None,
+):
+    """Keep this project's newest kept build contexts; remove the rest.
+
+    A failed build deliberately keeps its context so the researcher can
+    read what produced the failure, and nothing ever collected them: a
+    living project accrued one per failure forever. Retention is a
+    COUNT rather than an age, because what a researcher wants is the
+    failure they just saw and the couple before it, whenever they
+    happened.
+
+    Narrow on exactly the terms the rest of this module is: candidates
+    come from the same ownership walk, so a context this project cannot
+    prove it owns is never a prune candidate, let alone a victim.
+    """
+    if iKeepMostRecent < 0:
+        raise ValueError("iKeepMostRecent must not be negative")
+    listContexts = sorted(
+        flistDescribeStagedContextsForProject(
+            sProjectName, listRegisteredNames),
+        key=_fdModifiedTimeOrZero, reverse=True,
+    )
+    return _flistRemoveEach(listContexts[iKeepMostRecent:])
 
 
 def fdictDescribeOrphanedResidue(listRegisteredNames):

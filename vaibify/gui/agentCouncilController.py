@@ -1115,6 +1115,50 @@ def _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, sAction):
             "for the current turn to settle or request a stop")
 
 
+# How long a delete waits on the drive epilogue of a campaign the record
+# already calls terminal. The epilogue is a turn retirement plus one
+# egress teardown, so this is a generous ceiling on a bounded sequence,
+# not a guess at how long deliberation runs.
+F_DRIVE_EPILOGUE_DEADLINE_SECONDS = 5.0
+
+
+async def _fnSettleTerminalDriveEpilogue(dictControllerState, sCampaignId):
+    """Wait out a settled campaign's drive epilogue instead of refusing it.
+
+    The engine checkpoints a terminal state the INSTANT it transitions,
+    but the drive task lives on through its epilogue: it retires the
+    turn, then tears the campaign's egress boundary down in a worker
+    thread - a daemon round-trip. A researcher who watches the dashboard
+    reach ``archived`` and clicks Delete lands inside that window, and a
+    liveness refusal there is false twice over. Nothing is deliberating,
+    and the work being refused over is the very teardown the delete goes
+    on to perform itself. So a campaign the record already calls
+    terminal WAITS for its own epilogue; one still live afterwards
+    refuses naming the real reason.
+
+    ``asyncio.wait`` is load-bearing over ``wait_for``: a timeout here
+    must leave the teardown running, and ``wait_for`` would cancel it
+    mid-flight, orphaning the network nobody then proved gone. A drive
+    that is not live, one whose record is still deliberating, and one
+    still inside its launch window all fall through to the unchanged
+    refusal.
+    """
+    if not fbCampaignDriveIsLive(dictControllerState, sCampaignId):
+        return
+    dictRuntime = dictControllerState["dictCampaignRuntime"][sCampaignId]
+    if (dictRuntime["dictCampaign"].get("sState")
+            not in LIST_NO_FURTHER_TURN_STATES):
+        return
+    if dictRuntime.get("taskDrive") is None:
+        return
+    await asyncio.wait([dictRuntime["taskDrive"]],
+                       timeout=F_DRIVE_EPILOGUE_DEADLINE_SECONDS)
+    if fbCampaignDriveIsLive(dictControllerState, sCampaignId):
+        raise CouncilCommandError(
+            "cannot delete: the campaign has settled, but its runner "
+            "resources are still being released; retry in a moment")
+
+
 async def fdictLaunchCampaignDeliberation(
         dictControllerState, dictStore, dictRegistry, sCampaignId,
         ffnCaptureSnapshot, sImageReference,
@@ -2071,6 +2115,7 @@ async def fdictDisposeCampaignRuntime(dictControllerState, sCampaignId):
     startup sweep unable to compose the names of whatever survived.
     """
     from . import agentCouncilChat
+    await _fnSettleTerminalDriveEpilogue(dictControllerState, sCampaignId)
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "delete")
     dictChatSettled = await agentCouncilChat.fdictCloseChatSession(
         dictControllerState, sCampaignId)

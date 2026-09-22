@@ -22474,11 +22474,11 @@ def _fdictEntry(sRel):
         # the registry cross-check is dropped, leaving one line of defence
         source='vaibify/config/hostResidue.py',
         old=(
-            '            if _fbAnotherProjectCouldOwn(\n'
-            '                sEntryName, sProjectName, listRegisteredNames,\n'
-            '            ):\n'
+            '        if _fbAnotherProjectCouldOwn(\n'
+            '            sEntryName, sProjectName, listRegisteredNames,\n'
+            '        ):\n'
         ),
-        new='            if False:\n',
+        new='        if False:\n',
     ),
     Falsification(
         nodeid=(
@@ -22489,8 +22489,32 @@ def _fdictEntry(sRel):
         # path from the project NAME and trust it, instead of
         # matching a listing and verifying the root
         source='vaibify/config/hostResidue.py',
-        old='    listPaths = []\n    for sRoot, fbBelongs in (\n        (S_BUILD_CONTEXT_ROOT,\n         lambda sName: _fbNameIsAStagedContextOf(sName, sProjectName)),\n        (S_BUILD_HASH_ROOT,\n         lambda sName: sName == sProjectName + _S_HASH_SUFFIX),\n    ):\n        for sEntryName in _flistEntriesIn(sRoot):\n            if not fbBelongs(sEntryName):\n                continue\n            if _fbAnotherProjectCouldOwn(\n                sEntryName, sProjectName, listRegisteredNames,\n            ):\n                logger.warning(\n                    "Residue %s left alone: another registered project "\n                    "could own it.", sEntryName,\n                )\n                continue\n            sPath = os.path.join(sRoot, sEntryName)\n            # The third rule, enforced rather than assumed: a path that\n            # does not sit directly beneath its root is not ours.\n            if os.path.dirname(os.path.abspath(sPath)) != sRoot:\n                continue\n            listPaths.append(sPath)\n',
-        new='    listPaths = []\n    for sRoot, sSuffix in (\n        (S_BUILD_CONTEXT_ROOT, ""),\n        (S_BUILD_HASH_ROOT, _S_HASH_SUFFIX),\n    ):\n        sPath = os.path.join(sRoot, sProjectName + sSuffix)\n        if os.path.exists(sPath):\n            listPaths.append(sPath)\n',
+        old='    return flistDescribeStagedContextsForProject(\n        sProjectName, listRegisteredNames,\n    ) + _flistOwnedPathsIn(\n        S_BUILD_HASH_ROOT, sProjectName, listRegisteredNames,\n        lambda sName: sName == sProjectName + _S_HASH_SUFFIX,\n    )\n',
+        new='    listPaths = []\n    for sRoot, sSuffix in (\n        (S_BUILD_CONTEXT_ROOT, ""),\n        (S_BUILD_HASH_ROOT, _S_HASH_SUFFIX),\n    ):\n        sPath = os.path.join(sRoot, sProjectName + sSuffix)\n        if os.path.exists(sPath):\n            listPaths.append(sPath)\n    return listPaths\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testPruneNeverReachesAnotherProjectsContexts'
+        ),
+        # retention selects by prefix instead of asking who owns the
+        # directory, so the oldest candidates are a neighbour's
+        source='vaibify/config/hostResidue.py',
+        old=(
+            '    listContexts = sorted(\n'
+            '        flistDescribeStagedContextsForProject(\n'
+            '            sProjectName, listRegisteredNames),\n'
+            '        key=_fdModifiedTimeOrZero, reverse=True,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listContexts = sorted(\n'
+            '        (os.path.join(S_BUILD_CONTEXT_ROOT, sName)\n'
+            '         for sName in _flistEntriesIn(S_BUILD_CONTEXT_ROOT)\n'
+            '         if sName.startswith(sProjectName + "-")),\n'
+            '        key=_fdModifiedTimeOrZero, reverse=True,\n'
+            '    )\n'
+        ),
     ),
     Falsification(
         nodeid=(

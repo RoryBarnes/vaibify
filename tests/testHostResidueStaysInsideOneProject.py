@@ -274,3 +274,66 @@ def testOrphanedResidueIsDescribedAndNeverRemoved():
     assert "Orphan" not in sCode, (
         "deleting one environment must never reach for another's residue"
     )
+
+
+def _fnStampAgeOrder(pathBuild, listNamesNewestFirst):
+    """Give the named contexts descending mtimes, newest first."""
+    for iRank, sName in enumerate(listNamesNewestFirst):
+        os.utime(pathBuild / sName, (1_700_000_000 - iRank * 60,) * 2)
+
+
+def testPruneKeepsTheNewestContextsAndRemovesTheOlder(fnBuildResidueTree):
+    """Retention is a count over mtime, newest kept."""
+    listNames = [f"fillet-aaaaaaa{iIndex}" for iIndex in range(5)]
+    pathBuild, _ = fnBuildResidueTree(listContextNames=listNames)
+    _fnStampAgeOrder(pathBuild, listNames)
+    listPruned = hostResidue.flistPruneStagedContextsForProject(
+        "fillet", 3, ["fillet"])
+    assert sorted(listPruned) == sorted(
+        str(pathBuild / sName) for sName in listNames[3:])
+    assert sorted(sPath.name for sPath in pathBuild.iterdir()) == sorted(
+        listNames[:3])
+
+
+@pytest.mark.falsification
+def testPruneNeverReachesAnotherProjectsContexts(fnBuildResidueTree):
+    """``fillet``'s retention must not collect ``fillet-extra``'s contexts.
+
+    The prune is a second destructive disposition on the same roots, so
+    it inherits the same obligation the delete sweep carries: a name
+    another registered project explains is left alone even when it
+    would otherwise be the oldest candidate. Pruning by a glob, or by
+    a prefix, sweeps a neighbour's build state.
+
+    Kills: selecting retention candidates by a name prefix or a glob
+    over the build root, instead of the ownership walk every other
+    disposition in this module goes through.
+    """
+    listMine = [f"fillet-bbbbbbb{iIndex}" for iIndex in range(4)]
+    listNeighbour = [f"fillet-extra-{S_SUFFIX_A}",
+                     f"fillet-extra-{S_SUFFIX_B}"]
+    pathBuild, pathCache = fnBuildResidueTree(
+        listContextNames=listMine + listNeighbour,
+        listHashNames=["fillet-arg-hash"])
+    _fnStampAgeOrder(pathBuild, listMine)
+    # The neighbour's contexts are the oldest on disk, so a prune that
+    # ranked by age without asking who owns them would take them first.
+    for sName in listNeighbour:
+        os.utime(pathBuild / sName, (1_600_000_000,) * 2)
+    listPruned = hostResidue.flistPruneStagedContextsForProject(
+        "fillet", 3, ["fillet", "fillet-extra"])
+    assert listPruned == [str(pathBuild / listMine[3])]
+    for sName in listNeighbour:
+        assert (pathBuild / sName).is_dir()
+    assert (pathCache / "fillet-arg-hash").is_file(), (
+        "the prune governs build contexts only; the argument hash is "
+        "not a retained context")
+
+
+def testPruneIsANoOpBelowTheRetentionCount(fnBuildResidueTree):
+    """Fewer contexts than the limit means nothing is removed."""
+    listNames = [f"fillet-{S_SUFFIX_A}", f"fillet-{S_SUFFIX_B}"]
+    pathBuild, _ = fnBuildResidueTree(listContextNames=listNames)
+    assert hostResidue.flistPruneStagedContextsForProject(
+        "fillet", 3, ["fillet"]) == []
+    assert len(list(pathBuild.iterdir())) == 2
