@@ -103,12 +103,30 @@ def testCompletionRegistersNoRetiredCommandName(sShellName):
     )
 
 
+# macOS still ships bash 3.2 as /bin/bash, and that is the bash a
+# researcher's completion actually runs under. Driving whatever `bash`
+# resolves to on PATH tests a 5.x from a package manager instead, and
+# passed locally while the shipped script used a bash-4 builtin that
+# made completion offer nothing at all on a stock Mac.
+S_SYSTEM_BASH = "/bin/bash"
+
+# Builtins and syntax that do not exist in bash 3.2. Each one fails
+# SILENTLY inside a completion function -- the shell reports nothing
+# and the researcher simply sees no suggestions.
+LIST_BASH_FOUR_ONLY = [
+    ("mapfile", "mapfile"),
+    ("readarray", "readarray"),
+    ("declare -A", "associative arrays"),
+    ("${!", "indirect/prefix expansion in this form"),
+]
+
+
 def _fsDriveBashCompletion(sLine, sFunction="_fnCompleteVaibify"):
     """Return the completions bash offers for one typed line.
 
-    Drives the shipped script in a real bash, with the container probe
-    replaced: the point is which POSITION gets container paths, not
-    whether a daemon is reachable from a test.
+    Drives the shipped script in the SYSTEM bash, with the container
+    probe replaced: the point is which POSITION gets container paths,
+    not whether a daemon is reachable from a test.
     """
     sPath = _fsCompletionPathForShell("bash")
     saWords = sLine.split("|")
@@ -124,7 +142,7 @@ COMPREPLY=()
 printf '%s\\n' "${{COMPREPLY[@]}}"
 """
     tResult = subprocess.run(
-        ["bash", "-c", sProgram], capture_output=True, text=True,
+        [S_SYSTEM_BASH, "-c", sProgram], capture_output=True, text=True,
     )
     return [sLine for sLine in tResult.stdout.split("\n") if sLine]
 
@@ -180,3 +198,39 @@ def testTheSubcommandListStillCompletes():
     assert "push" in listSubcommands and "build" in listSubcommands, (
         f"the subcommand list regressed: {listSubcommands}"
     )
+
+
+@pytest.mark.falsification
+def testTheBashScriptRunsUnderTheBashMacOsShips():
+    """bash 3.2 is the floor, because /bin/bash on macOS still is.
+
+    A bash-4 builtin does not raise anything a completion function
+    surfaces: the shell writes "not found" to stderr nobody reads and
+    the researcher sees no suggestions. `mapfile` shipped in this
+    script and container-path completion had never worked on a stock
+    Mac -- caught by CI's macOS legs, never by a developer whose PATH
+    bash came from a package manager.
+
+    Kills: reintroducing mapfile/readarray or any other bash-4-only
+    construct into the completion script.
+    """
+    sScript = _fsReadCompletionScript("bash")
+    sCode = re.sub(r"^\s*#.*$", "", sScript, flags=re.M)
+    listFound = [
+        sDescription for sToken, sDescription in LIST_BASH_FOUR_ONLY
+        if sToken in sCode
+    ]
+    assert listFound == [], (
+        f"the completion script uses {listFound}, absent from bash 3.2 "
+        f"which macOS ships as {S_SYSTEM_BASH}; completion then offers "
+        f"nothing and says nothing"
+    )
+
+
+def testTheShippedScriptsParseUnderTheSystemBash():
+    """A syntax error would disable completion wholesale."""
+    tResult = subprocess.run(
+        [S_SYSTEM_BASH, "-n", _fsCompletionPathForShell("bash")],
+        capture_output=True, text=True,
+    )
+    assert tResult.returncode == 0, tResult.stderr

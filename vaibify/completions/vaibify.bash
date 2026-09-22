@@ -126,8 +126,15 @@ _fnCompleteTransferArgument() {
         return
     fi
     _fnReadVcConfig
-    local daMatches
-    mapfile -t daMatches < <(_fnListContainerPaths "${sCurrent}" "${VC_NAME}" "${VC_WORKSPACE}")
+    # A read loop, not `mapfile`: that builtin arrived in bash 4 and
+    # macOS still ships 3.2 as /bin/bash, where it is simply not found
+    # and the completion silently offered nothing. Container-path
+    # completion had never worked on a stock Mac.
+    local daMatches=()
+    local sMatch
+    while IFS= read -r sMatch; do
+        daMatches+=("${sMatch}")
+    done < <(_fnListContainerPaths "${sCurrent}" "${VC_NAME}" "${VC_WORKSPACE}")
     if [ ${#daMatches[@]} -gt 0 ]; then
         COMPREPLY=("${daMatches[@]}")
         compopt -o nospace

@@ -11016,6 +11016,30 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testShellCompletionWiring.py::'
+            'testTheBashScriptRunsUnderTheBashMacOsShips'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Use mapfile again -- a bash 4 builtin absent from the bash
+        # macOS ships as /bin/bash. Inside a completion function it
+        # fails silently, so container-path completion offers nothing
+        # and reports nothing, which is how it stayed broken.
+        old=(
+            '    local daMatches=()\n'
+            '    local sMatch\n'
+            '    while IFS= read -r sMatch; do\n'
+            '        daMatches+=("${sMatch}")\n'
+            '    done < <(_fnListContainerPaths "${sCurrent}" '
+            '"${VC_NAME}" "${VC_WORKSPACE}")\n'
+        ),
+        new=(
+            '    local daMatches\n'
+            '    mapfile -t daMatches < <(_fnListContainerPaths '
+            '"${sCurrent}" "${VC_NAME}" "${VC_WORKSPACE}")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
             'testPushCompletesContainerPathsOnlyForItsDestination'
         ),
         source='vaibify/completions/vaibify.bash',
