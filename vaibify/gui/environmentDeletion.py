@@ -79,11 +79,15 @@ def fdictDeleteEnvironment(dictProject):
         _flistRemoveImages(sContainerName, listFailures)
         if bContainerRemoved else []
     )
+    listResidue = (
+        _flistRemoveHostResidue(sName) if bContainerRemoved else []
+    )
     return {
         "sName": sName,
         "bContainerRemoved": bContainerRemoved,
         "listVolumesRemoved": listVolumes,
         "listImagesRemoved": listImages,
+        "listResidueRemoved": listResidue,
         "bRegistryEntryRemoved": (
             not listFailures and _fbRemoveRegistryEntry(sName, listFailures)
         ),
@@ -164,6 +168,36 @@ def _flistRemoveImages(sProjectName, listFailures):
         else:
             listFailures.append(f"could not remove the image {sReference}")
     return listRemoved
+
+
+def _flistRemoveHostResidue(sName):
+    """Remove the build contexts and argument hash this project owns.
+
+    Scoped by ``hostResidue``, which is written to be narrow rather
+    than thorough: an exact staged-context name, a cross-check against
+    every OTHER registered project, and nothing outside the two known
+    directories. The registry is read HERE and passed in, so the
+    cross-check is made against the projects that exist at the moment
+    of deletion rather than a list assembled somewhere else.
+
+    Deliberately not added to ``listFailures``. Leftover residue is not
+    a failed deletion -- the container, volumes and images are already
+    gone -- and treating it as one would keep the registry entry and
+    tell the researcher the environment still exists.
+    """
+    from vaibify.config import hostResidue
+    try:
+        listRegisteredNames = [
+            dictEntry["sName"]
+            for dictEntry in registryManager.flistGetAllProjects()
+        ]
+    except Exception:  # noqa: BLE001 — an unreadable registry narrows nothing
+        logger.error("Delete: could not read the registry for the "
+                     "residue cross-check; leaving host residue alone.")
+        return []
+    return hostResidue.flistRemoveResidueForProject(
+        sName, listRegisteredNames,
+    )
 
 
 def _fbRemoveRegistryEntry(sName, listFailures):

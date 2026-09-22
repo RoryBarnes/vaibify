@@ -83,6 +83,26 @@ Four things not to undo:
   ONE parser of the block: the epoch tool imports it rather than
   keeping a whole-file regex, which would merge both lists.
 
+## An image carries what it was built FROM, on two axes
+
+The recipe fingerprint (`dockerfileComposer.S_RECIPE_IMAGE_LABEL`)
+covers the texts vaibify ships. A second label,
+`configurationFingerprint.S_CONFIGURATION_IMAGE_LABEL`, covers the
+researcher's own `vaibify.yml` -- but only the fields the BUILD
+consumes. Together they answer "was this image built from these texts
+and this configuration", and the dashboard reads the second one on
+every container entry so an edit that needs a rebuild says so instead
+of being met by the old behaviour a restart later.
+
+Two things not to undo. `T_BAKED_CONFIGURATION_FIELDS` is a claim about
+what requires a rebuild: adding a field says changing it does, leaving
+one out says it does not, and both are claims about the build rather
+than preferences -- check the Dockerfile's build args, the generated
+`container.conf`, and the overlay selection before touching it. And the
+label is stamped on the BASE build alone: Docker inherits a parent
+image's labels, so every overlay carries it, where the recipe label is
+re-stamped per overlay because its value differs per chain.
+
 **`introspectionScript.py` is an f-string executed inside containers.**
 Editing it as ordinary Python loses escape sequences and string
 delimiters silently. The format-handling duplication with

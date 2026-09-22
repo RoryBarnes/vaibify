@@ -1,6 +1,7 @@
 """Fail CI if any AGENTS.md references a path that no longer exists."""
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +44,16 @@ SET_GENERIC_FILENAME_EXAMPLES = {
     # resolve locally and not in CI, which is how the gap ships.
     "environment.json",
     "syncStatus.json",
+    # THE RESEARCHER'S OWN project configuration -- the file agent docs
+    # name most often, and one that exists in no vaibify checkout,
+    # because `.gitignore` lists it precisely so a maintainer's own
+    # vaibify.yml for this repository is never committed. It cost 32
+    # red checks on one pull request (2026-09-21). It is listed here
+    # for its NAME rather than its absence: `fbPathIsGitIgnored` now
+    # refuses any gitignored resolution, so the class is closed either
+    # way, and this entry keeps the report quiet about a filename the
+    # docs will go on naming forever.
+    "vaibify.yml",
 }
 
 
@@ -101,23 +112,56 @@ def flistExtractBareFilenames(sContent):
     return [s for s in listRaw if s not in SET_GENERIC_FILENAME_EXAMPLES]
 
 
+def fbPathIsGitIgnored(pathCandidate):
+    """Return True when git would ignore this path.
+
+    THE CLASS BEHIND THE INSTANCE. A reference that resolves only
+    against a gitignored file resolves on the machine that has one and
+    nowhere else -- which is the exact opposite of what this tool is
+    for. The prose above already warned about "an untracked scratch
+    copy"; warning is not enforcement, and the next maintainer to write
+    ``vaibify.yml`` in a skill would have met the same 32 red checks.
+
+    An unreadable git (no repository, no git on PATH) answers False:
+    this tool must never fail a run over its own convenience check, and
+    CI is the environment where the answer matters and git is present.
+    """
+    try:
+        processResult = subprocess.run(
+            ["git", "check-ignore", "-q", str(pathCandidate)],
+            cwd=str(REPO_ROOT), capture_output=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return processResult.returncode == 0
+
+
+def _fbExistsAndIsTracked(pathCandidate):
+    """Return True when the path exists AND git would not ignore it."""
+    if not pathCandidate.exists():
+        return False
+    return not fbPathIsGitIgnored(pathCandidate)
+
+
 def fbReferenceResolves(pathDoc, sReference):
     """Return True when sReference resolves relative to the doc or repo root."""
     if sReference.startswith("/"):
-        return (REPO_ROOT / sReference.lstrip("/")).exists()
-    if (pathDoc.parent / sReference).resolve().exists():
+        return _fbExistsAndIsTracked(REPO_ROOT / sReference.lstrip("/"))
+    if _fbExistsAndIsTracked((pathDoc.parent / sReference).resolve()):
         return True
-    return (REPO_ROOT / sReference).exists()
+    return _fbExistsAndIsTracked(REPO_ROOT / sReference)
 
 
 def fbBareFilenameResolves(pathDoc, sFilename):
     """Return True when sFilename exists anywhere searchable under the repo."""
-    if (pathDoc.parent / sFilename).exists():
+    if _fbExistsAndIsTracked(pathDoc.parent / sFilename):
         return True
-    if (REPO_ROOT / sFilename).exists():
+    if _fbExistsAndIsTracked(REPO_ROOT / sFilename):
         return True
     for pathMatch in REPO_ROOT.rglob(sFilename):
         if fbPathIsInsideExcludedTree(pathMatch):
+            continue
+        if fbPathIsGitIgnored(pathMatch):
             continue
         return True
     return False

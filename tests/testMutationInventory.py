@@ -151,7 +151,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # create and its refresh being different decisions with different
 # consents; splitting a site and classifying both halves is the shape
 # this ratchet is meant to reward.
-I_UNCLASSIFIED_ROW_BUDGET = 282
+# 282 -> 281 (2026-09-21): commandDestroy's private SDK image
+# removal went with the tag-derivation that made it wrong;
+# imageBuilder answers which images a project owns, for both
+# callers.
+I_UNCLASSIFIED_ROW_BUDGET = 281
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -327,7 +331,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 282
 # after a 14-day container ImportError'd a publish. Classified at
 # birth; the write cannot live inside a gateway because the bytes
 # it stages are the reproducibility package's own source.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 221
+# -> 220 (2026-09-21): same removal. One fewer raw docker client
+# outside the gateways, because the CLI stopped building one.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 220
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -358,7 +364,11 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 221
 # dockerContext -- a module that already holds the docker-CLI
 # capability and its disposition. One authority on where vaibify
 # is pointing, and one fewer acquisition to review.
-I_UNDISPOSED_ACQUISITION_BUDGET = 59
+# 59 -> 58 (2026-09-21): commandDestroy.fnRemoveImage's
+# `import docker` went with the function. hostResidue, its
+# replacement's neighbour, acquires nothing -- it touches only
+# two known host directories and never the daemon.
+I_UNDISPOSED_ACQUISITION_BUDGET = 58
 
 
 def _fmoduleGenerator():

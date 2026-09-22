@@ -22,18 +22,42 @@ def fnRemoveVolume(sVolumeName):
         sys.exit(1)
 
 
-def fnRemoveImage(sFullName):
-    """Remove a Docker image by full name."""
-    import docker
-    dockerClient = docker.from_env()
+def flistRemoveProjectImages(sProjectName):
+    """Remove every tag in the project's repository; return what went.
+
+    A build does not leave one image behind. It tags ``:base``, one tag
+    per overlay, and finally ``:latest`` -- so this used to remove
+    ``:latest`` alone and tell the researcher the environment was gone
+    while most of its bytes stayed on the daemon. Measured on one
+    researcher's machine: destroying a six-tag project would have
+    untagged 4.18 GB of references and stranded ``:base``, ``:claude``,
+    ``:codex``, ``:antigravity`` and ``:opencode`` behind it
+    (2026-09-21).
+
+    THE SET IS NOT DERIVED HERE. ``imageBuilder`` already answers
+    "which images are this project's", and the dashboard's Delete has
+    always asked it; this command asking a second way is how the two
+    came to disagree in the first place. One authority, two callers.
+    """
+    from vaibify.docker import imageBuilder
     try:
-        dockerClient.images.remove(sFullName, force=True)
-        click.echo(f"Removed image: {sFullName}")
-    except docker.errors.ImageNotFound:
-        click.echo(f"Image '{sFullName}' does not exist.")
-    except docker.errors.APIError as error:
-        click.echo(f"Error removing image: {error}")
+        listReferences = imageBuilder.flistProjectImageReferences(
+            sProjectName,
+        )
+    except RuntimeError as error:
+        click.echo(f"Error listing images: {error}")
         sys.exit(1)
+    if not listReferences:
+        click.echo(f"No images found for '{sProjectName}'.")
+        return []
+    listRemoved = []
+    for sReference in listReferences:
+        if imageBuilder.fbRemoveImage(sReference):
+            click.echo(f"Removed image: {sReference}")
+            listRemoved.append(sReference)
+        else:
+            click.echo(f"Could not remove the image {sReference}.")
+    return listRemoved
 
 
 def fnRequireDocker():
@@ -58,7 +82,6 @@ def fnDestroyCommand(sProjectName):
     fnRequireDocker()
     config = fconfigResolveProject(sProjectName)
     sVolumeName = f"{config.sProjectName}-workspace"
-    sFullName = f"{config.sProjectName}:latest"
     if not click.confirm(
         f"This will remove the workspace volume "
         f"'{sVolumeName}'. Continue?"
@@ -67,7 +90,8 @@ def fnDestroyCommand(sProjectName):
         return
     fnRemoveVolume(sVolumeName)
     if click.confirm(
-        "Also remove the Docker image?", default=False
+        "Also remove the Docker images (the base layer, every overlay, "
+        "and latest)?", default=False
     ):
-        fnRemoveImage(sFullName)
+        flistRemoveProjectImages(config.sProjectName)
     click.echo("Destroy complete.")

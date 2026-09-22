@@ -90,6 +90,37 @@ kill-confirmed guard, and it also pins the opposite error: the two
 halves of one remote's check are mutually exclusive by construction, so
 neither may charge a service twice.
 
+**A container older than its own `vaibify.yml` says so, and an image
+that predates the stamp says nothing.** Everything a researcher writes
+in `vaibify.yml` that the BUILD consumes -- repositories, system and
+Python packages, base image, Python version, container user, workspace
+root, binaries, features -- is baked in at build time, and the
+dashboard used to be silent about that. One researcher corrected a
+misspelled package and a wrong branch, restarted the container, and met
+the same three warnings, having already fixed their cause on disk
+(2026-09-21). The build now stamps a hash of those fields as
+`configurationFingerprint.S_CONFIGURATION_IMAGE_LABEL`, the readiness
+answer compares it with the file as it is NOW, and the banner renders
+`listConfigurationDrift` -- the server's sentences, never a predicate
+of its own. Three properties hold it honest, and each is a way to turn
+it back into a lie:
+
+- **Run-time fields are deliberately OUT of the fingerprint.** Ports,
+  bind mounts, secrets, network isolation and the CPU/memory ceilings
+  are applied by `docker run`, so they take effect on the next start.
+  A fingerprint that covered them would send a researcher through an
+  hour-long rebuild to publish a port, which is how a true warning
+  becomes one people turn off.
+- **No label is *nothing determined*, never drift.** An image built
+  before the stamp existed carries none, and the comparison is
+  three-state for the same reason `environmentDrift` is.
+- **It rides its own key, not `saWarnings`.** That list is headed
+  "from the most recent container start"; this is a statement about a
+  file the researcher edited since, and filing it there would make the
+  banner's own heading false.
+
+`tests/testConfigurationFingerprint.py` is the kill-confirmed guard.
+
 **A remote badge pulses while vaibify is asking, and a failed ask is
 never red.** Opening a project re-checks every CONFIGURED remote
 (`POST /api/workflow/{id}/remotes/refresh`), the poll REPORTS where
