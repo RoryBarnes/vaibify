@@ -487,3 +487,190 @@ def testRealContainerRefusesToGuessAmongTwoWorkflows():
     _fnRunInContainer(
         connection, sContainer, f"rm -rf {S_RERUN_ACCEPTANCE_ROOT}",
     )
+
+
+# ----------------------------------------------------------------------
+# Adopting a directory as a Project, against a real container
+# ----------------------------------------------------------------------
+#
+# tests/testProjectAdoption.py drives the same sequence against a stub
+# that answers the commands the module issues. That stub cannot show
+# those answers are what a real git gives, and it cannot show the
+# adopted project is one the dashboard will actually list -- which is
+# the whole claim. Both are asked here.
+
+# Adoption hands a bare repository NAME to the tracking sidecar, which
+# resolves it against the resource's own repository root -- so the
+# directory has to sit directly under that root, not under a /tmp path
+# this lane invented. Driving it from /tmp is how the root divergence
+# below was found, and pinning it here is what keeps the lane honest:
+# the sandbox lives where a researcher's would.
+S_ADOPTION_DIRECTORY = "adoptionSandbox"
+S_ADOPTION_PROJECT_NAME = "Adoption acceptance project"
+S_ADOPTION_FILE_NAME = "adoptionAcceptance.json"
+
+
+def _fsAdoptionSandboxPath(sContainer):
+    """Return the sandbox path under this resource's repository root."""
+    from vaibify.gui import trackedReposManager
+    return (
+        trackedReposManager.fsRepositoryRootFor(sContainer)
+        + "/" + S_ADOPTION_DIRECTORY
+    )
+
+
+def _fnRemoveAdoptionSandbox(connection, sContainer):
+    """Delete the throwaway directory this lane adopts."""
+    connection.ftResultExecuteCommand(
+        sContainer, f"rm -rf {_fsAdoptionSandboxPath(sContainer)}",
+    )
+
+
+def _fnMakeAdoptionSandbox(connection, sContainer):
+    """Create an empty throwaway directory for the lane to adopt."""
+    _fnRemoveAdoptionSandbox(connection, sContainer)
+    _fnRunInContainer(
+        connection, sContainer,
+        f"mkdir -p {_fsAdoptionSandboxPath(sContainer)}",
+    )
+
+
+def _fdictAdoptInContainer(connection, sContainer):
+    """Adopt the throwaway directory through the production code path."""
+    from vaibify.gui import projectAdoption
+    return projectAdoption.fdictAdoptDirectoryAsProject(
+        connection, sContainer, S_ADOPTION_DIRECTORY,
+        S_ADOPTION_PROJECT_NAME, S_ADOPTION_FILE_NAME,
+    )
+
+
+def testAdoptingARealDirectoryProducesADiscoverableProject():
+    """The end-to-end claim: adoption yields a project discovery LISTS.
+
+    This is the failure the whole action exists to end. An agent wrote
+    a ``project.json`` by hand, the file was real, and the dashboard
+    had never heard of the repository -- so the researcher could see
+    the directories appear and had no way to open the project. A stub
+    cannot catch that, because the stub IS the discovery answer. Here
+    the project is written by the real code into a real container and
+    then looked for by the real finder.
+    """
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    from vaibify.gui import projectAdoption, workflowManager
+    _fnMakeAdoptionSandbox(connection, sContainer)
+    try:
+        dictReport = _fdictAdoptInContainer(connection, sContainer)
+        # The three stages a bare directory must need. Tracking is
+        # deliberately NOT asserted as newly-performed: the sidecar
+        # persists in the container across runs, so a second run of
+        # this lane legitimately finds the repository already tracked,
+        # and demanding otherwise would make the lane pass once and
+        # then fail forever on the same container.
+        for sStage in [
+            projectAdoption.S_STAGE_CREATED_REPOSITORY,
+            projectAdoption.S_STAGE_CREATED_INITIAL_COMMIT,
+            projectAdoption.S_STAGE_WROTE_PROJECT_FILE,
+        ]:
+            assert sStage in dictReport["saStagesPerformed"], (
+                f"a bare directory should have needed {sStage}: "
+                f"{dictReport}"
+            )
+        listFound = workflowManager.flistFindWorkflowsInContainer(
+            connection, sContainer,
+        )
+        listNames = [dictEntry["sName"] for dictEntry in listFound]
+        assert S_ADOPTION_PROJECT_NAME in listNames, (
+            f"adoption produced a project discovery cannot see: "
+            f"{listFound!r}"
+        )
+    finally:
+        _fnRemoveAdoptionSandbox(connection, sContainer)
+
+
+def testAdoptedProjectIsDiscoveredUnderItsOwnNameNotItsFileName():
+    """Discovery reports the display name, so the Project field shows it.
+
+    Both hand-authored projects in the field displayed their file names
+    because the template omitted ``sWorkflowName``. Asserting the name
+    through REAL discovery is what ties the key adoption writes to the
+    string the toolbar renders; asserting the written JSON alone would
+    only prove adoption wrote a key nobody reads.
+    """
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    from vaibify.gui import workflowManager
+    _fnMakeAdoptionSandbox(connection, sContainer)
+    try:
+        dictReport = _fdictAdoptInContainer(connection, sContainer)
+        listFound = workflowManager.flistFindWorkflowsInContainer(
+            connection, sContainer,
+        )
+        dictEntry = next(
+            dictCandidate for dictCandidate in listFound
+            if dictCandidate["sPath"] == dictReport["sProjectPath"]
+        )
+        assert dictEntry["sName"] == S_ADOPTION_PROJECT_NAME
+        assert dictEntry["sName"] != S_ADOPTION_FILE_NAME
+        assert dictEntry["sProjectRepoPath"] == (
+            dictReport["sRepositoryPath"]
+        ), "the adopted repo is not the repo discovery resolves"
+    finally:
+        _fnRemoveAdoptionSandbox(connection, sContainer)
+
+
+def testAdoptionIsIdempotentAgainstARealContainer():
+    """A second adoption changes nothing and says so.
+
+    Idempotence is asserted against a stub too, but only here does the
+    "already there" answer come from a real filesystem and a real git
+    -- the two things an agent's retry actually meets.
+    """
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    _fnMakeAdoptionSandbox(connection, sContainer)
+    try:
+        _fdictAdoptInContainer(connection, sContainer)
+        _fnRunInContainer(
+            connection, sContainer,
+            f"printf 'sentinel' >> "
+            f"{_fsAdoptionSandboxPath(sContainer)}"
+            f"/.vaibify/projects/{S_ADOPTION_FILE_NAME}",
+        )
+        dictSecond = _fdictAdoptInContainer(connection, sContainer)
+        assert dictSecond["saStagesPerformed"] == []
+        assert dictSecond["bProjectIsNew"] is False
+        sContent = _fnRunInContainer(
+            connection, sContainer,
+            f"cat {dictSecond['sProjectPath']}",
+        )
+        assert sContent.rstrip().endswith("sentinel"), (
+            "the second adoption overwrote the project file"
+        )
+    finally:
+        _fnRemoveAdoptionSandbox(connection, sContainer)
+
+
+def testAdoptionWritesTheProjectFileAsTheContainerUser():
+    """The adopted project.json must be editable by the in-container agent.
+
+    A backend write whose tar entry defaults to uid 0 lands root-owned,
+    and the agent -- which has no sudo by design -- then cannot add a
+    step to the project adoption just made for it. This is exactly the
+    boundary Lane 1 cannot speak for.
+    """
+    sContainer = _fsRequireAcceptanceContainer()
+    connection = _fconnectionOpen()
+    _fnMakeAdoptionSandbox(connection, sContainer)
+    try:
+        dictReport = _fdictAdoptInContainer(connection, sContainer)
+        sOwner = _fnRunInContainer(
+            connection, sContainer,
+            f"stat -c '%u' {dictReport['sProjectPath']}",
+        )
+        assert sOwner.strip() == "1000", (
+            f"project file is owned by uid {sOwner.strip()}, so the "
+            "container user cannot edit it"
+        )
+    finally:
+        _fnRemoveAdoptionSandbox(connection, sContainer)
