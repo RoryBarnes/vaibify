@@ -2556,6 +2556,47 @@ body.proof-level-3 .toolbar-label {
     text-decoration: underline;
 }
 
+/* The adopt-a-directory bar. Sits under the breadcrumb because the
+   directory it acts on is the one the breadcrumb names. */
+#fileAdoptProjectBar {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.adopt-project-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.adopt-project-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.adopt-project-name {
+    flex: 1;
+    min-width: 120px;
+    padding: 4px 6px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+}
+
+.adopt-project-outcome {
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    white-space: pre-line;
+}
+
 #listFiles {
     flex: 1;
     overflow-y: auto;

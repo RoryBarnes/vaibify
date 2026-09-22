@@ -333,7 +333,35 @@ I_UNCLASSIFIED_ROW_BUDGET = 281
 # it stages are the reproducibility package's own source.
 # -> 220 (2026-09-21): same removal. One fewer raw docker client
 # outside the gateways, because the CLI stopped building one.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 220
+# RAISED 220 -> 226 (2026-09-22), MEASURED on the regenerated
+# inventory of the MERGED tree rather than summed -- the branch
+# that removed the client above landed first, and adding this
+# branch's delta to the pre-merge ceiling would have recorded 227
+# for a tree that measures 226: adopting a directory as a Project.
+# Six rows, all in gui/projectAdoption.py, all inside that route's one
+# mode-(b) drain, all classified at birth. Three of the nine container
+# operations adoption performs are NOT here, because the path
+# questions go through the declared typed reads (`directoryExists`,
+# `fileExists`) instead of `test` execs -- this ratchet is what made
+# that the obvious shape, which is the ratchet working.
+#   +1 `rev-parse --show-toplevel`, the probe that refuses a directory
+#   inside somebody else's repository. Mutation-capable only because
+#   it reaches the general exec primitive, which cannot tell a query
+#   from a delete; the candidate that would lower this again is a
+#   declared typed READ for "which work tree contains this path".
+#   +1 `rev-parse --verify HEAD`, the unborn-HEAD probe. Same shape,
+#   same candidate ("does HEAD resolve").
+#   +1 `git init`, a real mutation, ordered after the
+#   enclosing-repository refusal so it can never nest a repository.
+#   +1 `git commit --allow-empty`, reached ONLY for an unborn HEAD, so
+#   existing history is never appended to and never rewritten.
+#   +1 `mkdir -p` of .vaibify/projects, ordered after the same refusal
+#   so a refused adoption leaves no directory behind.
+#   +1 the project.json fnWriteFile. It cannot live inside a gateway
+#   for the same reason the Zenodo staging write above cannot: the
+#   bytes ARE the project contract, so a gateway would have to know
+#   the schema to hold them.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
 
 
 # Every acquisition of a declared capability that still has no reviewed

@@ -636,6 +636,27 @@
                         id="btnConvertToProject">
                     Convert to Project…</button>
             </div>
+            <!-- The container-mode twin of the bar above. A directory
+                 an agent or a terminal created in the workspace is a
+                 sandbox until somebody says otherwise; this is where
+                 that is said, and it is the same one action the
+                 in-container agent calls. -->
+            <div id="fileAdoptProjectBar" style="display: none;">
+                <label class="adopt-project-label"
+                       for="inputAdoptProjectName">
+                    Make this directory a Project</label>
+                <div class="adopt-project-controls">
+                    <input type="text" id="inputAdoptProjectName"
+                           class="adopt-project-name"
+                           maxlength="200"
+                           placeholder="Project name shown in the toolbar">
+                    <button type="button" class="btn btn-adopt-project"
+                            id="btnAdoptProject">Make Project</button>
+                </div>
+                <div id="adoptProjectOutcome"
+                     class="adopt-project-outcome" role="status"
+                     aria-live="polite" hidden></div>
+            </div>
             <div id="listFiles"></div>
             <!-- Names the machine the bytes come from. Dropping a file
                  always reads it from the browser's own computer, which
