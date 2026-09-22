@@ -691,33 +691,22 @@ def _fdictDeclareControlPlaneScope(sScope, sPath=""):
     return {"sScope": sScope, "sTargetParam": None, "sIdentityKind": None}
 
 
-# The one path on which a lease may be presented in the query string.
-# Kept as a module constant, and deliberately the SAME segment the
-# session middleware's own carve-out keys on, so the two cannot drift
-# into admitting different requests.
-S_QUERY_LEASE_PATH_SEGMENT = "/download/"
-
-
 def fsLeaseFromRequest(request):
     """Return the lease the request presents.
 
-    The ``X-Vaibify-Lease`` header is the only presentation for every
-    route but one. A file download is performed by the BROWSER --
-    an anchor click, which carries no custom headers and cannot be
-    given any -- so a download could never satisfy the lease guard and
-    answered 403 to the researcher who asked for their own file. The
-    lease therefore rides the query string on exactly that path, as
-    the session credential already does on the very same URL and as
-    the WebSocket routes already accept it.
-
-    Narrow on purpose: the header is preferred wherever it exists, and
-    the query is read on no other path, so this widens what a download
-    may present and nothing else.
+    The header is the only presentation for every route but one. A
+    download is performed by the BROWSER -- an anchor click, which
+    carries no custom headers and can be given none -- so it could
+    never satisfy the lease guard and answered 403 to a researcher
+    asking for their own file. It therefore rides the query string on
+    exactly the path the session credential already does, keyed on
+    that module's segment so the two carve-outs cannot drift into
+    admitting different requests. The header wins wherever it exists.
     """
     sHeader = request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
     if sHeader:
         return sHeader
-    if S_QUERY_LEASE_PATH_SEGMENT in request.url.path:
+    if browserSession.S_QUERY_CREDENTIAL_PATH_SEGMENT in request.url.path:
         return request.query_params.get("sLeaseId", "")
     return ""
 
