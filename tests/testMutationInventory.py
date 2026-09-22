@@ -151,7 +151,11 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # create and its refresh being different decisions with different
 # consents; splitting a site and classifying both halves is the shape
 # this ratchet is meant to reward.
-I_UNCLASSIFIED_ROW_BUDGET = 282
+# 282 -> 281 (2026-09-21): commandDestroy's private SDK image
+# removal went with the tag-derivation that made it wrong;
+# imageBuilder answers which images a project owns, for both
+# callers.
+I_UNCLASSIFIED_ROW_BUDGET = 281
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -327,8 +331,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 282
 # after a 14-day container ImportError'd a publish. Classified at
 # birth; the write cannot live inside a gateway because the bytes
 # it stages are the reproducibility package's own source.
-# RAISED 221 -> 227 (2026-09-22), MEASURED on the regenerated
-# inventory rather than summed: adopting a directory as a Project.
+# -> 220 (2026-09-21): same removal. One fewer raw docker client
+# outside the gateways, because the CLI stopped building one.
+# RAISED 220 -> 226 (2026-09-22), MEASURED on the regenerated
+# inventory of the MERGED tree rather than summed -- the branch
+# that removed the client above landed first, and adding this
+# branch's delta to the pre-merge ceiling would have recorded 227
+# for a tree that measures 226: adopting a directory as a Project.
 # Six rows, all in gui/projectAdoption.py, all inside that route's one
 # mode-(b) drain, all classified at birth. Three of the nine container
 # operations adoption performs are NOT here, because the path
@@ -352,7 +361,7 @@ I_UNCLASSIFIED_ROW_BUDGET = 282
 #   for the same reason the Zenodo staging write above cannot: the
 #   bytes ARE the project contract, so a gateway would have to know
 #   the schema to hold them.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -383,7 +392,11 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
 # dockerContext -- a module that already holds the docker-CLI
 # capability and its disposition. One authority on where vaibify
 # is pointing, and one fewer acquisition to review.
-I_UNDISPOSED_ACQUISITION_BUDGET = 59
+# 59 -> 58 (2026-09-21): commandDestroy.fnRemoveImage's
+# `import docker` went with the function. hostResidue, its
+# replacement's neighbour, acquires nothing -- it touches only
+# two known host directories and never the daemon.
+I_UNDISPOSED_ACQUISITION_BUDGET = 58
 
 
 def _fmoduleGenerator():

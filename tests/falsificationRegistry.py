@@ -22409,12 +22409,147 @@ def _fdictEntry(sRel):
         old='        clientDocker = fdockerCreateDisposableClient()\n',
         new='        import docker\n        clientDocker = docker.from_env()\n',
     ),
-    # --- 2026-09-21: adopting a directory as a Project. The guards
-    # worth mutating are the ones that protect the researcher's own
-    # repository: the file adoption must not overwrite, the directory
-    # it must not create, the history it must not touch, and the
-    # remedy every refusal owes an agent that cannot see the
-    # dashboard. ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheToolbarControlsStayOneCluster.py::'
+            'testEveryToolbarControlIsOneRunAgainstTheRightEdge'
+        ),
+        # a second auto margin splits the bar's slack instead of pushing
+        source='vaibify/gui/static/styleMain.css',
+        old='.host-settings-button {\n    background: transparent;\n',
+        new=(
+            '.host-settings-button {\n    margin-left: auto;\n'
+            '    background: transparent;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliStatusDestroy.py::'
+            'testDestroyRemovesEveryTagAProjectBuildLeft'
+        ),
+        # destroy goes back to untagging only the tip of the chain
+        source='vaibify/cli/commandDestroy.py',
+        old=(
+            '        listReferences = imageBuilder.flistProjectImageReferences(\n'
+            '            sProjectName,\n'
+            '        )\n'
+        ),
+        new='        listReferences = [sProjectName + ":" + "latest"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCliStatusDestroy.py::'
+            'testTheCliAndTheDashboardAskOneAuthorityWhichImagesAreTheProjects'
+        ),
+        # the CLI derives the project's image set for itself again
+        source='vaibify/cli/commandDestroy.py',
+        old='        listReferences = imageBuilder.flistProjectImageReferences(\n',
+        new='        listReferences = [f"{sProjectName}:latest"]\n        _unused = (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGatesRunOnEveryPullRequest.py::'
+            'testEveryGateSupersedesItsOwnSupersededRun'
+        ),
+        # the widest matrix queues behind the run it just superseded
+        source='.github/workflows/tests-macos.yml',
+        old='concurrency:\n  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testAProjectWhoseNameIsAPrefixOfAnotherIsNeverTouched'
+        ),
+        # a prefix match sweeps a neighbouring project's build contexts
+        source='vaibify/config/hostResidue.py',
+        old="_REGEX_MKDTEMP_SUFFIX = re.compile(r\"^[A-Za-z0-9_]{8}$\")",
+        new="_REGEX_MKDTEMP_SUFFIX = re.compile(r\"^[A-Za-z0-9_-]+$\")",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testARegisteredNeighbourWinsEvenIfTheNamingRuleWouldNot'
+        ),
+        # the registry cross-check is dropped, leaving one line of defence
+        source='vaibify/config/hostResidue.py',
+        old=(
+            '        if _fbAnotherProjectCouldOwn(\n'
+            '            sEntryName, sProjectName, listRegisteredNames,\n'
+            '        ):\n'
+        ),
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testAHostileProjectNameReachesNothing'
+        ),
+        # the whole selection written the obvious way: compose the
+        # path from the project NAME and trust it, instead of
+        # matching a listing and verifying the root
+        source='vaibify/config/hostResidue.py',
+        old='    return flistDescribeStagedContextsForProject(\n        sProjectName, listRegisteredNames,\n    ) + _flistOwnedPathsIn(\n        S_BUILD_HASH_ROOT, sProjectName, listRegisteredNames,\n        lambda sName: sName == sProjectName + _S_HASH_SUFFIX,\n    )\n',
+        new='    listPaths = []\n    for sRoot, sSuffix in (\n        (S_BUILD_CONTEXT_ROOT, ""),\n        (S_BUILD_HASH_ROOT, _S_HASH_SUFFIX),\n    ):\n        sPath = os.path.join(sRoot, sProjectName + sSuffix)\n        if os.path.exists(sPath):\n            listPaths.append(sPath)\n    return listPaths\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testPruneNeverReachesAnotherProjectsContexts'
+        ),
+        # retention selects by prefix instead of asking who owns the
+        # directory, so the oldest candidates are a neighbour's
+        source='vaibify/config/hostResidue.py',
+        old=(
+            '    listContexts = sorted(\n'
+            '        flistDescribeStagedContextsForProject(\n'
+            '            sProjectName, listRegisteredNames),\n'
+            '        key=_fdModifiedTimeOrZero, reverse=True,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listContexts = sorted(\n'
+            '        (os.path.join(S_BUILD_CONTEXT_ROOT, sName)\n'
+            '         for sName in _flistEntriesIn(S_BUILD_CONTEXT_ROOT)\n'
+            '         if sName.startswith(sProjectName + "-")),\n'
+            '        key=_fdModifiedTimeOrZero, reverse=True,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testASymlinkIsUnlinkedRatherThanFollowed'
+        ),
+        # the sweep follows a symlink out of its own tree
+        source='vaibify/config/hostResidue.py',
+        old='            if os.path.isdir(sPath) and not os.path.islink(sPath):\n',
+        new='            if os.path.isdir(sPath):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostResidueStaysInsideOneProject.py::'
+            'testOrphanedResidueIsDescribedAndNeverRemoved'
+        ),
+        # the orphan path starts removing what "Remove from list" kept
+        source='vaibify/config/hostResidue.py',
+        old='    setRegistered = set(listRegisteredNames or [])\n',
+        new='    shutil.rmtree("/nonexistent", ignore_errors=True)\n    setRegistered = set(listRegisteredNames or [])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSkillIntegrity.py::'
+            'testAGitIgnoredFileNeverMakesAReferenceResolve'
+        ),
+        # a reference resolves against a file only this machine has
+        source='tools/checkAgentDocsPaths.py',
+        old=(
+            '    if not pathCandidate.exists():\n'
+            '        return False\n'
+            '    return not fbPathIsGitIgnored(pathCandidate)\n'
+        ),
+        new='    return pathCandidate.exists()\n',
+    ),
     Falsification(
         nodeid=(
             'tests/testProjectAdoptionFalsification.py::'
@@ -22521,6 +22656,31 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAnOmittedFileNameStillWritesARealProjectFile'
+        ),
+        # the file name is used verbatim, so an omitted one resolves to
+        # the projects DIRECTORY and adoption reports success for a
+        # project it never wrote
+        source='vaibify/gui/projectAdoption.py',
+        old='    sFileName = fsResolveProjectFileName(sFileName, sProjectName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testARetryIsNotMistakenForADuplicateName'
+        ),
+        # a safe retry refuses against the project it created itself
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '        if dictWorkflow["sPath"] == sTargetPath:\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testProjectAdoption.py::'
             'testAProjectInADifferentRepositoryDoesNotCountAsThisOne'
         ),
@@ -22577,30 +22737,5 @@ def _fdictEntry(sRel):
             '                    sDirectory, sProjectName, sFileName,\n'
             '                )}\n'
         ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectAdoptionFalsification.py::'
-            'testAnOmittedFileNameStillWritesARealProjectFile'
-        ),
-        # the file name is used verbatim, so an omitted one resolves to
-        # the projects DIRECTORY and adoption reports success for a
-        # project it never wrote
-        source='vaibify/gui/projectAdoption.py',
-        old='    sFileName = fsResolveProjectFileName(sFileName, sProjectName)\n',
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectAdoptionFalsification.py::'
-            'testARetryIsNotMistakenForADuplicateName'
-        ),
-        # a safe retry refuses against the project it created itself
-        source='vaibify/gui/projectAdoption.py',
-        old=(
-            '        if dictWorkflow["sPath"] == sTargetPath:\n'
-            '            continue\n'
-        ),
-        new='',
     ),
 ]

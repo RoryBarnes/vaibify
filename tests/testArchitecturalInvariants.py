@@ -6201,7 +6201,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # window threaded to the connection, beside the wall clock
     # that was already there. Same responsibility — this is where
     # a campaign's budgets become a runner's budgets.
-    "agentCouncilController.py": 2142,
+    # 2142 -> 2187 (2026-09-22), MEASURED on the file, not summed: a
+    # settled campaign's delete WAITS for the drive task's epilogue
+    # instead of refusing over it. The epilogue is this module's own
+    # turn retirement and egress teardown, and the wait reads the same
+    # liveness predicate every other continuation reads, so it belongs
+    # beside them; extracting it would put half of one refusal
+    # decision behind a call hop.
+    "agentCouncilController.py": 2187,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

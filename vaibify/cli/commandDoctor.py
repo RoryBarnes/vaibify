@@ -42,7 +42,8 @@ from .preflightChecks import (
     fpreflightLinuxDockerService,
 )
 from .preflightResult import (
-    S_LEVEL_FAIL, S_LEVEL_NOT_CHECKED, S_LEVEL_OK, S_LEVEL_WARN,
+    S_LEVEL_FAIL, S_LEVEL_INFO, S_LEVEL_NOT_CHECKED, S_LEVEL_OK,
+    S_LEVEL_WARN,
     S_SCOPE_CONTAINER, S_SCOPE_HOST, S_SCOPE_PROJECT, PreflightResult,
     flistRenderResultsForJson, fnPrintScopedPreflightReport,
 )
@@ -117,7 +118,69 @@ def _flistSharedChecks():
     ]
     listResults.extend(_flistOptionalSharedChecks())
     listResults.append(fpreflightCouncilCredentialEvidence())
+    listResults.append(fpreflightOrphanedHostResidue())
     return listResults
+
+
+def fpreflightOrphanedHostResidue():
+    """Name the build leftovers of projects the registry no longer lists.
+
+    REPORTS, never removes, and the distinction is a contract rather
+    than caution. "Remove from list" un-registers a project and leaves
+    every byte where it was, deliberately, so residue whose project is
+    absent from the registry is precisely what a researcher may have
+    chosen to keep. Deleting an environment sweeps its OWN residue;
+    everything else is the researcher's call, and this is how they get
+    to make it.
+
+    Doctor is read-only (``tests/testDoctorIsReadOnly.py`` pins that),
+    which is exactly why the report belongs here: it can name a path
+    without ever being able to widen a blast radius.
+    """
+    from vaibify.config import hostResidue, registryManager
+    try:
+        listRegisteredNames = [
+            dictEntry["sName"]
+            for dictEntry in registryManager.flistGetAllProjects()
+        ]
+        dictOrphans = hostResidue.fdictDescribeOrphanedResidue(
+            listRegisteredNames,
+        )
+    except Exception:  # noqa: BLE001 — a report may never fail a run
+        return PreflightResult(
+            sName="orphaned-build-residue",
+            sLevel=S_LEVEL_NOT_CHECKED,
+            sMessage="the registry could not be read",
+        )
+    if not dictOrphans:
+        return PreflightResult(
+            sName="orphaned-build-residue",
+            sLevel=S_LEVEL_OK,
+            sMessage="no build leftovers from unregistered projects",
+        )
+    listNames = sorted(dictOrphans)
+    iPaths = sum(len(listPaths) for listPaths in dictOrphans.values())
+    return PreflightResult(
+        sName="orphaned-build-residue",
+        sLevel=S_LEVEL_INFO,
+        sMessage=(
+            f"{iPaths} build leftover(s) belong to "
+            f"{len(listNames)} project(s) the registry no longer lists: "
+            + ", ".join(listNames)
+        ),
+        sRemediation=(
+            "These are kept build contexts and build-argument hashes. "
+            "Nothing removes them for you: un-registering a project "
+            "with \"Remove from list\" keeps its bytes on purpose, so "
+            "only you can say whether these are still wanted. Delete "
+            "the paths below if they are not."
+        ),
+        sCommand="rm -rf " + " ".join(
+            sPath
+            for sName in listNames
+            for sPath in sorted(dictOrphans[sName])
+        ),
+    )
 
 
 def fpreflightInstalledCheckout():
