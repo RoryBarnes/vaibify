@@ -691,9 +691,35 @@ def _fdictDeclareControlPlaneScope(sScope, sPath=""):
     return {"sScope": sScope, "sTargetParam": None, "sIdentityKind": None}
 
 
+# The one path on which a lease may be presented in the query string.
+# Kept as a module constant, and deliberately the SAME segment the
+# session middleware's own carve-out keys on, so the two cannot drift
+# into admitting different requests.
+S_QUERY_LEASE_PATH_SEGMENT = "/download/"
+
+
 def fsLeaseFromRequest(request):
-    """Return the ``X-Vaibify-Lease`` header value, or '' when absent."""
-    return request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
+    """Return the lease the request presents.
+
+    The ``X-Vaibify-Lease`` header is the only presentation for every
+    route but one. A file download is performed by the BROWSER --
+    an anchor click, which carries no custom headers and cannot be
+    given any -- so a download could never satisfy the lease guard and
+    answered 403 to the researcher who asked for their own file. The
+    lease therefore rides the query string on exactly that path, as
+    the session credential already does on the very same URL and as
+    the WebSocket routes already accept it.
+
+    Narrow on purpose: the header is preferred wherever it exists, and
+    the query is read on no other path, so this widens what a download
+    may present and nothing else.
+    """
+    sHeader = request.headers.get(S_LEASE_HEADER_NAME.lower(), "")
+    if sHeader:
+        return sHeader
+    if S_QUERY_LEASE_PATH_SEGMENT in request.url.path:
+        return request.query_params.get("sLeaseId", "")
+    return ""
 
 
 def _ftResolveOwnerTarget(dictContainerOwners, dictScope, sTargetValue):
@@ -739,9 +765,9 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
         ):
             return I_AUTHORIZED
         return I_REJECT_FORBIDDEN
-    sCredential = request.headers.get("x-session-token", "")
     sBrowserSessionId = browserSession.fsSessionIdForCredential(
-        dictBrowserSessions, sCredential,
+        dictBrowserSessions,
+        browserSession.fsBrowserPresentedCredential(request),
     )
     if not sBrowserSessionId:
         return I_REJECT_FORBIDDEN
@@ -779,7 +805,8 @@ def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
     if request.headers.get(actionCatalog.S_SESSION_HEADER_NAME.lower(), ""):
         return I_REJECT_FORBIDDEN
     sBrowserSessionId = browserSession.fsSessionIdForCredential(
-        dictBrowserSessions, request.headers.get("x-session-token", ""),
+        dictBrowserSessions,
+        browserSession.fsBrowserPresentedCredential(request),
     )
     if not sBrowserSessionId:
         return I_REJECT_FORBIDDEN

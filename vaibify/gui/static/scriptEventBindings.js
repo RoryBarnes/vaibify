@@ -716,6 +716,15 @@ var VaibifyEventBindings = (function () {
         if (elStep) elStep.classList.remove("dragging");
     }
 
+    function fnHandleDelegatedDragEnter(event) {
+        /* A step becomes a drop target only if dragenter is cancelled
+           too; cancelling dragover alone satisfies Chromium and
+           WebKit but not the specification, so reordering did nothing
+           at all in a browser that holds to it. Same fix, same
+           reason, as the Files panel's drop zone. */
+        if (event.target.closest(".step-item")) event.preventDefault();
+    }
+
     function fnHandleDelegatedDragOver(event) {
         var elStep = event.target.closest(".step-item");
         if (elStep) {
@@ -767,6 +776,8 @@ var VaibifyEventBindings = (function () {
             fnHandleDelegatedDragStart);
         elList.addEventListener("dragend",
             fnHandleDelegatedDragEnd);
+        elList.addEventListener("dragenter",
+            fnHandleDelegatedDragEnter);
         elList.addEventListener("dragover",
             fnHandleDelegatedDragOver);
         elList.addEventListener("dragleave",

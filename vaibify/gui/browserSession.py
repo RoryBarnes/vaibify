@@ -25,6 +25,8 @@ from dataclasses import dataclass
 logger = logging.getLogger("vaibify")
 
 __all__ = [
+    "S_QUERY_CREDENTIAL_PATH_SEGMENT",
+    "fsBrowserPresentedCredential",
     "BootstrapCapability",
     "BrowserSessionRecord",
     "S_SESSION_STATE_ACTIVE",
@@ -149,6 +151,39 @@ class BrowserSessionRecord:
     # ended at 05:28" is the whole content of the notice.
     sEndedMessage: str = ""
     sEndedWallClockIso: str = ""
+
+
+# The one path segment on which a browser credential may ride the
+# query string instead of a header. A file download is performed by
+# the BROWSER -- an anchor click -- which carries no custom headers
+# and cannot be given any.
+S_QUERY_CREDENTIAL_PATH_SEGMENT = "/download/"
+
+
+def fsBrowserPresentedCredential(request):
+    """Return the per-browser credential a request presents.
+
+    ONE rule, because there used to be two and they disagreed. The
+    session middleware granted a download the query-string carve-out
+    while ``routeScope``'s container authority read the header only,
+    so a download cleared the middleware and was then refused 403 by
+    the authority -- "You do not hold this container's lease" -- for a
+    lease the researcher did hold. "Download to this computer" could
+    not succeed in any browser.
+
+    The header is preferred wherever it exists; the query is read only
+    for a WebSocket upgrade and for a download, which are exactly the
+    two requests a browser issues without headers of our choosing.
+    """
+    sHeader = request.headers.get("x-session-token", "")
+    if sHeader:
+        return sHeader
+    bIsWebSocket = (
+        request.headers.get("upgrade", "").lower() == "websocket"
+    )
+    if bIsWebSocket or S_QUERY_CREDENTIAL_PATH_SEGMENT in request.url.path:
+        return request.query_params.get("sToken", "")
+    return ""
 
 
 def fdictCreateBrowserSessionStore():

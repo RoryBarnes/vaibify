@@ -1,4 +1,19 @@
-"""File transfer between host and container using docker cp."""
+"""File transfer between host and container.
+
+A PULL is ``docker cp``: bytes leaving a container land on the host
+owned by whoever ran the command, which is right.
+
+A PUSH is NOT. ``docker cp`` writes the destination owned by root, and
+the container user is unprivileged with no sudo by design, so every
+file this command deposited was one the in-container agent -- and the
+researcher's own shell -- could not modify. The backend never had this
+defect because its writes go through the tar writer in
+``dockerConnection``, which stamps the container user onto every entry
+rather than letting ``tarfile``'s native uid 0 through. Push now goes
+the same way -- through the gateway, which owns both writers and the
+destination probe they need -- and ``docker cp`` is deliberately no
+longer reachable from this direction.
+"""
 
 from pathlib import PurePosixPath
 
@@ -9,6 +24,12 @@ def fnPushToContainer(sProjectName, sHostSource, sContainerDest,
                       bRecursive=False):
     """Copy a file or directory from the host into a running container.
 
+    Ownership is the reason this is not ``docker cp``; see the module
+    docstring. Destination semantics are preserved: a destination that
+    names an existing directory receives the source under its own
+    basename, and any other destination is the full path to write --
+    the same two readings ``docker cp`` gives them.
+
     Parameters
     ----------
     sProjectName : str
@@ -18,12 +39,13 @@ def fnPushToContainer(sProjectName, sHostSource, sContainerDest,
     sContainerDest : str
         Absolute path inside the container to copy to.
     bRecursive : bool
-        Unused; docker cp handles directories automatically.
+        Unused; a directory source is archived whole.
         Retained for API consistency.
     """
-    sTarget = f"{sProjectName}:{sContainerDest}"
-    saCommand = ["docker", "cp", sHostSource, sTarget]
-    _fnRunDockerCp(saCommand)
+    from vaibify.docker.dockerConnection import DockerConnection
+    DockerConnection().fnCopyHostPathIntoContainer(
+        sProjectName, sHostSource, sContainerDest,
+    )
 
 
 def fnPullFromContainer(sProjectName, sContainerSource, sHostDest,

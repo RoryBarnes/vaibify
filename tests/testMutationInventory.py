@@ -333,7 +333,17 @@ I_UNCLASSIFIED_ROW_BUDGET = 281
 # it stages are the reproducibility package's own source.
 # -> 220 (2026-09-21): same removal. One fewer raw docker client
 # outside the gateways, because the CLI stopped building one.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 220
+# RAISED 220 -> 221 (2026-09-22), and this one is a COVERAGE gain, not
+# a new reach: `vaibify push` always wrote into a container, but it did
+# so with `docker cp` through a local helper no primitive name matched,
+# so the scan produced ZERO rows for it and the ledger read 220 while
+# the true count was 221. The write is now the gateway's
+# fnCopyHostPathIntoContainer -- which is what stops the deposit
+# landing root-owned and unmodifiable by the container user -- and a
+# named gateway primitive is exactly what the scanner can see.
+# Classified at birth. The site cannot move inside a gateway: it IS the
+# CLI asking for a container write, and something has to ask.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 221
 
 
 # Every acquisition of a declared capability that still has no reviewed

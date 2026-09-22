@@ -167,6 +167,12 @@ DICT_PRIMITIVE_ACCESS = {
     # on the same terms -- a write primitive the vocabulary does not
     # know is a write the ledger cannot count.
     "fnWriteTreeViaTar": S_ACCESS_ARCHIVE_WRITE,
+    # The composed host->container copy the CLI's push uses. It writes
+    # through the two writers above rather than adding an authority of
+    # its own, but it is a public gateway method that lands bytes in a
+    # container, so a caller of IT is a mutation site and must be
+    # recorded as one.
+    "fnCopyHostPathIntoContainer": S_ACCESS_ARCHIVE_WRITE,
     "fsExecCreate": S_ACCESS_EXEC_CREATE,
     "fsocketExecStart": S_ACCESS_EXEC_CREATE,
     "fnExecResize": S_ACCESS_EXEC_STATE,

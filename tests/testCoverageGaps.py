@@ -696,15 +696,116 @@ def test_fmoduleGetDocker_missing():
 # =======================================================================
 
 
-@patch("subprocess.run")
-def test_fnPushToContainer_calls_docker_cp(mockRun):
-    from vaibify.docker.fileTransfer import fnPushToContainer
-    mockRun.return_value = MagicMock(returncode=0)
-    fnPushToContainer("proj", "/src/file", "/dest/file")
-    saCommand = mockRun.call_args[0][0]
-    assert "docker" in saCommand
-    assert "cp" in saCommand
-    assert "proj:/dest/file" in saCommand
+class _ConnectionRecordingWrites:
+    """A gateway double recording what a push would write."""
+
+    def __init__(self, bDestinationIsDirectory):
+        self.bDestinationIsDirectory = bDestinationIsDirectory
+        self.listFileWrites = []
+        self.listTreeWrites = []
+        self.listCopies = []
+
+    def fnCopyHostPathIntoContainer(self, sName, sSource, sDestination):
+        self.listCopies.append((sName, sSource, sDestination))
+
+    def fbContainerPathIsDirectory(self, sName, sPath):
+        return self.bDestinationIsDirectory
+
+    def fnWriteFileViaTar(self, sName, sPath, baContent):
+        self.listFileWrites.append((sName, sPath, baContent))
+
+    def fnWriteTreeViaTar(self, sName, sDirectory, listHostPaths):
+        self.listTreeWrites.append((sName, sDirectory, list(listHostPaths)))
+
+
+@pytest.mark.falsification
+def test_fnPushToContainer_never_shells_out_to_docker_cp(
+    tmp_path, monkeypatch,
+):
+    """Push must not be ``docker cp``: that lands the file root-owned.
+
+    This test used to assert the OPPOSITE -- that push shelled out to
+    ``docker cp`` -- and so pinned the defect in place. The container
+    user is unprivileged and has no sudo, so a root-owned deposit is
+    one neither the researcher nor the in-container agent can edit.
+
+    Kills: restoring the ``docker cp`` shell-out, which writes the
+    destination owned by root and leaves everything pushed
+    unmodifiable inside the container.
+    """
+    from vaibify.docker import fileTransfer
+    sSource = str(tmp_path / "numbers.csv")
+    with open(sSource, "w") as fileSource:
+        fileSource.write("a,b\n")
+    listShellCommands = []
+    connectionDouble = _ConnectionRecordingWrites(False)
+    monkeypatch.setattr(
+        "vaibify.docker.dockerConnection.DockerConnection",
+        lambda *tArguments, **dictKeywords: connectionDouble,
+    )
+    monkeypatch.setattr(
+        fileTransfer, "fnRunDockerCommand",
+        lambda saCommand: listShellCommands.append(saCommand),
+    )
+    fileTransfer.fnPushToContainer("proj", sSource, "/dest/file")
+    assert connectionDouble.listCopies == [
+        ("proj", sSource, "/dest/file")
+    ], "push did not route through the gateway's owning copy"
+    assert listShellCommands == [], (
+        "push reached for a shell command; docker cp is exactly the "
+        "root-owning path this routes around"
+    )
+
+
+def test_fnCopyHostPathIntoContainer_writes_a_file_at_an_exact_destination(
+    tmp_path,
+):
+    """A destination that is not a directory IS the path to write."""
+    from vaibify.docker.dockerConnection import DockerConnection
+    sSource = str(tmp_path / "numbers.csv")
+    with open(sSource, "w") as fileSource:
+        fileSource.write("a,b\n")
+    connectionDouble = _ConnectionRecordingWrites(False)
+    DockerConnection.fnCopyHostPathIntoContainer(
+        connectionDouble, "proj", sSource, "/dest/renamed.csv",
+    )
+    assert connectionDouble.listFileWrites == [
+        ("proj", "/dest/renamed.csv", b"a,b\n")
+    ]
+    assert connectionDouble.listTreeWrites == []
+
+
+def test_fnCopyHostPathIntoContainer_puts_a_file_under_a_directory(
+    tmp_path,
+):
+    """A directory destination keeps ``docker cp``'s basename reading."""
+    from vaibify.docker.dockerConnection import DockerConnection
+    sSource = str(tmp_path / "numbers.csv")
+    with open(sSource, "w") as fileSource:
+        fileSource.write("x\n")
+    connectionDouble = _ConnectionRecordingWrites(True)
+    DockerConnection.fnCopyHostPathIntoContainer(
+        connectionDouble, "proj", sSource, "/workspace/Step01",
+    )
+    assert connectionDouble.listFileWrites == [
+        ("proj", "/workspace/Step01/numbers.csv", b"x\n")
+    ]
+
+
+def test_fnCopyHostPathIntoContainer_archives_a_directory_source(tmp_path):
+    """A directory source is archived whole into its parent."""
+    from vaibify.docker.dockerConnection import DockerConnection
+    pathSource = tmp_path / "StepDirectory"
+    pathSource.mkdir()
+    (pathSource / "inner.txt").write_text("y\n")
+    connectionDouble = _ConnectionRecordingWrites(True)
+    DockerConnection.fnCopyHostPathIntoContainer(
+        connectionDouble, "proj", str(pathSource), "/workspace",
+    )
+    assert connectionDouble.listTreeWrites == [
+        ("proj", "/workspace", [str(pathSource)])
+    ]
+    assert connectionDouble.listFileWrites == []
 
 
 @patch("subprocess.run")

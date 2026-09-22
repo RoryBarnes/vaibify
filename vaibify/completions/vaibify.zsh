@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Zsh tab-completion for vaibify (vc), vc_push, and vc_pull.
+# Zsh tab-completion for vaibify (vc) and its push/pull helpers.
 #
 # Source this file from your shell configuration:
 #   [ -f "/path/to/Vaibify/completions/vaibify.zsh" ] \
@@ -83,6 +83,15 @@ _vaibify() {
             ;;
     esac
 
+    # The subcommand, not the previous word: `vaibify push a b` asks
+    # about position, and words[CURRENT-1] is the previous ARGUMENT
+    # once one has been typed.
+    local sSubcommand="${words[2]}"
+    if [[ "${sSubcommand}" == "push" || "${sSubcommand}" == "pull" ]]; then
+        _fnCompleteTransferArgumentZsh "${sSubcommand}" 3
+        return
+    fi
+
     if [[ "${sCurrent}" == -* ]]; then
         compadd -- --help -h
     fi
@@ -91,40 +100,54 @@ compdef _vaibify vaibify
 compdef _vaibify vc
 
 # ---------------------------------------------------------------------------
-# _vc_pull: Complete container paths for vc_pull sources
+# _fnCompleteTransferArgumentZsh: Complete one push/pull argument
+# Arguments: sDirection    - "push" or "pull"
+#            iFirstArgument - index in $words where arguments start
+#
+# push reads from the host and writes into the container, pull the
+# other way round, so the same position means opposite things. One
+# function serves `vaibify push`, `vaibify pull`, and the helper
+# aliases, which is why the argument offset is a parameter.
 # ---------------------------------------------------------------------------
-_vc_pull() {
+_fnCompleteTransferArgumentZsh() {
+    local sDirection="$1"
+    local iFirstArgument="$2"
     local sCurrent="${words[CURRENT]}"
     if [[ "${sCurrent}" == -* ]]; then
-        compadd -- -a -L -r -R --help -h
+        compadd -- --project -p --help -h
         return
     fi
-    _fnListContainerPathsZsh "${sCurrent}" || _files
-}
-compdef _vc_pull vc_pull
-
-# ---------------------------------------------------------------------------
-# _vc_push: Complete local files for sources, container paths for the
-# destination (after at least one source has been typed)
-# ---------------------------------------------------------------------------
-_vc_push() {
-    local sCurrent="${words[CURRENT]}"
-    if [[ "${sCurrent}" == -* ]]; then
-        compadd -- -a -L -r -R --help -h
-        return
-    fi
-    local iNonOptionCount=0
+    local iTypedCount=0
     local iIndex
-    for (( iIndex=2; iIndex < CURRENT; iIndex++ )); do
+    for (( iIndex=iFirstArgument; iIndex < CURRENT; iIndex++ )); do
         case "${words[iIndex]}" in
             -*) ;;
-            *)  iNonOptionCount=$(( iNonOptionCount + 1 )) ;;
+            *)  iTypedCount=$(( iTypedCount + 1 )) ;;
         esac
     done
-    if [ "${iNonOptionCount}" -ge 1 ]; then
+    local bWantsContainerPath=0
+    if [[ "${sDirection}" == "pull" && "${iTypedCount}" -eq 0 ]]; then
+        bWantsContainerPath=1
+    fi
+    if [[ "${sDirection}" == "push" && "${iTypedCount}" -ge 1 ]]; then
+        bWantsContainerPath=1
+    fi
+    if [ "${bWantsContainerPath}" -eq 1 ]; then
         _fnListContainerPathsZsh "${sCurrent}" || _files
     else
         _files
     fi
 }
-compdef _vc_push vc_push
+
+# The helper aliases are `vaibify push` / `vaibify pull` by another
+# name, so their arguments begin one word earlier than the subcommand
+# form. Bound to the names shellSetup.py actually creates: these were
+# `vc_push` / `vc_pull` until they were renamed, and the completions
+# kept registering against the retired names, which is how both
+# helpers silently stopped completing anything.
+_vaibify_push() { _fnCompleteTransferArgumentZsh push 2 }
+_vaibify_pull() { _fnCompleteTransferArgumentZsh pull 2 }
+compdef _vaibify_push vaibify_push
+compdef _vaibify_push vaib_push
+compdef _vaibify_pull vaibify_pull
+compdef _vaibify_pull vaib_pull

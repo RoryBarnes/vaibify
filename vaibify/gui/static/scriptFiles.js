@@ -245,6 +245,17 @@ var VaibifyFiles = (function () {
     }
 
     function fnBindDropEvents(elTarget) {
+        /* BOTH dragenter and dragover must be cancelled for an element
+           to become a drop target. Chromium and WebKit accept a
+           cancelled dragover alone, which is why this shipped looking
+           correct and worked everywhere they were used; Firefox holds
+           to the specification, so without this the zone never became
+           a target there -- no drag-over highlight, no drop, no error,
+           the "nothing happens" report (2026-09-22). */
+        elTarget.addEventListener("dragenter", function (event) {
+            if (!fbHasHostFiles(event)) return;
+            event.preventDefault();
+        });
         elTarget.addEventListener("dragover", function (event) {
             if (!fbHasHostFiles(event)) return;
             event.preventDefault();

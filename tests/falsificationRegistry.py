@@ -10993,6 +10993,191 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testCoverageGaps.py::'
+            'test_fnPushToContainer_never_shells_out_to_docker_cp'
+        ),
+        source='vaibify/docker/fileTransfer.py',
+        # Push by `docker cp` again, which writes the destination
+        # owned by root: the unprivileged container user cannot then
+        # modify anything the researcher pushed, and there is no sudo.
+        old=(
+            '    from vaibify.docker.dockerConnection import '
+            'DockerConnection\n'
+            '    DockerConnection().fnCopyHostPathIntoContainer(\n'
+            '        sProjectName, sHostSource, sContainerDest,\n'
+            '    )\n'
+        ),
+        new=(
+            '    _fnRunDockerCp(\n'
+            '        ["docker", "cp", sHostSource,\n'
+            '         f"{sProjectName}:{sContainerDest}"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPushCompletesContainerPathsOnlyForItsDestination'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Drop the push/pull case out of the vaibify completer, which
+        # is the state `vaibify push <TAB>` actually shipped in: the
+        # argument completers existed and nothing reached them.
+        old=(
+            '    local sSubcommand="${COMP_WORDS[1]}"\n'
+            '    if [[ "${sSubcommand}" == "push" || '
+            '"${sSubcommand}" == "pull" ]]; then\n'
+            '        _fnCompleteTransferArgument "${sSubcommand}" 2\n'
+            '        return\n'
+            '    fi\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPullCompletesContainerPathsOnlyForItsSource'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Give pull push's position logic: container paths offered for
+        # the HOST destination and local files for the container
+        # source, which is backwards in both arguments.
+        old=(
+            '    if [[ "${sDirection}" == "pull" && '
+            '"${iTypedCount}" -eq 0 ]]; then\n'
+        ),
+        new=(
+            '    if [[ "${sDirection}" == "pull" && '
+            '"${iTypedCount}" -ge 1 ]]; then\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDownloadDoesNotAskToLeaveThePage.py::'
+            'testDownloadingAFileStartsADownloadRatherThanANavigation'
+        ),
+        source='vaibify/gui/static/scriptFilePull.js',
+        # Navigate the page at the file again, which re-enters the
+        # dashboard's unload guard: the researcher is asked whether
+        # they want to leave instead of being given their file.
+        old=(
+            '        var elLink = document.createElement("a");\n'
+            '        elLink.href = sUrl;\n'
+        ),
+        new=(
+            '        window.location.assign(sUrl);\n'
+            '        return;\n'
+            '        var elLink = document.createElement("a");\n'
+            '        elLink.href = sUrl;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDownloadDoesNotAskToLeaveThePage.py::'
+            'testTheUnloadGuardIsStillArmedAfterADownload'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Silence the prompt by disarming the guard instead of going
+        # around it, giving up the protection that stops a researcher
+        # closing the dashboard mid-run.
+        old='window.addEventListener("beforeunload", fnBlockUnload);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserCredentialPresentation.py::'
+            'testNoOtherRouteReadsACredentialFromTheQuery'
+        ),
+        source='vaibify/gui/browserSession.py',
+        # Read the query credential on EVERY path, turning a narrow
+        # accommodation for a headerless browser download into a
+        # general authentication bypass.
+        old=(
+            '    if bIsWebSocket or S_QUERY_CREDENTIAL_PATH_SEGMENT '
+            'in request.url.path:\n'
+        ),
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserCredentialPresentation.py::'
+            'testBothAuthoritiesAskTheSameFunction'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # Restate the rule in the container authority instead of
+        # asking for it -- the exact shape of the original drift, in
+        # which one reader learned the download carve-out and the
+        # other did not.
+        old=(
+            '        browserSession.fsBrowserPresentedCredential(request),\n'
+            '    )\n'
+            '    if not sBrowserSessionId:\n'
+            '        return I_REJECT_FORBIDDEN\n'
+            '    if sName is None'
+        ),
+        new=(
+            '        request.headers.get("x-session-token", ""),\n'
+            '    )\n'
+            '    if not sBrowserSessionId:\n'
+            '        return I_REJECT_FORBIDDEN\n'
+            '    if sName is None'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testTheUploadZoneCancelsDragEnterNotOnlyDragOver'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Bind dragover alone, which Chromium and WebKit accept and a
+        # specification-abiding browser does not: the zone goes inert
+        # with every Chromium-driven test still green.
+        old=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            if (!fbHasHostFiles(event)) return;\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testTheFileListCancelsDragEnterToo'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Bind the labelled zone only, leaving the file list -- the
+        # target researchers learned first -- with no handlers at all.
+        old=(
+            '            document.getElementById("listFiles"),\n'
+            '            document.getElementById("fileUploadDropZone"),\n'
+        ),
+        new='            document.getElementById("fileUploadDropZone"),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testADragThatCarriesNoFilesIsStillIgnored'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Cancel dragenter for EVERY drag, so the upload zone claims a
+        # step being reordered and offers a drop that uploads nothing.
+        old=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            if (!fbHasHostFiles(event)) return;\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+        new=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testLostClaimIsRecoverable.py::'
             'testALostClaimIsReclaimedAndTheWorkflowOpens'
         ),

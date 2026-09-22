@@ -135,7 +135,13 @@ def _fsCompletionPathForShell(sShellName):
 
 
 def fnConfigureHelperCommands():
-    """Create shell aliases for connect_vc, vc_push, vc_pull."""
+    """Create shell aliases for vaibify connect, push and pull.
+
+    The names here are the ones the completion scripts register
+    against; they were renamed once already and the completions were
+    left pointing at the retired spellings, so the two must be
+    changed together.
+    """
     try:
         _fnConfigureHelperCommandsInner()
     except Exception:
