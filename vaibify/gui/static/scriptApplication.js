@@ -2628,32 +2628,50 @@ const VaibifyApp = (function () {
     }
 
     var _bReflectedDispatchRun = false;
+    var _iReflectedActiveIndex = -1;
 
     function _fnReflectDispatchedRunState(dictRunState) {
         // The continuously-polled /status payload surfaces any
-        // dispatched run's active step — including an in-container
-        // agent's run-step/runSelected — so the running marker lights
-        // even for runs this browser did not initiate. Only the active
-        // step is touched; the pipeline-run poll owns the fuller
-        // queued/completed vocabulary for browser-initiated runs. The
-        // marker is cleared on the running->idle transition so a
-        // finished out-of-band run never sticks as "running".
+        // dispatched run's active step and its per-step results —
+        // including an in-container agent's run-step/runFrom — so the
+        // lights follow even runs this browser did not initiate. The
+        // pipeline-run poll additionally owns the queued vocabulary for
+        // browser-initiated runs; this path never claims a step is
+        // queued, because it does not know which steps a run covers.
         if (!dictRunState) return;
         if (dictRunState.bRunning && dictRunState.iActiveStep > 0) {
+            var iActiveIndex = dictRunState.iActiveStep - 1;
+            // Only the marker THIS path set is released when the run
+            // moves on; a light set by the live run's own events is
+            // not this path's to clear. Leaving it lit is how every
+            // finished step of an agent's run kept pulsing
+            // (researcher-reported, 2026-09-23).
+            var sPrevious = _dictWorkflowState.dictStepStatus[
+                _iReflectedActiveIndex];
+            if (_iReflectedActiveIndex !== iActiveIndex &&
+                (sPrevious === "running" || sPrevious === "overBudget")) {
+                delete _dictWorkflowState.dictStepStatus[
+                    _iReflectedActiveIndex];
+            }
+            VaibifyPipelineRunner.fnApplyStepResults(
+                dictRunState.dictStepResults || {});
             // An active step that has outrun its declared wall-clock
             // budget still runs, but is flagged distinctly so a hung
             // step is no longer indistinguishable from a legitimately
             // long one. The backend computes this live each poll.
-            _dictWorkflowState.dictStepStatus[
-                dictRunState.iActiveStep - 1] =
+            _dictWorkflowState.dictStepStatus[iActiveIndex] =
                 dictRunState.bActiveStepOverBudget
                     ? "overBudget" : "running";
+            _iReflectedActiveIndex = iActiveIndex;
             _bReflectedDispatchRun = true;
             fnRenderStepList();
         } else if (_bReflectedDispatchRun) {
-            fnClearRunningStatuses();
+            // The finished run's verdicts, not merely the absence of a
+            // running marker: clearing alone left every step of a
+            // completed agent run looking as though it never ran.
+            VaibifyPipelineRunner.fnApplyCompletedState(dictRunState);
+            _iReflectedActiveIndex = -1;
             _bReflectedDispatchRun = false;
-            fnRenderStepList();
         }
     }
 

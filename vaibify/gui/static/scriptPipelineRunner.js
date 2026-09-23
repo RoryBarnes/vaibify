@@ -614,21 +614,7 @@ var VaibifyPipelineRunner = (function () {
             iPreviousOutputCount = 0;
         }
         var dictResults = dictState.dictStepResults || {};
-        for (var sKey in dictResults) {
-            var iStep = parseInt(sKey) - 1;
-            var sStatus = dictResults[sKey].sStatus;
-            if (sStatus === "passed") {
-                VaibifyApp.fnSetStepStatus(iStep, "pass");
-            } else if (sStatus === "failed") {
-                VaibifyApp.fnSetStepStatus(iStep, "fail");
-            } else if (sStatus === "stopped") {
-                VaibifyApp.fnSetStepStatus(iStep, "stopped");
-            } else if (sStatus === "skipped") {
-                VaibifyApp.fnSetStepStatus(iStep, "");
-            }
-            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
-                .bDownstreamOfDegradedProvenance);
-        }
+        fnApplyStepResults(dictResults);
         if (dictState.iActiveStep > 0) {
             VaibifyApp.fnSetStepStatus(
                 dictState.iActiveStep - 1, "running");
@@ -662,6 +648,27 @@ var VaibifyPipelineRunner = (function () {
             iPreviousOutputCount = listOutput.length;
         }
         VaibifyApp.fnRenderStepList();
+    }
+
+    function fnApplyStepResults(dictResults) {
+        /* A running run's verdicts so far, keyed by 1-based step
+           number. Shared by the pipeline-state poll and the status
+           poll's reflection of runs this browser did not start. */
+        for (var sKey in dictResults) {
+            var iStep = parseInt(sKey) - 1;
+            var sStatus = dictResults[sKey].sStatus;
+            if (sStatus === "passed") {
+                VaibifyApp.fnSetStepStatus(iStep, "pass");
+            } else if (sStatus === "failed") {
+                VaibifyApp.fnSetStepStatus(iStep, "fail");
+            } else if (sStatus === "stopped") {
+                VaibifyApp.fnSetStepStatus(iStep, "stopped");
+            } else if (sStatus === "skipped") {
+                VaibifyApp.fnSetStepStatus(iStep, "");
+            }
+            VaibifyApp.fnSetStepTaint(iStep, !!dictResults[sKey]
+                .bDownstreamOfDegradedProvenance);
+        }
     }
 
     function fnApplyCompletedState(dictState) {
@@ -1453,6 +1460,7 @@ var VaibifyPipelineRunner = (function () {
         fnRecoverPipelineState: fnRecoverPipelineState,
         fnHandlePipelinePollResult: fnHandlePipelinePollResult,
         fnApplyRunningState: fnApplyRunningState,
+        fnApplyStepResults: fnApplyStepResults,
         fnApplyCompletedState: fnApplyCompletedState,
         fnInitPipelineOutput: fnInitPipelineOutput,
         fnAppendPipelineOutput: fnAppendPipelineOutput,
