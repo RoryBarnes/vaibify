@@ -2811,7 +2811,8 @@ body.proof-level-3 .toolbar-label {
 }
 
 .terminal-pane-add,
-.terminal-pane-copy {
+.terminal-pane-copy,
+.terminal-pane-select {
     padding: 2px 8px;
     font-size: 14px;
     color: var(--highlight-color);
@@ -2829,10 +2830,30 @@ body.proof-level-3 .toolbar-label {
     white-space: nowrap;
 }
 
+.terminal-pane-select {
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+/* While the mode is on, the mouse no longer reaches the program in
+   the pane. That is a change in what the next gesture will do, so it
+   is carried as a filled state rather than as an underline a
+   researcher has to hover to find. */
+.terminal-pane-select.active {
+    background: var(--highlight-color);
+    color: var(--bg-panel);
+    border-radius: 3px;
+}
+
 .terminal-pane-add:hover,
-.terminal-pane-copy:hover {
+.terminal-pane-copy:hover,
+.terminal-pane-select:hover {
     color: var(--highlight-color);
     text-decoration: underline;
+}
+
+.terminal-pane-select.active:hover {
+    color: var(--bg-panel);
 }
 
 .terminal-pane-container {

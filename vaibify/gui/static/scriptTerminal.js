@@ -99,6 +99,10 @@ const VaibifyTerminal = (function () {
             '<button class="terminal-pane-copy" data-pane="' +
             iPaneId + '" title="Copy this terminal\'s full scrollback ' +
             'to the clipboard">Copy all</button>' +
+            '<button class="terminal-pane-select" data-pane="' +
+            iPaneId + '" title="Give the mouse to this pane instead of ' +
+            'to the program running in it, so dragging selects text ' +
+            'and the wheel scrolls the scrollback">Select text</button>' +
             '</div>' +
             '<div class="terminal-pane-container"></div>';
         elStrip.appendChild(elPane);
@@ -108,6 +112,7 @@ const VaibifyTerminal = (function () {
             listTabs: [],
             iActiveTabIndex: -1,
             elPane: elPane,
+            bSelectTextMode: false,
         };
         listPanes.push(dictPane);
 
@@ -181,6 +186,27 @@ const VaibifyTerminal = (function () {
                 fnCopyPaneScrollback(iPaneId);
             };
         }
+        var elSelect = dictPane.elPane.querySelector(".terminal-pane-select");
+        if (elSelect) {
+            elSelect.dataset.pane = String(iPaneId);
+            elSelect.onclick = function () {
+                dictPane.bSelectTextMode = !dictPane.bSelectTextMode;
+                fnRenderSelectTextButton(dictPane);
+            };
+            fnRenderSelectTextButton(dictPane);
+        }
+    }
+
+    /* The mode has to be visible, because while it is on the mouse
+       stops reaching the program in the pane. A button that looked
+       the same either way would leave the researcher guessing which
+       of two behaviours they are about to get. */
+    function fnRenderSelectTextButton(dictPane) {
+        var elButton = dictPane.elPane.querySelector(".terminal-pane-select");
+        if (!elButton) return;
+        var bActive = dictPane.bSelectTextMode === true;
+        elButton.classList.toggle("active", bActive);
+        elButton.setAttribute("aria-pressed", bActive ? "true" : "false");
     }
 
     function fnUpdateAddPaneButton() {
@@ -336,6 +362,13 @@ const VaibifyTerminal = (function () {
                (Option+drag) is opt-in — without it there is no way to
                select text on a Mac while such a program is running. */
             macOptionClickForcesSelection: true,
+            /* Option is this pane's selection modifier, by the line
+               above and by the "Select text" mode that injects it.
+               Leaving xterm's Option+click-moves-the-cursor on would
+               make a short click in that mode emit cursor-movement
+               keys into the running program -- the same gesture
+               meaning two things, one of them invisible. */
+            altClickMovesCursor: false,
         });
 
         var fitAddon = new FitAddon.FitAddon();
@@ -366,7 +399,8 @@ const VaibifyTerminal = (function () {
 
         fnTrackFollowingOutput(dictTab, terminal);
         fnBindCopyAndSelectionHandlers(dictTab, terminal);
-        fnBindScrollbackWheelHandler(terminal);
+        fnBindScrollbackWheelHandler(dictPane, terminal);
+        fnBindSelectionInterception();
         if (fbTerminalIsAvailableHere()) {
             fnArmLazyShellDial(dictPane, dictTab, terminal, elContainer);
         } else {
@@ -502,7 +536,12 @@ const VaibifyTerminal = (function () {
        would detect is not stable: the container's agent self-updates,
        so whether the wheel is captured can change under a researcher
        who changed nothing. A single behaviour in both states is the
-       only one that stays true across that. */
+       only one that stays true across that.
+
+       The pane's "Select text" mode takes the wheel on the same
+       terms: while it is on, the mouse belongs to the pane, and a
+       wheel that still went to the program would make the mode a
+       half-promise. */
 
     var _I_FALLBACK_CELL_HEIGHT_PIXELS = 17;
 
@@ -536,8 +575,8 @@ const VaibifyTerminal = (function () {
         return fDelta > 0 ? 1 : -1;
     }
 
-    function fbHandleScrollbackWheelEvent(event, terminal) {
-        if (!event.shiftKey) return true;
+    function fbHandleScrollbackWheelEvent(dictPane, event, terminal) {
+        if (!event.shiftKey && !dictPane.bSelectTextMode) return true;
         var iLines = fiMeasureWheelScrollLines(event, terminal);
         /* Never swallow a wheel this handler did not act on: claiming
            the event while scrolling nothing is how the remap above
@@ -548,10 +587,201 @@ const VaibifyTerminal = (function () {
         return false;
     }
 
-    function fnBindScrollbackWheelHandler(terminal) {
+    function fnBindScrollbackWheelHandler(dictPane, terminal) {
         terminal.attachCustomWheelEventHandler(function (event) {
-            return fbHandleScrollbackWheelEvent(event, terminal);
+            return fbHandleScrollbackWheelEvent(dictPane, event, terminal);
         });
+    }
+
+    /* --- Selecting text a program is holding the mouse against ---
+
+       The same capture that takes the wheel takes the DRAG, and the
+       measured consequence is worse than an unreachable scrollback.
+       With an agent running, a plain drag in this pane selects
+       nothing at all, and the forwarded press counts as input, so
+       the pane jumps to its newest line -- measured on a real pane,
+       a researcher parked 1700 rows back was thrown to the bottom by
+       the very gesture they began in order to copy.
+
+       xterm has one override for this and it is a modifier the
+       researcher has to already know: Option on macOS, Shift
+       everywhere else. A modifier that differs by platform and
+       appears nowhere in the interface is not an override anybody
+       finds. The pane therefore carries a VISIBLE mode instead:
+       while "Select text" is on, every mouse event is handed to
+       xterm wearing that platform's own force-selection modifier, so
+       selection engages and the forwarding is skipped for exactly as
+       long as the button says it is.
+
+       The modifier is injected rather than detected-and-branched.
+       Whether a program holds the mouse changes under a researcher
+       who changed nothing -- the container's agent self-updates --
+       and the one question asked of that state is asked per event,
+       at the instant the event happens, never remembered. */
+
+    var LIST_MACINTOSH_PLATFORMS =
+        ["Macintosh", "MacIntel", "MacPPC", "Mac68K"];
+
+    /* Mirrors xterm's own platform test exactly. A disagreement here
+       would inject the modifier this build of xterm does not honour,
+       which fails silently and looks like the mode doing nothing. */
+    function fbPlatformIsMacintosh() {
+        return LIST_MACINTOSH_PLATFORMS.indexOf(
+            window.navigator.platform) !== -1;
+    }
+
+    function fbProgramHoldsTheMouse(terminal) {
+        return !!terminal.modes
+            && terminal.modes.mouseTrackingMode !== "none";
+    }
+
+    function fbSelectTextModeApplies(dictPane, terminal) {
+        return dictPane.bSelectTextMode === true
+            && fbProgramHoldsTheMouse(terminal);
+    }
+
+    /* How far the pointer must travel past the pane's edge to reach
+       xterm's top autoscroll speed.
+
+       xterm ramps from 1 to 15 lines per 50ms over 50 pixels of
+       overshoot, and this pane leaves roughly 30 pixels between its
+       last row and the bottom of the browser window. Crossing the
+       edge at all therefore measured ~300 lines a second, running
+       the length of the scrollback in under a second: there is no
+       speed in that at which a researcher can stop on the line they
+       want.
+
+       Presenting the overshoot COMPRESSED stretches that ramp over
+       300 pixels instead -- about 40 lines a second thirty pixels
+       past the edge, with full speed still available by shoving the
+       pointer well away. It is applied to the coordinate xterm
+       reads rather than by a scroll loop of our own, so xterm's
+       selection still extends exactly as it always has and there is
+       no second implementation of selection geometry to drift. */
+    var F_AUTOSCROLL_OVERSHOOT_COMPRESSION = 6;
+
+    function ffCompressAutoscrollOvershoot(fClientY, terminal) {
+        var elScreen = terminal.element
+            && terminal.element.querySelector(".xterm-screen");
+        if (!elScreen) return fClientY;
+        var dictRect = elScreen.getBoundingClientRect();
+        if (fClientY >= dictRect.top && fClientY <= dictRect.bottom) {
+            return fClientY;
+        }
+        var fEdge = fClientY < dictRect.top ? dictRect.top : dictRect.bottom;
+        return fEdge
+            + (fClientY - fEdge) / F_AUTOSCROLL_OVERSHOOT_COMPRESSION;
+    }
+
+    /* Re-dispatched on the ORIGINAL target, so everything else bound
+       along that path -- the lazy shell dial among them -- still sees
+       the gesture. */
+    var S_REDISPATCHED_MARK = "bVaibifyRedispatched";
+
+    function fnRedispatchMouseEvent(event, fClientY, bForceSelection) {
+        var bMacintosh = fbPlatformIsMacintosh();
+        var eventCopy = new MouseEvent(event.type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            detail: event.detail,
+            clientX: event.clientX,
+            clientY: fClientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            button: event.button,
+            buttons: event.buttons,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            altKey: event.altKey || (bForceSelection && bMacintosh),
+            shiftKey: event.shiftKey || (bForceSelection && !bMacintosh),
+        });
+        eventCopy[S_REDISPATCHED_MARK] = true;
+        event.stopPropagation();
+        event.preventDefault();
+        event.target.dispatchEvent(eventCopy);
+    }
+
+    function fdictLocateActiveTabUnderEvent(event) {
+        if (!event.target || !event.target.closest) return null;
+        var elContainer = event.target.closest(".terminal-pane-container");
+        if (!elContainer) return null;
+        var dictLocated = null;
+        listPanes.forEach(function (dictPane) {
+            if (!dictPane.elPane.contains(elContainer)) return;
+            if (dictPane.iActiveTabIndex < 0) return;
+            dictLocated = {
+                dictPane: dictPane,
+                dictTab: dictPane.listTabs[dictPane.iActiveTabIndex],
+            };
+        });
+        if (!dictLocated || !dictLocated.dictTab
+            || !dictLocated.dictTab.terminal) {
+            return null;
+        }
+        return dictLocated;
+    }
+
+    /* The drag is remembered because the pointer leaves the pane --
+       reaching text off the bottom is the whole point -- so from the
+       first move onward the event's target says nothing about which
+       terminal is being selected in. */
+    var dictActiveSelectionDrag = null;
+
+    function fnHandleSelectionMouseDown(event) {
+        if (event[S_REDISPATCHED_MARK] || event.button !== 0) return;
+        var dictLocated = fdictLocateActiveTabUnderEvent(event);
+        if (!dictLocated) return;
+        dictActiveSelectionDrag = dictLocated;
+        var terminal = dictLocated.dictTab.terminal;
+        if (!fbSelectTextModeApplies(dictLocated.dictPane, terminal)) return;
+        fnRedispatchMouseEvent(event, event.clientY, true);
+        /* Suppressing the press's default action suppresses the focus
+           that came with it, and a pane that stops taking keystrokes
+           the moment you select in it is not a pane. */
+        terminal.focus();
+    }
+
+    function fnHandleSelectionMouseMove(event) {
+        if (event[S_REDISPATCHED_MARK] || !dictActiveSelectionDrag) return;
+        var terminal = dictActiveSelectionDrag.dictTab.terminal;
+        if (!terminal) return;
+        var bForceSelection = fbSelectTextModeApplies(
+            dictActiveSelectionDrag.dictPane, terminal);
+        var fClientY = ffCompressAutoscrollOvershoot(event.clientY, terminal);
+        if (!bForceSelection && fClientY === event.clientY) return;
+        fnRedispatchMouseEvent(event, fClientY, bForceSelection);
+    }
+
+    function fnHandleSelectionMouseUp(event) {
+        if (event[S_REDISPATCHED_MARK] || !dictActiveSelectionDrag) return;
+        var dictPane = dictActiveSelectionDrag.dictPane;
+        var terminal = dictActiveSelectionDrag.dictTab.terminal;
+        dictActiveSelectionDrag = null;
+        if (!terminal) return;
+        if (!fbSelectTextModeApplies(dictPane, terminal)) return;
+        /* The release is held back too. Forwarding a release the
+           program never saw the press for would hand it a phantom
+           click, and it counts as input, which scrolls the pane to
+           its newest line -- discarding the view the researcher just
+           dragged to reach. */
+        fnRedispatchMouseEvent(event, event.clientY, true);
+    }
+
+    var bSelectionInterceptionBound = false;
+
+    function fnBindSelectionInterception() {
+        if (bSelectionInterceptionBound) return;
+        bSelectionInterceptionBound = true;
+        /* Capture phase on the window: xterm listens for the press on
+           its own element and for the drag on the document, and both
+           have to receive the transformed event rather than the
+           original. */
+        window.addEventListener(
+            "mousedown", fnHandleSelectionMouseDown, true);
+        window.addEventListener(
+            "mousemove", fnHandleSelectionMouseMove, true);
+        window.addEventListener("mouseup", fnHandleSelectionMouseUp, true);
     }
 
     /* The whole buffer, with wrapped rows rejoined into the line the
