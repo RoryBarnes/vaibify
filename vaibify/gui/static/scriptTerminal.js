@@ -731,6 +731,8 @@ const VaibifyTerminal = (function () {
         if (event[S_REDISPATCHED_MARK] || event.button !== 0) return;
         var dictLocated = fdictLocateActiveTabUnderEvent(event);
         if (!dictLocated) return;
+        dictLocated.fLastClientY = event.clientY;
+        dictLocated.fTravel = 0;
         dictActiveSelectionDrag = dictLocated;
         var terminal = dictLocated.dictTab.terminal;
         if (!fbSelectTextModeApplies(dictLocated.dictPane, terminal)) return;
@@ -745,6 +747,7 @@ const VaibifyTerminal = (function () {
         if (event[S_REDISPATCHED_MARK] || !dictActiveSelectionDrag) return;
         var terminal = dictActiveSelectionDrag.dictTab.terminal;
         if (!terminal) return;
+        fnRememberDragTravel(dictActiveSelectionDrag, event.clientY);
         var bForceSelection = fbSelectTextModeApplies(
             dictActiveSelectionDrag.dictPane, terminal);
         var fClientY = ffCompressAutoscrollOvershoot(event.clientY, terminal);
@@ -805,20 +808,46 @@ const VaibifyTerminal = (function () {
        a second. */
     var F_WINDOW_EXIT_OVERSHOOT_PIXELS = 5;
 
-    function ffPlaceExitJustOutsideThePane(event, terminal) {
+    /* WHICH EDGE the pointer left by is read from the drag's own
+       travel, never from the boundary event's coordinates. Firefox
+       reports that event at clientY 0, so reading it concluded "left
+       via the top" for a drag heading straight down and scrolled the
+       pane backwards -- measured in CI, 3791 pixels the wrong way.
+       The drag itself is not ambiguous: it was going somewhere, and
+       the direction it was going is the edge it left by.
+
+       Travel rather than position, because position alone cannot
+       answer the case this exists for. A flick that skips the strip
+       between the pane's last row and the window edge leaves its
+       last sample INSIDE the pane, where the position says nothing
+       and the direction says everything. */
+    function fnRememberDragTravel(dictDrag, fClientY) {
+        if (dictDrag.fLastClientY !== undefined) {
+            dictDrag.fTravel = fClientY - dictDrag.fLastClientY;
+        }
+        dictDrag.fLastClientY = fClientY;
+    }
+
+    function ffPlaceExitJustOutsideThePane(dictDrag, terminal) {
         var elScreen = terminal.element
             && terminal.element.querySelector(".xterm-screen");
-        if (!elScreen) return event.clientY;
+        if (!elScreen) return null;
         var dictRect = elScreen.getBoundingClientRect();
-        if (event.clientY <= 0) {
-            return dictRect.top - F_WINDOW_EXIT_OVERSHOOT_PIXELS;
-        }
-        if (event.clientY >= window.innerHeight - 1) {
+        var fLastClientY = dictDrag.fLastClientY;
+        var bLeftBelow = dictDrag.fTravel > 0
+            || fLastClientY >= dictRect.bottom;
+        var bLeftAbove = dictDrag.fTravel < 0
+            || fLastClientY <= dictRect.top;
+        if (bLeftBelow) {
             return dictRect.bottom + F_WINDOW_EXIT_OVERSHOOT_PIXELS;
         }
-        /* Left sideways, which says nothing about how far down the
-           pointer is; its own position still does. */
-        return ffCompressAutoscrollOvershoot(event.clientY, terminal);
+        if (bLeftAbove) {
+            return dictRect.top - F_WINDOW_EXIT_OVERSHOOT_PIXELS;
+        }
+        /* A drag that was going nowhere, still inside the pane. There
+           is no evidence of an edge, and guessing one would scroll a
+           researcher away from what they were reading. */
+        return null;
     }
 
     function fnHandleSelectionPointerLeftWindow(event) {
@@ -829,9 +858,11 @@ const VaibifyTerminal = (function () {
         if (event.relatedTarget) return;
         var terminal = dictActiveSelectionDrag.dictTab.terminal;
         if (!terminal) return;
+        var fClientY = ffPlaceExitJustOutsideThePane(
+            dictActiveSelectionDrag, terminal);
+        if (fClientY === null) return;
         fnDispatchTransformedMouseEvent(
-            event, "mousemove",
-            ffPlaceExitJustOutsideThePane(event, terminal),
+            event, "mousemove", fClientY,
             fbSelectTextModeApplies(dictActiveSelectionDrag.dictPane,
                                     terminal));
     }
