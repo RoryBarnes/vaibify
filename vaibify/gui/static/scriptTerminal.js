@@ -678,9 +678,11 @@ const VaibifyTerminal = (function () {
        the gesture. */
     var S_REDISPATCHED_MARK = "bVaibifyRedispatched";
 
-    function fnRedispatchMouseEvent(event, fClientY, bForceSelection) {
+    function fnDispatchTransformedMouseEvent(
+        event, sType, fClientY, bForceSelection
+    ) {
         var bMacintosh = fbPlatformIsMacintosh();
-        var eventCopy = new MouseEvent(event.type, {
+        var eventCopy = new MouseEvent(sType, {
             bubbles: true,
             cancelable: true,
             view: window,
@@ -697,9 +699,14 @@ const VaibifyTerminal = (function () {
             shiftKey: event.shiftKey || (bForceSelection && !bMacintosh),
         });
         eventCopy[S_REDISPATCHED_MARK] = true;
+        event.target.dispatchEvent(eventCopy);
+    }
+
+    function fnRedispatchMouseEvent(event, fClientY, bForceSelection) {
         event.stopPropagation();
         event.preventDefault();
-        event.target.dispatchEvent(eventCopy);
+        fnDispatchTransformedMouseEvent(
+            event, event.type, fClientY, bForceSelection);
     }
 
     function fdictLocateActiveTabUnderEvent(event) {
@@ -768,6 +775,75 @@ const VaibifyTerminal = (function () {
         fnRedispatchMouseEvent(event, event.clientY, true);
     }
 
+    /* Leaving the window is where this gesture goes to die.
+
+       xterm recomputes its autoscroll speed ONLY when a mousemove
+       arrives, and it keeps applying the last speed it computed. So
+       the speed is zero -- permanently, however long the researcher
+       holds the mouse out there -- unless some mousemove actually
+       landed below the pane's last row. Two things conspire to make
+       sure none does. Browsers disagree about whether a pointer
+       outside the window reports at all (Chromium keeps sending,
+       Firefox was reported not to), and there are only about thirty
+       pixels between the pane's last row and the window's edge --
+       narrower than one frame of a brisk drag at 60Hz, so the strip
+       can be crossed with no sample inside it. Reported from a real
+       Firefox: press Option, drag below the window, nothing moves.
+
+       The exit is itself the missing event. A pointer leaving the
+       window fires mouseout with a NULL relatedTarget, carrying the
+       coordinate it left by, and handing xterm that one coordinate
+       sets a speed its own timer then keeps applying until the
+       pointer returns or the button comes up.
+
+       NOT MEASURED IN FIREFOX. This machine could not launch one
+       (both cached Playwright builds fail), and no automation
+       framework will move a pointer outside the viewport, which is
+       the gesture in question. What IS measured is the mechanism:
+       with the speed left at zero, a pane scrolls nowhere, and this
+       path sets it. If Firefox also withholds the boundary event,
+       this does not reach far enough -- and that is a statement
+       about what was verified, not a hedge about whether it works. */
+
+    /* The rate a pane scrolls at while the pointer is parked outside
+       the window. It cannot be modulated -- a browser that has
+       stopped reporting the pointer cannot say how far out it has
+       gone -- so it is chosen to be readable rather than quick: five
+       pixels past the edge is two lines per 50ms, about forty lines
+       a second. */
+    var F_WINDOW_EXIT_OVERSHOOT_PIXELS = 5;
+
+    function ffPlaceExitJustOutsideThePane(event, terminal) {
+        var elScreen = terminal.element
+            && terminal.element.querySelector(".xterm-screen");
+        if (!elScreen) return event.clientY;
+        var dictRect = elScreen.getBoundingClientRect();
+        if (event.clientY <= 0) {
+            return dictRect.top - F_WINDOW_EXIT_OVERSHOOT_PIXELS;
+        }
+        if (event.clientY >= window.innerHeight - 1) {
+            return dictRect.bottom + F_WINDOW_EXIT_OVERSHOOT_PIXELS;
+        }
+        /* Left sideways, which says nothing about how far down the
+           pointer is; its own position still does. */
+        return ffCompressAutoscrollOvershoot(event.clientY, terminal);
+    }
+
+    function fnHandleSelectionPointerLeftWindow(event) {
+        if (event[S_REDISPATCHED_MARK] || !dictActiveSelectionDrag) return;
+        /* A null relatedTarget is what distinguishes leaving the
+           WINDOW from crossing between two elements inside it, and
+           only the first one strands the drag. */
+        if (event.relatedTarget) return;
+        var terminal = dictActiveSelectionDrag.dictTab.terminal;
+        if (!terminal) return;
+        fnDispatchTransformedMouseEvent(
+            event, "mousemove",
+            ffPlaceExitJustOutsideThePane(event, terminal),
+            fbSelectTextModeApplies(dictActiveSelectionDrag.dictPane,
+                                    terminal));
+    }
+
     var bSelectionInterceptionBound = false;
 
     function fnBindSelectionInterception() {
@@ -782,6 +858,14 @@ const VaibifyTerminal = (function () {
         window.addEventListener(
             "mousemove", fnHandleSelectionMouseMove, true);
         window.addEventListener("mouseup", fnHandleSelectionMouseUp, true);
+        /* Both names, because which one an engine sends for a
+           window exit is exactly the kind of difference this machine
+           cannot measure, and a duplicate costs nothing: the second
+           hands xterm the same coordinate as the first. */
+        window.addEventListener(
+            "mouseout", fnHandleSelectionPointerLeftWindow, true);
+        window.addEventListener(
+            "mouseleave", fnHandleSelectionPointerLeftWindow, true);
     }
 
     /* The whole buffer, with wrapped rows rejoined into the line the

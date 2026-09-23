@@ -460,6 +460,23 @@ LIST_FALSIFICATIONS = [
             """            '' +"""
         ),
     ),
+    # A drag held outside the window must keep scrolling. xterm's
+    # autoscroll speed is recomputed only on a mousemove, so a drag
+    # whose last sample was inside the pane is stranded at zero; the
+    # window-exit boundary event is what un-strands it. The mutation
+    # stops vaibify listening for that event.
+    Falsification(
+        nodeid=(
+            'tests/browser/testADragThatLeavesTheWindowKeepsScrolling.py::'
+            'testAPointerHeldOutsideTheWindowKeepsThePaneScrolling'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old=(
+            '        window.addEventListener(\n'
+            '            "mouseout", fnHandleSelectionPointerLeftWindow, true);'
+        ),
+        new='        void 0;',
+    ),
     # The pane's "Select text" mode: with it on, a program holding
     # the mouse must not also be holding the researcher's drag. The
     # mutation stops the force-selection modifier ever being
