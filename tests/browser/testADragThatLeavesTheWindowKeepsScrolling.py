@@ -15,22 +15,38 @@ last row and the window edge is about thirty pixels: narrower than
 one frame of a brisk drag at 60Hz, so it can be crossed with no
 sample inside it.
 
-WHAT THIS TEST DRIVES, SAID PLAINLY. It reproduces the STRANDED
-STATE rather than the browser behaviour that produces it: the drag
-is moved only to a point INSIDE the pane (so xterm's speed is zero,
-exactly as after a strip-skipping flick), and the pointer's exit is
-then delivered as the boundary event a browser sends when it leaves
-the window. Playwright's Chromium is the engine; no automation
-framework will move a pointer outside the viewport, and this machine
-could not launch a Firefox. So this proves the stranded state is
-recoverable and that vaibify recovers it. It does NOT prove Firefox
-sends the boundary event it recovers from -- that remains unmeasured,
-and if Firefox withholds it too, this fix does not reach far enough.
+Then it gets worse, and the lane's own trace is where that was
+learned. With the pointer dragged 80 pixels below a window 720 tall
+and a pane ending at 690, the CI Firefox lane reported:
+
+    mouseout@682 mouseleave@682 mousemove@682
+    mouseout@-86 mouseleave@-86 x11 mousemove@-86 mousemove@-86
+
+Firefox fires the boundary event correctly at 682 -- so the recovery
+above does fire there -- and then reports the HELD pointer at
+clientY -86, above the top of the page, a 768-pixel jump between two
+frames for a pointer nobody moved. Chromium reports the same gesture
+as 800. Believing Firefox ran the pane to the top of its buffer:
+3791 pixels the wrong way, which a researcher sees as the selection
+leaping away from the text they were reaching for.
+
+WHAT THIS TEST DRIVES, SAID PLAINLY. Playwright's Chromium is the
+engine; no automation framework will move a pointer outside the
+viewport, and this machine could not launch a Firefox. Both
+pathologies are therefore delivered as events rather than produced
+by a pointer -- but neither is invented: the boundary event is the
+one every engine sends on leaving the window, and -86 is copied from
+the Firefox lane's own trace. What is proven here is that vaibify
+recovers from both states. That Firefox produces them is measured,
+in CI, by the assertion message this file prints on failure.
 
 Kills (confirmed -- mutation applied to scriptTerminal.js, this test
 run, the named assertion observed to fail):
   - the ``mouseout`` listener removed from
     ``fnBindSelectionInterception`` -> "the pane never scrolled".
+  - ``ffResolveDragCoordinate`` believing a contradicted coordinate
+    -> "a coordinate claiming the pointer had jumped above the page
+    reversed the drag".
 """
 
 import time
@@ -105,6 +121,28 @@ def _ffScrollPosition(pageDashboard):
     )
 
 
+# What Firefox reports for a pointer dragged 80 pixels BELOW a
+# window 720 tall, measured in CI: a coordinate above the top of the
+# page. Chromium reports the same gesture as 800. The number is
+# copied from the lane's own trace rather than invented, because a
+# made-up impossible coordinate would not prove anything about a real
+# engine's behaviour.
+F_FIREFOX_REPORTS_A_DOWNWARD_DRAG_AT = -86.0
+
+
+def _fnDeliverAContradictoryCoordinate(pageDashboard, fClientY):
+    """Send a mousemove claiming the pointer jumped past the far edge."""
+    pageDashboard.evaluate(
+        """(fClientY) => {
+            document.body.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true, cancelable: true, view: window,
+                clientX: 400, clientY: fClientY, buttons: 1,
+            }));
+        }""",
+        fClientY,
+    )
+
+
 def _fnDeliverThePointerLeavingTheWindow(pageDashboard, dictGeometry):
     """Send the boundary event a browser fires on leaving the window.
 
@@ -162,10 +200,29 @@ def testAPointerHeldOutsideTheWindowKeepsThePaneScrolling(
     _fnDeliverThePointerLeavingTheWindow(pageDashboard, dictGeometry)
     time.sleep(F_HOLD_SECONDS)
     fMoved = _ffScrollPosition(pageDashboard) - fStranded
-    pageDashboard.mouse.up()
 
     assert fMoved >= F_MINIMUM_SCROLL_PIXELS, (
         f"the pane never scrolled ({fMoved} pixels in "
         f"{F_HOLD_SECONDS}s): a drag held outside the window leaves "
         "text below the last row unreachable"
+    )
+
+    # Firefox then reports the held pointer ABOVE the top of the page
+    # -- a 768-pixel jump between two frames, for a pointer that has
+    # not moved. Believing it ran the pane to the top of its buffer,
+    # 3791 pixels the wrong way, which is what a researcher sees as
+    # the selection leaping away from the text they were reaching for.
+    fBeforeContradiction = _ffScrollPosition(pageDashboard)
+    for _ in range(4):
+        _fnDeliverAContradictoryCoordinate(
+            pageDashboard, F_FIREFOX_REPORTS_A_DOWNWARD_DRAG_AT)
+    time.sleep(F_HOLD_SECONDS)
+    fAfterContradiction = _ffScrollPosition(pageDashboard)
+    pageDashboard.mouse.up()
+
+    assert fAfterContradiction >= fBeforeContradiction, (
+        "a coordinate claiming the pointer had jumped above the page "
+        f"reversed the drag: the pane went from {fBeforeContradiction} "
+        f"to {fAfterContradiction}, scrolling away from the text the "
+        "drag was reaching for"
     )

@@ -747,10 +747,10 @@ const VaibifyTerminal = (function () {
         if (event[S_REDISPATCHED_MARK] || !dictActiveSelectionDrag) return;
         var terminal = dictActiveSelectionDrag.dictTab.terminal;
         if (!terminal) return;
-        fnRememberDragTravel(dictActiveSelectionDrag, event.clientY);
         var bForceSelection = fbSelectTextModeApplies(
             dictActiveSelectionDrag.dictPane, terminal);
-        var fClientY = ffCompressAutoscrollOvershoot(event.clientY, terminal);
+        var fClientY = ffResolveDragCoordinate(
+            dictActiveSelectionDrag, terminal, event.clientY);
         if (!bForceSelection && fClientY === event.clientY) return;
         fnRedispatchMouseEvent(event, fClientY, bForceSelection);
     }
@@ -823,9 +823,49 @@ const VaibifyTerminal = (function () {
        and the direction says everything. */
     function fnRememberDragTravel(dictDrag, fClientY) {
         if (dictDrag.fLastClientY !== undefined) {
-            dictDrag.fTravel = fClientY - dictDrag.fLastClientY;
+            var fStep = fClientY - dictDrag.fLastClientY;
+            /* The last NONZERO step, because a drag that pauses has
+               not changed its mind about where it was going. */
+            if (fStep !== 0) dictDrag.fTravel = fStep;
         }
         dictDrag.fLastClientY = fClientY;
+    }
+
+    /* A COORDINATE THAT CONTRADICTS THE DRAG IS NOT BELIEVED.
+
+       Measured in CI, with the pointer dragged 80 pixels below a
+       window 720 tall and a pane ending at 690, Firefox reports the
+       move at clientY -86 -- above the top of the page. Chromium
+       reports the same gesture as 800. Firefox's exit event arrives
+       correctly first, so the recovery fires and is then overridden
+       by a stream of coordinates claiming the pointer teleported 768
+       pixels upward between two frames. The pane ran to the top of
+       its buffer: 3791 pixels the wrong way.
+
+       A pointer cannot cross the pane without being seen crossing
+       it. So a coordinate landing beyond the edge OPPOSITE to the
+       way the drag was travelling is not a position, and it is not
+       believed: the drag continues off the edge it was actually
+       heading for. Travel is not updated from such an event either,
+       or two of them would agree the drag had reversed.
+
+       This is deliberately not a Firefox branch. Which engine
+       mangles which coordinate is exactly the sort of fact that goes
+       stale, and a rule that reads "believe the drag over a
+       contradiction" is true on an engine nobody has tested yet. */
+    function ffResolveDragCoordinate(dictDrag, terminal, fClientY) {
+        var elScreen = terminal.element
+            && terminal.element.querySelector(".xterm-screen");
+        if (!elScreen) return fClientY;
+        var dictRect = elScreen.getBoundingClientRect();
+        if (fClientY < dictRect.top && dictDrag.fTravel > 0) {
+            return dictRect.bottom + F_WINDOW_EXIT_OVERSHOOT_PIXELS;
+        }
+        if (fClientY > dictRect.bottom && dictDrag.fTravel < 0) {
+            return dictRect.top - F_WINDOW_EXIT_OVERSHOOT_PIXELS;
+        }
+        fnRememberDragTravel(dictDrag, fClientY);
+        return ffCompressAutoscrollOvershoot(fClientY, terminal);
     }
 
     function ffPlaceExitJustOutsideThePane(dictDrag, terminal) {
