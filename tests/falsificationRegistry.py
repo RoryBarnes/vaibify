@@ -23011,4 +23011,53 @@ def _fdictEntry(sRel):
             '                )}\n'
         ),
     ),
+
+    # --- 2026-09-23: an agent's run moves the step lights ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnAgentsRunMovesTheStepLights.py::'
+            'test_an_agents_run_releases_each_step_and_says_how_it_ended'
+        ),
+        # the step the run moved past keeps its running marker, which is
+        # how every finished step of an agent's run kept pulsing
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            if (_iReflectedActiveIndex !== iActiveIndex &&\n',
+        new='            if (false &&\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRunStateWireCarriesStepResults.py::'
+            'test_run_state_carries_each_finished_steps_verdict'
+        ),
+        # the poll carries only the active step, so no finished step can
+        # ever be marked passed or failed
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        "dictStepResults": dict(\n'
+            '            dictPipelineState.get("dictStepResults") or {}\n'
+            '        ),\n'
+        ),
+        new='        "dictStepResults": {},\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRunStateWireCarriesStepResults.py::'
+            'test_another_workflows_run_is_not_painted_onto_this_one'
+        ),
+        # another workflow's step numbers are painted onto this one
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        dictPipelineState = {}\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRunStateWireCarriesStepResults.py::'
+            'test_the_poll_compares_the_run_with_the_open_workflow'
+        ),
+        # the builder never names the open workflow, so the guard that
+        # compares the run's workflow with it can never fire
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            dictPipelineState, sWorkflowPath,\n',
+        new='            dictPipelineState,\n',
+    ),
 ]

@@ -1055,7 +1055,7 @@ async def _fdictReconcilePipelineState(dictCtx, sContainerId):
     return await fdictReadReconciledState(dictCtx, sContainerId) or {}
 
 
-def _fdictRunStateForWire(dictPipelineState):
+def _fdictRunStateForWire(dictPipelineState, sOpenWorkflowPath=""):
     """Return the compact run-state the poll payload carries.
 
     The continuously-polled ``/status`` payload surfaces the reconciled
@@ -1064,15 +1064,33 @@ def _fdictRunStateForWire(dictPipelineState):
     separate pipeline-state poll it only starts for runs it initiates.
     ``iActiveStep`` is 1-based (0/-1 mean "no active step").
 
+    ``dictStepResults`` is the run's per-step verdicts, keyed by the
+    same 1-based step number. Without them the dashboard learned only
+    which step was active, so an agent's multi-step run left every
+    finished step pulsing and ended with no step marked passed or
+    failed (researcher-reported, 2026-09-23).
+
+    A run recorded against a DIFFERENT workflow than the one open here
+    is reported as no run: its step numbers index another step list,
+    and painting them onto this one would light steps that never ran.
+
     The over-budget fields are computed live here (never persisted as
     terminal state) so an active step that has outrun its declared
     wall-clock budget shows honestly on every poll while still running.
     """
     from ..pipelineState import fdictActiveStepBudgetStatus
+    sRunWorkflowPath = dictPipelineState.get("sWorkflowPath") or ""
+    if sRunWorkflowPath and sOpenWorkflowPath and (
+        sRunWorkflowPath != sOpenWorkflowPath
+    ):
+        dictPipelineState = {}
     dictBudget = fdictActiveStepBudgetStatus(dictPipelineState)
     return {
         "bRunning": bool(dictPipelineState.get("bRunning")),
         "iActiveStep": dictPipelineState.get("iActiveStep", -1),
+        "dictStepResults": dict(
+            dictPipelineState.get("dictStepResults") or {}
+        ),
         "bActiveStepOverBudget": dictBudget["bActiveStepOverBudget"],
         "fActiveStepElapsedSeconds": dictBudget[
             "fActiveStepElapsedSeconds"
@@ -1165,7 +1183,9 @@ async def _fdictFetchOutputStatus(
         "dictModTimes": fdictAbsKeysToRepoRelative(
             dictModTimes, sRepoRoot,
         ),
-        "dictRunState": _fdictRunStateForWire(dictPipelineState),
+        "dictRunState": _fdictRunStateForWire(
+            dictPipelineState, sWorkflowPath,
+        ),
         # Which remote checks this hub process has in flight for this
         # project. REPORTED here, never RUN here: the refresh is its
         # own route (remoteRefreshRoutes) precisely because this poll
