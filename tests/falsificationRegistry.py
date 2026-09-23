@@ -460,6 +460,19 @@ LIST_FALSIFICATIONS = [
             """            '' +"""
         ),
     ),
+    # The terminal help must name the modifier THIS machine's xterm
+    # honours, not a list the researcher filters. The mutation makes
+    # the answer platform-blind, which is how a Mac came to be told
+    # about Shift.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheHelpNamesThisMachinesKey.py::'
+            'testTheHelpNamesOptionOnAMacintosh'
+        ),
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        return fbPlatformIsMacintosh() ? "Option" : "Shift";',
+        new='        return "Shift";',
+    ),
     # A drag held outside the window must keep scrolling. xterm's
     # autoscroll speed is recomputed only on a mousemove, so a drag
     # whose last sample was inside the pane is stranded at zero; the

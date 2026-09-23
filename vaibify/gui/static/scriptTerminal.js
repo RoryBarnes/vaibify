@@ -619,17 +619,6 @@ const VaibifyTerminal = (function () {
        and the one question asked of that state is asked per event,
        at the instant the event happens, never remembered. */
 
-    var LIST_MACINTOSH_PLATFORMS =
-        ["Macintosh", "MacIntel", "MacPPC", "Mac68K"];
-
-    /* Mirrors xterm's own platform test exactly. A disagreement here
-       would inject the modifier this build of xterm does not honour,
-       which fails silently and looks like the mode doing nothing. */
-    function fbPlatformIsMacintosh() {
-        return LIST_MACINTOSH_PLATFORMS.indexOf(
-            window.navigator.platform) !== -1;
-    }
-
     function fbProgramHoldsTheMouse(terminal) {
         return !!terminal.modes
             && terminal.modes.mouseTrackingMode !== "none";
@@ -681,7 +670,10 @@ const VaibifyTerminal = (function () {
     function fnDispatchTransformedMouseEvent(
         event, sType, fClientY, bForceSelection
     ) {
-        var bMacintosh = fbPlatformIsMacintosh();
+        /* The same answer the help text gives the researcher, from
+           the same place: a modifier injected here that the help
+           does not name is a gesture nobody can be told about. */
+        var bMacintosh = VaibifyUtilities.fbPlatformIsMacintosh();
         var eventCopy = new MouseEvent(sType, {
             bubbles: true,
             cancelable: true,
