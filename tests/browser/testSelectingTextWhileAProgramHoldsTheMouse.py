@@ -141,6 +141,37 @@ def _ffSelectionArea(pageDashboard):
     )
 
 
+def _fnRecordWhatTheBrowserSends(pageDashboard):
+    """Record every pointer event the page receives from here on.
+
+    The lane runs three engines and they disagree about what a
+    pointer leaving the window reports -- that disagreement is the
+    whole subject of this file, and it cannot be read from a scroll
+    position after the fact. Firefox scrolled 3757 pixels the wrong
+    way here twice; this is how the trace that explains it reaches
+    the log instead of being guessed at a third time.
+    """
+    pageDashboard.evaluate(
+        """() => {
+            window.__listPointerTrace = [];
+            ['mousemove', 'mouseout', 'mouseleave'].forEach(sType => {
+                window.addEventListener(sType, e => {
+                    if (window.__listPointerTrace.length < 40) {
+                        window.__listPointerTrace.push(
+                            sType + '@' + Math.round(e.clientY) +
+                            (e.relatedTarget ? '' : ':null'));
+                    }
+                }, true);
+            });
+        }""",
+    )
+
+
+def _fsReadWhatTheBrowserSent(pageDashboard):
+    return " ".join(
+        pageDashboard.evaluate("() => window.__listPointerTrace || []"))
+
+
 def _ffScrollPosition(pageDashboard):
     return pageDashboard.evaluate(
         "() => document.querySelector('.xterm-viewport').scrollTop",
@@ -241,12 +272,18 @@ def testSelectTextModeGivesTheMouseBackToTheResearcher(
     # thirty pixels from the bottom of the browser. A researcher who
     # keeps dragging must not fall off the end of the mechanism.
     _fnScrollBackFromTheNewestLine(pageDashboard, dictGeometry)
+    _fnRecordWhatTheBrowserSends(pageDashboard)
     fMovedOutside = _ffDragPastTheBottomEdge(
         pageDashboard, dictGeometry, dictGeometry["fWindowHeight"] + 80)
+    sTrace = _fsReadWhatTheBrowserSent(pageDashboard)
     pageDashboard.mouse.up()
     assert fMovedOutside > 0, (
         "the pane stopped scrolling once the pointer left the browser "
-        "window, which is where a drag for off-screen text ends up"
+        "window, which is where a drag for off-screen text ends up. "
+        f"Moved {fMovedOutside} pixels; a negative number means it "
+        f"scrolled the wrong way. Window height "
+        f"{dictGeometry['fWindowHeight']}, pane bottom "
+        f"{dictGeometry['fBottom']}. What this browser sent: {sTrace}"
     )
 
     # The mode must not cost the pane its keyboard: the press whose
