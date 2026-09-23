@@ -261,17 +261,17 @@ def _fbBrowserTokenRejected(request):
 
 
 def _fsBrowserPresentedToken(request, sPath):
-    """Return the browser token from the header, or the query for WS/download."""
-    sToken = request.headers.get("x-session-token", "")
-    if sToken:
-        return sToken
-    bIsWebSocket = (
-        request.headers.get("upgrade", "").lower() == "websocket"
-    )
-    bIsDownload = "/download/" in sPath
-    if bIsWebSocket or bIsDownload:
-        return request.query_params.get("sToken", "")
-    return ""
+    """Return the browser token, via the ONE presentation rule.
+
+    Delegated rather than restated: this middleware and
+    ``routeScope``'s container authority both decide whether a request
+    carries a credential, and when each kept its own copy of the rule
+    they drifted -- the download carve-out landed here and not there,
+    so every file download cleared the middleware and was refused by
+    the authority.
+    """
+    del sPath
+    return browserSession.fsBrowserPresentedCredential(request)
 
 
 def _fresponseUnauthorized(request):

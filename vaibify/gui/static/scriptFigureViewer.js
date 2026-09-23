@@ -1507,6 +1507,12 @@ const VaibifyFigureViewer = (function () {
             var dictViewer = sViewportId === "viewportA" ?
                 dictViewerA : dictViewerB;
 
+            // Cancelled so the viewport becomes a drop target in
+            // browsers that require it; see fnBindDropEvents in
+            // scriptFiles.js for why dragover alone is not enough.
+            elViewport.addEventListener("dragenter", function (event) {
+                event.preventDefault();
+            });
             elViewport.addEventListener("dragover", function (event) {
                 event.preventDefault();
                 elViewport.classList.add("drag-over");

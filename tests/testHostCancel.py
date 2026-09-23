@@ -45,6 +45,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.config import processLiveness
 from vaibify.config import operationJournal, registryManager
 from vaibify.gui.routes import pipelineRoutes
 from vaibify.host import hostCancellation
@@ -174,13 +175,22 @@ def testTheListingNamesOnlyHostExecRecords():
 
 
 @pytest.mark.falsification
-def testTheListingMarksARecycledIdentityUnproven():
+def testTheListingMarksARecycledIdentityUnproven(monkeypatch):
     """The listing's proof is recycle-proof, not a bare existence check.
 
     ``os.kill(pid, 0)`` says a pid EXISTS; it cannot say the process
     wearing it is the one the record named. The record here is
     backdated an hour, which is what a pid handed to something new
     looks like from the journal's side.
+
+    The start clock is STUBBED rather than read from ``ps``, and that
+    is the point of the stub rather than a convenience: the prover
+    falls back to the bare existence check whenever the probe cannot
+    resolve, by design, so a real ``ps`` that fails under a loaded
+    suite makes this assertion report the very shortcut it exists to
+    forbid. Read live, the test was flaky in exactly the direction
+    that hides its own mutant (2026-09-22). Stubbed, the recycle
+    comparison is what is measured, every time.
 
     Kills: proving liveness with the bare existence check — the
     shortcut a developer reaches for when a start-clock read looks
@@ -190,6 +200,12 @@ def testTheListingMarksARecycledIdentityUnproven():
     is the one that proves the CONSEQUENCE, a live process left
     alone.)
     """
+    # A start clock LATER than the hour-old claim: the pid is worn by
+    # a process that began after the record named it.
+    monkeypatch.setattr(
+        processLiveness, "fdatetimeReadProcessStartClock",
+        lambda iPid: datetime.datetime.now(),
+    )
     _fsJournalHostExecRecord(
         S_HOST_PROJECT, os.getpid(), os.getpgrp(),
         sInFlightIso=_fsAnHourAgoIso(),

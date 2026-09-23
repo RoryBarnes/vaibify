@@ -19,6 +19,7 @@ var VaibifyFiles = (function () {
 
         fnRenderBreadcrumb(sCurrentPath);
         _fnUpdateConvertButtonVisibility();
+        _fnUpdateAdoptBarVisibility();
 
         try {
             var listEntries = await VaibifyApi.fdictGet(
@@ -245,6 +246,17 @@ var VaibifyFiles = (function () {
     }
 
     function fnBindDropEvents(elTarget) {
+        /* BOTH dragenter and dragover must be cancelled for an element
+           to become a drop target. Chromium and WebKit accept a
+           cancelled dragover alone, which is why this shipped looking
+           correct and worked everywhere they were used; Firefox holds
+           to the specification, so without this the zone never became
+           a target there -- no drag-over highlight, no drop, no error,
+           the "nothing happens" report (2026-09-22). */
+        elTarget.addEventListener("dragenter", function (event) {
+            if (!fbHasHostFiles(event)) return;
+            event.preventDefault();
+        });
         elTarget.addEventListener("dragover", function (event) {
             if (!fbHasHostFiles(event)) return;
             event.preventDefault();
@@ -310,11 +322,145 @@ var VaibifyFiles = (function () {
         });
     }
 
+    /* --- Adopting a workspace directory as a Project --- */
+
+    function fsAdoptableDirectoryName() {
+        /* Return the directory adoption could act on, or "".
+
+           Adoption hands a bare repository NAME to the tracking
+           sidecar, which resolves it against the resource's own
+           repository root -- so only a directory sitting DIRECTLY
+           under that root can become a project repository. Anything
+           deeper would either nest inside an existing repository or
+           be invisible to tracking, and the backend refuses both; the
+           bar stays hidden rather than offering a click that cannot
+           work. */
+        var sRoot = VaibifyApp.fsGetWorkspaceRoot() || "";
+        if (!sRoot || sCurrentPath === sRoot) return "";
+        if (sCurrentPath.indexOf(sRoot + "/") !== 0) return "";
+        var sRemainder = sCurrentPath.substring(sRoot.length + 1);
+        if (!sRemainder || sRemainder.indexOf("/") >= 0) return "";
+        if (sRemainder.charAt(0) === ".") return "";
+        return sRemainder;
+    }
+
+    function _fnUpdateAdoptBarVisibility() {
+        /* Container mode only. A host sandbox is promoted through the
+           convert bar above, which opens the wizard; offering both
+           would be two doors to one outcome. */
+        var elBar = document.getElementById("fileAdoptProjectBar");
+        if (!elBar) return;
+        var bOffer = (
+            VaibifyApp.fsGetProjectMode() !== "host"
+            && fsAdoptableDirectoryName() !== ""
+        );
+        elBar.style.display = bOffer ? "" : "none";
+        if (!bOffer) _fnClearAdoptOutcome();
+    }
+
+    function _fnClearAdoptOutcome() {
+        var elOutcome = document.getElementById("adoptProjectOutcome");
+        if (!elOutcome) return;
+        elOutcome.textContent = "";
+        elOutcome.hidden = true;
+    }
+
+    function _fnShowAdoptOutcome(sText) {
+        var elOutcome = document.getElementById("adoptProjectOutcome");
+        if (!elOutcome) return;
+        elOutcome.textContent = sText;
+        elOutcome.hidden = false;
+    }
+
+    var _bAdoptButtonBound = false;
+
+    function fnBindAdoptButton() {
+        if (_bAdoptButtonBound) return;
+        var elButton = document.getElementById("btnAdoptProject");
+        if (!elButton) return;
+        _bAdoptButtonBound = true;
+        elButton.addEventListener("click", _fnHandleAdoptClick);
+    }
+
+    async function _fnHandleAdoptClick() {
+        var sDirectory = fsAdoptableDirectoryName();
+        var elName = document.getElementById("inputAdoptProjectName");
+        var sProjectName = elName ? elName.value.trim() : "";
+        if (!sDirectory) return;
+        if (!sProjectName) {
+            _fnShowAdoptOutcome(
+                "Give the project a name first. It is what the "
+                + "Project field in the toolbar will show."
+            );
+            return;
+        }
+        var elButton = document.getElementById("btnAdoptProject");
+        if (elButton) elButton.disabled = true;
+        _fnShowAdoptOutcome("Working…");
+        try {
+            await _fnRequestAdoption(sDirectory, sProjectName);
+        } finally {
+            if (elButton) elButton.disabled = false;
+        }
+    }
+
+    async function _fnRequestAdoption(sDirectory, sProjectName) {
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        try {
+            var dictReport = await VaibifyApi.fdictPost(
+                "/api/workflows/" + sContainerId + "/adopt-directory",
+                {
+                    sDirectory: sDirectory,
+                    sProjectName: sProjectName,
+                    sFileName: "",
+                }
+            );
+            _fnShowAdoptOutcome(_fsDescribeAdoption(dictReport));
+        } catch (error) {
+            /* The refusals carry sMessage + sRemedy precisely so the
+               researcher is told the next action; the diagnosis path
+               renders the server's sentence and adds the doctor run. */
+            _fnClearAdoptOutcome();
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+        }
+    }
+
+    function _fsDescribeAdoption(dictReport) {
+        /* Say what actually happened, including "nothing".
+           Adoption is idempotent, so a second click legitimately
+           performs no stage -- and reporting that as success without
+           saying so would read as "a new project was made". The three
+           cases are distinguished by bProjectIsNew rather than by the
+           stage list, because a directory that already held a project
+           file but was never registered legitimately performs a stage
+           without a new project being created. */
+        var listPerformed = (dictReport
+            && dictReport.saStagesPerformed) || [];
+        var sQuoted = "‘"
+            + ((dictReport && dictReport.sProjectName) || "")
+            + "’";
+        var sHead;
+        if (dictReport && dictReport.bProjectIsNew) {
+            sHead = sQuoted + " is now a Project.";
+        } else if (listPerformed.length > 0) {
+            sHead = sQuoted + " was already a Project. Completed: "
+                + listPerformed.join(", ") + ".";
+        } else {
+            sHead = sQuoted
+                + " was already a Project; nothing changed.";
+        }
+        return sHead
+            + "\nOpen it from the Project field in the toolbar."
+            + "\n" + ((dictReport && dictReport.sProjectPath) || "");
+    }
+
     document.addEventListener("DOMContentLoaded", fnBindDropZone);
     document.addEventListener("DOMContentLoaded", fnBindConvertButton);
+    document.addEventListener("DOMContentLoaded", fnBindAdoptButton);
 
     return {
         fnLoadDirectory: fnLoadDirectory,
         fnRefreshCurrentDirectory: fnRefreshCurrentDirectory,
+        fsAdoptableDirectoryName: fsAdoptableDirectoryName,
     };
 })();

@@ -11036,6 +11036,215 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testCoverageGaps.py::'
+            'test_fnPushToContainer_never_shells_out_to_docker_cp'
+        ),
+        source='vaibify/docker/fileTransfer.py',
+        # Push by `docker cp` again, which writes the destination
+        # owned by root: the unprivileged container user cannot then
+        # modify anything the researcher pushed, and there is no sudo.
+        old=(
+            '    from vaibify.docker.dockerConnection import '
+            'DockerConnection\n'
+            '    DockerConnection().fnCopyHostPathIntoContainer(\n'
+            '        sProjectName, sHostSource, sContainerDest,\n'
+            '    )\n'
+        ),
+        new=(
+            '    _fnRunDockerCp(\n'
+            '        ["docker", "cp", sHostSource,\n'
+            '         f"{sProjectName}:{sContainerDest}"])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testTheBashScriptRunsUnderTheBashMacOsShips'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Use mapfile again -- a bash 4 builtin absent from the bash
+        # macOS ships as /bin/bash. Inside a completion function it
+        # fails silently, so container-path completion offers nothing
+        # and reports nothing, which is how it stayed broken.
+        old=(
+            '    local daMatches=()\n'
+            '    local sMatch\n'
+            '    while IFS= read -r sMatch; do\n'
+            '        daMatches+=("${sMatch}")\n'
+            '    done < <(_fnListContainerPaths "${sCurrent}" '
+            '"${VC_NAME}" "${VC_WORKSPACE}")\n'
+        ),
+        new=(
+            '    local daMatches\n'
+            '    mapfile -t daMatches < <(_fnListContainerPaths '
+            '"${sCurrent}" "${VC_NAME}" "${VC_WORKSPACE}")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPushCompletesContainerPathsOnlyForItsDestination'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Drop the push/pull case out of the vaibify completer, which
+        # is the state `vaibify push <TAB>` actually shipped in: the
+        # argument completers existed and nothing reached them.
+        old=(
+            '    local sSubcommand="${COMP_WORDS[1]}"\n'
+            '    if [[ "${sSubcommand}" == "push" || '
+            '"${sSubcommand}" == "pull" ]]; then\n'
+            '        _fnCompleteTransferArgument "${sSubcommand}" 2\n'
+            '        return\n'
+            '    fi\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPullCompletesContainerPathsOnlyForItsSource'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        # Give pull push's position logic: container paths offered for
+        # the HOST destination and local files for the container
+        # source, which is backwards in both arguments.
+        old=(
+            '    if [[ "${sDirection}" == "pull" && '
+            '"${iTypedCount}" -eq 0 ]]; then\n'
+        ),
+        new=(
+            '    if [[ "${sDirection}" == "pull" && '
+            '"${iTypedCount}" -ge 1 ]]; then\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDownloadDoesNotAskToLeaveThePage.py::'
+            'testDownloadingAFileStartsADownloadRatherThanANavigation'
+        ),
+        source='vaibify/gui/static/scriptFilePull.js',
+        # Navigate the page at the file again, which re-enters the
+        # dashboard's unload guard: the researcher is asked whether
+        # they want to leave instead of being given their file.
+        old=(
+            '        var elLink = document.createElement("a");\n'
+            '        elLink.href = sUrl;\n'
+        ),
+        new=(
+            '        window.location.assign(sUrl);\n'
+            '        return;\n'
+            '        var elLink = document.createElement("a");\n'
+            '        elLink.href = sUrl;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testDownloadDoesNotAskToLeaveThePage.py::'
+            'testTheUnloadGuardIsStillArmedAfterADownload'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Silence the prompt by disarming the guard instead of going
+        # around it, giving up the protection that stops a researcher
+        # closing the dashboard mid-run.
+        old='window.addEventListener("beforeunload", fnBlockUnload);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserCredentialPresentation.py::'
+            'testNoOtherRouteReadsACredentialFromTheQuery'
+        ),
+        source='vaibify/gui/browserSession.py',
+        # Read the query credential on EVERY path, turning a narrow
+        # accommodation for a headerless browser download into a
+        # general authentication bypass.
+        old=(
+            '    if bIsWebSocket or S_QUERY_CREDENTIAL_PATH_SEGMENT '
+            'in request.url.path:\n'
+        ),
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserCredentialPresentation.py::'
+            'testBothAuthoritiesAskTheSameFunction'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # Restate the rule in the container authority instead of
+        # asking for it -- the exact shape of the original drift, in
+        # which one reader learned the download carve-out and the
+        # other did not.
+        old=(
+            '        browserSession.fsBrowserPresentedCredential(request),\n'
+            '    )\n'
+            '    if not sBrowserSessionId:\n'
+            '        return I_REJECT_FORBIDDEN\n'
+            '    if sName is None'
+        ),
+        new=(
+            '        request.headers.get("x-session-token", ""),\n'
+            '    )\n'
+            '    if not sBrowserSessionId:\n'
+            '        return I_REJECT_FORBIDDEN\n'
+            '    if sName is None'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testTheUploadZoneCancelsDragEnterNotOnlyDragOver'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Bind dragover alone, which Chromium and WebKit accept and a
+        # specification-abiding browser does not: the zone goes inert
+        # with every Chromium-driven test still green.
+        old=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            if (!fbHasHostFiles(event)) return;\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testTheFileListCancelsDragEnterToo'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Bind the labelled zone only, leaving the file list -- the
+        # target researchers learned first -- with no handlers at all.
+        old=(
+            '            document.getElementById("listFiles"),\n'
+            '            document.getElementById("fileUploadDropZone"),\n'
+        ),
+        new='            document.getElementById("fileUploadDropZone"),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testADropTargetIsATargetInEveryBrowser.py::'
+            'testADragThatCarriesNoFilesIsStillIgnored'
+        ),
+        source='vaibify/gui/static/scriptFiles.js',
+        # Cancel dragenter for EVERY drag, so the upload zone claims a
+        # step being reordered and offers a drop that uploads nothing.
+        old=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            if (!fbHasHostFiles(event)) return;\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+        new=(
+            '        elTarget.addEventListener("dragenter", '
+            'function (event) {\n'
+            '            event.preventDefault();\n'
+            '        });\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/browser/testLostClaimIsRecoverable.py::'
             'testALostClaimIsReclaimedAndTheWorkflowOpens'
         ),
@@ -11045,7 +11254,8 @@ def _fdictEntry(sRel):
         # toast dance of the 2026-08-20 live report restored.
         old=(
             '                if (await _fbReclaimAndRetryOnce(\n'
-            '                    sId, sWorkflowPathArg, sWorkflowName,\n'
+            '                    error, sId, sWorkflowPathArg, '
+            'sWorkflowName,\n'
             '                    iThisGeneration\n'
             '                )) return true;\n'
         ),
@@ -11054,15 +11264,35 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testLostClaimIsRecoverable.py::'
+            'testALostClaimIsReclaimedWhenABlankProjectOpens'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # Connect without the reclaim: the Blank-Project open prints
+        # "Select it again on the project list" from a screen that is
+        # not the project list, naming a control out of reach.
+        old=(
+            '            var dictConnect = '
+            'await _fdictConnectReclaimingOnce(sId);\n'
+        ),
+        new=(
+            '            var dictConnect = await VaibifyApi.fdictPostRaw(\n'
+            '                "/api/connect/" + sId);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testLostClaimIsRecoverable.py::'
             'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
         ),
-        source='vaibify/gui/static/scriptWorkflowManager.js',
+        source='vaibify/gui/static/scriptContainerManager.js',
         # Treat any error as a lost claim: an in-use refusal then runs
         # a doomed reclaim and walks a researcher who cannot fix it
-        # back to a tile that refuses them again.
+        # back to a tile that refuses them again. The predicate now
+        # serves every /api/connect caller, so this mutation reaches
+        # the Blank-Project open and the workflow save too.
         old=(
             '        return dictDetail.sRefusal === '
-            '_S_REFUSAL_CLAIM_REQUIRED;\n'
+            'S_REFUSAL_CLAIM_REQUIRED;\n'
         ),
         new='        return true;\n',
     ),
@@ -22592,5 +22822,193 @@ def _fdictEntry(sRel):
             '    return not fbPathIsGitIgnored(pathCandidate)\n'
         ),
         new='    return pathCandidate.exists()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAnExistingProjectFileIsNeverOverwritten'
+        ),
+        # every adoption writes the blank template over what is there
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    if _fbProbePath(\n'
+            '        connectionDocker.fbContainerPathIsFile,\n'
+            '        sContainerId, sTargetPath,\n'
+            '    ):\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAMissingDirectoryIsRefusedRatherThanCreated'
+        ),
+        # adoption creates the directory it was asked to adopt
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    fnRefuseAdoption(\n'
+            '        404, "adoption-directory-missing",\n'
+            '        f"There is no directory at \'{sFullPath}\'.",\n'
+            '        "Create the directory first (the Files panel, or'
+            ' \'mkdir\' in "\n'
+            '        "the terminal), then adopt it. Adoption never'
+            ' creates the "\n'
+            '        "directory, so a typo cannot silently produce an'
+            ' empty "\n'
+            '        "project.",\n'
+            '    )\n'
+        ),
+        new=(
+            '    connectionDocker.ftResultExecuteCommand(\n'
+            '        sContainerId, f"mkdir -p {fsShellQuote(sFullPath)}",\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAdoptingASubdirectoryOfARepositoryIsRefused'
+        ),
+        # git init runs inside somebody else's work tree
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '    if sExistingRoot and sExistingRoot != sFullPath:\n'
+            '        _fnRefuseDirectoryInsideAnotherRepository('
+            'sFullPath, sExistingRoot)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testARepositoryThatAlreadyHasCommitsGainsNoNewOne'
+        ),
+        # every adoption drops a commit into the researcher's history
+        source='vaibify/gui/projectAdoption.py',
+        old='    if iHeadCode == 0:\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAdoptionIssuesNoHistoryRewritingCommand'
+        ),
+        # the empty root gets grafted beneath existing history, which
+        # is the by-hand repair this module deliberately does not do
+        source='vaibify/gui/projectAdoption.py',
+        old='    if iHeadCode == 0:\n        return False\n',
+        new=(
+            '    if iHeadCode == 0:\n'
+            '        connectionDocker.ftResultExecuteCommand(\n'
+            '            sContainerId,\n'
+            '            f"git -C {sQuoted} rebase --onto HEAD --root",\n'
+            '        )\n'
+            '        return False\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testEveryAdoptionRefusalCarriesARemedy'
+        ),
+        # a refusal stops naming the next action
+        source='vaibify/gui/projectAdoption.py',
+        old='        "sRemedy": sRemedy,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testTheWrittenProjectFileCarriesItsOwnName'
+        ),
+        # the new project file omits its own name, as the template did
+        source='vaibify/gui/projectAdoption.py',
+        old='        "sWorkflowName": sProjectName,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testAnOmittedFileNameStillWritesARealProjectFile'
+        ),
+        # the file name is used verbatim, so an omitted one resolves to
+        # the projects DIRECTORY and adoption reports success for a
+        # project it never wrote
+        source='vaibify/gui/projectAdoption.py',
+        old='    sFileName = fsResolveProjectFileName(sFileName, sProjectName)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoptionFalsification.py::'
+            'testARetryIsNotMistakenForADuplicateName'
+        ),
+        # a safe retry refuses against the project it created itself
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '        if dictWorkflow["sPath"] == sTargetPath:\n'
+            '            continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectAdoption.py::'
+            'testAProjectInADifferentRepositoryDoesNotCountAsThisOne'
+        ),
+        # the already-hosts check stops comparing the REPOSITORY, so
+        # the first project in the workspace suppresses adoption
+        # everywhere else -- the name-vs-id bug class
+        source='vaibify/gui/projectAdoption.py',
+        old=(
+            '        if dictWorkflow.get("sProjectRepoPath") == '
+            'sRepositoryPath:\n'
+            '            return dictWorkflow\n'
+        ),
+        new='        return dictWorkflow\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAdoptingADirectoryRunsUnderOneDrain'
+        ),
+        # the carrier is gone, so the gate refuses the sequence
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
+            '        requestHttp.app.state, dictLaneTuple["sContainerName"],\n'
+            '        sContainerId, dictLaneTuple, "helper",\n'
+            '        "adopt-directory-as-project", fdictAdoptTheDirectory,\n'
+            '    )\n'
+        ),
+        new='    dictOutcome = {"result": fdictAdoptTheDirectory()}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testARefusedAdoptionLeavesTheContainerUsable'
+        ),
+        # the refusal propagates out of the carrier's worker, so a
+        # mistyped directory name quarantines the container
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old=(
+            '        return fdictCarryARefusalBackInsteadOfRaising(\n'
+            '            lambda: projectAdoption'
+            '.fdictAdoptDirectoryAsProject(\n'
+            '                dictCtx["docker"], sContainerId, sDirectory,\n'
+            '                sProjectName, sFileName,\n'
+            '            ),\n'
+            '            setAlsoCarriedStatusCodes=frozenset({500}),\n'
+            '        )\n'
+        ),
+        new=(
+            '        return {"errorRefused": None, "objResult":\n'
+            '                projectAdoption'
+            '.fdictAdoptDirectoryAsProject(\n'
+            '                    dictCtx["docker"], sContainerId,\n'
+            '                    sDirectory, sProjectName, sFileName,\n'
+            '                )}\n'
+        ),
     ),
 ]

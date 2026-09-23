@@ -986,6 +986,38 @@ var VaibifyContainerManager = (function () {
         }
     }
 
+    /* The one connect refusal a researcher can act on, named by the
+       server so the recovery survives a reworded message. Mirrors
+       workflowRoutes.S_REFUSAL_CLAIM_REQUIRED. */
+    var S_REFUSAL_CLAIM_REQUIRED = "claim-required";
+
+    function fbConnectRefusalIsALostClaim(error) {
+        /* Keyed on the machine-readable code, never the prose: the
+           sibling 409 ("in use in another browser session") has no
+           recovery to offer, and a predicate keyed on the word
+           "claim" would fire for it too. */
+        var dictDetail = (error && error.dictDetail) || {};
+        return dictDetail.sRefusal === S_REFUSAL_CLAIM_REQUIRED;
+    }
+
+    async function fbReclaimAfterLostClaim(error) {
+        /* The refusal's named recovery is "select the project again to
+           claim it" -- a claim the dashboard can perform itself. The
+           reaper collects a claim after thirty socket-less seconds, so
+           a researcher who paused to read a list meets this on their
+           very next click. Every caller of /api/connect needs it, not
+           only the workflow picker: opening a Blank Project and saving
+           the open workflow hit the same refusal and offered the
+           researcher an instruction they could not act on from where
+           they stood. Arbitration still governs the reclaim -- a
+           project another vaibify process holds refuses it, and the
+           caller falls back to its own walk-back. */
+        if (!fbConnectRefusalIsALostClaim(error)) return false;
+        var sName = fsGetSelectedContainerName();
+        if (!sName) return false;
+        return await fbClaimContainer(sName);
+    }
+
     function _fsHeldContainerNameFromRefusal(error) {
         var dictDetail = (error && error.dictDetail) || {};
         return dictDetail.sHeldContainerName || "";
@@ -2715,6 +2747,8 @@ var VaibifyContainerManager = (function () {
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
         fbClaimContainer: fbClaimContainer,
+        fbConnectRefusalIsALostClaim: fbConnectRefusalIsALostClaim,
+        fbReclaimAfterLostClaim: fbReclaimAfterLostClaim,
         fsResolveContainerId: fsResolveContainerId,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,

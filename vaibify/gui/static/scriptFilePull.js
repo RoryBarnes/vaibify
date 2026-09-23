@@ -28,8 +28,33 @@ var VaibifyFilePull = (function () {
         var sUrl = "/api/files/" + encodeURIComponent(sContainerId) +
             "/download/" + sContainerPath.split("/")
                 .map(encodeURIComponent).join("/") +
-            "?sToken=" + encodeURIComponent(sToken);
-        window.location.assign(sUrl);
+            "?sToken=" + encodeURIComponent(sToken) +
+            "&sLeaseId=" + encodeURIComponent(VaibifyApp.fsGetLeaseId());
+        /* An anchor click, never window.location: navigating the page
+           to the file makes the browser fire `beforeunload` FIRST,
+           and the dashboard blocks unload, so the researcher was
+           asked whether to leave the page instead of being given
+           their file (Firefox, 2026-09-22). The prompt comes before
+           the response's Content-Disposition can say "attachment",
+           so no server header can prevent it; a browser that cancels
+           the navigation on seeing the attachment merely hides the
+           defect. Same origin, so `download` is honoured, and no
+           navigation means no unload to block. */
+        var elLink = document.createElement("a");
+        elLink.href = sUrl;
+        elLink.download = sContainerPath.split("/").pop() || "";
+        elLink.rel = "noopener";
+        elLink.style.display = "none";
+        document.body.appendChild(elLink);
+        elLink.click();
+        /* Removed on a later turn, never synchronously: an anchor
+           taken out of the document in the same tick as its click
+           cancels the download it just started (measured in the
+           browser lane -- the download event arrived and the bytes
+           never did). */
+        window.setTimeout(function () {
+            elLink.remove();
+        }, 0);
     }
 
     function fnPromptPullToHost(sContainerPath) {

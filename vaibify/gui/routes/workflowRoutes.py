@@ -7,10 +7,12 @@ import posixpath
 import re
 
 from fastapi import HTTPException, Request
+from pydantic import BaseModel
 from typing import Optional
 
 from .. import browserSession
 from .. import containerOwnership
+from .. import projectAdoption
 from .. import projectRoots
 from .. import workflowManager
 from ..actionCatalog import ffnAgentAction
@@ -517,9 +519,109 @@ def _fsResolveBrowserSessionId(dictCtx, requestHttp):
     )
 
 
+class AdoptDirectoryRequest(BaseModel):
+    """The whole input to adoption: which directory, called what."""
+
+    sDirectory: str
+    sProjectName: str
+    sFileName: Optional[str] = ""
+
+
+def _fnRegisterAdoptDirectory(app, dictCtx):
+    """Register POST /api/workflows/{id}/adopt-directory route.
+
+    Deliberately does NOT call ``fdictRequireWorkflow``: this is the
+    route that brings a project into being, so requiring one to be open
+    would refuse every first use. That refusal is exactly what the
+    in-container agent hit when it wrote ``project.json`` by hand, and
+    the message pointed at the session rather than at the missing
+    pieces.
+    """
+
+    @ffnAgentAction("adopt-directory-as-project")
+    @app.post("/api/workflows/{sContainerId}/adopt-directory")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
+    async def fdictHandleAdoptDirectory(
+        sContainerId: str, request: AdoptDirectoryRequest,
+        requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        # Validated out here because none of it reaches the container:
+        # a malformed name is a 400 without a journal record ever
+        # existing, and the carrier is not entered at all.
+        sDirectory = projectAdoption.fsValidateProjectDirectoryName(
+            request.sDirectory,
+        )
+        sProjectName = projectAdoption.fsValidateProjectName(
+            request.sProjectName,
+        )
+        sFileName = projectAdoption.fsResolveProjectFileName(
+            request.sFileName, sProjectName,
+        )
+        return await _fdictAdoptUnderTheDrain(
+            dictCtx, sContainerId, sDirectory, sProjectName,
+            sFileName, requestHttp,
+        )
+
+
+async def _fdictAdoptUnderTheDrain(
+    dictCtx, sContainerId, sDirectory, sProjectName, sFileName,
+    requestHttp,
+):
+    """Run the whole adoption sequence inside one held drain.
+
+    One drain for all four stages, not one per stage. The probes that
+    guard the write -- does the directory exist, is it a repository, is
+    this name free, is the file already there -- must not be separated
+    from the write by a dropped lock, or a second session slips into
+    the gap and one of the two adoptions silently wins.
+
+    A refusal is carried back rather than raised: an expected 4xx
+    raised out of a carrier worker poisons its journal record and
+    quarantines the container, which would answer a mistyped directory
+    name with an instruction to run ``vaibify reconcile``.
+
+    500 joins the carried set, and the reason is that adoption's three
+    500s are all DECIDED rather than unknown. ``git init``,
+    ``git commit`` and ``mkdir -p`` each ran to completion and reported
+    a non-zero exit, so nothing vaibify records changed and there is
+    nothing to reconcile -- the same judgement the git panel makes
+    about a failed fetch. The genuinely unknown failures here do NOT
+    come through as ``HTTPException`` at all: a ``fnWriteFile`` or a
+    sidecar write that dies partway raises the transport's own error,
+    propagates past this carry-back, and poisons the record, which is
+    correct because nobody then knows whether the bytes landed.
+    """
+    from .. import commitCarrier
+    dictLaneTuple = fdictRequireLaneTupleForCommit(
+        requestHttp, sContainerId, "Adopting the directory",
+    )
+
+    def fdictAdoptTheDirectory(supervisor=None):
+        del supervisor
+        return fdictCarryARefusalBackInsteadOfRaising(
+            lambda: projectAdoption.fdictAdoptDirectoryAsProject(
+                dictCtx["docker"], sContainerId, sDirectory,
+                sProjectName, sFileName,
+            ),
+            setAlsoCarriedStatusCodes=frozenset({500}),
+        )
+
+    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
+        requestHttp.app.state, dictLaneTuple["sContainerName"],
+        sContainerId, dictLaneTuple, "helper",
+        "adopt-directory-as-project", fdictAdoptTheDirectory,
+    )
+    dictCarried = dictOutcome["result"]
+    if dictCarried["errorRefused"] is not None:
+        raise dictCarried["errorRefused"]
+    return dictCarried["objResult"]
+
+
 def fnRegisterAll(app, dictCtx):
     """Register all workflow management routes."""
     _fnRegisterWorkflowSearch(app, dictCtx)
     _fnRegisterWorkflowCreate(app, dictCtx)
     _fnRegisterWorkflowCreationRequest(app, dictCtx)
+    _fnRegisterAdoptDirectory(app, dictCtx)
     _fnRegisterConnect(app, dictCtx)

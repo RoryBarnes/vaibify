@@ -1090,7 +1090,7 @@ The vaibify dashboard is the researcher's ground truth; any action you would oth
 
 **Prefer `vaibify-do`** for editing `project.json` (it goes through schema validation and atomic save). Direct edits are now detected by the host's polling loop and the dashboard reloads on the next tick — but `vaibify-do` remains the canonical path. Files under `<repository>/.vaibify/test_markers/` and `/workspace/.vaibify/pipeline_state.json` are still outputs of backend actions; do not hand-edit them.
 
-**Creating a new project from inside the container.** `vaibify-do` does not currently expose a `create-project` action. When the researcher is in toolkit mode (no project loaded — banner shows "Project: None") and asks for a project built around their existing toolkit work, write a fresh `project.json` directly at `<repository>/.vaibify/projects/<slug>.json`. The dashboard polls for new projects and surfaces yours within one tick: the toolkit banner gains a "N available" indicator and a toast offers to switch into it. Use `vaibify-do --describe create-step` (or any of the existing step actions) to learn the canonical step schema before writing the file by hand.
+**Turning a sandbox directory into a project.** Run `vaibify-do adopt-directory-as-project` — the one path, idempotent, and the researcher opens the result themselves. **Never hand-write `project.json` to CREATE a project**: the file is real but the repository is never registered, so every workflow action then refuses with "No project is open". The **create-pipeline-step** skill has the arguments, the refusal codes, and what to tell the researcher afterwards.
 
 Usage:
 

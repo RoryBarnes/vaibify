@@ -205,6 +205,34 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Prepare a plot/standard diff payload for one "
                      "figure. Read-only; returns data."},
     # ---- Workflow editing ----
+    # bAgentSafe=True reverses the sibling policy on create-project and
+    # init-project-repo, deliberately. Refusing adoption grants
+    # nothing: an agent can already run `git init` and write
+    # project.json with the shell, and that is exactly what it does
+    # when refused -- producing a directory the dashboard never hears
+    # about, which is the defect this action exists to end. The choice
+    # is between the agent doing this correctly and the agent doing it
+    # badly, not between doing it and not. It also reaches nothing
+    # outside the workspace the agent already writes to, and it cannot
+    # open the project, so the researcher still decides what to work
+    # in.
+    {"sName": "adopt-directory-as-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/adopt-directory",
+     "bAgentSafe": True,
+     "sDescription": "Turn an EXISTING workspace directory into a "
+                     "tracked Project in one step. Args: {sDirectory, "
+                     "sProjectName, sFileName (optional, derived from "
+                     "sProjectName)}. Makes the directory a git repo "
+                     "if it is not one, commits once if it has no "
+                     "commits, writes a project.json naming itself, "
+                     "and tracks the repo so the dashboard offers it. "
+                     "Idempotent: reports saStagesPerformed and "
+                     "saStagesAlreadySatisfied, and never overwrites "
+                     "an existing project file. Never creates the "
+                     "directory and never rewrites git history. Ask "
+                     "the researcher to open the project from the "
+                     "Project field afterwards; this cannot open it."},
     {"sName": "create-project", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/workflows/{sContainerId}/request-creation",
