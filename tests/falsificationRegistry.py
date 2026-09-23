@@ -460,6 +460,49 @@ LIST_FALSIFICATIONS = [
             """            '' +"""
         ),
     ),
+    # The terminal help must name the modifier THIS machine's xterm
+    # honours, not a list the researcher filters. The mutation makes
+    # the answer platform-blind, which is how a Mac came to be told
+    # about Shift.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheHelpNamesThisMachinesKey.py::'
+            'testTheHelpNamesOptionOnAMacintosh'
+        ),
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        return fbPlatformIsMacintosh() ? "Option" : "Shift";',
+        new='        return "Shift";',
+    ),
+    # A drag held outside the window must keep scrolling. xterm's
+    # autoscroll speed is recomputed only on a mousemove, so a drag
+    # whose last sample was inside the pane is stranded at zero; the
+    # window-exit boundary event is what un-strands it. The mutation
+    # stops vaibify listening for that event.
+    Falsification(
+        nodeid=(
+            'tests/browser/testADragThatLeavesTheWindowKeepsScrolling.py::'
+            'testAPointerHeldOutsideTheWindowKeepsThePaneScrolling'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old=(
+            '        window.addEventListener(\n'
+            '            "mouseout", fnHandleSelectionPointerLeftWindow, true);'
+        ),
+        new='        void 0;',
+    ),
+    # The pane's "Select text" mode: with it on, a program holding
+    # the mouse must not also be holding the researcher's drag. The
+    # mutation stops the force-selection modifier ever being
+    # injected, which is exactly the state the mode exists to leave.
+    Falsification(
+        nodeid=(
+            'tests/browser/testSelectingTextWhileAProgramHoldsTheMouse.py::'
+            'testSelectTextModeGivesTheMouseBackToTheResearcher'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        return dictPane.bSelectTextMode === true',
+        new='        return false && dictPane.bSelectTextMode === true',
+    ),
     Falsification(
         nodeid=(
             'tests/browser/testAnOlderScopeRendersAsVerifyAgain.py::'

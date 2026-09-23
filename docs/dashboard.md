@@ -55,6 +55,27 @@ vaibify reconcile
 Nothing is lost silently — a container in that state is quarantined
 until reconcile proves it, rather than being reported clean.
 
+### Getting text out of a pane
+
+A full-screen program — an agent, `vim`, `htop` — asks the terminal
+for the mouse, and while it holds it your drag belongs to the program
+rather than to the text. Dragging selects nothing, and the pane jumps
+to its newest line. Three ways out, in the order you will want them:
+
+- **Select text**, in the pane's tab bar, gives the mouse back to the
+  pane. While it is on the button is filled in, dragging selects,
+  dragging past the bottom edge scrolls further text into reach, and
+  the wheel moves through the scrollback. Turn it off to give the
+  mouse back to the program.
+- **Shift + wheel** always scrolls the pane, whether or not a program
+  is holding the mouse, and whether or not the mode above is on.
+- **Copy all** puts the pane's whole scrollback on the clipboard, with
+  wrapped lines rejoined as the program wrote them. It needs no
+  gesture at all, so nothing can take it from you.
+
+Selected text reaches the clipboard on its own; Cmd+C, Ctrl+Shift+C,
+Ctrl+Insert and right-click all copy it as well.
+
 **A project that runs on your machine has no in-dashboard terminal.**
 There is no container to open a shell inside, and your own terminal is
 the same shell with the same authority; the strip names the project's

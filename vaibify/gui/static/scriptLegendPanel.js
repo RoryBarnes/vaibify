@@ -474,21 +474,37 @@ var VaibifyLegendPanel = (function () {
        session: they went to the toolbar "?", which had nothing to say
        about the terminal, and never found the one in the terminal
        strip. One question mark, one place. */
+    /* Named for THIS machine, not listed for every machine. The
+       modifier that forces a selection differs by platform, and a
+       researcher on a Mac reading "Shift (Linux)" has been handed the
+       wrong key by an interface that knew which one they needed. The
+       platform answer has one home, in scriptUtilities.js, shared
+       with the code that injects the modifier -- help that names a
+       different key than the pane honours is worse than none. */
     function _fsRenderTerminalUsageSection() {
+        var sModifierKey = VaibifyUtilities.fsNameSelectionModifierKey();
+        var sCopyShortcut = VaibifyUtilities.fsNameCopyShortcut();
         return '<details class="proof-help-details">' +
             '<summary>Terminal usage</summary>' +
             '<p>The terminal behaves like a native terminal. All ' +
             'keystrokes are passed straight to the container.</p>' +
             '<p><strong>If you cannot select text at all:</strong> a ' +
             'full-screen program (an agent, vim, htop) has taken the ' +
-            'mouse for itself. Hold <strong>Option</strong> (macOS) ' +
-            'or <strong>Shift</strong> (Linux) while dragging. The ' +
-            'highlight may vanish the instant you release -- that is ' +
-            'the program repainting, not a failed copy, and the text ' +
-            'is on the clipboard regardless. A toast confirms it.</p>' +
+            'mouse for itself. Turn on <strong>Select text</strong> ' +
+            'in the pane\'s tab bar and the mouse comes back to the ' +
+            'pane: dragging selects, and the wheel scrolls. Holding ' +
+            '<strong>' + sModifierKey + '</strong> while dragging ' +
+            'does the same thing for one drag. The highlight may ' +
+            'vanish the instant you release -- that is the program ' +
+            'repainting, not a failed copy, and the text is on the ' +
+            'clipboard regardless. A toast confirms it.</p>' +
+            '<p><strong>Dragging past the bottom</strong> of the pane ' +
+            'scrolls further text into the selection, and keeps ' +
+            'scrolling while you hold the pointer outside the ' +
+            'window.</p>' +
             '<p><strong>Copying:</strong> a selection is copied ' +
-            'automatically. Cmd+C (macOS), Ctrl+Shift+C (Linux), and ' +
-            'right-clicking a selection also copy it.</p>' +
+            'automatically. <strong>' + sCopyShortcut + '</strong> ' +
+            'and right-clicking a selection also copy it.</p>' +
             '<p><strong>Ctrl+Insert</strong> copies too, and is worth ' +
             'knowing because no browser reserves it. Ctrl+Shift+C is ' +
             'also Firefox\'s Inspector shortcut, and whether the page ' +

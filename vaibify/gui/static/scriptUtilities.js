@@ -358,8 +358,50 @@ var VaibifyUtilities = (function () {
         }
     }
 
+    /* --- Which key this machine uses ---
+
+       When a program in the terminal has taken the mouse, one
+       modifier forces a text selection through anyway, and WHICH one
+       is decided by the vendored xterm build from navigator.platform:
+       Option on a Mac, Shift on Windows and Linux. The lists mirror
+       xterm's own exactly, because a disagreement here would print a
+       key that does nothing -- an interface confidently naming the
+       wrong key is worse than one naming none.
+
+       It lives here so the terminal and the help text cannot drift
+       into naming different keys, and so the interface can state THE
+       key for the machine in front of the researcher rather than a
+       list they have to filter themselves. A researcher reading
+       "Shift (Linux)" on a Mac has been told the wrong thing by an
+       interface that had everything it needed to know better.
+
+       navigator.platform is deprecated and frozen, which makes it a
+       poor way to identify a machine and a fine way to agree with
+       xterm: both read the same frozen string. */
+    var LIST_MACINTOSH_PLATFORMS =
+        ["Macintosh", "MacIntel", "MacPPC", "Mac68K"];
+
+    function fbPlatformIsMacintosh() {
+        return LIST_MACINTOSH_PLATFORMS.indexOf(
+            window.navigator.platform) !== -1;
+    }
+
+    function fsNameSelectionModifierKey() {
+        return fbPlatformIsMacintosh() ? "Option" : "Shift";
+    }
+
+    /* Ctrl+Shift+C is named for everyone but a Mac, Windows included.
+       It is the conventional terminal copy there, and where a browser
+       eats it the help text's Ctrl+Insert is the answer. */
+    function fsNameCopyShortcut() {
+        return fbPlatformIsMacintosh() ? "Cmd+C" : "Ctrl+Shift+C";
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
+        fbPlatformIsMacintosh: fbPlatformIsMacintosh,
+        fsNameSelectionModifierKey: fsNameSelectionModifierKey,
+        fsNameCopyShortcut: fsNameCopyShortcut,
         fsBuildAttainedFavicon: fsBuildAttainedFavicon,
         fsBuildLevelCell: fsBuildLevelCell,
         fsSummarizeLevelStates: fsSummarizeLevelStates,
