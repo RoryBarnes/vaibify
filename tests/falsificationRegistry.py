@@ -460,6 +460,19 @@ LIST_FALSIFICATIONS = [
             """            '' +"""
         ),
     ),
+    # The pane's "Select text" mode: with it on, a program holding
+    # the mouse must not also be holding the researcher's drag. The
+    # mutation stops the force-selection modifier ever being
+    # injected, which is exactly the state the mode exists to leave.
+    Falsification(
+        nodeid=(
+            'tests/browser/testSelectingTextWhileAProgramHoldsTheMouse.py::'
+            'testSelectTextModeGivesTheMouseBackToTheResearcher'
+        ),
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        return dictPane.bSelectTextMode === true',
+        new='        return false && dictPane.bSelectTextMode === true',
+    ),
     Falsification(
         nodeid=(
             'tests/browser/testAnOlderScopeRendersAsVerifyAgain.py::'

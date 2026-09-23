@@ -183,6 +183,7 @@ def _ffDragPastTheBottomEdge(pageDashboard, dictGeometry, fTargetY):
     return _ffScrollPosition(pageDashboard) - fBefore
 
 
+@pytest.mark.falsification
 def testSelectTextModeGivesTheMouseBackToTheResearcher(
     pageDashboard, serverHub,
 ):
