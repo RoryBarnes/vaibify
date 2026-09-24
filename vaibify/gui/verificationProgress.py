@@ -43,6 +43,7 @@ __all__ = [
     "fdictReadNoVerdict",
     "fdictReadStatus",
     "fdictReadUnsettledTeardown",
+    "fsProjectOfLiveVerification",
     "fnForgetNoVerdict",
     "fnRecordNoVerdict",
     "fnRecordUnsettledTeardown",
@@ -50,8 +51,13 @@ __all__ = [
 ]
 
 
-# Keyed by container id. See the module docstring for why each is
-# in-process and why they are separate.
+# DICT_VERIFY_TASKS is keyed by container id: one verification holds a
+# container at a time. Its status names the project it verifies
+# (``sProjectRepoPath``), because a container hosts several and another
+# project's verification is not this project's to show. The no-verdict
+# record is keyed by (container id, project) for the same reason: a
+# second project's attempt must not erase the first project's reason.
+# See the module docstring for why each is in-process.
 DICT_VERIFY_TASKS = {}
 DICT_LAST_NO_VERDICT = {}
 
@@ -74,7 +80,7 @@ _T_LIVE_PHASES = ("starting", "running")
 def fnRegisterTask(sContainerId, taskWorker, dictStatus):
     """Store the verify task and arrange identity-checked self-eviction.
 
-    Mirrors ``pipelineServer._fnRegisterPipelineTask`` so completed
+    Mirrors ``pipelineRunSlots.fnRegisterRun`` so completed
     verifications do not linger forever. The identity check on the
     slot's task object prevents a brand-new verification that landed in
     the same slot from being evicted by the prior task's done-callback
@@ -91,43 +97,55 @@ def fnRegisterTask(sContainerId, taskWorker, dictStatus):
     taskWorker.add_done_callback(fnEvictOnDone)
 
 
-def fdictReadStatus(sContainerId):
-    """Return the in-flight status dict for a container, or ``None``."""
-    return (DICT_VERIFY_TASKS.get(sContainerId) or {}).get("dictStatus")
+def fdictReadStatus(sContainerId, sProjectRepoPath):
+    """Return the in-flight status of this project's verification, or ``None``."""
+    dictStatus = (DICT_VERIFY_TASKS.get(sContainerId) or {}).get("dictStatus")
+    if not dictStatus or dictStatus.get("sProjectRepoPath") != sProjectRepoPath:
+        return None
+    return dictStatus
 
 
-def fbVerificationIsLive(sContainerId):
-    """Return True iff a verification is running in this container.
+def fsProjectOfLiveVerification(sContainerId):
+    """Return the project whose verification holds the container, or ""."""
+    dictEntry = DICT_VERIFY_TASKS.get(sContainerId) or {}
+    taskExisting = dictEntry.get("task")
+    if taskExisting is None or taskExisting.done():
+        return ""
+    return (dictEntry.get("dictStatus") or {}).get("sProjectRepoPath", "")
+
+
+def fbVerificationIsLive(sContainerId, sProjectRepoPath):
+    """Return True iff this project's verification is running.
 
     Read from the recorded PHASE rather than from the task's
     ``done()``, because the poll must agree with what the attestation
     endpoint reports to the PROOF tab; two derivations of "is it
     running" would let the row pulse while the card said finished.
     """
-    dictStatus = fdictReadStatus(sContainerId)
+    dictStatus = fdictReadStatus(sContainerId, sProjectRepoPath)
     if not dictStatus:
         return False
     return dictStatus.get("sPhase") in _T_LIVE_PHASES
 
 
-def fnRecordNoVerdict(sContainerId, listReasons, fDurationSeconds,
-                      sManifestDigest):
-    """Remember why a verification established nothing."""
-    DICT_LAST_NO_VERDICT[sContainerId] = {
+def fnRecordNoVerdict(sContainerId, sProjectRepoPath, listReasons,
+                      fDurationSeconds, sManifestDigest):
+    """Remember why a project's verification established nothing."""
+    DICT_LAST_NO_VERDICT[(sContainerId, sProjectRepoPath)] = {
         "listReasons": list(listReasons or []),
         "fDurationSeconds": float(fDurationSeconds),
         "sManifestDigest": sManifestDigest,
     }
 
 
-def fdictReadNoVerdict(sContainerId):
-    """Return the last no-verdict record for a container, or ``None``."""
-    return DICT_LAST_NO_VERDICT.get(sContainerId)
+def fdictReadNoVerdict(sContainerId, sProjectRepoPath):
+    """Return the project's last no-verdict record, or ``None``."""
+    return DICT_LAST_NO_VERDICT.get((sContainerId, sProjectRepoPath))
 
 
-def fnForgetNoVerdict(sContainerId):
-    """Drop the no-verdict record; a new attempt supersedes the old one."""
-    DICT_LAST_NO_VERDICT.pop(sContainerId, None)
+def fnForgetNoVerdict(sContainerId, sProjectRepoPath):
+    """Drop the project's no-verdict record; a new attempt supersedes it."""
+    DICT_LAST_NO_VERDICT.pop((sContainerId, sProjectRepoPath), None)
 
 
 def fnRecordUnsettledTeardown(sContainerId, sOutcome, sReason):

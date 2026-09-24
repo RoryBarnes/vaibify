@@ -19,6 +19,11 @@ State is per hub PROCESS and deliberately not persisted: it answers "is
 vaibify asking right now", which stops being true the moment the
 process ends.
 
+It is keyed per PROJECT (:func:`ftProjectCheckKey`), not per container:
+a container hosts several projects, each with its own remotes, and a
+check of one project settling over the other's "checking" stopped the
+second's badge pulsing before its own answer arrived.
+
 A CHECKING entry that outlives :data:`F_CHECK_TIMEOUT_SECONDS` reads
 back as uncheckable. The expiry is evaluated when the state is READ,
 never on a timer, because the failure it guards against is a check that
@@ -39,6 +44,7 @@ __all__ = [
     "S_STATE_UNCHECKABLE",
     "S_TIMEOUT_REASON",
     "fbIsCheckInFlight",
+    "ftProjectCheckKey",
     "fdictDescribeChecks",
     "fnForgetResource",
     "fnMarkChecking",
@@ -62,6 +68,11 @@ S_TIMEOUT_REASON = (
 
 _DICT_CHECKS_BY_RESOURCE = {}
 _LOCK_CHECKS = threading.Lock()
+
+
+def ftProjectCheckKey(sResourceId, sProjectRepoPath):
+    """Return the key one project's checks are recorded under."""
+    return (sResourceId, sProjectRepoPath or "")
 
 
 def _fnRecordCheckState(sResourceId, sService, sState, sReason):
@@ -143,6 +154,12 @@ def _fdictProjectCheck(dictRecord, fNow):
 
 
 def fnForgetResource(sResourceId):
-    """Drop every recorded check for one resource."""
+    """Drop every recorded check for one resource, for every project."""
     with _LOCK_CHECKS:
         _DICT_CHECKS_BY_RESOURCE.pop(sResourceId, None)
+        listProjectKeys = [
+            tKey for tKey in _DICT_CHECKS_BY_RESOURCE
+            if isinstance(tKey, tuple) and tKey[0] == sResourceId
+        ]
+        for tKey in listProjectKeys:
+            _DICT_CHECKS_BY_RESOURCE.pop(tKey, None)

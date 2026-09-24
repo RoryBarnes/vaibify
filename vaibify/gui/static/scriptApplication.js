@@ -613,11 +613,12 @@ const VaibifyApp = (function () {
         _fnInvalidateAllRenderCaches();
         _bReflectedDispatchRun = false;
         _iReflectedActiveIndex = -1;
-        _fnRenderOtherProjectRun(null);
+        _fnRenderOtherProjectRuns(null);
         VaibifyTestManager.fnResetState();
         VaibifyPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
         VaibifySyncManager.fnResetState();
+        VaibifyGitBadges.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopFileTreePolling();
@@ -2688,22 +2689,25 @@ const VaibifyApp = (function () {
         }
     }
 
-    function _fnRenderOtherProjectRun(dictOtherRun) {
+    function _fnRenderOtherProjectRuns(dictOtherRuns) {
+        /* How many OTHER projects in this container are running. Their
+           names are one hover away; the count is what says the
+           container is busier than this project's lights show. */
         var elBadge = document.getElementById("otherProjectRunBadge");
         if (!elBadge) return;
-        if (!dictOtherRun || !dictOtherRun.sWorkflowPath) {
+        var iCount = (dictOtherRuns && dictOtherRuns.iRunningProjectCount) || 0;
+        if (iCount < 1) {
             elBadge.style.display = "none";
             elBadge.textContent = "";
             return;
         }
-        var sName = dictOtherRun.sWorkflowName ||
-            dictOtherRun.sProjectRepoPath || dictOtherRun.sWorkflowPath;
-        elBadge.textContent = "Also running here: " + sName;
-        elBadge.title =
-            "Project '" + sName + "' has a pipeline running in this " +
-            "container (" + dictOtherRun.sWorkflowPath + "). Open it " +
-            "to follow or stop the run; this project cannot start a " +
-            "run until it finishes.";
+        elBadge.textContent = iCount === 1 ?
+            "1 other project running" : iCount + " other projects running";
+        elBadge.title = "Running in this container: " +
+            (dictOtherRuns.listRunningProjects || []).map(function (d) {
+                return d.sWorkflowName || d.sProjectRepoPath;
+            }).join(", ") +
+            ". Open a project to follow or stop its run.";
         elBadge.style.display = "";
     }
 
@@ -6437,7 +6441,7 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.sWorkflowPath) {
             return;
         }
-        _fnRenderOtherProjectRun(dictStatus.dictOtherProjectRun);
+        _fnRenderOtherProjectRuns(dictStatus.dictOtherProjectRuns);
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
                 "project.json error: " +

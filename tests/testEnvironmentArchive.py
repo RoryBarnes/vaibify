@@ -492,7 +492,7 @@ def test_the_row_payload_reports_the_state_and_its_reasons(sProjectRepo):
         sProjectRepo,
         _fdictBuildEnvelope(_fdictBuildRecord(sArchitecture="amd64")),
     )
-    archiveProgress.fnForgetDeposit("cid-row")
+    archiveProgress.fnForgetDeposit("cid-row", sProjectRepo)
     dictDetail = fdictBuildImageArchiveDetail(
         {}, sProjectRepo, "cid-row",
     )
@@ -508,7 +508,7 @@ def test_the_row_payload_reports_the_state_and_its_reasons(sProjectRepo):
 def test_a_live_deposit_reaches_the_row(sProjectRepo):
     """A silent multi-minute upload is indistinguishable from a hang."""
     _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
-    archiveProgress.fnRegisterDeposit("cid-live", None)
+    archiveProgress.fnRegisterDeposit("cid-live", None, sProjectRepo)
     archiveProgress.fnRecordProgress(
         "cid-live", archiveProgress.S_PHASE_SAVING, 1024, 4096,
     )
@@ -519,7 +519,7 @@ def test_a_live_deposit_reaches_the_row(sProjectRepo):
         assert dictDetail["sState"] == imageArchive.S_STATE_ARCHIVING
         assert dictDetail["dictDeposit"]["iBytesRead"] == 1024
     finally:
-        archiveProgress.fnForgetDeposit("cid-live")
+        archiveProgress.fnForgetDeposit("cid-live", sProjectRepo)
 
 
 # ----------------------------------------------------------------------
@@ -729,7 +729,9 @@ def test_a_failed_deposit_leaves_the_row_the_state_the_envelope_earns(
     Kills: mapping a FAILED deposit onto the uncheckable state.
     """
     _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
-    archiveProgress.fnRecordFailure("cid-failed", "the upload was refused")
+    archiveProgress.fnRecordFailure(
+        "cid-failed", sProjectRepo, "the upload was refused",
+    )
     try:
         dictDetail = fdictBuildImageArchiveDetail(
             {}, sProjectRepo, "cid-failed",
@@ -740,7 +742,7 @@ def test_a_failed_deposit_leaves_the_row_the_state_the_envelope_earns(
         )
         assert "refused" in dictDetail["dictDeposit"]["sReason"]
     finally:
-        archiveProgress.fnForgetDeposit("cid-failed")
+        archiveProgress.fnForgetDeposit("cid-failed", sProjectRepo)
 
 
 @pytest.mark.falsification
@@ -853,7 +855,7 @@ def test_the_row_payload_reports_which_answer_was_recorded(sProjectRepo):
     Kills: dropping `sAnswer` from `fdictBuildImageArchiveDetail`.
     """
     _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
-    archiveProgress.fnForgetDeposit("cid-answer")
+    archiveProgress.fnForgetDeposit("cid-answer", sProjectRepo)
     dictDetail = fdictBuildImageArchiveDetail(
         {imageArchive.S_IMAGE_ARCHIVE_KEY: {
             "sAnswer": imageArchive.S_ANSWER_DECLINED,
@@ -878,7 +880,7 @@ def test_the_row_payload_answers_level_two_with_the_gate(sProjectRepo):
     state instead of calling `fbImageArchiveQuestionSettled`.
     """
     _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
-    archiveProgress.fnForgetDeposit("cid-gate")
+    archiveProgress.fnForgetDeposit("cid-gate", sProjectRepo)
     from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
     for dictWorkflow in (
         {},
@@ -926,7 +928,7 @@ def test_the_row_payload_carries_why_nothing_could_be_compared(
         "sImageDigest": _S_DIGEST,
         "dictImageArchive": _fdictBuildRecord(),
     }})
-    archiveProgress.fnForgetDeposit("cid-unchecked")
+    archiveProgress.fnForgetDeposit("cid-unchecked", sProjectRepo)
     dictDetail = fdictBuildImageArchiveDetail(
         {}, sProjectRepo, "cid-unchecked",
     )
@@ -945,7 +947,7 @@ def test_a_comparable_envelope_ships_no_unchecked_reason(sProjectRepo):
     the researcher to regenerate an envelope that is fine.
     """
     _fnWriteEnvelope(sProjectRepo, _fdictBuildEnvelope())
-    archiveProgress.fnForgetDeposit("cid-comparable")
+    archiveProgress.fnForgetDeposit("cid-comparable", sProjectRepo)
     dictDetail = fdictBuildImageArchiveDetail(
         {}, sProjectRepo, "cid-comparable",
     )

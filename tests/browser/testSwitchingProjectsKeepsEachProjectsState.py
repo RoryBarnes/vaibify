@@ -123,17 +123,24 @@ def test_another_projects_run_is_announced(pageDashboard, serverHub):
     _fnStagePollOverrides(pageDashboard, dictStage)
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
-    dictStage["current"] = {"dictOtherProjectRun": {
-        "sWorkflowPath": _S_OTHER_WORKFLOW_PATH,
-        "sWorkflowName": "Other Project",
-        "sProjectRepoPath": "/elsewhere/otherProject",
+    dictStage["current"] = {"dictOtherProjectRuns": {
+        "iRunningProjectCount": 2,
+        "listRunningProjects": [
+            {"sWorkflowPath": _S_OTHER_WORKFLOW_PATH,
+             "sWorkflowName": "Other Project",
+             "sProjectRepoPath": "/elsewhere/otherProject"},
+            {"sWorkflowPath": "/elsewhere/third/.vaibify/projects/t.json",
+             "sWorkflowName": "Third Project",
+             "sProjectRepoPath": "/elsewhere/third"},
+        ],
     }}
     pageDashboard.evaluate(_S_POLL_ONCE)
     elBadge = pageDashboard.locator("#otherProjectRunBadge")
     assert elBadge.is_visible()
-    assert "Other Project" in elBadge.inner_text()
+    assert elBadge.inner_text() == "2 other projects running"
+    assert "Third Project" in elBadge.get_attribute("title")
 
-    dictStage["current"] = {"dictOtherProjectRun": {}}
+    dictStage["current"] = {"dictOtherProjectRuns": {}}
     pageDashboard.evaluate(_S_POLL_ONCE)
     assert not elBadge.is_visible(), (
         "the badge outlived the other project's run"
@@ -200,3 +207,43 @@ def test_switching_projects_closes_the_left_projects_socket(
         assert pageDashboard.listPageErrors == []
     finally:
         os.remove(sSecondPath)
+
+
+_S_REFUSE_CONCURRENT_THEN_ACCEPT = """() => {
+    /* Stand in for the hub's refusal, exactly as the pipeline socket
+       delivers it, and record what the page sends back. */
+    window.listSentActions = [];
+    VaibifyWebSocket.fnSend = function (dictAction) {
+        window.listSentActions.push(dictAction);
+    };
+    VaibifyPipelineRunner.fnHandlePipelineEvent({
+        sType: "runRefused", sReason: "concurrentRun", sAction: "runAll",
+        listStepIndices: [], iRunningProjectCount: 1,
+        dictOriginalRequest: {sAction: "runAll"},
+        sMessage: "1 other project is already running a pipeline in " +
+            "this container (Other Project). Nothing was started; " +
+            "confirm to run it anyway.",
+    });
+}"""
+
+
+@pytest.mark.falsification
+def test_a_concurrent_run_is_confirmed_before_anything_is_sent(
+    pageDashboard, serverHub,
+):
+    """The page asks first; only a confirmation re-sends, acknowledged.
+
+    Kills: treating the concurrent-run refusal like any other refusal,
+    which leaves a researcher with an error toast and no way to run.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.evaluate(_S_REFUSE_CONCURRENT_THEN_ACCEPT)
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    assert "Other Project" in pageDashboard.inner_text("#modalConfirm")
+    assert pageDashboard.evaluate("() => window.listSentActions") == []
+    pageDashboard.click("#btnConfirmOk")
+    listSent = pageDashboard.evaluate("() => window.listSentActions")
+    assert len(listSent) == 1
+    assert listSent[0]["sAction"] == "runAll"
+    assert listSent[0]["bAcknowledgeConcurrentRun"] is True
+    assert pageDashboard.listPageErrors == []

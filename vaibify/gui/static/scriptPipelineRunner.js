@@ -210,6 +210,10 @@ var VaibifyPipelineRunner = (function () {
                 _fnHandleRemoteOverwriteRefusal(dictEvent);
                 return;
             }
+            if (dictEvent.sReason === "concurrentRun") {
+                _fnHandleConcurrentRunRefusal(dictEvent);
+                return;
+            }
             if (dictEvent.sReason === "workflowSuperseded") {
                 /* Not a busy container: the project changed under
                    this dashboard and the server refreshed it. The
@@ -777,6 +781,24 @@ var VaibifyPipelineRunner = (function () {
         );
     }
 
+    function _fnHandleConcurrentRunRefusal(dictEvent) {
+        /* Other projects in this container are running. The server
+           names them and the limits every run will share; the
+           researcher decides. Nothing started, and a confirmed retry
+           re-sends the echoed request acknowledged. */
+        var dictRetry = Object.assign(
+            {}, dictEvent.dictOriginalRequest || {},
+            {sAction: dictEvent.sAction, bAcknowledgeConcurrentRun: true});
+        var iCount = dictEvent.iRunningProjectCount || 0;
+        VaibifyApp.fnShowConfirmModal(
+            iCount === 1 ? "Another project is running" :
+                iCount + " other projects are running",
+            dictEvent.sMessage || "",
+            function () { fnSendPipelineAction(dictRetry); },
+            {sConfirmLabel: "Run anyway"}
+        );
+    }
+
     function fnConfirmRemoteOverwriteThen(step, fnProceed) {
         // Frontend-only gate for the interactive terminal lane: the
         // Run-in-Terminal buttons compose a shell command and never
@@ -1233,8 +1255,9 @@ var VaibifyPipelineRunner = (function () {
                 "that detached into its own session is not something " +
                 "vaibify can see or stop.";
         }
-        return "This will kill all running pipeline processes " +
-            "in the container.\n\n" +
+        return "This will kill this project's running pipeline " +
+            "processes in the container. Runs of other projects in " +
+            "the container keep running.\n\n" +
             "Any in-progress computations will be lost.";
     }
 
@@ -1260,7 +1283,7 @@ var VaibifyPipelineRunner = (function () {
     function fnKillPipeline() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         VaibifyApp.fnShowConfirmModal(
-            "Stop All Tasks",
+            "Stop This Project's Run",
             _fsKillConfirmationBody(),
             async function () {
                 try {

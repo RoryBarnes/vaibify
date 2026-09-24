@@ -665,14 +665,43 @@ therefore located by that project, never by the container:
   open project, and shows another project's live run
   (`dictOtherProjectRun`) rather than reading as idle.
 
-Two things stay per CONTAINER, deliberately. One pipeline runs at a
-time, because the projects share the container's CPU quota, and a run
-refused for that reason names the project that holds the container.
-And the busy vetoes (release, idle self-exit) ask
-`pipelineState.fbContainerHasLiveRun`, which consults every project the
-hub knows is in the container: answering from the open project alone
-would hand over or abandon a container in the middle of another
-project's run.
+**Several projects may run at once, after a warning.** A run's slot is
+its PROJECT (`pipelineRunSlots`): two runs of one project are refused,
+because they would write one run-state file and one set of outputs,
+and the refusal names the project. A run beside OTHER projects' runs is
+the researcher's decision, because they share the container's CPU and
+memory: the hub answers an unacknowledged frame with
+`runRefused`/`concurrentRun`, naming the running projects and the
+container's real limits (`fdictReadContainerLimits` -- under a CPU
+quota `nproc` still counts the VM's cores), the dashboard asks, and a
+confirmed frame carries `bAcknowledgeConcurrentRun`. `vaibify-do`
+acknowledges on the agent's behalf and prints the
+`concurrentRunWarning` it gets back. The carrier still holds ONE
+durable record per container: runs of different projects JOIN it as
+members keyed by project (`commitCarrier.fdictLaunchDurableTask`,
+`sJoinableKind`), so release, transfer, the reaper and the shutdown
+drain keep reading one unit of live work, every other kind of durable
+work still refuses to start beside it, and a transfer retags every
+member and adopts every command the record has in flight. Each run's
+commands export its marker (`VAIBIFY_RUN_ID`, via
+`pipelineRunner.fsRunMarkerPrefix`), and Stop ends the OPEN project's
+run by that marker alone; with no run to name (a hub restarted under
+it) the command-name sweep spares every process carrying another live
+run's marker. The dashboard shows how many OTHER projects are running.
+
+One thing stays per CONTAINER, deliberately. The busy vetoes (release,
+idle self-exit) ask `pipelineState.fbContainerHasLiveRun`, which
+consults every project the hub knows is in the container: answering
+from the open project alone would hand over or abandon a container in
+the middle of another project's run.
+
+The in-process records that describe one project's state are keyed by
+PROJECT as well: the Level 3 verification's status and no-verdict
+reason, the environment deposit, falsification runs, the dependency
+scan, the output checksum cache, the lock verdict, the remote checks,
+the git-fetch throttle and the push dedupe. Keyed by container alone,
+each showed one project's state on another's page or erased another
+project's record.
 
 ### Starting a container is a server-owned reservation
 

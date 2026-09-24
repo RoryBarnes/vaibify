@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, WebSocketDisconnect
 
+from vaibify.gui import pipelineRunSlots
 from vaibify.gui import pipelineServer
 from vaibify.gui import routeContext
 from vaibify.gui import workflowManager
@@ -416,75 +417,146 @@ def testThePollDescribesTheWorkflowItHoldsNotTheOpenSlot():
 class _LiveTaskStub:
     """A running pipeline task the registry can stamp."""
 
+    def __init__(self):
+        self.bCancelled = False
+
     def done(self):
         return False
 
     def cancel(self):
+        self.bCancelled = True
         return True
 
     def add_done_callback(self, _fnCallback):
         return None
 
 
-def _fdictTasksRunning(dictWorkflow, sContainerId=S_RESOURCE_ID):
-    dictPipelineTasks = {}
-    pipelineServer._fnRegisterPipelineTask(
+def _fdictTasksRunning(
+    dictWorkflow, sContainerId=S_RESOURCE_ID, dictPipelineTasks=None,
+    sRunId="",
+):
+    dictPipelineTasks = {} if dictPipelineTasks is None else dictPipelineTasks
+    pipelineRunSlots.fnRegisterRun(
         dictPipelineTasks, sContainerId, _LiveTaskStub(),
-        dictWorkflow=dictWorkflow,
+        dictWorkflow=dictWorkflow, sRunId=sRunId,
     )
     return dictPipelineTasks
 
 
 @pytest.mark.falsification
-def testTheOpenProjectIsToldAnotherProjectIsRunning():
+def testTheOpenProjectIsToldHowManyOtherProjectsAreRunning():
     """Kills: reporting only the open project's own run state."""
-    dictCtx = {"pipelineTasks": _fdictTasksRunning(_fdictLeftWorkflow())}
-    dictOther = pipelineRoutes._fdictOtherProjectRunForWire(
-        dictCtx, S_RESOURCE_ID, S_WORKFLOW_OPENED,
+    dictPipelineTasks = _fdictTasksRunning(_fdictLeftWorkflow())
+    dictThird = _fdictWorkflow(
+        "/workspace/projectThird",
+        "/workspace/projectThird/.vaibify/projects/third.json",
+        "thirdModel.py", "ThirdStep",
     )
-    assert dictOther["sWorkflowPath"] == S_WORKFLOW_LEFT
-    assert dictOther["sProjectRepoPath"] == S_REPO_LEFT
-    assert pipelineRoutes._fdictOtherProjectRunForWire(
-        dictCtx, S_RESOURCE_ID, S_WORKFLOW_LEFT,
+    _fdictTasksRunning(dictThird, dictPipelineTasks=dictPipelineTasks)
+    _fdictTasksRunning(
+        _fdictOpenedWorkflow(), dictPipelineTasks=dictPipelineTasks,
+    )
+    dictCtx = {"pipelineTasks": dictPipelineTasks}
+    dictOthers = pipelineRoutes._fdictOtherProjectRunsForWire(
+        dictCtx, S_RESOURCE_ID, _fdictOpenedWorkflow(),
+    )
+    assert dictOthers["iRunningProjectCount"] == 2
+    assert sorted(
+        dictProject["sProjectRepoPath"]
+        for dictProject in dictOthers["listRunningProjects"]
+    ) == sorted(["/workspace/projectThird", S_REPO_LEFT])
+    assert pipelineRoutes._fdictOtherProjectRunsForWire(
+        {"pipelineTasks": _fdictTasksRunning(_fdictOpenedWorkflow())},
+        S_RESOURCE_ID, _fdictOpenedWorkflow(),
     ) == {}
 
 
 # ---------------------------------------------------------------------------
-# Stop sweeps the running project's commands
+# Stop ends the open project's run, and only its processes
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.falsification
-def testStopSweepsTheRunningProjectNotTheOpenOne(appHub, clientBrowser):
-    """Driven through the real route, with the two projects' scripts distinct.
-
-    Kills: building the sweep from the open project's commands, which
-    left the running project's processes alive and would kill the open
-    project's same-named processes instead.
-    """
+def _fdictStopWithRuns(appHub, clientBrowser, dictPipelineTasks):
+    """Open the OPENED project, install the runs, press Stop; return all."""
     sLeaseId = _fsClaimAndReturnLease(clientBrowser, S_CONTAINER_NAME)
     dictCtx = appHub.state.dictRouteContext
     dictCtx["workflows"][S_CONTAINER_ID] = _fdictOpenedWorkflow()
     dictCtx["paths"][S_CONTAINER_ID] = S_WORKFLOW_OPENED
-    dictCtx["pipelineTasks"].update(
-        _fdictTasksRunning(_fdictLeftWorkflow(), S_CONTAINER_ID),
-    )
-    mockSweep = AsyncMock(return_value=1)
+    dictCtx["pipelineTasks"].update(dictPipelineTasks)
+    dictCalls = {"listRunKills": [], "listNameSweeps": []}
+
+    def fiRecordRunKill(_docker, _sId, sRunId):
+        dictCalls["listRunKills"].append(sRunId)
+        return 1
+
+    def fiRecordNameSweep(_docker, _sId, listPatterns, _sGrep, listSpared):
+        dictCalls["listNameSweeps"].append((listPatterns, list(listSpared)))
+        return 1
+
+    async def fiRunTheWorker(_dictCtx, _sId, fiKill, _request):
+        return fiKill()
+
     with patch.object(
-        pipelineRoutes, "_fiCountThenKillUnderTheDrain", mockSweep,
+        pipelineRoutes, "_fiCountThenKillUnderTheDrain", fiRunTheWorker,
     ), patch.object(
-        pipelineRoutes, "_fiMarkPipelineStopped",
-        AsyncMock(return_value=1),
+        pipelineRoutes, "_fiKillRunProcesses", fiRecordRunKill,
+    ), patch.object(
+        pipelineRoutes, "_fiCountAndKillMatchingProcesses", fiRecordNameSweep,
+    ), patch.object(
+        pipelineRoutes, "_fiMarkPipelineStopped", AsyncMock(return_value=1),
     ):
         responseKill = clientBrowser.post(
             f"/api/pipeline/{S_CONTAINER_ID}/kill",
             headers={"X-Vaibify-Lease": sLeaseId},
         )
     assert responseKill.status_code == 200, responseKill.text
-    listPatterns = mockSweep.call_args.args[2]
-    assert "leftModel.py" in listPatterns
-    assert "openedModel.py" not in listPatterns
-    assert responseKill.json()["sStoppedWorkflowPath"] == S_WORKFLOW_LEFT
+    dictCalls["dictResponse"] = responseKill.json()
+    return dictCalls
+
+
+@pytest.mark.falsification
+def testStopEndsOnlyTheOpenProjectsRun(appHub, clientBrowser):
+    """Two projects running: Stop in one ends it by its marker alone.
+
+    Kills: cancelling or sweeping another project's run from this
+    project's Stop -- a researcher stopping one analysis would kill the
+    other one running beside it.
+    """
+    dictPipelineTasks = _fdictTasksRunning(
+        _fdictLeftWorkflow(), S_CONTAINER_ID, sRunId="aa11",
+    )
+    _fdictTasksRunning(
+        _fdictOpenedWorkflow(), S_CONTAINER_ID, dictPipelineTasks,
+        sRunId="bb22",
+    )
+    dictSlots = dictPipelineTasks[S_CONTAINER_ID]
+    dictCalls = _fdictStopWithRuns(appHub, clientBrowser, dictPipelineTasks)
+    assert dictCalls["listRunKills"] == ["bb22"]
+    assert dictCalls["listNameSweeps"] == []
+    assert dictSlots[S_REPO_OPENED].bCancelled is True
+    assert dictSlots[S_REPO_LEFT].bCancelled is False
+    assert dictCalls["dictResponse"]["sStoppedWorkflowPath"] == (
+        S_WORKFLOW_OPENED
+    )
+
+
+@pytest.mark.falsification
+def testANameSweepSparesAnotherProjectsRun(appHub, clientBrowser):
+    """No live run here (a restarted hub): the name sweep spares the other run.
+
+    Kills: a name sweep that ignores run markers, which kills another
+    project's process whenever the two share a script name.
+    """
+    dictPipelineTasks = _fdictTasksRunning(
+        _fdictLeftWorkflow(), S_CONTAINER_ID, sRunId="aa11",
+    )
+    dictCalls = _fdictStopWithRuns(appHub, clientBrowser, dictPipelineTasks)
+    assert dictCalls["listRunKills"] == []
+    [(listPatterns, listSpared)] = dictCalls["listNameSweeps"]
+    assert "openedModel.py" in listPatterns
+    assert "leftModel.py" not in listPatterns
+    assert listSpared == ["aa11"]
+    assert dictPipelineTasks[S_CONTAINER_ID][S_REPO_LEFT].bCancelled is False
 
 
 @pytest.mark.asyncio
@@ -527,6 +599,5 @@ async def testThePollNamesItsProjectAndTheOtherRun():
             dictCtx, S_RESOURCE_ID, _fdictLeftWorkflow(), {},
         )
     assert dictPayload["sServedWorkflowPath"] == S_WORKFLOW_LEFT
-    assert dictPayload["dictOtherProjectRun"]["sWorkflowPath"] == (
-        S_WORKFLOW_OPENED
-    )
+    assert dictPayload["dictOtherProjectRuns"]["listRunningProjects"][0][
+        "sWorkflowPath"] == S_WORKFLOW_OPENED

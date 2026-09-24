@@ -158,7 +158,7 @@ def test_refresh_remotes_respects_fetch_cache_without_force(fixtureCarrierStoodD
     """A recent fetch is reused when bForce is false."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
-    gitRoutes._fnRecordFetchTime(S_CONTAINER_ID)
+    gitRoutes._fnRecordFetchTime(S_CONTAINER_ID, S_REPO)
     dictCaptured = {}
     pFetch, pHeads, pStatus, pUrl = _fpatchesRefreshRemotes(dictCaptured)
     with pFetch, pHeads, pStatus, pUrl:
@@ -172,7 +172,7 @@ def test_refresh_remotes_force_bypasses_fetch_cache(fixtureCarrierStoodDown):
     """bForce true refetches even inside the 30 s cache window."""
     dictCtx = _fdictBuildGitContext()
     clientHttp = _fclientBuildGitClient(dictCtx)
-    gitRoutes._fnRecordFetchTime(S_CONTAINER_ID)
+    gitRoutes._fnRecordFetchTime(S_CONTAINER_ID, S_REPO)
     dictCaptured = {}
     pFetch, pHeads, pStatus, pUrl = _fpatchesRefreshRemotes(dictCaptured)
     with pFetch, pHeads, pStatus, pUrl:

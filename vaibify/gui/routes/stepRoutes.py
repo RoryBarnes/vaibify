@@ -559,10 +559,11 @@ def _fnRegisterStepRename(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         if _fbRefuseWhilePipelineTaskLive(
             dictCtx["pipelineTasks"], sContainerId,
+            dictWorkflow.get("sProjectRepoPath", ""),
         ):
             raise HTTPException(
                 409, "A pipeline action is running in this "
-                "container — wait for it to finish before renaming "
+                "project — wait for it to finish before renaming "
                 "a step.")
         _fnRequireFingerprintMatch(
             dictWorkflow, request.sBaseFingerprint)
@@ -710,10 +711,11 @@ def _fnRegisterAlignDirectories(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         if _fbRefuseWhilePipelineTaskLive(
             dictCtx["pipelineTasks"], sContainerId,
+            dictWorkflow.get("sProjectRepoPath", ""),
         ):
             raise HTTPException(
                 409, "A pipeline action is running in this "
-                "container — wait for it to finish before aligning "
+                "project — wait for it to finish before aligning "
                 "directories.")
         dictBatch = await _fdictAlignDirectoriesUnderTheDrain(
             dictCtx, sContainerId, dictWorkflow, requestHttp,

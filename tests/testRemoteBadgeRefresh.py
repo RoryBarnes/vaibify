@@ -123,6 +123,7 @@ def _fdictCarrierFor(sContainerId=S_CONTAINER_ID):
         "appState": None,
         "sContainerName": "fake-container",
         "sContainerId": sContainerId,
+        "tCheckKey": sContainerId,
         "dictLaneTuple": {"sContainerName": "fake-container"},
     }
 
@@ -161,22 +162,32 @@ def _fnAnswerEveryVerify(monkeypatch, listCalls):
 # -----------------------------------------------------------------------
 
 
+@pytest.mark.falsification
 def test_only_configured_remotes_are_ever_marked(
-    fixtureClient, monkeypatch,
+    fixtureClient, fixtureProjectRepo, monkeypatch,
 ):
     """Overleaf and arXiv are unconfigured, so neither may pulse.
 
     An unconfigured remote that appeared in the map would pulse until
     the read-time timeout aged it out — three minutes of a badge
-    promising an answer nobody asked for.
+    promising an answer nobody asked for. The checks are recorded for
+    THIS project, never for another project in the same container.
+
+    Kills: a check key without the project, under which one project's
+    refresh settles over another's pulsing badge.
     """
     _fnAnswerEveryVerify(monkeypatch, [])
     responseHttp = fixtureClient.post(
         S_REFRESH_PATH.format(S_CONTAINER_ID),
     )
     assert responseHttp.status_code == 200
-    dictChecks = remoteCheckState.fdictDescribeChecks(S_CONTAINER_ID)
+    dictChecks = remoteCheckState.fdictDescribeChecks(
+        remoteCheckState.ftProjectCheckKey(S_CONTAINER_ID, fixtureProjectRepo),
+    )
     assert sorted(dictChecks.keys()) == ["github", "zenodo"]
+    assert remoteCheckState.fdictDescribeChecks(
+        remoteCheckState.ftProjectCheckKey(S_CONTAINER_ID, "/elsewhere"),
+    ) == {}, "one project's checks were recorded for another project"
 
 
 def test_a_project_with_no_remotes_starts_nothing(
@@ -191,7 +202,11 @@ def test_a_project_with_no_remotes_starts_nothing(
     assert responseHttp.json() == {
         "listChecking": [], "listUncheckable": [],
     }
-    assert remoteCheckState.fdictDescribeChecks(S_CONTAINER_ID) == {}
+    assert remoteCheckState.fdictDescribeChecks(
+        remoteCheckState.ftProjectCheckKey(
+            S_CONTAINER_ID, fixtureWorkflow["sProjectRepoPath"],
+        ),
+    ) == {}
 
 
 def test_a_sealed_container_says_so_instead_of_pulsing(
@@ -216,7 +231,11 @@ def test_a_sealed_container_says_so_instead_of_pulsing(
         S_REFRESH_PATH.format(S_CONTAINER_ID),
     ).json()
     assert dictBody["listChecking"] == []
-    dictChecks = remoteCheckState.fdictDescribeChecks(S_CONTAINER_ID)
+    dictChecks = remoteCheckState.fdictDescribeChecks(
+        remoteCheckState.ftProjectCheckKey(
+            S_CONTAINER_ID, fixtureWorkflow["sProjectRepoPath"],
+        ),
+    )
     assert dictChecks["github"]["sState"] == (
         remoteCheckState.S_STATE_UNCHECKABLE
     )
@@ -552,14 +571,18 @@ class _MockDockerForPoll:
         return None
 
 
+@pytest.mark.falsification
 def test_the_poll_reports_the_checks_of_the_container_it_was_asked_about(
     monkeypatch,
 ):
-    """The wire key exists, and it is keyed by container.
+    """The wire key exists, and it is keyed by container AND project.
 
     A registry read with the wrong key is invisible in a fixture where
-    only one project has ever been opened, so a decoy container is
-    given a DIFFERENT service and the poll must not report it.
+    only one project has ever been opened, so a decoy container and a
+    second project in the same container are each given a DIFFERENT
+    service, and the poll must report neither.
+
+    Kills: the poll reading the checks by container alone.
     """
     monkeypatch.setattr(
         pipelineServer, "_fconnectionCreateDocker",
@@ -580,8 +603,23 @@ def test_the_poll_reports_the_checks_of_the_container_it_was_asked_about(
         clientHttp.headers["X-Vaibify-Lease"] = (
             responseConnect.json()["sLeaseId"]
         )
-    remoteCheckState.fnMarkChecking(S_CONTAINER_ID, "github")
-    remoteCheckState.fnMarkChecking(S_DECOY_CONTAINER_ID, "zenodo")
+    sProject = responseConnect.json()["dictWorkflow"].get(
+        "sProjectRepoPath", "",
+    )
+    remoteCheckState.fnMarkChecking(
+        remoteCheckState.ftProjectCheckKey(S_CONTAINER_ID, sProject),
+        "github",
+    )
+    remoteCheckState.fnMarkChecking(
+        remoteCheckState.ftProjectCheckKey(S_DECOY_CONTAINER_ID, sProject),
+        "zenodo",
+    )
+    remoteCheckState.fnMarkChecking(
+        remoteCheckState.ftProjectCheckKey(
+            S_CONTAINER_ID, sProject + "Other",
+        ),
+        "arxiv",
+    )
 
     dictPoll = clientHttp.get(
         f"/api/pipeline/{S_CONTAINER_ID}/file-status",

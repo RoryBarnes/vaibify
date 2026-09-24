@@ -1235,10 +1235,10 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineServerTaskEviction.py::test_second_run_while_first_is_live_is_refused_not_started',
         source='vaibify/gui/pipelineServer.py',
-        old="""    taskLive = dictPipelineTasks.get(sContainerId)
-    return taskLive is not None and not taskLive.done()""",
-        new="""    taskLive = dictPipelineTasks.get(sContainerId)
-    return False""",
+        old="""    return pipelineRunSlots.fbProjectRunIsLive(
+        dictPipelineTasks, sContainerId, sProjectRepoPath,
+    )""",
+        new="""    return False""",
     ),
     Falsification(
         nodeid='tests/testWebSocketAuthorization.py::test_agent_lane_does_not_touch_per_container_counter',
@@ -6082,19 +6082,17 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '    return commitCarrier.fsDescribeWorkBlockingAJoin(\n'
             '        dictDurableContext["appState"], '
             'dictDurableContext["sName"],\n'
-            '    )\n'
         ),
         new=(
             '    from vaibify.config import mutationAdmission\n'
             '    if mutationAdmission.fbLaneEnforced():\n'
             '        return "a guarded operation"\n'
-            '    return commitCarrier.fsDescribeLiveMutationWork(\n'
+            '    return commitCarrier.fsDescribeWorkBlockingAJoin(\n'
             '        dictDurableContext["appState"], '
             'dictDurableContext["sName"],\n'
-            '    )\n'
         ),
     ),
 
@@ -11608,15 +11606,11 @@ def _fdictEntry(sRel):
         # The shipped defect: require the cached workflow before
         # branching, so a hub that restarted under a live tab answers
         # 404 and the researcher's processes cannot be stopped.
-        old=(
-            '        bTaskCancelled = _fbCancelPipelineTask(\n'
-            '            dictCtx["pipelineTasks"], sContainerId)\n'
-        ),
+        old='        bTaskCancelled = _fbCancelPipelineTask(taskRun)\n',
         new=(
             '        fdictRequireWorkflow(\n'
             '            dictCtx["workflows"], sContainerId)\n'
-            '        bTaskCancelled = _fbCancelPipelineTask(\n'
-            '            dictCtx["pipelineTasks"], sContainerId)\n'
+            '        bTaskCancelled = _fbCancelPipelineTask(taskRun)\n'
         ),
     ),
     Falsification(
@@ -11629,8 +11623,9 @@ def _fdictEntry(sRel):
         # sweep has no step directories and reports success for work it
         # never did.
         old=(
-            '            dictWorkflow = _fdictWorkflowOfRunToStop(dictCtx,'
-            ' sContainerId)\n'
+            '            dictWorkflow = _fdictWorkflowOfRunToStop(\n'
+            '                dictCtx, sContainerId, taskRun,\n'
+            '            )\n'
         ),
         new='            dictWorkflow = {}\n',
     ),
@@ -14980,7 +14975,7 @@ def _fdictEntry(sRel):
         old=(
             '    if dictOutcome["dictStatus"] is None:\n'
             '        remoteCheckState.fnMarkUncheckable(\n'
-            '            sContainerId, sService, dictOutcome["sError"],\n'
+            '            tCheckKey, sService, dictOutcome["sError"],\n'
             '        )\n'
             '        return\n'
         ),
@@ -15447,14 +15442,14 @@ def _fdictEntry(sRel):
         # tell their own verification running from something stuck.
         source='vaibify/gui/commitCarrier.py',
         old=(
-            '                "sReason": recordLive.sOperation + '
+            '        "sReason": recordLive.sOperation + '
             '" is already "\n'
-            '                           "running in this container",\n'
+            '                   "running in this container",\n'
         ),
         new=(
-            '                "sReason": "a durable task is already '
+            '        "sReason": "a durable task is already '
             'live in this "\n'
-            '                           "container",\n'
+            '                   "container",\n'
         ),
     ),
     Falsification(
@@ -23248,38 +23243,6 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/testProjectSwitchWithinContainer.py::'
-            'testTheOpenProjectIsToldAnotherProjectIsRunning'
-        ),
-        source='vaibify/gui/routes/pipelineRoutes.py',
-        old=(
-            '    if not sRunWorkflowPath or sRunWorkflowPath == sWorkflowPath:\n'
-            '        return {}\n'
-            '    return {\n'
-        ),
-        new=(
-            '    if True:\n'
-            '        return {}\n'
-            '    return {\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testProjectSwitchWithinContainer.py::'
-            'testStopSweepsTheRunningProjectNotTheOpenOne'
-        ),
-        source='vaibify/gui/routes/pipelineRoutes.py',
-        old=(
-            '            dictWorkflow = _fdictWorkflowOfRunToStop(dictCtx,'
-            ' sContainerId)\n'
-        ),
-        new=(
-            '            dictWorkflow = fdictRequireWorkflow(\n'
-            '                dictCtx["workflows"], sContainerId)\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
             'tests/browser/testSwitchingProjectsKeepsEachProjectsState.py::'
             'test_an_answer_about_another_project_moves_no_lights'
         ),
@@ -23299,7 +23262,7 @@ def _fdictEntry(sRel):
             'test_another_projects_run_is_announced'
         ),
         source='vaibify/gui/static/scriptApplication.js',
-        old='        _fnRenderOtherProjectRun(dictStatus.dictOtherProjectRun);\n',
+        old='        _fnRenderOtherProjectRuns(dictStatus.dictOtherProjectRuns);\n',
         new='',
     ),
     Falsification(
@@ -23330,6 +23293,276 @@ def _fdictEntry(sRel):
         new=(
             '    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")\n'
             '    listUnionPaths = _flistCollectPollPaths(\n'
+        ),
+    ),
+    # --- 2026-09-24: several projects run their pipelines at once in
+    # one container, and the hub's records name their project ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testTheOpenProjectIsToldHowManyOtherProjectsAreRunning'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if taskRun.sProjectRepoPath != sThisProject\n',
+        new='        if False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testStopEndsOnlyTheOpenProjectsRun'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    if dictWorkflow is not None:\n'
+            '        return pipelineRunSlots.ftaskLiveRunOfProject(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return pipelineRunSlots.ftaskLiveRunOfProject(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testANameSweepSparesAnotherProjectsRun'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        listSparedRunIds = _flistRunIdsSparedByStop(\n'
+            '            dictCtx, sContainerId, taskRun,\n'
+            '        )\n'
+        ),
+        new='        listSparedRunIds = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testRunsOfTwoProjectsShareOneDurableRecord'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    if bJoinable and (taskSameKey is None or taskSameKey.done()):\n'
+            '        return None\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testTheSameProjectNeverJoinsItsOwnLiveRun'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    if bJoinable and (taskSameKey is None or taskSameKey.done()):\n'
+        ),
+        new='    if bJoinable:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testOtherDurableWorkNeverJoinsARun'
+        ),
+        source='vaibify/gui/commitCarrier.py',
+        old=(
+            '    bJoinable = bool(sJoinableKind) and recordLive.sState'
+            ' == "running" and (\n'
+            '        recordLive.sJoinableKind == sJoinableKind\n'
+            '    )\n'
+        ),
+        new=(
+            '    bJoinable = bool(sJoinableKind) and recordLive.sState'
+            ' == "running"\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testATransferAdoptsEveryProjectsRunningCommand'
+        ),
+        source='vaibify/config/mutationAdmission.py',
+        old=(
+            '    setIds = set(dictLiveState.get('
+            '"setActiveExecOperationIds") or ())\n'
+        ),
+        new='    setIds = set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testATransferRetagsEveryProjectsRun'
+        ),
+        source='vaibify/gui/sessionLifecycle.py',
+        old=(
+            '    for taskRetagged in [recordTask.taskAsync] + list(\n'
+            '        recordTask.dictMemberTasks.values(),\n'
+            '    ):\n'
+        ),
+        new='    for taskRetagged in [recordTask.taskAsync]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testAnotherProjectsRunIsAnnouncedBeforeAnythingStarts'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old='            if dictConcurrentNotice and not dictRequest.get(\n',
+        new='            if False and dictConcurrentNotice and not dictRequest.get(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConcurrentProjectRuns.py::'
+            'testADispatchedRunsCommandsCarryItsMarker'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    sTimedCmd = fsRunMarkerPrefix(sContainerId) + sEnvPrefix + (\n',
+        new='    sTimedCmd = sEnvPrefix + (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStopByRunMarkerLive.py::'
+            'testStopKillsTheMarkedRunAndItsChildrenOnly'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        "{ tr \'\\\\0\' \'\\\\n\' < /proc/$sPid/environ; }'
+            ' 2>/dev/null | grep -qxE "\n'
+        ),
+        new=(
+            '        "{ tr \'\\\\0\' \'\\\\n\' < /proc/$sPid/environ; }'
+            ' 2>/dev/null | grep -qE "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSwitchingProjectsKeepsEachProjectsState.py::'
+            'test_a_concurrent_run_is_confirmed_before_anything_is_sent'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old=(
+            '            if (dictEvent.sReason === "concurrentRun") {\n'
+            '                _fnHandleConcurrentRunRefusal(dictEvent);\n'
+            '                return;\n'
+            '            }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testAVerificationIsShownOnlyOnItsOwnProject'
+        ),
+        source='vaibify/gui/verificationProgress.py',
+        old=(
+            '    if not dictStatus or dictStatus.get("sProjectRepoPath")'
+            ' != sProjectRepoPath:\n'
+        ),
+        new='    if not dictStatus:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testAnotherProjectsAttemptKeepsThisProjectsNoVerdictReason'
+        ),
+        source='vaibify/gui/verificationProgress.py',
+        old=(
+            '    DICT_LAST_NO_VERDICT.pop((sContainerId, sProjectRepoPath),'
+            ' None)\n'
+        ),
+        new='    DICT_LAST_NO_VERDICT.clear()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testADepositIsShownAndForgottenOnlyForItsOwnProject'
+        ),
+        source='vaibify/gui/archiveProgress.py',
+        old=(
+            '        if dictEntry.get("sProjectRepoPath") == sProjectRepoPath:\n'
+            '            DICT_DEPOSITS.pop(sContainerId, None)\n'
+        ),
+        new='        DICT_DEPOSITS.pop(sContainerId, None)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testADependencyScanIsReadOnlyForTheWorkflowItScanned'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    return dictByWorkflow.get(\n'
+            '        (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY,'
+            ' ""),\n'
+            '    )\n'
+        ),
+        new='    return next(iter(dictByWorkflow.values()), None)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testEachProjectHasItsOwnChecksumCache'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    return dictByProject[sRepoRoot]\n',
+        new='    return next(iter(dictByProject.values()))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testALockVerdictIsKeptPerProject'
+        ),
+        source='vaibify/reproducibility/lockSatisfaction.py',
+        old='    return (sContainerId, sProjectRepoPath or "")\n',
+        new='    return (sContainerId, "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedRegistries.py::'
+            'testAPushIsNeverReplayedToAnotherProject'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        (sContainerId, sWorkdir, sCommitSha, sPayloadHash)\n',
+        new='        (sContainerId, "", sCommitSha, sPayloadHash)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGitRoutesProjectRepoSync.py::'
+            'test_fetch_cache_is_keyed_per_project_repository'
+        ),
+        source='vaibify/gui/routes/gitRoutes.py',
+        old='    return (sContainerId, sRepo)\n',
+        new='    return (sContainerId, "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_only_configured_remotes_are_ever_marked'
+        ),
+        source='vaibify/reproducibility/remoteCheckState.py',
+        old='    return (sResourceId, sProjectRepoPath or "")\n',
+        new='    return (sResourceId, "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemoteBadgeRefresh.py::'
+            'test_the_poll_reports_the_checks_of_the_container_it_was_asked_about'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            remoteCheckState.ftProjectCheckKey(sContainerId,'
+            ' sRepoRoot),\n'
+        ),
+        new='            sContainerId,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationRoutesCoverage.py::'
+            'test_in_flight_status_returns_live_status'
+        ),
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='        (sContainerId, sProjectRepoPath, iStepIndex),\n',
+        new=(
+            '        next((t for t in _DICT_FALSIFICATION_TASKS if t[0] =='
+            ' sContainerId and t[2] == iStepIndex), None),\n'
         ),
     ),
 ]

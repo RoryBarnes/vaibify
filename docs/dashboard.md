@@ -200,7 +200,7 @@ right:
 
 Steps run from the toolbar's **Run** menu: **Run Selected Steps**,
 **Run All Steps**, **Clean Outputs**, **Force Run All (Clean)**, and
-**Stop All Running Tasks**, plus the verification sweeps **Verify
+**Stop This Project's Run**, plus the verification sweeps **Verify
 Outputs**, **Run All Unit Tests**, **Verify Dependencies**, and
 **Check Files Against Manifest**. Steps can be reordered by
 dragging, and an individual step's right-click menu offers **Run

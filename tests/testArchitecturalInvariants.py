@@ -5094,7 +5094,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # its step number counts in; the poll describes the workflow it
     # holds, names that file, and reports another project's live run.
     # Each is a field or a lookup on a route this module already owns.
-    "routes/pipelineRoutes.py": 3784,
+    # +131 (2026-09-24, same day): Stop ends the OPEN project's run by
+    # its process marker and, with no run to name, sweeps command names
+    # sparing other projects' runs; the poll reports how many other
+    # projects run; the checksum cache, remote checks and lock verdict
+    # are read per project. The sweep scripts stay beside the Stop
+    # route they serve, with the name sweep they extend.
+    "routes/pipelineRoutes.py": 3915,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5107,7 +5113,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # crash-recovery record) is already out, in
     # reproducibility/archivePromotion.py; what is here is the HTTP
     # shell, the preflight order and the durable launch.
-    "routes/environmentArchiveRoutes.py": 835,
+    # +9 (2026-09-24): each deposit record names the project it
+    # deposits for, so another project's row neither pulses nor erases it.
+    "routes/environmentArchiveRoutes.py": 844,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5292,7 +5300,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # RAISED to 3631 (2026-09-16): the promote route logs
     # every refused publish -- the refusal used to return
     # as a silent 200 while the toast claimed success.
-    "routes/syncRoutes.py": 3631,
+    # +14 (2026-09-24): the push dedupe key carries the project and is
+    # skipped when HEAD is unreadable; the DAG reads its own workflow's
+    # dependency scan.
+    "routes/syncRoutes.py": 3645,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5863,7 +5874,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # directory and its provenance committer from the workflow it runs
     # rather than from the socket or the open slot, and the save seam
     # refuses a workflow read before a project switch. Dispatch again.
-    "pipelineServer.py": 3492,
+    # +53 (2026-09-24, same day): dispatch admits a run beside other
+    # projects' runs once acknowledged, refuses a second run of the
+    # same project, gives each run its process marker, and reads each
+    # workflow's own dependency scan.
+    "pipelineServer.py": 3545,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5915,7 +5930,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # why it is minted DURABLE -- the rerun's steps stream through the
     # durable-exec gate, and minted plain it refuses every step of
     # every shadow rerun (external-review finding).
-    "commitCarrier.py": 1202,
+    # +115 (2026-09-24): a durable launch may JOIN live work of its own
+    # joinable kind -- pipeline runs of different projects in one
+    # container share one durable record, which release, transfer and
+    # the reaper keep reading as the container's one unit of live work.
+    # The join, its member bookkeeping and the join-aware busy question
+    # are durable-launch semantics; they belong beside the launch.
+    "commitCarrier.py": 1317,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6109,7 +6130,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # to make — a second copy of the thresholds firing at a moment the
     # server does not believe in. The band a session is in, and how
     # loudly to announce it, are both decided here for that reason.
-    "sessionLifecycle.py": 1835,
+    # +2 (2026-09-24): a transfer retags every project's run and adopts
+    # every command the shared durable record has in flight.
+    "sessionLifecycle.py": 1837,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6422,7 +6445,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # starts to matter, and the collector is already the path that
     # reports to the researcher without blocking the run.
     # +2 (2026-09-23): the run's state and logs name its project.
-    "pipelineRunner.py": 1771,
+    # +25 (2026-09-24): every container command a run starts exports
+    # that run's marker, so a Stop can find its processes among other
+    # projects' runs. The runner's command assembly is its job.
+    "pipelineRunner.py": 1796,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6448,7 +6474,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the container-wide busy question that the release and idle-exit
     # vetoes ask. All three are about where run state lives and who
     # reads it, which is this module's one responsibility.
-    "pipelineState.py": 1061,
+    # +2 (2026-09-24): the live-run readers ask the per-project run
+    # slots instead of a single per-container task.
+    "pipelineState.py": 1063,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
@@ -6906,7 +6934,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # concern would put "which file is the pull in?" between a reader
     # and the answer. The judgement-free half (preview classification,
     # the merge command) already lives in containerGit.
-    "routes/gitRoutes.py": 1266,
+    # +11 (2026-09-24): the fetch throttle is keyed by the project's
+    # repository as well as the container.
+    "routes/gitRoutes.py": 1277,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
@@ -6980,7 +7010,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # class these guards exist to close.
     # +2 (2026-09-15): the host-mode fact again, at this module's one
     # fiProofLevel call.
-    "routes/stepRoutes.py": 864,
+    # +2 (2026-09-24): rename and align refuse only while THIS
+    # project runs; another project's run does not touch its steps.
+    "routes/stepRoutes.py": 866,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -7191,7 +7223,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe, and the timing line now states whether the probe RAN or
     # PAUSED and who held the carrier. Same readiness concern; the
     # third deferral of the seam split above.
-    "routes/reproducibilityRoutes.py": 2322,
+    # +22 (2026-09-24): verification records and the lock verdict are
+    # read and written for the project they describe, and a refusal
+    # names the project whose verification holds the container.
+    "routes/reproducibilityRoutes.py": 2344,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

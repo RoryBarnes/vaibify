@@ -51,6 +51,7 @@ from ..pipelineServer import (
     WORKSPACE_ROOT,
     ZenodoMetadataRequest,
     ZenodoRecordRequest,
+    fdictCachedSourceCodeDeps,
     fdictRequireWorkflow,
     fnBumpSyncEpoch,
     fsValidatePathWithinRoot,
@@ -1758,9 +1759,10 @@ def _fdictRunGithubPushBlocking(
 def _fsGitHeadShaForDedupeKey(dictCtx, sContainerId, sWorkdir):
     """Return the pre-push HEAD sha used in the dedupe key, or "".
 
-    A missing or unreadable HEAD degrades to an empty string so the
-    dedupe key is still well-formed; the cache lookup will simply
-    miss and the push runs as if uncached. The probe itself is one
+    A missing or unreadable HEAD degrades to an empty string, and the
+    caller then skips the dedupe entirely: an empty sha names no
+    commit, so a result keyed on it could be replayed to a different
+    push that merely listed the same files. The probe itself is one
     cheap docker exec.
     """
     try:
@@ -1795,8 +1797,15 @@ def _fdictPushToGithubBlocking(
     sCommitSha = _fsGitHeadShaForDedupeKey(
         dictCtx, sContainerId, sWorkdir,
     )
-    tDedupeKey = (sContainerId, sCommitSha, sPayloadHash)
-    dictCached = _fdictLookupRecentPush(tDedupeKey, fNow)
+    # The project's working tree is part of the key: a container hosts
+    # several projects, and two may push the same file list.
+    tDedupeKey = (
+        (sContainerId, sWorkdir, sCommitSha, sPayloadHash)
+        if sCommitSha else None
+    )
+    dictCached = (
+        _fdictLookupRecentPush(tDedupeKey, fNow) if tDedupeKey else None
+    )
     if dictCached is not None:
         logger.info(
             "GitHub push dedupe HIT: container=%s commit=%s",
@@ -1915,7 +1924,10 @@ def _fnRegisterGithubPush(app, dictCtx):
                 dictResult["sPostPushVerifyWarning"] = sVerifyWarning
             # Record AFTER attaching: the dedupe cache deep-copies,
             # and a replayed response must carry the same warning.
-            _fnRecordRecentPush(dictPushed["tDedupeKey"], dictResult, fNow)
+            if dictPushed["tDedupeKey"]:
+                _fnRecordRecentPush(
+                    dictPushed["tDedupeKey"], dictResult, fNow,
+                )
         fnBumpSyncEpoch(dictCtx, sContainerId)
         return dictResult
 
@@ -2802,8 +2814,9 @@ def _fnRegisterDag(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
-        dictCachedDeps = dictCtx.get(
-            "sourceCodeDeps", {}).get(sContainerId)
+        dictCachedDeps = fdictCachedSourceCodeDeps(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         iExit, result = await asyncio.to_thread(
             syncDispatcher.ftResultGenerateDagSvg,
             dictCtx["docker"], sContainerId, dictWorkflow,
@@ -2827,8 +2840,9 @@ def _fnRegisterDagExport(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId
         )
-        dictCachedDeps = dictCtx.get(
-            "sourceCodeDeps", {}).get(sContainerId)
+        dictCachedDeps = fdictCachedSourceCodeDeps(
+            dictCtx, sContainerId, dictWorkflow,
+        )
         iExit, result = await asyncio.to_thread(
             syncDispatcher.ftResultExportDag,
             dictCtx["docker"], sContainerId,

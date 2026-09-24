@@ -1808,8 +1808,9 @@ async def _tlistDriveOneRunThroughTheMessageLoop(
         # await, so without draining it here "nothing started" and "it
         # started but has not been scheduled yet" are indistinguishable
         # -- and the not-refused direction would pass vacuously.
-        taskStarted = dictPipelineTasks.get(S_CONTAINER_ID)
-        if taskStarted is not None:
+        for taskStarted in list(
+            dictPipelineTasks.get(S_CONTAINER_ID, {}).values(),
+        ):
             await taskStarted
     return (websocketFake.listSent, listStarted)
 

@@ -54,6 +54,7 @@ from ...reproducibility.environmentSnapshot import (
     fnWriteEnvironmentJson,
 )
 from ...reproducibility.l3Attestation import fdictReadAttestation
+from ...reproducibility.repoFiles import fsRepoRootOf
 
 import logging
 
@@ -161,7 +162,9 @@ def _fdictRecordArchiveAnswer(
         # A failed attempt's reason stops being news once the
         # researcher has answered; a live attempt is still theirs to
         # watch and is left alone.
-        archiveProgress.fnForgetDeposit(sContainerId)
+        archiveProgress.fnForgetDeposit(
+            sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+        )
     if sAnswer == S_ANSWER_CLEARED:
         # Removed, never stored as a value: an empty string in this
         # block would be a recorded answer that means nothing, and
@@ -429,7 +432,9 @@ async def _fdictLaunchDepositDurably(
         taskWorker = asyncio.create_task(_fnRunDepositWorker(
             sContainerId, dictWorkflow, dictContainer, sToken, filesRepo,
         ))
-        archiveProgress.fnRegisterDeposit(sContainerId, taskWorker)
+        archiveProgress.fnRegisterDeposit(
+            sContainerId, taskWorker, fsRepoRootOf(filesRepo),
+        )
         return taskWorker
 
     dictLaunched = await commitCarrier.fdictLaunchDurableTask(
@@ -476,7 +481,8 @@ async def _fnRunDepositWorker(
             sContainerId, exc_info=True,
         )
         archiveProgress.fnRecordFailure(
-            sContainerId, _fsDescribeDepositFailure(errorDeposit),
+            sContainerId, fsRepoRootOf(filesRepo),
+            _fsDescribeDepositFailure(errorDeposit),
         )
 
 
@@ -696,7 +702,9 @@ async def _fdictLaunchPromotionDurably(
             sContainerId, dictWorkflow, dictContainer, sToken,
             filesRepo, sSidecarKey,
         ))
-        archiveProgress.fnRegisterDeposit(sContainerId, taskWorker)
+        archiveProgress.fnRegisterDeposit(
+            sContainerId, taskWorker, fsRepoRootOf(filesRepo),
+        )
         return taskWorker
 
     dictLaunched = await commitCarrier.fdictLaunchDurableTask(
@@ -764,7 +772,8 @@ async def _fnRunPromotionWorker(
             sContainerId, exc_info=True,
         )
         archiveProgress.fnRecordFailure(
-            sContainerId, _fsDescribeDepositFailure(errorPromotion),
+            sContainerId, fsRepoRootOf(filesRepo),
+            _fsDescribeDepositFailure(errorPromotion),
         )
 
 

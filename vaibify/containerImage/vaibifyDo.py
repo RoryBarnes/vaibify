@@ -682,6 +682,11 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
             "sExactSourceFingerprint", "")
         dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
             "sWorkflowPath", "")
+    # A run may start beside other projects' runs in this container. The
+    # hub answers with a concurrentRunWarning naming them and the limits
+    # the runs share, printed before the run's own events; an agent
+    # cannot answer the dashboard's confirmation, so it is told instead.
+    dictPayload["bAcknowledgeConcurrentRun"] = True
     fnSendWsText(socketConnection, json.dumps(dictPayload))
     return _fiStreamWsEvents(socketConnection, bJsonMode)
 
@@ -787,7 +792,8 @@ def fnFailUnacknowledged():
         "vaibify-do: the hub received the action but has neither started "
         "nor refused it after " + str(int(F_ACKNOWLEDGE_TIMEOUT)) + " s. "
         "It may still start: run 'vaibify-do get-pipeline-state' before "
-        "retrying (a second run is refused while one is live), and tell "
+        "retrying (a second run of this project is refused while one is "
+        "live), and tell "
         "the researcher if it never does.", iCode=4)
 
 

@@ -569,7 +569,10 @@ def _fdictReadinessGapsWithContainerFacts(
         # the stamp the probe itself measured -- never one hashed from
         # a second read out here, which is a different moment.
         lockSatisfaction.fnRecordLockSatisfaction(
-            sContainerId, dictLockVerdict,
+            lockSatisfaction.ftLockVerdictKey(
+                sContainerId, fsRepoRootOf(filesRepo),
+            ),
+            dictLockVerdict,
         )
     # TWO fields, because they answer two questions. The MEASUREMENT
     # is three-state and is about the container the researcher is
@@ -638,9 +641,11 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
             listReproductions[0] if listReproductions else None
         ),
         "listReproductionHistory": listReproductions,
-        "dictInFlight": verificationProgress.fdictReadStatus(sContainerId),
+        "dictInFlight": verificationProgress.fdictReadStatus(
+            sContainerId, fsRepoRootOf(filesRepo),
+        ),
         "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
-            sContainerId,
+            sContainerId, fsRepoRootOf(filesRepo),
         ),
         "dictUnsettledTeardown": (
             verificationProgress.fdictReadUnsettledTeardown(sContainerId)
@@ -733,7 +738,10 @@ async def _fsGateReadinessAndSnapshotDigest(
             dictImageCurrency.get("sLiveImageDigest") or "",
         )
         lockSatisfaction.fnRecordLockSatisfaction(
-            sContainerId, dictLockVerdict,
+            lockSatisfaction.ftLockVerdictKey(
+                sContainerId, fsRepoRootOf(filesRepo),
+            ),
+            dictLockVerdict,
         )
         return fdictCarryARefusalBackInsteadOfRaising(
             lambda: _fsRequireReadinessThenDigest(
@@ -928,11 +936,14 @@ async def _fdictLaunchVerificationDurably(
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, "The L3 verification",
     )
-    verificationProgress.fnForgetNoVerdict(sContainerId)
+    verificationProgress.fnForgetNoVerdict(
+        sContainerId, fsRepoRootOf(filesRepo),
+    )
     dictStatus = {
         "sPhase": "starting",
         "fStartedAtMonotonic": time.monotonic(),
         "sManifestDigestAtAttestation": sManifestDigest,
+        "sProjectRepoPath": fsRepoRootOf(filesRepo),
     }
 
     def ftaskStartVerification():
@@ -985,9 +996,14 @@ def _fnRefuseIfTaskInFlight(sContainerId):
         return
     taskExisting = dictExisting.get("task")
     if taskExisting is not None and not taskExisting.done():
+        sProject = verificationProgress.fsProjectOfLiveVerification(
+            sContainerId,
+        )
         raise HTTPException(
             409,
-            "L3 verification already running for this container.",
+            "An L3 verification is already running in this container"
+            + (f" (project {sProject})" if sProject else "")
+            + "; one verification holds the container at a time.",
         )
 
 
@@ -1320,12 +1336,14 @@ def _fbRecordOutcome(
     """
     if not dictResult.get("bRerunAttempted", True):
         verificationProgress.fnRecordNoVerdict(
-            sContainerId,
+            sContainerId, fsRepoRootOf(filesRepo),
             dictResult.get("listDivergedHashes") or [],
             fDuration, sManifestDigest,
         )
         return False
-    verificationProgress.fnForgetNoVerdict(sContainerId)
+    verificationProgress.fnForgetNoVerdict(
+        sContainerId, fsRepoRootOf(filesRepo),
+    )
     # The comparison reports the digest of the manifest it was
     # actually made against -- the SHADOW's copy. The readiness
     # snapshot taken before launch is the fallback, not the record:
@@ -2212,7 +2230,11 @@ def _fdictGenerateEnvelopeThenReadGaps(
     # remembers to edit. A cache whose only invalidation is a call like
     # this is one that fails silently: that is how the feature arrived
     # with zero callers of the forgetter.
-    lockSatisfaction.fnForgetLockSatisfaction(sContainerId)
+    lockSatisfaction.fnForgetLockSatisfaction(
+        lockSatisfaction.ftLockVerdictKey(
+            sContainerId, fsRepoRootOf(filesRepo),
+        ),
+    )
     return {
         "dictTierResults": dictTierResults,
         "dictManifestDelta": fdictCompareManifestEntries(

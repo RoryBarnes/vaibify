@@ -14,6 +14,11 @@ The FAILURE reason outlives its task. A deposit that could not
 complete has established nothing -- no DOI, no record on disk -- so
 there is nothing to persist, and the researcher still has to be told
 why. That is what the settled entry is for.
+
+Keyed by container, because one deposit holds a container at a time,
+and each record names the project it deposits for: a container hosts
+several projects, and another project's deposit is neither this
+project's row to pulse nor this project's answer to erase.
 """
 
 __all__ = [
@@ -59,10 +64,11 @@ DICT_DEPOSITS = {}
 _LOCK_DEPOSITS = threading.Lock()
 
 
-def fnRegisterDeposit(sContainerId, taskWorker):
-    """Record that a deposit has started in this container."""
+def fnRegisterDeposit(sContainerId, taskWorker, sProjectRepoPath):
+    """Record that a project's deposit has started in this container."""
     with _LOCK_DEPOSITS:
         DICT_DEPOSITS[sContainerId] = {
+            "sProjectRepoPath": sProjectRepoPath,
             "task": taskWorker,
             "sPhase": S_PHASE_STARTING,
             "iBytesRead": 0,
@@ -87,33 +93,38 @@ def fnSettleDeposit(sContainerId):
     fnRecordProgress(sContainerId, S_PHASE_SETTLED)
 
 
-def fnRecordFailure(sContainerId, sReason):
-    """Mark a deposit failed and keep the reason for the researcher."""
+def fnRecordFailure(sContainerId, sProjectRepoPath, sReason):
+    """Mark a project's deposit failed and keep the reason."""
     with _LOCK_DEPOSITS:
         dictEntry = DICT_DEPOSITS.setdefault(sContainerId, {})
+        dictEntry["sProjectRepoPath"] = sProjectRepoPath
         dictEntry["task"] = None
         dictEntry["sPhase"] = S_PHASE_FAILED
         dictEntry["sReason"] = sReason
 
 
-def fnForgetDeposit(sContainerId):
-    """Drop this container's deposit record entirely."""
+def fnForgetDeposit(sContainerId, sProjectRepoPath):
+    """Drop the container's deposit record if it is this project's."""
     with _LOCK_DEPOSITS:
-        DICT_DEPOSITS.pop(sContainerId, None)
+        dictEntry = DICT_DEPOSITS.get(sContainerId) or {}
+        if dictEntry.get("sProjectRepoPath") == sProjectRepoPath:
+            DICT_DEPOSITS.pop(sContainerId, None)
 
 
 def fbDepositIsLive(sContainerId):
-    """Return True iff a deposit is running in this container."""
-    return (fdictReadDeposit(sContainerId) or {}).get(
-        "sPhase",
-    ) in _T_LIVE_PHASES
+    """Return True iff a deposit, for any project, runs in this container."""
+    with _LOCK_DEPOSITS:
+        dictEntry = DICT_DEPOSITS.get(sContainerId) or {}
+        return dictEntry.get("sPhase") in _T_LIVE_PHASES
 
 
-def fdictReadDeposit(sContainerId):
-    """Return the wire-shaped deposit record, or ``None``."""
+def fdictReadDeposit(sContainerId, sProjectRepoPath):
+    """Return this project's wire-shaped deposit record, or ``None``."""
     with _LOCK_DEPOSITS:
         dictEntry = DICT_DEPOSITS.get(sContainerId)
-        if not dictEntry:
+        if not dictEntry or (
+            dictEntry.get("sProjectRepoPath") != sProjectRepoPath
+        ):
             return None
         return {
             "sPhase": dictEntry.get("sPhase") or "",

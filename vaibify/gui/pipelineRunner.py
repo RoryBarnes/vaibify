@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import os
 import posixpath
@@ -29,6 +30,9 @@ __all__ = [
     "ffBuildLoggingCallback",
     "fnWriteLogToContainer",
     "SET_VALID_RUN_MODES",
+    "S_RUN_ID_VARIABLE",
+    "VAR_RUN_ID",
+    "fsRunMarkerPrefix",
 ]
 
 SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
@@ -246,6 +250,27 @@ def _fdictBuildVariables(dictWorkflow, sWorkdir):
 # Core command execution
 # ---------------------------------------------------------------------------
 
+# The dispatched run a task belongs to. Every container command the run
+# starts exports it, and child processes inherit it, so a Stop can find
+# THAT run's processes -- and only them -- when several projects run in
+# one container. Matching by command name could not: two projects may
+# both run "python plot.py".
+S_RUN_ID_VARIABLE = "VAIBIFY_RUN_ID"
+VAR_RUN_ID = contextvars.ContextVar("sVaibifyRunId", default="")
+
+
+def fsRunMarkerPrefix(sContainerId):
+    """Return the shell prefix exporting this run's id, or ``""``.
+
+    Host projects are stopped through their journaled process groups,
+    so only the container lane carries the marker.
+    """
+    sRunId = VAR_RUN_ID.get()
+    if not sRunId or fbIsHostProject(sContainerId):
+        return ""
+    return f"export {S_RUN_ID_VARIABLE}={sRunId} && "
+
+
 async def _ftRunCommandList(
     connectionDocker, sContainerId, listCommands,
     sWorkdir, dictVariables, fnStatusCallback,
@@ -311,7 +336,7 @@ async def _ftRunSingleCommand(
     # step would fail. The container branch keeps it, guarded by its
     # own ``-x`` test for the same reason in reverse. Host CPU comes
     # from the ``os.wait4`` reap instead (ExecResult.fCpuSeconds).
-    sTimedCmd = sEnvPrefix + (
+    sTimedCmd = fsRunMarkerPrefix(sContainerId) + sEnvPrefix + (
         sResolved if fbIsHostProject(sContainerId)
         else _fsWrapWithTime(sResolved)
     )

@@ -1860,7 +1860,9 @@ class TestPollLevelStatePayload:
         assert dictIdle["dictWorkflowEnvelopeDetail"][
             "bRebuildAttestationRunning"] is False
         verificationProgress.DICT_VERIFY_TASKS["cid1"] = {
-            "task": None, "dictStatus": {"sPhase": "running"},
+            "task": None, "dictStatus": {
+                "sPhase": "running", "sProjectRepoPath": "/workspace/proj",
+            },
         }
         try:
             with _fstackEnterPollLevelPatches([], [], []):

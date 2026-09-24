@@ -102,6 +102,7 @@ import os
 import threading
 import time
 
+from vaibify.config import mutationAdmission
 from vaibify.config import operationJournal
 from vaibify.config import preferencesStore
 from . import browserSession
@@ -1097,10 +1098,10 @@ def _fsUnadoptableJournalReason(appState, sName, recordTask):
             f"{dictOutcomeRead['sReadState']} and reads as quarantined; "
             "run 'vaibify reconcile' before transferring."
         )
-    sAdoptableExecId = ""
+    setAdoptableExecIds = set()
     if recordTask is not None and recordTask.admission is not None:
-        sAdoptableExecId = recordTask.admission.dictLiveState.get(
-            "sActiveExecOperationId", "",
+        setAdoptableExecIds = mutationAdmission.fsetActiveExecOperationIds(
+            recordTask.admission,
         )
     dictTerminalRecords = getattr(
         appState, "dictTerminalExecutionRecords", {},
@@ -1115,7 +1116,7 @@ def _fsUnadoptableJournalReason(appState, sName, recordTask):
                 f"{dictRecord.get('sTarget', 'unrecorded')}); run "
                 "'vaibify reconcile' before transferring."
             )
-        if sOperationId == sAdoptableExecId:
+        if sOperationId in setAdoptableExecIds:
             continue
         if sOperationId in dictTerminalRecords:
             continue
@@ -1268,10 +1269,13 @@ def _fnRetagLiveDurableTask(appState, sName, iNewGeneration):
     if recordTask is None:
         return
     recordTask.iOwnerGeneration = iNewGeneration
-    if recordTask.taskAsync is not None and hasattr(
-        recordTask.taskAsync, "iOwnerGeneration",
+    for taskRetagged in [recordTask.taskAsync] + list(
+        recordTask.dictMemberTasks.values(),
     ):
-        recordTask.taskAsync.iOwnerGeneration = iNewGeneration
+        if taskRetagged is not None and hasattr(
+            taskRetagged, "iOwnerGeneration",
+        ):
+            taskRetagged.iOwnerGeneration = iNewGeneration
 
 
 def _fnRebindStartResultEntitlement(appState, sName, sNewSessionId):

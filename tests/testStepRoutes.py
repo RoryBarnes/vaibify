@@ -467,7 +467,7 @@ def test_rename_refused_while_pipeline_task_live(
     fixtureCarrierStoodDown,
 ):
     client = _tupleRenameClient(
-        _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
+        _dictRenameWorkflow(), {S_CONTAINER_ID: {"/workspace/repo": _LiveTask()}})
     response = client.post(
         f"/api/steps/{S_CONTAINER_ID}/0/rename",
         json={"sNewName": "New Step", "bDryRun": True})
@@ -479,7 +479,7 @@ def test_align_refused_while_pipeline_task_live(
     fixtureCarrierStoodDown,
 ):
     client = _tupleRenameClient(
-        _dictRenameWorkflow(), {S_CONTAINER_ID: _LiveTask()})
+        _dictRenameWorkflow(), {S_CONTAINER_ID: {"/workspace/repo": _LiveTask()}})
     response = client.post(
         f"/api/steps/{S_CONTAINER_ID}/align-directories")
     assert response.status_code == 409
