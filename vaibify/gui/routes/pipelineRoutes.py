@@ -122,6 +122,17 @@ def _flistExtractKillPatterns(dictWorkflow):
     return sorted(setPatterns)
 
 
+def _fsProjectRepoPathOfRunToStop(dictCtx, sContainerId):
+    """Return the project whose run a Kill stops: the live one first."""
+    from .. import pipelineState
+    taskLive = dictCtx["pipelineTasks"].get(sContainerId)
+    if taskLive is not None and not taskLive.done():
+        return getattr(taskLive, "sProjectRepoPath", "")
+    return pipelineState.fsResolveRunStateProjectRepoPath(
+        dictCtx, sContainerId,
+    ) or ""
+
+
 def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
     """Cancel any running pipeline asyncio task for a container."""
     taskPipeline = dictPipelineTasks.get(sContainerId)
@@ -167,8 +178,16 @@ def _ffnBuildCarriedStatePersister(dictCtx, sContainerId, requestHttp):
     return fnPersistReconciledUnderTheDrain
 
 
-async def _fiMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
+async def _fiMarkPipelineStopped(
+    dictCtx, sContainerId, requestHttp, sProjectRepoPath,
+):
     """Write a stopped state file so the UI shows not running.
+
+    ``sProjectRepoPath`` is the project of the run being stopped, which
+    the caller reads off the live task BEFORE cancelling it: the
+    researcher may have opened another project since the run began,
+    and marking that one stopped would leave the real run's file
+    claiming it is still running.
 
     Reads through the reconciling reader so a kill issued against a
     container whose runner already vanished does not double-write —
@@ -182,6 +201,7 @@ async def _fiMarkPipelineStopped(dictCtx, sContainerId, requestHttp):
         fnPersistReconciled=_ffnBuildCarriedStatePersister(
             dictCtx, sContainerId, requestHttp,
         ),
+        sProjectRepoPath=sProjectRepoPath,
     )
     if dictState is None or not dictState.get("bRunning"):
         return 0
@@ -403,12 +423,12 @@ def _fnRegisterPipelineState(app, dictCtx):
 
     Deliberately answers 200 with no workflow loaded, where sibling
     routes 404 through ``fdictRequireWorkflow``. Pipeline state is
-    container-scoped, not workflow-scoped — ``fsStatePathFor`` names a
-    file at the resource root, and a run dispatched by the agent lane
-    is live whether or not this hub has a workflow cached. Requiring a
-    workflow here would hide that run from the dashboard, which the
-    ground-truth rule forbids. Examined 2026-08-15; the 200 is the
-    correct answer, not a missed guard.
+    PROJECT-scoped: the open project's file, or with none open the file
+    of the run this hub has in flight, so an agent-lane run stays
+    visible after the researcher leaves its project. With neither there
+    is no project to report on and the answer is "not running" -- the
+    resource root holds no file a run writes, only whatever a hub from
+    before per-project state left there.
     """
 
     # mode-b, and the carrier is opened on a branch this route usually
@@ -427,15 +447,21 @@ def _fnRegisterPipelineState(app, dictCtx):
     async def fdictGetPipelineState(
         sContainerId: str, requestHttp: Request,
     ):
-        from ..pipelineState import fdictReadReconciledState
+        from ..pipelineState import (
+            fdictReadReconciledState, fsResolveRunStateProjectRepoPath,
+        )
         dictCtx["require"](sContainerId)
+        iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
+        if fsResolveRunStateProjectRepoPath(
+            dictCtx, sContainerId,
+        ) is None:
+            return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
             fnPersistReconciled=_ffnBuildCarriedStatePersister(
                 dictCtx, sContainerId, requestHttp,
             ),
         )
-        iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
         if dictState is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState["iSyncEpoch"] = iSyncEpoch
@@ -579,6 +605,9 @@ def _fnRegisterPipelineKill(app, dictCtx):
         # something has already gone wrong. A host cancellation reads
         # the operation JOURNAL, which is on disk and survives a
         # restart, so it needs nothing from the cache at all.
+        sStoppedProjectRepoPath = _fsProjectRepoPathOfRunToStop(
+            dictCtx, sContainerId,
+        )
         bTaskCancelled = _fbCancelPipelineTask(
             dictCtx["pipelineTasks"], sContainerId)
         listRefused = []
@@ -595,7 +624,7 @@ def _fnRegisterPipelineKill(app, dictCtx):
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
             )
         iStoppedStepNumber = await _fiMarkPipelineStopped(
-            dictCtx, sContainerId, requestHttp,
+            dictCtx, sContainerId, requestHttp, sStoppedProjectRepoPath,
         )
         return {
             "bSuccess": True,

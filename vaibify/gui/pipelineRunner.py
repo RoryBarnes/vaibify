@@ -1477,6 +1477,7 @@ def _ftInitializeRunState(
     dictState = pipelineState.fdictBuildInitialState(
         sAction, sLogPath, iStepCount, iRunnerPid=os.getpid(),
         sWorkflowPath=sWorkflowPath,
+        sProjectRepoPath=dictWorkflow.get("sProjectRepoPath", ""),
     )
     stateWriter = pipelineState.StateWriter(
         connectionDocker, sContainerId, dictState,
@@ -1605,7 +1606,8 @@ async def _ftPrepareLogAndVariables(
     from .pipelineLogger import fnPruneOldLogs
     sWorkflowName = dictWorkflow.get("sWorkflowName", "pipeline")
     sLogsDir = await _fsEnsureLogsDirectory(
-        connectionDocker, sContainerId
+        connectionDocker, sContainerId,
+        dictWorkflow.get("sProjectRepoPath", ""),
     )
     await fnPruneOldLogs(connectionDocker, sContainerId, sLogsDir)
     sLogFilename = fsGenerateLogFilename(sWorkflowName)

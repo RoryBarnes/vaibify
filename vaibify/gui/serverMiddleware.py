@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 
 from . import actionCatalog
+from . import agentProjectScope
 from . import browserSession
 from . import containerOwnership
 
@@ -106,7 +107,7 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
                     "User-only action: ask the researcher to run it "
                     "from the dashboard",
                 )
-            return await _fresponseServeAdmittedAgentRequest(
+            return await _fresponseServeAgentRequestInItsProject(
                 request, dictContainerOwners, call_next,
             )
         if not _fbRequestHasAllowedHost(request):
@@ -114,6 +115,50 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
         if _fbBrowserTokenRejected(request):
             return _fresponseUnauthorized(request)
         return await call_next(request)
+
+
+async def _fresponseServeAgentRequestInItsProject(
+    request, dictContainerOwners, fresponseCallNext,
+):
+    """Refuse an agent request aimed at another project; name the served one.
+
+    The hub acts on the project open in the dashboard, so a request
+    from an agent that declared a different project directory is
+    refused with 409 before any route runs. Every response the agent
+    lane does receive carries the project it was served against. See
+    :mod:`agentProjectScope` for why an undeclared project is served.
+    """
+    dictServedProject = agentProjectScope.fdictServedProjectForContainer(
+        getattr(request.app.state, "dictRouteContext", None),
+        _fsContainerIdFromPath(request.url.path),
+    )
+    sAgentProjectDirectory = request.headers.get(
+        agentProjectScope.S_AGENT_PROJECT_HEADER, "",
+    )
+    if agentProjectScope.fbAgentProjectDiffers(
+        sAgentProjectDirectory, dictServedProject.get("sWorkflowPath", ""),
+    ):
+        return Response(
+            status_code=409,
+            content=json.dumps({
+                "detail": agentProjectScope.fdictBuildMismatchRefusal(
+                    sAgentProjectDirectory,
+                    dictServedProject["sWorkflowPath"],
+                    dictServedProject["sProjectName"],
+                ),
+            }),
+            media_type="application/json",
+            headers=agentProjectScope.fdictServedProjectHeaders(
+                dictServedProject,
+            ),
+        )
+    response = await _fresponseServeAdmittedAgentRequest(
+        request, dictContainerOwners, fresponseCallNext,
+    )
+    response.headers.update(
+        agentProjectScope.fdictServedProjectHeaders(dictServedProject),
+    )
+    return response
 
 
 async def _fresponseServeAdmittedAgentRequest(

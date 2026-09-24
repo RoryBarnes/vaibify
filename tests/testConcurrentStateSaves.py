@@ -265,7 +265,7 @@ def testAnOverlappingPipelineStateWriteIsNotSilentlyDropped(
     )
     with patch.object(
         pipelineState, "fsStatePathFor",
-        lambda sResourceId: sPipelineStatePath,
+        lambda sResourceId, sProjectRepoPath="": sPipelineStatePath,
     ):
         pipelineState.fnWriteState(
             connectionOverlapping, S_RESOURCE_ID,
@@ -300,7 +300,7 @@ def testClearingThePipelineStateSweepsAPerWriterTemporaryFile(
             fileState.write("{}")
     with patch.object(
         pipelineState, "fsStatePathFor",
-        lambda sResourceId: sPipelineStatePath,
+        lambda sResourceId, sProjectRepoPath="": sPipelineStatePath,
     ):
         pipelineState.fnClearState(connection, S_RESOURCE_ID)
     assert not os.path.exists(sPipelineStatePath)

@@ -30,7 +30,7 @@ answer is usually already recorded.
    exceptions for the same id.
 
 3. **A step failed on its own logic** (not a runner death): read the
-   step's own execution log under `/workspace/.vaibify/logs/` and the
+   step's own execution log under `<repository>/.vaibify/logs/` and the
    script's traceback; fix the script, then `vaibify-do run-step
    <label>`.
 

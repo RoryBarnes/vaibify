@@ -7513,11 +7513,13 @@ def _fdictEntry(sRel):
             '        fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
             '            dictCtx, sContainerId, requestHttp,\n'
             '        ),\n'
+            '        sProjectRepoPath=sProjectRepoPath,\n'
             '    )\n'
         ),
         new=(
             '    dictState = await pipelineState.fdictReadReconciledState(\n'
             '        dictCtx, sContainerId,\n'
+            '        sProjectRepoPath=sProjectRepoPath,\n'
             '    )\n'
         ),
     ),
@@ -10812,6 +10814,97 @@ def _fdictEntry(sRel):
         ),
         new='            >> /dev/null; \\\n',
     ),
+    # --- One container, several projects (2026-09-23) ---
+    #
+    # A researcher ran agents in two projects of one container. One
+    # agent's step edit landed in the other project; one container-wide
+    # run-state file lit the wrong project's steps. The two refusals
+    # (HTTP and socket), the per-project reader, and the container-wide
+    # busy veto each fail open in a way a researcher would not see.
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedAgentActions.py::'
+            'testAnAgentInAnotherProjectIsRefusedBeforeTheRouteRuns'
+        ),
+        source='vaibify/gui/serverMiddleware.py',
+        old=(
+            '    if agentProjectScope.fbAgentProjectDiffers(\n'
+            '        sAgentProjectDirectory, dictServedProject.get("sWorkflowPath", ""),\n'
+            '    ):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedAgentActions.py::'
+            'testAnAgentRunAimedAtAnotherProjectIsNeverDispatched'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            if dictMisdirectedRefusal is not None:\n'
+            '                await fnCallback(dictMisdirectedRefusal)\n'
+            '                continue\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedAgentActions.py::'
+            'testTheOpenProjectNeverReadsAnotherProjectsRun'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Drop the open-project branch and the reader falls through to
+        # the live task -- the other project's run.
+        old=(
+            '    if dictWorkflow:\n'
+            '        return dictWorkflow.get("sProjectRepoPath", "")\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedAgentActions.py::'
+            'testTheContainerBusyVetoSeesARunInAProjectThatIsNotOpen'
+        ),
+        source='vaibify/gui/pipelineState.py',
+        # Consult only the first known project -- the open one.
+        old=(
+            '    for sProjectRepoPath in _flistKnownProjectRepoPaths(\n'
+            '        dictCtx, sContainerId,\n'
+            '    ):\n'
+        ),
+        new=(
+            '    for sProjectRepoPath in _flistKnownProjectRepoPaths(\n'
+            '        dictCtx, sContainerId,\n'
+            '    )[:1]:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectScopedAgentActions.py::'
+            'testThePipelineStateRouteWithNoProjectDoesNotReportTheRootFile'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        if fsResolveRunStateProjectRepoPath(\n'
+            '            dictCtx, sContainerId,\n'
+            '        ) is None:\n'
+            '            return {"bRunning": False, "iSyncEpoch": iSyncEpoch}\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_failed_run_ends_the_client_with_its_exit_code'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=(
+            '        if sType == "failed":\n'
+            '            return int(dictEvent.get("iExitCode", 1) or 1)\n'
+        ),
+        new='',
+    ),
     # --- What the FIRST real host workflow found (2026-08-10) ---
     #
     # Four backend paths written as the container constant, each found
@@ -10827,7 +10920,7 @@ def _fdictEntry(sRel):
         source='vaibify/gui/pipelineState.py',
         old=(
             '    return posixpath.join(\n'
-            '        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),\n'
+            '        fsResolveProjectRoot(sResourceId, sProjectRepoPath or WORKSPACE_ROOT),\n'
             '        _S_STATE_RELATIVE,\n'
             '    )\n'
         ),
@@ -10844,7 +10937,9 @@ def _fdictEntry(sRel):
         # 1, so a researcher would have gone looking at their script.
         old=(
             '    return posixpath.join(\n'
-            '        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),\n'
+            '        fsResolveProjectRoot(\n'
+            '            sResourceId, sProjectRepoPath or DEFAULT_SEARCH_ROOT,\n'
+            '        ),\n'
             '        VAIBIFY_LOGS_DIR,\n'
             '    )\n'
         ),

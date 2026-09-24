@@ -581,10 +581,10 @@ def _fbNameHasRunningPipeline(dictCtx, appState, sName):
     if not fbDockerReachable(connectionDocker):
         return False
     try:
-        from .fileStatusManager import _fbPipelineIsRunning
+        from .pipelineState import fbContainerHasLiveRun
         for dictRow in connectionDocker.flistGetRunningContainers():
             if dictRow.get("sName") == sName:
-                return _fbPipelineIsRunning(
+                return fbContainerHasLiveRun(
                     dictCtx, dictRow.get("sContainerId", ""),
                 )
     except Exception:

@@ -209,8 +209,10 @@ async def fnPruneOldLogs(
     )
 
 
-async def _fsEnsureLogsDirectory(connectionDocker, sContainerId):
-    """Create .vaibify/logs/ directory if it does not exist.
+async def _fsEnsureLogsDirectory(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Create the project's .vaibify/logs/ directory if it does not exist.
 
     Rooted at the RESOURCE's directory rather than at the container
     constant. A host project's logs belong beside its project, and
@@ -219,7 +221,9 @@ async def _fsEnsureLogsDirectory(connectionDocker, sContainerId):
     the pipeline reports exit 1 for a step whose command had already
     succeeded.
     """
-    sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
+    sLogsDir = workflowManager.fsLogsDirectoryFor(
+        sContainerId, sProjectRepoPath,
+    )
     await asyncio.to_thread(
         connectionDocker.ftResultExecuteCommand,
         sContainerId, f"mkdir -p {fsShellQuote(sLogsDir)}",

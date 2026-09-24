@@ -95,7 +95,7 @@ def test_held_container_running_is_busy():
     )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=True,
     ):
         assert pipelineServer._fbAnyHeldContainerBusy(app, dictCtx) is True
@@ -108,7 +108,7 @@ def test_held_container_idle_is_not_busy():
     )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=False,
     ):
         assert pipelineServer._fbAnyHeldContainerBusy(app, dictCtx) is False
@@ -152,7 +152,7 @@ def test_busy_container_prevents_self_exit():
     )
     dictCtx = {"docker": _FakeDocker({"projectA": "id-a"})}
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=True,
     ):
         assert pipelineServer._fbHubShouldSelfExit(app, dictCtx, 1.0) is False
@@ -555,7 +555,7 @@ def test_viewer_served_container_running_is_busy():
         dictContainerOwners={"id-v": object()},
     )
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=True,
     ):
         assert pipelineServer._fbAnyHeldContainerBusy(
@@ -569,7 +569,7 @@ def test_viewer_busy_served_container_prevents_self_exit():
         fLastActivityMonotonic=time.monotonic() - 10_000,
     )
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=True,
     ):
         assert pipelineServer._fbHubShouldSelfExit(
@@ -583,7 +583,7 @@ def test_viewer_idle_served_container_self_exits():
         fLastActivityMonotonic=time.monotonic() - 100.0,
     )
     with patch(
-        "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+        "vaibify.gui.pipelineState.fbContainerHasLiveRun",
         return_value=False,
     ):
         assert pipelineServer._fbHubShouldSelfExit(

@@ -252,7 +252,12 @@ def _flistResolvePlotPaths(dictStep, dictVars):
 
 
 def _fbPipelineIsRunning(dictCtx, sContainerId):
-    """Return True if a pipeline is currently running in container.
+    """Return True if the open project's pipeline is currently running.
+
+    Per PROJECT: another project's run in the same container does not
+    touch this project's files. A question about the whole container
+    -- may it be released, may the hub exit -- is
+    ``pipelineState.fbContainerHasLiveRun``.
 
     Raw read — does not reconcile a vanished runner. Async callers
     must resolve liveness via ``pipelineState.fdictReadReconciledState``
@@ -262,7 +267,11 @@ def _fbPipelineIsRunning(dictCtx, sContainerId):
     on hand.
     """
     dictState = pipelineState.fdictReadState(
-        dictCtx["docker"], sContainerId)
+        dictCtx["docker"], sContainerId,
+        pipelineState.fsResolveRunStateProjectRepoPath(
+            dictCtx, sContainerId,
+        ) or "",
+    )
     if dictState is None:
         return False
     return dictState.get("bRunning", False)

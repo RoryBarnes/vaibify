@@ -72,7 +72,7 @@ class TestFnMarkPipelineStopped:
             return_value={"bRunning": False},
         ):
             await _fiMarkPipelineStopped(
-                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(), "",
             )
             mockUpdate.assert_called_once()
 
@@ -104,7 +104,7 @@ class TestFnMarkPipelineStopped:
             return_value={"bRunning": False},
         ):
             iStopped = await _fiMarkPipelineStopped(
-                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(), "",
             )
         assert iStopped == 2
         dictPersisted = mockUpdate.call_args[0][2]
@@ -127,7 +127,7 @@ class TestFnMarkPipelineStopped:
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
             await _fiMarkPipelineStopped(
-                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(), "",
             )
             mockUpdate.assert_not_called()
 
@@ -143,7 +143,7 @@ class TestFnMarkPipelineStopped:
             "vaibify.gui.pipelineState.fnUpdateState",
         ) as mockUpdate:
             await _fiMarkPipelineStopped(
-                dictCtx, "cid1", _frequestBuildStoodDownRequest(),
+                dictCtx, "cid1", _frequestBuildStoodDownRequest(), "",
             )
             mockUpdate.assert_not_called()
 
@@ -195,6 +195,7 @@ class TestPipelineStateRoute:
         dictCtx = {
             "docker": MagicMock(),
             "require": MagicMock(),
+            "workflows": {"cid1": {"sProjectRepoPath": "/workspace/proj"}},
         }
         dictExpected = {"bRunning": True, "iStep": 2}
         with patch(

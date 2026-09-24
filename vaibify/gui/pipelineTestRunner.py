@@ -42,6 +42,7 @@ async def _fiRunTestCommands(
     listAllLog = _flistCollectCategoryLogs(dictCategoryResults)
     await _fnWriteTestLog(
         connectionDocker, sContainerId, iStepNumber, listAllLog,
+        dictVariables.get("sRepoRoot", ""),
     )
     await _fnEmitPerCategoryResults(
         fnStatusCallback, iStepNumber, dictCategoryResults,
@@ -131,10 +132,13 @@ def _flistCollectCategoryLogs(dictCategoryResults):
 
 async def _fnWriteTestLog(
     connectionDocker, sContainerId, iStepNumber, listLogLines,
+    sProjectRepoPath,
 ):
-    """Write test output to a separate log file."""
+    """Write test output to a log file in the project's logs directory."""
     from .pipelineLogger import fnWriteLogToContainer
-    sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
+    sLogsDir = workflowManager.fsLogsDirectoryFor(
+        sContainerId, sProjectRepoPath,
+    )
     sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sFilename = f"test_Step{iStepNumber:02d}_{sTimestamp}.log"
     sLogPath = posixpath.join(sLogsDir, sFilename)

@@ -106,13 +106,22 @@ def _fnCommitSettingsUpdate(
     )
 
 
+def _fsOpenProjectLogsDirectory(dictCtx, sContainerId):
+    """Return the logs directory of the project this container shows."""
+    from ..pipelineState import fsResolveRunStateProjectRepoPath
+    return workflowManager.fsLogsDirectoryFor(
+        sContainerId,
+        fsResolveRunStateProjectRepoPath(dictCtx, sContainerId) or "",
+    )
+
+
 def _fnRegisterLogRoutes(app, dictCtx):
     """Register log listing and fetching routes."""
 
     @app.get("/api/logs/{sContainerId}")
     async def flistLogs(sContainerId: str):
         dictCtx["require"](sContainerId)
-        sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
+        sLogsDir = _fsOpenProjectLogsDirectory(dictCtx, sContainerId)
         try:
             listEntries = flistQueryDirectory(
                 dictCtx["docker"], sContainerId, sLogsDir
@@ -132,7 +141,7 @@ def _fnRegisterLogRoutes(app, dictCtx):
         sContainerId: str, sLogFilename: str
     ):
         dictCtx["require"](sContainerId)
-        sLogsDir = workflowManager.fsLogsDirectoryFor(sContainerId)
+        sLogsDir = _fsOpenProjectLogsDirectory(dictCtx, sContainerId)
         sLogPath = posixpath.join(sLogsDir, sLogFilename)
         fsValidatePathWithinRoot(sLogPath, sLogsDir)
         try:

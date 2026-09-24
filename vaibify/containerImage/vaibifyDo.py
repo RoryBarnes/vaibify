@@ -24,6 +24,7 @@ import re
 import secrets
 import socket
 import sys
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -32,10 +33,22 @@ import urllib.error
 S_SESSION_ENV_PATH = "/tmp/vaibify-session.env"
 S_CATALOG_JSON_PATH = "/tmp/vaibify-action-catalog.json"
 S_SESSION_HEADER_NAME = "X-Vaibify-Session"
+S_AGENT_PROJECT_HEADER = "X-Vaibify-Agent-Project"
+S_SERVED_PROJECT_HEADER = "X-Vaibify-Project"
+S_SERVED_PROJECT_NAME_HEADER = "X-Vaibify-Project-Name"
+S_AGENT_PROJECT_FIELD = "sAgentProjectDirectory"
+T_PROJECT_DIRECTORY_MARKERS = (
+    os.path.join(".vaibify", "projects"),
+    os.path.join(".vaibify", "workflows"),
+)
 S_EXPECTED_SCHEMA = "1.0"
 F_CONNECT_TIMEOUT = 2.0
 F_READ_TIMEOUT = 60.0
 F_LABEL_LOOKUP_TIMEOUT = 10.0
+# The hub sends workflowBound at once on accept; the ack bound covers
+# the checks it runs before starting or refusing a run.
+F_WORKFLOW_BOUND_TIMEOUT = 30.0
+F_ACKNOWLEDGE_TIMEOUT = 120.0
 RE_STEP_LABEL = re.compile(r"^[AIai]\d{1,3}$")
 
 
@@ -81,6 +94,74 @@ def fnFailHostUnreachable(sUrl, error):
         "vaibify host unreachable at " + sUrl + " (" + str(error) + "); "
         "reconnect the container from the dashboard",
         iCode=4,
+    )
+
+
+def fsFindEnclosingProjectDirectory(sStartDirectory):
+    """Return the nearest directory at or above sStartDirectory holding a project.
+
+    A project directory is one with ``.vaibify/projects/`` (or the
+    legacy ``.vaibify/workflows/``) -- the rule the hub uses to name a
+    workflow's project. Returns "" outside every project, where there
+    is nothing to declare.
+    """
+    sDirectory = os.path.abspath(sStartDirectory)
+    while True:
+        for sMarker in T_PROJECT_DIRECTORY_MARKERS:
+            if os.path.isdir(os.path.join(sDirectory, sMarker)):
+                return sDirectory
+        sParent = os.path.dirname(sDirectory)
+        if sParent == sDirectory:
+            return ""
+        sDirectory = sParent
+
+
+def fsAgentProjectDirectory():
+    """Return the project this agent is working in, from its directory."""
+    try:
+        return fsFindEnclosingProjectDirectory(os.getcwd())
+    except OSError:
+        return ""
+
+
+def fdictBuildRequestHeaders(sToken):
+    """Return the headers every HTTP call carries: token plus project.
+
+    The project declaration lets the hub refuse an action aimed at a
+    project other than the one open in the dashboard, which would
+    otherwise act on the open project instead of this one.
+    """
+    dictHeaders = {S_SESSION_HEADER_NAME: sToken}
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        dictHeaders[S_AGENT_PROJECT_HEADER] = sProjectDirectory
+    return dictHeaders
+
+
+def fnAnnounceServedProject(sProjectDirectory, sProjectName):
+    """Print the project the hub acted on, first and on stderr.
+
+    First so a reader who keeps only the head of the output still sees
+    it; stderr so ``--json`` output stays one JSON document per line.
+    Silent when the hub named no project (none is open, or the route
+    is not about one).
+    """
+    if not sProjectDirectory:
+        return
+    sys.stderr.write(
+        "vaibify-do: project '" + sProjectName + "' at "
+        + sProjectDirectory + "\n")
+    sys.stderr.flush()
+
+
+def fnAnnounceServedProjectFromHeaders(dictHeaders):
+    """Announce the project named by a response's served-project headers."""
+    if dictHeaders is None:
+        return
+    fnAnnounceServedProject(
+        urllib.parse.unquote(dictHeaders.get(S_SERVED_PROJECT_HEADER) or ""),
+        urllib.parse.unquote(
+            dictHeaders.get(S_SERVED_PROJECT_NAME_HEADER) or ""),
     )
 
 
@@ -294,7 +375,7 @@ def fiResolveLabelToIndex(sLabel, dictEnv):
     )
     request = urllib.request.Request(
         sUrl,
-        headers={S_SESSION_HEADER_NAME: dictEnv["VAIBIFY_SESSION_TOKEN"]},
+        headers=fdictBuildRequestHeaders(dictEnv["VAIBIFY_SESSION_TOKEN"]),
     )
     try:
         with urllib.request.urlopen(
@@ -375,6 +456,9 @@ def fdictResolveWsPayload(dictEntry, listArgs):
     listPositional, dictBody = ftParsePositionalArgs(listArgs)
     dictPayload = {"sAction": dictEntry["sPath"]}
     dictPayload.update(dictBody)
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        dictPayload[S_AGENT_PROJECT_FIELD] = sProjectDirectory
     if not listPositional:
         return dictPayload
     if dictEntry["sName"] == "run-step":
@@ -412,7 +496,7 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     types like ``iLines: int``.
     """
     dataBody = None
-    dictHeaders = {S_SESSION_HEADER_NAME: sToken}
+    dictHeaders = fdictBuildRequestHeaders(sToken)
     sUrl = dictTarget["sUrl"]
     if dictTarget["dictBody"]:
         if sMethod == "GET":
@@ -425,9 +509,11 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
         headers=dictHeaders, method=sMethod)
     try:
         with urllib.request.urlopen(request, timeout=F_READ_TIMEOUT) as resp:
+            fnAnnounceServedProjectFromHeaders(getattr(resp, "headers", None))
             _fnPrintHttpBody(resp.read(), bJsonMode)
             return 0
     except urllib.error.HTTPError as errHttp:
+        fnAnnounceServedProjectFromHeaders(getattr(errHttp, "headers", None))
         return _fiHandleHttpError(errHttp, bJsonMode)
     except (urllib.error.URLError, socket.timeout, OSError) as error:
         fnFailHostUnreachable(dictTarget["sUrl"], error)
@@ -586,6 +672,12 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
     dictBound = _fdictAwaitWorkflowBound(socketConnection)
     if dictBound is not None:
+        fnAnnounceServedProject(
+            dictBound.get("sProjectDirectory", ""),
+            dictBound.get("sProjectName", ""),
+        )
+        if bJsonMode:
+            _fnPrintEvent(dictBound, bJsonMode)
         dictPayload["sAcknowledgedSourceFingerprint"] = dictBound.get(
             "sExactSourceFingerprint", "")
         dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
@@ -603,13 +695,20 @@ def _fdictAwaitWorkflowBound(socketConnection):
     then refuses run actions with a message naming the missing
     acknowledgment, which is the honest failure.
     """
+    fDeadline = time.monotonic() + F_WORKFLOW_BOUND_TIMEOUT
     while True:
-        tFrame = ftRecvWsFrame(socketConnection)
+        tFrame = _ftRecvFrameOrFail(socketConnection, "workflowBound")
         sKind = tFrame[0]
         if sKind == "close":
             return None
         if sKind == "ping":
             fnSendWsPong(socketConnection, tFrame[1])
+            if time.monotonic() > fDeadline:
+                fnFail(
+                    "vaibify-do: the hub accepted the connection but did "
+                    "not say which project it serves within "
+                    + str(int(F_WORKFLOW_BOUND_TIMEOUT)) + " s. Nothing "
+                    "was sent; retrying is safe.", iCode=4)
             continue
         if sKind == "skip":
             continue
@@ -640,16 +739,32 @@ def fnEnableTcpKeepalive(socketConnection):
 
 
 def _fiStreamWsEvents(socketConnection, bJsonMode):
-    """Read events until 'completed' or error; return exit code."""
+    """Read events until the run ends; return its exit code.
+
+    A run ends on ``completed`` or ``failed`` -- the runner's two
+    completion events, exactly the pair the dashboard finalizes on --
+    or on a refusal or error. Missing ``failed`` left every failed run's
+    client connected forever, kept alive by the hub's pings, which an
+    agent could not tell from a slow run.
+
+    Until the hub sends its first event about the action, the wait is
+    bounded: an action that is neither started nor refused within
+    ``F_ACKNOWLEDGE_TIMEOUT`` is reported rather than waited on.
+    """
+    fDeadline = time.monotonic() + F_ACKNOWLEDGE_TIMEOUT
+    bAcknowledged = False
     while True:
-        sKind, dataFrame = ftRecvWsFrame(socketConnection)
+        sKind, dataFrame = _ftRecvFrameOrFail(
+            socketConnection, "the action's events")
         if sKind == "close":
             return 1
-        if sKind == "ping":
-            fnSendWsPong(socketConnection, dataFrame)
+        if sKind in ("ping", "skip"):
+            if sKind == "ping":
+                fnSendWsPong(socketConnection, dataFrame)
+            if not bAcknowledged and time.monotonic() > fDeadline:
+                fnFailUnacknowledged()
             continue
-        if sKind == "skip":
-            continue
+        bAcknowledged = True
         try:
             dictEvent = json.loads(dataFrame)
         except ValueError:
@@ -660,8 +775,37 @@ def _fiStreamWsEvents(socketConnection, bJsonMode):
         sType = dictEvent.get("sType", "")
         if sType == "completed":
             return int(dictEvent.get("iExitCode", 0) or 0)
+        if sType == "failed":
+            return int(dictEvent.get("iExitCode", 1) or 1)
         if sType in ("error", "pipelineError", "runRefused"):
             return 1
+
+
+def fnFailUnacknowledged():
+    """Exit 4: the hub took the action but neither started nor refused it."""
+    fnFail(
+        "vaibify-do: the hub received the action but has neither started "
+        "nor refused it after " + str(int(F_ACKNOWLEDGE_TIMEOUT)) + " s. "
+        "It may still start: run 'vaibify-do get-pipeline-state' before "
+        "retrying (a second run is refused while one is live), and tell "
+        "the researcher if it never does.", iCode=4)
+
+
+def _ftRecvFrameOrFail(socketConnection, sWaitingFor):
+    """Read one frame, exiting 4 with a reason if the socket goes silent.
+
+    The hub pings every 20 s and a running command heartbeats, so a
+    read that times out means the connection is dead -- which used to
+    surface as an uncaught traceback.
+    """
+    try:
+        return ftRecvWsFrame(socketConnection)
+    except socket.timeout:
+        fnFail(
+            "vaibify-do: no frame from the hub for "
+            + str(int(F_READ_TIMEOUT)) + " s while waiting for "
+            + sWaitingFor + "; the connection is dead. Run 'vaibify-do "
+            "get-pipeline-state' before retrying.", iCode=4)
 
 
 def _fnPrintEvent(dictEvent, bJsonMode):

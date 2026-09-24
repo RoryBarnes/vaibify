@@ -72,6 +72,7 @@ __all__ = [
 ]
 
 from . import actionCatalog
+from . import agentProjectScope
 from . import agentSessionBridge
 from . import browserSession
 from . import conftestManager
@@ -982,11 +983,35 @@ async def fnPipelineMessageLoop(
                     dictInteractive, dictRequest,
                 )
                 continue
+            # The LIVE cache object, re-read per frame: the reload
+            # detector REBINDS the cache key, so a workflow captured
+            # at socket accept silently runs superseded commands for
+            # the socket's whole life (spec D1). Commands already in
+            # flight keep the object they started with.
+            dictWorkflowBound = dictWorkflow
+            if fdictGetLiveWorkflow is not None:
+                dictWorkflowBound = (
+                    fdictGetLiveWorkflow() or dictWorkflow
+                )
+            dictMisdirectedRefusal = (
+                agentProjectScope.fdictBuildMisdirectedRunRefusal(
+                    sAction, dictRequest, dictWorkflowBound,
+                    dictWorkflowPathCache.get(sContainerId, ""),
+                )
+            )
+            if dictMisdirectedRefusal is not None:
+                await fnCallback(dictMisdirectedRefusal)
+                continue
             if _fbRefuseWhilePipelineTaskLive(
                 dictPipelineTasks, sContainerId,
             ):
                 await fnCallback(
-                    _fdictBusyRefusalEvent(sAction, dictRequest),
+                    _fdictBusyRefusalEvent(
+                        sAction, dictRequest,
+                        sHolderProject=_fsNameLivePipelineProject(
+                            dictPipelineTasks, sContainerId,
+                        ),
+                    ),
                 )
                 continue
             sBusyWork = _fsDescribeBlockingMutationWork(
@@ -999,16 +1024,6 @@ async def fnPipelineMessageLoop(
                     ),
                 )
                 continue
-            # The LIVE cache object, re-read per frame: the reload
-            # detector REBINDS the cache key, so a workflow captured
-            # at socket accept silently runs superseded commands for
-            # the socket's whole life (spec D1). Commands already in
-            # flight keep the object they started with.
-            dictWorkflowBound = dictWorkflow
-            if fdictGetLiveWorkflow is not None:
-                dictWorkflowBound = (
-                    fdictGetLiveWorkflow() or dictWorkflow
-                )
             dictFreshnessRefusal = await _fdictStaleWorkflowRefusal(
                 dictCtx, sContainerId, sAction, dictRequest,
                 dictWorkflowBound,
@@ -1049,6 +1064,7 @@ async def fnPipelineMessageLoop(
                 _fnRegisterPipelineTask(
                     dictPipelineTasks, sContainerId, taskPipeline,
                     iOwnerGeneration=iOwnerGeneration,
+                    dictWorkflow=dictWorkflowBound,
                 )
     finally:
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
@@ -1268,6 +1284,16 @@ def _fdictSupersededRefusalEvent(
     }
 
 
+def _fsNameLivePipelineProject(dictPipelineTasks, sContainerId):
+    """Return "project 'name' (repo)" for the live pipeline task, or ""."""
+    taskLive = (dictPipelineTasks or {}).get(sContainerId)
+    sRepoPath = getattr(taskLive, "sProjectRepoPath", "")
+    if not sRepoPath:
+        return ""
+    sName = getattr(taskLive, "sWorkflowName", "")
+    return f"project '{sName}' ({sRepoPath})"
+
+
 def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
     """Return True when a dispatched pipeline action is still running.
 
@@ -1482,7 +1508,9 @@ def _fdictRemoteOverwriteEvent(
     }
 
 
-def _fdictBusyRefusalEvent(sAction, dictRequest, sBusyDescription=""):
+def _fdictBusyRefusalEvent(
+    sAction, dictRequest, sBusyDescription="", sHolderProject="",
+):
     """Return the honest refusal event for a run-while-busy attempt.
 
     Carries the refused step indices so the browser can reset only the
@@ -1497,25 +1525,37 @@ def _fdictBusyRefusalEvent(sAction, dictRequest, sBusyDescription=""):
     Kill button stops a pipeline action and does nothing to a carrier
     worker, and a refusal that misdescribes its own remedy sends the
     researcher to a control that cannot help.
+
+    ``sHolderProject`` names the project whose pipeline holds the
+    container. It matters most when that is NOT the requester's own:
+    a container hosting two projects runs one pipeline at a time, and
+    "already running" with no name reads as this project's own steps
+    running mysteriously (researcher-reported, 2026-09-23).
     """
+    sHolder = sHolderProject or "a pipeline action"
+    sVerb = "is already running a pipeline" if sHolderProject else (
+        "is already running"
+    )
     return {
         "sType": "runRefused",
         "sAction": sAction,
         "listStepIndices": dictRequest.get("listStepIndices", []),
+        "sHolderProject": sHolderProject,
         "sMessage": (
             f"Refused '{sAction}': {sBusyDescription} is still running "
             "in this container and holds it until it finishes. Retry "
             "when it does."
             if sBusyDescription else
-            f"Refused '{sAction}': a pipeline action is already "
-            "running in this container. Wait for it to finish, or "
-            "stop it with the Kill button, then retry."
+            f"Refused '{sAction}': {sHolder} {sVerb} in this "
+            "container. Wait for it to finish, or stop it with the "
+            "Kill button, then retry."
         ),
     }
 
 
 def _fnRegisterPipelineTask(
     dictPipelineTasks, sContainerId, taskPipeline, iOwnerGeneration=1,
+    dictWorkflow=None,
 ):
     """Store a pipeline task and arrange for self-eviction on completion.
 
@@ -1532,8 +1572,19 @@ def _fnRegisterPipelineTask(
     an old completion callback fires after a transfer. The done-callback
     therefore reads the record's generation at completion time, not a
     snapshot captured at registration.
+
+    The task also records the project it runs (``sProjectRepoPath``,
+    ``sWorkflowName``): a Kill must mark THAT project's run stopped, and
+    a refused run must say which project holds the container, however
+    many projects the container hosts and whichever is open by then.
     """
     taskPipeline.iOwnerGeneration = iOwnerGeneration
+    taskPipeline.sProjectRepoPath = (dictWorkflow or {}).get(
+        "sProjectRepoPath", "",
+    )
+    taskPipeline.sWorkflowName = (dictWorkflow or {}).get(
+        "sWorkflowName", "",
+    )
     dictPipelineTasks[sContainerId] = taskPipeline
 
     def fnEvictOnDone(taskCompleted):
@@ -1891,6 +1942,10 @@ async def fnHandlePipelineWs(
     await websocket.send_json({
         "sType": "workflowBound",
         "sWorkflowPath": dictCtx["paths"].get(sContainerId, ""),
+        "sProjectDirectory": agentProjectScope.fsProjectDirectoryOfWorkflow(
+            dictCtx["paths"].get(sContainerId, ""),
+        ),
+        "sProjectName": dictWorkflow.get("sWorkflowName", ""),
         "sExactSourceFingerprint": dictWorkflow.get(
             "_sSourceFingerprint", "",
         ),

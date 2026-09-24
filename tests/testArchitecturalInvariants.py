@@ -5330,7 +5330,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reason; the predicate itself lives in syncBookkeeping.
     # +4 (2026-09-15): the same host-mode fact threaded into this
     # module's fiProofLevel call, for the same reason.
-    "fileStatusManager.py": 2282,
+    # +9 (2026-09-23): the per-project run check reads the OPEN
+    # project's state file, and its docstring says why the container-
+    # wide question is asked elsewhere.
+    "fileStatusManager.py": 2291,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5467,7 +5470,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # instead of a second, drifting copy in reproducibility/.
     # +5 (2026-09-15): the host-mode fact reaches _fnDeriveProofLevel,
     # which both the load and the save paths call.
-    "workflowManager.py": 2849,
+    # +6 (2026-09-23): the logs directory takes the project it belongs
+    # to, because a container may host several.
+    "workflowManager.py": 2855,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5530,7 +5535,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # REFRESHES a stale copy instead of only creating a missing one --
     # write-when-missing left every established project on the old
     # list, which is where the blocked verifications were.
-    "stateManager.py": 1240,
+    # +7 (2026-09-23): the project gitignore covers the run state and
+    # logs, which moved into the project from the container root.
+    "stateManager.py": 1247,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -5831,7 +5838,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # credential-only flag a promotion needs. Both are fields on
     # shapes this module already owns.
     # +1 (2026-09-14): the promotion-recovery route module registers.
-    "pipelineServer.py": 3391,
+    # +55 (2026-09-23): the dispatch loop refuses a run aimed at
+    # another project and names the project whose pipeline holds the
+    # container, and the task records which project it runs. The
+    # refusal's CONTENT moved out to agentProjectScope; what stays is
+    # dispatch, which is this module's job.
+    "pipelineServer.py": 3446,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6389,7 +6401,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # process. It sits here because a run is the moment a stale copy
     # starts to matter, and the collector is already the path that
     # reports to the researcher without blocking the run.
-    "pipelineRunner.py": 1769,
+    # +2 (2026-09-23): the run's state and logs name its project.
+    "pipelineRunner.py": 1771,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6410,7 +6423,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # record carries the downstream-of-degraded-provenance flag so a
     # reconnect re-renders the mark; the growth is the flag's
     # only-when-True install and the docstring saying why.
-    "pipelineState.py": 956,
+    # +105 (2026-09-23): run state is per PROJECT. The path resolver,
+    # the reader's choice of project (open, else the live run's), and
+    # the container-wide busy question that the release and idle-exit
+    # vetoes ask. All three are about where run state lives and who
+    # reads it, which is this module's one responsibility.
+    "pipelineState.py": 1061,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
