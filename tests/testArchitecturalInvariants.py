@@ -4280,7 +4280,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # own check. It landed here rather than in registryRoutes
     # precisely BECAUSE that module is the one this ratchet exists to
     # contain, and registryRoutes falls to 2328 in the same commit.
-    "routeContext.py": 893,
+    # RAISED to 934 (2026-09-24): fnRefuseSaveIntoAnotherProject, the
+    # refusal a workflow save meets when the container has switched to
+    # another project since the workflow was read. It sits beside the
+    # carried save it guards, which must refuse before its carrier
+    # opens a journal record.
+    "routeContext.py": 934,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5084,7 +5089,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # endgame call instead of the arrow-only one) and names the
     # compared-not-required paths for the copies rows. Payload
     # fields on the existing envelope builder, not a new concern.
-    "routes/pipelineRoutes.py": 3703,
+    # +81 (2026-09-24): a container hosts several projects. Stop reads
+    # the RUNNING project's workflow for its sweep and names the file
+    # its step number counts in; the poll describes the workflow it
+    # holds, names that file, and reports another project's live run.
+    # Each is a field or a lookup on a route this module already owns.
+    "routes/pipelineRoutes.py": 3784,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5333,7 +5343,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +9 (2026-09-23): the per-project run check reads the OPEN
     # project's state file, and its docstring says why the container-
     # wide question is asked elsewhere.
-    "fileStatusManager.py": 2291,
+    # +29 (2026-09-24): the file-change baseline records which
+    # project's files it measured, because a baseline measured for one
+    # project made every file of another read as changed.
+    "fileStatusManager.py": 2320,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5472,7 +5485,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # which both the load and the save paths call.
     # +6 (2026-09-23): the logs directory takes the project it belongs
     # to, because a container may host several.
-    "workflowManager.py": 2855,
+    # +23 (2026-09-24): a loaded workflow records the file it came
+    # from, and the save strips it -- the load/save authority owns
+    # the one transient field that says which file a workflow is.
+    "workflowManager.py": 2878,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5843,7 +5859,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container, and the task records which project it runs. The
     # refusal's CONTENT moved out to agentProjectScope; what stays is
     # dispatch, which is this module's job.
-    "pipelineServer.py": 3446,
+    # +46 (2026-09-24): each dispatch takes its workflow path, its
+    # directory and its provenance committer from the workflow it runs
+    # rather than from the socket or the open slot, and the save seam
+    # refuses a workflow read before a project switch. Dispatch again.
+    "pipelineServer.py": 3492,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

@@ -731,7 +731,9 @@ var VaibifyWorkflowManager = (function () {
         VaibifyApp.fnShowConfirmModal(
             "Switch Project",
             "Switch to \"" + sNewName + "\"?\n\n" +
-            "Current project state will be saved.",
+            "Current project state will be saved. A pipeline running " +
+            "in the current project keeps running; open that project " +
+            "again to follow or stop it.",
             async function () {
                 await fnSaveCurrentWorkflow();
                 fnSelectWorkflow(

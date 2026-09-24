@@ -11629,8 +11629,8 @@ def _fdictEntry(sRel):
         # sweep has no step directories and reports success for work it
         # never did.
         old=(
-            '            dictWorkflow = fdictRequireWorkflow(\n'
-            '                dictCtx["workflows"], sContainerId)\n'
+            '            dictWorkflow = _fdictWorkflowOfRunToStop(dictCtx,'
+            ' sContainerId)\n'
         ),
         new='            dictWorkflow = {}\n',
     ),
@@ -12346,12 +12346,10 @@ def _fdictEntry(sRel):
         old=(
             '                        VaibifyApp'
             '.fnStartFileChangePolling();\n'
-            '                        if '
-            '(dictResult.iStoppedStepNumber >= 1) {\n'
+            '                        var bStoppedHere =\n'
         ),
         new=(
-            '                        if '
-            '(dictResult.iStoppedStepNumber >= 1) {\n'
+            '                        var bStoppedHere =\n'
         ),
     ),
     Falsification(
@@ -12404,8 +12402,9 @@ def _fdictEntry(sRel):
         # watches their stopped step fall back to a hollow never-ran
         # circle in the live tab.
         old=(
-            '                        if '
-            '(dictResult.iStoppedStepNumber >= 1) {\n'
+            '                        if (bStoppedHere &&\n'
+            '                            dictResult.iStoppedStepNumber'
+            ' >= 1) {\n'
         ),
         new=(
             '                        if (false) {\n'
@@ -23171,5 +23170,166 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/pipelineRoutes.py',
         old='            dictPipelineState, sWorkflowPath,\n',
         new='            dictPipelineState,\n',
+    ),
+    # --- 2026-09-24: switching projects inside one container leaves
+    # each project's files, runs and dashboard state its own ---
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testASaveHeldAcrossASwitchNeverLandsInTheOpenProject'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId,'
+            ' dictWorkflow)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testTheCarriedSaveRefusesBeforeAnyJournalRecordOpens'
+        ),
+        source='vaibify/gui/routeContext.py',
+        old=(
+            '    fnRefuseSaveIntoAnotherProject(\n'
+            '        dictCtx.get("paths"), sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testSwitchingProjectsDoesNotResetTheNewProjectsTests'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '    if dictOwners.get(sContainerId, "") != _fsBaselineOwnerOfWorkflow(\n'
+            '        dictWorkflow,\n'
+            '    ):\n'
+            '        return {}\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testARunUsesItsOwnProjectsDirectoryNotTheSockets'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    if sLoadedFrom:\n'
+            '        return sLoadedFrom, posixpath.dirname(sLoadedFrom)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testARunsProvenanceLandsInItsProjectAfterASwitch'
+        ),
+        source='vaibify/gui/provenanceCommitter.py',
+        old='        sWorkflowPath = sRunWorkflowPath or sOpenPath\n',
+        new='        sWorkflowPath = sOpenPath\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testALatePollNeverReloadsTheLeftProjectIntoTheCache'
+        ),
+        source='vaibify/gui/workflowReloadDetector.py',
+        old=(
+            '    if sWorkflowPath != (dictCtx.get("paths") or {}).get(\n'
+        ),
+        new=(
+            '    if False and sWorkflowPath != (dictCtx.get("paths") or {}).get(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testTheOpenProjectIsToldAnotherProjectIsRunning'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    if not sRunWorkflowPath or sRunWorkflowPath == sWorkflowPath:\n'
+            '        return {}\n'
+            '    return {\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        return {}\n'
+            '    return {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testStopSweepsTheRunningProjectNotTheOpenOne'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            dictWorkflow = _fdictWorkflowOfRunToStop(dictCtx,'
+            ' sContainerId)\n'
+        ),
+        new=(
+            '            dictWorkflow = fdictRequireWorkflow(\n'
+            '                dictCtx["workflows"], sContainerId)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSwitchingProjectsKeepsEachProjectsState.py::'
+            'test_an_answer_about_another_project_moves_no_lights'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictStatus.sServedWorkflowPath &&\n'
+            '            dictStatus.sServedWorkflowPath !==\n'
+            '                _dictWorkflowState.sWorkflowPath) {\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSwitchingProjectsKeepsEachProjectsState.py::'
+            'test_another_projects_run_is_announced'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnRenderOtherProjectRun(dictStatus.dictOtherProjectRun);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testSwitchingProjectsKeepsEachProjectsState.py::'
+            'test_switching_projects_closes_the_left_projects_socket'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+            '            VaibifyWebSocket.fnDisconnect();\n'
+        ),
+        new=(
+            '            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testProjectSwitchWithinContainer.py::'
+            'testThePollNamesItsProjectAndTheOtherRun'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    sWorkflowPath = _fsWorkflowPathOfPoll(dictCtx, sContainerId,'
+            ' dictWorkflow)\n'
+            '    listUnionPaths = _flistCollectPollPaths(\n'
+        ),
+        new=(
+            '    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")\n'
+            '    listUnionPaths = _flistCollectPollPaths(\n'
+        ),
     ),
 ]

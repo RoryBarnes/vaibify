@@ -430,6 +430,12 @@
                       src="/static/favicon.png" alt="L3"></span>
                 <div id="workflowDropdown" class="workflow-dropdown"></div>
             </div>
+            <!-- A run in ANOTHER project of this container. The open
+                 project's lights describe only its own steps, so
+                 without this the container looks idle while it is
+                 busy. -->
+            <span id="otherProjectRunBadge" class="other-project-run-badge"
+                  style="display: none;"></span>
         </div>
         <!-- Agent Council: after the project identity, before the Run
              menu (design section 6.1). Disabled without an active

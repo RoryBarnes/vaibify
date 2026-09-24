@@ -611,6 +611,9 @@ const VaibifyApp = (function () {
         }
         _fnResetUiState();
         _fnInvalidateAllRenderCaches();
+        _bReflectedDispatchRun = false;
+        _iReflectedActiveIndex = -1;
+        _fnRenderOtherProjectRun(null);
         VaibifyTestManager.fnResetState();
         VaibifyPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
@@ -771,6 +774,16 @@ const VaibifyApp = (function () {
     }
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
+        /* A container hosts several projects, and the pipeline socket
+           outlives a switch between them. Left open, it kept
+           delivering the previous project's run events -- step
+           numbers that index ANOTHER step list -- onto the new
+           project's lights and saves. The run itself continues on
+           the server; reopening its project reconnects to it. */
+        if (_dictWorkflowState.sWorkflowPath &&
+            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {
+            VaibifyWebSocket.fnDisconnect();
+        }
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
         _fnRecordViewerLeaseFromConnect(sId, data);
@@ -2673,6 +2686,25 @@ const VaibifyApp = (function () {
             _iReflectedActiveIndex = -1;
             _bReflectedDispatchRun = false;
         }
+    }
+
+    function _fnRenderOtherProjectRun(dictOtherRun) {
+        var elBadge = document.getElementById("otherProjectRunBadge");
+        if (!elBadge) return;
+        if (!dictOtherRun || !dictOtherRun.sWorkflowPath) {
+            elBadge.style.display = "none";
+            elBadge.textContent = "";
+            return;
+        }
+        var sName = dictOtherRun.sWorkflowName ||
+            dictOtherRun.sProjectRepoPath || dictOtherRun.sWorkflowPath;
+        elBadge.textContent = "Also running here: " + sName;
+        elBadge.title =
+            "Project '" + sName + "' has a pipeline running in this " +
+            "container (" + dictOtherRun.sWorkflowPath + "). Open it " +
+            "to follow or stop the run; this project cannot start a " +
+            "run until it finishes.";
+        elBadge.style.display = "";
     }
 
     function fnResetQueuedSteps(listStepIndices) {
@@ -6396,6 +6428,16 @@ const VaibifyApp = (function () {
     }
 
     function fnProcessFileStatusResponse(dictStatus) {
+        /* An answer about another project of this container -- one
+           computed before a switch landed on either side -- would
+           overwrite this project's fingerprints, file times and
+           lights with the other's. */
+        if (dictStatus.sServedWorkflowPath &&
+            dictStatus.sServedWorkflowPath !==
+                _dictWorkflowState.sWorkflowPath) {
+            return;
+        }
+        _fnRenderOtherProjectRun(dictStatus.dictOtherProjectRun);
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
                 "project.json error: " +

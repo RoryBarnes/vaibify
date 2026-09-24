@@ -552,9 +552,14 @@ var VaibifyPipelineRunner = (function () {
     }
 
     async function fnRecoverPipelineState(sId) {
+        var sRequestedPath = VaibifyApp.fsGetWorkflowPath() || "";
         try {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                /* A later activation owns recovery now. */
+                return;
+            }
             /* Recovery is fired-and-forgotten at workflow activation.
                A run that started while its response was in flight
                outdates the answer: acting on a stale "not running"
@@ -563,6 +568,10 @@ var VaibifyPipelineRunner = (function () {
                the late landing satisfied the kill test's polling wait
                with the kill handler mutated away). */
             if (_bRunLive) return;
+            if (_fbStateDescribesAnotherProject(dictState, sRequestedPath)) {
+                VaibifyApp.fnStartFileChangePolling();
+                return;
+            }
             if (!dictState || !dictState.bRunning) {
                 /* -1 is the initial "never completed" sentinel; a
                    NEGATIVE exit is a run killed by a signal (a Stop
@@ -582,12 +591,19 @@ var VaibifyPipelineRunner = (function () {
             VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
             if (_bRunLive) return;
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                return;
+            }
             VaibifyApp.fnStartFileChangePolling();
         }
     }
 
-    function fnHandlePipelinePollResult(dictState) {
+    function fnHandlePipelinePollResult(dictState, sRequestedPath) {
         if (!dictState) return;
+        if (typeof sRequestedPath === "string" &&
+            _fbStateDescribesAnotherProject(dictState, sRequestedPath)) {
+            return;
+        }
         if (!dictState.bRunning) {
             VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
@@ -1276,7 +1292,12 @@ var VaibifyPipelineRunner = (function () {
                            frontend must not depend on which side of
                            the kill race won. */
                         VaibifyApp.fnStartFileChangePolling();
-                        if (dictResult.iStoppedStepNumber >= 1) {
+                        var bStoppedHere =
+                            !dictResult.sStoppedWorkflowPath ||
+                            dictResult.sStoppedWorkflowPath ===
+                                VaibifyApp.fsGetWorkflowPath();
+                        if (bStoppedHere &&
+                            dictResult.iStoppedStepNumber >= 1) {
                             /* The step this stop interrupted: purple
                                "stopped", never failure-red — a step
                                the researcher chose to stop did not
@@ -1429,10 +1450,26 @@ var VaibifyPipelineRunner = (function () {
     /* --- State Management --- */
 
     function fnResetState() {
+        /* The run flags describe the PREVIOUS project's run once the
+           dashboard switches projects; carried over, a live one made
+           the new project's recovery skip its own results. */
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
         _sStreamingViewer = null;
+        _bRunLive = false;
+        _bStopRequested = false;
+        _bRemoteDataPulledThisRun = false;
         fnCancelSentinelMonitor();
+    }
+
+    function _fbStateDescribesAnotherProject(dictState, sRequestedPath) {
+        /* True when the dashboard switched projects while the request
+           was in flight, or the state was recorded for another
+           workflow: step numbers index that project's step list. */
+        var sOpenPath = VaibifyApp.fsGetWorkflowPath() || "";
+        if (sRequestedPath !== sOpenPath) return true;
+        return Boolean(dictState && dictState.sWorkflowPath &&
+            dictState.sWorkflowPath !== sOpenPath);
     }
 
     function fnCancelSentinelMonitor() {

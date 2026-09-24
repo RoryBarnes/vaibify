@@ -647,6 +647,23 @@ therefore located by that project, never by the container:
   a `vaibify-do` baked into an older image) is served as before;
   refusing it would strand every existing container until a rebuild.
   `agentProjectScope.py` holds the rule.
+- **Work in flight carries its own project.** The open-project slot
+  (`dictCtx["workflows"|"paths"][sContainerId]`) changes whenever the
+  researcher switches projects, so anything that outlives a request —
+  a save after an `await`, a poll, a run, its provenance commit, a
+  Stop — takes its project from the workflow it holds, never from the
+  slot. The loader stamps each workflow with the file it came from
+  (`workflowManager.S_LOADED_FROM_KEY`, stripped on save). A save of a
+  workflow read before a switch is refused (`409 project-switched`,
+  before any carrier opens a journal record), and the stamp only ever
+  refuses: it never chooses where a write lands. The file-change
+  baseline records whose files it measured, a run's directory and
+  provenance target come from the workflow it dispatched, Stop sweeps
+  the running project's commands, and the reload detector reloads only
+  the open project's file. The dashboard closes its pipeline socket on
+  a switch, drops a poll answer whose `sServedWorkflowPath` is not the
+  open project, and shows another project's live run
+  (`dictOtherProjectRun`) rather than reading as idle.
 
 Two things stay per CONTAINER, deliberately. One pipeline runs at a
 time, because the projects share the container's CPU quota, and a run

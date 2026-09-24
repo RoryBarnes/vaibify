@@ -62,6 +62,17 @@ var VaibifyPolling = (function () {
         _fnOnFileStatus = fnHandler;
     }
 
+    function _fsOpenWorkflowPath() {
+        return VaibifyApp.fsGetWorkflowPath() || "";
+    }
+
+    function _fbProjectSwitchedSince(sRequestedPath) {
+        /* A container hosts several projects. An answer -- or a
+           refusal -- to a request sent for the project the dashboard
+           has since left describes that project, not this one. */
+        return sRequestedPath !== _fsOpenWorkflowPath();
+    }
+
     function fnStartPipelinePolling(sContainerId) {
         fnStopPipelinePolling();
         _iLastSyncEpoch = null;
@@ -80,17 +91,20 @@ var VaibifyPolling = (function () {
     async function _fnPollPipelineState(sContainerId) {
         if (_bPipelineInFlight) return;
         _bPipelineInFlight = true;
+        var sRequestedPath = _fsOpenWorkflowPath();
         try {
             try {
                 var dictState = await VaibifyApi.fdictGet(
                     "/api/pipeline/" + sContainerId + "/state"
                 );
                 _fnReportPollSuccess("pipeline-state");
+                if (_fbProjectSwitchedSince(sRequestedPath)) return;
                 _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictState);
                 if (_fnOnPipelineState) {
-                    _fnOnPipelineState(dictState);
+                    _fnOnPipelineState(dictState, sRequestedPath);
                 }
             } catch (error) {
+                if (_fbProjectSwitchedSince(sRequestedPath)) return;
                 _fnReportPollFailure("pipeline-state", error);
             }
         } finally {
@@ -169,6 +183,7 @@ var VaibifyPolling = (function () {
            per-tick exec load the handoff was protecting stays saved,
            because a refresh happens only when the epoch actually
            moved. */
+        var sRequestedPath = _fsOpenWorkflowPath();
         try {
             /* The epoch tells the server which workflow revision this
                tab has applied; a stale epoch makes the server attach
@@ -180,11 +195,13 @@ var VaibifyPolling = (function () {
                     VaibifyApp.fiGetWorkflowEpoch())
             );
             _fnReportPollSuccess("file-status");
+            if (_fbProjectSwitchedSince(sRequestedPath)) return;
             _fnMaybeRefreshBadgesOnSyncEpoch(sContainerId, dictStatus);
             if (_fnOnFileStatus) {
                 _fnOnFileStatus(dictStatus);
             }
         } catch (error) {
+            if (_fbProjectSwitchedSince(sRequestedPath)) return;
             _fnReportPollFailure("file-status", error);
         }
     }

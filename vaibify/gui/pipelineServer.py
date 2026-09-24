@@ -946,17 +946,6 @@ async def fnPipelineMessageLoop(
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
     _fnPublishInteractiveContext(sContainerId, dictInteractive)
-    # The record-unit provenance committer (spec §4.5): built here
-    # because it needs the live session context — the current cache,
-    # the reload detector, and the save seam that moves the self-write
-    # baseline with the file. Absent a context (direct library and
-    # test callers), the runner refreshes provenance in memory only.
-    fdictCommitProvenance = None
-    if dictCtx is not None:
-        from .provenanceCommitter import ffnBuildProvenanceCommitter
-        fdictCommitProvenance = ffnBuildProvenanceCommitter(
-            dictCtx, sContainerId,
-        )
 
     try:
         while True:
@@ -1038,17 +1027,31 @@ async def fnPipelineMessageLoop(
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
+            sWorkflowPathFrame, sWorkflowDirectoryFrame = (
+                _ftFrameWorkflowPathAndDirectory(
+                    dictWorkflowBound, dictWorkflowPathCache,
+                    sContainerId, sWorkflowDirectory,
+                )
+            )
+
             def ftaskStartDispatch(
                 sActionBound=sAction, dictRequestBound=dictRequest,
                 dictWorkflowFrame=dictWorkflowBound,
+                sWorkflowPathBound=sWorkflowPathFrame,
+                sWorkflowDirectoryBound=sWorkflowDirectoryFrame,
             ):
                 return asyncio.create_task(
                     _fnSafeDispatch(
                         sActionBound, dictRequestBound, connectionDocker,
                         sContainerId, dictWorkflowFrame,
-                        dictWorkflowPathCache, sWorkflowDirectory,
+                        {sContainerId: sWorkflowPathBound},
+                        sWorkflowDirectoryBound,
                         fnCallback, dictInteractive,
-                        fdictCommitProvenance=fdictCommitProvenance,
+                        fdictCommitProvenance=(
+                            _ffnBuildRunProvenanceCommitter(
+                                dictCtx, sContainerId, sWorkflowPathBound,
+                            )
+                        ),
                     )
                 )
 
@@ -1068,6 +1071,41 @@ async def fnPipelineMessageLoop(
                 )
     finally:
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
+
+
+def _ftFrameWorkflowPathAndDirectory(
+    dictWorkflowBound, dictWorkflowPathCache, sContainerId,
+    sWorkflowDirectory,
+):
+    """Return the run's workflow path and directory, both from one project.
+
+    The socket outlives a project switch in the dashboard, so the
+    directory captured when it opened can name the PREVIOUS project
+    while the workflow read for this frame is the open one -- which ran
+    one project's commands in the other's step directories. A workflow
+    that records the file it was loaded from supplies both; one that
+    does not (a direct library or test caller) keeps the caller's pair.
+    """
+    sLoadedFrom = (dictWorkflowBound or {}).get(
+        workflowManager.S_LOADED_FROM_KEY, "",
+    )
+    if sLoadedFrom:
+        return sLoadedFrom, posixpath.dirname(sLoadedFrom)
+    return dictWorkflowPathCache.get(sContainerId, ""), sWorkflowDirectory
+
+
+def _ffnBuildRunProvenanceCommitter(dictCtx, sContainerId, sWorkflowPath):
+    """Return the run's record-unit provenance committer (spec §4.5).
+
+    Built per dispatch because it is bound to the project the run
+    started in, which need not be the one open when a step finishes.
+    Absent a context (direct library and test callers), the runner
+    refreshes provenance in memory only.
+    """
+    if dictCtx is None:
+        return None
+    from .provenanceCommitter import ffnBuildProvenanceCommitter
+    return ffnBuildProvenanceCommitter(dictCtx, sContainerId, sWorkflowPath)
 
 
 async def _ftLaunchDispatchTask(
@@ -1574,11 +1612,17 @@ def _fnRegisterPipelineTask(
     snapshot captured at registration.
 
     The task also records the project it runs (``sProjectRepoPath``,
-    ``sWorkflowName``): a Kill must mark THAT project's run stopped, and
-    a refused run must say which project holds the container, however
-    many projects the container hosts and whichever is open by then.
+    ``sWorkflowName``, ``sWorkflowPath``, and the workflow itself): a
+    Kill must mark THAT project's run stopped and sweep THAT project's
+    commands, and a refused run must say which project holds the
+    container, however many projects the container hosts and whichever
+    is open by then.
     """
     taskPipeline.iOwnerGeneration = iOwnerGeneration
+    taskPipeline.dictWorkflow = dictWorkflow
+    taskPipeline.sWorkflowPath = (dictWorkflow or {}).get(
+        workflowManager.S_LOADED_FROM_KEY, "",
+    )
     taskPipeline.sProjectRepoPath = (dictWorkflow or {}).get(
         "sProjectRepoPath", "",
     )
@@ -3194,7 +3238,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         _fnRequireDocker(dictRaw["docker"], sResourceId=sResourceId)
 
     def fnSave(sContainerId, dictWorkflow):
+        from .routeContext import fnRefuseSaveIntoAnotherProject
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
+        fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId, dictWorkflow)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
         from .workflowReloadDetector import (

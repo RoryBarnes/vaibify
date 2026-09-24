@@ -122,15 +122,45 @@ def _flistExtractKillPatterns(dictWorkflow):
     return sorted(setPatterns)
 
 
+def _ftaskLivePipeline(dictCtx, sContainerId):
+    """Return the container's running pipeline task, or None."""
+    taskLive = dictCtx["pipelineTasks"].get(sContainerId)
+    if taskLive is None or taskLive.done():
+        return None
+    return taskLive
+
+
 def _fsProjectRepoPathOfRunToStop(dictCtx, sContainerId):
     """Return the project whose run a Kill stops: the live one first."""
     from .. import pipelineState
-    taskLive = dictCtx["pipelineTasks"].get(sContainerId)
-    if taskLive is not None and not taskLive.done():
+    taskLive = _ftaskLivePipeline(dictCtx, sContainerId)
+    if taskLive is not None:
         return getattr(taskLive, "sProjectRepoPath", "")
     return pipelineState.fsResolveRunStateProjectRepoPath(
         dictCtx, sContainerId,
     ) or ""
+
+
+def _fdictWorkflowOfRunToStop(dictCtx, sContainerId):
+    """Return the workflow whose commands a Kill sweeps: the live run's.
+
+    The open project is not necessarily the running one -- a container
+    hosts several -- and sweeping the open project's command names left
+    the running project's processes alive while killing any of the open
+    project's that happened to be running in a terminal.
+    """
+    taskLive = _ftaskLivePipeline(dictCtx, sContainerId)
+    dictRunWorkflow = getattr(taskLive, "dictWorkflow", None)
+    if dictRunWorkflow is not None:
+        return dictRunWorkflow
+    return fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+
+
+def _fsWorkflowPathOfRunToStop(dictCtx, sContainerId):
+    """Return the workflow file of the run a Kill stops, or the open one."""
+    taskLive = _ftaskLivePipeline(dictCtx, sContainerId)
+    sRunPath = getattr(taskLive, "sWorkflowPath", "")
+    return sRunPath or (dictCtx.get("paths") or {}).get(sContainerId, "")
 
 
 def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
@@ -608,6 +638,12 @@ def _fnRegisterPipelineKill(app, dictCtx):
         sStoppedProjectRepoPath = _fsProjectRepoPathOfRunToStop(
             dictCtx, sContainerId,
         )
+        sStoppedWorkflowPath = _fsWorkflowPathOfRunToStop(
+            dictCtx, sContainerId,
+        )
+        dictWorkflow = None
+        if not fbIsHostProject(sContainerId):
+            dictWorkflow = _fdictWorkflowOfRunToStop(dictCtx, sContainerId)
         bTaskCancelled = _fbCancelPipelineTask(
             dictCtx["pipelineTasks"], sContainerId)
         listRefused = []
@@ -618,8 +654,6 @@ def _fnRegisterPipelineKill(app, dictCtx):
             iCountBefore = dictCancelled["iGroupsTerminated"]
             listRefused = dictCancelled["listRefused"]
         else:
-            dictWorkflow = fdictRequireWorkflow(
-                dictCtx["workflows"], sContainerId)
             iCountBefore = await _fiSweepContainerProcesses(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
             )
@@ -635,6 +669,10 @@ def _fnRegisterPipelineKill(app, dictCtx):
             # paints its purple "stopped" light from this, without
             # waiting for a poll.
             "iStoppedStepNumber": iStoppedStepNumber or 0,
+            # Which project that step number counts in: the stopped run
+            # need not be the open one, and step numbers repeat across
+            # the projects a container hosts.
+            "sStoppedWorkflowPath": sStoppedWorkflowPath,
             # A refusal to signal is reported, never folded into the
             # count: "0 processes" for a run vaibify declined to touch
             # would tell the researcher their machine is quiet when it
@@ -831,7 +869,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
             dictCtx, sContainerId, listPaths, requestHttp,
         )
         _fnUpdateModTimeBaseline(
-            dictCtx, sContainerId, dictModTimes)
+            dictCtx, sContainerId, dictModTimes, dictWorkflow)
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the acknowledged step",
@@ -1128,6 +1166,28 @@ def _fdictRunStateForWire(dictPipelineState, sOpenWorkflowPath=""):
     }
 
 
+def _fdictOtherProjectRunForWire(dictCtx, sContainerId, sWorkflowPath):
+    """Return the live run of a project other than this one, or {}.
+
+    Read from the hub's live task alone -- no container exec, as the
+    poll requires -- which covers every run vaibify dispatched, from
+    the dashboard or from an in-container agent. Without it the open
+    project reads as idle while the container is busy, and the first
+    the researcher hears of the other run is a refused Run click.
+    """
+    taskLive = (dictCtx.get("pipelineTasks") or {}).get(sContainerId)
+    if taskLive is None or taskLive.done():
+        return {}
+    sRunWorkflowPath = getattr(taskLive, "sWorkflowPath", "")
+    if not sRunWorkflowPath or sRunWorkflowPath == sWorkflowPath:
+        return {}
+    return {
+        "sWorkflowPath": sRunWorkflowPath,
+        "sWorkflowName": getattr(taskLive, "sWorkflowName", ""),
+        "sProjectRepoPath": getattr(taskLive, "sProjectRepoPath", ""),
+    }
+
+
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -1215,6 +1275,15 @@ async def _fdictFetchOutputStatus(
         "dictRunState": _fdictRunStateForWire(
             dictPipelineState, sWorkflowPath,
         ),
+        # The project this answer describes. A container hosts several,
+        # and an answer computed before the dashboard switched projects
+        # must be recognizable as another project's, not applied.
+        "sServedWorkflowPath": sWorkflowPath,
+        # A run in ANOTHER project of this container, which this
+        # project's own run state never reports.
+        "dictOtherProjectRun": _fdictOtherProjectRunForWire(
+            dictCtx, sContainerId, sWorkflowPath,
+        ),
         # Which remote checks this hub process has in flight for this
         # project. REPORTED here, never RUN here: the refresh is its
         # own route (remoteRefreshRoutes) precisely because this poll
@@ -1260,6 +1329,20 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     ))
 
 
+def _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow):
+    """Return the file of the workflow this poll describes.
+
+    Read from the workflow itself, not from the container's open path:
+    a poll that awaited across a project switch holds the previous
+    project's workflow, and pairing it with the new project's path
+    would describe neither.
+    """
+    from ..workflowManager import S_LOADED_FROM_KEY
+    return (dictWorkflow or {}).get(S_LOADED_FROM_KEY) or (
+        dictCtx["paths"].get(sContainerId, "")
+    )
+
+
 async def _ftFetchAndReload(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -1269,7 +1352,7 @@ async def _ftFetchAndReload(
     is absolute-keyed; the response builder is the boundary at which the
     keys are converted to repo-relative for the wire.
     """
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowPath = _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow)
     listUnionPaths = _flistCollectPollPaths(
         dictWorkflow, dictVars, sWorkflowPath,
     )
@@ -3001,7 +3084,7 @@ async def _fdictFetchTestStatus(
     """Fetch test markers, refresh conftest, migrate flat markers, build status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowPath = _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow)
     sWorkflowSlug = fsWorkflowSlugFromPath(sWorkflowPath)
     await _fnRefreshConftestsAndMigrateMarkers(
         dictCtx["docker"], sContainerId, listStepDirs,
