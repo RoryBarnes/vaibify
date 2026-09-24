@@ -64,10 +64,19 @@ Four things not to undo:
   `python tools/checkToolchainEpoch.py --verify` is the agreement
   check, and `fresh-image-build` runs it before the hour-long build so
   the answer costs thirty seconds.
-- **The snapshot covers ONLY the pinned block.** The waived block above
-  it floats by design -- see its own comment -- and freezing it would
-  override that decision silently and strand a researcher whose
-  `systemPackages` name anything published since the pinned date.
+- **The toolchain DATE covers ONLY the pinned block.** Every other apt
+  step reads the build's own snapshot, `APT_BUILD_SNAPSHOT` (the most
+  recent midnight UTC, passed by `imageBuilder.fsArchiveSnapshotForBuild`
+  and computed by the step itself when a plain `docker build` passes
+  nothing), so the waived packages float from one build to the next but
+  never WITHIN one. Freezing them to the toolchain date would strand a
+  researcher whose `systemPackages` name anything published since.
+  Letting them read the live mirrors again reopens the defect the build
+  snapshot closed: `security.ubuntu.com` is several servers that disagree
+  while an update propagates, each RUN step fetched its own index, and
+  one build installed a library new and found its `-dev` package old
+  (every amd64 build, 2026-09-24). No fallback to the live archive
+  either -- an unreachable snapshot stops the build and says why.
 - **The live-archive comparison never runs on a pull request.** That is
   `toolchainEpoch.yml`, monthly, and it opens an ISSUE rather than a
   pull request because choosing between candidate versions needs dpkg

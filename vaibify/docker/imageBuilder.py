@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import fnRunDockerCommand
@@ -445,10 +446,23 @@ def _flistBuildBaseCommand(config, sDockerDir, sBaseImage, bNoCache):
     return saCommand
 
 
+def fsArchiveSnapshotForBuild(datetimeNow=None):
+    """Return the snapshot.ubuntu.com timestamp this build reads apt from.
+
+    The most recent midnight UTC: every apt step of one build reads one
+    archive state (see the Dockerfile's APT_BUILD_SNAPSHOT comment),
+    and a day's rebuilds pass the same value, so they keep Docker's
+    layer cache instead of refetching every package on every build.
+    """
+    datetimeNow = datetimeNow or datetime.now(timezone.utc)
+    return datetimeNow.astimezone(timezone.utc).strftime("%Y%m%dT000000Z")
+
+
 def _flistBuildArgPairs(config, sBaseImage):
     """Return list of --build-arg KEY=VALUE pairs."""
     dictArgs = {
         "BASE_IMAGE": sBaseImage,
+        "APT_BUILD_SNAPSHOT": fsArchiveSnapshotForBuild(),
         "PYTHON_VERSION": config.sPythonVersion,
         "CONTAINER_USER": config.sContainerUser,
         "WORKSPACE_ROOT": config.sWorkspaceRoot,
