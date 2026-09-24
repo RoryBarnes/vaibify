@@ -1990,8 +1990,12 @@ def ffResolveStepWallClockBudget(dictWorkflow, dictStep):
     )
 
 
-def fsLogsDirectoryFor(sResourceId):
-    """Return the directory this resource's pipeline logs live in.
+def fsLogsDirectoryFor(sResourceId, sProjectRepoPath=""):
+    """Return the directory one project's pipeline logs live in.
+
+    ``sProjectRepoPath`` is the project; empty is the direct library
+    lane and resolves to the resource root. Logs belong to a project
+    for the reason its run state does: a container may host several.
 
     Extracted on the third instance, which is when the rule of three
     says to: the runner, the test runner and the logs routes each built
@@ -2003,7 +2007,9 @@ def fsLogsDirectoryFor(sResourceId):
     """
     from .projectRoots import fsResolveProjectRoot
     return posixpath.join(
-        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),
+        fsResolveProjectRoot(
+            sResourceId, sProjectRepoPath or DEFAULT_SEARCH_ROOT,
+        ),
         VAIBIFY_LOGS_DIR,
     )
 

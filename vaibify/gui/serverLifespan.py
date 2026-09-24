@@ -409,9 +409,9 @@ def _flistHeldContainerIds(app, dictCtx):
 
 def _fbAnyContainerRunning(dictCtx, listContainerIds):
     """Return True if any container id reports a running pipeline."""
-    from .fileStatusManager import _fbPipelineIsRunning
+    from .pipelineState import fbContainerHasLiveRun
     for sContainerId in listContainerIds:
-        if sContainerId and _fbPipelineIsRunning(dictCtx, sContainerId):
+        if sContainerId and fbContainerHasLiveRun(dictCtx, sContainerId):
             return True
     return False
 

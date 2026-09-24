@@ -32,6 +32,14 @@ import urllib.error
 S_SESSION_ENV_PATH = "/tmp/vaibify-session.env"
 S_CATALOG_JSON_PATH = "/tmp/vaibify-action-catalog.json"
 S_SESSION_HEADER_NAME = "X-Vaibify-Session"
+S_AGENT_PROJECT_HEADER = "X-Vaibify-Agent-Project"
+S_SERVED_PROJECT_HEADER = "X-Vaibify-Project"
+S_SERVED_PROJECT_NAME_HEADER = "X-Vaibify-Project-Name"
+S_AGENT_PROJECT_FIELD = "sAgentProjectDirectory"
+T_PROJECT_DIRECTORY_MARKERS = (
+    os.path.join(".vaibify", "projects"),
+    os.path.join(".vaibify", "workflows"),
+)
 S_EXPECTED_SCHEMA = "1.0"
 F_CONNECT_TIMEOUT = 2.0
 F_READ_TIMEOUT = 60.0
@@ -81,6 +89,74 @@ def fnFailHostUnreachable(sUrl, error):
         "vaibify host unreachable at " + sUrl + " (" + str(error) + "); "
         "reconnect the container from the dashboard",
         iCode=4,
+    )
+
+
+def fsFindEnclosingProjectDirectory(sStartDirectory):
+    """Return the nearest directory at or above sStartDirectory holding a project.
+
+    A project directory is one with ``.vaibify/projects/`` (or the
+    legacy ``.vaibify/workflows/``) -- the rule the hub uses to name a
+    workflow's project. Returns "" outside every project, where there
+    is nothing to declare.
+    """
+    sDirectory = os.path.abspath(sStartDirectory)
+    while True:
+        for sMarker in T_PROJECT_DIRECTORY_MARKERS:
+            if os.path.isdir(os.path.join(sDirectory, sMarker)):
+                return sDirectory
+        sParent = os.path.dirname(sDirectory)
+        if sParent == sDirectory:
+            return ""
+        sDirectory = sParent
+
+
+def fsAgentProjectDirectory():
+    """Return the project this agent is working in, from its directory."""
+    try:
+        return fsFindEnclosingProjectDirectory(os.getcwd())
+    except OSError:
+        return ""
+
+
+def fdictBuildRequestHeaders(sToken):
+    """Return the headers every HTTP call carries: token plus project.
+
+    The project declaration lets the hub refuse an action aimed at a
+    project other than the one open in the dashboard, which would
+    otherwise act on the open project instead of this one.
+    """
+    dictHeaders = {S_SESSION_HEADER_NAME: sToken}
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        dictHeaders[S_AGENT_PROJECT_HEADER] = sProjectDirectory
+    return dictHeaders
+
+
+def fnAnnounceServedProject(sProjectDirectory, sProjectName):
+    """Print the project the hub acted on, first and on stderr.
+
+    First so a reader who keeps only the head of the output still sees
+    it; stderr so ``--json`` output stays one JSON document per line.
+    Silent when the hub named no project (none is open, or the route
+    is not about one).
+    """
+    if not sProjectDirectory:
+        return
+    sys.stderr.write(
+        "vaibify-do: project '" + sProjectName + "' at "
+        + sProjectDirectory + "\n")
+    sys.stderr.flush()
+
+
+def fnAnnounceServedProjectFromHeaders(dictHeaders):
+    """Announce the project named by a response's served-project headers."""
+    if dictHeaders is None:
+        return
+    fnAnnounceServedProject(
+        urllib.parse.unquote(dictHeaders.get(S_SERVED_PROJECT_HEADER) or ""),
+        urllib.parse.unquote(
+            dictHeaders.get(S_SERVED_PROJECT_NAME_HEADER) or ""),
     )
 
 
@@ -294,7 +370,7 @@ def fiResolveLabelToIndex(sLabel, dictEnv):
     )
     request = urllib.request.Request(
         sUrl,
-        headers={S_SESSION_HEADER_NAME: dictEnv["VAIBIFY_SESSION_TOKEN"]},
+        headers=fdictBuildRequestHeaders(dictEnv["VAIBIFY_SESSION_TOKEN"]),
     )
     try:
         with urllib.request.urlopen(
@@ -375,6 +451,9 @@ def fdictResolveWsPayload(dictEntry, listArgs):
     listPositional, dictBody = ftParsePositionalArgs(listArgs)
     dictPayload = {"sAction": dictEntry["sPath"]}
     dictPayload.update(dictBody)
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        dictPayload[S_AGENT_PROJECT_FIELD] = sProjectDirectory
     if not listPositional:
         return dictPayload
     if dictEntry["sName"] == "run-step":
@@ -412,7 +491,7 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     types like ``iLines: int``.
     """
     dataBody = None
-    dictHeaders = {S_SESSION_HEADER_NAME: sToken}
+    dictHeaders = fdictBuildRequestHeaders(sToken)
     sUrl = dictTarget["sUrl"]
     if dictTarget["dictBody"]:
         if sMethod == "GET":
@@ -425,9 +504,11 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
         headers=dictHeaders, method=sMethod)
     try:
         with urllib.request.urlopen(request, timeout=F_READ_TIMEOUT) as resp:
+            fnAnnounceServedProjectFromHeaders(getattr(resp, "headers", None))
             _fnPrintHttpBody(resp.read(), bJsonMode)
             return 0
     except urllib.error.HTTPError as errHttp:
+        fnAnnounceServedProjectFromHeaders(getattr(errHttp, "headers", None))
         return _fiHandleHttpError(errHttp, bJsonMode)
     except (urllib.error.URLError, socket.timeout, OSError) as error:
         fnFailHostUnreachable(dictTarget["sUrl"], error)
@@ -586,6 +667,10 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
     fnWebsocketHandshake(socketConnection, sHost, iPort, sPath)
     dictBound = _fdictAwaitWorkflowBound(socketConnection)
     if dictBound is not None:
+        fnAnnounceServedProject(
+            dictBound.get("sProjectDirectory", ""),
+            dictBound.get("sProjectName", ""),
+        )
         dictPayload["sAcknowledgedSourceFingerprint"] = dictBound.get(
             "sExactSourceFingerprint", "")
         dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
