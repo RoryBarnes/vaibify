@@ -24,6 +24,7 @@ import re
 import secrets
 import socket
 import sys
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -44,6 +45,10 @@ S_EXPECTED_SCHEMA = "1.0"
 F_CONNECT_TIMEOUT = 2.0
 F_READ_TIMEOUT = 60.0
 F_LABEL_LOOKUP_TIMEOUT = 10.0
+# The hub sends workflowBound at once on accept; the ack bound covers
+# the checks it runs before starting or refusing a run.
+F_WORKFLOW_BOUND_TIMEOUT = 30.0
+F_ACKNOWLEDGE_TIMEOUT = 120.0
 RE_STEP_LABEL = re.compile(r"^[AIai]\d{1,3}$")
 
 
@@ -671,6 +676,8 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
             dictBound.get("sProjectDirectory", ""),
             dictBound.get("sProjectName", ""),
         )
+        if bJsonMode:
+            _fnPrintEvent(dictBound, bJsonMode)
         dictPayload["sAcknowledgedSourceFingerprint"] = dictBound.get(
             "sExactSourceFingerprint", "")
         dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
@@ -688,13 +695,20 @@ def _fdictAwaitWorkflowBound(socketConnection):
     then refuses run actions with a message naming the missing
     acknowledgment, which is the honest failure.
     """
+    fDeadline = time.monotonic() + F_WORKFLOW_BOUND_TIMEOUT
     while True:
-        tFrame = ftRecvWsFrame(socketConnection)
+        tFrame = _ftRecvFrameOrFail(socketConnection, "workflowBound")
         sKind = tFrame[0]
         if sKind == "close":
             return None
         if sKind == "ping":
             fnSendWsPong(socketConnection, tFrame[1])
+            if time.monotonic() > fDeadline:
+                fnFail(
+                    "vaibify-do: the hub accepted the connection but did "
+                    "not say which project it serves within "
+                    + str(int(F_WORKFLOW_BOUND_TIMEOUT)) + " s. Nothing "
+                    "was sent; retrying is safe.", iCode=4)
             continue
         if sKind == "skip":
             continue
@@ -725,16 +739,32 @@ def fnEnableTcpKeepalive(socketConnection):
 
 
 def _fiStreamWsEvents(socketConnection, bJsonMode):
-    """Read events until 'completed' or error; return exit code."""
+    """Read events until the run ends; return its exit code.
+
+    A run ends on ``completed`` or ``failed`` -- the runner's two
+    completion events, exactly the pair the dashboard finalizes on --
+    or on a refusal or error. Missing ``failed`` left every failed run's
+    client connected forever, kept alive by the hub's pings, which an
+    agent could not tell from a slow run.
+
+    Until the hub sends its first event about the action, the wait is
+    bounded: an action that is neither started nor refused within
+    ``F_ACKNOWLEDGE_TIMEOUT`` is reported rather than waited on.
+    """
+    fDeadline = time.monotonic() + F_ACKNOWLEDGE_TIMEOUT
+    bAcknowledged = False
     while True:
-        sKind, dataFrame = ftRecvWsFrame(socketConnection)
+        sKind, dataFrame = _ftRecvFrameOrFail(
+            socketConnection, "the action's events")
         if sKind == "close":
             return 1
-        if sKind == "ping":
-            fnSendWsPong(socketConnection, dataFrame)
+        if sKind in ("ping", "skip"):
+            if sKind == "ping":
+                fnSendWsPong(socketConnection, dataFrame)
+            if not bAcknowledged and time.monotonic() > fDeadline:
+                fnFailUnacknowledged()
             continue
-        if sKind == "skip":
-            continue
+        bAcknowledged = True
         try:
             dictEvent = json.loads(dataFrame)
         except ValueError:
@@ -745,8 +775,37 @@ def _fiStreamWsEvents(socketConnection, bJsonMode):
         sType = dictEvent.get("sType", "")
         if sType == "completed":
             return int(dictEvent.get("iExitCode", 0) or 0)
+        if sType == "failed":
+            return int(dictEvent.get("iExitCode", 1) or 1)
         if sType in ("error", "pipelineError", "runRefused"):
             return 1
+
+
+def fnFailUnacknowledged():
+    """Exit 4: the hub took the action but neither started nor refused it."""
+    fnFail(
+        "vaibify-do: the hub received the action but has neither started "
+        "nor refused it after " + str(int(F_ACKNOWLEDGE_TIMEOUT)) + " s. "
+        "It may still start: run 'vaibify-do get-pipeline-state' before "
+        "retrying (a second run is refused while one is live), and tell "
+        "the researcher if it never does.", iCode=4)
+
+
+def _ftRecvFrameOrFail(socketConnection, sWaitingFor):
+    """Read one frame, exiting 4 with a reason if the socket goes silent.
+
+    The hub pings every 20 s and a running command heartbeats, so a
+    read that times out means the connection is dead -- which used to
+    surface as an uncaught traceback.
+    """
+    try:
+        return ftRecvWsFrame(socketConnection)
+    except socket.timeout:
+        fnFail(
+            "vaibify-do: no frame from the hub for "
+            + str(int(F_READ_TIMEOUT)) + " s while waiting for "
+            + sWaitingFor + "; the connection is dead. Run 'vaibify-do "
+            "get-pipeline-state' before retrying.", iCode=4)
 
 
 def _fnPrintEvent(dictEvent, bJsonMode):

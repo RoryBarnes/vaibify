@@ -1498,3 +1498,89 @@ def test_a_refused_websocket_dial_blames_the_bind(modCli, dictValidEnv, capsys):
     sStderr = capsys.readouterr().err
     assert "refused" in sStderr
     assert "loopback" in sStderr
+
+
+# -----------------------------------------------------------------------
+# When a run ends, and how long an unanswered wait may last
+# -----------------------------------------------------------------------
+
+
+def _fnScriptFrames(modCli, listFrames, monkeypatch):
+    """Serve scripted (sKind, payload) frames; raise timeout when spent."""
+    iterFrames = iter(listFrames)
+
+    def ftNextFrame(socketConnection):
+        try:
+            return next(iterFrames)
+        except StopIteration:
+            raise socket.timeout("timed out")
+    monkeypatch.setattr(modCli, "ftRecvWsFrame", ftNextFrame)
+    monkeypatch.setattr(modCli, "fnSendWsPong", lambda *args: None)
+
+
+def _fnAdvanceClockPerCall(modCli, monkeypatch, fStepSeconds):
+    listNow = [0.0]
+
+    def fNow():
+        listNow[0] += fStepSeconds
+        return listNow[0]
+    monkeypatch.setattr(modCli.time, "monotonic", fNow)
+
+
+@pytest.mark.falsification
+def test_a_failed_run_ends_the_client_with_its_exit_code(
+    modCli, monkeypatch,
+):
+    """The runner ends a failed run with ``failed``, as the dashboard knows.
+
+    Kills: leaving ``failed`` out of the final events, which kept every
+    failed run's client connected forever on the hub's pings.
+    """
+    _fnScriptFrames(modCli, [
+        ("text", '{"sType":"started"}'),
+        ("text", '{"sType":"failed","iExitCode":3}'),
+        ("ping", b""),
+    ], monkeypatch)
+    assert modCli._fiStreamWsEvents(object(), False) == 3
+
+
+def test_an_action_nobody_acknowledges_is_reported_not_waited_on(
+    modCli, monkeypatch, capsys,
+):
+    _fnScriptFrames(modCli, [("ping", b"")] * 50, monkeypatch)
+    _fnAdvanceClockPerCall(modCli, monkeypatch, 20.0)
+    with pytest.raises(SystemExit) as excInfo:
+        modCli._fiStreamWsEvents(object(), False)
+    assert excInfo.value.code == 4
+    assert "get-pipeline-state" in capsys.readouterr().err
+
+
+def test_a_long_run_is_not_cut_off_once_the_hub_has_answered(
+    modCli, monkeypatch,
+):
+    """The acknowledgment bound covers the silence before the first event only."""
+    listFrames = [("text", '{"sType":"started"}')] + [("ping", b"")] * 30
+    listFrames.append(("text", '{"sType":"completed","iExitCode":0}'))
+    _fnScriptFrames(modCli, listFrames, monkeypatch)
+    _fnAdvanceClockPerCall(modCli, monkeypatch, 20.0)
+    assert modCli._fiStreamWsEvents(object(), False) == 0
+
+
+def test_a_silent_socket_is_a_readable_failure_not_a_traceback(
+    modCli, monkeypatch, capsys,
+):
+    _fnScriptFrames(modCli, [], monkeypatch)
+    with pytest.raises(SystemExit) as excInfo:
+        modCli._fiStreamWsEvents(object(), False)
+    assert excInfo.value.code == 4
+    assert "connection is dead" in capsys.readouterr().err
+
+
+def test_a_hub_that_never_names_its_project_is_not_waited_on(
+    modCli, monkeypatch,
+):
+    _fnScriptFrames(modCli, [("ping", b"")] * 50, monkeypatch)
+    _fnAdvanceClockPerCall(modCli, monkeypatch, 20.0)
+    with pytest.raises(SystemExit) as excInfo:
+        modCli._fdictAwaitWorkflowBound(object())
+    assert excInfo.value.code == 4

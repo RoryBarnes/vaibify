@@ -10876,6 +10876,18 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoCli.py::'
+            'test_a_failed_run_ends_the_client_with_its_exit_code'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=(
+            '        if sType == "failed":\n'
+            '            return int(dictEvent.get("iExitCode", 1) or 1)\n'
+        ),
+        new='',
+    ),
     # --- What the FIRST real host workflow found (2026-08-10) ---
     #
     # Four backend paths written as the container constant, each found
