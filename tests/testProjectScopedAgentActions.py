@@ -34,7 +34,10 @@ from vaibify.gui import pipelineServer
 from vaibify.gui import pipelineState
 from vaibify.gui import stateManager
 from vaibify.gui import workflowManager
-from tests.testAgentLaneEnforcement import (  # noqa: F401 -- fixtures
+# One test serves the real application on a loopback port.
+pytestmark = pytest.mark.exclusive
+
+from tests.testAgentLaneEnforcement import (  # noqa: F401,E402 -- fixtures
     S_AGENT_TOKEN,
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
