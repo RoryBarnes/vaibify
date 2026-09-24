@@ -10795,6 +10795,23 @@ def _fdictEntry(sRel):
             '        ),\n'
         ),
     ),
+    # --- One build reads one archive (2026-09-24) ---
+    #
+    # security.ubuntu.com's servers disagreed while an update
+    # propagated, and two RUN steps of one amd64 build fetched from two
+    # of them. The snapshot step must write its sources before any
+    # apt fetch; without the write, every step reads the live mirrors.
+    Falsification(
+        nodeid=(
+            'tests/testBuildArchiveSnapshot.py::'
+            'testTheArchiveIsPinnedBeforeTheFirstAptFetch'
+        ),
+        source='vaibify/containerImage/Dockerfile',
+        old=(
+            '            >> /etc/apt/sources.list.d/vaibifyBuildSnapshot.list; \\\n'
+        ),
+        new='            >> /dev/null; \\\n',
+    ),
     # --- What the FIRST real host workflow found (2026-08-10) ---
     #
     # Four backend paths written as the container constant, each found

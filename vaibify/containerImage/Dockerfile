@@ -47,10 +47,13 @@ ARG VC_PROJECT_NAME=Vaibify
 #
 #   python tools/checkToolchainEpoch.py --propose
 #
-# Scope is deliberate: the snapshot covers ONLY the pinned block
-# below. The waived block above floats by design -- see its comment --
-# and freezing it would silently override that decision and strand a
-# researcher whose systemPackages name anything published since.
+# Scope is deliberate: THIS date covers ONLY the pinned block below.
+# Every other apt step reads the build's own snapshot
+# (APT_BUILD_SNAPSHOT), which moves with each day's build, so the
+# waived packages still float from one build to the next -- they are
+# only held still WITHIN a build. Freezing them to this date would
+# strand a researcher whose systemPackages name anything published
+# since.
 ARG APT_SNAPSHOT_DATE=20260918
 
 # Declared so a build can be given a fixed timestamp base, and so this
@@ -77,6 +80,86 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # isolation here.
 RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
 
+# ONE BUILD READS ONE ARCHIVE. Every apt step below, pinned or not,
+# resolves against Ubuntu's archive as it stood at APT_BUILD_SNAPSHOT,
+# never against the live mirrors.
+#
+# The live archive is not one thing. security.ubuntu.com is several
+# servers behind one name, and while a security update propagates
+# some serve the new index and some an index hours old. Each RUN step
+# fetches its own index, so two steps of one build could land on two
+# servers: an early step installed a library at the new version, a
+# later one found only the old version of that library's -dev
+# package, which required the old library, and the build stopped on
+# an unmet dependency. Nothing in this file or its pins had moved
+# (met 2026-09-24, every amd64 build, for hours).
+#
+# The value is a snapshot.ubuntu.com timestamp. vaibify passes the most
+# recent midnight UTC, so a day's rebuilds share Docker's layer cache
+# and each new day's first build picks up that day's fixes; the archive
+# is at most a day old, which is the price of never seeing two of them.
+# A plain `docker build` of an exported copy of this file passes
+# nothing, and the step then takes that day's midnight itself. The
+# value is recorded in /etc/vaibify/aptArchiveSnapshot either way, so a
+# rebuild can name the archive state it reproduces.
+#
+# There is no fallback to the live archive when snapshot.ubuntu.com is
+# unreachable: falling back would reopen the inconsistency this step
+# exists to close, silently, so the build stops and says why.
+#
+# The first fetch cannot verify TLS, because the base image ships no CA
+# certificates and snapshot.ubuntu.com serves HTTPS only. That fetch
+# installs ca-certificates and nothing else, with peer verification off
+# for that one command; every later fetch verifies. This exposes no
+# more than the base image's own default, a plain-HTTP archive: apt
+# still checks every index against the Ubuntu archive signing key in
+# the base image, and check-valid-until is already off for snapshots
+# (their Release files expire by design), exactly as in the pinned
+# toolchain block below.
+#
+# Only Ubuntu's own archive entries are replaced (sources.list and the
+# deb822 ubuntu.sources). A third-party repository the base image
+# carries -- the CUDA repository in the GPU base -- is left as it is:
+# snapshot.ubuntu.com serves only Ubuntu's archive.
+#
+# The image KEEPS these sources, so an `apt-get install` inside a
+# running container resolves against the same archive state as the
+# packages already installed, never a newer one they conflict with.
+ARG APT_BUILD_SNAPSHOT=""
+LABEL vaibify-apt-build-snapshot="${APT_BUILD_SNAPSHOT}"
+RUN set -eu; \
+    sSnapshot="${APT_BUILD_SNAPSHOT:-$(date -u +%Y%m%dT000000Z)}"; \
+    if ! printf '%s' "${sSnapshot}" | grep -Eq '^[0-9]{8}T[0-9]{6}Z$'; then \
+        printf '%s\n' "vaibify: APT_BUILD_SNAPSHOT='${sSnapshot}' is not a" \
+            "snapshot.ubuntu.com timestamp (YYYYMMDDTHHMMSSZ)." >&2; \
+        exit 1; \
+    fi; \
+    . /etc/os-release; \
+    if [ "${ID}" != "ubuntu" ]; then \
+        printf '%s\n' "vaibify: the base image is ${ID}, not Ubuntu." \
+            "Its apt steps read snapshot.ubuntu.com, which serves only" \
+            "Ubuntu's archive. Use an Ubuntu baseImage in vaibify.yml." >&2; \
+        exit 1; \
+    fi; \
+    rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; \
+    for sPocket in "" -updates -security -backports; do \
+        printf 'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/%s %s%s main restricted universe multiverse\n' \
+            "${sSnapshot}" "${VERSION_CODENAME}" "${sPocket}" \
+            >> /etc/apt/sources.list.d/vaibifyBuildSnapshot.list; \
+    done; \
+    mkdir -p /etc/vaibify; \
+    printf '%s\n' "${sSnapshot}" > /etc/vaibify/aptArchiveSnapshot; \
+    if ! apt-get -o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false update \
+        || ! apt-get -o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false \
+            install -y --no-install-recommends ca-certificates; then \
+        printf '%s\n' "vaibify: could not read Ubuntu's archive as of" \
+            "${sSnapshot} from snapshot.ubuntu.com. This build reads one" \
+            "archive state and does not fall back to the live mirrors;" \
+            "check that snapshot.ubuntu.com is reachable, then rebuild." >&2; \
+        exit 1; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*  # allow-unpinned
+
 # APT VERSION PINS ARE WAIVED IN THIS IMAGE, DELIBERATELY, and each
 # apt block below carries a "# allow-unpinned" marker saying so to
 # vaibify's own L3 Dockerfile lint. The waiver is recorded here rather
@@ -86,9 +169,11 @@ RUN echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99-no-sandbox
 # silently waiving a check on the researcher's behalf.
 #
 # What the waiver costs, stated plainly: `apt-get install` resolves
-# against live Ubuntu archives, so rebuilding from this file will not
-# reproduce the image byte-for-byte, and the archives eventually drop
-# the versions a rebuild would need. Pinning all ~58 packages would
+# against the archive as of the build's snapshot, which moves with each
+# day's build, so rebuilding from this file on another day will not
+# reproduce the image byte-for-byte. (Rebuilding with the same
+# APT_BUILD_SNAPSHOT reads the same archive state, but nothing here
+# claims that yields the same bytes.) Pinning all ~58 packages would
 # claim otherwise while breaking on every archive update, which trades
 # an honest limit for a brittle fiction.
 #

@@ -425,11 +425,23 @@ together — the base image by digest, the packages by version, and the
 archive by date — and the toolchain changes when **a maintainer moves
 the date**, never when Ubuntu publishes.
 
-The scope is deliberately narrow. The snapshot covers only the pinned
+The scope is deliberately narrow. That date covers only the pinned
 toolchain block. Everything in the waived block above it — editors,
-viewers, graphviz — still floats, because those cannot reach a result,
-and freezing them would strand a researcher whose `systemPackages`
-name anything published since that date.
+viewers, graphviz — still floats from one build to the next, because
+those cannot reach a result, and freezing them would strand a
+researcher whose `systemPackages` name anything published since that
+date.
+
+They float between builds, never within one. Every apt step of a build
+reads the archive as of that build's own snapshot, `APT_BUILD_SNAPSHOT`:
+the most recent midnight UTC, recorded inside the image at
+`/etc/vaibify/aptArchiveSnapshot`. Reading the live mirrors instead
+let two steps of one build see two versions of the archive while a
+security update was still reaching all of Ubuntu's servers, and the
+build stopped on an unmet dependency with nothing in vaibify changed.
+The cost is that an image is at most a day behind the archive; a
+day's rebuilds share Docker's layer cache, and the next day's first
+build picks up that day's fixes.
 
 ### Moving the epoch
 
