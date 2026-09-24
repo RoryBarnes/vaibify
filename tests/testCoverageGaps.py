@@ -1047,7 +1047,7 @@ def test_fnEnsureLogsDirectory():
     )
     mockDocker = _fMockDocker()
     sLogsDir = _fnRunAsync(
-        _fsEnsureLogsDirectory(mockDocker, "cid")
+        _fsEnsureLogsDirectory(mockDocker, "cid", "")
     )
     assert "logs" in sLogsDir
     mockDocker.ftResultExecuteCommand.assert_called_once()

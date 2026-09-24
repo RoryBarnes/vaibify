@@ -826,7 +826,7 @@ def test_fnWriteTestLog_writes_file():
     import base64
     mockDocker = _fMockDocker()
     _fnRunAsync(_fnWriteTestLog(
-        mockDocker, "cid", 1, ["test passed"],
+        mockDocker, "cid", 1, ["test passed"], "",
     ))
     sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
     assert "base64 -d >> " in sCommand

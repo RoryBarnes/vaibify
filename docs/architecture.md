@@ -622,6 +622,41 @@ now has three outcomes:
    running), in which case the dead owner is released and the claim is
    granted fresh. The 409 never echoes the other owner's lease.
 
+### One container, several projects
+
+A container may hold several projects, each a repository under
+`/workspace`, and the hub serves ONE of them per container at a time:
+the one open in the dashboard. Everything that belongs to a project is
+therefore located by that project, never by the container:
+
+- **Run state and logs** live in `<project repo>/.vaibify/`
+  (`pipelineState.fsStatePathFor`, `workflowManager.fsLogsDirectoryFor`).
+  A run's writers derive the path from the state they write, so a run
+  keeps writing to its own project if the researcher opens another one
+  mid-run. The readers answer for the open project; with none open,
+  for the project of the run the hub has in flight
+  (`fsResolveRunStateProjectRepoPath`). A single container-wide file
+  once let a run in one project light steps in another.
+- **Agent actions** name their project. `vaibify-do` declares the
+  directory holding `.vaibify/projects/` above where it runs, and the
+  hub refuses a declared project that is not the open one, before the
+  action runs: `409 project-mismatch` on HTTP
+  (`serverMiddleware`), `runRefused`/`projectMismatch` on the pipeline
+  socket. Every agent response names the project it was served
+  against. An undeclared project (outside every project directory, or
+  a `vaibify-do` baked into an older image) is served as before;
+  refusing it would strand every existing container until a rebuild.
+  `agentProjectScope.py` holds the rule.
+
+Two things stay per CONTAINER, deliberately. One pipeline runs at a
+time, because the projects share the container's CPU quota, and a run
+refused for that reason names the project that holds the container.
+And the busy vetoes (release, idle self-exit) ask
+`pipelineState.fbContainerHasLiveRun`, which consults every project the
+hub knows is in the container: answering from the open project alone
+would hand over or abandon a container in the middle of another
+project's run.
+
 ### Starting a container is a server-owned reservation
 
 Starting a container is not a request-scoped action. A pull can outlast
@@ -1353,8 +1388,9 @@ These carry the core execution logic:
   (per-category, legacy format).
 - `interactiveSteps.py` — interactive step pause/resume/complete
   protocol.
-- `pipelineState.py` — pipeline state persistence to
-  `/workspace/.vaibify/pipeline_state.json`.
+- `pipelineState.py` — pipeline state persistence to each project's
+  `<project repo>/.vaibify/pipeline_state.json` (see "One container,
+  several projects").
 - `workflowManager.py` — project CRUD, variable resolution, step
   references, dependency graph. Uses `posixpath` because it operates
   on container paths. Its save path splits the merged in-memory dict

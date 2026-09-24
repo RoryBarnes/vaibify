@@ -208,7 +208,7 @@ class TestClaimTakeOverVeto:
         """Kills: the veto stuck at host — a container name would be
         asked for a journal it never writes and read as idle."""
         monkeypatch.setattr(
-            "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+            "vaibify.gui.pipelineState.fbContainerHasLiveRun",
             lambda dictCtx, sContainerId: (
                 sContainerId == S_DOCKER_CONTAINER_ID
             ),
@@ -238,7 +238,7 @@ class TestReaperVeto:
 
     def test_container_run_still_vetoes_through_docker(self, monkeypatch):
         monkeypatch.setattr(
-            "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+            "vaibify.gui.pipelineState.fbContainerHasLiveRun",
             lambda dictCtx, sContainerId: (
                 sContainerId == S_DOCKER_CONTAINER_ID
             ),
@@ -287,7 +287,7 @@ class TestIdleWatchdogVeto:
 
     def test_container_run_still_vetoes_self_exit(self, monkeypatch):
         monkeypatch.setattr(
-            "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+            "vaibify.gui.pipelineState.fbContainerHasLiveRun",
             lambda dictCtx, sContainerId: (
                 sContainerId == S_DOCKER_CONTAINER_ID
             ),
@@ -306,7 +306,7 @@ class TestIdleWatchdogVeto:
 
     def test_idle_container_hub_may_exit(self, monkeypatch):
         monkeypatch.setattr(
-            "vaibify.gui.fileStatusManager._fbPipelineIsRunning",
+            "vaibify.gui.pipelineState.fbContainerHasLiveRun",
             lambda dictCtx, sContainerId: False,
         )
         appState = _appStateEmpty()

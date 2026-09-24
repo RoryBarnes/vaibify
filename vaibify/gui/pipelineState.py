@@ -1,8 +1,10 @@
 """Pipeline state persistence for reconnecting to running pipelines.
 
-Writes state to /workspace/.vaibify/pipeline_state.json inside the
-container so the GUI can recover pipeline status after a browser
-disconnect, tab close, or GUI restart.
+Writes state to ``<project repo>/.vaibify/pipeline_state.json`` so the
+GUI can recover pipeline status after a browser disconnect, tab close,
+or GUI restart. The file belongs to the PROJECT, not the container: a
+container can host several projects, and one container-wide file let
+a run in one project read as running steps in another.
 """
 
 __all__ = [
@@ -28,6 +30,9 @@ __all__ = [
     "fnAppendOutput",
     "fdictReadState",
     "fdictReadReconciledState",
+    "fsResolveRunStateProjectRepoPath",
+    "fbContainerHasLiveRun",
+    "fsStatePathOfState",
     "fsBuildHeartbeatStaleReason",
     "fnClearState",
     "StateWriter",
@@ -68,11 +73,11 @@ _F_STATE_IO_TIMEOUT_SECONDS = 15.0
 # outside the OS exit-code range (0-255) so callers can distinguish
 # a runner crash from any real subprocess exit.
 I_EXIT_CODE_RUNNER_DISAPPEARED = -9999
-# The container answer, and the DEFAULT rather than the only one:
-# a host project's state lives under the directory the researcher
-# registered, because /workspace exists on nobody's laptop. The
-# constant stays because it is the container's real path and several
-# tests and doubles name it; the functions below ask
+# The answer for a state that names no project repo -- the direct
+# library lane and the doubles that model it. A production run always
+# carries its repo, so its state lives beside that project instead; a
+# host project's lives under the directory the researcher registered,
+# because /workspace exists on nobody's laptop. The functions below ask
 # :func:`fsStatePathFor` instead of embedding it.
 #
 # Its ``_TEMP`` companion is GONE. The temp name is per-writer, so no
@@ -83,8 +88,12 @@ S_STATE_PATH = "/workspace/.vaibify/pipeline_state.json"
 _S_STATE_RELATIVE = ".vaibify/pipeline_state.json"
 
 
-def fsStatePathFor(sResourceId):
-    """Return this resource's pipeline-state path.
+def fsStatePathFor(sResourceId, sProjectRepoPath=""):
+    """Return the pipeline-state path of one project in this resource.
+
+    ``sProjectRepoPath`` is the project the run belongs to. Empty means
+    no project was named, which only the direct library lane does; it
+    resolves to the resource root, where no production run writes.
 
     ``posixpath`` for both modes deliberately: host mode is macOS and
     Linux only, where it and ``os.path`` are the same module, and the
@@ -94,13 +103,27 @@ def fsStatePathFor(sResourceId):
     from .pipelineServer import WORKSPACE_ROOT
     from .projectRoots import fsResolveProjectRoot
     return posixpath.join(
-        fsResolveProjectRoot(sResourceId, WORKSPACE_ROOT),
+        fsResolveProjectRoot(sResourceId, sProjectRepoPath or WORKSPACE_ROOT),
         _S_STATE_RELATIVE,
+    )
+
+
+def fsStatePathOfState(sResourceId, dictState):
+    """Return where a state dict is persisted: beside its own project.
+
+    Every writer derives the path from the state it is writing, so a
+    run's heartbeat, step results and terminal flush cannot land in a
+    different project's file than the one the run started in, even if
+    the researcher opens another project mid-run.
+    """
+    return fsStatePathFor(
+        sResourceId, (dictState or {}).get("sProjectRepoPath", ""),
     )
 
 
 def fdictBuildInitialState(
     sAction, sLogPath, iStepCount, iRunnerPid=0, sWorkflowPath="",
+    sProjectRepoPath="",
 ):
     """Build the initial state dictionary when a pipeline starts.
 
@@ -113,13 +136,15 @@ def fdictBuildInitialState(
     ``sWorkflowPath`` is the run's workflow IDENTITY, carried so that a
     terminal or reconciled state names which workflow it belongs to — a
     container can host several, and workflow A's failure must not
-    surface on workflow B's dashboard.
+    surface on workflow B's dashboard. ``sProjectRepoPath`` is where
+    the file itself lives; see :func:`fsStatePathOfState`.
     """
     return {
         "bRunning": True,
         "sAction": sAction,
         "sLogPath": sLogPath,
         "sWorkflowPath": sWorkflowPath,
+        "sProjectRepoPath": sProjectRepoPath,
         "sPhase": "running",
         "sStartTime": datetime.now(timezone.utc).isoformat(),
         "sEndTime": "",
@@ -257,7 +282,7 @@ def fbWriteStateAcknowledged(connectionDocker, sContainerId, dictState):
     attributed to the next poll's reconciliation.
     """
     sContent = json.dumps(dictState, indent=2)
-    sStatePath = fsStatePathFor(sContainerId)
+    sStatePath = fsStatePathOfState(sContainerId, dictState)
     sTempPath = fsBuildUniqueTemporaryPath(sStatePath)
     sQuotedTempPath = fsShellQuote(sTempPath)
     try:
@@ -380,8 +405,8 @@ def _ffCoerceStateBudget(value):
     return fValue if fValue > 0 else 0.0
 
 
-def fdictReadState(connectionDocker, sContainerId):
-    """Read the pipeline state from the container, or None.
+def fdictReadState(connectionDocker, sContainerId, sProjectRepoPath=""):
+    """Read one project's pipeline state from the container, or None.
 
     A TYPED READ, not a general exec. This used to assemble
     ``cat <path>`` and hand it to the command primitive, which cannot
@@ -407,7 +432,7 @@ def fdictReadState(connectionDocker, sContainerId):
     tBenignErrors = (json.JSONDecodeError, OSError, TypeError, ValueError)
     try:
         baContent = connectionDocker.fbaFetchFile(
-            sContainerId, fsStatePathFor(sContainerId),
+            sContainerId, fsStatePathFor(sContainerId, sProjectRepoPath),
         )
         if not baContent.strip():
             return None
@@ -420,7 +445,7 @@ def fdictReadState(connectionDocker, sContainerId):
         raise
 
 
-def fnClearState(connectionDocker, sContainerId):
+def fnClearState(connectionDocker, sContainerId, sProjectRepoPath=""):
     """Remove the pipeline state file and any temp file left beside it.
 
     The temp suffix is a wildcard because the name is per-writer now.
@@ -430,7 +455,7 @@ def fnClearState(connectionDocker, sContainerId):
     unmatched pattern reaches ``rm -f``, which is silent about a file
     that is not there.
     """
-    sStatePath = fsStatePathFor(sContainerId)
+    sStatePath = fsStatePathFor(sContainerId, sProjectRepoPath)
     connectionDocker.ftResultExecuteCommand(
         sContainerId,
         f"rm -f {fsShellQuote(sStatePath)} "
@@ -550,10 +575,81 @@ async def _fnPersistReconciledOnTheBackgroundLane(
     )
 
 
+def fsResolveRunStateProjectRepoPath(dictCtx, sContainerId):
+    """Return the project whose run state this container's readers see.
+
+    The project open in the dashboard first: its poll must describe its
+    own steps, never a run in another project. With none open, the
+    project of the run this hub has in flight, so a run stays visible
+    to the agent lane after the researcher leaves the project. With
+    neither, ``None``: there is no project to report on, and reading
+    the resource root instead would surface a file no run writes.
+    """
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if dictWorkflow:
+        return dictWorkflow.get("sProjectRepoPath", "")
+    taskLive = (dictCtx.get("pipelineTasks") or {}).get(sContainerId)
+    if taskLive is not None and not taskLive.done():
+        return getattr(taskLive, "sProjectRepoPath", "")
+    return None
+
+
+def fbContainerHasLiveRun(dictCtx, sContainerId):
+    """Return True when ANY project in this container is mid-run.
+
+    The busy vetoes (release, idle self-exit) ask about the CONTAINER,
+    and a project's own state file answers only for that project: with
+    one project open and another running, reading the open one would
+    call the container idle and hand it over mid-run. So this asks the
+    hub's live task first, then every project the hub knows is in the
+    container -- the open one and those discovery has listed.
+
+    A raw read, like the per-project check: a runner that died without
+    a terminal write keeps its project busy until a reconciling reader
+    records the death, which errs toward keeping the container.
+    """
+    taskLive = (dictCtx.get("pipelineTasks") or {}).get(sContainerId)
+    if taskLive is not None and not taskLive.done():
+        return True
+    for sProjectRepoPath in _flistKnownProjectRepoPaths(
+        dictCtx, sContainerId,
+    ):
+        dictState = fdictReadState(
+            dictCtx["docker"], sContainerId, sProjectRepoPath,
+        )
+        if dictState and dictState.get("bRunning"):
+            return True
+    return False
+
+
+def _flistKnownProjectRepoPaths(dictCtx, sContainerId):
+    """Return the open project's repo plus every discovered project's."""
+    from .workflowManager import fsDeriveProjectRepoPathFromWorkflow
+    listRepoPaths = []
+    sOpenRepoPath = fsResolveRunStateProjectRepoPath(dictCtx, sContainerId)
+    if sOpenRepoPath is not None:
+        listRepoPaths.append(sOpenRepoPath)
+    setDiscovered = (
+        dictCtx.get("lastDiscoveredWorkflows") or {}
+    ).get(sContainerId) or set()
+    for sWorkflowPath in sorted(setDiscovered):
+        sRepoPath = fsDeriveProjectRepoPathFromWorkflow(sWorkflowPath)
+        if sRepoPath and sRepoPath not in listRepoPaths:
+            listRepoPaths.append(sRepoPath)
+    return listRepoPaths
+
+
 async def fdictReadReconciledState(
     dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+    sProjectRepoPath=None,
 ):
     """Read pipeline state and reconcile a vanished runner inline.
+
+    ``sProjectRepoPath`` names the project whose file to read; ``None``
+    asks :func:`fsResolveRunStateProjectRepoPath`. A context that names
+    no project at all reads the resource root, which is the direct
+    library lane; a route that must not report that file refuses to
+    call this first (see the ``get-pipeline-state`` route).
 
     The runner stamps ``sLastHeartbeat`` from a daemon thread; if the
     file still claims ``bRunning: True`` but the heartbeat is older
@@ -579,6 +675,10 @@ async def fdictReadReconciledState(
     only one: a carrier worker is synchronous and cannot await this
     coroutine, so nothing can hold a mutation lock while waiting here.
     """
+    if sProjectRepoPath is None:
+        sProjectRepoPath = fsResolveRunStateProjectRepoPath(
+            dictCtx, sContainerId,
+        ) or ""
     connectionDocker = dictCtx["docker"]
     _fnEnsureStateLockForContainer(dictCtx, sContainerId)
     lockState = dictCtx["dictPipelineStateLocks"][sContainerId]
@@ -587,6 +687,7 @@ async def fdictReadReconciledState(
             dictState = await asyncio.wait_for(
                 asyncio.to_thread(
                     fdictReadState, connectionDocker, sContainerId,
+                    sProjectRepoPath,
                 ),
                 timeout=_F_STATE_IO_TIMEOUT_SECONDS,
             )
@@ -605,6 +706,10 @@ async def fdictReadReconciledState(
             return None
         if not dictState.get("bRunning"):
             return dictState
+        # Where a running state was READ is where anything that
+        # records its end must WRITE; a state recorded before the
+        # field existed would otherwise persist to the resource root.
+        dictState["sProjectRepoPath"] = sProjectRepoPath
         if not fbHeartbeatIsStale(dictState, fNow):
             return dictState
         dictIncident = _fdictLookupHostIncident(sContainerId)

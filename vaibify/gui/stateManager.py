@@ -111,6 +111,13 @@ S_VAIBIFY_GITIGNORE_BODY = (
     # each refused verification wrote history that helped refuse the
     # next one).
     "l3_attestations/\n"
+    # The live run's state and every run's log. They moved here from
+    # the container root when a second project in one container read
+    # the first one's run as its own; the state file's writers leave a
+    # per-writer temporary beside it for the instant of each rename.
+    "pipeline_state.json\n"
+    "pipeline_state.json.*.tmp\n"
+    "logs/\n"
 )
 
 T_STATEFUL_STEP_FIELDS = (
