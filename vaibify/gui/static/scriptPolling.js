@@ -395,7 +395,7 @@ var VaibifyPolling = (function () {
             try {
                 await VaibifyApi.fdictPost(
                     "/api/workflow/" + sContainerId +
-                        "/prompt-record/capture",
+                        "/prompt-record/capture?bAutomatic=true",
                     {},
                 );
                 _fnReportPollSuccess("prompt-record");

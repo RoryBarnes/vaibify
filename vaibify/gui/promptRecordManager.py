@@ -17,10 +17,26 @@ Honesty properties, in order of importance:
   (:func:`flistVerifyCapturedFiles`). What no mechanism can prove is
   that every prompt was recorded — coverage intervals make the
   monitored windows explicit, and gaps render as gaps.
-- **Whole-file recapture**: a grown transcript is re-fetched and
-  re-sanitized in full — sanitization is not prefix-stable (a secret
-  can span an append boundary), so byte-appending sanitized suffixes
-  would be wrong.
+- **Project scope**: a container can hold several projects, and the
+  agent CLI files every session under one root. A session is captured
+  only when the directory it was launched in lies inside this
+  project's repository; a session launched anywhere else (the
+  workspace root, a sibling project) is counted and left out, never
+  published into a record it may not belong to.
+- **Line-aligned incremental capture**: the sanitizer works one line
+  at a time and no redacted secret contains a newline, so sanitizing
+  only the complete lines appended since the last capture yields
+  exactly the bytes a whole-file recapture would. A trailing partial
+  line waits for the next pass, because a secret CAN span a mid-line
+  append boundary. The captured raw prefix is pinned by hash; a
+  transcript that was rewritten rather than appended, or a session
+  file that no longer matches its record, is recaptured whole.
+- **Three phases, one short lock each**: listing (an exec, so it
+  needs the mutation drain) and landing (a write) hold the drain;
+  fetching and sanitizing, which dominate the cost, hold nothing. The
+  landing phase re-checks every precondition the sanitizing phase
+  assumed and drops a session whose index state moved, so a
+  concurrent capture can waste work but never corrupt the chain.
 """
 
 __all__ = [
@@ -28,9 +44,11 @@ __all__ = [
     "S_PROMPT_RECORD_INDEX_PATH",
     "S_PROMPT_RECORD_SESSIONS_DIRECTORY",
     "S_CONTAINER_TRANSCRIPT_ROOT",
+    "fbSessionBelongsToProject",
     "fdictListContainerTranscripts",
     "fdictLoadIndex",
-    "fdictRunCapturePass",
+    "fdictSanitizeNewTranscriptLines",
+    "fdictLandSanitizedSessions",
     "fbVerifyCaptureChain",
     "flistVerifyCapturedFiles",
 ]
@@ -38,6 +56,7 @@ __all__ = [
 import hashlib
 import json
 import posixpath
+import shlex
 from datetime import datetime, timezone
 
 from vaibify.gui.transcriptSanitizer import ftResultSanitizeText
@@ -52,17 +71,38 @@ _S_SESSIONS_DIRECTORY = S_PROMPT_RECORD_SESSIONS_DIRECTORY
 S_CONTAINER_TRANSCRIPT_ROOT = "~/.claude/projects"
 _I_COVERAGE_MERGE_SECONDS = 60
 
-_S_LIST_SCRIPT = (
-    "python3 -c \"import glob,json,os,sys;"
-    "sRoot=os.path.expanduser('" + S_CONTAINER_TRANSCRIPT_ROOT + "');"
-    "listPaths=glob.glob(sRoot+'/**/*.jsonl',recursive=True);"
-    "sys.stdout.write(json.dumps({sPath:os.path.getsize(sPath) "
-    "for sPath in listPaths}))\""
-)
+_S_LIST_PROGRAM = """
+import glob, json, os, sys
+sRoot = os.path.expanduser('""" + S_CONTAINER_TRANSCRIPT_ROOT + """')
+dictListing = {}
+for sPath in glob.glob(sRoot + '/**/*.jsonl', recursive=True):
+    sLaunchDirectory = ''
+    with open(sPath, 'rb') as fileTranscript:
+        for baLine in fileTranscript:
+            if b'"cwd"' not in baLine:
+                continue
+            try:
+                dictLine = json.loads(baLine.decode('utf-8', 'replace'))
+            except ValueError:
+                continue
+            if isinstance(dictLine, dict) and dictLine.get('cwd'):
+                sLaunchDirectory = str(dictLine['cwd'])
+                break
+    dictListing[sPath] = {
+        'iSizeBytes': os.path.getsize(sPath),
+        'sLaunchDirectory': sLaunchDirectory,
+    }
+sys.stdout.write(json.dumps(dictListing))
+"""
+_S_LIST_SCRIPT = "python3 -c " + shlex.quote(_S_LIST_PROGRAM)
 
 
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
-    """Return ``{sContainerPath: iSizeBytes}`` for agent transcripts."""
+    """Return ``{sContainerPath: {iSizeBytes, sLaunchDirectory}}``.
+
+    The launch directory is the first working directory the agent CLI
+    recorded in the transcript, or ``''`` when it recorded none.
+    """
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, _S_LIST_SCRIPT,
     )
@@ -70,10 +110,26 @@ def fdictListContainerTranscripts(connectionDocker, sContainerId):
         raise RuntimeError(
             "Transcript listing failed: " + tExecResult.sStderr,
         )
-    dictSizes = json.loads(tExecResult.sStdout or "{}")
+    dictListing = json.loads(tExecResult.sStdout or "{}")
     return {
-        sPath: int(iSize) for sPath, iSize in dictSizes.items()
+        sPath: {
+            "iSizeBytes": int(dictEntry["iSizeBytes"]),
+            "sLaunchDirectory": str(dictEntry.get("sLaunchDirectory") or ""),
+        }
+        for sPath, dictEntry in dictListing.items()
     }
+
+
+def fbSessionBelongsToProject(sLaunchDirectory, sProjectRepoPath):
+    """Return True iff a session launched here is inside the project."""
+    if not sLaunchDirectory or not sProjectRepoPath:
+        return False
+    sProjectRoot = posixpath.normpath(sProjectRepoPath)
+    sDirectory = posixpath.normpath(sLaunchDirectory)
+    return (
+        sDirectory == sProjectRoot
+        or sDirectory.startswith(sProjectRoot.rstrip("/") + "/")
+    )
 
 
 def fdictLoadIndex(filesRepo):
@@ -91,6 +147,8 @@ def fdictLoadIndex(filesRepo):
     dictIndex.setdefault("listCaptures", [])
     dictIndex.setdefault("listCoverageIntervals", [])
     dictIndex.setdefault("dictSessionBytes", {})
+    dictIndex.setdefault("dictSessionRawSha256", {})
+    dictIndex.setdefault("iSessionsOutsideProject", 0)
     return dictIndex
 
 
@@ -99,7 +157,13 @@ def _fdictEmptyIndex():
         "listCaptures": [],
         "listCoverageIntervals": [],
         "dictSessionBytes": {},
+        "dictSessionRawSha256": {},
+        "iSessionsOutsideProject": 0,
     }
+
+
+def _fsSha256Hex(baContent):
+    return hashlib.sha256(baContent).hexdigest()
 
 
 def _fsHashRecord(dictRecord):
@@ -147,26 +211,168 @@ def _fnExtendCoverage(dictIndex, iPollSeconds):
     listIntervals.append({"sStartUtc": sNow, "sEndUtc": sNow})
 
 
-def _fdictCaptureOneSession(
-    connectionDocker, sContainerId, filesRepo, sContainerPath,
-    iSizeBytes, listExactSecrets, dictIndex,
-):
-    """Fetch, sanitize, land, and record one transcript file."""
-    baRaw = connectionDocker.fbaFetchFile(sContainerId, sContainerPath)
-    sSanitized, dictCounts = ftResultSanitizeText(
-        baRaw.decode("utf-8", errors="replace"), listExactSecrets,
+def _fsLatestSessionSha256(dictIndex, sFileName):
+    """Return the content hash the newest record pins for a session."""
+    sSha256 = ""
+    for dictRecord in dictIndex["listCaptures"]:
+        if dictRecord["sSessionFileName"] == sFileName:
+            sSha256 = dictRecord["sSha256"]
+    return sSha256
+
+
+def _fsPriorSanitizedTextOrNone(filesRepo, dictIndex, sFileName):
+    """Return the landed session text when it still matches its record.
+
+    ``None`` means the append precondition fails -- no record, a
+    missing file, or a file edited after capture -- and the session
+    must be recaptured whole.
+    """
+    sExpectedSha256 = _fsLatestSessionSha256(dictIndex, sFileName)
+    if not sExpectedSha256:
+        return None
+    try:
+        sPriorText = filesRepo.fsReadText(
+            posixpath.join(_S_SESSIONS_DIRECTORY, sFileName),
+        )
+    except (OSError, ValueError):
+        return None
+    if _fsSha256Hex(sPriorText.encode("utf-8")) != sExpectedSha256:
+        return None
+    return sPriorText
+
+
+def _fbCapturedPrefixUnchanged(dictIndex, sContainerPath, baRaw):
+    """Return True iff the raw bytes already captured are still there."""
+    iCapturedBytes = dictIndex["dictSessionBytes"].get(sContainerPath, -1)
+    sCapturedSha256 = dictIndex["dictSessionRawSha256"].get(
+        sContainerPath, "",
     )
+    if iCapturedBytes < 0 or not sCapturedSha256:
+        return False
+    if len(baRaw) < iCapturedBytes:
+        return False
+    return _fsSha256Hex(baRaw[:iCapturedBytes]) == sCapturedSha256
+
+
+def _fdictSanitizeOneSession(
+    connectionDocker, sContainerId, filesRepo, sContainerPath,
+    listExactSecrets, dictIndex,
+):
+    """Sanitize a transcript's new complete lines, or ``None`` if none."""
+    baRaw = connectionDocker.fbaFetchFile(sContainerId, sContainerPath)
+    iCompleteBytes = baRaw.rfind(b"\n") + 1
     sFileName = _fsSessionFileName(sContainerPath)
+    sPriorText = None
+    iStartBytes = 0
+    bAnySecretSpansLines = any(
+        "\n" in sSecret for sSecret in listExactSecrets or []
+    )
+    if (not bAnySecretSpansLines
+            and _fbCapturedPrefixUnchanged(dictIndex, sContainerPath, baRaw)):
+        sPriorText = _fsPriorSanitizedTextOrNone(
+            filesRepo, dictIndex, sFileName,
+        )
+        if sPriorText is not None:
+            iStartBytes = dictIndex["dictSessionBytes"][sContainerPath]
+    if iCompleteBytes <= iStartBytes:
+        return None
+    sSanitized, dictCounts = ftResultSanitizeText(
+        baRaw[iStartBytes:iCompleteBytes].decode("utf-8", errors="replace"),
+        listExactSecrets,
+    )
+    return {
+        "sContainerPath": sContainerPath,
+        "sSessionFileName": sFileName,
+        "iCapturedBytesBefore": dictIndex["dictSessionBytes"].get(
+            sContainerPath, -1,
+        ),
+        "sRawSha256Before": dictIndex["dictSessionRawSha256"].get(
+            sContainerPath, "",
+        ),
+        "sCaptureKind": "whole" if sPriorText is None else "appended",
+        "sPriorSha256": (
+            "" if sPriorText is None
+            else _fsSha256Hex(sPriorText.encode("utf-8"))
+        ),
+        "sSanitizedText": (sPriorText or "") + sSanitized,
+        "iCapturedBytesAfter": iCompleteBytes,
+        "sRawSha256After": _fsSha256Hex(baRaw[:iCompleteBytes]),
+        "dictRedactionsByCategory": dictCounts,
+    }
+
+
+def fdictSanitizeNewTranscriptLines(
+    connectionDocker, sContainerId, filesRepo, dictListing,
+    sProjectRepoPath, listExactSecrets,
+):
+    """Fetch and sanitize every in-project transcript's new lines.
+
+    Holds no lock: it only reads (typed reads of the transcripts and of
+    the landed record) and computes. Returns ``{"listPending",
+    "listOutsideProject"}``; nothing is written until
+    :func:`fdictLandSanitizedSessions` applies ``listPending``.
+    """
+    dictIndex = fdictLoadIndex(filesRepo)
+    listPending = []
+    listOutsideProject = []
+    for sContainerPath in sorted(dictListing):
+        dictEntry = dictListing[sContainerPath]
+        if not fbSessionBelongsToProject(
+            dictEntry["sLaunchDirectory"], sProjectRepoPath,
+        ):
+            listOutsideProject.append(sContainerPath)
+            continue
+        if dictEntry["iSizeBytes"] <= dictIndex["dictSessionBytes"].get(
+            sContainerPath, -1,
+        ):
+            continue
+        dictPending = _fdictSanitizeOneSession(
+            connectionDocker, sContainerId, filesRepo, sContainerPath,
+            listExactSecrets, dictIndex,
+        )
+        if dictPending is not None:
+            listPending.append(dictPending)
+    return {
+        "listPending": listPending,
+        "listOutsideProject": listOutsideProject,
+    }
+
+
+def _fbPendingStillApplies(filesRepo, dictIndex, dictPending):
+    """Return True iff nothing moved since the session was sanitized."""
+    sContainerPath = dictPending["sContainerPath"]
+    if dictIndex["dictSessionBytes"].get(sContainerPath, -1) != (
+        dictPending["iCapturedBytesBefore"]
+    ):
+        return False
+    if dictIndex["dictSessionRawSha256"].get(sContainerPath, "") != (
+        dictPending["sRawSha256Before"]
+    ):
+        return False
+    if dictPending["sCaptureKind"] != "appended":
+        return True
+    sRelPath = posixpath.join(
+        _S_SESSIONS_DIRECTORY, dictPending["sSessionFileName"],
+    )
+    dictHashes = filesRepo.fdictHashFiles([sRelPath])
+    sActual = (dictHashes.get(sRelPath) or {}).get("sSha256") or ""
+    return sActual == dictPending["sPriorSha256"]
+
+
+def _fdictLandOneSession(filesRepo, dictIndex, dictPending):
+    """Write one sanitized session and chain its capture record."""
+    sFileName = dictPending["sSessionFileName"]
+    sSanitizedText = dictPending["sSanitizedText"]
     filesRepo.fnWriteTextAtomic(
-        posixpath.join(_S_SESSIONS_DIRECTORY, sFileName), sSanitized,
+        posixpath.join(_S_SESSIONS_DIRECTORY, sFileName), sSanitizedText,
     )
     listCaptures = dictIndex["listCaptures"]
+    dictCounts = dictPending["dictRedactionsByCategory"]
     dictRecord = {
         "sSessionFileName": sFileName,
-        "iBytesCaptured": iSizeBytes,
-        "sSha256": hashlib.sha256(
-            sSanitized.encode("utf-8"),
-        ).hexdigest(),
+        "sCaptureKind": dictPending["sCaptureKind"],
+        "iBytesCaptured": dictPending["iCapturedBytesAfter"],
+        "sSha256": _fsSha256Hex(sSanitizedText.encode("utf-8")),
         "sPreviousRecordSha256": (
             _fsHashRecord(listCaptures[-1]) if listCaptures else ""
         ),
@@ -175,37 +381,45 @@ def _fdictCaptureOneSession(
         "dictRedactionsByCategory": dictCounts,
     }
     listCaptures.append(dictRecord)
-    dictIndex["dictSessionBytes"][sContainerPath] = iSizeBytes
+    sContainerPath = dictPending["sContainerPath"]
+    dictIndex["dictSessionBytes"][sContainerPath] = (
+        dictPending["iCapturedBytesAfter"]
+    )
+    dictIndex["dictSessionRawSha256"][sContainerPath] = (
+        dictPending["sRawSha256After"]
+    )
     return dictRecord
 
 
-def fdictRunCapturePass(
-    connectionDocker, sContainerId, filesRepo, listExactSecrets,
-    iPollSeconds=30,
-):
-    """Capture every new/grown transcript; return a pass summary."""
-    dictSizes = fdictListContainerTranscripts(
-        connectionDocker, sContainerId,
-    )
+def fdictLandSanitizedSessions(filesRepo, dictSanitized, iPollSeconds=30):
+    """Land every still-valid pending session; return a pass summary.
+
+    Runs under the mutation drain. A session whose index state moved
+    after it was sanitized is dropped and reported in
+    ``listDeferredSessions``; the next pass sanitizes it afresh. The
+    number of sessions left out as outside the project is kept in the
+    index -- a count only, because the record is public and a session's
+    path names the directory, and so the project, it was launched in.
+    """
     dictIndex = fdictLoadIndex(filesRepo)
     listCapturedNames = []
+    listDeferredNames = []
     iRedactionTotal = 0
-    for sContainerPath in sorted(dictSizes):
-        iSizeBytes = dictSizes[sContainerPath]
-        if iSizeBytes <= dictIndex["dictSessionBytes"].get(
-            sContainerPath, -1,
-        ):
+    for dictPending in dictSanitized["listPending"]:
+        if not _fbPendingStillApplies(filesRepo, dictIndex, dictPending):
+            listDeferredNames.append(dictPending["sSessionFileName"])
             continue
-        dictRecord = _fdictCaptureOneSession(
-            connectionDocker, sContainerId, filesRepo, sContainerPath,
-            iSizeBytes, listExactSecrets, dictIndex,
-        )
+        dictRecord = _fdictLandOneSession(filesRepo, dictIndex, dictPending)
         listCapturedNames.append(dictRecord["sSessionFileName"])
         iRedactionTotal += dictRecord["iRedactionCount"]
+    iSessionsOutsideProject = len(dictSanitized["listOutsideProject"])
+    dictIndex["iSessionsOutsideProject"] = iSessionsOutsideProject
     _fnExtendCoverage(dictIndex, iPollSeconds)
     filesRepo.fnWriteJsonAtomic(S_PROMPT_RECORD_INDEX_PATH, dictIndex)
     return {
         "listCapturedSessions": listCapturedNames,
+        "listDeferredSessions": listDeferredNames,
+        "iSessionsOutsideProject": iSessionsOutsideProject,
         "iRedactionCount": iRedactionTotal,
         "iSessionCount": len({
             dictRecord["sSessionFileName"]

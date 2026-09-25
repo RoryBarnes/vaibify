@@ -63,6 +63,7 @@ var VaibifyPromptRecordConfig = (function () {
         }
         return _fsRenderIntegrity(dictStatus) +
             _fsRenderCaptures(dictStatus) +
+            _fsRenderSessionsOutsideProject(dictStatus) +
             _fsRenderCoverage(dictStatus) +
             _fsRenderReviewGate(dictStatus) +
             _fsRenderSupervision(dictStatus) +
@@ -128,8 +129,11 @@ var VaibifyPromptRecordConfig = (function () {
             'copied into the repository as <em>redacted ' +
             'transcripts</em>: every capture is scanned and known ' +
             'secrets are replaced with visible [REDACTED: …] ' +
-            'markers before anything lands. You review the first ' +
-            'capture before it counts.</p>' +
+            'markers before anything lands. Only sessions the agent ' +
+            'started inside this project’s folder are captured; ' +
+            'a session started elsewhere, such as the workspace ' +
+            'root or another project, is left out. You review the ' +
+            'first capture before it counts.</p>' +
             '<div class="modal-inline-actions">' +
             '<button type="button" class="btn btn-primary" ' +
             'data-record-action="enable">Enable recording</button>' +
@@ -156,6 +160,16 @@ var VaibifyPromptRecordConfig = (function () {
         return '<div class="form-error">' + listWarnings.map(
             fnEscapeHtml,
         ).join("<br>") + '</div>';
+    }
+
+    function _fsRenderSessionsOutsideProject(dictStatus) {
+        var iCount = dictStatus.iSessionsOutsideProject || 0;
+        if (iCount === 0) return "";
+        return '<p class="muted-text">' + iCount + ' agent ' +
+            'session(s) were started outside this project’s ' +
+            'folder and are not recorded. To record a session, ' +
+            'change into the project folder before starting the ' +
+            'agent.</p>';
     }
 
     function _fsRenderCaptures(dictStatus) {

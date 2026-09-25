@@ -2856,6 +2856,22 @@ transcript) sits before the first capture counts; and the scanner
 cannot catch prose the researcher considers private, which is what
 the review gate is for.
 
+Two further properties keep the record honest in a shared container.
+**Scope:** a session is captured only when the directory its agent
+was launched in lies inside the project repository; the agent CLI
+files every session under one root, and capturing them all once
+published one project's transcripts into another's record.
+**Cost:** a pass lists transcripts and lands results under the
+mutation drain but fetches and sanitizes outside it, and it
+sanitizes only the complete lines appended since the last capture.
+That is exact rather than approximate: the sanitizer is line-local
+and no redacted secret spans a newline, so the appended result is
+byte-identical to a whole-file recapture (a test asserts it). A
+trailing partial line waits, because a secret *can* span a mid-line
+boundary. Holding the drain through a whole-file rescan once kept
+every write route on a container waiting for as long as the agent
+kept talking: each turn grew the transcript the next pass rescanned.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE
