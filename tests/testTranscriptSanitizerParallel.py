@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from vaibify.config import workerProcessPool
 from vaibify.gui import transcriptSanitizer
 from vaibify.gui.transcriptSanitizer import (
     fbSanitizerAvailable,
@@ -45,7 +46,7 @@ def _fsTranscript(iLines, sExtra=""):
     return "".join(listLines) + sExtra
 
 
-class _ProcessPoolSpy(transcriptSanitizer.ProcessPoolExecutor):
+class _ProcessPoolSpy(workerProcessPool.ProcessPoolExecutor):
     """A real process pool that records that it was started."""
 
     listStarted = []
@@ -60,7 +61,7 @@ def listPoolsStarted(monkeypatch):
     """Record every worker pool the sanitizer starts."""
     _ProcessPoolSpy.listStarted = []
     monkeypatch.setattr(
-        transcriptSanitizer, "ProcessPoolExecutor", _ProcessPoolSpy,
+        workerProcessPool, "ProcessPoolExecutor", _ProcessPoolSpy,
     )
     return _ProcessPoolSpy.listStarted
 

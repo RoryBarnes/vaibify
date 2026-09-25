@@ -37,14 +37,10 @@ __all__ = [
     "ftResultSanitizeText",
 ]
 
-import itertools
 import json
 import math
-import multiprocessing
 import operator
-import os
 import re
-from concurrent.futures import ProcessPoolExecutor
 
 S_SESSION_SECRET_CATEGORY = "vaibify-session-secret"
 S_ENTROPY_CATEGORY = "high-entropy-string"
@@ -307,7 +303,8 @@ def flistSanitizeTextsInParallel(listTexts, listExactSecrets=None):
     so run in a hub thread it starves the event loop: a 34 MB first
     capture took about 14 minutes inside the hub against 6.6 standalone,
     and the dashboard went sluggish for all of it. Large batches
-    therefore run in worker processes, on every core but one.
+    therefore run in worker processes
+    (:mod:`vaibify.config.workerProcessPool`).
 
     Each text is split into pieces at line boundaries so a single long
     transcript spreads across workers too. That is exact, not an
@@ -349,27 +346,18 @@ def _flistSplitAtLineBoundaries(sText, iPieceCharacters):
 
 
 def _flistSanitizePieces(listPieces, listExactSecrets):
-    """Sanitize pieces in-process when small, in spawned workers when not.
-
-    ``spawn`` rather than the platform default because the hub is
-    multi-threaded, and forking a threaded process can copy a lock some
-    other thread holds into a child that will never release it.
-    """
+    """Sanitize pieces in-process when small, in worker processes when not."""
+    from vaibify.config.workerProcessPool import flistMapInWorkerProcesses
     iCharacters = sum(len(sPiece) for sPiece in listPieces)
     if iCharacters < I_WORKER_PROCESS_MINIMUM_CHARACTERS:
         return [
             ftResultSanitizeText(sPiece, listExactSecrets)
             for sPiece in listPieces
         ]
-    iWorkers = min(len(listPieces), max(1, (os.cpu_count() or 2) - 1))
-    with ProcessPoolExecutor(
-        max_workers=iWorkers,
-        mp_context=multiprocessing.get_context("spawn"),
-    ) as executorPool:
-        return list(executorPool.map(
-            ftResultSanitizeText, listPieces,
-            itertools.repeat(listExactSecrets),
-        ))
+    return flistMapInWorkerProcesses(
+        ftResultSanitizeText,
+        [(sPiece, listExactSecrets) for sPiece in listPieces],
+    )
 
 
 def _flistJoinPieceResults(iTexts, listOwners, listResults):

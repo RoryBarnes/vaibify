@@ -303,6 +303,25 @@ DICT_NAMED_AUTHORITIES = {
             "Probes whether a recorded host PID is still alive, so a "
             "stale lock is not read as a live hub. Host-side read.",
         ),
+    "config/workerProcessPool.py|<module>|process-launch|multiprocessing|"
+    "import|0":
+        _fdictAuthority(
+            ["http"],
+            "The spawn context for the CPU worker pool that keeps a long "
+            "pure-Python computation (the Prompt Record's first-pass "
+            "scan) off the hub's interpreter lock. Runs a caller's "
+            "module-level function over argument tuples; no shell, no "
+            "command text, no path; reaches no container.",
+        ),
+    "config/workerProcessPool.py|<module>|process-launch|"
+    "concurrent.futures.ProcessPoolExecutor|import-from|0":
+        _fdictAuthority(
+            ["http"],
+            "The same worker pool's executor: bounded by cpu_count() - 1, "
+            "shut down before flistMapInWorkerProcesses returns. Lives "
+            "under vaibify/config/ so the GUI tree gains no process "
+            "capability.",
+        ),
     "config/secretManager.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http"],

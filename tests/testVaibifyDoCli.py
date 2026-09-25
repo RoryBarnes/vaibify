@@ -723,7 +723,7 @@ def test_fiSendHttpRequest_unanswered_request_exits_still_working(
     ``socket.timeout``. urllib wraps a failed CONNECT in ``URLError``,
     so a bare timeout only ever means the request was sent and the host
     had not answered -- confirmed against real sockets in
-    ``test_a_host_that_accepts_but_does_not_answer_is_still_working``.
+    ``tests/testVaibifyDoUnansweredRequest.py``.
     """
     with patch.object(
         modCli.urllib.request, "urlopen",
@@ -736,61 +736,6 @@ def test_fiSendHttpRequest_unanswered_request_exits_still_working(
             )
     assert excInfo.value.code == 5
     assert "unreachable" not in capsys.readouterr().err.lower()
-
-
-def _fiFreePortNobodyListensOn():
-    socketProbe = socket.socket()
-    socketProbe.bind(("127.0.0.1", 0))
-    iPort = socketProbe.getsockname()[1]
-    socketProbe.close()
-    return iPort
-
-
-@pytest.mark.falsification
-def test_a_host_that_accepts_but_does_not_answer_is_still_working(
-    modCli, capsys, monkeypatch,
-):
-    """A real server that takes the request and stays silent exits 5.
-
-    The wording matters as much as the code: an agent told "host
-    unreachable" asked the researcher to reconnect a container whose
-    first Prompt Record pass was simply still running.
-
-    Kills: removing the bare-timeout clause, so an unanswered request
-    falls through to "host unreachable".
-    """
-    socketServer = socket.socket()
-    socketServer.bind(("127.0.0.1", 0))
-    socketServer.listen(1)
-    iPort = socketServer.getsockname()[1]
-    monkeypatch.setattr(modCli, "F_READ_TIMEOUT", 0.5)
-    sUrl = "http://127.0.0.1:" + str(iPort) + "/api/x"
-    try:
-        with pytest.raises(SystemExit) as excInfo:
-            modCli.fiSendHttpRequest(
-                {"sUrl": sUrl, "dictBody": {}}, "tok", "POST", False,
-            )
-    finally:
-        socketServer.close()
-    sStderr = capsys.readouterr().err
-    assert excInfo.value.code == 5, sStderr
-    assert "accepted the request" in sStderr
-    assert "unreachable" not in sStderr.lower()
-    assert sUrl in sStderr
-
-
-def test_a_real_refused_connection_still_exits_unreachable(
-    modCli, capsys, monkeypatch,
-):
-    """The new clause must not swallow a real failure to connect."""
-    monkeypatch.setattr(modCli, "F_READ_TIMEOUT", 0.5)
-    sUrl = "http://127.0.0.1:" + str(_fiFreePortNobodyListensOn()) + "/x"
-    with pytest.raises(SystemExit) as excInfo:
-        modCli.fiSendHttpRequest(
-            {"sUrl": sUrl, "dictBody": {}}, "tok", "POST", False,
-        )
-    assert excInfo.value.code == 4
-    assert "refused" in capsys.readouterr().err
 
 
 def test_fiSendHttpRequest_urlerror_exits(modCli, capsys):
