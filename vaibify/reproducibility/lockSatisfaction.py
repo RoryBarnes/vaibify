@@ -38,6 +38,7 @@ __all__ = [
     "fdictReadLockSatisfaction",
     "fnForgetLockSatisfaction",
     "fnRecordLockSatisfaction",
+    "ftLockVerdictKey",
     "fsFingerprintLockBytes",
     "fsFingerprintLockState",
     "S_LOCK_CLEAN",
@@ -148,13 +149,23 @@ def fbLockBlocksVerification(dictVerdict, dictImageCurrency):
     return (dictImageCurrency or {}).get("bPinnedImageIsLive") is True
 
 
-# The last answer per container, so the POLL can report a verdict it
+# The last answer per project (see ftLockVerdictKey), so the POLL can report a verdict it
 # is forbidden to compute. Reading the installed list needs an exec
 # and the poll may add none, so the check runs where execs are already
 # permitted (the readiness route, and after a regeneration) and leaves
 # its answer here. Absent means unknown, which is how every surface
 # renders before the first check -- never as a fault.
 DICT_LAST_LOCK_SATISFACTION = {}
+
+
+def ftLockVerdictKey(sContainerId, sProjectRepoPath):
+    """Return the key one project's lock verdict is cached under.
+
+    Per project, not per container: a container hosts several projects,
+    and one project's probe replacing another's verdict made a still
+    valid answer read back as "the state moved" -- a false reason.
+    """
+    return (sContainerId, sProjectRepoPath or "")
 
 
 def fsFingerprintLockBytes(baLockContent, sRunningImageIdentity):

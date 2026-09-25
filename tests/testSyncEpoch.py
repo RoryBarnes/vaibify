@@ -301,12 +301,14 @@ def test_refresh_remotes_bumps_sync_epoch(fixtureCarrierStoodDown):
 # dropped the parameter would make the route look wrong.
 async def _fdictFakeReconciledState(
     dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+    sProjectRepoPath=None,
 ):
     return {"bRunning": True, "iCurrentStep": 2}
 
 
 async def _fdictFakeReconciledNone(
     dictCtx, sContainerId, fNow=None, fnPersistReconciled=None,
+    sProjectRepoPath=None,
 ):
     return None
 

@@ -43,16 +43,20 @@ __all__ = [
 ]
 
 
-def ffnBuildProvenanceCommitter(dictCtx, sContainerId):
+def ffnBuildProvenanceCommitter(dictCtx, sContainerId, sRunWorkflowPath=""):
     """Return the run-scoped committer the runner threads per step.
 
     Bound to the live context, not a workflow snapshot: the whole
     point of committing during the run is that the target document is
-    whatever project.json says NOW.
+    whatever project.json says NOW. It is ALSO bound to the file the
+    run started from, because a container can host several projects
+    and the dashboard may have switched to another by the time a step
+    finishes; the records belong to the run's project either way.
     """
     def fdictCommitBoundRecords(sStepId, listRunRecords):
         return fdictCommitRemoteDataRecords(
             dictCtx, sContainerId, sStepId, listRunRecords,
+            sRunWorkflowPath=sRunWorkflowPath,
         )
     return fdictCommitBoundRecords
 
@@ -72,7 +76,7 @@ def _fdictRefuseAll(sReason, listRunRecords):
 
 
 def fdictCommitRemoteDataRecords(
-    dictCtx, sContainerId, sStepId, listRunRecords,
+    dictCtx, sContainerId, sStepId, listRunRecords, sRunWorkflowPath="",
 ):
     """Merge one step's pulled digests into the current project.json.
 
@@ -95,14 +99,24 @@ def fdictCommitRemoteDataRecords(
             "iInstalled": 0, "listRefusals": [],
         }
     try:
-        sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+        sOpenPath = dictCtx["paths"].get(sContainerId, "")
+        sWorkflowPath = sRunWorkflowPath or sOpenPath
         if not sWorkflowPath:
             return _fdictRefuseAll(
                 "no project is open in this session", listRecords,
             )
-        dictWorkflow, sFreshError = _ftEnsureCacheMatchesDisk(
-            dictCtx, sContainerId, sWorkflowPath,
-        )
+        if sWorkflowPath == sOpenPath:
+            dictWorkflow, sFreshError = _ftEnsureCacheMatchesDisk(
+                dictCtx, sContainerId, sWorkflowPath,
+            )
+            fnSaveWorkflow = dictCtx["save"]
+        else:
+            dictWorkflow, sFreshError = _ftLoadClosedProject(
+                dictCtx, sContainerId, sWorkflowPath,
+            )
+            fnSaveWorkflow = _ffnBuildClosedProjectSave(
+                dictCtx, sWorkflowPath,
+            )
         if sFreshError:
             return _fdictRefuseAll(sFreshError, listRecords)
         sIdentityConflict = fsDescribeRemoteDataPathConflict(
@@ -121,7 +135,7 @@ def fdictCommitRemoteDataRecords(
             dictStep, listRecords,
         )
         if bChanged:
-            dictCtx["save"](sContainerId, dictWorkflow)
+            fnSaveWorkflow(sContainerId, dictWorkflow)
         return {
             "bCommitted": True,
             "sDetail": "",
@@ -178,6 +192,33 @@ def _ftEnsureCacheMatchesDisk(dictCtx, sContainerId, sWorkflowPath):
             "reloaded; the pulled digests were not committed"
         )
     return dictLive, ""
+
+
+def _ftLoadClosedProject(dictCtx, sContainerId, sWorkflowPath):
+    """Return ``(dictWorkflow, sError)`` read from a project not open now.
+
+    The hub's cache holds only the open project, so a run whose project
+    the dashboard has switched away from reads its document from disk;
+    nothing in the cache or its self-write baseline describes that file.
+    """
+    try:
+        return workflowManager.fdictLoadWorkflowFromContainer(
+            dictCtx["docker"], sContainerId, sWorkflowPath,
+        ), ""
+    except Exception as errorRead:
+        return None, (
+            f"project.json could not be read for the provenance "
+            f"commit ({errorRead})"
+        )
+
+
+def _ffnBuildClosedProjectSave(dictCtx, sWorkflowPath):
+    """Return a save that writes a closed project's own file."""
+    def fnSaveClosedProject(sContainerId, dictWorkflow):
+        workflowManager.fnSaveWorkflowToContainer(
+            dictCtx["docker"], sContainerId, dictWorkflow, sWorkflowPath,
+        )
+    return fnSaveClosedProject
 
 
 def _fdictFindStepById(dictWorkflow, sStepId):

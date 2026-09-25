@@ -80,11 +80,11 @@ def _fbContainerSealedOffTheNetwork(sContainerId):
     return fbContainerIsNetworkIsolated(sContainerId)
 
 
-def _fnMarkEveryServiceUncheckable(sContainerId, listServices, sReason):
+def _fnMarkEveryServiceUncheckable(tCheckKey, listServices, sReason):
     """Settle each service to uncheckable, naming why nobody asked."""
     for sService in listServices:
         remoteCheckState.fnMarkUncheckable(
-            sContainerId, sService, sReason,
+            tCheckKey, sService, sReason,
         )
 
 
@@ -189,19 +189,19 @@ async def _fnCheckOneRemote(
     dictCarrier, dictWorkflow, filesRepo, sService,
 ):
     """Compare one remote off-carrier, then write its result on one."""
-    sContainerId = dictCarrier["sContainerId"]
+    tCheckKey = dictCarrier["tCheckKey"]
     dictOutcome = await _fdictCompareOutsideTheLane(
         dictWorkflow, filesRepo, sService,
     )
     if dictOutcome["dictStatus"] is None:
         remoteCheckState.fnMarkUncheckable(
-            sContainerId, sService, dictOutcome["sError"],
+            tCheckKey, sService, dictOutcome["sError"],
         )
         return
     await _fnWriteOneStatusUnderACarrier(
         dictCarrier, filesRepo, dictOutcome["dictStatus"],
     )
-    remoteCheckState.fnMarkSettled(sContainerId, sService)
+    remoteCheckState.fnMarkSettled(tCheckKey, sService)
 
 
 async def _fnRunRefreshWorker(
@@ -235,7 +235,7 @@ async def _fnRunRefreshWorker(
                 "Remote refresh of %s failed: %s", sService, errorCheck,
             )
             remoteCheckState.fnMarkUncheckable(
-                sContainerId, sService,
+                dictCarrier["tCheckKey"], sService,
                 _fsDescribeCheckFailure(errorCheck),
             )
     _fnBumpSoTheBadgesRepaint(dictCtx, sContainerId)
@@ -277,12 +277,16 @@ async def _fdictStartTheRefresh(
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, "The remote refresh",
     )
+    tCheckKey = remoteCheckState.ftProjectCheckKey(
+        sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+    )
     for sService in listServices:
-        remoteCheckState.fnMarkChecking(sContainerId, sService)
+        remoteCheckState.fnMarkChecking(tCheckKey, sService)
     dictCarrier = {
         "appState": requestHttp.app.state,
         "sContainerName": dictLaneTuple["sContainerName"],
         "sContainerId": sContainerId,
+        "tCheckKey": tCheckKey,
         "dictLaneTuple": dictLaneTuple,
     }
     asyncio.create_task(_fnRunRefreshWorker(
@@ -317,7 +321,10 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
             return {"listChecking": [], "listUncheckable": []}
         if _fbContainerSealedOffTheNetwork(sContainerId):
             _fnMarkEveryServiceUncheckable(
-                sContainerId, listServices, S_NETWORK_ISOLATED_REASON,
+                remoteCheckState.ftProjectCheckKey(
+                    sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+                ),
+                listServices, S_NETWORK_ISOLATED_REASON,
             )
             return {"listChecking": [], "listUncheckable": listServices}
         return await _fdictStartTheRefresh(

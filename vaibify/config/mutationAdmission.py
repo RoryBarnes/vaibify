@@ -51,6 +51,7 @@ __all__ = [
     "fnSettleJournaledHostExec",
     "fnPromoteJournaledExec",
     "fnSettleJournaledExec",
+    "fsetActiveExecOperationIds",
 ]
 
 import contextvars
@@ -202,7 +203,13 @@ class MutationAdmission:
         self.dictLaneTuple = dict(dictLaneTuple or {})
         self.fnRevalidate = fnRevalidate
         self.bDurable = bDurable
-        self.dictLiveState = {"sActiveExecOperationId": ""}
+        # The exec records this admission's work has in flight. One at a
+        # time for most durable work; several when pipeline runs of
+        # different projects share one durable record, each running its
+        # own command. ``sActiveExecOperationId`` is the latest of them.
+        self.dictLiveState = {
+            "sActiveExecOperationId": "", "setActiveExecOperationIds": set(),
+        }
 
 
 def _fadmissionMintForCommitCarrier(
@@ -558,9 +565,24 @@ def fnPromoteJournaledExec(dictExecHandle, sExecId):
         dictExecHandle["sContainerName"],
         dictExecHandle["sOperationId"], dictIdentity,
     )
-    dictExecHandle["admission"].dictLiveState[
-        "sActiveExecOperationId"
-    ] = dictExecHandle["sOperationId"]
+    dictLiveState = dictExecHandle["admission"].dictLiveState
+    dictLiveState["sActiveExecOperationId"] = dictExecHandle["sOperationId"]
+    dictLiveState["setActiveExecOperationIds"].add(
+        dictExecHandle["sOperationId"],
+    )
+
+
+def fsetActiveExecOperationIds(admission):
+    """Return every exec record the admission's work has in flight.
+
+    Includes ``sActiveExecOperationId``, which a start reservation sets
+    directly for the one exec it owns.
+    """
+    dictLiveState = admission.dictLiveState
+    setIds = set(dictLiveState.get("setActiveExecOperationIds") or ())
+    if dictLiveState.get("sActiveExecOperationId"):
+        setIds.add(dictLiveState["sActiveExecOperationId"])
+    return setIds
 
 
 def fnSettleJournaledExec(dictExecHandle):
@@ -568,6 +590,9 @@ def fnSettleJournaledExec(dictExecHandle):
     if dictExecHandle is None:
         return
     dictLiveState = dictExecHandle["admission"].dictLiveState
+    dictLiveState["setActiveExecOperationIds"].discard(
+        dictExecHandle["sOperationId"],
+    )
     if dictLiveState.get("sActiveExecOperationId") == (
         dictExecHandle["sOperationId"]
     ):

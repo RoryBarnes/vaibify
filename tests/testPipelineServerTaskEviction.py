@@ -19,10 +19,10 @@ from unittest.mock import patch
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
+from vaibify.gui.pipelineRunSlots import fnRegisterRun
 from vaibify.gui.pipelineServer import (
     _fbRefuseWhilePipelineTaskLive,
     _fdictBusyRefusalEvent,
-    _fnRegisterPipelineTask,
     fnPipelineMessageLoop,
 )
 
@@ -36,8 +36,8 @@ async def test_completed_task_self_evicts():
         return "done"
 
     task = asyncio.create_task(fnTinyJob())
-    _fnRegisterPipelineTask(dictPipelineTasks, "cid-1", task)
-    assert dictPipelineTasks["cid-1"] is task
+    fnRegisterRun(dictPipelineTasks, "cid-1", task)
+    assert dictPipelineTasks["cid-1"][""] is task
     await task
     # The done-callback runs on the next event-loop tick.
     await asyncio.sleep(0)
@@ -53,7 +53,7 @@ async def test_failed_task_self_evicts():
         raise RuntimeError("simulated runner failure")
 
     task = asyncio.create_task(fnFailing())
-    _fnRegisterPipelineTask(dictPipelineTasks, "cid-2", task)
+    fnRegisterRun(dictPipelineTasks, "cid-2", task)
     with pytest.raises(RuntimeError):
         await task
     await asyncio.sleep(0)
@@ -69,7 +69,7 @@ async def test_cancelled_task_self_evicts():
         await asyncio.sleep(10)
 
     task = asyncio.create_task(fnHangs())
-    _fnRegisterPipelineTask(dictPipelineTasks, "cid-3", task)
+    fnRegisterRun(dictPipelineTasks, "cid-3", task)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -79,7 +79,7 @@ async def test_cancelled_task_self_evicts():
 
 @pytest.mark.asyncio
 async def test_new_task_overwrites_then_callback_does_not_evict_it():
-    """A second run for the same container must not be evicted by the first."""
+    """A second run of the same project must not be evicted by the first."""
     dictPipelineTasks = {}
 
     async def fnQuick():
@@ -90,16 +90,16 @@ async def test_new_task_overwrites_then_callback_does_not_evict_it():
         return None
 
     taskFirst = asyncio.create_task(fnQuick())
-    _fnRegisterPipelineTask(dictPipelineTasks, "cid-4", taskFirst)
+    fnRegisterRun(dictPipelineTasks, "cid-4", taskFirst)
     await taskFirst
     # Before the done-callback for taskFirst fires, register a new task.
     taskSecond = asyncio.create_task(fnSlow())
-    _fnRegisterPipelineTask(dictPipelineTasks, "cid-4", taskSecond)
+    fnRegisterRun(dictPipelineTasks, "cid-4", taskSecond)
     # Let the first task's done-callback run; it must see that
     # dictPipelineTasks["cid-4"] is no longer taskFirst and leave the
     # taskSecond entry intact.
     await asyncio.sleep(0)
-    assert dictPipelineTasks.get("cid-4") is taskSecond
+    assert dictPipelineTasks.get("cid-4", {}).get("") is taskSecond
     await taskSecond
     await asyncio.sleep(0)
     assert "cid-4" not in dictPipelineTasks
@@ -111,8 +111,8 @@ async def test_new_task_overwrites_then_callback_does_not_evict_it():
 @pytest.mark.asyncio
 async def test_refuse_helper_is_true_only_for_a_live_task():
     """The guard fires for a live task, never for absent/done/None."""
-    assert _fbRefuseWhilePipelineTaskLive(None, "cid-a") is False
-    assert _fbRefuseWhilePipelineTaskLive({}, "cid-a") is False
+    assert _fbRefuseWhilePipelineTaskLive(None, "cid-a", "") is False
+    assert _fbRefuseWhilePipelineTaskLive({}, "cid-a", "") is False
 
     async def fnQuick():
         return None
@@ -120,7 +120,7 @@ async def test_refuse_helper_is_true_only_for_a_live_task():
     taskDone = asyncio.create_task(fnQuick())
     await taskDone
     assert _fbRefuseWhilePipelineTaskLive(
-        {"cid-a": taskDone}, "cid-a",
+        {"cid-a": {"": taskDone}}, "cid-a", "",
     ) is False
 
     async def fnHangs():
@@ -128,8 +128,11 @@ async def test_refuse_helper_is_true_only_for_a_live_task():
 
     taskLive = asyncio.create_task(fnHangs())
     assert _fbRefuseWhilePipelineTaskLive(
-        {"cid-a": taskLive}, "cid-a",
+        {"cid-a": {"": taskLive}}, "cid-a", "",
     ) is True
+    assert _fbRefuseWhilePipelineTaskLive(
+        {"cid-a": {"": taskLive}}, "cid-a", "/workspace/otherProject",
+    ) is False, "another project's run never blocks this project"
     taskLive.cancel()
     with pytest.raises(asyncio.CancelledError):
         await taskLive
@@ -200,7 +203,7 @@ async def test_second_run_while_first_is_live_is_refused_not_started():
                 {}, {}, "/workspace",
                 dictPipelineTasks=dictPipelineTasks,
             )
-        taskFirst = dictPipelineTasks.get("cid-busy")
+        taskFirst = dictPipelineTasks.get("cid-busy", {}).get("")
         assert taskFirst is not None and not taskFirst.done(), (
             "the first run must still be live and still be the "
             "registered kill switch"

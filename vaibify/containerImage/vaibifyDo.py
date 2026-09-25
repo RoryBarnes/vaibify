@@ -37,6 +37,7 @@ S_AGENT_PROJECT_HEADER = "X-Vaibify-Agent-Project"
 S_SERVED_PROJECT_HEADER = "X-Vaibify-Project"
 S_SERVED_PROJECT_NAME_HEADER = "X-Vaibify-Project-Name"
 S_AGENT_PROJECT_FIELD = "sAgentProjectDirectory"
+S_AGENT_PROJECT_QUERY = "sAgentProject"
 T_PROJECT_DIRECTORY_MARKERS = (
     os.path.join(".vaibify", "projects"),
     os.path.join(".vaibify", "workflows"),
@@ -556,6 +557,13 @@ def ftWsEndpoint(dictEnv):
     sPath = ("/ws/pipeline/" + dictEnv["VAIBIFY_CONTAINER_ID"]
              + "?sToken=" + urllib.parse.quote(
                  dictEnv["VAIBIFY_SESSION_TOKEN"], safe=""))
+    # The socket binds to a project before any frame is sent, so the
+    # project this agent works in rides the handshake: its runs then
+    # run in its own project whichever one the dashboard shows.
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        sPath += "&" + S_AGENT_PROJECT_QUERY + "=" + urllib.parse.quote(
+            sProjectDirectory, safe="")
     return tParsed.hostname, iPort, sPath, bTls
 
 
@@ -682,6 +690,11 @@ def fiRunWebsocket(dictEnv, dictPayload, bJsonMode):
             "sExactSourceFingerprint", "")
         dictPayload["sAcknowledgedWorkflowPath"] = dictBound.get(
             "sWorkflowPath", "")
+    # A run may start beside other projects' runs in this container. The
+    # hub answers with a concurrentRunWarning naming them and the limits
+    # the runs share, printed before the run's own events; an agent
+    # cannot answer the dashboard's confirmation, so it is told instead.
+    dictPayload["bAcknowledgeConcurrentRun"] = True
     fnSendWsText(socketConnection, json.dumps(dictPayload))
     return _fiStreamWsEvents(socketConnection, bJsonMode)
 
@@ -718,6 +731,10 @@ def _fdictAwaitWorkflowBound(socketConnection):
             return None
         if dictEvent.get("sType") == "workflowBound":
             return dictEvent
+        # A refusal to bind (a project the hub cannot find, or one with
+        # several workflows) is the only explanation the agent will
+        # get; swallowing it left a bare closed socket.
+        _fnPrintEvent(dictEvent, False)
         return None
 
 
@@ -787,7 +804,8 @@ def fnFailUnacknowledged():
         "vaibify-do: the hub received the action but has neither started "
         "nor refused it after " + str(int(F_ACKNOWLEDGE_TIMEOUT)) + " s. "
         "It may still start: run 'vaibify-do get-pipeline-state' before "
-        "retrying (a second run is refused while one is live), and tell "
+        "retrying (a second run of this project is refused while one is "
+        "live), and tell "
         "the researcher if it never does.", iCode=4)
 
 

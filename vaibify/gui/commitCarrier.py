@@ -57,6 +57,7 @@ __all__ = [
     "CommitRefusedError",
     "MutationSupervisor",
     "DurableTaskRecord",
+    "fsDescribeWorkBlockingAJoin",
     "fdictCreateMutationSupervisorRegistry",
     "fdictCreateDurableTaskRegistry",
     "fdictBuildLaneTupleFromRequest",
@@ -827,11 +828,19 @@ class DurableTaskRecord:
     # Defaults to the SHARED wording, never a fourth spelling
     # of the same state.
     sOperation: str = S_DESCRIBED_DURABLE_TASK
+    # Non-empty for work that other launches of the SAME kind may join
+    # (pipeline runs of different projects in one container). The
+    # record then stands for all of them: ``taskAsync`` finishes when
+    # the last member does, and ``dictMemberTasks`` holds each member
+    # under its key (the project), so a second launch with a live key
+    # is refused like any other concurrent durable launch.
+    sJoinableKind: str = ""
+    dictMemberTasks: dict = field(default_factory=dict)
 
 
 async def fdictLaunchDurableTask(
     appState, sName, sContainerId, dictLaneTuple, fnStartTask,
-    sOperation=S_DESCRIBED_DURABLE_TASK,
+    sOperation=S_DESCRIBED_DURABLE_TASK, sJoinableKind="", sMemberKey="",
 ):
     """Launch a durable task under the briefly-held mutation lock.
 
@@ -841,6 +850,14 @@ async def fdictLaunchDurableTask(
     lock; a second durable launch for the same container is refused
     while one is live; completion finalizes under the reacquired lock
     with a compare-match on the stable task id.
+
+    The one exception is JOINABLE work: a launch naming the same
+    ``sJoinableKind`` as the live record joins it as a member under
+    ``sMemberKey``, sharing its admission, so the container still holds
+    ONE durable record -- the unit release, transfer and the reaper
+    reason about -- for as long as any member runs. A member key that
+    is already live is refused. The returned ``taskAsync`` is always
+    the caller's own task, never the record's aggregate.
     """
     _fnAssertAdmissionsOpen(appState)
     lockMutation = sessionLifecycle.flockContainerMutationForAppState(
@@ -849,36 +866,105 @@ async def fdictLaunchDurableTask(
     async with lockMutation:
         dictRegistry = _fdictDurableTaskRegistry(appState)
         recordLive = dictRegistry.get(sName)
-        if recordLive is not None and not recordLive.taskAsync.done():
-            return {
-                "bLaunched": False,
-                "sReason": recordLive.sOperation + " is already "
-                           "running in this container",
-                "sLiveOperation": recordLive.sOperation,
-                "sLiveTaskId": recordLive.sTaskId,
-            }
+        bLive = recordLive is not None and not recordLive.taskAsync.done()
+        dictRefusal = _fdictRefuseDurableLaunch(
+            recordLive, bLive, sJoinableKind, sMemberKey,
+        ) if bLive else None
+        if dictRefusal is not None:
+            return dictRefusal
         if not fbLaneTupleStillCurrent(appState, dictLaneTuple):
             raise CommitRefusedError(
                 f"Refusing the durable-task launch on container "
                 f"'{sName}': the lane tuple no longer matches the live "
                 "owner record."
             )
+        if bLive:
+            taskMember = _ftaskJoinDurableTask(
+                recordLive, fnStartTask, sMemberKey,
+            )
+            return _fdictLaunched(recordLive, taskMember)
         recordTask = _frecordStartDurableTask(
             appState, sName, sContainerId, dictLaneTuple, fnStartTask,
-            sOperation,
+            sOperation, sJoinableKind, sMemberKey,
         )
         dictRegistry[sName] = recordTask
+    return _fdictLaunched(
+        recordTask,
+        recordTask.dictMemberTasks.get(sMemberKey, recordTask.taskAsync),
+    )
+
+
+def _fdictRefuseDurableLaunch(recordLive, bLive, sJoinableKind, sMemberKey):
+    """Return the refusal for a launch beside live work, or None to join."""
+    bJoinable = bool(sJoinableKind) and recordLive.sState == "running" and (
+        recordLive.sJoinableKind == sJoinableKind
+    )
+    taskSameKey = recordLive.dictMemberTasks.get(sMemberKey)
+    if bJoinable and (taskSameKey is None or taskSameKey.done()):
+        return None
+    return {
+        "bLaunched": False,
+        "sReason": recordLive.sOperation + " is already "
+                   "running in this container",
+        "sLiveOperation": recordLive.sOperation,
+        "sLiveTaskId": recordLive.sTaskId,
+    }
+
+
+def _fdictLaunched(recordTask, taskCaller):
+    """Return the launch result naming the caller's own task."""
     return {
         "bLaunched": True,
         "sTaskId": recordTask.sTaskId,
         "iOwnerGeneration": recordTask.iOwnerGeneration,
-        "taskAsync": recordTask.taskAsync,
+        "taskAsync": taskCaller,
     }
+
+
+def _ftaskStartUnderAdmission(admission, fnStartTask):
+    """Start a task with the admission active so the task inherits it."""
+    tokenLane = ftokenMarkEnforcedLane()
+    tokenAdmission = ftokenActivateAdmission(admission)
+    try:
+        return fnStartTask()
+    finally:
+        fnDeactivateAdmission(tokenAdmission)
+        fnResetEnforcedLane(tokenLane)
+
+
+def _ftaskJoinDurableTask(recordLive, fnStartTask, sMemberKey):
+    """Start a member under the live record's admission; return it.
+
+    The member shares the record's admission, so a transfer's retag of
+    the record's generation keeps every member admitted at once, and a
+    superseded record refuses every member's writes at once.
+    """
+    taskMember = _ftaskStartUnderAdmission(recordLive.admission, fnStartTask)
+    recordLive.dictMemberTasks[sMemberKey] = taskMember
+    return taskMember
+
+
+async def _fnAwaitMemberTasks(recordTask):
+    """Finish once no member of a joinable record is still running.
+
+    Re-reads the members after every wake, so a member that joined
+    while the others ran is waited for too. Joining and this check
+    never interleave: both run on the event loop with no ``await``
+    between reading the members and deciding.
+    """
+    while True:
+        listLive = [
+            taskMember for taskMember in recordTask.dictMemberTasks.values()
+            if not taskMember.done()
+        ]
+        if not listLive:
+            return
+        await asyncio.wait(listLive)
 
 
 def _frecordStartDurableTask(
     appState, sName, sContainerId, dictLaneTuple, fnStartTask,
-    sOperation=S_DESCRIBED_DURABLE_TASK,
+    sOperation=S_DESCRIBED_DURABLE_TASK, sJoinableKind="", sMemberKey="",
 ):
     """Mint the durable guard, start the task inside it, register."""
     recordTask = DurableTaskRecord(
@@ -886,6 +972,7 @@ def _frecordStartDurableTask(
         sContainerId=sContainerId,
         iOwnerGeneration=dictLaneTuple["iOwnerGeneration"],
         taskAsync=None, admission=None, sOperation=sOperation,
+        sJoinableKind=sJoinableKind,
     )
     admission = _fadmissionMintForCommitCarrier(
         sName, sContainerId, S_ADMISSION_MODE_DURABLE_TASK,
@@ -896,13 +983,14 @@ def _frecordStartDurableTask(
         bDurable=True,
     )
     recordTask.admission = admission
-    tokenLane = ftokenMarkEnforcedLane()
-    tokenAdmission = ftokenActivateAdmission(admission)
-    try:
-        recordTask.taskAsync = fnStartTask()
-    finally:
-        fnDeactivateAdmission(tokenAdmission)
-        fnResetEnforcedLane(tokenLane)
+    taskStarted = _ftaskStartUnderAdmission(admission, fnStartTask)
+    if sJoinableKind:
+        recordTask.dictMemberTasks[sMemberKey] = taskStarted
+        recordTask.taskAsync = asyncio.ensure_future(
+            _fnAwaitMemberTasks(recordTask),
+        )
+    else:
+        recordTask.taskAsync = taskStarted
     recordTask.taskAsync.add_done_callback(
         lambda taskDone: asyncio.ensure_future(
             _fnFinalizeDurableTask(appState, recordTask),
@@ -1134,6 +1222,33 @@ def fsDescribeLiveMutationWork(appState, sName):
         recordTask.taskAsync is None or not recordTask.taskAsync.done()
     ):
         return S_DESCRIBED_DURABLE_TASK
+    return ""
+
+
+def fsDescribeWorkBlockingAJoin(appState, sName, sJoinableKind):
+    """Return what refuses a joinable launch here now, or ``""``.
+
+    :func:`fsDescribeLiveMutationWork` for a launch that may join live
+    work of its own kind: a live supervisor or a durable task of any
+    OTHER kind still refuses it, and the joinable record does not.
+    """
+    recordTask = _fdictDurableTaskRegistry(appState).get(sName)
+    bJoinableLive = (
+        recordTask is not None and bool(sJoinableKind)
+        and recordTask.sJoinableKind == sJoinableKind
+        and recordTask.taskAsync is not None
+        and not recordTask.taskAsync.done()
+    )
+    if not bJoinableLive:
+        return fsDescribeLiveMutationWork(appState, sName)
+    for supervisor in _fdictSupervisorRegistry(appState).values():
+        if supervisor.sName != sName:
+            continue
+        if supervisor.taskSupervisor is not None and (
+            supervisor.taskSupervisor.done()
+        ):
+            continue
+        return _fsDescribeSupervisorWork(supervisor)
     return ""
 
 

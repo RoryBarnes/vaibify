@@ -581,16 +581,18 @@ def fsResolveRunStateProjectRepoPath(dictCtx, sContainerId):
     The project open in the dashboard first: its poll must describe its
     own steps, never a run in another project. With none open, the
     project of the run this hub has in flight, so a run stays visible
-    to the agent lane after the researcher leaves the project. With
-    neither, ``None``: there is no project to report on, and reading
+    to the agent lane after the researcher leaves the project -- when
+    exactly one is in flight; with several there is no one answer.
+    Otherwise ``None``: there is no project to report on, and reading
     the resource root instead would surface a file no run writes.
     """
     dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
     if dictWorkflow:
         return dictWorkflow.get("sProjectRepoPath", "")
-    taskLive = (dictCtx.get("pipelineTasks") or {}).get(sContainerId)
-    if taskLive is not None and not taskLive.done():
-        return getattr(taskLive, "sProjectRepoPath", "")
+    from .pipelineRunSlots import flistLiveRuns
+    listLive = flistLiveRuns(dictCtx.get("pipelineTasks"), sContainerId)
+    if len(listLive) == 1:
+        return getattr(listLive[0], "sProjectRepoPath", "")
     return None
 
 
@@ -608,8 +610,8 @@ def fbContainerHasLiveRun(dictCtx, sContainerId):
     a terminal write keeps its project busy until a reconciling reader
     records the death, which errs toward keeping the container.
     """
-    taskLive = (dictCtx.get("pipelineTasks") or {}).get(sContainerId)
-    if taskLive is not None and not taskLive.done():
+    from .pipelineRunSlots import flistLiveRuns
+    if flistLiveRuns(dictCtx.get("pipelineTasks"), sContainerId):
         return True
     for sProjectRepoPath in _flistKnownProjectRepoPaths(
         dictCtx, sContainerId,

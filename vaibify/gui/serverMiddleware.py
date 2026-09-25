@@ -7,6 +7,7 @@ installs them, plus gzip, in the order the app factory relies on.
 """
 
 import json
+import urllib.parse
 import time
 
 from fastapi import Request
@@ -137,7 +138,9 @@ async def _fresponseServeAgentRequestInItsProject(
     )
     if agentProjectScope.fbAgentProjectDiffers(
         sAgentProjectDirectory, dictServedProject.get("sWorkflowPath", ""),
-    ):
+    ) and (
+        request.method, _fsRouteTemplateForRequest(request),
+    ) not in agentProjectScope.SET_ROUTES_SERVED_IN_THE_AGENTS_PROJECT:
         return Response(
             status_code=409,
             content=json.dumps({
@@ -155,6 +158,15 @@ async def _fresponseServeAgentRequestInItsProject(
     response = await _fresponseServeAdmittedAgentRequest(
         request, dictContainerOwners, fresponseCallNext,
     )
+    if agentProjectScope.fbAgentProjectDiffers(
+        sAgentProjectDirectory, dictServedProject.get("sWorkflowPath", ""),
+    ):
+        # A run route served for the agent's own project names THAT
+        # project, never the open one it did not act on.
+        response.headers[agentProjectScope.S_SERVED_PROJECT_HEADER] = (
+            urllib.parse.quote(sAgentProjectDirectory)
+        )
+        return response
     response.headers.update(
         agentProjectScope.fdictServedProjectHeaders(dictServedProject),
     )

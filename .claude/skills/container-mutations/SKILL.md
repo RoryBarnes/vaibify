@@ -85,9 +85,15 @@ Step was 4409'd and mislabeled "cannot reach server"). The terminal is
 the unbudgeted lane's production caller, so that budget must never be
 extended to it. Run exclusivity is additionally
 enforced at dispatch for every lane, including the budget-exempt agent
-lane: a run arriving while another pipeline action is live in that
-container is answered with a `runRefused` event, never started
-(`_fbRefuseWhilePipelineTaskLive`). The idle busy-veto reads
+lane, PER PROJECT: a run arriving while the same project's pipeline
+action is live is answered with a `runRefused` event, never started
+(`_fbRefuseWhilePipelineTaskLive`). A run beside OTHER projects' runs
+is refused until acknowledged (`runRefused`/`concurrentRun`), then
+JOINS the container's single durable record as a member keyed by
+project -- the carrier refuses a second member with a live key as the
+backstop, and every non-pipeline durable task still refuses to start
+beside a live run. See "One container, several projects" in
+`docs/architecture.md`. The idle busy-veto reads
 `dictContainerOwners.keys()` so the watchdog can never self-SIGTERM a
 hub mid-run. The full normative model is the "Single browser session per
 container" section of [docs/architecture.md](docs/architecture.md).

@@ -47,6 +47,24 @@ If you run `python dataFoo.py …` in a shell instead:
 debug — tell the researcher in chat exactly what you ran and on which
 step. The dashboard cannot show it for you.
 
+## Several projects in one container
+
+A container can hold several projects, and each may run at once. Your
+runs belong to the project you work in — the directory holding
+`.vaibify/projects/` above where you run `vaibify-do` — whichever
+project the researcher has open in the dashboard, and
+`vaibify-do get-pipeline-state` reads that project's run.
+
+- If other projects are already running, your run still starts, and
+  `vaibify-do` first prints `[concurrentRunWarning]` naming them and
+  the CPU and memory every run now shares. Tell the researcher.
+- The core count a script sees inside a container is NOT its CPU
+  limit. Size parallel work (worker pools, `-n`, "all cores but one")
+  from the limit the warning names, not from `nproc`.
+- A second run of your OWN project is refused while one is live.
+- Changing a project's steps still requires the researcher to have it
+  open, so they see what changes.
+
 ## Editing the project, not just running it
 
 Change the project only through `vaibify-do` actions

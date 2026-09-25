@@ -210,6 +210,10 @@ var VaibifyPipelineRunner = (function () {
                 _fnHandleRemoteOverwriteRefusal(dictEvent);
                 return;
             }
+            if (dictEvent.sReason === "concurrentRun") {
+                _fnHandleConcurrentRunRefusal(dictEvent);
+                return;
+            }
             if (dictEvent.sReason === "workflowSuperseded") {
                 /* Not a busy container: the project changed under
                    this dashboard and the server refreshed it. The
@@ -552,9 +556,14 @@ var VaibifyPipelineRunner = (function () {
     }
 
     async function fnRecoverPipelineState(sId) {
+        var sRequestedPath = VaibifyApp.fsGetWorkflowPath() || "";
         try {
             var dictState = await VaibifyApi.fdictGet(
                 "/api/pipeline/" + sId + "/state");
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                /* A later activation owns recovery now. */
+                return;
+            }
             /* Recovery is fired-and-forgotten at workflow activation.
                A run that started while its response was in flight
                outdates the answer: acting on a stale "not running"
@@ -563,6 +572,10 @@ var VaibifyPipelineRunner = (function () {
                the late landing satisfied the kill test's polling wait
                with the kill handler mutated away). */
             if (_bRunLive) return;
+            if (_fbStateDescribesAnotherProject(dictState, sRequestedPath)) {
+                VaibifyApp.fnStartFileChangePolling();
+                return;
+            }
             if (!dictState || !dictState.bRunning) {
                 /* -1 is the initial "never completed" sentinel; a
                    NEGATIVE exit is a run killed by a signal (a Stop
@@ -582,12 +595,19 @@ var VaibifyPipelineRunner = (function () {
             VaibifyPolling.fnStartPipelinePolling(sId);
         } catch (error) {
             if (_bRunLive) return;
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                return;
+            }
             VaibifyApp.fnStartFileChangePolling();
         }
     }
 
-    function fnHandlePipelinePollResult(dictState) {
+    function fnHandlePipelinePollResult(dictState, sRequestedPath) {
         if (!dictState) return;
+        if (typeof sRequestedPath === "string" &&
+            _fbStateDescribesAnotherProject(dictState, sRequestedPath)) {
+            return;
+        }
         if (!dictState.bRunning) {
             VaibifyPolling.fnStopPipelinePolling();
             fnApplyCompletedState(dictState);
@@ -758,6 +778,24 @@ var VaibifyPipelineRunner = (function () {
             "canonical results were generated. Overwrite and " +
             "re-pull?",
             function () { fnSendPipelineAction(dictRetry); }
+        );
+    }
+
+    function _fnHandleConcurrentRunRefusal(dictEvent) {
+        /* Other projects in this container are running. The server
+           names them and the limits every run will share; the
+           researcher decides. Nothing started, and a confirmed retry
+           re-sends the echoed request acknowledged. */
+        var dictRetry = Object.assign(
+            {}, dictEvent.dictOriginalRequest || {},
+            {sAction: dictEvent.sAction, bAcknowledgeConcurrentRun: true});
+        var iCount = dictEvent.iRunningProjectCount || 0;
+        VaibifyApp.fnShowConfirmModal(
+            iCount === 1 ? "Another project is running" :
+                iCount + " other projects are running",
+            dictEvent.sMessage || "",
+            function () { fnSendPipelineAction(dictRetry); },
+            {sConfirmLabel: "Run anyway"}
         );
     }
 
@@ -1217,8 +1255,9 @@ var VaibifyPipelineRunner = (function () {
                 "that detached into its own session is not something " +
                 "vaibify can see or stop.";
         }
-        return "This will kill all running pipeline processes " +
-            "in the container.\n\n" +
+        return "This will kill this project's running pipeline " +
+            "processes in the container. Runs of other projects in " +
+            "the container keep running.\n\n" +
             "Any in-progress computations will be lost.";
     }
 
@@ -1244,7 +1283,7 @@ var VaibifyPipelineRunner = (function () {
     function fnKillPipeline() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         VaibifyApp.fnShowConfirmModal(
-            "Stop All Tasks",
+            "Stop This Project's Run",
             _fsKillConfirmationBody(),
             async function () {
                 try {
@@ -1276,7 +1315,12 @@ var VaibifyPipelineRunner = (function () {
                            frontend must not depend on which side of
                            the kill race won. */
                         VaibifyApp.fnStartFileChangePolling();
-                        if (dictResult.iStoppedStepNumber >= 1) {
+                        var bStoppedHere =
+                            !dictResult.sStoppedWorkflowPath ||
+                            dictResult.sStoppedWorkflowPath ===
+                                VaibifyApp.fsGetWorkflowPath();
+                        if (bStoppedHere &&
+                            dictResult.iStoppedStepNumber >= 1) {
                             /* The step this stop interrupted: purple
                                "stopped", never failure-red — a step
                                the researcher chose to stop did not
@@ -1429,10 +1473,26 @@ var VaibifyPipelineRunner = (function () {
     /* --- State Management --- */
 
     function fnResetState() {
+        /* The run flags describe the PREVIOUS project's run once the
+           dashboard switches projects; carried over, a live one made
+           the new project's recovery skip its own results. */
         iPreviousOutputCount = 0;
         dictAcknowledgedAt = {};
         _sStreamingViewer = null;
+        _bRunLive = false;
+        _bStopRequested = false;
+        _bRemoteDataPulledThisRun = false;
         fnCancelSentinelMonitor();
+    }
+
+    function _fbStateDescribesAnotherProject(dictState, sRequestedPath) {
+        /* True when the dashboard switched projects while the request
+           was in flight, or the state was recorded for another
+           workflow: step numbers index that project's step list. */
+        var sOpenPath = VaibifyApp.fsGetWorkflowPath() || "";
+        if (sRequestedPath !== sOpenPath) return true;
+        return Boolean(dictState && dictState.sWorkflowPath &&
+            dictState.sWorkflowPath !== sOpenPath);
     }
 
     function fnCancelSentinelMonitor() {

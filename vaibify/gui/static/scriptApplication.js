@@ -611,10 +611,14 @@ const VaibifyApp = (function () {
         }
         _fnResetUiState();
         _fnInvalidateAllRenderCaches();
+        _bReflectedDispatchRun = false;
+        _iReflectedActiveIndex = -1;
+        _fnRenderOtherProjectRuns(null);
         VaibifyTestManager.fnResetState();
         VaibifyPipelineRunner.fnResetState();
         VaibifyOverleafMirror.fnResetState();
         VaibifySyncManager.fnResetState();
+        VaibifyGitBadges.fnResetState();
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopFileTreePolling();
@@ -771,6 +775,16 @@ const VaibifyApp = (function () {
     }
 
     function _fnActivateWorkflow(sId, data, sWorkflowName) {
+        /* A container hosts several projects, and the pipeline socket
+           outlives a switch between them. Left open, it kept
+           delivering the previous project's run events -- step
+           numbers that index ANOTHER step list -- onto the new
+           project's lights and saves. The run itself continues on
+           the server; reopening its project reconnects to it. */
+        if (_dictWorkflowState.sWorkflowPath &&
+            _dictWorkflowState.sWorkflowPath !== data.sWorkflowPath) {
+            VaibifyWebSocket.fnDisconnect();
+        }
         _fnResetWorkflowState();
         VaibifyPolling.fnStopDiscoveryPolling();
         _fnRecordViewerLeaseFromConnect(sId, data);
@@ -2673,6 +2687,28 @@ const VaibifyApp = (function () {
             _iReflectedActiveIndex = -1;
             _bReflectedDispatchRun = false;
         }
+    }
+
+    function _fnRenderOtherProjectRuns(dictOtherRuns) {
+        /* How many OTHER projects in this container are running. Their
+           names are one hover away; the count is what says the
+           container is busier than this project's lights show. */
+        var elBadge = document.getElementById("otherProjectRunBadge");
+        if (!elBadge) return;
+        var iCount = (dictOtherRuns && dictOtherRuns.iRunningProjectCount) || 0;
+        if (iCount < 1) {
+            elBadge.style.display = "none";
+            elBadge.textContent = "";
+            return;
+        }
+        elBadge.textContent = iCount === 1 ?
+            "1 other project running" : iCount + " other projects running";
+        elBadge.title = "Running in this container: " +
+            (dictOtherRuns.listRunningProjects || []).map(function (d) {
+                return d.sWorkflowName || d.sProjectRepoPath;
+            }).join(", ") +
+            ". Open a project to follow or stop its run.";
+        elBadge.style.display = "";
     }
 
     function fnResetQueuedSteps(listStepIndices) {
@@ -6396,6 +6432,16 @@ const VaibifyApp = (function () {
     }
 
     function fnProcessFileStatusResponse(dictStatus) {
+        /* An answer about another project of this container -- one
+           computed before a switch landed on either side -- would
+           overwrite this project's fingerprints, file times and
+           lights with the other's. */
+        if (dictStatus.sServedWorkflowPath &&
+            dictStatus.sServedWorkflowPath !==
+                _dictWorkflowState.sWorkflowPath) {
+            return;
+        }
+        _fnRenderOtherProjectRuns(dictStatus.dictOtherProjectRuns);
         if (dictStatus.sWorkflowReloadError) {
             fnShowToast(
                 "project.json error: " +

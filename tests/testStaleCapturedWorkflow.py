@@ -74,6 +74,8 @@ class _FakeRebindingWebSocket:
     """
 
     def __init__(self, dictCtx, dictReplacement):
+        # A dashboard socket: it declares no agent project.
+        self.query_params = {}
         self._dictCtx = dictCtx
         self._dictReplacement = dictReplacement
         self._bDelivered = False

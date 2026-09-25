@@ -174,11 +174,37 @@ def _fnClearStepModificationState(dictWorkflow, iStepIndex):
     dictVerify.pop("bOutputModified", None)
 
 
-def _fnUpdateModTimeBaseline(dictCtx, sContainerId, dictModTimes):
-    """Update stored mtimes so the next poll doesn't re-flag files."""
+def _fnUpdateModTimeBaseline(
+    dictCtx, sContainerId, dictModTimes, dictWorkflow=None,
+):
+    """Update stored mtimes so the next poll doesn't re-flag files.
+
+    The baseline is per container, and a container can host several
+    projects, so it records which project's files it measured. A
+    baseline measured for one project is no baseline for another: every
+    file of the second is absent from it, and absent reads as changed.
+    """
     if "dictPreviousModTimes" not in dictCtx:
         dictCtx["dictPreviousModTimes"] = {}
     dictCtx["dictPreviousModTimes"][sContainerId] = dict(dictModTimes)
+    dictCtx.setdefault("dictPreviousModTimeProjects", {})[sContainerId] = (
+        _fsBaselineOwnerOfWorkflow(dictWorkflow)
+    )
+
+
+def _fsBaselineOwnerOfWorkflow(dictWorkflow):
+    """Return the file a workflow was loaded from, or "" if unknown."""
+    return (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY, "")
+
+
+def _fdictBaselineForWorkflow(dictCtx, sContainerId, dictWorkflow):
+    """Return the stored mtimes when they were measured for this workflow."""
+    dictOwners = dictCtx.get("dictPreviousModTimeProjects", {})
+    if dictOwners.get(sContainerId, "") != _fsBaselineOwnerOfWorkflow(
+        dictWorkflow,
+    ):
+        return {}
+    return dictCtx.get("dictPreviousModTimes", {}).get(sContainerId, {})
 
 
 def _fdictBuildFileStatusVars(dictWorkflow):
@@ -1295,11 +1321,12 @@ def _fdictDetectChangedFiles(dictCtx, sContainerId,
     invalidation. Falling back to the sync read keeps non-async callers
     (e.g. legacy tests) working without observable change.
     """
-    if "dictPreviousModTimes" not in dictCtx:
-        dictCtx["dictPreviousModTimes"] = {}
-    dictPrevByContainer = dictCtx["dictPreviousModTimes"]
-    dictOldModTimes = dictPrevByContainer.get(sContainerId, {})
-    dictPrevByContainer[sContainerId] = dict(dictNewModTimes)
+    dictOldModTimes = _fdictBaselineForWorkflow(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    _fnUpdateModTimeBaseline(
+        dictCtx, sContainerId, dictNewModTimes, dictWorkflow,
+    )
     if not dictOldModTimes:
         return {}
     if bPipelineRunning is None:
@@ -1653,12 +1680,15 @@ _LIST_CONTAINER_KEYED_CACHES = (
     "paths",
     "containerUsers",
     "pipelineTasks",
+    "dictLastRunByProject",
     "sourceCodeDeps",
     "lastSelfWriteFingerprints",
     "lastDiscoveredWorkflows",
     "dictSyncEpochs",
     "dictWorkflowEpochs",
     "dictManifestShaCache",
+    "dictPreviousModTimes",
+    "dictPreviousModTimeProjects",
 )
 
 

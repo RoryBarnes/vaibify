@@ -75,7 +75,7 @@ def test_first_access_hydrates_from_container():
     )
     dictCtx = _fdictCtxWithWorkflow(connectionFake)
     dictCache = pipelineRoutes._fdictManifestShaCache(
-        dictCtx, _S_CONTAINER_ID,
+        dictCtx, _S_CONTAINER_ID, _S_REPO,
     )
     assert dictCache.get("out/a.dat", {}).get("sSha256") == "aa"
 
@@ -85,11 +85,11 @@ def test_subsequent_access_reuses_in_memory_layer():
     connectionFake = _RecordingFakeDocker()
     dictCtx = _fdictCtxWithWorkflow(connectionFake)
     dictCacheOne = pipelineRoutes._fdictManifestShaCache(
-        dictCtx, _S_CONTAINER_ID,
+        dictCtx, _S_CONTAINER_ID, _S_REPO,
     )
     dictCacheOne["out/b.dat"] = {"iMtime": 1800, "sSha256": "bb"}
     dictCacheTwo = pipelineRoutes._fdictManifestShaCache(
-        dictCtx, _S_CONTAINER_ID,
+        dictCtx, _S_CONTAINER_ID, _S_REPO,
     )
     assert dictCacheTwo is dictCacheOne
 
@@ -103,7 +103,7 @@ def test_cache_survives_dict_ctx_recreation():
     connectionFake = _RecordingFakeDocker()
     dictCtxOriginal = _fdictCtxWithWorkflow(connectionFake)
     dictCacheOriginal = pipelineRoutes._fdictManifestShaCache(
-        dictCtxOriginal, _S_CONTAINER_ID,
+        dictCtxOriginal, _S_CONTAINER_ID, _S_REPO,
     )
     dictCacheOriginal["out/c.dat"] = {"iMtime": 1900, "sSha256": "cc"}
     # Persist the way _fnPersistShaCacheToContainer would after an update.
@@ -113,7 +113,7 @@ def test_cache_survives_dict_ctx_recreation():
     # Restart: a brand new dictCtx replaces the old one.
     dictCtxRebuilt = _fdictCtxWithWorkflow(connectionFake)
     dictCacheRebuilt = pipelineRoutes._fdictManifestShaCache(
-        dictCtxRebuilt, _S_CONTAINER_ID,
+        dictCtxRebuilt, _S_CONTAINER_ID, _S_REPO,
     )
     assert dictCacheRebuilt.get("out/c.dat", {}).get("sSha256") == "cc"
 

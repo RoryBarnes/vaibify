@@ -362,14 +362,20 @@ def test_l3_attestation_empty_project_repo(
 
 def test_attestation_response_includes_in_flight_status(fixtureProjectRepo):
     """_fdictBuildAttestationResponse reports an in-flight status when present."""
+    dictStatus = {"sPhase": "running", "sProjectRepoPath": fixtureProjectRepo}
     _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
-        "task": None,
-        "dictStatus": {"sPhase": "running"},
+        "task": None, "dictStatus": dictStatus,
     }
     dictResp = _fdictBuildAttestationResponse(
         S_CONTAINER_ID, fixtureProjectRepo,
     )
-    assert dictResp["dictInFlight"] == {"sPhase": "running"}
+    assert dictResp["dictInFlight"] == dictStatus
+    dictOther = _fdictBuildAttestationResponse(
+        S_CONTAINER_ID, fixtureProjectRepo + "Other",
+    )
+    assert dictOther["dictInFlight"] is None, (
+        "another project's verification was shown as this project's"
+    )
 
 
 # ============================================================================
@@ -748,7 +754,7 @@ def test_a_crash_is_reported_to_the_researcher(fixtureProjectRepo):
 
     _fnRunWorkerWith(fixtureProjectRepo, side_effect=RuntimeError("boom"))
     dictNoVerdict = reproducibilityRoutes._DICT_LAST_NO_VERDICT[
-        S_CONTAINER_ID
+        (S_CONTAINER_ID, fixtureProjectRepo)
     ]
     assert any(
         "boom" in sReason

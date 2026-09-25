@@ -102,6 +102,13 @@ def fdictMaybeReloadWorkflow(
     """
     if not sWorkflowPath:
         return _fdictNoChange()
+    if sWorkflowPath != (dictCtx.get("paths") or {}).get(
+        sContainerId, sWorkflowPath,
+    ):
+        # A poll that began before the dashboard switched projects: the
+        # cache holds only the open project, and reloading this path
+        # into it would rebind the container to a project nobody opened.
+        return _fdictNoChange()
     dictPolled = dictModTimes or {}
     if not dictPolled.get(sWorkflowPath, ""):
         if dictPolled:

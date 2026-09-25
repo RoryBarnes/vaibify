@@ -101,7 +101,9 @@ def test_a_merely_behind_branch_still_fast_forwards(monkeypatch):
     """The new refusal must not capture the case that always worked."""
     _fnPatchStatus(monkeypatch, _fdictStatus(iBehind=1))
     dockerFake = _FakeDocker(_fdictStatus(iBehind=1))
-    monkeypatch.setattr(gitRoutes, "_fnRecordFetchTime", lambda sId: None)
+    monkeypatch.setattr(
+        gitRoutes, "_fnRecordFetchTime", lambda sId, sRepo: None,
+    )
     monkeypatch.setattr(gitRoutes, "fnBumpSyncEpoch", lambda c, s: None)
     monkeypatch.setattr(
         containerGit, "fsGitHeadShaInContainer",

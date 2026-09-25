@@ -194,7 +194,7 @@ async def testPipelineTaskGenerationIsRetaggedInPlaceNotSnapshotted(caplog):
     must be visible at completion time — a snapshot captured at
     registration would attribute the completion to the old owner.
     """
-    from vaibify.gui.pipelineServer import _fnRegisterPipelineTask
+    from vaibify.gui.pipelineRunSlots import fnRegisterRun
     caplog.set_level(logging.DEBUG, logger="vaibify")
     dictPipelineTasks = {}
     eventFinish = asyncio.Event()
@@ -203,7 +203,7 @@ async def testPipelineTaskGenerationIsRetaggedInPlaceNotSnapshotted(caplog):
         await eventFinish.wait()
 
     taskPipeline = asyncio.ensure_future(fnHoldUntilReleased())
-    _fnRegisterPipelineTask(
+    fnRegisterRun(
         dictPipelineTasks, S_CONTAINER_ID, taskPipeline,
     )
     assert taskPipeline.iOwnerGeneration == 1

@@ -308,7 +308,9 @@ def test_the_hub_refuses_a_recreate_itself():
     class _AppStub:
         state = None
 
-    dictResponse = asyncio.get_event_loop().run_until_complete(
+    # Its own loop: borrowing whatever loop an earlier test left
+    # current made this pass or fail by test order.
+    dictResponse = asyncio.run(
         hostControlChannel._fdictHandleRepairContainer(
             _AppStub(), {}, {
                 "sContainerName": "repairProbe",

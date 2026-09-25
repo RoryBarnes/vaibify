@@ -122,24 +122,68 @@ def _flistExtractKillPatterns(dictWorkflow):
     return sorted(setPatterns)
 
 
-def _fsProjectRepoPathOfRunToStop(dictCtx, sContainerId):
-    """Return the project whose run a Kill stops: the live one first."""
+def _ftaskRunToStop(dictCtx, sContainerId):
+    """Return the live run a Stop ends: the OPEN project's, or None.
+
+    A container may run several projects at once, and Stop is pressed
+    in one project's dashboard; it ends that project's run and never
+    another's. With no project open (a hub restarted under a live tab)
+    the container's only live run is the one to stop; with several,
+    none is, because guessing would stop somebody else's work.
+    """
+    from .. import pipelineRunSlots
+    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
+    if dictWorkflow is not None:
+        return pipelineRunSlots.ftaskLiveRunOfProject(
+            dictCtx["pipelineTasks"], sContainerId,
+            dictWorkflow.get("sProjectRepoPath", ""),
+        )
+    listLive = pipelineRunSlots.flistLiveRuns(
+        dictCtx["pipelineTasks"], sContainerId,
+    )
+    return listLive[0] if len(listLive) == 1 else None
+
+
+def _fsProjectRepoPathOfRunToStop(dictCtx, sContainerId, taskRun):
+    """Return the project whose run state a Stop marks stopped."""
     from .. import pipelineState
-    taskLive = dictCtx["pipelineTasks"].get(sContainerId)
-    if taskLive is not None and not taskLive.done():
-        return getattr(taskLive, "sProjectRepoPath", "")
+    if taskRun is not None:
+        return getattr(taskRun, "sProjectRepoPath", "")
     return pipelineState.fsResolveRunStateProjectRepoPath(
         dictCtx, sContainerId,
     ) or ""
 
 
-def _fbCancelPipelineTask(dictPipelineTasks, sContainerId):
-    """Cancel any running pipeline asyncio task for a container."""
-    taskPipeline = dictPipelineTasks.get(sContainerId)
-    if taskPipeline is None or taskPipeline.done():
+def _fdictWorkflowOfRunToStop(dictCtx, sContainerId, taskRun):
+    """Return the workflow whose processes a Stop sweeps: the run's."""
+    dictRunWorkflow = getattr(taskRun, "dictWorkflow", None)
+    if dictRunWorkflow is not None:
+        return dictRunWorkflow
+    return fdictRequireWorkflow(dictCtx["workflows"], sContainerId)
+
+
+def _fsWorkflowPathOfRunToStop(dictCtx, sContainerId, taskRun):
+    """Return the workflow file of the run a Stop ends, or the open one."""
+    sRunPath = getattr(taskRun, "sWorkflowPath", "")
+    return sRunPath or (dictCtx.get("paths") or {}).get(sContainerId, "")
+
+
+def _flistRunIdsSparedByStop(dictCtx, sContainerId, taskRun):
+    """Return the process markers of every OTHER project's live run."""
+    from .. import pipelineRunSlots
+    return [
+        taskLive.sRunId for taskLive in pipelineRunSlots.flistLiveRuns(
+            dictCtx["pipelineTasks"], sContainerId,
+        )
+        if taskLive is not taskRun and getattr(taskLive, "sRunId", "")
+    ]
+
+
+def _fbCancelPipelineTask(taskRun):
+    """Cancel the run's asyncio task; return whether one was live."""
+    if taskRun is None or taskRun.done():
         return False
-    taskPipeline.cancel()
-    dictPipelineTasks.pop(sContainerId, None)
+    taskRun.cancel()
     return True
 
 
@@ -281,6 +325,19 @@ def _flistBuildCleanCommands(dictWorkflow):
     return listCleanCommands
 
 
+def _fsRunProcessSweep(connectionDocker, sContainerId, sCommand):
+    """Run one process-table command for Stop; return its output.
+
+    Every Stop sweep -- counting by name, killing by name, killing by
+    run marker -- goes through this one call, so Stop reaches the
+    container at one site.
+    """
+    _, sOutput = connectionDocker.ftResultExecuteCommand(
+        sContainerId, sCommand,
+    )
+    return sOutput
+
+
 def _fiCountMatchingProcesses(
     connectionDocker, sContainerId, sGrepPattern,
 ):
@@ -289,8 +346,8 @@ def _fiCountMatchingProcesses(
         f"ps aux | grep -E '{sGrepPattern}' "
         f"| grep -v grep | wc -l"
     )
-    _, sCountOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCountCommand,
+    sCountOutput = _fsRunProcessSweep(
+        connectionDocker, sContainerId, sCountCommand,
     )
     try:
         return int(sCountOutput.strip())
@@ -309,11 +366,28 @@ def _fnKillMatchingProcesses(
             f"| awk '{{print $2}}' "
             f"| xargs kill -9 2>/dev/null"
         )
-        connectionDocker.ftResultExecuteCommand(sContainerId, sKill)
+        _fsRunProcessSweep(connectionDocker, sContainerId, sKill)
+
+
+def _fiKillMatchingProcessesSparingRuns(
+    connectionDocker, sContainerId, sGrepPattern, listSparedRunIds,
+):
+    """Kill name-matched processes that belong to no spared run."""
+    sScript = (
+        "iKilled=0; for sPid in $(ps -eo pid=,args= "
+        f"| grep -E '{sGrepPattern}' | grep -v grep "
+        "| awk '{print $1}'); do "
+        f"if ! {_fsProcessCarriesRunTest(listSparedRunIds)}; then "
+        "kill -9 $sPid 2>/dev/null && iKilled=$((iKilled+1)); fi; "
+        f"done; echo \"{S_KILLED_COUNT_TAG} $iKilled\""
+    )
+    return _fiParseKilledCount(
+        _fsRunProcessSweep(connectionDocker, sContainerId, sScript),
+    )
 
 
 async def _fiCountThenKillUnderTheDrain(
-    dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+    dictCtx, sContainerId, fiKillProcesses, requestHttp,
 ):
     """Count the workflow's processes and kill them holding one drain.
 
@@ -335,12 +409,7 @@ async def _fiCountThenKillUnderTheDrain(
         # a pass-through; a docker failure part-way through a kill
         # sweep is genuinely unknown state and must poison rather than
         # be carried back as an ordinary refusal.
-        return fdictCarryARefusalBackInsteadOfRaising(
-            lambda: _fiCountAndKillMatchingProcesses(
-                dictCtx["docker"], sContainerId, listPatterns,
-                sGrepPattern,
-            ),
-        )
+        return fdictCarryARefusalBackInsteadOfRaising(fiKillProcesses)
     return await fgenericRunWorkerUnderTheDrain(
         sContainerId, fdictCountThenKill, "kill-pipeline", requestHttp,
     )
@@ -348,18 +417,86 @@ async def _fiCountThenKillUnderTheDrain(
 
 async def _fiSweepContainerProcesses(
     dictCtx, sContainerId, dictWorkflow, requestHttp,
+    sRunId="", listSparedRunIds=(),
 ):
-    """Return how many of the workflow's container processes were killed.
+    """Return how many of the run's container processes were killed.
 
-    A workflow whose steps name no killable command yields no pattern,
-    and no sweep runs — an empty grep alternation matches every line.
+    A live run is found by its process marker, which every command it
+    started exported, so the sweep kills that run and nothing else --
+    not another project's run with a same-named script. With no live
+    run to name (a hub restarted under the run), the workflow's command
+    names are the only handle; that sweep spares every process carrying
+    another live run's marker. A workflow whose steps name no killable
+    command yields no pattern, and no name sweep runs -- an empty grep
+    alternation matches every line.
     """
+    connectionDocker = dictCtx["docker"]
+    if sRunId:
+        return await _fiCountThenKillUnderTheDrain(
+            dictCtx, sContainerId,
+            lambda: _fiKillRunProcesses(connectionDocker, sContainerId, sRunId),
+            requestHttp,
+        )
     listPatterns = _flistExtractKillPatterns(dictWorkflow)
     sGrepPattern = "|".join(re.escape(sPattern) for sPattern in listPatterns)
     if not sGrepPattern:
         return 0
     return await _fiCountThenKillUnderTheDrain(
-        dictCtx, sContainerId, listPatterns, sGrepPattern, requestHttp,
+        dictCtx, sContainerId,
+        lambda: _fiCountAndKillMatchingProcesses(
+            connectionDocker, sContainerId, listPatterns, sGrepPattern,
+            listSparedRunIds,
+        ),
+        requestHttp,
+    )
+
+
+def _fsProcessCarriesRunTest(listRunIds):
+    """Return a shell test true when process $sPid carries one of the runs.
+
+    The ids are the hub's own hex tokens, checked here before they are
+    written into a command, so no workflow text reaches this shell.
+    """
+    from ..pipelineRunner import S_RUN_ID_VARIABLE
+    for sRunId in listRunIds:
+        if not re.fullmatch(r"[0-9a-f]+", sRunId):
+            raise ValueError(f"not a run marker: {sRunId!r}")
+    return (
+        "{ tr '\\0' '\\n' < /proc/$sPid/environ; } 2>/dev/null | grep -qxE "
+        f"'{S_RUN_ID_VARIABLE}=({'|'.join(listRunIds)})'"
+    )
+
+
+S_KILLED_COUNT_TAG = "__VAIBIFY_KILLED__"
+
+
+def _fiParseKilledCount(sOutput):
+    """Return the count a sweep script tagged, or 0.
+
+    Tagged rather than read from the last line: the exec's stderr is
+    appended after its stdout, so a process that exits mid-scan leaves
+    an error line behind the count.
+    """
+    for sLine in (sOutput or "").splitlines():
+        listWords = sLine.split()
+        if len(listWords) == 2 and listWords[0] == S_KILLED_COUNT_TAG:
+            try:
+                return int(listWords[1])
+            except ValueError:
+                return 0
+    return 0
+
+
+def _fiKillRunProcesses(connectionDocker, sContainerId, sRunId):
+    """Kill every process carrying the run's marker; return how many."""
+    sScript = (
+        "iKilled=0; for sPid in $(ls /proc | grep -E '^[0-9]+$'); do "
+        f"if {_fsProcessCarriesRunTest([sRunId])}; then "
+        "kill -9 $sPid 2>/dev/null && iKilled=$((iKilled+1)); fi; "
+        f"done; echo \"{S_KILLED_COUNT_TAG} $iKilled\""
+    )
+    return _fiParseKilledCount(
+        _fsRunProcessSweep(connectionDocker, sContainerId, sScript),
     )
 
 
@@ -401,8 +538,17 @@ async def _fdictCancelHostRunUnderTheDrain(sResourceName, requestHttp):
 
 def _fiCountAndKillMatchingProcesses(
     connectionDocker, sContainerId, listPatterns, sGrepPattern,
+    listSparedRunIds=(),
 ):
-    """Return how many matching processes there were, having killed them."""
+    """Return how many matching processes there were, having killed them.
+
+    With other projects' runs live, the processes carrying their
+    markers are spared, however their commands are named.
+    """
+    if listSparedRunIds:
+        return _fiKillMatchingProcessesSparingRuns(
+            connectionDocker, sContainerId, sGrepPattern, listSparedRunIds,
+        )
     iCountBefore = _fiCountMatchingProcesses(
         connectionDocker, sContainerId, sGrepPattern,
     )
@@ -447,25 +593,47 @@ def _fnRegisterPipelineState(app, dictCtx):
     async def fdictGetPipelineState(
         sContainerId: str, requestHttp: Request,
     ):
-        from ..pipelineState import (
-            fdictReadReconciledState, fsResolveRunStateProjectRepoPath,
-        )
+        from ..pipelineState import fdictReadReconciledState
         dictCtx["require"](sContainerId)
         iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
-        if fsResolveRunStateProjectRepoPath(
-            dictCtx, sContainerId,
-        ) is None:
+        sProjectRepoPath = _fsRunStateProjectForRequest(
+            dictCtx, sContainerId, requestHttp,
+        )
+        if sProjectRepoPath is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
             fnPersistReconciled=_ffnBuildCarriedStatePersister(
                 dictCtx, sContainerId, requestHttp,
             ),
+            sProjectRepoPath=sProjectRepoPath,
         )
         if dictState is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState["iSyncEpoch"] = iSyncEpoch
         return dictState
+
+
+def _fsRunStateProjectForRequest(dictCtx, sContainerId, requestHttp):
+    """Return the project whose run state this request reads, or None.
+
+    An agent working in a project other than the open one reads ITS
+    project's run -- the one it may be running right now -- found
+    through the hub's own record of that project's last run, never by
+    opening a path the agent named. Everyone else reads the project
+    the dashboard serves.
+    """
+    from .. import agentProjectScope, pipelineRunSlots
+    from ..pipelineState import fsResolveRunStateProjectRepoPath
+    sAgentProject = agentProjectScope.fsAgentProjectBesideTheOpenOne(
+        requestHttp.headers, dictCtx, sContainerId,
+    )
+    if not sAgentProject:
+        return fsResolveRunStateProjectRepoPath(dictCtx, sContainerId)
+    dictLastRun = pipelineRunSlots.fdictLastRunOfProject(
+        dictCtx.get("dictLastRunByProject"), sContainerId, sAgentProject,
+    )
+    return dictLastRun["sProjectRepoPath"] if dictLastRun else None
 
 
 I_HOST_LOG_TAIL_DEFAULT_LINES = 200
@@ -605,11 +773,22 @@ def _fnRegisterPipelineKill(app, dictCtx):
         # something has already gone wrong. A host cancellation reads
         # the operation JOURNAL, which is on disk and survives a
         # restart, so it needs nothing from the cache at all.
+        taskRun = _ftaskRunToStop(dictCtx, sContainerId)
         sStoppedProjectRepoPath = _fsProjectRepoPathOfRunToStop(
-            dictCtx, sContainerId,
+            dictCtx, sContainerId, taskRun,
         )
-        bTaskCancelled = _fbCancelPipelineTask(
-            dictCtx["pipelineTasks"], sContainerId)
+        sStoppedWorkflowPath = _fsWorkflowPathOfRunToStop(
+            dictCtx, sContainerId, taskRun,
+        )
+        dictWorkflow = None
+        if not fbIsHostProject(sContainerId):
+            dictWorkflow = _fdictWorkflowOfRunToStop(
+                dictCtx, sContainerId, taskRun,
+            )
+        listSparedRunIds = _flistRunIdsSparedByStop(
+            dictCtx, sContainerId, taskRun,
+        )
+        bTaskCancelled = _fbCancelPipelineTask(taskRun)
         listRefused = []
         if fbIsHostProject(sContainerId):
             dictCancelled = await _fdictCancelHostRunUnderTheDrain(
@@ -618,10 +797,10 @@ def _fnRegisterPipelineKill(app, dictCtx):
             iCountBefore = dictCancelled["iGroupsTerminated"]
             listRefused = dictCancelled["listRefused"]
         else:
-            dictWorkflow = fdictRequireWorkflow(
-                dictCtx["workflows"], sContainerId)
             iCountBefore = await _fiSweepContainerProcesses(
                 dictCtx, sContainerId, dictWorkflow, requestHttp,
+                sRunId=getattr(taskRun, "sRunId", ""),
+                listSparedRunIds=listSparedRunIds,
             )
         iStoppedStepNumber = await _fiMarkPipelineStopped(
             dictCtx, sContainerId, requestHttp, sStoppedProjectRepoPath,
@@ -635,6 +814,10 @@ def _fnRegisterPipelineKill(app, dictCtx):
             # paints its purple "stopped" light from this, without
             # waiting for a poll.
             "iStoppedStepNumber": iStoppedStepNumber or 0,
+            # Which project that step number counts in: the stopped run
+            # need not be the open one, and step numbers repeat across
+            # the projects a container hosts.
+            "sStoppedWorkflowPath": sStoppedWorkflowPath,
             # A refusal to signal is reported, never folded into the
             # count: "0 processes" for a run vaibify declined to touch
             # would tell the researcher their machine is quiet when it
@@ -831,7 +1014,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
             dictCtx, sContainerId, listPaths, requestHttp,
         )
         _fnUpdateModTimeBaseline(
-            dictCtx, sContainerId, dictModTimes)
+            dictCtx, sContainerId, dictModTimes, dictWorkflow)
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the acknowledged step",
@@ -1128,6 +1311,37 @@ def _fdictRunStateForWire(dictPipelineState, sOpenWorkflowPath=""):
     }
 
 
+def _fdictOtherProjectRunsForWire(dictCtx, sContainerId, dictWorkflow):
+    """Return the live runs of projects other than this one, or {}.
+
+    Read from the hub's live tasks alone -- no container exec, as the
+    poll requires -- which covers every run vaibify dispatched, from
+    the dashboard or from an in-container agent. Without it the open
+    project reads as idle while the container is busy.
+    """
+    from .. import pipelineRunSlots
+    sThisProject = (dictWorkflow or {}).get("sProjectRepoPath", "")
+    listOtherRuns = [
+        taskRun for taskRun in pipelineRunSlots.flistLiveRuns(
+            dictCtx.get("pipelineTasks"), sContainerId,
+        )
+        if taskRun.sProjectRepoPath != sThisProject
+    ]
+    if not listOtherRuns:
+        return {}
+    return {
+        "iRunningProjectCount": len(listOtherRuns),
+        "listRunningProjects": [
+            {
+                "sWorkflowName": taskRun.sWorkflowName,
+                "sProjectRepoPath": taskRun.sProjectRepoPath,
+                "sWorkflowPath": taskRun.sWorkflowPath,
+            }
+            for taskRun in listOtherRuns
+        ],
+    }
+
+
 async def _fdictFetchOutputStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -1179,7 +1393,7 @@ async def _fdictFetchOutputStatus(
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
         fbIsHostProject(sContainerId),
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
-            sContainerId,
+            sContainerId, sRepoRoot,
         ),
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=fdictBuildImageArchiveDetail(
@@ -1190,7 +1404,7 @@ async def _fdictFetchOutputStatus(
         # value, exactly as dictImageCurrency is: the payload builder
         # has no other business with a container id.
         dictLastNoVerdict=verificationProgress.fdictReadNoVerdict(
-            sContainerId,
+            sContainerId, sRepoRoot,
         ),
         # The cached verdict, compared against the state it was
         # measured over. The fingerprint costs no exec -- the lock is
@@ -1198,7 +1412,7 @@ async def _fdictFetchOutputStatus(
         # and it is what makes a rewritten lock or a rebuilt image
         # read as unknown rather than as a stale answer.
         dictLockSatisfaction=lockSatisfaction.fdictReadLockSatisfaction(
-            sContainerId,
+            lockSatisfaction.ftLockVerdictKey(sContainerId, sRepoRoot),
             lockSatisfaction.fsFingerprintLockState(
                 filesPoll,
                 dictImageCurrency.get("sLiveImageDigest") or "",
@@ -1215,6 +1429,15 @@ async def _fdictFetchOutputStatus(
         "dictRunState": _fdictRunStateForWire(
             dictPipelineState, sWorkflowPath,
         ),
+        # The project this answer describes. A container hosts several,
+        # and an answer computed before the dashboard switched projects
+        # must be recognizable as another project's, not applied.
+        "sServedWorkflowPath": sWorkflowPath,
+        # Runs in OTHER projects of this container, which this
+        # project's own run state never reports.
+        "dictOtherProjectRuns": _fdictOtherProjectRunsForWire(
+            dictCtx, sContainerId, dictWorkflow,
+        ),
         # Which remote checks this hub process has in flight for this
         # project. REPORTED here, never RUN here: the refresh is its
         # own route (remoteRefreshRoutes) precisely because this poll
@@ -1223,7 +1446,7 @@ async def _fdictFetchOutputStatus(
         # because the container id is what keys it, and the envelope
         # builder is given the workflow alone.
         "dictRemoteChecks": remoteCheckState.fdictDescribeChecks(
-            sContainerId,
+            remoteCheckState.ftProjectCheckKey(sContainerId, sRepoRoot),
         ),
         **dictRest,
     }
@@ -1260,6 +1483,20 @@ def _flistCollectPollPaths(dictWorkflow, dictVars, sWorkflowPath):
     ))
 
 
+def _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow):
+    """Return the file of the workflow this poll describes.
+
+    Read from the workflow itself, not from the container's open path:
+    a poll that awaited across a project switch holds the previous
+    project's workflow, and pairing it with the new project's path
+    would describe neither.
+    """
+    from ..workflowManager import S_LOADED_FROM_KEY
+    return (dictWorkflow or {}).get(S_LOADED_FROM_KEY) or (
+        dictCtx["paths"].get(sContainerId, "")
+    )
+
+
 async def _ftFetchAndReload(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -1269,7 +1506,7 @@ async def _ftFetchAndReload(
     is absolute-keyed; the response builder is the boundary at which the
     keys are converted to repo-relative for the wire.
     """
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowPath = _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow)
     listUnionPaths = _flistCollectPollPaths(
         dictWorkflow, dictVars, sWorkflowPath,
     )
@@ -1764,8 +2001,14 @@ def _fdictComputeAllPerStepMtimes(
 
 
 
-def _fdictManifestShaCache(dictCtx, sContainerId):
-    """Return the per-container in-memory mtime->sha output cache.
+def _fdictManifestShaCache(dictCtx, sContainerId, sRepoRoot):
+    """Return the project's in-memory mtime->sha output cache.
+
+    One per PROJECT, not per container: a container hosts several, and
+    a single cache hydrated from the first project opened was persisted
+    into every project opened after it, carrying one project's hashes
+    into another's cache file, where a same-named output with the same
+    mtime second would reuse the other project's hash.
 
     Every entry is revalidated against the container mtime fetched
     this same poll before it is reused, so a stale entry can never
@@ -1775,17 +2018,18 @@ def _fdictManifestShaCache(dictCtx, sContainerId):
     mtime changed while the host was down, rather than rehashing
     every multi-GB output from scratch.
     """
-    dictByContainer = dictCtx.setdefault("dictManifestShaCache", {})
-    if sContainerId not in dictByContainer:
-        dictByContainer[sContainerId] = _fdictHydrateShaCacheFromContainer(
-            dictCtx, sContainerId,
+    dictByProject = dictCtx.setdefault("dictManifestShaCache", {}).setdefault(
+        sContainerId, {},
+    )
+    if sRepoRoot not in dictByProject:
+        dictByProject[sRepoRoot] = _fdictHydrateShaCacheFromContainer(
+            dictCtx, sContainerId, sRepoRoot,
         )
-    return dictByContainer[sContainerId]
+    return dictByProject[sRepoRoot]
 
 
-def _fdictHydrateShaCacheFromContainer(dictCtx, sContainerId):
+def _fdictHydrateShaCacheFromContainer(dictCtx, sContainerId, sRepoRoot):
     """Load the persisted container-side cache on first access; {} on miss."""
-    sRepoRoot = _fsResolveProjectRepoRoot(dictCtx, sContainerId)
     if not sRepoRoot:
         return {}
     from .. import mtimeCache
@@ -1798,14 +2042,6 @@ def _fdictHydrateShaCacheFromContainer(dictCtx, sContainerId):
             "container sha cache hydrate failed for %s", sContainerId,
         )
         return {}
-
-
-def _fsResolveProjectRepoRoot(dictCtx, sContainerId):
-    """Return the project repo path for a container, or empty string."""
-    dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId)
-    if not isinstance(dictWorkflow, dict):
-        return ""
-    return dictWorkflow.get("sProjectRepoPath", "") or ""
 
 
 def _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
@@ -1913,7 +2149,7 @@ def _ffilesFetchPollSnapshot(
     dictMtimesRel = fdictAbsKeysToRepoRelative(
         dict(dictModTimes), sRepoRoot,
     )
-    dictShaCache = _fdictManifestShaCache(dictCtx, sContainerId)
+    dictShaCache = _fdictManifestShaCache(dictCtx, sContainerId, sRepoRoot)
     dictSeed, listNeedHash = _ftSplitCachedAndChanged(
         _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot),
         dictMtimesRel, dictShaCache,
@@ -3001,7 +3237,7 @@ async def _fdictFetchTestStatus(
     """Fetch test markers, refresh conftest, migrate flat markers, build status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowPath = _fsWorkflowPathOfPoll(dictCtx, sContainerId, dictWorkflow)
     sWorkflowSlug = fsWorkflowSlugFromPath(sWorkflowPath)
     await _fnRefreshConftestsAndMigrateMarkers(
         dictCtx["docker"], sContainerId, listStepDirs,

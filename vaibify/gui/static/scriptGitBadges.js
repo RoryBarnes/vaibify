@@ -274,12 +274,36 @@ var VaibifyGitBadges = (function () {
         }
     }
 
+    function _fsOpenWorkflowPath() {
+        return (typeof VaibifyApp !== "undefined" &&
+            VaibifyApp.fsGetWorkflowPath()) || "";
+    }
+
+    function fnResetState() {
+        /* A container hosts several projects, and this map is one
+           project's files. Kept across a switch, it painted the left
+           project's badges onto the opened project's same-named files,
+           and a paused or failed refresh then kept them there. */
+        _dictState.dictBadges = {};
+        _dictState.dictRepoSummary = {
+            bIsRepo: false, sBranch: "", sHeadSha: "", iAhead: 0,
+            iBehind: 0, sRefreshedAt: "", sRemoteUrl: "",
+        };
+        _fnShowRefreshPaused(false, "");
+    }
+
     function fnRefresh(sContainerId) {
         if (!sContainerId) return Promise.resolve();
         _dictState.sCurrentContainerId = sContainerId;
+        var sRequestedPath = _fsOpenWorkflowPath();
         return VaibifyApi.fdictGet(
             "/api/git/" + encodeURIComponent(sContainerId) + "/badges"
-        ).then(_fnApplyBadgeRefresh).catch(function (error) {
+        ).then(function (dictResult) {
+            /* An answer about the project the dashboard has left. */
+            if (sRequestedPath !== _fsOpenWorkflowPath()) return;
+            _fnApplyBadgeRefresh(dictResult);
+        }).catch(function (error) {
+            if (sRequestedPath !== _fsOpenWorkflowPath()) return;
             /* A failed request is not a pause, and leaving the pause
                label up would attribute a broken connection to work the
                researcher started. It is not a verdict either: wiping
@@ -384,6 +408,7 @@ var VaibifyGitBadges = (function () {
 
     return {
         fnRefresh: fnRefresh,
+        fnResetState: fnResetState,
         fdictGetBadgesForFile: fdictGetBadgesForFile,
         flistFilesForRemote: flistFilesForRemote,
         fsRenderBadgeRow: fsRenderBadgeRow,

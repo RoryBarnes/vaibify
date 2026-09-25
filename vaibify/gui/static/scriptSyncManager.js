@@ -2697,11 +2697,14 @@ var VaibifySyncManager = (function () {
     }
 
     async function _fnLoadAllVerifyStatus(sContainerId) {
+        var sRequestedIdentity = _fsCacheIdentity(sContainerId);
         var listPromises = _LIST_VERIFY_SERVICES.map(
             function (sService) {
                 return _fdictFetchVerifyStatus(
                     sContainerId, sService).then(
                     function (dictStatus) {
+                        if (_fsCacheIdentity(sContainerId) !==
+                            sRequestedIdentity) return;
                         _dictVerifyStatusCache[sService] =
                             dictStatus || {};
                     }
@@ -2975,9 +2978,14 @@ var VaibifySyncManager = (function () {
         if (_setActiveVerifyServices.has(sService)) return;
         _setActiveVerifyServices.add(sService);
         _fnRedrawRemoteSyncPanel(sContainerId, elContainer);
+        var sRequestedIdentity = _fsCacheIdentity(sContainerId);
         try {
             var dictResult = await _fdictPostVerify(sContainerId, sService);
-            _dictVerifyStatusCache[sService] = dictResult || {};
+            /* A verify that finished after the dashboard switched
+               projects describes the project it was asked about. */
+            if (_fsCacheIdentity(sContainerId) === sRequestedIdentity) {
+                _dictVerifyStatusCache[sService] = dictResult || {};
+            }
         } catch (error) {
             _fnReportVerifyError(error);
         } finally {
@@ -3054,9 +3062,16 @@ var VaibifySyncManager = (function () {
             '</div>';
     }
 
+    function _fsCacheIdentity(sContainerId) {
+        /* The container AND the project: a container hosts several,
+           and each has its own remotes and verify records. */
+        return sContainerId + "\n" + (VaibifyApp.fsGetWorkflowPath() || "");
+    }
+
     function _fnInvalidateCacheIfWorkflowChanged(sContainerId) {
-        if (sContainerId === _sCacheWorkflowId) return;
-        _sCacheWorkflowId = sContainerId;
+        var sIdentity = _fsCacheIdentity(sContainerId);
+        if (sIdentity === _sCacheWorkflowId) return;
+        _sCacheWorkflowId = sIdentity;
         fnInvalidateVerifyCache();
     }
 

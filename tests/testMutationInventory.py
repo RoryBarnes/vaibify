@@ -376,7 +376,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 281
 # named gateway primitive is exactly what the scanner can see.
 # Classified at birth. The site cannot move inside a gateway: it IS the
 # CLI asking for a container write, and something has to ask.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
+# 226 (2026-09-24): the Stop route's sweeps -- two by command name,
+# two by run marker -- now share ONE exec site, _fsRunProcessSweep.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
 
 
 # Every acquisition of a declared capability that still has no reviewed

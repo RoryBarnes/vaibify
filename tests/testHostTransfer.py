@@ -514,7 +514,7 @@ async def testBarrierTransferAdoptsAStillRunningDurableTask(caplog):
     "different operation ⇒ refuse" mistake the §8 adoption exception
     exists to prevent; the transfer would wait out every run.
     """
-    from vaibify.gui.pipelineServer import _fnRegisterPipelineTask
+    from vaibify.gui.pipelineRunSlots import fnRegisterRun
     caplog.set_level(logging.DEBUG, logger="vaibify")
     stateApp = _fstateBuildAppState()
     sOldSessionId, _, sOldLease = _tSeedOwnedContainer(stateApp)
@@ -532,7 +532,7 @@ async def testBarrierTransferAdoptsAStillRunningDurableTask(caplog):
     )
     assert dictLaunch["bLaunched"] is True
     dictPipelineTasks = {}
-    _fnRegisterPipelineTask(
+    fnRegisterRun(
         dictPipelineTasks, S_CONTAINER_ID, dictLaunch["taskAsync"],
         iOwnerGeneration=dictLaunch["iOwnerGeneration"],
     )

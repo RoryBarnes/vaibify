@@ -44,27 +44,38 @@ def test_require_project_repo_missing_is_409():
 # --- in-flight status lookup ---
 
 def test_in_flight_status_none_when_no_task():
-    assert fr._fdictInFlightStatus("cid", 0) is None
+    assert fr._fdictInFlightStatus("cid", "/workspace/repo", 0) is None
 
 
+@pytest.mark.falsification
 def test_in_flight_status_returns_live_status(monkeypatch):
+    """A live run is reported for its own project's step only.
+
+    Kills: keying the tracker by container and step, which reports one
+    project's step 3 as running on another project's step 3.
+    """
     taskLive = MagicMock()
     taskLive.done.return_value = False
     monkeypatch.setitem(
-        fr._DICT_FALSIFICATION_TASKS, ("cid", 3),
+        fr._DICT_FALSIFICATION_TASKS, ("cid", "/workspace/repo", 3),
         {"task": taskLive, "dictStatus": {"sState": "running"}},
     )
-    assert fr._fdictInFlightStatus("cid", 3) == {"sState": "running"}
+    assert fr._fdictInFlightStatus("cid", "/workspace/repo", 3) == {
+        "sState": "running",
+    }
+    assert fr._fdictInFlightStatus("cid", "/workspace/other", 3) is None, (
+        "another project's step 3 was reported as running"
+    )
 
 
 def test_in_flight_status_none_when_task_done(monkeypatch):
     taskDone = MagicMock()
     taskDone.done.return_value = True
     monkeypatch.setitem(
-        fr._DICT_FALSIFICATION_TASKS, ("cid", 4),
+        fr._DICT_FALSIFICATION_TASKS, ("cid", "/workspace/repo", 4),
         {"task": taskDone, "dictStatus": {"sState": "running"}},
     )
-    assert fr._fdictInFlightStatus("cid", 4) is None
+    assert fr._fdictInFlightStatus("cid", "/workspace/repo", 4) is None
 
 
 # --- summary parsing / tail ---

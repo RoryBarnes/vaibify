@@ -733,19 +733,30 @@ def _flistTrackedDirtyPaths(dictGit):
     )
 
 
-def _fbFetchCacheIsFresh(sContainerId, bForce):
-    """Return True when the last fetch for sContainerId is within the TTL."""
+def _fbFetchCacheIsFresh(sContainerId, sRepo, bForce):
+    """Return True when this repo's last fetch is within the TTL.
+
+    Keyed by the project's repository as well as the container: a
+    container hosts several projects, and a fetch of one said nothing
+    about another's remote, whose drift banner then read "up to date"
+    from refs nobody had refreshed.
+    """
     if bForce:
         return False
-    fLast = _DICT_LAST_FETCH.get(sContainerId)
+    fLast = _DICT_LAST_FETCH.get(_ftFetchKey(sContainerId, sRepo))
     if fLast is None:
         return False
     return (time.time() - fLast) < F_FETCH_CACHE_SECONDS
 
 
-def _fnRecordFetchTime(sContainerId):
-    """Record the wall-clock time of a successful fetch."""
-    _DICT_LAST_FETCH[sContainerId] = time.time()
+def _fnRecordFetchTime(sContainerId, sRepo):
+    """Record the wall-clock time of a successful fetch of one repo."""
+    _DICT_LAST_FETCH[_ftFetchKey(sContainerId, sRepo)] = time.time()
+
+
+def _ftFetchKey(sContainerId, sRepo):
+    """Return the fetch-cache key: the container and the project's repo."""
+    return (sContainerId, sRepo)
 
 
 def _fbProjectRepoHasAnOrigin(docker, sContainerId, sRepo):
@@ -821,7 +832,7 @@ def _fnRegisterFetchProjectRepo(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
+        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, sRepo, request.bForce)
         return await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictFetchThenReadStatus(
@@ -846,7 +857,7 @@ def _fdictFetchThenReadStatus(dictCtx, sContainerId, sRepo, bCacheUsed):
         docker, sContainerId, sRepo,
     ):
         _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
-        _fnRecordFetchTime(sContainerId)
+        _fnRecordFetchTime(sContainerId, sRepo)
         fnBumpSyncEpoch(dictCtx, sContainerId)
     return _fdictFetchStatusView(
         containerGit.fdictGitStatusInContainer(
@@ -892,7 +903,7 @@ def _fnRegisterRefreshRemotes(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         sRepo = _fsRequireProjectRepoOrFail(dictWorkflow)
-        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, request.bForce)
+        bCacheUsed = _fbFetchCacheIsFresh(sContainerId, sRepo, request.bForce)
         dictResponse = await _fgenericRunGitWorkerUnderTheDrain(
             sContainerId,
             lambda: _fdictFetchThenCollectRemotes(
@@ -918,7 +929,7 @@ def _fdictFetchThenCollectRemotes(
     """
     if not bCacheUsed:
         _fnRunGitFetchOrFail(docker, sContainerId, sRepo)
-        _fnRecordFetchTime(sContainerId)
+        _fnRecordFetchTime(sContainerId, sRepo)
     return _fdictCollectRefreshRemotesView(
         docker, sContainerId, sRepo, bCacheUsed,
     )
@@ -1030,7 +1041,7 @@ def _fdictCheckCleanThenFastForward(dictCtx, sContainerId, sRepo):
             dictGit, _fdictPreviewTheMerge(docker, sContainerId, sRepo),
         )
     _fnRunGitPullFastForwardOrFail(docker, sContainerId, sRepo)
-    _fnRecordFetchTime(sContainerId)
+    _fnRecordFetchTime(sContainerId, sRepo)
     fnBumpSyncEpoch(dictCtx, sContainerId)
     sNewHead = containerGit.fsGitHeadShaInContainer(
         docker, sContainerId, sWorkspace=sRepo,
@@ -1100,7 +1111,7 @@ def _fdictCheckCleanThenMerge(dictCtx, sContainerId, sRepo):
             "dictMergePreview": dictPreview,
         }
     _fnRunGitMergeOrFail(docker, sContainerId, sRepo)
-    _fnRecordFetchTime(sContainerId)
+    _fnRecordFetchTime(sContainerId, sRepo)
     fnBumpSyncEpoch(dictCtx, sContainerId)
     dictGitAfter = containerGit.fdictGitStatusInContainer(
         docker, sContainerId, sWorkspace=sRepo,

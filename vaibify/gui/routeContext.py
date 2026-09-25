@@ -33,6 +33,8 @@ __all__ = [
     "fdictRunRemoteVerifyBlocking",
     "ffilesForWorkflow",
     "fdictCommitWorkflowSave",
+    "S_REFUSAL_PROJECT_SWITCHED",
+    "fnRefuseSaveIntoAnotherProject",
     "fnRecordAttributionEvent",
     "fnRejectAgentTokenLane",
     "fgenericRunWorkerUnderTheDrain",
@@ -395,6 +397,42 @@ def fdictStampDockerIdForJournal(sContainerId):
     return {"sDockerContainerId": sContainerId}
 
 
+S_REFUSAL_PROJECT_SWITCHED = "project-switched"
+
+
+def fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId, dictWorkflow):
+    """Raise 409 when a workflow would be written over another project.
+
+    The hub saves to the path of the project OPEN in the container, and
+    a container can host several. A save still in flight when the
+    dashboard switched projects -- a route that awaited, a file poll --
+    holds the previous project's workflow, and writing it would replace
+    the open project's ``project.json`` with the other project's. The
+    refusal runs BEFORE any carrier opens, so no journal record is left
+    in flight by an effect that never started.
+    """
+    from . import workflowManager
+    sOpenPath = (dictPaths or {}).get(sContainerId, "")
+    if not sOpenPath or workflowManager.fbWorkflowWasLoadedFrom(
+        dictWorkflow, sOpenPath,
+    ):
+        return
+    sLoadedFrom = dictWorkflow.get(workflowManager.S_LOADED_FROM_KEY, "")
+    logger.warning(
+        "Refused saving %s into %s: the container switched projects",
+        sLoadedFrom, sOpenPath,
+    )
+    raise HTTPException(409, {
+        "sMessage": (
+            f"Not saved: this change belongs to the project at "
+            f"{sLoadedFrom}, but this container has since switched to "
+            f"{sOpenPath}. Open that project again and repeat the "
+            "change."
+        ),
+        "sRefusal": S_REFUSAL_PROJECT_SWITCHED,
+    })
+
+
 def fdictCommitWorkflowSave(
     dictCtx, sContainerId, dictWorkflow, requestHttp, sOperationName,
 ):
@@ -422,6 +460,9 @@ def fdictCommitWorkflowSave(
         requestHttp, sContainerId, sOperationName,
     )
     sWorkflowPath = (dictCtx.get("paths") or {}).get(sContainerId, "")
+    fnRefuseSaveIntoAnotherProject(
+        dictCtx.get("paths"), sContainerId, dictWorkflow,
+    )
     return commitCarrier.fdictCommitSynchronousMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "file-write",

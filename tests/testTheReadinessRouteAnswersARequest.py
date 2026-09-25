@@ -169,9 +169,11 @@ def test_a_busy_container_pauses_the_probe_instead_of_queuing(
         "a question nobody asked was answered 'undetermined', which "
         "claims git could not say"
     )
-    assert lockSatisfaction.DICT_LAST_LOCK_SATISFACTION.get(
-        S_CONTAINER_ID,
-    ), (
+    assert [
+        dictVerdict for tKey, dictVerdict
+        in lockSatisfaction.DICT_LAST_LOCK_SATISFACTION.items()
+        if tKey[0] == S_CONTAINER_ID and dictVerdict
+    ], (
         "a paused probe overwrote the cached verdict with its own "
         "silence, so the row lost an answer it had already earned"
     )

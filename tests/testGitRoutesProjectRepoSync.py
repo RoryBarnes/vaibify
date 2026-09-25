@@ -97,27 +97,45 @@ def _fnClearFetchCache():
 
 
 def test_fetch_cache_starts_cold():
-    assert gitRoutes._fbFetchCacheIsFresh("cid", bForce=False) is False
+    assert gitRoutes._fbFetchCacheIsFresh("cid", "/workspace/repo", bForce=False) is False
 
 
 def test_fetch_cache_treats_recent_record_as_fresh():
-    gitRoutes._fnRecordFetchTime("cid")
-    assert gitRoutes._fbFetchCacheIsFresh("cid", bForce=False) is True
+    gitRoutes._fnRecordFetchTime("cid", "/workspace/repo")
+    assert gitRoutes._fbFetchCacheIsFresh("cid", "/workspace/repo", bForce=False) is True
 
 
 def test_fetch_cache_bypassed_when_force_flag_set():
-    gitRoutes._fnRecordFetchTime("cid")
-    assert gitRoutes._fbFetchCacheIsFresh("cid", bForce=True) is False
+    gitRoutes._fnRecordFetchTime("cid", "/workspace/repo")
+    assert gitRoutes._fbFetchCacheIsFresh("cid", "/workspace/repo", bForce=True) is False
 
 
 def test_fetch_cache_expires_after_ttl():
-    gitRoutes._DICT_LAST_FETCH["cid"] = (
+    gitRoutes._DICT_LAST_FETCH[("cid", "/workspace/repo")] = (
         time.time() - gitRoutes.F_FETCH_CACHE_SECONDS - 1.0
     )
-    assert gitRoutes._fbFetchCacheIsFresh("cid", bForce=False) is False
+    assert gitRoutes._fbFetchCacheIsFresh("cid", "/workspace/repo", bForce=False) is False
 
 
 def test_fetch_cache_is_keyed_per_container():
-    gitRoutes._fnRecordFetchTime("cidA")
-    assert gitRoutes._fbFetchCacheIsFresh("cidA", bForce=False) is True
-    assert gitRoutes._fbFetchCacheIsFresh("cidB", bForce=False) is False
+    gitRoutes._fnRecordFetchTime("cidA", "/workspace/repo")
+    assert gitRoutes._fbFetchCacheIsFresh(
+        "cidA", "/workspace/repo", bForce=False,
+    ) is True
+    assert gitRoutes._fbFetchCacheIsFresh(
+        "cidB", "/workspace/repo", bForce=False,
+    ) is False
+
+
+@pytest.mark.falsification
+def test_fetch_cache_is_keyed_per_project_repository():
+    """A fetch of one project's repo says nothing about another's remote.
+
+    Kills: keying the fetch cache by container alone, which skipped the
+    second project's fetch for thirty seconds after the first's and let
+    its drift banner read "up to date" from stale refs.
+    """
+    gitRoutes._fnRecordFetchTime("cidA", "/workspace/firstRepo")
+    assert gitRoutes._fbFetchCacheIsFresh(
+        "cidA", "/workspace/secondRepo", bForce=False,
+    ) is False

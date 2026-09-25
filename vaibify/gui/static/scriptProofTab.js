@@ -16,11 +16,15 @@ var VaibifyProofTab = (function () {
 
     var _sContainerId = null;
     var _dictLastReadiness = null;
-    var _bReadinessRefreshInFlight = false;
+    /* Which project's answers this tab is collecting. Bumped whenever
+       the tab is pointed somewhere new, so an answer that lands after
+       a project switch is recognised as the other project's -- and so
+       that request's in-flight mark does not block the new project's
+       first refresh. */
+    var _iProjectGeneration = 0;
+    var _dictInFlightGenerationBySlot = {};
     var _dictLastL3Readiness = null;
     var _dictLastL3Attestation = null;
-    var _bL3ReadinessRefreshInFlight = false;
-    var _bL3AttestationRefreshInFlight = false;
     var _bVerifyInFlight = false;
     // A verification runs for minutes to hours in a background task,
     // and until this existed the toast saying "started" was the last
@@ -408,6 +412,7 @@ var VaibifyProofTab = (function () {
     };
 
     function fnSetContainerId(sContainerId) {
+        _iProjectGeneration += 1;
         _sContainerId = sContainerId;
         _dictLastReadiness = null;
         _dictLastL3Readiness = null;
@@ -528,52 +533,42 @@ var VaibifyProofTab = (function () {
         _fnSyncVerifyPolling();
     }
 
-    async function _fnRefreshL3Readiness() {
+    async function _fnRefreshSlot(sSlot, sPathSuffix, fnStore) {
+        /* One fetch per slot per project at a time; an answer is
+           stored only while the tab still describes the project that
+           asked. */
         if (!_sContainerId) return;
-        if (_bL3ReadinessRefreshInFlight) return;
-        _bL3ReadinessRefreshInFlight = true;
+        var iGeneration = _iProjectGeneration;
+        if (_dictInFlightGenerationBySlot[sSlot] === iGeneration) return;
+        _dictInFlightGenerationBySlot[sSlot] = iGeneration;
+        var dictAnswer;
         try {
-            _dictLastL3Readiness = await VaibifyApi.fdictGet(
-                "/api/workflow/" + _sContainerId +
-                "/level3/readiness"
-            );
+            dictAnswer = await VaibifyApi.fdictGet(
+                "/api/workflow/" + _sContainerId + sPathSuffix);
         } catch (error) {
-            _dictLastL3Readiness = {sError: error.message};
+            dictAnswer = {sError: error.message};
         } finally {
-            _bL3ReadinessRefreshInFlight = false;
+            if (_dictInFlightGenerationBySlot[sSlot] === iGeneration) {
+                delete _dictInFlightGenerationBySlot[sSlot];
+            }
         }
+        if (iGeneration !== _iProjectGeneration) return;
+        fnStore(dictAnswer);
+    }
+
+    async function _fnRefreshL3Readiness() {
+        await _fnRefreshSlot("l3Readiness", "/level3/readiness",
+            function (dictAnswer) { _dictLastL3Readiness = dictAnswer; });
     }
 
     async function _fnRefreshL3Attestation() {
-        if (!_sContainerId) return;
-        if (_bL3AttestationRefreshInFlight) return;
-        _bL3AttestationRefreshInFlight = true;
-        try {
-            _dictLastL3Attestation = await VaibifyApi.fdictGet(
-                "/api/workflow/" + _sContainerId +
-                "/level3/attestation"
-            );
-        } catch (error) {
-            _dictLastL3Attestation = {sError: error.message};
-        } finally {
-            _bL3AttestationRefreshInFlight = false;
-        }
+        await _fnRefreshSlot("l3Attestation", "/level3/attestation",
+            function (dictAnswer) { _dictLastL3Attestation = dictAnswer; });
     }
 
     async function _fnRefreshReadiness() {
-        if (!_sContainerId) return;
-        if (_bReadinessRefreshInFlight) return;
-        _bReadinessRefreshInFlight = true;
-        try {
-            _dictLastReadiness = await VaibifyApi.fdictGet(
-                "/api/workflow/" + _sContainerId +
-                "/level2/readiness"
-            );
-        } catch (error) {
-            _dictLastReadiness = {sError: error.message};
-        } finally {
-            _bReadinessRefreshInFlight = false;
-        }
+        await _fnRefreshSlot("readiness", "/level2/readiness",
+            function (dictAnswer) { _dictLastReadiness = dictAnswer; });
     }
 
     function _fnPaintFromCache() {

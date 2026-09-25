@@ -30,6 +30,7 @@ from fastapi import FastAPI, WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from vaibify.gui import agentProjectScope
+from vaibify.gui import pipelineRunSlots
 from vaibify.gui import pipelineServer
 from vaibify.gui import pipelineState
 from vaibify.gui import stateManager
@@ -172,7 +173,9 @@ async def testTheOpenProjectNeverReadsAnotherProjectsRun():
         _fdictRunningState(S_REPO_OTHER, S_WORKFLOW_OTHER),
     )
     dictCtx = _fdictContextWithOpenProject(filesFake)
-    dictCtx["pipelineTasks"][S_RESOURCE_ID] = _LiveTask(S_REPO_OTHER)
+    dictCtx["pipelineTasks"][S_RESOURCE_ID] = {
+        S_REPO_OTHER: _LiveTask(S_REPO_OTHER),
+    }
     dictState = await pipelineState.fdictReadReconciledState(
         dictCtx, S_RESOURCE_ID,
     )
@@ -190,7 +193,9 @@ async def testWithNoProjectOpenTheLiveRunsProjectIsRead():
     )
     dictCtx = {
         "docker": filesFake, "workflows": {},
-        "pipelineTasks": {S_RESOURCE_ID: _LiveTask(S_REPO_OTHER)},
+        "pipelineTasks": {
+            S_RESOURCE_ID: {S_REPO_OTHER: _LiveTask(S_REPO_OTHER)},
+        },
     }
     dictState = await pipelineState.fdictReadReconciledState(
         dictCtx, S_RESOURCE_ID,
@@ -246,7 +251,9 @@ def testTheContainerBusyVetoSeesARunInAProjectThatIsNotOpen():
 
 def testTheBusyVetoCountsTheHubsOwnLiveTask():
     dictCtx = _fdictContextWithOpenProject(_FakeContainerFiles())
-    dictCtx["pipelineTasks"][S_RESOURCE_ID] = _LiveTask(S_REPO_OTHER)
+    dictCtx["pipelineTasks"][S_RESOURCE_ID] = {
+        S_REPO_OTHER: _LiveTask(S_REPO_OTHER),
+    }
     assert pipelineState.fbContainerHasLiveRun(dictCtx, S_RESOURCE_ID)
 
 
@@ -407,7 +414,7 @@ class _FakeRunSocket:
         self.listSent.append(dictEvent)
 
 
-async def _flistRunFrames(listMessages, dictPipelineTasks):
+async def _flistRunFrames(listMessages, dictPipelineTasks, dictWorkflow=None):
     listDispatched = []
 
     async def fnRecordingDispatch(sAction, *args, **kwargs):
@@ -418,7 +425,7 @@ async def _flistRunFrames(listMessages, dictPipelineTasks):
         with pytest.raises(WebSocketDisconnect):
             await pipelineServer.fnPipelineMessageLoop(
                 websocketFake, MagicMock(), S_RESOURCE_ID,
-                {"sWorkflowName": "Opened", "listSteps": []},
+                dictWorkflow or {"sWorkflowName": "Opened", "listSteps": []},
                 {S_RESOURCE_ID: S_WORKFLOW_OPEN}, S_REPO_OPEN,
                 dictPipelineTasks=dictPipelineTasks,
             )
@@ -448,19 +455,23 @@ async def testAnAgentRunAimedAtAnotherProjectIsNeverDispatched():
 
 
 @pytest.mark.asyncio
-async def testABusyRefusalNamesTheProjectHoldingTheContainer():
-    """'Already running' must say whose run, or it reads as this project's."""
+async def testABusyRefusalNamesTheProjectHoldingItsSlot():
+    """'Already running' must say whose run, or it reads as mysterious."""
     taskHolder = asyncio.ensure_future(asyncio.sleep(30))
     dictPipelineTasks = {}
-    pipelineServer._fnRegisterPipelineTask(
+    pipelineRunSlots.fnRegisterRun(
         dictPipelineTasks, S_RESOURCE_ID, taskHolder,
         dictWorkflow={
-            "sProjectRepoPath": S_REPO_OTHER, "sWorkflowName": "Other",
+            "sProjectRepoPath": S_REPO_OPEN, "sWorkflowName": "Opened",
         },
     )
     try:
         listSent, listDispatched = await _flistRunFrames(
             [{"sAction": "runAll"}], dictPipelineTasks,
+            dictWorkflow={
+                "sWorkflowName": "Opened", "sProjectRepoPath": S_REPO_OPEN,
+                "listSteps": [],
+            },
         )
     finally:
         taskHolder.cancel()
@@ -468,9 +479,9 @@ async def testABusyRefusalNamesTheProjectHoldingTheContainer():
     dictRefusal = listSent[0]
     assert dictRefusal["sType"] == "runRefused"
     assert dictRefusal["sHolderProject"] == (
-        f"project 'Other' ({S_REPO_OTHER})"
+        f"project 'Opened' ({S_REPO_OPEN})"
     )
-    assert S_REPO_OTHER in dictRefusal["sMessage"]
+    assert S_REPO_OPEN in dictRefusal["sMessage"]
 
 
 # ---------------------------------------------------------------------------

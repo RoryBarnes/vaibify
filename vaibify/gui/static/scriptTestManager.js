@@ -351,14 +351,24 @@ var VaibifyTestManager = (function () {
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
         _setFalsificationFetchInFlight.add(iStepIndex);
+        var sRequestedPath = VaibifyApp.fsGetWorkflowPath() || "";
         try {
             var dictResult = await VaibifyApi.fdictGet(
                 "/api/steps/" + sContainerId + "/" + iStepIndex +
                 "/falsification"
             );
+            /* Step numbers repeat across a container's projects: an
+               answer for the project the dashboard left is not this
+               project's step. */
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                return;
+            }
             _dictFalsificationByStep[iStepIndex] = dictResult;
             VaibifyApp.fnRenderStepList();
         } catch (error) {
+            if (sRequestedPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                return;
+            }
             VaibifyApp.fnShowToast(
                 "Falsification status fetch failed: " +
                 error.message, "error");
@@ -387,15 +397,21 @@ var VaibifyTestManager = (function () {
         _fnPollFalsificationUntilDone(iStepIndex);
     }
 
-    function _fnPollFalsificationUntilDone(iStepIndex) {
+    function _fnPollFalsificationUntilDone(iStepIndex, sWorkflowPath) {
         // Transient completion poll: alive only while a run this
         // session started is in flight, then stops. Not a standing
-        // poll loop.
+        // poll loop -- and it stops when the dashboard leaves the
+        // project it is watching.
+        var sPolledPath = sWorkflowPath === undefined ?
+            (VaibifyApp.fsGetWorkflowPath() || "") : sWorkflowPath;
         setTimeout(async function () {
+            if (sPolledPath !== (VaibifyApp.fsGetWorkflowPath() || "")) {
+                return;
+            }
             await fnFetchFalsificationState(iStepIndex);
             var dictState = _dictFalsificationByStep[iStepIndex];
             if (dictState && dictState.dictInFlight) {
-                _fnPollFalsificationUntilDone(iStepIndex);
+                _fnPollFalsificationUntilDone(iStepIndex, sPolledPath);
             }
         }, 5000);
     }

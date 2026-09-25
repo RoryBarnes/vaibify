@@ -31,6 +31,7 @@ __all__ = [
     "fappCreateHubApplication",
     "fbIsAllowedHostHeader",
     "fdictBuildContext",
+    "fdictCachedSourceCodeDeps",
     "fdictHandleConnect",
     "ffBuildResilientWsCallback",
     "fnDispatchAction",
@@ -77,6 +78,7 @@ from . import agentSessionBridge
 from . import browserSession
 from . import conftestManager
 from . import containerOwnership
+from . import pipelineRunSlots
 from . import projectRoots
 from . import sessionLifecycle
 from .executionTopology import (
@@ -923,6 +925,7 @@ async def fnPipelineMessageLoop(
     dictPipelineTasks=None, dictDurableContext=None,
     fbFrameCredentialStillActive=None,
     fdictGetLiveWorkflow=None, dictCtx=None,
+    fdictReloadBoundWorkflow=None,
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
@@ -946,17 +949,6 @@ async def fnPipelineMessageLoop(
     dictInteractive = fdictCreateInteractiveContext()
     fnCallback = ffBuildResilientWsCallback(websocket)
     _fnPublishInteractiveContext(sContainerId, dictInteractive)
-    # The record-unit provenance committer (spec §4.5): built here
-    # because it needs the live session context — the current cache,
-    # the reload detector, and the save seam that moves the self-write
-    # baseline with the file. Absent a context (direct library and
-    # test callers), the runner refreshes provenance in memory only.
-    fdictCommitProvenance = None
-    if dictCtx is not None:
-        from .provenanceCommitter import ffnBuildProvenanceCommitter
-        fdictCommitProvenance = ffnBuildProvenanceCommitter(
-            dictCtx, sContainerId,
-        )
 
     try:
         while True:
@@ -1002,14 +994,17 @@ async def fnPipelineMessageLoop(
             if dictMisdirectedRefusal is not None:
                 await fnCallback(dictMisdirectedRefusal)
                 continue
+            sRunProject = (dictWorkflowBound or {}).get(
+                "sProjectRepoPath", "",
+            )
             if _fbRefuseWhilePipelineTaskLive(
-                dictPipelineTasks, sContainerId,
+                dictPipelineTasks, sContainerId, sRunProject,
             ):
                 await fnCallback(
                     _fdictBusyRefusalEvent(
                         sAction, dictRequest,
                         sHolderProject=_fsNameLivePipelineProject(
-                            dictPipelineTasks, sContainerId,
+                            dictPipelineTasks, sContainerId, sRunProject,
                         ),
                     ),
                 )
@@ -1026,7 +1021,8 @@ async def fnPipelineMessageLoop(
                 continue
             dictFreshnessRefusal = await _fdictStaleWorkflowRefusal(
                 dictCtx, sContainerId, sAction, dictRequest,
-                dictWorkflowBound,
+                dictWorkflowBound, dictWorkflowPathCache,
+                fdictReloadBoundWorkflow,
             )
             if dictFreshnessRefusal is not None:
                 await fnCallback(dictFreshnessRefusal)
@@ -1038,22 +1034,55 @@ async def fnPipelineMessageLoop(
             if dictOverwriteRefusal is not None:
                 await fnCallback(dictOverwriteRefusal)
                 continue
+            dictConcurrentNotice = _fdictConcurrentRunNotice(
+                connectionDocker, dictPipelineTasks, sContainerId,
+                sRunProject,
+            )
+            if dictConcurrentNotice and not dictRequest.get(
+                pipelineRunSlots.S_ACKNOWLEDGE_CONCURRENT_RUN_FIELD,
+            ):
+                await fnCallback(_fdictConcurrentRunRefusal(
+                    sAction, dictRequest, dictConcurrentNotice,
+                ))
+                continue
+            if dictConcurrentNotice:
+                await fnCallback({
+                    "sType": "concurrentRunWarning", **dictConcurrentNotice,
+                })
+            sRunId = secrets.token_hex(8)
+            sWorkflowPathFrame, sWorkflowDirectoryFrame = (
+                _ftFrameWorkflowPathAndDirectory(
+                    dictWorkflowBound, dictWorkflowPathCache,
+                    sContainerId, sWorkflowDirectory,
+                )
+            )
+
             def ftaskStartDispatch(
                 sActionBound=sAction, dictRequestBound=dictRequest,
                 dictWorkflowFrame=dictWorkflowBound,
+                sWorkflowPathBound=sWorkflowPathFrame,
+                sWorkflowDirectoryBound=sWorkflowDirectoryFrame,
+                sRunIdBound=sRunId,
             ):
                 return asyncio.create_task(
                     _fnSafeDispatch(
                         sActionBound, dictRequestBound, connectionDocker,
                         sContainerId, dictWorkflowFrame,
-                        dictWorkflowPathCache, sWorkflowDirectory,
+                        {sContainerId: sWorkflowPathBound},
+                        sWorkflowDirectoryBound,
                         fnCallback, dictInteractive,
-                        fdictCommitProvenance=fdictCommitProvenance,
+                        fdictCommitProvenance=(
+                            _ffnBuildRunProvenanceCommitter(
+                                dictCtx, sContainerId, sWorkflowPathBound,
+                            )
+                        ),
+                        sRunId=sRunIdBound,
                     )
                 )
 
             taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
                 dictDurableContext, sContainerId, ftaskStartDispatch,
+                sRunProject,
             )
             if taskPipeline is None:
                 await fnCallback(
@@ -1061,17 +1090,53 @@ async def fnPipelineMessageLoop(
                 )
                 continue
             if dictPipelineTasks is not None:
-                _fnRegisterPipelineTask(
+                pipelineRunSlots.fnRegisterRun(
                     dictPipelineTasks, sContainerId, taskPipeline,
                     iOwnerGeneration=iOwnerGeneration,
-                    dictWorkflow=dictWorkflowBound,
+                    dictWorkflow=dictWorkflowBound, sRunId=sRunId,
+                    dictLastRuns=(dictCtx or {}).get("dictLastRunByProject"),
                 )
     finally:
         _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
 
 
+def _ftFrameWorkflowPathAndDirectory(
+    dictWorkflowBound, dictWorkflowPathCache, sContainerId,
+    sWorkflowDirectory,
+):
+    """Return the run's workflow path and directory, both from one project.
+
+    The socket outlives a project switch in the dashboard, so the
+    directory captured when it opened can name the PREVIOUS project
+    while the workflow read for this frame is the open one -- which ran
+    one project's commands in the other's step directories. A workflow
+    that records the file it was loaded from supplies both; one that
+    does not (a direct library or test caller) keeps the caller's pair.
+    """
+    sLoadedFrom = (dictWorkflowBound or {}).get(
+        workflowManager.S_LOADED_FROM_KEY, "",
+    )
+    if sLoadedFrom:
+        return sLoadedFrom, posixpath.dirname(sLoadedFrom)
+    return dictWorkflowPathCache.get(sContainerId, ""), sWorkflowDirectory
+
+
+def _ffnBuildRunProvenanceCommitter(dictCtx, sContainerId, sWorkflowPath):
+    """Return the run's record-unit provenance committer (spec §4.5).
+
+    Built per dispatch because it is bound to the project the run
+    started in, which need not be the one open when a step finishes.
+    Absent a context (direct library and test callers), the runner
+    refreshes provenance in memory only.
+    """
+    if dictCtx is None:
+        return None
+    from .provenanceCommitter import ffnBuildProvenanceCommitter
+    return ffnBuildProvenanceCommitter(dictCtx, sContainerId, sWorkflowPath)
+
+
 async def _ftLaunchDispatchTask(
-    dictDurableContext, sContainerId, ftaskStartDispatch,
+    dictDurableContext, sContainerId, ftaskStartDispatch, sRunProject="",
 ):
     """Launch a dispatch as a mode-(c) durable task when wired.
 
@@ -1093,6 +1158,8 @@ async def _ftLaunchDispatchTask(
             sContainerId, dictDurableContext["dictLaneTuple"],
             ftaskStartDispatch,
             sOperation="a pipeline run",
+            sJoinableKind=pipelineRunSlots.S_JOINABLE_PIPELINE_WORK,
+            sMemberKey=sRunProject,
         )
     except commitCarrier.CommitRefusedError as error:
         logger.warning(
@@ -1133,15 +1200,20 @@ async def _fnSafeDispatch(
     sAction, dictRequest, connectionDocker,
     sContainerId, dictWorkflow, dictWorkflowPathCache,
     sWorkflowDirectory, fnCallback, dictInteractive,
-    fdictCommitProvenance=None,
+    fdictCommitProvenance=None, sRunId="",
 ):
     """Wrap fnDispatchAction with error handling.
 
     Tags the failure log with ``sContainerId`` so the host-incident
     ring buffer (consumed by ``pipelineState._fdictReconcileStaleHeartbeat``)
     can pair the exception with the dying container's state file.
+
+    ``sRunId`` is set as this task's run marker, which every container
+    command the run starts exports (``pipelineRunner.fsRunMarkerPrefix``).
     """
     from . import attributionLog
+    from .pipelineRunner import VAR_RUN_ID
+    VAR_RUN_ID.set(sRunId)
     if attributionLog.fbSupervisionEnabled(dictWorkflow):
         # Thread-hop only when supervised: the unsupervised dispatch
         # path must keep its exact timing (and zero extra cost).
@@ -1184,6 +1256,7 @@ _SET_RUN_DISPATCH_ACTIONS = {
 
 async def _fdictStaleWorkflowRefusal(
     dictCtx, sContainerId, sAction, dictRequest, dictWorkflowBound,
+    dictWorkflowPathCache, fdictReloadBoundWorkflow=None,
 ):
     """Return a typed ``runRefused`` when the bound workflow is stale.
 
@@ -1210,7 +1283,7 @@ async def _fdictStaleWorkflowRefusal(
         return None
     if sAction not in _SET_RUN_DISPATCH_ACTIONS:
         return None
-    sWorkflowPath = dictCtx["paths"].get(sContainerId, "")
+    sWorkflowPath = dictWorkflowPathCache.get(sContainerId, "")
     sRecordFingerprint = dictWorkflowBound.get("_sSourceFingerprint", "")
     if not sWorkflowPath or not sRecordFingerprint:
         return None
@@ -1226,13 +1299,10 @@ async def _fdictStaleWorkflowRefusal(
             f"check ({fsSanitizeExceptionForClient(errorRead)})",
         )
     if sDiskFingerprint != sRecordFingerprint:
-        from . import workflowReloadDetector
-        workflowReloadDetector.fdictMaybeReloadWorkflow(
-            dictCtx, sContainerId, sWorkflowPath,
-            {sWorkflowPath: "present"},
-            sPolledFingerprint=sDiskFingerprint,
+        dictLiveNow = await _fdictReloadTheBoundWorkflow(
+            dictCtx, sContainerId, sWorkflowPath, sDiskFingerprint,
+            fdictReloadBoundWorkflow,
         )
-        dictLiveNow = dictCtx["workflows"].get(sContainerId) or {}
         return _fdictSupersededRefusalEvent(
             sAction, dictRequest,
             dictLiveNow.get("_sSourceFingerprint", ""),
@@ -1260,6 +1330,31 @@ async def _fdictStaleWorkflowRefusal(
     return None
 
 
+async def _fdictReloadTheBoundWorkflow(
+    dictCtx, sContainerId, sWorkflowPath, sDiskFingerprint,
+    fdictReloadBoundWorkflow,
+):
+    """Reload the workflow a socket serves after it changed on disk.
+
+    The open project's through the reload detector, which publishes the
+    change to the dashboard; an agent's own project through the socket's
+    reloader, because the hub's cache does not hold it.
+    """
+    if fdictReloadBoundWorkflow is not None:
+        try:
+            return await asyncio.to_thread(fdictReloadBoundWorkflow) or {}
+        except (ValueError, FileNotFoundError) as errorReload:
+            logger.warning("Agent project reload failed: %s", errorReload)
+            return {}
+    from . import workflowReloadDetector
+    workflowReloadDetector.fdictMaybeReloadWorkflow(
+        dictCtx, sContainerId, sWorkflowPath,
+        {sWorkflowPath: "present"},
+        sPolledFingerprint=sDiskFingerprint,
+    )
+    return dictCtx["workflows"].get(sContainerId) or {}
+
+
 def _fdictSupersededRefusalEvent(
     sAction, dictRequest, sCurrentFingerprint, sCause,
 ):
@@ -1284,9 +1379,13 @@ def _fdictSupersededRefusalEvent(
     }
 
 
-def _fsNameLivePipelineProject(dictPipelineTasks, sContainerId):
-    """Return "project 'name' (repo)" for the live pipeline task, or ""."""
-    taskLive = (dictPipelineTasks or {}).get(sContainerId)
+def _fsNameLivePipelineProject(
+    dictPipelineTasks, sContainerId, sProjectRepoPath,
+):
+    """Return "project 'name' (repo)" for the project's live run, or ""."""
+    taskLive = pipelineRunSlots.ftaskLiveRunOfProject(
+        dictPipelineTasks, sContainerId, sProjectRepoPath,
+    )
     sRepoPath = getattr(taskLive, "sProjectRepoPath", "")
     if not sRepoPath:
         return ""
@@ -1294,20 +1393,68 @@ def _fsNameLivePipelineProject(dictPipelineTasks, sContainerId):
     return f"project '{sName}' ({sRepoPath})"
 
 
-def _fbRefuseWhilePipelineTaskLive(dictPipelineTasks, sContainerId):
-    """Return True when a dispatched pipeline action is still running.
+def _fbRefuseWhilePipelineTaskLive(
+    dictPipelineTasks, sContainerId, sProjectRepoPath,
+):
+    """Return True when the project already has a pipeline action running.
 
-    One live pipeline action per container, enforced at dispatch so the
+    One live pipeline action per PROJECT, enforced at dispatch so the
     guarantee holds for every lane — a duplicated browser tab, a
     reconnected socket after a mid-run detach, and the in-container
-    ``vaibify-do`` agent alike. Without it, a second ``runSelected``
-    would race the first inside the same container and overwrite the
-    kill switch in ``dictPipelineTasks``.
+    ``vaibify-do`` agent alike. Two runs of one project would write one
+    run-state file and one set of outputs. Runs of OTHER projects in the
+    container are allowed once acknowledged
+    (:func:`_fdictConcurrentRunNotice`), and the carrier refuses a
+    second member for the same project as the backstop.
     """
-    if dictPipelineTasks is None:
-        return False
-    taskLive = dictPipelineTasks.get(sContainerId)
-    return taskLive is not None and not taskLive.done()
+    return pipelineRunSlots.fbProjectRunIsLive(
+        dictPipelineTasks, sContainerId, sProjectRepoPath,
+    )
+
+
+def _fdictConcurrentRunNotice(
+    connectionDocker, dictPipelineTasks, sContainerId, sRunProject,
+):
+    """Return the notice for a run joining other projects' runs, or {}.
+
+    The container's limits are read only when there is something to
+    warn about, so an ordinary run costs no extra Docker call.
+    """
+    listOtherRuns = [
+        taskRun for taskRun in pipelineRunSlots.flistLiveRuns(
+            dictPipelineTasks, sContainerId,
+        )
+        if taskRun.sProjectRepoPath != sRunProject
+    ]
+    if not listOtherRuns:
+        return {}
+    return pipelineRunSlots.fdictBuildConcurrentRunNotice(
+        listOtherRuns,
+        pipelineRunSlots.fdictReadContainerLimits(
+            connectionDocker, sContainerId,
+        ),
+    )
+
+
+def _fdictConcurrentRunRefusal(sAction, dictRequest, dictNotice):
+    """Return the refusal that asks the caller to acknowledge sharing.
+
+    Not a denial: the dashboard answers it with a confirmation and
+    re-sends the frame acknowledged, and ``vaibify-do`` acknowledges on
+    the agent's behalf and prints the notice.
+    """
+    return {
+        "sType": "runRefused",
+        "sReason": pipelineRunSlots.S_REFUSAL_CONCURRENT_RUN,
+        "sAction": sAction,
+        "listStepIndices": dictRequest.get("listStepIndices", []),
+        "dictOriginalRequest": dictRequest,
+        **dictNotice,
+        "sMessage": (
+            dictNotice["sMessage"] + " Nothing was started; confirm to "
+            "run it anyway."
+        ),
+    }
 
 
 def _fsDescribeBlockingMutationWork(dictDurableContext):
@@ -1334,8 +1481,9 @@ def _fsDescribeBlockingMutationWork(dictDurableContext):
     if dictDurableContext is None:
         return ""
     from . import commitCarrier
-    return commitCarrier.fsDescribeLiveMutationWork(
+    return commitCarrier.fsDescribeWorkBlockingAJoin(
         dictDurableContext["appState"], dictDurableContext["sName"],
+        pipelineRunSlots.S_JOINABLE_PIPELINE_WORK,
     )
 
 
@@ -1551,51 +1699,6 @@ def _fdictBusyRefusalEvent(
             "Kill button, then retry."
         ),
     }
-
-
-def _fnRegisterPipelineTask(
-    dictPipelineTasks, sContainerId, taskPipeline, iOwnerGeneration=1,
-    dictWorkflow=None,
-):
-    """Store a pipeline task and arrange for self-eviction on completion.
-
-    Without the done-callback, completed-normally tasks linger in
-    ``dictPipelineTasks`` forever — a memory leak proportional to the
-    number of runs across the container's lifetime. The callback fires
-    after the task finishes (success, failure, or cancellation) and
-    drops the entry only if it still points at this task, so a brand-new
-    run for the same container is never accidentally evicted.
-
-    Task ownership is a MUTABLE ``iOwnerGeneration`` field on the task
-    record itself, retagged in place by a host transfer (design §2.3) —
-    never a parallel ``{id: generation}`` map, which turns ambiguous when
-    an old completion callback fires after a transfer. The done-callback
-    therefore reads the record's generation at completion time, not a
-    snapshot captured at registration.
-
-    The task also records the project it runs (``sProjectRepoPath``,
-    ``sWorkflowName``): a Kill must mark THAT project's run stopped, and
-    a refused run must say which project holds the container, however
-    many projects the container hosts and whichever is open by then.
-    """
-    taskPipeline.iOwnerGeneration = iOwnerGeneration
-    taskPipeline.sProjectRepoPath = (dictWorkflow or {}).get(
-        "sProjectRepoPath", "",
-    )
-    taskPipeline.sWorkflowName = (dictWorkflow or {}).get(
-        "sWorkflowName", "",
-    )
-    dictPipelineTasks[sContainerId] = taskPipeline
-
-    def fnEvictOnDone(taskCompleted):
-        logger.debug(
-            "Pipeline task for %s finished under owner generation %s",
-            sContainerId,
-            getattr(taskCompleted, "iOwnerGeneration", 0),
-        )
-        if dictPipelineTasks.get(sContainerId) is taskCompleted:
-            dictPipelineTasks.pop(sContainerId, None)
-    taskPipeline.add_done_callback(fnEvictOnDone)
 
 
 def _fnHandleInteractiveResponse(
@@ -1925,8 +2028,60 @@ async def fnHandlePipelineWs(
     echo an acknowledgment in its run frames.
     """
     await websocket.accept()
-    dictWorkflow = dictCtx["workflows"].get(sContainerId)
-    if not dictWorkflow:
+    dictBinding = await _fdictBindSocketToItsProject(
+        websocket, dictCtx, sContainerId,
+    )
+    if dictBinding is None:
+        return
+    dictWorkflow = dictBinding["fdictGetWorkflow"]()
+    sWorkflowPath = dictBinding["dictPaths"][sContainerId]
+    await websocket.send_json({
+        "sType": "workflowBound",
+        "sWorkflowPath": sWorkflowPath,
+        "sProjectDirectory": agentProjectScope.fsProjectDirectoryOfWorkflow(
+            sWorkflowPath,
+        ),
+        "sProjectName": dictWorkflow.get("sWorkflowName", ""),
+        "sExactSourceFingerprint": dictWorkflow.get(
+            "_sSourceFingerprint", "",
+        ),
+    })
+    try:
+        await fnPipelineMessageLoop(
+            websocket, dictCtx["docker"], sContainerId,
+            dictWorkflow, dictBinding["dictPaths"],
+            posixpath.dirname(sWorkflowPath),
+            dictPipelineTasks=dictCtx["pipelineTasks"],
+            dictDurableContext=_fdictBuildDurableDispatchContext(
+                websocket, dictCtx, sContainerId,
+            ),
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+            fdictGetLiveWorkflow=dictBinding["fdictGetWorkflow"],
+            dictCtx=dictCtx,
+            fdictReloadBoundWorkflow=dictBinding["fdictReloadWorkflow"],
+        )
+    except WebSocketDisconnect:
+        pass
+
+
+async def _fdictBindSocketToItsProject(websocket, dictCtx, sContainerId):
+    """Return the project a pipeline socket serves, or None if refused.
+
+    The open project, unless the in-container agent declared another
+    one when it connected: a container runs several projects at once,
+    and an agent's runs belong to the project it works in, not to
+    whichever one the dashboard happens to show.
+    """
+    sDeclared = websocket.query_params.get(
+        agentProjectScope.S_AGENT_PROJECT_QUERY, "",
+    )
+    if agentProjectScope.fbServesAnotherProject(
+        sDeclared, dictCtx["paths"].get(sContainerId, ""),
+    ):
+        return await _fdictBindToTheAgentsProject(
+            websocket, dictCtx, sContainerId, sDeclared,
+        )
+    if not dictCtx["workflows"].get(sContainerId):
         # The socket twin of fdictRequireWorkflow's logged refusal: a
         # "Not connected" answer for a project the researcher can see
         # rendered went undiagnosable (2026-08-14) because this path
@@ -1937,37 +2092,71 @@ async def fnHandlePipelineWs(
             sContainerId, sorted(dictCtx["workflows"]),
         )
         await fnRejectNotConnected(websocket)
-        return
-    sDir = posixpath.dirname(dictCtx["paths"].get(sContainerId, ""))
-    await websocket.send_json({
-        "sType": "workflowBound",
-        "sWorkflowPath": dictCtx["paths"].get(sContainerId, ""),
-        "sProjectDirectory": agentProjectScope.fsProjectDirectoryOfWorkflow(
-            dictCtx["paths"].get(sContainerId, ""),
-        ),
-        "sProjectName": dictWorkflow.get("sWorkflowName", ""),
-        "sExactSourceFingerprint": dictWorkflow.get(
-            "_sSourceFingerprint", "",
-        ),
-    })
+        return None
+    return {
+        "dictPaths": dictCtx["paths"],
+        "fdictGetWorkflow": lambda: dictCtx["workflows"].get(sContainerId),
+        "fdictReloadWorkflow": None,
+    }
 
-    def fdictGetLiveWorkflow():
-        return dictCtx["workflows"].get(sContainerId)
 
+async def _fdictBindToTheAgentsProject(
+    websocket, dictCtx, sContainerId, sDeclared,
+):
+    """Bind a socket to the agent's own project, read from its file.
+
+    The workflow is held by this socket alone -- the hub's cache holds
+    only the open project -- and the freshness gate reloads it from the
+    same file when it changes on disk.
+    """
     try:
-        await fnPipelineMessageLoop(
-            websocket, dictCtx["docker"], sContainerId,
-            dictWorkflow, dictCtx["paths"], sDir,
-            dictPipelineTasks=dictCtx["pipelineTasks"],
-            dictDurableContext=_fdictBuildDurableDispatchContext(
-                websocket, dictCtx, sContainerId,
-            ),
-            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
-            fdictGetLiveWorkflow=fdictGetLiveWorkflow,
-            dictCtx=dictCtx,
+        sWorkflowPath = await asyncio.to_thread(
+            agentProjectScope.fsResolveAgentProjectWorkflowPath,
+            dictCtx["docker"], sContainerId, sDeclared,
+            projectRoots.fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),
         )
-    except WebSocketDisconnect:
-        pass
+        dictHolder = {"dictWorkflow": await asyncio.to_thread(
+            _fdictLoadAgentProjectWorkflow, dictCtx, sContainerId,
+            sWorkflowPath,
+        )}
+    except (ValueError, FileNotFoundError) as errorBind:
+        # A ValueError here is the hub's own sentence naming what it
+        # could not find and what to do; collapsing it into a generic
+        # failure would leave the agent nothing to act on.
+        await websocket.send_json({
+            "sType": "runRefused", "sReason": "projectUnresolved",
+            "sMessage": (
+                str(errorBind) if isinstance(errorBind, ValueError)
+                else fsSanitizeExceptionForClient(errorBind)
+            ),
+        })
+        await websocket.close(code=1000)
+        return None
+
+    def fdictReloadWorkflow():
+        dictHolder["dictWorkflow"] = _fdictLoadAgentProjectWorkflow(
+            dictCtx, sContainerId, sWorkflowPath,
+        )
+        return dictHolder["dictWorkflow"]
+    return {
+        "dictPaths": {sContainerId: sWorkflowPath},
+        "fdictGetWorkflow": lambda: dictHolder["dictWorkflow"],
+        "fdictReloadWorkflow": fdictReloadWorkflow,
+    }
+
+
+def _fdictLoadAgentProjectWorkflow(dictCtx, sContainerId, sWorkflowPath):
+    """Load a project's workflow as connect does, for a socket to hold."""
+    from . import containerGit
+    dictWorkflow = workflowManager.fdictLoadWorkflowFromContainer(
+        dictCtx["docker"], sContainerId, sWorkflowPath,
+    )
+    dictWorkflow["sProjectRepoPath"] = (
+        containerGit.fsDetectProjectRepoInContainer(
+            dictCtx["docker"], sContainerId, sWorkflowPath,
+        )
+    )
+    return dictWorkflow
 
 
 def _fdictBuildDurableDispatchContext(websocket, dictCtx, sContainerId):
@@ -2222,10 +2411,28 @@ async def _fnScanDependenciesBackground(
         dictDeps = await fdictScanAllDependencies(
             dictCtx, sContainerId, dictWorkflow,
         )
-        dictCtx["sourceCodeDeps"][sContainerId] = dictDeps
+        dictCtx["sourceCodeDeps"].setdefault(sContainerId, {})[
+            dictWorkflow.get(workflowManager.S_LOADED_FROM_KEY, "")
+        ] = dictDeps
         _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps)
     except Exception as error:
         logger.warning("Source-code dep scan failed: %s", error)
+
+
+def fdictCachedSourceCodeDeps(dictCtx, sContainerId, dictWorkflow):
+    """Return the dependency scan of THIS workflow, or None if not scanned.
+
+    Filed under the workflow file the scan read, because a container
+    hosts several projects: a scan of one project finishing after the
+    dashboard switched to another used to replace the other's edges,
+    drawing one project's dependencies on the other's step numbers.
+    """
+    dictByWorkflow = (dictCtx.get("sourceCodeDeps") or {}).get(
+        sContainerId,
+    ) or {}
+    return dictByWorkflow.get(
+        (dictWorkflow or {}).get(workflowManager.S_LOADED_FROM_KEY, ""),
+    )
 
 
 def _fnAnnotateStepsWithDeps(dictWorkflow, dictDeps):
@@ -2486,7 +2693,9 @@ def fdictBuildImageArchiveDetail(
     if not fsRepoRootOf(filesRepo):
         return None
     dictEnvironment = fdictReadEnvironmentJson(filesRepo)
-    dictDeposit = archiveProgress.fdictReadDeposit(sContainerId)
+    dictDeposit = archiveProgress.fdictReadDeposit(
+        sContainerId, fsRepoRootOf(filesRepo),
+    )
     # Both halves from the one authority, so the issue list and the
     # unchecked reason cannot describe different reads.
     try:
@@ -3194,7 +3403,9 @@ def _ftBuildHelpers(dictRaw, dictWorkflows, dictPaths):
         _fnRequireDocker(dictRaw["docker"], sResourceId=sResourceId)
 
     def fnSave(sContainerId, dictWorkflow):
+        from .routeContext import fnRefuseSaveIntoAnotherProject
         sPath = fsRequireWorkflowPath(dictPaths, sContainerId)
+        fnRefuseSaveIntoAnotherProject(dictPaths, sContainerId, dictWorkflow)
         workflowManager.fnSaveWorkflowToContainer(
             dictRaw["docker"], sContainerId, dictWorkflow, sPath)
         from .workflowReloadDetector import (
@@ -3276,6 +3487,7 @@ def fdictBuildContext(connectionDocker):
         "terminals": dictTerminals,
         "containerUsers": {},
         "pipelineTasks": {},
+        "dictLastRunByProject": {},
         "sourceCodeDeps": {},
         "lastSelfWriteFingerprints": {},
         "lastDiscoveredWorkflows": {},

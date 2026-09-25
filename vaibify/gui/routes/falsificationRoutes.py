@@ -61,9 +61,10 @@ from ...reproducibility.falsificationAttestation import (
 logger = logging.getLogger(__name__)
 
 # In-process tracker for in-flight mutation runs, keyed by
-# (sContainerId, iStepIndex). Each entry is the asyncio.Task plus a
-# tiny status dict so the GET endpoint reports progress without
-# re-running anything.
+# (sContainerId, sProjectRepoPath, iStepIndex) -- the project too,
+# because a container hosts several and step 3 of one is not step 3 of
+# another. Each entry is the asyncio.Task plus a tiny status dict so
+# the GET endpoint reports progress without re-running anything.
 _DICT_FALSIFICATION_TASKS = {}
 
 _S_CONTAINER_WORK_ROOT = "/tmp/vaibify-falsification"
@@ -93,10 +94,10 @@ def _fsRequireProjectRepo(dictWorkflow):
     return sProjectRepo
 
 
-def _fdictInFlightStatus(sContainerId, iStepIndex):
+def _fdictInFlightStatus(sContainerId, sProjectRepoPath, iStepIndex):
     """Return the live status dict for a running task, or ``None``."""
     dictEntry = _DICT_FALSIFICATION_TASKS.get(
-        (sContainerId, iStepIndex),
+        (sContainerId, sProjectRepoPath, iStepIndex),
     )
     if not dictEntry:
         return None
@@ -120,7 +121,10 @@ def _fnRegisterView(app, dictCtx):
         )
         dictStep = _fdictRequireStep(dictWorkflow, iStepIndex)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        dictInFlight = _fdictInFlightStatus(sContainerId, iStepIndex)
+        dictInFlight = _fdictInFlightStatus(
+            sContainerId, dictWorkflow.get("sProjectRepoPath", ""),
+            iStepIndex,
+        )
         return await asyncio.to_thread(
             fdictBuildFalsificationStatus,
             dictStep, filesRepo, dictInFlight,
@@ -145,9 +149,9 @@ def _fnRegisterRun(app, dictCtx):
             dictCtx["workflows"], sContainerId,
         )
         dictStep = _fdictRequireStep(dictWorkflow, iStepIndex)
-        _fsRequireProjectRepo(dictWorkflow)
+        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-        _fnRefuseIfRunInFlight(sContainerId, iStepIndex)
+        _fnRefuseIfRunInFlight(sContainerId, sProjectRepo, iStepIndex)
         tPreflight = await _ftClassifyAndProbeCosmicRay(
             dictCtx, sContainerId, dictStep, filesRepo, requestHttp,
         )
@@ -211,9 +215,11 @@ def _ftRequireApplicableAndInstalled(
     )
 
 
-def _fnRefuseIfRunInFlight(sContainerId, iStepIndex):
+def _fnRefuseIfRunInFlight(sContainerId, sProjectRepoPath, iStepIndex):
     """Raise 409 when a mutation run is already live for this step."""
-    if _fdictInFlightStatus(sContainerId, iStepIndex) is not None:
+    if _fdictInFlightStatus(
+        sContainerId, sProjectRepoPath, iStepIndex,
+    ) is not None:
         raise HTTPException(
             409,
             "A falsification check is already running for this step.",
@@ -273,7 +279,8 @@ async def _fdictLaunchFalsificationDurably(
             dictStep, dictApplicability, filesRepo, sCosmicRayVersion,
         ))
         _fnRegisterFalsificationTask(
-            (sContainerId, iStepIndex), taskWorker, dictStatus,
+            _ftFalsificationKey(sContainerId, dictWorkflow, iStepIndex),
+            taskWorker, dictStatus,
         )
         return taskWorker
 
@@ -288,6 +295,14 @@ async def _fdictLaunchFalsificationDurably(
             "This container is busy: " + dictLaunched["sReason"] + ".",
         )
     return {"bAccepted": True, "sPhase": "starting"}
+
+
+def _ftFalsificationKey(sContainerId, dictWorkflow, iStepIndex):
+    """Return the tracker key for one project's step in one container."""
+    return (
+        sContainerId, dictWorkflow.get("sProjectRepoPath", "") or "",
+        iStepIndex,
+    )
 
 
 def _fnRegisterFalsificationTask(tKey, taskWorker, dictStatus):
@@ -319,7 +334,7 @@ async def _fnRunFalsificationWorker(
     never sees a silent hang; the truth (including the crash reason)
     is written to disk and rendered.
     """
-    tKey = (sContainerId, iStepIndex)
+    tKey = _ftFalsificationKey(sContainerId, dictWorkflow, iStepIndex)
     dictStatus = _DICT_FALSIFICATION_TASKS[tKey]["dictStatus"]
     dictStatus["sPhase"] = "running"
     fStarted = time.monotonic()
