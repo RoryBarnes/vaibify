@@ -23823,4 +23823,57 @@ def _fdictEntry(sRel):
         old='    if iCharacters < I_WORKER_PROCESS_MINIMUM_CHARACTERS:\n',
         new='    if False:\n',
     ),
+    # --- 2026-09-25: a transcript record is redacted as JSON, so an
+    # escape can neither hide a secret nor break the record.
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerJsonRecords.py::'
+            'test_a_low_entropy_vendor_token_after_an_escape_is_redacted'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    jsonRecord = _fjsonParseContainerOrNone(sLine)\n',
+        new='    jsonRecord = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerJsonRecords.py::'
+            'test_a_quoted_secret_inside_a_record_is_redacted'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='        _fsRedactLinePatterns if bNeededEscapes\n',
+        new='        _fsRedactSupplementalPatterns if bNeededEscapes\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerJsonRecords.py::'
+            'test_a_secret_named_by_its_key_is_redacted'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    listFoundInContext = _flistPatternSecretsIn(sLine)\n',
+        new='    listFoundInContext = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerJsonRecords.py::'
+            'test_a_redacted_record_stays_valid_json_with_its_escapes'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old=(
+            '    jsonSanitized = _fjsonMapStrings(jsonRecord, '
+            'fsSanitizeString)\n'
+        ),
+        new='    return _fsRedactLinePatterns(sLine, dictCounts)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerJsonRecords.py::'
+            'test_a_record_with_nothing_to_redact_keeps_its_bytes'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old=(
+            '    if jsonSanitized == jsonRecord:\n'
+            '        return sLine\n'
+        ),
+        new='',
+    ),
 ]

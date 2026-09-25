@@ -276,7 +276,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/testGenerator.py::_fdictBuildQualitativeStandards.r", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/testGenerator.py::_fnWarnIfAllUnloadable.r", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/testGenerator.py::_fsClassifyStochasticity.r", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/transcriptSanitizer.py::_fsRedactLinePatterns.secretFound", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowManager.py::_ffCoerceWallClockBudget::value", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowManager.py::_fnDepCacheSet::value", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowManager.py::_fnValidateZenodoMetadata.c", "sReason": ""},
@@ -361,7 +360,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 342,
+    "legacy-variable": 341,
     "legacy-yield": 0
   }
 }

@@ -232,7 +232,10 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # 346 -> 342 (2026-09-25): registering `executor` retired four seeded
 # bindings (executorPool, executorIo) on the same shape, and the
 # transcript sanitizer's new worker pool binds a conforming fifth.
-I_LEGACY_VARIABLE_BUDGET = 342
+# 342 -> 341 (2026-09-25): the sanitizer's detect-secrets loop now
+# unpacks each finding into sCategory/sValue instead of binding the
+# library's object as `secretFound`.
+I_LEGACY_VARIABLE_BUDGET = 341
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
