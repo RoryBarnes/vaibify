@@ -371,6 +371,14 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # kept a failed request's toast.
     ("GET", "/api/workflow/{sContainerId}/promotions/pending"),
     ("GET", "/api/workflow/{sContainerId}/prompt-record/status"),
+    # Acknowledged 2026-09-25: the Prompt Record viewer. Both read only
+    # the redacted session copies already in the project repository,
+    # through typed reads; a session is named, never a path, and must
+    # be one the capture index records.
+    ("GET", "/api/workflow/{sContainerId}/prompt-record/sessions"),
+    ("GET",
+     "/api/workflow/{sContainerId}/prompt-record/sessions/"
+     "{sSessionFileName}"),
     ("GET", "/api/workflows/{sContainerId}"),
     ("GET", "/api/zenodo/{sContainerId}/deposit"),
     ("GET", "/api/zenodo/{sContainerId}/metadata"),

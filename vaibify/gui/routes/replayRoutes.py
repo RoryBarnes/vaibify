@@ -194,6 +194,67 @@ def _fnRegisterRemoveAiModel(app, dictCtx):
         return {"listDeclaredModels": listRemaining}
 
 
+def _flistReplaceModel(listModels, tOriginalKey, dictModel):
+    """Return the list with one declaration replaced where it stood.
+
+    404 when the original is not declared, 409 when the edit would give
+    it the (vendor, model id) of ANOTHER declaration -- an in-place edit
+    must never merge two entries silently. Keeping the position keeps
+    the researcher's list in the order they built it.
+    """
+    listKeys = [
+        (dictExisting.get("sVendor"), dictExisting.get("sModelId"))
+        for dictExisting in listModels
+    ]
+    if tOriginalKey not in listKeys:
+        raise HTTPException(404, "No such declared model.")
+    tNewKey = (dictModel.get("sVendor"), dictModel.get("sModelId"))
+    if tNewKey != tOriginalKey and tNewKey in listKeys:
+        raise HTTPException(
+            409, "Another declaration already names that vendor and "
+            "model ID; edit that one instead.",
+        )
+    listUpdated = list(listModels)
+    listUpdated[listKeys.index(tOriginalKey)] = dictModel
+    return listUpdated
+
+
+def _fnRegisterUpdateAiModel(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/ai-models/update.
+
+    Edits one declaration in place, identified by its ORIGINAL vendor
+    and model id. Declaring an entry with a corrected model id used to
+    add a second entry beside the wrong one.
+    """
+
+    @ffnAgentAction("update-ai-model")
+    @app.post("/api/workflow/{sContainerId}/ai-models/update")
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictUpdateAiModel(
+        sContainerId: str, dictBody: dict, requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        tOriginalKey = (
+            dictBody.get("sOriginalVendor"), dictBody.get("sOriginalModelId"),
+        )
+        dictModel = _fdictValidateModelBody(dictBody)
+        dictProvenance = _fdictProvenanceOf(dictWorkflow)
+        dictProvenance[S_DECLARED_MODELS_KEY] = _flistReplaceModel(
+            list(dictProvenance.get(S_DECLARED_MODELS_KEY) or []),
+            tOriginalKey, dictModel,
+        )
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI-model edit",
+        )
+        return {
+            "listDeclaredModels": dictProvenance[S_DECLARED_MODELS_KEY],
+        }
+
+
 def _fsContextAbsolutePath(dictWorkflow):
     """Return the container-absolute context path or raise HTTP 400."""
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath") or ""
@@ -804,8 +865,9 @@ async def _fgenericRunCapturePhaseUnderTheDrain(
 
     Returns the worker's result. Nothing is carried back because
     neither phase raises an HTTPException -- the route's one refusal
-    is decided in the handler, before any carrier exists. Anything escaping the landing phase leaves a partially
-    written transcript set and poisons, which is correct.
+    is decided in the handler, before any carrier exists. Anything
+    escaping the landing phase leaves a partially written transcript
+    set and poisons, which is correct.
 
     The journal target is the compile-time constant the caller passes,
     never a transcript path or any part of a captured prompt: this
@@ -1198,6 +1260,7 @@ def fnRegisterAll(app, dictCtx):
     """Register all Replay-axis routes."""
     _fnRegisterDeclareAiModel(app, dictCtx)
     _fnRegisterRemoveAiModel(app, dictCtx)
+    _fnRegisterUpdateAiModel(app, dictCtx)
     _fnRegisterDeclarePersonalLayer(app, dictCtx)
     _fnRegisterHashPersonalLayerFile(app, dictCtx)
     _fnRegisterReadProjectContext(app, dictCtx)

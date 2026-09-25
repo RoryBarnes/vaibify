@@ -2548,10 +2548,12 @@ def _fdictBuildWorkflowEnvelopeDetail(
          "bProjectContextFileExists": bool,
          "bRepoRootAgentsFileDetected": bool,
          "sReplayAxisState": "untracked|declared|recorded|supervised",
+         "listAiModelDeclarationIssues": [str],
          "dictPromptRecord": {"bEnabled", "bFirstCaptureReviewed",
-             "iSessionCount", "iRedactionTotal", "bGapPresent"},
+             "iSessionCount", "iRedactionTotal", "bGapPresent",
+             "bChainIntact", "iSessionsOutsideProject"},
          "dictSupervision": {"bEnabled", "iFlagCount",
-             "bFlagChainIntact", "listFlags"}}
+             "bFlagChainIntact", "listFlags", "bClean"}}
 
     The booleans let the Project-block requirement rows render
     AI-declaration, rebuild-attestation, Overleaf-applicability,
@@ -2794,6 +2796,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
             (dictWorkflow or {}).get("dictAiProvenance") or None,
         "bAiModelsDeclared":
             replayGate.fbWorkflowDeclaresAiModels(dictWorkflow),
+        "listAiModelDeclarationIssues":
+            _flistDescribeAiModelDeclarationIssues(dictWorkflow),
         "bPersonalLayerDeclared":
             replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow),
         "bProjectContextFileExists": (
@@ -2882,6 +2886,9 @@ def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):
     recorded-cause log was; ``bPersistedFlagCountMatches`` false means
     the two disagree, which a prefix-valid hash chain cannot see on
     its own. All four render as loudly as the flags themselves.
+    ``bClean`` is the gate's own verdict (``fbSupervisionClean``) over
+    this same evidence, so the Project block row renders it instead of
+    reassembling one from the fields above.
     """
     from vaibify.gui import attributionLog
     dictConfig = (
@@ -2899,13 +2906,18 @@ def _fdictEnvelopeSupervision(dictWorkflow, filesRepo):
         ) is True,
         "listFlags": [],
     }
+    from ...reproducibility import replayGate
     if filesRepo is None:
+        dictSummary["bClean"] = replayGate.fbSupervisionClean(dictWorkflow)
         return dictSummary
     dictEvidence = attributionLog.fdictSummarizeSupervisionEvidence(
         filesRepo, dictWorkflow,
     )
     dictSummary.update(dictEvidence)
     dictSummary["listFlags"] = dictEvidence["listFlags"][-5:]
+    dictSummary["bClean"] = replayGate.fbSupervisionClean(
+        dictWorkflow, dictEvidence,
+    )
     return dictSummary
 
 
@@ -2915,6 +2927,9 @@ def _fdictEnvelopePromptRecord(dictWorkflow, filesRepo):
     Exec-free: the index rides the poll snapshot's fixed content set.
     ``bGapPresent`` means the coverage intervals do not form one
     continuous span — unmonitored time exists and the UI must show it.
+    ``bChainIntact`` verifies the capture records' hash chain from the
+    index alone; whether each session FILE still matches its record
+    needs the files themselves, so that check stays in the viewer.
     """
     import json as jsonModule
     dictConfig = (
@@ -2928,6 +2943,8 @@ def _fdictEnvelopePromptRecord(dictWorkflow, filesRepo):
         "iSessionCount": 0,
         "iRedactionTotal": 0,
         "bGapPresent": False,
+        "bChainIntact": True,
+        "iSessionsOutsideProject": 0,
     }
     if filesRepo is None or not filesRepo.fbIsFile(
         ".vaibify/promptRecord/index.json",
@@ -2939,19 +2956,70 @@ def _fdictEnvelopePromptRecord(dictWorkflow, filesRepo):
         )
     except (OSError, ValueError):
         return dictSummary
-    listCaptures = dictIndex.get("listCaptures") or []
-    dictSummary["iSessionCount"] = len({
-        dictRecord.get("sSessionFileName")
-        for dictRecord in listCaptures
-    })
+    from ..promptRecordManager import (
+        fbVerifyCaptureChain, flistSummarizeSessions,
+    )
+    listSessions = flistSummarizeSessions(dictIndex)
+    dictSummary["iSessionCount"] = len(listSessions)
     dictSummary["iRedactionTotal"] = sum(
-        int(dictRecord.get("iRedactionCount") or 0)
-        for dictRecord in listCaptures
+        dictSession["iRedactionCount"] for dictSession in listSessions
     )
     dictSummary["bGapPresent"] = len(
         dictIndex.get("listCoverageIntervals") or [],
     ) > 1
+    dictSummary["bChainIntact"] = fbVerifyCaptureChain(dictIndex)
+    dictSummary["iSessionsOutsideProject"] = int(
+        dictIndex.get("iSessionsOutsideProject") or 0,
+    )
     return dictSummary
+
+
+_DICT_MODEL_FIELD_LABELS = {
+    "sVendor": "vendor",
+    "sModelId": "model ID",
+    "sUseStartDate": "first-use date",
+    "sUseEndDate": "last-use date",
+    "sWeightsSource": "weights source",
+    "sWeightsRevisionHash": "weights revision hash",
+}
+
+
+def _flistDescribeAiModelDeclarationIssues(dictWorkflow):
+    """Return what keeps the AI-model criterion from passing, in words.
+
+    The row renders these rather than re-deriving the gate: they come
+    from the same per-model gap check ``fbWorkflowDeclaresAiModels``
+    applies, so the sentences and the verdict cannot disagree.
+    """
+    from ...reproducibility import replayGate
+    listModels = (
+        ((dictWorkflow or {}).get("dictAiProvenance") or {})
+        .get("listDeclaredModels")
+    )
+    if not isinstance(listModels, list) or not listModels:
+        return ["No AI model is declared."]
+    listIssues = []
+    for dictModel in listModels:
+        listGaps = replayGate.flistDescribeModelDeclarationGaps(dictModel)
+        if listGaps:
+            listIssues.append(
+                _fsNameDeclaredModel(dictModel) + " is missing its "
+                + ", ".join(
+                    _DICT_MODEL_FIELD_LABELS.get(sGap, sGap)
+                    for sGap in listGaps
+                ) + ".",
+            )
+    return listIssues
+
+
+def _fsNameDeclaredModel(dictModel):
+    """Return 'vendor / model id' for a declaration, tolerating gaps."""
+    if not isinstance(dictModel, dict):
+        return "A declaration"
+    return (
+        str(dictModel.get("sVendor") or "?") + " / "
+        + str(dictModel.get("sModelId") or "?")
+    )
 
 
 def _fbRootContextCandidateDetected(filesRepo):

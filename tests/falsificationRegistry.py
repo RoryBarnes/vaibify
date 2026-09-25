@@ -23728,11 +23728,11 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/browser/testThePromptRecordNamesWhatItLeftOut.py::'
-            'test_the_dialog_names_the_sessions_it_left_out'
+            'test_the_record_row_names_the_sessions_it_left_out'
         ),
-        source='vaibify/gui/static/scriptPromptRecordConfig.js',
-        old='            _fsRenderSessionsOutsideProject(dictStatus) +\n',
-        new='',
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if ((dictRecord.iSessionsOutsideProject || 0) > 0) {\n',
+        new='        if (false) {\n',
     ),
     Falsification(
         nodeid=(
@@ -23875,5 +23875,65 @@ def _fdictEntry(sRel):
             '        return sLine\n'
         ),
         new='',
+    ),
+    # --- 2026-09-25: the AI block as rows, the declaration editor, and
+    # the Prompt Record viewer.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAiBlockCountsOnlyItsGatingRows.py::'
+            'test_an_optional_row_never_lifts_the_level_cell'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return dictRow.bOptional !== true;\n',
+        new='        return true;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAiDeclarationEditsInPlace.py::'
+            'test_a_corrected_model_id_edits_the_one_declaration'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old='    listUpdated[listKeys.index(tOriginalKey)] = dictModel\n',
+        new='    listUpdated.append(dictModel)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePromptRecordViewerShowsTheRecord.py::'
+            'test_the_review_shows_the_redacted_conversation'
+        ),
+        source='vaibify/gui/static/scriptPromptRecordViewer.js',
+        old=(
+            "                return '<mark class=\"prompt-record-redaction\">' "
+            "+ sMarker +\n"
+            "                    '</mark>';\n"
+        ),
+        new='                return sMarker;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordViewer.py::'
+            'test_an_unparseable_line_is_shown_not_dropped'
+        ),
+        source='vaibify/gui/promptRecordViewer.py',
+        old='            listFromRecord = [_fdictTurn("unparsed", sLine, "")]\n',
+        new='            listFromRecord = []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_a_whole_recapture_resets_the_session_redaction_tally'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='            dictSummary["iRedactionCount"] = iCount\n',
+        new='            dictSummary["iRedactionCount"] += iCount\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAiModelDeclarationIssues.py::'
+            'test_the_reasons_are_empty_exactly_when_the_gate_passes'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        if listGaps:\n            listIssues.append(\n',
+        new='        if False:\n            listIssues.append(\n',
     ),
 ]

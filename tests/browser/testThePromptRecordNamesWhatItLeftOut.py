@@ -1,4 +1,4 @@
-"""The Prompt Record dialog shows what it left out; its poll says it is automatic.
+"""The Prompt Record row shows what it left out; its poll says it is automatic.
 
 A capture pass records only the agent sessions launched inside the
 project's folder, because a container can hold several projects and
@@ -105,7 +105,7 @@ def _fnReportACaptureInFlight(pageDashboard):
 
 
 @pytest.mark.falsification
-def test_the_dialog_names_the_sessions_it_left_out(
+def test_the_record_row_names_the_sessions_it_left_out(
     pageDashboard, serverHub,
 ):
     """The left-out count reaches the researcher, and the poll says automatic.
@@ -118,13 +118,12 @@ def test_the_dialog_names_the_sessions_it_left_out(
 
     The status answer is the hub's real one with a running pass added,
     because this lane intercepts every capture and so never has one in
-    flight: the dialog must then say a pass is running rather than
-    promise one "within 30 seconds". The poll half is registered through
+    flight: Recording settings must then say a pass is running. The
+    poll half is registered through
     ``tests/testPromptRecordPollFrontendContract.py``; a registry entry
     names one test.
 
-    Kills: removing the out-of-project paragraph from the dialog's
-    status render.
+    Kills: removing the left-out line from the Prompt Record row.
     """
     _fnEnableTheRecordWithAGap(serverHub)
     listCaptureUrls = _flistInterceptTheCapturePoll(pageDashboard)
@@ -134,23 +133,26 @@ def test_the_dialog_names_the_sessions_it_left_out(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )
     pageDashboard.click('.requirement-group-header[data-group="ai"]')
-    pageDashboard.click('.requirement-row-header[data-req="aiModelPrompts"]')
-    pageDashboard.click(".wf-open-prompt-record")
+    sRecordRow = '.requirement-row-header[data-req="promptRecord"]'
+    pageDashboard.click(sRecordRow)
+    sRowDetail = ".requirement-row.expanded .requirement-row-detail"
     pageDashboard.wait_for_selector(
-        "#promptRecordBody :text('started outside this project')",
+        sRowDetail + " :text('started outside this project')",
         timeout=15000,
     )
-    sBody = pageDashboard.locator("#promptRecordBody").text_content()
+    sDetail = pageDashboard.locator(sRowDetail).text_content()
     assert (
-        f"{I_SESSIONS_OUTSIDE_PROJECT} agent session(s) were started "
-        "outside this project" in sBody
-    ), sBody
-    assert "change into the project folder" in sBody, sBody
-    assert "running since " + S_RUNNING_SINCE_UTC in sBody, sBody
-    assert "No captures yet" not in sBody, (
-        "the dialog promised a pass within 30 seconds while one was "
-        "already running: " + sBody
+        f"{I_SESSIONS_OUTSIDE_PROJECT} session(s) started outside this "
+        "project's folder are not recorded" in sDetail
+    ), sDetail
+    assert "start the agent from inside the project folder" in sDetail
+    pageDashboard.click(".wf-open-prompt-record")
+    pageDashboard.wait_for_selector(
+        "#promptRecordBody :text('running since')", timeout=15000,
     )
+    sBody = pageDashboard.locator("#promptRecordBody").text_content()
+    assert "Recording is on" in sBody, sBody
+    assert "running since " + S_RUNNING_SINCE_UTC in sBody, sBody
     pageDashboard.clock.fast_forward(I_POLL_FAST_FORWARD_MILLISECONDS)
     fDeadline = time.monotonic() + F_POLL_WAIT_SECONDS
     while not listCaptureUrls and time.monotonic() < fDeadline:

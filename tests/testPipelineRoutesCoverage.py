@@ -1945,6 +1945,9 @@ class TestPollLevelStatePayload:
             "bNoStandaloneBinaries",
             "bOverleafBound", "bArxivConfigured",
             "dictAiProvenance", "bAiModelsDeclared",
+            # Added 2026-09-25. The AI models row renders the gate's
+            # reasons in words rather than re-deriving them in JS.
+            "listAiModelDeclarationIssues",
             "bPersonalLayerDeclared",
             "bProjectContextFileExists",
             "bRepoRootAgentsFileDetected",
@@ -2010,6 +2013,13 @@ class TestPollLevelStatePayload:
         assert dictDetail["bPersonalLayerDeclared"] is False
         assert dictDetail["sReplayAxisState"] == "untracked"
         assert dictDetail["dictPromptRecord"]["bEnabled"] is False
+        assert dictDetail["listAiModelDeclarationIssues"] == [
+            "No AI model is declared.",
+        ]
+        assert dictDetail["dictPromptRecord"]["bChainIntact"] is True
+        assert dictDetail["dictPromptRecord"][
+            "iSessionsOutsideProject"] == 0
+        assert dictDetail["dictSupervision"]["bClean"] is True
         assert set(dictDetail["dictRemoteSyncs"].keys()) == {
             "github", "zenodo", "overleaf", "arxiv",
         }

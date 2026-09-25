@@ -29,6 +29,7 @@ from vaibify.gui.promptRecordManager import (
     fdictLandSanitizedSessions,
     fdictLoadIndex,
     fdictSanitizeNewTranscriptLines,
+    flistSummarizeSessions,
     flistVerifyCapturedFiles,
 )
 from vaibify.gui.transcriptSanitizer import (
@@ -469,3 +470,29 @@ def test_the_container_listing_program_reads_each_launch_directory(
         sInProject,
     )
     assert dictListing[sWithoutCwd]["sLaunchDirectory"] == ""
+
+
+@pytest.mark.falsification
+def test_a_whole_recapture_resets_the_session_redaction_tally():
+    """A session's redactions are its current total, not a sum of records.
+
+    A whole recapture re-counts everything it lands, so summing every
+    record counted a recaptured session twice; an appended capture adds
+    only its new lines' redactions.
+
+    Kills: adding a whole recapture's count instead of resetting to it.
+    """
+    dictIndex = {"listCaptures": [
+        {"sSessionFileName": "a.jsonl", "sCaptureKind": "whole",
+         "iRedactionCount": 5},
+        {"sSessionFileName": "a.jsonl", "sCaptureKind": "appended",
+         "iRedactionCount": 2},
+        {"sSessionFileName": "b.jsonl", "sCaptureKind": "whole",
+         "iRedactionCount": 1},
+        {"sSessionFileName": "a.jsonl", "sCaptureKind": "whole",
+         "iRedactionCount": 7},
+    ]}
+    assert [
+        (dictSession["sSessionFileName"], dictSession["iRedactionCount"])
+        for dictSession in flistSummarizeSessions(dictIndex)
+    ] == [("a.jsonl", 7), ("b.jsonl", 1)]

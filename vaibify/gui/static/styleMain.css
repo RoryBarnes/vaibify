@@ -7381,7 +7381,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    nothing. It rides BESIDE the row's state: the glyph in the banner,
    the explanation and the offer in the expanded detail. Orange, never
    red — red would say the deposit diverges, which it does not. */
-.requirement-row-warning {
+.requirement-row-warning,
+.requirement-group-warning {
     color: var(--color-orange);
     margin-left: 6px;
     font-weight: bold;
@@ -8985,3 +8986,135 @@ body.council-workspace-open #mainLayout {
     font-family: var(--font-mono, monospace);
     font-size: 0.9em;
 }
+
+/* The AI block's declaration dialogs: a read-only summary per model,
+   and an editor with one self-saving card per model. */
+.ai-model-summary {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ai-model-summary dt {
+    color: var(--text-muted);
+}
+
+.ai-model-summary dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.ai-model-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+
+/* The Prompt Record viewer: sessions on the left, the selected
+   session's turns on the right. Folded turns (tool calls, results,
+   reasoning) sit on one line until opened; every redaction marker is
+   highlighted so a reviewer can see what the sanitizer removed. */
+.modal.modal-large {
+    width: min(1100px, 94vw);
+    max-height: 90vh;
+}
+
+.prompt-record-viewer-panes {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 14px;
+    min-height: 0;
+}
+
+.prompt-record-viewer-sessions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+.prompt-record-session {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.prompt-record-session.selected {
+    border-color: var(--color-pale-blue);
+}
+
+.prompt-record-session-id {
+    font-weight: bold;
+}
+
+.prompt-record-viewer-turns {
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+.prompt-record-viewer-filter {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.prompt-record-turn {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.prompt-record-turn > summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.prompt-record-turn-label {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.prompt-record-turn-prompt .prompt-record-turn-label {
+    color: var(--color-pale-blue);
+}
+
+.prompt-record-turn-unparsed .prompt-record-turn-label {
+    color: var(--color-orange);
+}
+
+.prompt-record-turn-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.9em;
+}
+
+.prompt-record-redaction {
+    background: var(--color-orange);
+    color: var(--bg-primary);
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+.prompt-record-redaction-badge {
+    color: var(--color-orange);
+    font-size: 0.85em;
+}
+
+.prompt-record-viewer-approve {
+    margin-top: 12px;
+}
+

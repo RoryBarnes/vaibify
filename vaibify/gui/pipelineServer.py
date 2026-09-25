@@ -3538,6 +3538,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.reproductionRoutes.fnRegisterAll(app, dictCtx)
     routes.falsificationRoutes.fnRegisterAll(app, dictCtx)
     routes.replayRoutes.fnRegisterAll(app, dictCtx)
+    routes.promptRecordViewerRoutes.fnRegisterAll(app, dictCtx)
     routes.preferencesRoutes.fnRegisterAll(app, dictCtx)
     routes.remoteRefreshRoutes.fnRegisterAll(app, dictCtx)
     routes.councilRoutes.fnRegisterAll(app, dictCtx)

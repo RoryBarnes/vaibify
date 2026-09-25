@@ -880,6 +880,14 @@ LIST_AGENT_ACTIONS = [
                      "sModelId}. User-only because deleting a "
                      "declaration erases provenance and can drop the "
                      "project below Level 2."},
+    {"sName": "update-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/update",
+     "bAgentSafe": False,
+     "sDescription": "Edit one declared AI model in place, found by "
+                     "{sOriginalVendor, sOriginalModelId}. User-only "
+                     "like removal: renaming a declaration rewrites "
+                     "provenance."},
     {"sName": "declare-personal-layer", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/personal-layer/declare",
@@ -952,6 +960,21 @@ LIST_AGENT_ACTIONS = [
                      "coverage intervals (gaps are unmonitored time), "
                      "hash-chain integrity, and any tampered session "
                      "files. Read-only."},
+    {"sName": "list-prompt-record-sessions", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/sessions",
+     "bAgentSafe": True,
+     "sDescription": "List the Prompt Record's captured sessions with "
+                     "redaction counts, the hash-chain and file-tamper "
+                     "checks, and coverage. Read-only."},
+    {"sName": "read-prompt-record-session", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/sessions/"
+              "{sSessionFileName}",
+     "bAgentSafe": True,
+     "saQueryFields": ["iOffset", "iLimit"],
+     "sDescription": "Read one captured session as redacted turns "
+                     "(prompts, replies, tool calls). Read-only."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
