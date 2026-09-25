@@ -208,7 +208,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/registryRoutes.py::_fnRequireLimitWithinRange::numberValue", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/registryRoutes.py::_fnUpdateYamlNumberField::numberValue", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/registryRoutes.py::flistQueryHostDirectory.entry", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.executorPool", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/resourceMonitor.py::_ftReadFilesystemUsage.future", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routeContext.py::RouteContext.__setitem__::value", "sReason": ""},
     {"sDebtClass": "interface-method", "sIdentity": "vaibify/gui/routeContext.py::RouteContext.get", "sReason": "dict-compatible accessor kept for mapping-style callers"},
@@ -258,11 +257,8 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/syncRoutes.py::_ftRunServiceValidation::syncDispatcher", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/syncRoutes.py::_ftSnapshotContainerCredential::syncDispatcher", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fdictProbeContainerReadiness.exception", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fdictProbeWithTimeout.executorPool", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/systemRoutes.py::_fdictProbeWithTimeout.future", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/serverLifespan.py::_fnInvokeMaybeAsync.objectResult", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/serverLifespan.py::_fnRegisterDefaultThreadPoolExecutor.fnInstallExecutor.executorIo", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/serverLifespan.py::_fnRegisterDefaultThreadPoolExecutor.fnShutdownExecutor.executorIo", "sReason": ""},
     {"sDebtClass": "interface-method", "sIdentity": "vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch", "sReason": "BaseHTTPMiddleware override; the name is the protocol"},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch::call_next", "sReason": ""},
     {"sDebtClass": "interface-method", "sIdentity": "vaibify/gui/serverMiddleware.py::SecurityHeadersMiddleware.dispatch", "sReason": "BaseHTTPMiddleware override; the name is the protocol"},
@@ -365,7 +361,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 346,
+    "legacy-variable": 342,
     "legacy-yield": 0
   }
 }

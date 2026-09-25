@@ -155,6 +155,12 @@ DICT_TIER_TWO_REGISTRY = {
     # practice official rather than introducing a spelling. The
     # environment-archive deposit binds one in three places.
     "client": {"ZenodoClient"},
+    # Approved 2026-09-25, on the same precedent: `executorPool` and
+    # `executorIo` were already the codebase's live spellings for a
+    # concurrent.futures executor (resourceMonitor, systemRoutes,
+    # serverLifespan) and sat in the frozen seed. The transcript
+    # sanitizer's worker pool binds a third.
+    "executor": {"ThreadPoolExecutor", "ProcessPoolExecutor"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
     # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by

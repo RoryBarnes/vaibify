@@ -98,6 +98,26 @@ def fnFailHostUnreachable(sUrl, error):
     )
 
 
+def fnFailHostStillWorking(sUrl, fTimeoutSeconds):
+    """Exit 5: the host took the request and has not answered yet.
+
+    A different code from 4 because the remedy is the opposite one. The
+    request reached a live hub that may still be doing the work, so
+    reconnecting cannot help and retrying may start the work again. A
+    Prompt Record first pass over a long history was reported as "host
+    unreachable" here, and an agent asked the researcher to reconnect a
+    container that was working correctly.
+    """
+    fnFail(
+        "vaibify host at " + sUrl + " accepted the request but did not "
+        "answer within " + str(int(fTimeoutSeconds)) + " s. The host is "
+        "reachable, so this is not a lost connection and reconnecting "
+        "will not help: the action may still be running, and it may "
+        "finish without you. Read its status before retrying.",
+        iCode=5,
+    )
+
+
 def fsFindEnclosingProjectDirectory(sStartDirectory):
     """Return the nearest directory at or above sStartDirectory holding a project.
 
@@ -516,7 +536,11 @@ def fiSendHttpRequest(dictTarget, sToken, sMethod, bJsonMode):
     except urllib.error.HTTPError as errHttp:
         fnAnnounceServedProjectFromHeaders(getattr(errHttp, "headers", None))
         return _fiHandleHttpError(errHttp, bJsonMode)
-    except (urllib.error.URLError, socket.timeout, OSError) as error:
+    except socket.timeout:
+        # urllib wraps a failed CONNECT in URLError; a bare timeout
+        # means the request was sent and the host has not answered.
+        fnFailHostStillWorking(dictTarget["sUrl"], F_READ_TIMEOUT)
+    except (urllib.error.URLError, OSError) as error:
         fnFailHostUnreachable(dictTarget["sUrl"], error)
 
 

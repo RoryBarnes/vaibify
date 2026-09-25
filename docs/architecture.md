@@ -2872,6 +2872,19 @@ boundary. Holding the drain through a whole-file rescan once kept
 every write route on a container waiting for as long as the agent
 kept talking: each turn grew the transcript the next pass rescanned.
 
+The scan itself is pure-Python regex work that holds the interpreter
+lock, so a first pass run in a hub thread starved the event loop: a
+34 MB history took about 14 minutes inside the hub against 6.6
+standalone, and the dashboard lagged throughout. A batch of a
+megabyte or more is therefore split at line boundaries (exact, for
+the same reason incremental capture is) and scanned in `spawn`ed
+worker processes on every core but one; smaller batches, the norm
+after the first pass, stay in-process because starting a worker costs
+about as much as scanning 100 KB. A pass runs as a task of its own,
+and a request waits for it at most 45 seconds before answering that
+it is still running, since an in-container agent's client gives up at
+60 and used to report a busy host as an unreachable one.
+
 ## JavaScript frontend
 
 The frontend lives under `vaibify/gui/static/` and uses the IIFE

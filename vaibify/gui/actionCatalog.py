@@ -939,11 +939,11 @@ LIST_AGENT_ACTIONS = [
                      "project's repository are sanitized "
                      "(explicit [REDACTED: …] markers) and landed at "
                      ".vaibify/promptRecord/; sessions launched "
-                     "elsewhere are counted and left out. The first "
-                     "pass over a long history can take minutes. "
-                     "Append-only and "
-                     "sanitized, so agent-safe; refuses (409) when "
-                     "the record is not enabled."},
+                     "elsewhere are counted and left out. A first "
+                     "pass takes minutes: past 45 s it answers "
+                     "bStillRunning and lands by itself (check "
+                     "view-prompt-record-status, do not retry). "
+                     "Agent-safe; 409 when the record is not enabled."},
     {"sName": "view-prompt-record-status", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/prompt-record/status",

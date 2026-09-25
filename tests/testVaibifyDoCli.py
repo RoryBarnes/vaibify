@@ -714,7 +714,17 @@ def test_fiSendHttpRequest_401_exits_with_auth_message(modCli, capsys):
     assert "token rejected" in capsys.readouterr().err.lower()
 
 
-def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
+def test_fiSendHttpRequest_unanswered_request_exits_still_working(
+    modCli, capsys,
+):
+    """A bare timeout is an unanswered request, not a lost host.
+
+    This test used to assert exit 4 "unreachable" for a bare
+    ``socket.timeout``. urllib wraps a failed CONNECT in ``URLError``,
+    so a bare timeout only ever means the request was sent and the host
+    had not answered -- confirmed against real sockets in
+    ``test_a_host_that_accepts_but_does_not_answer_is_still_working``.
+    """
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=socket.timeout("slow"),
@@ -724,8 +734,63 @@ def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
+    assert excInfo.value.code == 5
+    assert "unreachable" not in capsys.readouterr().err.lower()
+
+
+def _fiFreePortNobodyListensOn():
+    socketProbe = socket.socket()
+    socketProbe.bind(("127.0.0.1", 0))
+    iPort = socketProbe.getsockname()[1]
+    socketProbe.close()
+    return iPort
+
+
+@pytest.mark.falsification
+def test_a_host_that_accepts_but_does_not_answer_is_still_working(
+    modCli, capsys, monkeypatch,
+):
+    """A real server that takes the request and stays silent exits 5.
+
+    The wording matters as much as the code: an agent told "host
+    unreachable" asked the researcher to reconnect a container whose
+    first Prompt Record pass was simply still running.
+
+    Kills: removing the bare-timeout clause, so an unanswered request
+    falls through to "host unreachable".
+    """
+    socketServer = socket.socket()
+    socketServer.bind(("127.0.0.1", 0))
+    socketServer.listen(1)
+    iPort = socketServer.getsockname()[1]
+    monkeypatch.setattr(modCli, "F_READ_TIMEOUT", 0.5)
+    sUrl = "http://127.0.0.1:" + str(iPort) + "/api/x"
+    try:
+        with pytest.raises(SystemExit) as excInfo:
+            modCli.fiSendHttpRequest(
+                {"sUrl": sUrl, "dictBody": {}}, "tok", "POST", False,
+            )
+    finally:
+        socketServer.close()
+    sStderr = capsys.readouterr().err
+    assert excInfo.value.code == 5, sStderr
+    assert "accepted the request" in sStderr
+    assert "unreachable" not in sStderr.lower()
+    assert sUrl in sStderr
+
+
+def test_a_real_refused_connection_still_exits_unreachable(
+    modCli, capsys, monkeypatch,
+):
+    """The new clause must not swallow a real failure to connect."""
+    monkeypatch.setattr(modCli, "F_READ_TIMEOUT", 0.5)
+    sUrl = "http://127.0.0.1:" + str(_fiFreePortNobodyListensOn()) + "/x"
+    with pytest.raises(SystemExit) as excInfo:
+        modCli.fiSendHttpRequest(
+            {"sUrl": sUrl, "dictBody": {}}, "tok", "POST", False,
+        )
     assert excInfo.value.code == 4
-    assert "unreachable" in capsys.readouterr().err.lower()
+    assert "refused" in capsys.readouterr().err
 
 
 def test_fiSendHttpRequest_urlerror_exits(modCli, capsys):
@@ -1478,9 +1543,13 @@ def test_a_timed_out_http_connection_keeps_the_reconnect_advice(
 ):
     """A timeout is not a refusal: the packet went nowhere, and a stale
     session file is the ordinary cause, so the reconnect advice stands.
+
+    A CONNECT that times out reaches us wrapped in ``URLError`` -- measured
+    against an unroutable address on Python 3.9 and 3.12. A bare
+    timeout means the request was sent, which is exit 5, not this.
     """
     sStderr = _fsStderrOfFailedHttpRequest(
-        modCli, capsys, socket.timeout("timed out"),
+        modCli, capsys, urllib.error.URLError(socket.timeout("timed out")),
     )
     assert "reconnect the container" in sStderr
     assert "loopback" not in sStderr

@@ -33,17 +33,28 @@ __all__ = [
     "S_SESSION_SECRET_CATEGORY",
     "S_ENTROPY_CATEGORY",
     "fbSanitizerAvailable",
+    "flistSanitizeTextsInParallel",
     "ftResultSanitizeText",
 ]
 
+import itertools
 import math
+import multiprocessing
+import os
 import re
+from concurrent.futures import ProcessPoolExecutor
 
 S_SESSION_SECRET_CATEGORY = "vaibify-session-secret"
 S_ENTROPY_CATEGORY = "high-entropy-string"
 _I_MINIMUM_PATTERN_SECRET_LENGTH = 8
 _I_MINIMUM_ENTROPY_TOKEN_LENGTH = 32
 _F_ENTROPY_LIMIT_BITS = 4.5
+# Measured on the hub's host: starting one spawned worker costs about
+# 0.5 s, the time the sanitizer takes over roughly 100 KB. Below a
+# megabyte the work stays in-process; the passes that follow a first
+# capture carry a few kilobytes each, every 30 seconds.
+I_WORKER_PROCESS_MINIMUM_CHARACTERS = 1_000_000
+I_PIECE_CHARACTERS = 2_000_000
 
 _SET_EXCLUDED_PLUGIN_TYPES = frozenset({
     "Base64 High Entropy String",
@@ -176,3 +187,91 @@ def ftResultSanitizeText(sText, listExactSecrets=None):
         for sLine in sText.split("\n"):
             listSanitized.append(_fsRedactLinePatterns(sLine, dictCounts))
     return "\n".join(listSanitized), dictCounts
+
+
+def flistSanitizeTextsInParallel(listTexts, listExactSecrets=None):
+    """Return :func:`ftResultSanitizeText` of each text, in order.
+
+    The scan is pure-Python regex work that holds the interpreter lock,
+    so run in a hub thread it starves the event loop: a 34 MB first
+    capture took about 14 minutes inside the hub against 6.6 standalone,
+    and the dashboard went sluggish for all of it. Large batches
+    therefore run in worker processes, on every core but one.
+
+    Each text is split into pieces at line boundaries so a single long
+    transcript spreads across workers too. That is exact, not an
+    approximation: the scan is line-local and no redacted secret spans
+    a newline, so sanitizing the pieces and joining them yields the
+    bytes one call over the whole text would. An exact secret that DOES
+    contain a newline disables the split, as it disables incremental
+    capture.
+    """
+    bSplittable = not any(
+        "\n" in sSecret for sSecret in listExactSecrets or []
+    )
+    listPieces = []
+    listOwners = []
+    for iText, sText in enumerate(listTexts):
+        listSplit = (
+            _flistSplitAtLineBoundaries(sText, I_PIECE_CHARACTERS)
+            if bSplittable else [sText]
+        )
+        listPieces.extend(listSplit)
+        listOwners.extend([iText] * len(listSplit))
+    listResults = _flistSanitizePieces(listPieces, listExactSecrets)
+    return _flistJoinPieceResults(len(listTexts), listOwners, listResults)
+
+
+def _flistSplitAtLineBoundaries(sText, iPieceCharacters):
+    """Split text into pieces of about ``iPieceCharacters`` at line ends."""
+    listPieces = []
+    iStart = 0
+    while len(sText) - iStart > iPieceCharacters:
+        iNewline = sText.find("\n", iStart + iPieceCharacters)
+        if iNewline < 0:
+            break
+        listPieces.append(sText[iStart:iNewline + 1])
+        iStart = iNewline + 1
+    if iStart < len(sText) or not listPieces:
+        listPieces.append(sText[iStart:])
+    return listPieces
+
+
+def _flistSanitizePieces(listPieces, listExactSecrets):
+    """Sanitize pieces in-process when small, in spawned workers when not.
+
+    ``spawn`` rather than the platform default because the hub is
+    multi-threaded, and forking a threaded process can copy a lock some
+    other thread holds into a child that will never release it.
+    """
+    iCharacters = sum(len(sPiece) for sPiece in listPieces)
+    if iCharacters < I_WORKER_PROCESS_MINIMUM_CHARACTERS:
+        return [
+            ftResultSanitizeText(sPiece, listExactSecrets)
+            for sPiece in listPieces
+        ]
+    iWorkers = min(len(listPieces), max(1, (os.cpu_count() or 2) - 1))
+    with ProcessPoolExecutor(
+        max_workers=iWorkers,
+        mp_context=multiprocessing.get_context("spawn"),
+    ) as executorPool:
+        return list(executorPool.map(
+            ftResultSanitizeText, listPieces,
+            itertools.repeat(listExactSecrets),
+        ))
+
+
+def _flistJoinPieceResults(iTexts, listOwners, listResults):
+    """Reassemble per-piece results into one result per original text."""
+    listSanitized = [[] for _ in range(iTexts)]
+    listCounts = [{} for _ in range(iTexts)]
+    for iOwner, (sSanitized, dictCounts) in zip(listOwners, listResults):
+        listSanitized[iOwner].append(sSanitized)
+        for sCategory, iCount in dictCounts.items():
+            listCounts[iOwner][sCategory] = (
+                listCounts[iOwner].get(sCategory, 0) + iCount
+            )
+    return [
+        ("".join(listText), dictCounts)
+        for listText, dictCounts in zip(listSanitized, listCounts)
+    ]
