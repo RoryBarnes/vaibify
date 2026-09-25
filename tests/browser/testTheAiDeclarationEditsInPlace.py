@@ -26,6 +26,7 @@ from tests.browser.conftest import (
 pytestmark = pytest.mark.browser
 
 F_SAVE_WAIT_SECONDS = 15.0
+F_RESPONSE_DELAY_SECONDS = 2.0
 
 
 def _flistSavedModels(serverHub):
@@ -48,6 +49,13 @@ def _flistWaitForSavedModels(serverHub, fbDone):
     return listModels
 
 
+def _fnHoldTheResponseBack(route):
+    """Let the save land, then deliver its answer two seconds late."""
+    responseSaved = route.fetch()
+    time.sleep(F_RESPONSE_DELAY_SECONDS)
+    route.fulfill(response=responseSaved)
+
+
 def _fnFillCard(elCard, dictValues):
     for sField, sValue in dictValues.items():
         elCard.locator('[data-field="' + sField + '"]').fill(sValue)
@@ -57,7 +65,17 @@ def _fnFillCard(elCard, dictValues):
 def test_a_corrected_model_id_edits_the_one_declaration(
     pageDashboard, serverHub,
 ):
-    """Kills: saving an edit by appending instead of replacing in place."""
+    """Kills: saving an edit by appending instead of replacing in place.
+
+    The edit's response is held back after the file is written, which
+    is the gap a slow runner opened in CI: the project file already
+    named the new model while the card still carried the old key, and a
+    Delete clicked then asked to remove a model that no longer existed.
+    The editor now keeps every button on a card disabled until the
+    saved list re-renders it, so this test clicks Delete as soon as the
+    file changes and still deletes the right declaration.
+    """
+    pageDashboard.route("**/ai-models/update", _fnHoldTheResponseBack)
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )

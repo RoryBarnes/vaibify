@@ -147,7 +147,7 @@ var VaibifyAiModelConfig = (function () {
         if (!elButton) return;
         var elCard = elButton.closest(".ai-model-card");
         var sAction = elButton.dataset.cardAction;
-        if (sAction === "save") _fnSaveCard(elCard, elButton);
+        if (sAction === "save") _fnSaveCard(elCard);
         else if (sAction === "discard") elCard.remove();
         else if (sAction === "delete") _fnDeleteCard(elCard, elButton);
     }
@@ -194,7 +194,7 @@ var VaibifyAiModelConfig = (function () {
         return "";
     }
 
-    async function _fnSaveCard(elCard, elButton) {
+    async function _fnSaveCard(elCard) {
         var elError = elCard.querySelector("[data-card-error]");
         elError.hidden = true;
         var dictModel = _fdictReadCard(elCard);
@@ -209,7 +209,11 @@ var VaibifyAiModelConfig = (function () {
             dictModel.sOriginalVendor = elCard.dataset.originalVendor;
             dictModel.sOriginalModelId = elCard.dataset.originalModel;
         }
-        elButton.disabled = true;
+        // Every button on the card waits for the save: until the saved
+        // list re-renders it, the card still carries the ORIGINAL key,
+        // and a Delete clicked in that gap would name a model the save
+        // just renamed.
+        _fnSetCardButtonsDisabled(elCard, true);
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/workflow/" +
@@ -224,8 +228,15 @@ var VaibifyAiModelConfig = (function () {
             elError.textContent = VaibifyDiagnosis.fsExplainError(error);
             elError.hidden = false;
         } finally {
-            elButton.disabled = false;
+            _fnSetCardButtonsDisabled(elCard, false);
         }
+    }
+
+    function _fnSetCardButtonsDisabled(elCard, bDisabled) {
+        elCard.querySelectorAll("[data-card-action]").forEach(
+            function (elCardButton) {
+                elCardButton.disabled = bDisabled;
+            });
     }
 
     function _fnDeleteCard(elCard, elButton) {
