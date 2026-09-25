@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaibify.config import mutationAdmission, operationJournal
+from vaibify.config import mutationAdmission
 from vaibify.gui import commitCarrier
 from vaibify.gui import pipelineRunner
 from vaibify.gui import pipelineRunSlots

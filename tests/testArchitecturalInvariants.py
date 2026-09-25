@@ -5100,7 +5100,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # projects run; the checksum cache, remote checks and lock verdict
     # are read per project. The sweep scripts stay beside the Stop
     # route they serve, with the name sweep they extend.
-    "routes/pipelineRoutes.py": 3915,
+    # +22 (2026-09-24, same day): an agent reads ITS project's run
+    # state through the hub's own record of that project's last run.
+    "routes/pipelineRoutes.py": 3937,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5357,7 +5359,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +29 (2026-09-24): the file-change baseline records which
     # project's files it measured, because a baseline measured for one
     # project made every file of another read as changed.
-    "fileStatusManager.py": 2320,
+    # +1 (2026-09-24): the per-project last-run record joins the
+    # container-keyed caches the sweep evicts.
+    "fileStatusManager.py": 2321,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5878,7 +5882,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # projects' runs once acknowledged, refuses a second run of the
     # same project, gives each run its process marker, and reads each
     # workflow's own dependency scan.
-    "pipelineServer.py": 3545,
+    # +113 (2026-09-24, same day): an agent's pipeline socket binds to
+    # the project the agent works in -- found by discovery, read from
+    # its own file, reloaded by the freshness gate from that file --
+    # instead of the project the dashboard shows. Socket binding is
+    # this module's job; the rule for which project lives in
+    # agentProjectScope.
+    "pipelineServer.py": 3658,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

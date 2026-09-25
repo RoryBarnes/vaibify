@@ -6966,6 +6966,7 @@ def _fdictEntry(sRel):
             '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
             '                dictCtx, sContainerId, requestHttp,\n'
             '            ),\n'
+            '            sProjectRepoPath=sProjectRepoPath,\n'
             '        )\n'
         ),
         new=(
@@ -6978,6 +6979,7 @@ def _fdictEntry(sRel):
             '        dictState = await fdictReadReconciledState(\n'
             '            dictCtx, sContainerId,\n'
             '            fnPersistReconciled=fnPersistReconciledAlways,\n'
+            '            sProjectRepoPath=sProjectRepoPath,\n'
             '        )\n'
         ),
     ),
@@ -6993,11 +6995,13 @@ def _fdictEntry(sRel):
             '            fnPersistReconciled=_ffnBuildCarriedStatePersister(\n'
             '                dictCtx, sContainerId, requestHttp,\n'
             '            ),\n'
+            '            sProjectRepoPath=sProjectRepoPath,\n'
             '        )\n'
         ),
         new=(
             '        dictState = await fdictReadReconciledState(\n'
             '            dictCtx, sContainerId,\n'
+            '            sProjectRepoPath=sProjectRepoPath,\n'
             '        )\n'
         ),
     ),
@@ -10884,9 +10888,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
         old=(
-            '        if fsResolveRunStateProjectRepoPath(\n'
-            '            dictCtx, sContainerId,\n'
-            '        ) is None:\n'
+            '        if sProjectRepoPath is None:\n'
             '            return {"bRunning": False, "iSyncEpoch": iSyncEpoch}\n'
         ),
         new='',
@@ -12261,14 +12263,8 @@ def _fdictEntry(sRel):
         # Trust the cache over the file: an out-of-band edit the
         # poller has not yet noticed is dispatched as though the disk
         # never moved, and no reload is published.
-        old=(
-            '    if sDiskFingerprint != sRecordFingerprint:\n'
-            '        from . import workflowReloadDetector\n'
-        ),
-        new=(
-            '    if False:\n'
-            '        from . import workflowReloadDetector\n'
-        ),
+        old='    if sDiskFingerprint != sRecordFingerprint:\n',
+        new='    if False:\n',
     ),
     Falsification(
         nodeid=(
@@ -23564,5 +23560,49 @@ def _fdictEntry(sRel):
             '        next((t for t in _DICT_FALSIFICATION_TASKS if t[0] =='
             ' sContainerId and t[2] == iStepIndex), None),\n'
         ),
+    ),
+    # --- 2026-09-24: an agent runs and reads its OWN project's
+    # pipeline whichever project the dashboard shows ---
+    Falsification(
+        nodeid=(
+            'tests/testAgentRunsItsOwnProject.py::'
+            'testAnAgentRunsItsOwnProjectWhileAnotherIsOpen'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    if agentProjectScope.fbServesAnotherProject(\n'
+            '        sDeclared, dictCtx["paths"].get(sContainerId, ""),\n'
+            '    ):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentRunsItsOwnProject.py::'
+            'testAnEditToTheAgentsProjectReloadsThatProject'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    if fdictReloadBoundWorkflow is not None:\n'
+            '        try:\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        try:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentRunsItsOwnProject.py::'
+            'testAnAgentReadsItsOwnRunWhileAnotherProjectIsOpen'
+        ),
+        source='vaibify/gui/serverMiddleware.py',
+        old=(
+            '    ) and (\n'
+            '        request.method, _fsRouteTemplateForRequest(request),\n'
+            '    ) not in agentProjectScope.'
+            'SET_ROUTES_SERVED_IN_THE_AGENTS_PROJECT:\n'
+        ),
+        new='    ):\n',
     ),
 ]

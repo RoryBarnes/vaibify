@@ -30,6 +30,7 @@ __all__ = [
     "fdictBuildConcurrentRunNotice",
     "fdictReadContainerLimits",
     "fnRegisterRun",
+    "fdictLastRunOfProject",
     "flistLiveRuns",
     "ftaskLiveRunOfProject",
     "fbProjectRunIsLive",
@@ -50,7 +51,7 @@ F_NANO_CPUS_PER_CPU = 1e9
 
 def fnRegisterRun(
     dictPipelineTasks, sContainerId, taskRun, iOwnerGeneration=1,
-    dictWorkflow=None, sRunId="",
+    dictWorkflow=None, sRunId="", dictLastRuns=None,
 ):
     """Store a run in its project's slot; evict it when it finishes.
 
@@ -68,8 +69,20 @@ def fnRegisterRun(
     )
     taskRun.sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     taskRun.sWorkflowName = dictWorkflow.get("sWorkflowName", "")
+    taskRun.sProjectDirectory = (
+        workflowManager.fsDeriveProjectRepoPathFromWorkflow(
+            taskRun.sWorkflowPath,
+        ) if taskRun.sWorkflowPath else ""
+    )
     dictSlots = dictPipelineTasks.setdefault(sContainerId, {})
     dictSlots[taskRun.sProjectRepoPath] = taskRun
+    if dictLastRuns is not None and taskRun.sProjectDirectory:
+        dictLastRuns.setdefault(sContainerId, {})[
+            taskRun.sProjectDirectory
+        ] = {
+            "sProjectRepoPath": taskRun.sProjectRepoPath,
+            "sWorkflowPath": taskRun.sWorkflowPath,
+        }
 
     def fnEvictOnDone(taskCompleted):
         logger.debug(
@@ -190,3 +203,14 @@ def _fsDescribeLimits(dictLimits):
         else "the memory Docker gives this container"
     )
     return f"{sCpu} and {sMemory}"
+
+
+def fdictLastRunOfProject(dictLastRuns, sContainerId, sProjectDirectory):
+    """Return ``{sProjectRepoPath, sWorkflowPath}`` of the project's last run.
+
+    The hub's own record of which project, in which repository, it last
+    ran from that directory -- or None when it has run none there.
+    """
+    return ((dictLastRuns or {}).get(sContainerId) or {}).get(
+        sProjectDirectory,
+    )

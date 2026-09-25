@@ -811,6 +811,7 @@ class TestHandlePipelineWs:
     @pytest.mark.asyncio
     async def test_no_workflow_rejects(self):
         mockWebsocket = AsyncMock()
+        mockWebsocket.query_params = {}
         dictCtx = {
             "workflows": {},
             "paths": {},

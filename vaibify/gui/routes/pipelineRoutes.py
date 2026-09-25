@@ -593,25 +593,47 @@ def _fnRegisterPipelineState(app, dictCtx):
     async def fdictGetPipelineState(
         sContainerId: str, requestHttp: Request,
     ):
-        from ..pipelineState import (
-            fdictReadReconciledState, fsResolveRunStateProjectRepoPath,
-        )
+        from ..pipelineState import fdictReadReconciledState
         dictCtx["require"](sContainerId)
         iSyncEpoch = fiGetSyncEpoch(dictCtx, sContainerId)
-        if fsResolveRunStateProjectRepoPath(
-            dictCtx, sContainerId,
-        ) is None:
+        sProjectRepoPath = _fsRunStateProjectForRequest(
+            dictCtx, sContainerId, requestHttp,
+        )
+        if sProjectRepoPath is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState = await fdictReadReconciledState(
             dictCtx, sContainerId,
             fnPersistReconciled=_ffnBuildCarriedStatePersister(
                 dictCtx, sContainerId, requestHttp,
             ),
+            sProjectRepoPath=sProjectRepoPath,
         )
         if dictState is None:
             return {"bRunning": False, "iSyncEpoch": iSyncEpoch}
         dictState["iSyncEpoch"] = iSyncEpoch
         return dictState
+
+
+def _fsRunStateProjectForRequest(dictCtx, sContainerId, requestHttp):
+    """Return the project whose run state this request reads, or None.
+
+    An agent working in a project other than the open one reads ITS
+    project's run -- the one it may be running right now -- found
+    through the hub's own record of that project's last run, never by
+    opening a path the agent named. Everyone else reads the project
+    the dashboard serves.
+    """
+    from .. import agentProjectScope, pipelineRunSlots
+    from ..pipelineState import fsResolveRunStateProjectRepoPath
+    sAgentProject = agentProjectScope.fsAgentProjectBesideTheOpenOne(
+        requestHttp.headers, dictCtx, sContainerId,
+    )
+    if not sAgentProject:
+        return fsResolveRunStateProjectRepoPath(dictCtx, sContainerId)
+    dictLastRun = pipelineRunSlots.fdictLastRunOfProject(
+        dictCtx.get("dictLastRunByProject"), sContainerId, sAgentProject,
+    )
+    return dictLastRun["sProjectRepoPath"] if dictLastRun else None
 
 
 I_HOST_LOG_TAIL_DEFAULT_LINES = 200

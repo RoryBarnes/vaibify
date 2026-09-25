@@ -1680,6 +1680,7 @@ _LIST_CONTAINER_KEYED_CACHES = (
     "paths",
     "containerUsers",
     "pipelineTasks",
+    "dictLastRunByProject",
     "sourceCodeDeps",
     "lastSelfWriteFingerprints",
     "lastDiscoveredWorkflows",

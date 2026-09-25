@@ -646,7 +646,17 @@ therefore located by that project, never by the container:
   against. An undeclared project (outside every project directory, or
   a `vaibify-do` baked into an older image) is served as before;
   refusing it would strand every existing container until a rebuild.
-  `agentProjectScope.py` holds the rule.
+  `agentProjectScope.py` holds the rule. RUNS are the exception:
+  `vaibify-do` declares its project when it opens the pipeline socket
+  (`sAgentProject`), and a socket declaring a project other than the
+  open one binds to that project's own workflow -- found by discovery,
+  never composed from the declaration; refused by name when absent or
+  ambiguous -- so an agent runs its own pipeline whichever project the
+  dashboard shows. `get-pipeline-state` follows it through the hub's
+  own record of that project's last run (`dictLastRunByProject`); the
+  declared directory is a lookup key, never a path the hub opens.
+  Every action that CHANGES a project's definition still requires it
+  to be open, where the researcher sees it.
 - **Work in flight carries its own project.** The open-project slot
   (`dictCtx["workflows"|"paths"][sContainerId]`) changes whenever the
   researcher switches projects, so anything that outlives a request —

@@ -400,20 +400,18 @@ class TestFbCancelPipelineTask:
     def test_cancels_running_task(self):
         mockTask = MagicMock()
         mockTask.done.return_value = False
-        dictTasks = {"container1": mockTask}
-        bResult = _fbCancelPipelineTask(dictTasks, "container1")
+        bResult = _fbCancelPipelineTask(mockTask)
         assert bResult is True
         mockTask.cancel.assert_called_once()
-        assert "container1" not in dictTasks
 
     def test_no_task_returns_false(self):
-        assert _fbCancelPipelineTask({}, "container1") is False
+        assert _fbCancelPipelineTask(None) is False
 
     def test_done_task_returns_false(self):
         mockTask = MagicMock()
         mockTask.done.return_value = True
-        dictTasks = {"container1": mockTask}
-        assert _fbCancelPipelineTask(dictTasks, "container1") is False
+        assert _fbCancelPipelineTask(mockTask) is False
+        mockTask.cancel.assert_not_called()
 
 
 class TestFsSanitizeServerError:

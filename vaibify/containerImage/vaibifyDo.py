@@ -37,6 +37,7 @@ S_AGENT_PROJECT_HEADER = "X-Vaibify-Agent-Project"
 S_SERVED_PROJECT_HEADER = "X-Vaibify-Project"
 S_SERVED_PROJECT_NAME_HEADER = "X-Vaibify-Project-Name"
 S_AGENT_PROJECT_FIELD = "sAgentProjectDirectory"
+S_AGENT_PROJECT_QUERY = "sAgentProject"
 T_PROJECT_DIRECTORY_MARKERS = (
     os.path.join(".vaibify", "projects"),
     os.path.join(".vaibify", "workflows"),
@@ -556,6 +557,13 @@ def ftWsEndpoint(dictEnv):
     sPath = ("/ws/pipeline/" + dictEnv["VAIBIFY_CONTAINER_ID"]
              + "?sToken=" + urllib.parse.quote(
                  dictEnv["VAIBIFY_SESSION_TOKEN"], safe=""))
+    # The socket binds to a project before any frame is sent, so the
+    # project this agent works in rides the handshake: its runs then
+    # run in its own project whichever one the dashboard shows.
+    sProjectDirectory = fsAgentProjectDirectory()
+    if sProjectDirectory:
+        sPath += "&" + S_AGENT_PROJECT_QUERY + "=" + urllib.parse.quote(
+            sProjectDirectory, safe="")
     return tParsed.hostname, iPort, sPath, bTls
 
 
@@ -723,6 +731,10 @@ def _fdictAwaitWorkflowBound(socketConnection):
             return None
         if dictEvent.get("sType") == "workflowBound":
             return dictEvent
+        # A refusal to bind (a project the hub cannot find, or one with
+        # several workflows) is the only explanation the agent will
+        # get; swallowing it left a bare closed socket.
+        _fnPrintEvent(dictEvent, False)
         return None
 
 
