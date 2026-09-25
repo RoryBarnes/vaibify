@@ -158,7 +158,13 @@ jobs:
         # than it did the last time this was raised. 25 matches the
         # engines job, so no browser check fails for the sole offence
         # of finishing its work.
-        timeout-minutes: 25
+        # 25 -> 40 on 2026-09-25, with the researcher's approval, under
+        # that same rule: the lane grew to 422 tests, and on the runners
+        # the three engines' jobs took 20-26 minutes, so Firefox timed
+        # out with every test passing. There is no per-test timeout, so
+        # this ceiling is the lane's only hang detector; 40 leaves about
+        # 70% headroom and still reports a hung run in under an hour.
+        timeout-minutes: 40
         env:
           # Turns the "playwright not installed" skip into a failure.
           # A browser job that goes green without a browser is the same
