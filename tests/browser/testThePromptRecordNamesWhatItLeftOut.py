@@ -85,6 +85,25 @@ def _flistInterceptTheCapturePoll(pageDashboard):
     return listCaptureUrls
 
 
+S_RUNNING_SINCE_UTC = "2026-09-25T14:55:26+00:00"
+
+
+def _fnReportACaptureInFlight(pageDashboard):
+    """Pass the REAL status through, marking a capture as running.
+
+    This lane intercepts every capture, so no pass is ever in flight
+    here; the one field is added to an otherwise genuine answer.
+    """
+
+    def fnAddTheRunningPass(route):
+        responseReal = route.fetch()
+        dictStatus = responseReal.json()
+        dictStatus["sCaptureRunningSinceUtc"] = S_RUNNING_SINCE_UTC
+        route.fulfill(response=responseReal, json=dictStatus)
+
+    pageDashboard.route("**/prompt-record/status", fnAddTheRunningPass)
+
+
 @pytest.mark.falsification
 def test_the_dialog_names_the_sessions_it_left_out(
     pageDashboard, serverHub,
@@ -97,7 +116,10 @@ def test_the_dialog_names_the_sessions_it_left_out(
     Firefox lane ninety seconds it did not have. The page clock is
     fast-forwarded to fire the poll instead of waiting for it.
 
-    The poll half is registered through
+    The status answer is the hub's real one with a running pass added,
+    because this lane intercepts every capture and so never has one in
+    flight: the dialog must then say a pass is running rather than
+    promise one "within 30 seconds". The poll half is registered through
     ``tests/testPromptRecordPollFrontendContract.py``; a registry entry
     names one test.
 
@@ -106,6 +128,7 @@ def test_the_dialog_names_the_sessions_it_left_out(
     """
     _fnEnableTheRecordWithAGap(serverHub)
     listCaptureUrls = _flistInterceptTheCapturePoll(pageDashboard)
+    _fnReportACaptureInFlight(pageDashboard)
     pageDashboard.clock.install()
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
@@ -123,6 +146,11 @@ def test_the_dialog_names_the_sessions_it_left_out(
         "outside this project" in sBody
     ), sBody
     assert "change into the project folder" in sBody, sBody
+    assert "running since " + S_RUNNING_SINCE_UTC in sBody, sBody
+    assert "No captures yet" not in sBody, (
+        "the dialog promised a pass within 30 seconds while one was "
+        "already running: " + sBody
+    )
     pageDashboard.clock.fast_forward(I_POLL_FAST_FORWARD_MILLISECONDS)
     fDeadline = time.monotonic() + F_POLL_WAIT_SECONDS
     while not listCaptureUrls and time.monotonic() < fDeadline:

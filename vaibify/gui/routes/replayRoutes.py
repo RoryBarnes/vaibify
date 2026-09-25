@@ -34,6 +34,7 @@ over host files.
 __all__ = ["fnRegisterAll"]
 
 import asyncio
+import logging
 import posixpath
 from datetime import datetime, timezone
 
@@ -60,7 +61,7 @@ from ..personalLayerManager import (
     fdictValidateHashCommitment,
     flistValidateIncludedPaths,
 )
-from ..pipelineServer import fdictRequireWorkflow
+from ..pipelineServer import fdictRequireWorkflow, fsContainerNameForId
 from ..projectContextManager import (
     I_MAX_CONTEXT_CONTENT_BYTES,
     S_CONTEXT_TEMPLATE,
@@ -75,6 +76,7 @@ from ...reproducibility.replayGate import (
     flistDescribeModelDeclarationGaps,
 )
 
+logger = logging.getLogger(__name__)
 
 _LIST_MODEL_FIELDS = [
     "sVendor", "sModelId", "sUseStartDate", "sUseEndDate",
@@ -605,19 +607,29 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
         return {"dictPromptRecord": dictRecord}
 
 
+F_CAPTURE_ANSWER_SECONDS = 45.0
+
+
 def _fnRegisterPromptRecordCapture(app, dictCtx):
     """Register POST .../prompt-record/capture (one capture pass).
 
-    ``bAutomatic=true`` marks the dashboard's own 30-second poll. It
-    stands down (``bPaused``) when another capture of the same
-    container is already in flight -- that capture extends the coverage
-    interval itself -- instead of queuing a second full pass behind it.
-    It does NOT stand down for other work on the drain the way an
-    automatic repository read does: its drain phases are seconds long,
-    and pausing it for the length of a step run would open a coverage
-    gap that reads as "the hub was down" when it was not.
+    A pass runs as a task of its own, one per container, and a request
+    waits for it at most ``F_CAPTURE_ANSWER_SECONDS``. A first pass over
+    a long history takes minutes; an agent's client gives up after 60 s
+    and used to report that as "host unreachable" while the pass was
+    still working. Now the request answers ``bStillRunning`` with the
+    time the pass started, and the pass carries on.
+
+    A request that finds a pass already in flight attaches to it rather
+    than queuing a second one: the in-flight pass captures everything up
+    to its own listing, and the next poll picks up what came after.
+    ``bAutomatic=true`` marks the dashboard's own 30-second poll, which
+    stands down (``bPaused``) instead of attaching. It does NOT stand
+    down for other work on the drain the way an automatic repository
+    read does: its drain phases are seconds long, and pausing it for the
+    length of a step run would open a coverage gap that reads as "the
+    hub was down" when it was not.
     """
-    dictCaptureLocks = {}
 
     @ffnAgentAction("capture-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
@@ -633,15 +645,21 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
         if dictRecord.get("bEnabled") is not True:
             raise HTTPException(409, "The Prompt Record is not enabled.")
         _fsContextAbsolutePath(dictWorkflow)
-        lockCapture = dictCaptureLocks.setdefault(
-            sContainerId, asyncio.Lock(),
-        )
-        if bAutomatic and lockCapture.locked():
+        dictRegistry = _fdictCaptureRegistry(requestHttp.app.state)
+        sName = fsContainerNameForId(dictCtx["docker"], sContainerId)
+        dictInFlight = _fdictCaptureInFlightOrNone(dictRegistry, sName)
+        if dictInFlight is not None and bAutomatic:
             return _fdictPausedCapture("another Prompt Record capture")
-        async with lockCapture:
-            dictSummary = await _fdictRunTheCapturePhases(
-                dictCtx, sContainerId, dictWorkflow, requestHttp,
+        if dictInFlight is None:
+            dictInFlight = _fdictStartCapture(
+                dictRegistry, sName,
+                asyncio.get_running_loop().create_task(
+                    _fdictRunTheCapturePhases(
+                        dictCtx, sContainerId, dictWorkflow, requestHttp,
+                    ),
+                ),
             )
+        dictSummary = await _fdictAwaitCaptureOrReportRunning(dictInFlight)
         dictSummary["bPendingReview"] = (
             dictRecord.get("bFirstCaptureReviewed") is not True
         )
@@ -651,6 +669,81 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
 def _fdictPausedCapture(sPausedBy):
     """Return the typed answer of an automatic pass that stood down."""
     return {"bPaused": True, "sPausedBy": sPausedBy}
+
+
+def _fdictCaptureRegistry(appState):
+    """Return the hub's ``{sContainerName: in-flight capture}`` map.
+
+    Keyed by container NAME, like every other container-scoped map on
+    the hub, so a caller naming the container by id and one naming it
+    by name cannot start two passes side by side.
+    """
+    dictRegistry = getattr(appState, "dictPromptRecordCaptures", None)
+    if dictRegistry is None:
+        dictRegistry = {}
+        appState.dictPromptRecordCaptures = dictRegistry
+    return dictRegistry
+
+
+def _fdictCaptureInFlightOrNone(dictRegistry, sName):
+    """Return the container's running capture, or ``None``."""
+    dictInFlight = dictRegistry.get(sName)
+    if dictInFlight is None or dictInFlight["taskCapture"].done():
+        return None
+    return dictInFlight
+
+
+def _fdictStartCapture(dictRegistry, sName, taskCapture):
+    """Register a started capture task; it settles itself when done.
+
+    The registry holds the strong reference that keeps a pass nobody is
+    waiting for from being garbage-collected, and the settlement reads
+    the task's exception so a pass that fails after its requester has
+    gone is logged rather than lost.
+    """
+    dictInFlight = {
+        "taskCapture": taskCapture,
+        "sStartedAtUtc": datetime.now(timezone.utc).isoformat(),
+    }
+    dictRegistry[sName] = dictInFlight
+
+    def fnSettleTheCapture(taskDone):
+        if dictRegistry.get(sName) is dictInFlight:
+            del dictRegistry[sName]
+        if not taskDone.cancelled() and taskDone.exception() is not None:
+            logger.warning(
+                "Prompt Record capture for %s failed: %s",
+                sName, taskDone.exception(),
+            )
+
+    taskCapture.add_done_callback(fnSettleTheCapture)
+    return dictInFlight
+
+
+async def _fdictAwaitCaptureOrReportRunning(dictInFlight):
+    """Return the pass's summary, or say it is still running.
+
+    ``asyncio.wait`` never cancels the task it waits on, so a pass that
+    outlives this request keeps going and lands its results.
+    """
+    taskCapture = dictInFlight["taskCapture"]
+    setDone, _ = await asyncio.wait(
+        {taskCapture}, timeout=F_CAPTURE_ANSWER_SECONDS,
+    )
+    if setDone:
+        return dict(taskCapture.result())
+    return {
+        "bPaused": False,
+        "bStillRunning": True,
+        "sRunningSinceUtc": dictInFlight["sStartedAtUtc"],
+        "sDetail": (
+            "A Prompt Record capture is still running (started "
+            + dictInFlight["sStartedAtUtc"] + "). The host is working, "
+            "not unreachable: a first pass over a long history takes "
+            "minutes, and it lands its results by itself. "
+            "view-prompt-record-status shows when it has finished."
+        ),
+    }
 
 
 async def _fdictRunTheCapturePhases(
@@ -709,9 +802,9 @@ async def _fgenericRunCapturePhaseUnderTheDrain(
 ):
     """Run one short capture phase under the drain (mode b).
 
-    Returns the worker's result. Nothing is carried back because neither phase raises an HTTPException -- the
-    route's one refusal is decided in the handler, before any carrier
-    exists. Anything escaping the landing phase leaves a partially
+    Returns the worker's result. Nothing is carried back because
+    neither phase raises an HTTPException -- the route's one refusal
+    is decided in the handler, before any carrier exists. Anything escaping the landing phase leaves a partially
     written transcript set and poisons, which is correct.
 
     The journal target is the compile-time constant the caller passes,
@@ -787,6 +880,10 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
             "listCaptures": dictIndex["listCaptures"],
             "listCoverageIntervals": dictIndex["listCoverageIntervals"],
             "iSessionsOutsideProject": dictIndex["iSessionsOutsideProject"],
+            "sCaptureRunningSinceUtc": _fsCaptureRunningSinceOrEmpty(
+                app.state,
+                fsContainerNameForId(dictCtx["docker"], sContainerId),
+            ),
             "bChainIntact": promptRecordManager.fbVerifyCaptureChain(
                 dictIndex,
             ),
@@ -803,6 +900,14 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
                 listFlags,
             ),
         }
+
+
+def _fsCaptureRunningSinceOrEmpty(appState, sName):
+    """Return when the container's running capture started, or ``''``."""
+    dictInFlight = _fdictCaptureInFlightOrNone(
+        _fdictCaptureRegistry(appState), sName,
+    )
+    return "" if dictInFlight is None else dictInFlight["sStartedAtUtc"]
 
 
 def _fsReviewSample(filesRepo, dictIndex):

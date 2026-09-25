@@ -158,6 +158,12 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     # practice official rather than introducing a spelling. The
     # environment-archive deposit binds one in three places.
     "client": {"ZenodoClient"},
+    # Approved 2026-09-25, on the same precedent: `executorPool` and
+    # `executorIo` were already the codebase's live spellings for a
+    # concurrent.futures executor (resourceMonitor, systemRoutes,
+    # serverLifespan) and sat in the frozen seed. The CPU worker pool
+    # (config/workerProcessPool) binds a third.
+    "executor": {"ThreadPoolExecutor", "ProcessPoolExecutor"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
     # Approved 2026-08-21. An abstract-syntax-tree node, as yielded by
@@ -223,7 +229,10 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # burn-downs above -- they were debt only because the vocabulary had
 # no word for a hashlib hash object, not because they were badly
 # named. The burn-down is the registry entry, not a rename.
-I_LEGACY_VARIABLE_BUDGET = 346
+# 346 -> 342 (2026-09-25): registering `executor` retired four seeded
+# bindings (executorPool, executorIo) on the same shape, and the
+# CPU worker pool (config/workerProcessPool) binds a conforming fifth.
+I_LEGACY_VARIABLE_BUDGET = 342
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

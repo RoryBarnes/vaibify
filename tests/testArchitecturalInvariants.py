@@ -7057,7 +7057,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # between them, and the automatic poll's stand-down behind a
     # running capture are one route's orchestration, in the module
     # that owns the Replay axis.
-    "routes/replayRoutes.py": 1107,
+    # +105 (2026-09-25): the capture pass became a task of its own, one
+    # per container, that a request waits on for at most 45 s before
+    # answering bStillRunning -- an agent's client gave up at 60 s and
+    # reported a working hub as unreachable. The registry, the start,
+    # the bounded wait and the status route's in-flight report are the
+    # same route's orchestration; each helper has one caller, so a
+    # separate module would be a seam in name only.
+    "routes/replayRoutes.py": 1212,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a

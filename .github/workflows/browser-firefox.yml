@@ -93,7 +93,13 @@ jobs:
         # and the honest reason to raise a browser lane's ceiling is
         # that the lane got bigger or slower, never that a test is
         # inconvenient. Measured locally at 23 minutes for 359 tests.
-        timeout-minutes: 25
+        # 25 -> 40 on 2026-09-25, with the researcher's approval, under
+        # that same rule: the lane grew to 422 tests, and on the runners
+        # the three engines' jobs took 20-26 minutes, so Firefox timed
+        # out with every test passing. There is no per-test timeout, so
+        # this ceiling is the lane's only hang detector; 40 leaves about
+        # 70% headroom and still reports a hung run in under an hour.
+        timeout-minutes: 40
         env:
           # Turns the "playwright not installed" skip into a failure. A
           # browser job that goes green without a browser is a false

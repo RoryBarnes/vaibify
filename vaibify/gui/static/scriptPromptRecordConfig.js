@@ -62,6 +62,7 @@ var VaibifyPromptRecordConfig = (function () {
             return _fsRenderDisabledState();
         }
         return _fsRenderIntegrity(dictStatus) +
+            _fsRenderCaptureRunning(dictStatus) +
             _fsRenderCaptures(dictStatus) +
             _fsRenderSessionsOutsideProject(dictStatus) +
             _fsRenderCoverage(dictStatus) +
@@ -172,9 +173,22 @@ var VaibifyPromptRecordConfig = (function () {
             'agent.</p>';
     }
 
+    function _fsRenderCaptureRunning(dictStatus) {
+        // A first pass over a long history takes minutes; saying
+        // "the next pass runs within 30 seconds" all the while read
+        // as a stalled recorder.
+        var sSince = dictStatus.sCaptureRunningSinceUtc || "";
+        if (!sSince) return "";
+        return '<p class="muted-text">A capture pass has been ' +
+            'running since ' + fnEscapeHtml(sSince) + '. A first ' +
+            'pass over a long history takes several minutes; its ' +
+            'sessions appear here when it finishes.</p>';
+    }
+
     function _fsRenderCaptures(dictStatus) {
         var listCaptures = dictStatus.listCaptures || [];
         if (listCaptures.length === 0) {
+            if (dictStatus.sCaptureRunningSinceUtc) return "";
             return '<p class="muted-text">No captures yet — the ' +
                 'next capture pass runs within 30 seconds while a ' +
                 'workflow is open.</p>';

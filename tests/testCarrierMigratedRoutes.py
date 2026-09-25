@@ -71,7 +71,8 @@ from tests.testDraftRoutes import (
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.config import mutationAdmission
 from vaibify.gui.routes import (
-    falsificationRoutes, remoteRefreshRoutes, reproducibilityRoutes,
+    falsificationRoutes, remoteRefreshRoutes, replayRoutes,
+    reproducibilityRoutes,
 )
 from vaibify.gui import (
     browserSession,
@@ -4833,8 +4834,8 @@ async def testAnAutomaticCaptureStandsDownBehindARunningCapture():
     limit (reproduced on 3.12). In one loop the wait is bounded and the
     mutant fails in five seconds.
 
-    Kills: deleting the ``bAutomatic and lockCapture.locked()`` branch,
-    which makes the automatic request wait on the capture lock.
+    Kills: deleting the automatic stand-down branch, which makes the
+    automatic request attach to the running pass and wait on it.
     """
     from vaibify.gui import promptRecordManager
 
@@ -4873,6 +4874,76 @@ async def testAnAutomaticCaptureStandsDownBehindARunningCapture():
     assert responseAutomatic.json()["bPaused"] is True
     assert responseExplicit.status_code == 200, responseExplicit.text
     assert responseExplicit.json()["bPaused"] is False
+
+
+@pytest.mark.falsification
+@pytest.mark.asyncio
+async def testASlowCaptureAnswersStillRunningAndStillLands():
+    """A capture outliving its answer time says so, then finishes anyway.
+
+    A first pass over a long history takes minutes and an agent's client
+    gives up after 60 s. It used to report "host unreachable", and the
+    agent asked the researcher to reconnect a container that was working
+    correctly. The request now answers ``bStillRunning`` before the
+    client's deadline, the status route reports the pass in flight, and
+    the pass lands once the request has gone.
+
+    Kills: waiting with ``asyncio.wait_for``, which CANCELS the pass at
+    the deadline, so it never lands.
+    """
+    from vaibify.gui import promptRecordManager
+
+    app, clientAsync = _tBuildAsgiClientOverTheReplayAxis()
+    sBase = f"/api/workflow/{S_CONTAINER_ID}/prompt-record"
+    eventRelease = threading.Event()
+    eventLanded = asyncio.Event()
+    loopTest = asyncio.get_running_loop()
+    fnRealLand = promptRecordManager.fdictLandSanitizedSessions
+
+    def fdictHoldTheSanitizingPhase(*args):
+        eventRelease.wait(10)
+        return {"listPending": [], "listOutsideProject": []}
+
+    def fdictLandAndSignal(filesRepo, dictSanitized):
+        dictSummary = fnRealLand(filesRepo, dictSanitized)
+        loopTest.call_soon_threadsafe(eventLanded.set)
+        return dictSummary
+
+    async with clientAsync:
+        clientAsync.headers["X-Vaibify-Lease"] = await _tConnectOverAsgi(
+            clientAsync,
+        )
+        with patch.object(
+            replayRoutes, "F_CAPTURE_ANSWER_SECONDS", 0.5,
+        ), patch.object(
+            promptRecordManager, "fdictSanitizeNewTranscriptLines",
+            fdictHoldTheSanitizingPhase,
+        ), patch.object(
+            promptRecordManager, "fdictLandSanitizedSessions",
+            fdictLandAndSignal,
+        ):
+            try:
+                responseCapture = await asyncio.wait_for(
+                    clientAsync.post(sBase + "/capture"), 5.0,
+                )
+                responseStatus = await clientAsync.get(sBase + "/status")
+            finally:
+                eventRelease.set()
+            await asyncio.wait_for(eventLanded.wait(), 10.0)
+            for _ in range(50):
+                if not app.state.dictPromptRecordCaptures:
+                    break
+                await asyncio.sleep(0.05)
+            responseAfter = await clientAsync.get(sBase + "/status")
+    dictCapture = responseCapture.json()
+    assert responseCapture.status_code == 200, responseCapture.text
+    assert dictCapture["bStillRunning"] is True, dictCapture
+    assert "not unreachable" in dictCapture["sDetail"]
+    assert responseStatus.json()["sCaptureRunningSinceUtc"] == (
+        dictCapture["sRunningSinceUtc"]
+    )
+    assert app.state.dictPromptRecordCaptures == {}
+    assert responseAfter.json()["sCaptureRunningSinceUtc"] == ""
 
 
 def testThePersonalLayerHashReachesNoContainerPrimitive(

@@ -59,7 +59,7 @@ import posixpath
 import shlex
 from datetime import datetime, timezone
 
-from vaibify.gui.transcriptSanitizer import ftResultSanitizeText
+from vaibify.gui.transcriptSanitizer import flistSanitizeTextsInParallel
 
 
 S_PROMPT_RECORD_DIRECTORY = ".vaibify/promptRecord"
@@ -254,11 +254,17 @@ def _fbCapturedPrefixUnchanged(dictIndex, sContainerPath, baRaw):
     return _fsSha256Hex(baRaw[:iCapturedBytes]) == sCapturedSha256
 
 
-def _fdictSanitizeOneSession(
+def _fdictPlanOneSession(
     connectionDocker, sContainerId, filesRepo, sContainerPath,
     listExactSecrets, dictIndex,
 ):
-    """Sanitize a transcript's new complete lines, or ``None`` if none."""
+    """Fetch a transcript and decide which of its bytes need sanitizing.
+
+    Returns ``None`` when no complete line is new; otherwise a pending
+    record carrying the raw ``sNewText`` and the landed ``sPriorText``,
+    which :func:`_fnCompletePendingSession` turns into the sanitized
+    session once the batch has been scanned.
+    """
     baRaw = connectionDocker.fbaFetchFile(sContainerId, sContainerPath)
     iCompleteBytes = baRaw.rfind(b"\n") + 1
     sFileName = _fsSessionFileName(sContainerPath)
@@ -276,10 +282,6 @@ def _fdictSanitizeOneSession(
             iStartBytes = dictIndex["dictSessionBytes"][sContainerPath]
     if iCompleteBytes <= iStartBytes:
         return None
-    sSanitized, dictCounts = ftResultSanitizeText(
-        baRaw[iStartBytes:iCompleteBytes].decode("utf-8", errors="replace"),
-        listExactSecrets,
-    )
     return {
         "sContainerPath": sContainerPath,
         "sSessionFileName": sFileName,
@@ -294,11 +296,21 @@ def _fdictSanitizeOneSession(
             "" if sPriorText is None
             else _fsSha256Hex(sPriorText.encode("utf-8"))
         ),
-        "sSanitizedText": (sPriorText or "") + sSanitized,
+        "sPriorText": sPriorText or "",
+        "sNewText": baRaw[iStartBytes:iCompleteBytes].decode(
+            "utf-8", errors="replace",
+        ),
         "iCapturedBytesAfter": iCompleteBytes,
         "sRawSha256After": _fsSha256Hex(baRaw[:iCompleteBytes]),
-        "dictRedactionsByCategory": dictCounts,
     }
+
+
+def _fnCompletePendingSession(dictPending, tSanitized):
+    """Replace a plan's raw text with its sanitized session and counts."""
+    sSanitized, dictCounts = tSanitized
+    dictPending["sSanitizedText"] = dictPending.pop("sPriorText") + sSanitized
+    del dictPending["sNewText"]
+    dictPending["dictRedactionsByCategory"] = dictCounts
 
 
 def fdictSanitizeNewTranscriptLines(
@@ -308,7 +320,9 @@ def fdictSanitizeNewTranscriptLines(
     """Fetch and sanitize every in-project transcript's new lines.
 
     Holds no lock: it only reads (typed reads of the transcripts and of
-    the landed record) and computes. Returns ``{"listPending",
+    the landed record) and computes. Every session is planned first and
+    the new text is then scanned as one batch, so a large first pass
+    spreads across worker processes. Returns ``{"listPending",
     "listOutsideProject"}``; nothing is written until
     :func:`fdictLandSanitizedSessions` applies ``listPending``.
     """
@@ -326,12 +340,18 @@ def fdictSanitizeNewTranscriptLines(
             sContainerPath, -1,
         ):
             continue
-        dictPending = _fdictSanitizeOneSession(
+        dictPending = _fdictPlanOneSession(
             connectionDocker, sContainerId, filesRepo, sContainerPath,
             listExactSecrets, dictIndex,
         )
         if dictPending is not None:
             listPending.append(dictPending)
+    listSanitized = flistSanitizeTextsInParallel(
+        [dictPending["sNewText"] for dictPending in listPending],
+        listExactSecrets,
+    )
+    for dictPending, tSanitized in zip(listPending, listSanitized):
+        _fnCompletePendingSession(dictPending, tSanitized)
     return {
         "listPending": listPending,
         "listOutsideProject": listOutsideProject,

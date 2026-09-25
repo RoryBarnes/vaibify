@@ -506,8 +506,12 @@ an action exists — a button that performs it in place:
   capture, each pass scans only the lines a session has added, and
   it holds the container's write lock only to list transcripts and
   to save results, never while scanning, so a commit or push waits
-  seconds at most. You review a sample of the first capture before
-  the record counts (the agent cannot approve its own transcript). Captures are
+  seconds at most. The first pass over a long history still takes
+  minutes; the dialog says a pass is running and since when, and an
+  agent that asks for a capture meanwhile is told the pass is still
+  running rather than that the host is unreachable. You review a
+  sample of the first capture before the record counts (the agent
+  cannot approve its own transcript). Captures are
   hash-chained — editing or removing one breaks the chain loudly —
   and coverage intervals are listed so time the hub was down reads
   as an explicit gap, never implied continuity. The record is

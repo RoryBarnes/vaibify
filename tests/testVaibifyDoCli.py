@@ -714,7 +714,17 @@ def test_fiSendHttpRequest_401_exits_with_auth_message(modCli, capsys):
     assert "token rejected" in capsys.readouterr().err.lower()
 
 
-def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
+def test_fiSendHttpRequest_unanswered_request_exits_still_working(
+    modCli, capsys,
+):
+    """A bare timeout is an unanswered request, not a lost host.
+
+    This test used to assert exit 4 "unreachable" for a bare
+    ``socket.timeout``. urllib wraps a failed CONNECT in ``URLError``,
+    so a bare timeout only ever means the request was sent and the host
+    had not answered -- confirmed against real sockets in
+    ``tests/testVaibifyDoUnansweredRequest.py``.
+    """
     with patch.object(
         modCli.urllib.request, "urlopen",
         side_effect=socket.timeout("slow"),
@@ -724,8 +734,8 @@ def test_fiSendHttpRequest_connection_timeout_exits(modCli, capsys):
                 {"sUrl": "http://x", "dictBody": {}},
                 "tok", "POST", False,
             )
-    assert excInfo.value.code == 4
-    assert "unreachable" in capsys.readouterr().err.lower()
+    assert excInfo.value.code == 5
+    assert "unreachable" not in capsys.readouterr().err.lower()
 
 
 def test_fiSendHttpRequest_urlerror_exits(modCli, capsys):
@@ -1478,9 +1488,13 @@ def test_a_timed_out_http_connection_keeps_the_reconnect_advice(
 ):
     """A timeout is not a refusal: the packet went nowhere, and a stale
     session file is the ordinary cause, so the reconnect advice stands.
+
+    A CONNECT that times out reaches us wrapped in ``URLError`` -- measured
+    against an unroutable address on Python 3.9 and 3.12. A bare
+    timeout means the request was sent, which is exit 5, not this.
     """
     sStderr = _fsStderrOfFailedHttpRequest(
-        modCli, capsys, socket.timeout("timed out"),
+        modCli, capsys, urllib.error.URLError(socket.timeout("timed out")),
     )
     assert "reconnect the container" in sStderr
     assert "loopback" not in sStderr

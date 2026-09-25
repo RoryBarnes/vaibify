@@ -23636,7 +23636,7 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/replayRoutes.py',
         old=(
-            '        if bAutomatic and lockCapture.locked():\n'
+            '        if dictInFlight is not None and bAutomatic:\n'
             '            return _fdictPausedCapture('
             '"another Prompt Record capture")\n'
         ),
@@ -23648,8 +23648,11 @@ def _fdictEntry(sRel):
             'test_appended_capture_is_byte_identical_to_whole_recapture'
         ),
         source='vaibify/gui/promptRecordManager.py',
-        old='        "sSanitizedText": (sPriorText or "") + sSanitized,\n',
-        new='        "sSanitizedText": sSanitized,\n',
+        old=(
+            '    dictPending["sSanitizedText"] = '
+            'dictPending.pop("sPriorText") + sSanitized\n'
+        ),
+        new='    dictPending["sSanitizedText"] = sSanitized\n',
     ),
     Falsification(
         nodeid=(
@@ -23739,5 +23742,85 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptPolling.js',
         old='                        "/prompt-record/capture?bAutomatic=true",\n',
         new='                        "/prompt-record/capture",\n',
+    ),
+    # --- 2026-09-25: a slow first Prompt Record pass says it is still
+    # running, and sanitizing leaves the hub's interpreter.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testASlowCaptureAnswersStillRunningAndStillLands'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    setDone, _ = await asyncio.wait(\n'
+            '        {taskCapture}, timeout=F_CAPTURE_ANSWER_SECONDS,\n'
+            '    )\n'
+        ),
+        new=(
+            '    try:\n'
+            '        await asyncio.wait_for(taskCapture, '
+            'F_CAPTURE_ANSWER_SECONDS)\n'
+            '        setDone = {taskCapture}\n'
+            '    except asyncio.TimeoutError:\n'
+            '        setDone = set()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVaibifyDoUnansweredRequest.py::'
+            'test_a_host_that_accepts_but_does_not_answer_is_still_working'
+        ),
+        source='vaibify/containerImage/vaibifyDo.py',
+        old=(
+            '    except socket.timeout:\n'
+            '        # urllib wraps a failed CONNECT in URLError; a bare '
+            'timeout\n'
+            '        # means the request was sent and the host has not '
+            'answered.\n'
+            '        fnFailHostStillWorking(dictTarget["sUrl"], '
+            'F_READ_TIMEOUT)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerParallel.py::'
+            'test_split_pieces_in_workers_match_one_whole_call'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='        listPieces.append(sText[iStart:iNewline + 1])\n',
+        new='        listPieces.append(sText[iStart:iNewline])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerParallel.py::'
+            'test_a_secret_spanning_lines_is_never_split_across_pieces'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old=(
+            '    bSplittable = not any(\n'
+            '        "\\n" in sSecret for sSecret in listExactSecrets '
+            'or []\n'
+            '    )\n'
+        ),
+        new='    bSplittable = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerParallel.py::'
+            'test_a_large_batch_runs_in_worker_processes'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    if iCharacters < I_WORKER_PROCESS_MINIMUM_CHARACTERS:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTranscriptSanitizerParallel.py::'
+            'test_a_small_batch_stays_in_process'
+        ),
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    if iCharacters < I_WORKER_PROCESS_MINIMUM_CHARACTERS:\n',
+        new='    if False:\n',
     ),
 ]
