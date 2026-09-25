@@ -5102,7 +5102,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # route they serve, with the name sweep they extend.
     # +22 (2026-09-24, same day): an agent reads ITS project's run
     # state through the hub's own record of that project's last run.
-    "routes/pipelineRoutes.py": 3937,
+    # +68 (2026-09-25): the poll's AI rows render the gate's verdict in
+    # words -- listAiModelDeclarationIssues, from the same per-model gap
+    # check fbWorkflowDeclaresAiModels applies -- and the Prompt Record
+    # summary counts redactions per session (a whole recapture used to
+    # be counted twice) and carries the index's chain check and
+    # left-out count, so the Project block never re-derives either;
+    # the supervision summary carries fbSupervisionClean's own verdict.
+    "routes/pipelineRoutes.py": 4005,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5888,7 +5895,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # instead of the project the dashboard shows. Socket binding is
     # this module's job; the rule for which project lives in
     # agentProjectScope.
-    "pipelineServer.py": 3658,
+    # +1 (2026-09-25): registers the Prompt Record viewer's route module.
+    "pipelineServer.py": 3659,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6889,7 +6897,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # query field and says what it now captures -- only sessions
     # launched inside the project -- and that a first pass is slow, so
     # an agent reads a long wait as work rather than a dead hub.
-    "actionCatalog.py": 1372,
+    # +23 (2026-09-25): update-ai-model (user-only: renaming a
+    # declaration rewrites provenance) and the viewer's two agent-safe
+    # reads, list-prompt-record-sessions and read-prompt-record-session.
+    "actionCatalog.py": 1395,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7064,7 +7075,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the bounded wait and the status route's in-flight report are the
     # same route's orchestration; each helper has one caller, so a
     # separate module would be a seam in name only.
-    "routes/replayRoutes.py": 1212,
+    # +63 (2026-09-25): edit a declared AI model in place. Declaring a
+    # corrected model id used to add a second entry beside the wrong
+    # one; the route beside declare and remove is where it belongs.
+    "routes/replayRoutes.py": 1275,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a
@@ -7345,7 +7359,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # It stays in this module because this is where a lease is read;
     # the path segment itself is browserSession's, so the credential
     # and lease carve-outs cannot drift apart.
-    "routeScope.py": 1046,
+    # +8 (2026-09-25): the Prompt Record viewer's two GETs acknowledged
+    # as container reads, with why they are reads.
+    "routeScope.py": 1054,
 }
 
 

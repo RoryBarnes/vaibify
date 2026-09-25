@@ -103,11 +103,12 @@ var VaibifyProofTab = (function () {
                  "agent works under; versioned in the repository, it " +
                  "becomes part of the provenance record. Optional — " +
                  "it never blocks a level.",
-             sHow: "See the AI section of the Project block.",
+             sHow: "See the Project instructions row of the AI " +
+                 "section of the Project block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
-             sFixRequirementRow: "aiModelPrompts"},
+             sFixRequirementRow: "projectInstructions"},
         ],
         2: [
             {sStateKey: "bGithubFullySynced",
@@ -150,12 +151,13 @@ var VaibifyProofTab = (function () {
                  "open-weights models also declare their weights " +
                  "source and revision hash. Undeclared is the only " +
                  "failing state.",
-             sHow: "Declare each model in the AI section of the " +
-                 "Project block.",
+             sHow: "Declare each model, one per entry, with Edit " +
+                 "Declaration on the AI models row of the Project " +
+                 "block.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
-             sFixRequirementRow: "aiModelPrompts"},
+             sFixRequirementRow: "aiModels"},
             {sStateKey: "bPersonalLayerDeclared",
              sLabel: "Personal AI Configuration answered",
              sWhat: "The researcher's private host-side agent " +
@@ -196,13 +198,13 @@ var VaibifyProofTab = (function () {
                  "channel; changes with no recorded cause are " +
                  "flagged permanently. Off meets this automatically " +
                  "— supervision never blocks a level.",
-             sHow: "Enable it from the Prompt Record dialog in the " +
-                 "AI section of the Project block (requires the " +
-                 "record enabled and reviewed).",
+             sHow: "Turn it on from the Supervised mode row of the " +
+                 "Project block's AI section (requires the Prompt " +
+                 "Record on and its first capture approved).",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
-             sFixRequirementRow: "aiModelPrompts"},
+             sFixRequirementRow: "supervision"},
             {sStateKey: "bPromptRecordCurrent",
              sLabel: "Prompt Record (optional)",
              bOptional: true,
@@ -212,12 +214,13 @@ var VaibifyProofTab = (function () {
                  "capture is reviewed. A project without the record " +
                  "meets this automatically — recording is the " +
                  "researcher's decision and never blocks a level.",
-             sHow: "Enable and review it from the AI section of the " +
-                 "Project block.",
+             sHow: "Turn it on with Recording settings, then review " +
+                 "it with Review & Approve, on the Prompt Record row " +
+                 "of the Project block's AI section.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab",
              sFixRequirementGroup: "ai",
-             sFixRequirementRow: "aiModelPrompts"},
+             sFixRequirementRow: "promptRecord"},
         ],
         3: [
             {sStateKey: "bManifestComplete",

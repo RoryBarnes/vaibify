@@ -4310,7 +4310,15 @@ const VaibifyApp = (function () {
                     "declaration? An undeclared model drops the " +
                     "project below Level 2 until re-declared.",
             },
-            sToast: "Model declaration removed.",
+            // The declaration editor holds a card per model; the saved
+            // list returned here re-renders it, so a deleted model does
+            // not linger on screen as if it were still declared.
+            fdictAfterResponse: function (dictResult) {
+                VaibifyAiModelConfig.fnApplyDeclaredModels(
+                    (dictResult || {}).listDeclaredModels);
+                return {sMessage: "Model declaration removed.",
+                        sType: "info"};
+            },
         },
     };
 

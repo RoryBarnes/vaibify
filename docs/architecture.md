@@ -2849,7 +2849,16 @@ entropy plugins are excluded — via `scan_line` they carry no usable
 threshold and flag ordinary words; verified empirically), a
 vendor-token-prefix rule, and a guarded Shannon-entropy supplement
 (32+ characters, letters and digits, ≥ 4.5 bits/char) that leaves
-code identifiers and git hashes intact. Redactions are explicit
+code identifiers and git hashes intact. An agent transcript is JSONL,
+so a record is redacted as JSON rather than as raw text: the raw line
+is scanned for context (detect-secrets' keyword rule needs the key
+beside its value), but replacements happen inside the DECODED strings,
+which are then re-encoded. Scanning raw text let a record's escapes
+hide secrets -- the `n` of a `\n` escape joined the token after it,
+so the vendor-prefix rule never saw `ghp_` at a word boundary, and an
+escaped quote defeated the keyword rule for `password = "..."` --
+and a replacement that swallowed an escape's letter left the record
+invalid JSON. Redactions are explicit
 `[REDACTED: category]` markers with per-category counts; a human
 review gate (catalog-excluded — the agent must never approve its own
 transcript) sits before the first capture counts; and the scanner

@@ -37,7 +37,9 @@ __all__ = [
     "ftResultSanitizeText",
 ]
 
+import json
 import math
+import operator
 import re
 
 S_SESSION_SECRET_CATEGORY = "vaibify-session-secret"
@@ -146,20 +148,9 @@ def _fsRedactSupplementalPatterns(sLine, dictCounts):
 
 def _fsRedactLinePatterns(sLine, dictCounts):
     """Scan one line with detect-secrets' pattern detectors."""
-    from detect_secrets.core import scan
-    for secretFound in scan.scan_line(sLine):
-        if secretFound.type in _SET_EXCLUDED_PLUGIN_TYPES:
-            continue
-        sValue = secretFound.secret_value or ""
-        if len(sValue) < _I_MINIMUM_PATTERN_SECRET_LENGTH:
-            continue
-        if sValue not in sLine:
-            continue
-        iOccurrences = sLine.count(sValue)
-        sLine = sLine.replace(sValue, _fsMarker(secretFound.type))
-        dictCounts[secretFound.type] = (
-            dictCounts.get(secretFound.type, 0) + iOccurrences
-        )
+    sLine = _fsRedactFoundValues(
+        sLine, _flistPatternSecretsIn(sLine), dictCounts,
+    )
     return _fsRedactSupplementalPatterns(sLine, dictCounts)
 
 
@@ -181,8 +172,128 @@ def ftResultSanitizeText(sText, listExactSecrets=None):
     listSanitized = []
     with default_settings():
         for sLine in sText.split("\n"):
-            listSanitized.append(_fsRedactLinePatterns(sLine, dictCounts))
+            listSanitized.append(
+                _fsSanitizeOneLine(sLine, listExactSecrets, dictCounts),
+            )
     return "\n".join(listSanitized), dictCounts
+
+
+def _fsSanitizeOneLine(sLine, listExactSecrets, dictCounts):
+    """Sanitize one line, as JSON when it is a JSONL record.
+
+    An agent transcript is JSONL, and scanning a record as raw text
+    misreads its escapes: in ``...\\nghp_...`` the ``n`` of the newline
+    escape joins the token, so the vendor-prefix rule never sees
+    ``ghp_`` at a word boundary (a low-entropy token then survived
+    unredacted), and a replacement that swallowed the ``n`` left a lone
+    backslash, so the record stopped being valid JSON. A record is
+    therefore redacted inside its DECODED strings and re-encoded.
+    """
+    jsonRecord = _fjsonParseContainerOrNone(sLine)
+    if jsonRecord is None:
+        return _fsRedactLinePatterns(sLine, dictCounts)
+    return _fsSanitizeJsonLine(
+        sLine, jsonRecord, listExactSecrets, dictCounts,
+    )
+
+
+def _fjsonParseContainerOrNone(sLine):
+    """Return a line's JSON object or array, or ``None`` if it is not one."""
+    if not sLine.lstrip().startswith(("{", "[")):
+        return None
+    try:
+        jsonRecord = json.loads(sLine)
+    except ValueError:
+        return None
+    return jsonRecord if isinstance(jsonRecord, (dict, list)) else None
+
+
+def _fsSanitizeJsonLine(sLine, jsonRecord, listExactSecrets, dictCounts):
+    """Redact a JSON record's decoded strings; keep it valid JSON.
+
+    The raw line is still SCANNED, because detect-secrets' keyword rule
+    needs the key beside its value (``"password": "..."``) and a single
+    decoded string has lost it; what that scan finds is then removed
+    from the decoded strings. A record with nothing to redact keeps its
+    original bytes.
+    """
+    listFoundInContext = _flistPatternSecretsIn(sLine)
+
+    def fsSanitizeString(sValue):
+        return _fsSanitizeDecodedString(
+            sValue, listExactSecrets, listFoundInContext, dictCounts,
+        )
+
+    jsonSanitized = _fjsonMapStrings(jsonRecord, fsSanitizeString)
+    if jsonSanitized == jsonRecord:
+        return sLine
+    return json.dumps(
+        jsonSanitized, ensure_ascii=False, separators=(",", ":"),
+    )
+
+
+def _fjsonMapStrings(jsonNode, fsTransform):
+    """Return a copy of a JSON value with every string (keys too) mapped."""
+    if isinstance(jsonNode, str):
+        return fsTransform(jsonNode)
+    if isinstance(jsonNode, list):
+        return [
+            _fjsonMapStrings(jsonItem, fsTransform) for jsonItem in jsonNode
+        ]
+    if isinstance(jsonNode, dict):
+        return {
+            fsTransform(sKey): _fjsonMapStrings(jsonValue, fsTransform)
+            for sKey, jsonValue in jsonNode.items()
+        }
+    return jsonNode
+
+
+def _fsSanitizeDecodedString(
+    sValue, listExactSecrets, listFoundInContext, dictCounts,
+):
+    """Redact one decoded JSON string, line by line.
+
+    A string whose JSON encoding needed no escapes appeared verbatim in
+    the raw line, so the raw scan already judged it and only the cheap
+    supplemental rules run again. A string that needed escapes is where
+    the raw scan could be fooled, so it is scanned in full.
+    """
+    sValue = _ftRedactExactSecrets(sValue, listExactSecrets, dictCounts)
+    sValue = _fsRedactFoundValues(sValue, listFoundInContext, dictCounts)
+    bNeededEscapes = json.dumps(sValue, ensure_ascii=False)[1:-1] != sValue
+    fsRedactPiece = (
+        _fsRedactLinePatterns if bNeededEscapes
+        else _fsRedactSupplementalPatterns
+    )
+    return "\n".join(
+        fsRedactPiece(sPiece, dictCounts) for sPiece in sValue.split("\n")
+    )
+
+
+def _flistPatternSecretsIn(sText):
+    """Return ``[(sValue, sCategory)]`` detect-secrets finds in one line."""
+    from detect_secrets.core import scan
+    ftCategoryAndValue = operator.attrgetter("type", "secret_value")
+    listFound = []
+    for sCategory, sValue in map(ftCategoryAndValue, scan.scan_line(sText)):
+        if sCategory in _SET_EXCLUDED_PLUGIN_TYPES:
+            continue
+        sValue = sValue or ""
+        if len(sValue) < _I_MINIMUM_PATTERN_SECRET_LENGTH:
+            continue
+        listFound.append((sValue, sCategory))
+    return listFound
+
+
+def _fsRedactFoundValues(sText, listFound, dictCounts):
+    """Replace each found secret value with its category's marker."""
+    for sValue, sCategory in listFound:
+        iOccurrences = sText.count(sValue)
+        if iOccurrences == 0:
+            continue
+        sText = sText.replace(sValue, _fsMarker(sCategory))
+        dictCounts[sCategory] = dictCounts.get(sCategory, 0) + iOccurrences
+    return sText
 
 
 def flistSanitizeTextsInParallel(listTexts, listExactSecrets=None):

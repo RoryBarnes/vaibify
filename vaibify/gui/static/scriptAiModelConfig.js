@@ -1,62 +1,273 @@
-/* Vaibify — AI model declaration modal (Replay axis).
+/* Vaibify — AI model declaration (Replay axis), view and edit.
 
-   Opened from the Project block's "AI Model / Prompts" row. POSTs
-   /api/workflow/{id}/ai-models/declare with:
-     {sVendor, sModelId, sUseStartDate, sUseEndDate}          — closed
-     {…, bOpenWeights: true, sWeightsSource,
-      sWeightsRevisionHash}                                   — open
+   Opened from the Project block's "AI models" row:
 
-   Declarations upsert on (vendor, model id); the row's light flips
-   on the next status poll, which reads the saved workflow.
+     - View Declaration  a read-only list of every declared model
+     - Edit Declaration  one card per model. A card saves itself:
+                         POST .../ai-models/update for a model already
+                         declared (found by its ORIGINAL vendor and model
+                         id, so correcting either edits it in place),
+                         POST .../ai-models/declare for a new card.
+                         Delete goes through the shared "remove-ai-model"
+                         project action, which confirms first.
+
+   One model per card, because the provenance record names models
+   individually: "two models in one entry" is a declaration of neither.
+   The Project block's light flips on the next status poll, which reads
+   the saved workflow; a save asks for that poll at once.
 
    Exposes:
-     - VaibifyAiModelConfig.fnOpen()    open the modal (blank form)
-     - VaibifyAiModelConfig.fnClose()   hide the modal
-     - VaibifyAiModelConfig.fnSave()    submit the declaration
-     - VaibifyAiModelConfig.fnToggleWeightsFields()
+     - VaibifyAiModelConfig.fnOpenView()
+     - VaibifyAiModelConfig.fnOpenEdit()
+     - VaibifyAiModelConfig.fnClose()
+     - VaibifyAiModelConfig.fnAddCard()
+     - VaibifyAiModelConfig.fnApplyDeclaredModels(listModels)
+     - VaibifyAiModelConfig.fnBindEditor()   once, at startup
 */
 
 var VaibifyAiModelConfig = (function () {
     "use strict";
 
+    var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;
     var _RE_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+    var _LIST_BASE_FIELDS = [
+        ["sVendor", "Vendor", "text", "e.g. Anthropic"],
+        ["sModelId", "Model ID", "text",
+            "one exact model identifier per entry"],
+        ["sUseStartDate", "Used from", "date", ""],
+        ["sUseEndDate", "Used until", "date", ""],
+    ];
+    var _LIST_WEIGHTS_FIELDS = [
+        ["sWeightsSource", "Weights source", "text",
+            "where the weights are published"],
+        ["sWeightsRevisionHash", "Weights revision hash", "text",
+            "revision / commit hash of the weights"],
+    ];
 
     function _felGet(sId) {
         return document.getElementById(sId);
     }
 
-    function _fnShowError(sMessage) {
-        var elError = _felGet("aiModelConfigError");
-        elError.textContent = sMessage;
-        elError.hidden = false;
+    function _flistDeclaredModels() {
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
+        return ((dictWorkflow.dictAiProvenance || {})
+            .listDeclaredModels || []).slice();
     }
 
-    function _fnClearError() {
-        var elError = _felGet("aiModelConfigError");
-        elError.textContent = "";
+    /* --- View --- */
+
+    function fnOpenView() {
+        var listModels = _flistDeclaredModels();
+        _felGet("aiModelViewBody").innerHTML = listModels.length === 0
+            ? '<p class="muted-text">No AI model is declared.</p>'
+            : listModels.map(_fsRenderModelSummary).join("");
+        _fnShow("modalAiModelView");
+    }
+
+    function _fsRenderModelSummary(dictModel) {
+        var listRows = [
+            ["Vendor", dictModel.sVendor],
+            ["Model ID", dictModel.sModelId],
+            ["Used", (dictModel.sUseStartDate || "?") + " to " +
+                (dictModel.sUseEndDate || "?")],
+            ["Weights", dictModel.bOpenWeights === true
+                ? "open — " + (dictModel.sWeightsSource || "?") + " @ " +
+                  (dictModel.sWeightsRevisionHash || "?")
+                : "closed"],
+        ];
+        return '<dl class="ai-model-summary">' + listRows.map(
+            function (tRow) {
+                return '<dt>' + fnEscapeHtml(tRow[0]) + '</dt><dd>' +
+                    fnEscapeHtml(tRow[1] || "?") + '</dd>';
+            }).join("") + '</dl>';
+    }
+
+    /* --- Edit --- */
+
+    function fnOpenEdit() {
+        fnClose();
+        _fnRenderCards(_flistDeclaredModels());
+        _fnShow("modalAiModelConfig");
+    }
+
+    function _fnRenderCards(listModels) {
+        var elCards = _felGet("aiModelEditorCards");
+        elCards.innerHTML = listModels.map(function (dictModel) {
+            return _fsRenderCard(dictModel, false);
+        }).join("");
+        if (listModels.length === 0) fnAddCard();
+    }
+
+    function fnAddCard() {
+        _felGet("aiModelEditorCards").insertAdjacentHTML(
+            "beforeend", _fsRenderCard({}, true));
+    }
+
+    function _fsRenderCard(dictModel, bNew) {
+        var bOpenWeights = dictModel.bOpenWeights === true;
+        return '<div class="ai-model-card"' +
+            (bNew ? ' data-new="1"' : '') +
+            ' data-original-vendor="' +
+            fnEscapeHtml(dictModel.sVendor || "") + '"' +
+            ' data-original-model="' +
+            fnEscapeHtml(dictModel.sModelId || "") + '">' +
+            _LIST_BASE_FIELDS.map(function (tField) {
+                return _fsRenderField(tField, dictModel, false);
+            }).join("") +
+            '<div class="form-group"><label><input type="checkbox" ' +
+            'data-field="bOpenWeights"' + (bOpenWeights ? ' checked' : '') +
+            '> Open weights</label></div>' +
+            _LIST_WEIGHTS_FIELDS.map(function (tField) {
+                return _fsRenderField(tField, dictModel, !bOpenWeights);
+            }).join("") +
+            '<p class="form-error" data-card-error hidden></p>' +
+            '<div class="modal-inline-actions">' +
+            '<button type="button" class="btn btn-primary" ' +
+            'data-card-action="save">' + (bNew ? 'Declare' : 'Save') +
+            '</button><button type="button" class="btn' +
+            (bNew ? '' : ' btn-danger') + '" data-card-action="' +
+            (bNew ? 'discard' : 'delete') + '">' +
+            (bNew ? 'Discard' : 'Delete') + '</button></div></div>';
+    }
+
+    function _fsRenderField(tField, dictModel, bHidden) {
+        // Label and input as siblings, the shape the dashboard's form
+        // styles expect -- nested, the date inputs lost their theme.
+        return '<div class="form-group" data-group="' + tField[0] + '"' +
+            (bHidden ? ' hidden' : '') + '><label>' +
+            fnEscapeHtml(tField[1]) + '</label><input type="' +
+            tField[2] + '" data-field="' + tField[0] + '" value="' +
+            fnEscapeHtml(dictModel[tField[0]] || "") + '" placeholder="' +
+            fnEscapeHtml(tField[3]) + '"></div>';
+    }
+
+    function _fnHandleCardClick(event) {
+        var elButton = event.target.closest("[data-card-action]");
+        if (!elButton) return;
+        var elCard = elButton.closest(".ai-model-card");
+        var sAction = elButton.dataset.cardAction;
+        if (sAction === "save") _fnSaveCard(elCard);
+        else if (sAction === "discard") elCard.remove();
+        else if (sAction === "delete") _fnDeleteCard(elCard, elButton);
+    }
+
+    function _fnHandleCardChange(event) {
+        if (event.target.dataset.field !== "bOpenWeights") return;
+        var elCard = event.target.closest(".ai-model-card");
+        _LIST_WEIGHTS_FIELDS.forEach(function (tField) {
+            elCard.querySelector('[data-group="' + tField[0] + '"]')
+                .hidden = !event.target.checked;
+        });
+    }
+
+    function _fdictReadCard(elCard) {
+        var dictModel = {};
+        _LIST_BASE_FIELDS.forEach(function (tField) {
+            dictModel[tField[0]] = elCard.querySelector(
+                '[data-field="' + tField[0] + '"]').value.trim();
+        });
+        if (elCard.querySelector('[data-field="bOpenWeights"]').checked) {
+            dictModel.bOpenWeights = true;
+            _LIST_WEIGHTS_FIELDS.forEach(function (tField) {
+                dictModel[tField[0]] = elCard.querySelector(
+                    '[data-field="' + tField[0] + '"]').value.trim();
+            });
+        }
+        return dictModel;
+    }
+
+    function _fsValidationProblem(dictModel) {
+        if (!dictModel.sVendor || !dictModel.sModelId) {
+            return "Vendor and model ID are both required.";
+        }
+        if (!_RE_ISO_DATE.test(dictModel.sUseStartDate) ||
+                !_RE_ISO_DATE.test(dictModel.sUseEndDate)) {
+            return "Both use dates are required (YYYY-MM-DD).";
+        }
+        if (dictModel.bOpenWeights === true &&
+                (!dictModel.sWeightsSource ||
+                 !dictModel.sWeightsRevisionHash)) {
+            return "Open-weights declarations require the weights " +
+                "source and revision hash.";
+        }
+        return "";
+    }
+
+    async function _fnSaveCard(elCard) {
+        var elError = elCard.querySelector("[data-card-error]");
         elError.hidden = true;
+        var dictModel = _fdictReadCard(elCard);
+        var sProblem = _fsValidationProblem(dictModel);
+        if (sProblem) {
+            elError.textContent = sProblem;
+            elError.hidden = false;
+            return;
+        }
+        var bNew = elCard.dataset.new === "1";
+        if (!bNew) {
+            dictModel.sOriginalVendor = elCard.dataset.originalVendor;
+            dictModel.sOriginalModelId = elCard.dataset.originalModel;
+        }
+        // Every button on the card waits for the save: until the saved
+        // list re-renders it, the card still carries the ORIGINAL key,
+        // and a Delete clicked in that gap would name a model the save
+        // just renamed.
+        _fnSetCardButtonsDisabled(elCard, true);
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/workflow/" +
+                    encodeURIComponent(VaibifyApp.fsGetContainerId()) +
+                    (bNew ? "/ai-models/declare" : "/ai-models/update"),
+                dictModel);
+            fnApplyDeclaredModels((dictResult || {}).listDeclaredModels);
+            VaibifyApp.fnShowToast((bNew ? "Declared " : "Saved ") +
+                dictModel.sVendor + " / " + dictModel.sModelId + ".",
+                "success");
+        } catch (error) {
+            elError.textContent = VaibifyDiagnosis.fsExplainError(error);
+            elError.hidden = false;
+        } finally {
+            _fnSetCardButtonsDisabled(elCard, false);
+        }
     }
 
-    function _fnClearForm() {
-        _felGet("inputAiModelVendor").value = "";
-        _felGet("inputAiModelId").value = "";
-        _felGet("inputAiModelStartDate").value = "";
-        _felGet("inputAiModelEndDate").value = "";
-        _felGet("checkAiModelOpenWeights").checked = false;
-        _felGet("inputAiModelWeightsSource").value = "";
-        _felGet("inputAiModelWeightsHash").value = "";
-        fnToggleWeightsFields();
+    function _fnSetCardButtonsDisabled(elCard, bDisabled) {
+        elCard.querySelectorAll("[data-card-action]").forEach(
+            function (elCardButton) {
+                elCardButton.disabled = bDisabled;
+            });
     }
 
-    function fnToggleWeightsFields() {
-        var bOpenWeights = _felGet("checkAiModelOpenWeights").checked;
-        _felGet("groupAiModelWeightsSource").hidden = !bOpenWeights;
-        _felGet("groupAiModelWeightsHash").hidden = !bOpenWeights;
+    function _fnDeleteCard(elCard, elButton) {
+        VaibifyApp.fnRunProjectAction("remove-ai-model", JSON.stringify({
+            sVendor: elCard.dataset.originalVendor,
+            sModelId: elCard.dataset.originalModel,
+        }), elButton);
     }
+
+    function fnApplyDeclaredModels(listModels) {
+        /* The one place a saved list reaches the page: the workflow the
+           rows and dialogs read, the open editor, and an immediate poll
+           so the row's light follows. The remove action calls it too. */
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
+        if (dictWorkflow) {
+            var dictProvenance = dictWorkflow.dictAiProvenance || {};
+            dictProvenance.listDeclaredModels = listModels || [];
+            dictWorkflow.dictAiProvenance = dictProvenance;
+        }
+        if (_felGet("modalAiModelConfig").style.display === "flex") {
+            _fnRenderCards(listModels || []);
+        }
+        VaibifyPolling.fnStartFilePolling(VaibifyApp.fsGetContainerId());
+    }
+
+    /* --- Shared --- */
 
     var _fnEscapeKeyHandler = null;
 
-    function _fnAttachEscapeHandler() {
+    function _fnShow(sModalId) {
+        _felGet(sModalId).style.display = "flex";
         _fnEscapeKeyHandler = function (event) {
             if (event.key === "Escape") {
                 event.stopPropagation();
@@ -66,105 +277,28 @@ var VaibifyAiModelConfig = (function () {
         document.addEventListener("keydown", _fnEscapeKeyHandler);
     }
 
-    function _fnDetachEscapeHandler() {
-        if (!_fnEscapeKeyHandler) return;
-        document.removeEventListener("keydown", _fnEscapeKeyHandler);
-        _fnEscapeKeyHandler = null;
-    }
-
-    function fnOpen() {
-        _fnClearForm();
-        _fnClearError();
-        _felGet("modalAiModelConfig").style.display = "flex";
-        _fnAttachEscapeHandler();
-        _felGet("inputAiModelVendor").focus();
-    }
-
     function fnClose() {
+        _felGet("modalAiModelView").style.display = "none";
         _felGet("modalAiModelConfig").style.display = "none";
-        _fnDetachEscapeHandler();
-    }
-
-    function _fdictReadForm() {
-        var dictModel = {
-            sVendor: _felGet("inputAiModelVendor").value.trim(),
-            sModelId: _felGet("inputAiModelId").value.trim(),
-            sUseStartDate: _felGet("inputAiModelStartDate").value.trim(),
-            sUseEndDate: _felGet("inputAiModelEndDate").value.trim(),
-        };
-        if (_felGet("checkAiModelOpenWeights").checked) {
-            dictModel.bOpenWeights = true;
-            dictModel.sWeightsSource =
-                _felGet("inputAiModelWeightsSource").value.trim();
-            dictModel.sWeightsRevisionHash =
-                _felGet("inputAiModelWeightsHash").value.trim();
-        }
-        return dictModel;
-    }
-
-    function _fbValidateBeforeSubmit(dictModel) {
-        if (!dictModel.sVendor || !dictModel.sModelId) {
-            _fnShowError("Vendor and model ID are both required.");
-            return false;
-        }
-        if (!_RE_ISO_DATE.test(dictModel.sUseStartDate) ||
-                !_RE_ISO_DATE.test(dictModel.sUseEndDate)) {
-            _fnShowError("Both use dates are required (YYYY-MM-DD).");
-            return false;
-        }
-        if (dictModel.bOpenWeights === true &&
-                (!dictModel.sWeightsSource ||
-                 !dictModel.sWeightsRevisionHash)) {
-            _fnShowError("Open-weights declarations require the " +
-                "weights source and revision hash.");
-            return false;
-        }
-        return true;
-    }
-
-    async function fnSave() {
-        _fnClearError();
-        var dictModel = _fdictReadForm();
-        if (!_fbValidateBeforeSubmit(dictModel)) return;
-        var sContainerId = VaibifyApp.fsGetContainerId();
-        if (!sContainerId) return;
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/workflow/" + encodeURIComponent(sContainerId) +
-                    "/ai-models/declare",
-                dictModel,
-            );
-            _fnApplyResultToWorkflow(dictResult);
-            VaibifyApp.fnShowToast(
-                "Declared " + dictModel.sVendor + " / " +
-                    dictModel.sModelId + ".",
-                "success",
-            );
-            fnClose();
-        } catch (error) {
-            _fnShowError(_fsExtractErrorDetail(error));
+        if (_fnEscapeKeyHandler) {
+            document.removeEventListener("keydown", _fnEscapeKeyHandler);
+            _fnEscapeKeyHandler = null;
         }
     }
 
-    function _fnApplyResultToWorkflow(dictResult) {
-        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-        if (!dictWorkflow) return;
-        var dictProvenance = dictWorkflow.dictAiProvenance || {};
-        dictProvenance.listDeclaredModels =
-            (dictResult || {}).listDeclaredModels || [];
-        dictWorkflow.dictAiProvenance = dictProvenance;
-    }
-
-    function _fsExtractErrorDetail(error) {
-        if (!error) return "Declaration failed.";
-        if (typeof error === "string") return error;
-        return error.message || "Declaration failed.";
+    function fnBindEditor() {
+        var elCards = _felGet("aiModelEditorCards");
+        if (!elCards) return;
+        elCards.addEventListener("click", _fnHandleCardClick);
+        elCards.addEventListener("change", _fnHandleCardChange);
     }
 
     return {
-        fnOpen: fnOpen,
+        fnOpenView: fnOpenView,
+        fnOpenEdit: fnOpenEdit,
         fnClose: fnClose,
-        fnSave: fnSave,
-        fnToggleWeightsFields: fnToggleWeightsFields,
+        fnAddCard: fnAddCard,
+        fnApplyDeclaredModels: fnApplyDeclaredModels,
+        fnBindEditor: fnBindEditor,
     };
 })();

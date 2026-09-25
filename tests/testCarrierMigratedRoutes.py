@@ -4946,6 +4946,39 @@ async def testASlowCaptureAnswersStillRunningAndStillLands():
     assert responseAfter.json()["sCaptureRunningSinceUtc"] == ""
 
 
+def testThePromptRecordViewerIsATypedRead(tclientReplay):
+    """The viewer's two routes read through typed reads and change nothing.
+
+    Both halves are asserted, because either alone is satisfiable by a
+    route that does nothing: the gated ledger stays EMPTY -- no
+    mutation-capable primitive was reached -- and the typed-read ledger
+    is NON-empty, so the list route really looked for the record. A
+    session named but not in the index is refused 404: a request can
+    name a session, never a path.
+
+    Not marked falsification: the declaration records that no carrier
+    is this route's authority, and the harness's real gate is the check.
+    """
+    client, connectionDocker = tclientReplay
+    connectionDocker.listAdmittedPrimitives.clear()
+    connectionDocker.listTypedPathProbes.clear()
+    sBase = f"/api/workflow/{S_CONTAINER_ID}/prompt-record/sessions"
+    response = client.get(sBase)
+    assert response.status_code == 200, response.text
+    assert response.json()["listSessions"] == []
+    for sName in ("..%2F..%2Fetc%2Fpasswd", "not-captured.jsonl"):
+        responseSession = client.get(sBase + "/" + sName)
+        assert responseSession.status_code == 404, responseSession.text
+    assert connectionDocker.listAdmittedPrimitives == [], (
+        "a typed-read route reached a mutation-capable container "
+        f"primitive: {connectionDocker.listAdmittedPrimitives}"
+    )
+    assert any(
+        "promptRecord/index.json" in sPath
+        for sPath in connectionDocker.listTypedPathProbes
+    ), connectionDocker.listTypedPathProbes
+
+
 def testThePersonalLayerHashReachesNoContainerPrimitive(
     tclientReplay, tmp_path, monkeypatch,
 ):

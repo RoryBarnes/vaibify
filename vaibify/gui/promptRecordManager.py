@@ -50,6 +50,7 @@ __all__ = [
     "fdictSanitizeNewTranscriptLines",
     "fdictLandSanitizedSessions",
     "fbVerifyCaptureChain",
+    "flistSummarizeSessions",
     "flistVerifyCapturedFiles",
 ]
 
@@ -446,6 +447,34 @@ def fdictLandSanitizedSessions(filesRepo, dictSanitized, iPollSeconds=30):
             for dictRecord in dictIndex["listCaptures"]
         }),
     }
+
+
+def flistSummarizeSessions(dictIndex):
+    """Return one summary per captured session, in first-capture order.
+
+    Each carries the session's CURRENT redaction total, which is not the
+    sum of its records: a whole recapture re-counts everything it lands,
+    so it resets the tally, and an appended capture adds only its new
+    lines' redactions. Summing every record counted a recaptured
+    session twice.
+    """
+    dictSummaries = {}
+    for dictRecord in dictIndex.get("listCaptures", []):
+        sFileName = dictRecord["sSessionFileName"]
+        dictSummary = dictSummaries.setdefault(sFileName, {
+            "sSessionFileName": sFileName, "iRedactionCount": 0,
+        })
+        iCount = int(dictRecord.get("iRedactionCount") or 0)
+        if dictRecord.get("sCaptureKind") == "appended":
+            dictSummary["iRedactionCount"] += iCount
+        else:
+            dictSummary["iRedactionCount"] = iCount
+        dictSummary["iBytesCaptured"] = dictRecord.get("iBytesCaptured", 0)
+        dictSummary["sLastCapturedAtUtc"] = dictRecord.get(
+            "sCapturedAtUtc", "",
+        )
+        dictSummary["sSha256"] = dictRecord.get("sSha256", "")
+    return list(dictSummaries.values())
 
 
 def fbVerifyCaptureChain(dictIndex):

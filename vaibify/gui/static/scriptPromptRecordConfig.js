@@ -1,23 +1,23 @@
-/* Vaibify — Prompt Record modal (Replay axis "Recorded" state).
+/* Vaibify — Prompt Record settings (Replay axis "Recorded" state).
 
-   Opened from the Project block's AI Model / Prompts row. Shows the
-   live record state from GET .../prompt-record/status and offers:
+   Opened from the Project block's Prompt Record row ("Recording
+   settings" / "Set up recording"). It holds one decision -- whether
+   the in-container agent's sessions are recorded -- and says what
+   recording does before it is switched on:
 
-     - Enable / Disable      POST .../prompt-record/configure
-     - Approve first capture POST .../prompt-record/approve-first-capture
-       (the human review gate: the researcher inspects the sanitized
-       sample — with its visible [REDACTED: …] markers — before the
-       record is treated as publishable)
+     - Turn on / off        POST .../prompt-record/configure
 
-   Honesty rules baked into the rendering: everything is labeled a
-   *redacted transcript* (never raw tokens), redaction counts are
-   shown per category, coverage intervals are listed so gaps between
-   them read as unmonitored time, and a broken hash chain or tampered
-   session file renders as a loud warning, never suppressed.
+   Everything else the record offers lives where it is used: the
+   sessions, their integrity and the first-capture approval in the
+   record viewer (scriptPromptRecordViewer.js), and Supervised mode on
+   its own row, switched through fnSetSupervision below. A settings
+   dialog that also held the review and the watchdog read as the place
+   to START recording even while it was already on.
 
    Exposes:
      - VaibifyPromptRecordConfig.fnOpen()
      - VaibifyPromptRecordConfig.fnClose()
+     - VaibifyPromptRecordConfig.fnSetSupervision(bEnabled, elButton)
 */
 
 var VaibifyPromptRecordConfig = (function () {
@@ -27,6 +27,12 @@ var VaibifyPromptRecordConfig = (function () {
 
     function _felGet(sId) {
         return document.getElementById(sId);
+    }
+
+    function _fsRecordBase() {
+        return "/api/workflow/" +
+            encodeURIComponent(VaibifyApp.fsGetContainerId()) +
+            "/prompt-record";
     }
 
     function fnOpen() {
@@ -39,253 +45,108 @@ var VaibifyPromptRecordConfig = (function () {
     }
 
     async function _fnRefresh() {
-        var sContainerId = VaibifyApp.fsGetContainerId();
-        if (!sContainerId) return;
+        if (!VaibifyApp.fsGetContainerId()) return;
         var elBody = _felGet("promptRecordBody");
         elBody.innerHTML = '<span class="placeholder">Loading…</span>';
         try {
             var dictStatus = await VaibifyApi.fdictGet(
-                "/api/workflow/" + encodeURIComponent(sContainerId) +
-                    "/prompt-record/status",
-            );
-            elBody.innerHTML = _fsRenderStatus(dictStatus);
-            _fnBindBodyActions(elBody, dictStatus);
+                _fsRecordBase() + "/status");
+            elBody.innerHTML = _fsRenderSettings(dictStatus);
+            _fnBindSwitch(elBody);
         } catch (error) {
             elBody.innerHTML = '<div class="form-error">' +
                 fnEscapeHtml(_fsDetail(error)) + '</div>';
         }
     }
 
-    function _fsRenderStatus(dictStatus) {
-        var dictRecord = dictStatus.dictPromptRecord || {};
-        if (dictRecord.bEnabled !== true) {
-            return _fsRenderDisabledState();
-        }
-        return _fsRenderIntegrity(dictStatus) +
+    function _fsRenderSettings(dictStatus) {
+        var bEnabled =
+            (dictStatus.dictPromptRecord || {}).bEnabled === true;
+        return '<p class="prompt-record-state"><strong>Recording is ' +
+            (bEnabled ? 'on' : 'off') + '.</strong></p>' +
             _fsRenderCaptureRunning(dictStatus) +
-            _fsRenderCaptures(dictStatus) +
-            _fsRenderSessionsOutsideProject(dictStatus) +
-            _fsRenderCoverage(dictStatus) +
-            _fsRenderReviewGate(dictStatus) +
-            _fsRenderSupervision(dictStatus) +
+            '<p class="muted-text">' + _S_WHAT_RECORDING_DOES + '</p>' +
             '<div class="modal-inline-actions">' +
-            '<button type="button" class="btn" ' +
-            'data-record-action="disable">Disable recording</button>' +
-            '</div>';
+            '<button type="button" class="btn' +
+            (bEnabled ? '' : ' btn-primary') + '" ' +
+            'data-record-switch="' + (bEnabled ? 'off' : 'on') + '">' +
+            (bEnabled ? 'Turn off recording' : 'Turn on recording') +
+            '</button></div>';
     }
 
-    function _fsRenderSupervision(dictStatus) {
-        // The rung above Recorded: the watchdog flags any repo
-        // change with no recorded cause, permanently. Flags demote
-        // nothing silently — they render until the researcher deals
-        // with their meaning outside the tool.
-        var dictSupervision = dictStatus.dictSupervision || {};
-        var listFlags = dictStatus.listSupervisionFlags || [];
-        var sFlags = listFlags.map(function (dictFlag) {
-            return '<li>' + fnEscapeHtml(
-                (dictFlag.sTimestampUtc || "") + " — " +
-                (dictFlag.sFlagKind || "") + ": " +
-                (dictFlag.sDetail || "")) + '</li>';
-        }).join("");
-        var sChainWarning = dictStatus.bFlagChainIntact === false
-            ? '<div class="form-error">The flag hash chain is ' +
-              'BROKEN — a permanent flag was edited or removed.</div>'
-            : "";
-        if (dictSupervision.bEnabled !== true) {
-            var dictRecord = dictStatus.dictPromptRecord || {};
-            var bEligible = dictRecord.bEnabled === true &&
-                dictRecord.bFirstCaptureReviewed === true;
-            return '<hr><p class="muted-text"><strong>Supervised ' +
-                'mode</strong> (off): the watchdog attributes every ' +
-                'repository change to a recorded action channel and ' +
-                'permanently flags changes with no recorded cause. ' +
-                'Terminal sessions are recorded as a channel ' +
-                '(open/close), not keystroke content.</p>' +
-                (bEligible
-                    ? '<div class="modal-inline-actions">' +
-                      '<button type="button" class="btn btn-primary" ' +
-                      'data-record-action="enable-supervision">' +
-                      'Enable Supervised mode</button></div>'
-                    : '<p class="muted-text">Requires the Prompt ' +
-                      'Record enabled and reviewed first.</p>') +
-                sChainWarning +
-                (sFlags ? '<ul>' + sFlags + '</ul>' : "");
-        }
-        return '<hr><p><strong>Supervised mode</strong>: on. ' +
-            listFlags.length + ' permanent flag(s).</p>' +
-            sChainWarning +
-            (sFlags ? '<ul>' + sFlags + '</ul>'
-                : '<p class="muted-text">No unattributed changes ' +
-                  'or unsupervised gaps detected.</p>') +
-            '<div class="modal-inline-actions">' +
-            '<button type="button" class="btn" ' +
-            'data-record-action="disable-supervision">' +
-            'Disable Supervised mode</button></div>';
-    }
-
-    function _fsRenderDisabledState() {
-        return '<p class="muted-text">The Prompt Record is off ' +
-            '(optional — never blocks a level). When enabled, the ' +
-            'in-container agent’s session transcripts are ' +
-            'copied into the repository as <em>redacted ' +
-            'transcripts</em>: every capture is scanned and known ' +
-            'secrets are replaced with visible [REDACTED: …] ' +
-            'markers before anything lands. Only sessions the agent ' +
-            'started inside this project’s folder are captured; ' +
-            'a session started elsewhere, such as the workspace ' +
-            'root or another project, is left out. You review the ' +
-            'first capture before it counts.</p>' +
-            '<div class="modal-inline-actions">' +
-            '<button type="button" class="btn btn-primary" ' +
-            'data-record-action="enable">Enable recording</button>' +
-            '</div>';
-    }
-
-    function _fsRenderIntegrity(dictStatus) {
-        var listWarnings = [];
-        if (dictStatus.bChainIntact !== true) {
-            listWarnings.push(
-                "The capture hash chain is BROKEN — a capture " +
-                "record was edited or removed.");
-        }
-        (dictStatus.listTamperedSessions || []).forEach(
-            function (sName) {
-                listWarnings.push(
-                    "Session file modified after capture: " + sName);
-            });
-        if (listWarnings.length === 0) {
-            return '<p class="muted-text">Record integrity: hash ' +
-                'chain intact, session files match their capture ' +
-                'hashes.</p>';
-        }
-        return '<div class="form-error">' + listWarnings.map(
-            fnEscapeHtml,
-        ).join("<br>") + '</div>';
-    }
-
-    function _fsRenderSessionsOutsideProject(dictStatus) {
-        var iCount = dictStatus.iSessionsOutsideProject || 0;
-        if (iCount === 0) return "";
-        return '<p class="muted-text">' + iCount + ' agent ' +
-            'session(s) were started outside this project’s ' +
-            'folder and are not recorded. To record a session, ' +
-            'change into the project folder before starting the ' +
-            'agent.</p>';
-    }
+    var _S_WHAT_RECORDING_DOES =
+        'Recording is optional and never blocks a level. While it is ' +
+        'on, the in-container agent’s session transcripts are ' +
+        'copied into the repository as <em>redacted transcripts</em>: ' +
+        'every capture is scanned, and known secrets are replaced with ' +
+        'visible [REDACTED: …] markers before anything lands. Only ' +
+        'sessions the agent started inside this project’s folder ' +
+        'are captured; a session started elsewhere, such as the ' +
+        'workspace root or another project, is left out. You review ' +
+        'the first capture in the record viewer before it counts.';
 
     function _fsRenderCaptureRunning(dictStatus) {
         // A first pass over a long history takes minutes; saying
-        // "the next pass runs within 30 seconds" all the while read
-        // as a stalled recorder.
+        // nothing all the while read as a stalled recorder.
         var sSince = dictStatus.sCaptureRunningSinceUtc || "";
         if (!sSince) return "";
         return '<p class="muted-text">A capture pass has been ' +
             'running since ' + fnEscapeHtml(sSince) + '. A first ' +
             'pass over a long history takes several minutes; its ' +
-            'sessions appear here when it finishes.</p>';
+            'sessions appear in the record viewer when it finishes.</p>';
     }
 
-    function _fsRenderCaptures(dictStatus) {
-        var listCaptures = dictStatus.listCaptures || [];
-        if (listCaptures.length === 0) {
-            if (dictStatus.sCaptureRunningSinceUtc) return "";
-            return '<p class="muted-text">No captures yet — the ' +
-                'next capture pass runs within 30 seconds while a ' +
-                'workflow is open.</p>';
-        }
-        var dictCounts = {};
-        listCaptures.forEach(function (dictRecord) {
-            var dictByCategory =
-                dictRecord.dictRedactionsByCategory || {};
-            Object.keys(dictByCategory).forEach(function (sCategory) {
-                dictCounts[sCategory] = (dictCounts[sCategory] || 0) +
-                    dictByCategory[sCategory];
-            });
+    function _fnBindSwitch(elBody) {
+        var elButton = elBody.querySelector("[data-record-switch]");
+        if (!elButton) return;
+        elButton.addEventListener("click", function () {
+            _fnSetRecording(elButton.dataset.recordSwitch === "on");
         });
-        var sRedactions = Object.keys(dictCounts).sort().map(
-            function (sCategory) {
-                return fnEscapeHtml(
-                    sCategory + ": " + dictCounts[sCategory]);
-            }).join(", ") || "none";
-        return '<p>' + listCaptures.length + ' capture(s) on ' +
-            'record. Redactions — ' + sRedactions + '.</p>';
     }
 
-    function _fsRenderCoverage(dictStatus) {
-        var listIntervals = dictStatus.listCoverageIntervals || [];
-        if (listIntervals.length === 0) return "";
-        var sRows = listIntervals.map(function (dictInterval) {
-            return '<li>' + fnEscapeHtml(
-                dictInterval.sStartUtc + " → " +
-                dictInterval.sEndUtc) + '</li>';
-        }).join("");
-        var sGapNote = listIntervals.length > 1
-            ? '<p class="form-error">Time between intervals was NOT ' +
-              'monitored — those prompts are not in the record.</p>'
-            : "";
-        return '<p>Recorded intervals (everything outside them is ' +
-            'unmonitored):</p><ul>' + sRows + '</ul>' + sGapNote;
-    }
-
-    function _fsRenderReviewGate(dictStatus) {
-        var dictRecord = dictStatus.dictPromptRecord || {};
-        if (dictRecord.bFirstCaptureReviewed === true) {
-            return '<p class="muted-text">First capture reviewed ' +
-                'and approved.</p>';
-        }
-        if ((dictStatus.listCaptures || []).length === 0) {
-            return '<p class="muted-text">The review gate opens ' +
-                'after the first capture lands.</p>';
-        }
-        return '<p><strong>Review gate:</strong> inspect this ' +
-            'sample of the redacted transcript (the scanner cannot ' +
-            'catch prose you consider private — read before ' +
-            'approving):</p>' +
-            '<pre class="prompt-record-sample">' +
-            fnEscapeHtml(dictStatus.sReviewSample || "") + '</pre>' +
-            '<div class="modal-inline-actions">' +
-            '<button type="button" class="btn btn-primary" ' +
-            'data-record-action="approve">Approve first capture' +
-            '</button></div>';
-    }
-
-    function _fnBindBodyActions(elBody, dictStatus) {
-        elBody.querySelectorAll("[data-record-action]").forEach(
-            function (elButton) {
-                elButton.addEventListener("click", function () {
-                    _fnRunAction(elButton.dataset.recordAction);
-                });
-            });
-    }
-
-    async function _fnRunAction(sAction) {
-        var sContainerId = VaibifyApp.fsGetContainerId();
-        if (!sContainerId) return;
-        var sBase = "/api/workflow/" +
-            encodeURIComponent(sContainerId) + "/prompt-record";
+    async function _fnSetRecording(bEnabled) {
         try {
-            if (sAction === "enable" || sAction === "disable") {
-                await VaibifyApi.fdictPost(sBase + "/configure", {
-                    bEnabled: sAction === "enable",
-                });
-            } else if (sAction === "approve") {
-                await VaibifyApi.fdictPost(
-                    sBase + "/approve-first-capture", {},
-                );
-            } else if (sAction === "enable-supervision" ||
-                    sAction === "disable-supervision") {
-                await VaibifyApi.fdictPost(
-                    "/api/workflow/" +
-                        encodeURIComponent(sContainerId) +
-                        "/supervision/configure",
-                    {bEnabled: sAction === "enable-supervision"},
-                );
-            }
+            await VaibifyApi.fdictPost(_fsRecordBase() + "/configure", {
+                bEnabled: bEnabled,
+            });
+            VaibifyApp.fnShowToast(bEnabled
+                ? "Recording is on. The first capture starts within " +
+                  "30 seconds; review it from the Prompt Record row."
+                : "Recording is off.", "success");
+            VaibifyPolling.fnStartFilePolling(
+                VaibifyApp.fsGetContainerId());
             _fnRefresh();
         } catch (error) {
-            VaibifyApp.fnShowToast(
-                "Prompt Record action failed: " + _fsDetail(error),
-                "error");
+            VaibifyDiagnosis.fnReportFailure(
+                "Changing the Prompt Record setting failed: " +
+                VaibifyDiagnosis.fsExplainError(error));
+        }
+    }
+
+    async function fnSetSupervision(bEnabled, elButton) {
+        /* Supervised mode's own row calls this. The server refuses to
+           turn it on before the record is enabled and its first capture
+           reviewed, and the row says so before the button is offered;
+           the refusal below is the backstop, reported in its own words. */
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        if (!sContainerId) return;
+        if (elButton) elButton.disabled = true;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                    "/supervision/configure",
+                {bEnabled: bEnabled},
+            );
+            VaibifyApp.fnShowToast(bEnabled
+                ? "Supervised mode is on." : "Supervised mode is off.",
+                "success");
+            VaibifyPolling.fnStartFilePolling(sContainerId);
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailure(
+                "Changing Supervised mode failed: " +
+                VaibifyDiagnosis.fsExplainError(error));
+        } finally {
+            if (elButton) elButton.disabled = false;
         }
     }
 
@@ -298,5 +159,6 @@ var VaibifyPromptRecordConfig = (function () {
     return {
         fnOpen: fnOpen,
         fnClose: fnClose,
+        fnSetSupervision: fnSetSupervision,
     };
 })();

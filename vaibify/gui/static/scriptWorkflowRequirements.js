@@ -1969,116 +1969,188 @@ var VaibifyWorkflowRequirements = (function () {
             }};
     }
 
-    function _fsRenderDeclaredModelRow(dictModel) {
-        // One declared model: vendor / id / date range, the weights
-        // branch it declared, and an in-place remove button. The arg
-        // carries the (vendor, model id) key as JSON for the backend.
-        var sWeights = dictModel.bOpenWeights === true
-            ? "open weights — " + (dictModel.sWeightsSource || "?") +
-              " @ " + (dictModel.sWeightsRevisionHash || "?")
-            : "closed weights";
-        var sArg = JSON.stringify({
-            sVendor: dictModel.sVendor || "",
-            sModelId: dictModel.sModelId || "",
-        });
+    function _fsRenderDeclaredModelLine(dictModel) {
+        // One declared model on one line; the View Declaration dialog
+        // carries every field.
         return '<div class="detail-item declared-model-row">' +
-            '<span class="detail-text">' +
-            fnEscapeHtml((dictModel.sVendor || "?") + " / " +
-                (dictModel.sModelId || "?")) +
-            ' <span class="declared-model-dates">(' +
-            fnEscapeHtml((dictModel.sUseStartDate || "?") + " to " +
-                (dictModel.sUseEndDate || "?") + ", " + sWeights) +
-            ')</span></span>' +
-            '<button type="button" class="btn btn-small ' +
-            'wf-action-btn" data-wf-action="remove-ai-model" ' +
-            'data-wf-arg="' + fnEscapeHtml(sArg) + '">Remove</button>' +
-            '</div>';
+            '<span class="detail-text">' + fnEscapeHtml(
+                (dictModel.sVendor || "?") + " · " +
+                (dictModel.sModelId || "?") + " · " +
+                (dictModel.sUseStartDate || "?") + " to " +
+                (dictModel.sUseEndDate || "?") + " · " +
+                (dictModel.bOpenWeights === true
+                    ? "open weights" : "closed weights")) +
+            '</span></div>';
     }
 
-    function _fsRenderAiModelPromptsDetail(dictDetail) {
-        // Declared models first, then the two standing prompt files:
-        // the project context (user-owned, canonical at
-        // .vaibify/AGENTS.md) and the generated workspace prompt
-        // (machine-owned — regenerated every container start).
+    function _fsRenderAiModelsDetail(dictDetail) {
+        // The declarations, the backend's own words for anything that
+        // keeps the row red, and the two ways in: read it, or change it.
         var listModels = ((dictDetail.dictAiProvenance || {})
             .listDeclaredModels) || [];
-        var sModels = listModels.length === 0
-            ? '<div class="requirement-row-status">No AI model ' +
-              'declared — the only failing state. Declare every ' +
-              'model used on this project (closed-weights models ' +
-              'pass by declaration).</div>'
-            : listModels.map(_fsRenderDeclaredModelRow).join("");
-        var sDeclareButton = '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn ' +
-            'wf-open-ai-model-config">Declare model…</button></div>';
+        var listIssues = dictDetail.listAiModelDeclarationIssues || [];
+        var sIssues = listIssues.length === 0 ? "" :
+            '<div class="requirement-row-status">' +
+            fnEscapeHtml(listIssues.join(" ")) + '</div>';
+        var sButtons = listModels.length === 0
+            ? '<button type="button" class="btn wf-action-caution ' +
+              'wf-edit-ai-declaration">Declare Model</button>'
+            : '<button type="button" class="btn ' +
+              'wf-view-ai-declaration">View Declaration</button>' +
+              '<button type="button" class="btn wf-action-caution ' +
+              'wf-edit-ai-declaration">Edit Declaration</button>';
+        return '<div class="requirement-row-detail">' +
+            listModels.map(_fsRenderDeclaredModelLine).join("") +
+            sIssues +
+            '<div class="requirement-row-howto">Declare every AI model ' +
+            'used on this project, one per entry. A closed-weights ' +
+            'model passes by declaration; an open-weights model also ' +
+            'names where its weights live and their revision hash.' +
+            '</div><div class="requirement-row-actions">' + sButtons +
+            '</div></div>';
+    }
+
+    function _fsRenderProjectInstructionsDetail(dictDetail) {
+        // The project's standing agent instructions, a user-owned file
+        // with the usual published-copy badges, and a note on the
+        // machine-owned workspace prompt beside it.
         var sContextRow = dictDetail.bProjectContextFileExists === true
             ? _fsRenderFileRowWithBadges(
                 ".vaibify/AGENTS.md", ["sGithub", "sZenodo"])
             : VaibifyProjectContext.fsRenderMissingContextRow(
                 dictDetail);
-        return '<div class="requirement-row-detail">' +
-            _fsRenderReplayAxisLadder(dictDetail) + sModels +
-            sDeclareButton + sContextRow +
-            '<div class="requirement-row-howto">The workspace ' +
-            'prompt (/workspace/CLAUDE.md) is generated by vaibify ' +
-            'at container start and is read-only; both prompt ' +
-            'hashes are captured into the provenance stamp.' +
-            '</div>' + _fsRenderPromptRecordBlock(dictDetail) +
-            '</div>';
+        return '<div class="requirement-row-detail">' + sContextRow +
+            '<div class="requirement-row-howto">Optional — never ' +
+            'counts toward a level. The workspace prompt ' +
+            '(/workspace/CLAUDE.md) is generated by vaibify at ' +
+            'container start and is read-only; both prompt hashes ' +
+            'are captured into the provenance stamp.</div></div>';
     }
 
-    var _LIST_REPLAY_STATES = [
-        ["untracked", "Untracked"],
-        ["declared", "Declared"],
-        ["recorded", "Recorded"],
-        ["supervised", "Supervised"],
-    ];
-
-    function _fsRenderReplayAxisLadder(dictDetail) {
-        // The Replay-axis state ladder; the current state is marked.
-        // A project is "Replayable" at recorded or better.
-        var sCurrent = dictDetail.sReplayAxisState || "untracked";
-        var sCells = _LIST_REPLAY_STATES.map(function (tState) {
-            var bActive = tState[0] === sCurrent;
-            return '<span class="replay-axis-cell' +
-                (bActive ? ' active' : '') + '">' +
-                fnEscapeHtml(tState[1]) + '</span>';
-        }).join('<span class="replay-axis-arrow">→</span>');
-        return '<div class="replay-axis-ladder" title="The Replay ' +
-            'axis: provenance of the development process. ' +
-            'Replayable at Recorded or better.">Replay: ' + sCells +
-            '</div>';
-    }
-
-    function _fsRenderPromptRecordBlock(dictDetail) {
-        // Opt-in state honesty: off reads "Not tracked — optional";
-        // on shows the true capture counts, the review gate, and a
-        // loud gap warning when coverage is not continuous.
-        var dictRecord = dictDetail.dictPromptRecord || {};
-        var sOpenButton = '<div class="requirement-row-actions">' +
-            '<button type="button" class="btn ' +
-            'wf-open-prompt-record">Prompt Record…</button></div>';
-        if (dictRecord.bEnabled !== true) {
-            // The supervision chip renders whether or not the Prompt
-            // Record is on. Returning early here meant one toggle
-            // hid every permanent flag the watchdog had ever raised.
-            return '<div class="requirement-row-status">Prompt ' +
-                'Record: Not tracked — optional.</div>' +
-                _fsRenderSupervisionChip(dictDetail) + sOpenButton;
+    function _fsPromptRecordWarning(dictRecord) {
+        // What the ⚠ beside the row title says. An optional row may
+        // never paint its level cell red or orange, so this is where
+        // "needs you" lives.
+        if (dictRecord.bEnabled !== true) return "";
+        if (dictRecord.bChainIntact === false) {
+            return "The capture hash chain is broken: a capture record " +
+                "was edited or removed.";
         }
-        var sState = "Prompt Record: on — " +
-            (dictRecord.iSessionCount || 0) + " session(s), " +
-            (dictRecord.iRedactionTotal || 0) + " redaction(s)" +
-            (dictRecord.bFirstCaptureReviewed === true
-                ? "." : "; first capture awaiting your review.");
-        var sGap = dictRecord.bGapPresent === true
-            ? '<div class="requirement-row-status">Coverage has ' +
-              'gaps — time between recorded intervals was not ' +
-              'monitored.</div>'
-            : "";
-        return '<div class="requirement-row-status">' +
-            fnEscapeHtml(sState) + '</div>' + sGap +
-            _fsRenderSupervisionChip(dictDetail) + sOpenButton;
+        if (dictRecord.bFirstCaptureReviewed !== true &&
+                (dictRecord.iSessionCount || 0) > 0) {
+            return "First capture awaiting your review.";
+        }
+        return "";
+    }
+
+    function _fsRenderPromptRecordDetail(dictDetail) {
+        var dictRecord = dictDetail.dictPromptRecord || {};
+        if (dictRecord.bEnabled !== true) {
+            return '<div class="requirement-row-detail">' +
+                '<div class="requirement-row-status">Recording is off ' +
+                '— optional, never counts toward a level.</div>' +
+                '<div class="requirement-row-actions"><button ' +
+                'type="button" class="btn wf-open-prompt-record">' +
+                'Set up recording</button>' +
+                ((dictRecord.iSessionCount || 0) > 0
+                    ? _S_VIEW_RECORD_BUTTON : '') + '</div></div>';
+        }
+        var listStatus = [
+            "Recording · " + (dictRecord.iSessionCount || 0) +
+                " session(s) · " + (dictRecord.iRedactionTotal || 0) +
+                " redaction(s)" +
+                (dictRecord.bFirstCaptureReviewed === true
+                    ? " · first capture approved." : "."),
+        ];
+        if ((dictRecord.iSessionsOutsideProject || 0) > 0) {
+            listStatus.push(dictRecord.iSessionsOutsideProject +
+                " session(s) started outside this project's folder " +
+                "are not recorded; start the agent from inside the " +
+                "project folder to record it.");
+        }
+        if (dictRecord.bGapPresent === true) {
+            listStatus.push("Coverage has gaps: time between " +
+                "recorded intervals was not monitored.");
+        }
+        if (dictDetail.sReplayAxisState === "untracked") {
+            listStatus.push("Counts as a recorded development " +
+                "history once the AI models and Personal AI " +
+                "Configuration rows are complete.");
+        }
+        return '<div class="requirement-row-detail">' +
+            listStatus.map(function (sLine) {
+                return '<div class="requirement-row-status">' +
+                    fnEscapeHtml(sLine) + '</div>';
+            }).join("") +
+            '<div class="requirement-row-actions">' + _S_VIEW_RECORD_BUTTON +
+            (_fsPromptRecordWarning(dictRecord) ===
+                "First capture awaiting your review."
+                ? '<button type="button" class="btn wf-action-caution ' +
+                  'wf-review-prompt-record">Review &amp; Approve</button>'
+                : '') +
+            '<button type="button" class="btn wf-open-prompt-record">' +
+            'Recording settings</button></div></div>';
+    }
+
+    var _S_VIEW_RECORD_BUTTON = '<button type="button" class="btn ' +
+        'wf-view-prompt-record">View Record</button>';
+
+    function _fsSupervisionWarning(dictSupervision) {
+        // Permanent flags and broken chains outlive the switch that
+        // raised them: supervision turned off must not hide what it
+        // found, so they are checked before whether it is on.
+        if ((dictSupervision.iFlagCount || 0) > 0) {
+            return dictSupervision.iFlagCount + " permanent supervision " +
+                "flag(s).";
+        }
+        if (dictSupervision.bFlagChainIntact === false ||
+                dictSupervision.bEventChainIntact === false ||
+                dictSupervision.bPersistedFlagCountMatches === false) {
+            return "The supervision evidence does not check out.";
+        }
+        if (dictSupervision.bEnabled === true &&
+                dictSupervision.bClean !== true) {
+            return "The supervision evidence does not check out.";
+        }
+        return "";
+    }
+
+    function _fsRenderSupervisionDetail(dictDetail) {
+        // The watchdog on its own row. Turning it on needs the record
+        // on and approved, and the row says so rather than offering a
+        // button the server would refuse.
+        var dictSupervision = dictDetail.dictSupervision || {};
+        var dictRecord = dictDetail.dictPromptRecord || {};
+        var bOn = dictSupervision.bEnabled === true;
+        var bEligible = dictRecord.bEnabled === true &&
+            dictRecord.bFirstCaptureReviewed === true;
+        var sFlags = (dictSupervision.listFlags || []).map(
+            function (dictFlag) {
+                return '<div class="detail-item">' + fnEscapeHtml(
+                    (dictFlag.sTimestampUtc || "") + " — " +
+                    (dictFlag.sFlagKind || "") + ": " +
+                    (dictFlag.sDetail || "")) + '</div>';
+            }).join("");
+        var sAction = bOn
+            ? '<button type="button" class="btn wf-toggle-supervision" ' +
+              'data-supervision="off">Turn off Supervised mode</button>'
+            : bEligible
+                ? '<button type="button" class="btn wf-toggle-supervision"' +
+                  ' data-supervision="on">Turn on Supervised mode</button>'
+                : '<div class="requirement-row-howto">Available once the ' +
+                  'Prompt Record is on and its first capture approved.' +
+                  '</div>';
+        return '<div class="requirement-row-detail">' +
+            '<div class="requirement-row-status">Supervised mode is ' +
+            (bOn ? 'on' : 'off') + ' — optional, never counts toward a ' +
+            'level.</div>' + _fsRenderSupervisionChip(dictDetail) +
+            sFlags + '<div class="requirement-row-howto">The watchdog ' +
+            'attributes every repository change to a recorded action ' +
+            'channel and permanently flags changes with no recorded ' +
+            'cause. Terminal sessions are recorded as a channel ' +
+            '(open/close), not keystroke content.</div>' +
+            '<div class="requirement-row-actions">' + sAction +
+            '</div></div>';
     }
 
     function _fsRenderSupervisionChip(dictDetail) {
@@ -2120,20 +2192,38 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
+    function _fdictOptionalAiRow(sKey, sTitle, bMet, sWarning, fsDetail) {
+        /* An optional row never counts toward its level and never
+           shows red: unmet is the neutral dash, met is green -- the
+           rule the PROOF tab applies to these same rows -- and anything
+           that needs the researcher is the ⚠ beside the title.
+           _fdictGroupStateByLevel leaves bOptional rows out, so the
+           block's L2 cell and the rows it counts fail on the same set. */
+        return {
+            sKey: sKey, sTitle: sTitle, bOptional: true,
+            dictStateByLevel: {2: bMet ? "attained" : "not-applicable"},
+            dictReasonByLevel: {2: "optional, never counts toward " +
+                "Level 2" + (sWarning ? " — " + sWarning : "")},
+            sWarning: sWarning,
+            fsDetail: fsDetail,
+        };
+    }
+
     function _flistAiRows(dictDetail) {
-        // The Replay axis: the two project-level AI-provenance
-        // declarations, each an independent Level 2 check that also
-        // counts in the workflow-scope header cell. The AI
-        // Declaration sign-off is deliberately NOT a row here: it is
+        // Two Level 2 declarations, then three optional records. The
+        // AI Declaration sign-off is deliberately NOT a row here: it is
         // a step, its state lives on the step's own row, and a
         // project-level copy double-counted it (2026-08-27 ruling).
+        var dictRecord = dictDetail.dictPromptRecord || {};
+        var dictSupervision = dictDetail.dictSupervision || {};
         return [
-            {sKey: "aiModelPrompts", iLevel: 2,
-             sTitle: "AI Model / Prompts",
+            {sKey: "aiModels", iLevel: 2, sTitle: "AI models",
              sState: _fsLightStateFromBoolean(
                  dictDetail.bAiModelsDeclared === true),
+             dictReasonByLevel: {2: (
+                 dictDetail.listAiModelDeclarationIssues || []).join(" ")},
              fsDetail: function () {
-                 return _fsRenderAiModelPromptsDetail(dictDetail);
+                 return _fsRenderAiModelsDetail(dictDetail);
              }},
             {sKey: "personalLayer", iLevel: 2,
              sTitle: "Personal AI Configuration",
@@ -2143,6 +2233,27 @@ var VaibifyWorkflowRequirements = (function () {
                  return VaibifyPersonalLayer
                      .fsRenderPersonalLayerDetail(dictDetail);
              }},
+            _fdictOptionalAiRow("projectInstructions",
+                "Project instructions",
+                dictDetail.bProjectContextFileExists === true, "",
+                function () {
+                    return _fsRenderProjectInstructionsDetail(dictDetail);
+                }),
+            _fdictOptionalAiRow("promptRecord", "Prompt Record",
+                dictRecord.bEnabled === true &&
+                    dictRecord.bFirstCaptureReviewed === true &&
+                    dictRecord.bChainIntact !== false,
+                _fsPromptRecordWarning(dictRecord),
+                function () {
+                    return _fsRenderPromptRecordDetail(dictDetail);
+                }),
+            _fdictOptionalAiRow("supervision", "Supervised mode",
+                dictSupervision.bEnabled === true &&
+                    dictSupervision.bClean === true,
+                _fsSupervisionWarning(dictSupervision),
+                function () {
+                    return _fsRenderSupervisionDetail(dictDetail);
+                }),
         ];
     }
 
@@ -3132,11 +3243,19 @@ var VaibifyWorkflowRequirements = (function () {
         return sLevelState || "unknown";
     }
 
+    function _fbRowCountsTowardItsLevel(dictRow) {
+        return dictRow.bOptional !== true;
+    }
+
     function _fdictGroupStateByLevel(listRows) {
         // Aggregate the group's rows per level with the shared
         // banner rule (VaibifyUtilities.fsSummarizeLevelStates):
         // all green → attained, every assessed row red → none, any
         // progress in the mix → partial, nothing assessed → unknown.
+        // An optional row is shown, never counted: counting a green
+        // optional row would let it lift a level cell its gate never
+        // lifted.
+        listRows = listRows.filter(_fbRowCountsTowardItsLevel);
         var dictByLevel = {};
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             // A multi-level row is counted at EVERY level it
@@ -3171,6 +3290,21 @@ var VaibifyWorkflowRequirements = (function () {
         return dictByLevel;
     }
 
+    function _fsRenderGroupWarning(listRows) {
+        /* Groups start collapsed, and a row's ⚠ inside one was the
+           easiest thing on the page to miss -- "first capture awaiting
+           your review" sat unseen under a closed AI heading. The glyph
+           is echoed on the heading, naming each row that raised it. */
+        var listWarnings = listRows.filter(function (dictRow) {
+            return Boolean(dictRow.sWarning);
+        }).map(function (dictRow) {
+            return dictRow.sTitle + ": " + dictRow.sWarning;
+        });
+        if (listWarnings.length === 0) return "";
+        return ' <span class="requirement-group-warning" title="' +
+            fnEscapeHtml(listWarnings.join("\n")) + '">\u26a0</span>';
+    }
+
     function _fsRenderRequirementGroup(
         sGroupKey, listRows, setExpandedGroups, setExpandedRows,
         sFooterHtml, dictNextStep
@@ -3190,7 +3324,8 @@ var VaibifyWorkflowRequirements = (function () {
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
             _fsExpandTriangle(bOpen) +
-            _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
+            _DICT_GROUP_TITLES[sGroupKey] +
+            _fsRenderGroupWarning(listRows) + '</span>' +
             _fsRenderOrderingArrow(
                 dictNextStep,
                 _fbGroupHoldsTheNextRow(listRows, dictNextStep)

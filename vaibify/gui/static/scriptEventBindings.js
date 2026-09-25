@@ -368,10 +368,31 @@ var VaibifyEventBindings = (function () {
         VaibifyArxivConfig.fnOpen();
     }
 
-    function _fnHandleOpenAiModelConfig(event, elMatch) {
+    function _fnHandleViewAiDeclaration(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
-        VaibifyAiModelConfig.fnOpen();
+        VaibifyAiModelConfig.fnOpenView();
+    }
+
+    function _fnHandleEditAiDeclaration(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyAiModelConfig.fnOpenEdit();
+    }
+
+    function _fnHandleViewPromptRecord(event, elMatch) {
+        // "View Record" and "Review & Approve" open the same viewer:
+        // the review IS reading the record, with Approve at its foot.
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyPromptRecordViewer.fnOpen();
+    }
+
+    function _fnHandleToggleSupervision(event, elMatch) {
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyPromptRecordConfig.fnSetSupervision(
+            elMatch.dataset.supervision === "on", elMatch);
     }
 
     function _fnHandleContextTemplate(event, elMatch) {
@@ -548,7 +569,11 @@ var VaibifyEventBindings = (function () {
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
         ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
-        ".wf-open-ai-model-config": _fnHandleOpenAiModelConfig,
+        ".wf-view-ai-declaration": _fnHandleViewAiDeclaration,
+        ".wf-edit-ai-declaration": _fnHandleEditAiDeclaration,
+        ".wf-view-prompt-record": _fnHandleViewPromptRecord,
+        ".wf-review-prompt-record": _fnHandleViewPromptRecord,
+        ".wf-toggle-supervision": _fnHandleToggleSupervision,
         ".btn-context-template": _fnHandleContextTemplate,
         ".btn-context-import-open": _fnHandleContextImportOpen,
         ".btn-context-adopt": _fnHandleContextAdopt,
@@ -791,6 +816,8 @@ var VaibifyEventBindings = (function () {
     function fnBindToolbarEvents() {
         _fnBindToolbarMenus();
         _fnBindMenuItemActions();
+        VaibifyAiModelConfig.fnBindEditor();
+        VaibifyPromptRecordViewer.fnBindViewer();
         VaibifySyncManager.fnBindPushModalEvents();
         var elLogo = document.querySelector(".toolbar-logo");
         if (elLogo) {
@@ -914,14 +941,20 @@ var VaibifyEventBindings = (function () {
             btnArxivPathMapAdd: function () {
                 VaibifyArxivConfig.fnAddPathMapRow();
             },
-            btnAiModelConfigCancel: function () {
+            btnAiModelConfigClose: function () {
                 VaibifyAiModelConfig.fnClose();
             },
-            btnAiModelConfigSave: function () {
-                VaibifyAiModelConfig.fnSave();
+            btnAiModelConfigAdd: function () {
+                VaibifyAiModelConfig.fnAddCard();
             },
-            checkAiModelOpenWeights: function () {
-                VaibifyAiModelConfig.fnToggleWeightsFields();
+            btnAiModelViewClose: function () {
+                VaibifyAiModelConfig.fnClose();
+            },
+            btnAiModelViewEdit: function () {
+                VaibifyAiModelConfig.fnOpenEdit();
+            },
+            btnPromptRecordViewerClose: function () {
+                VaibifyPromptRecordViewer.fnClose();
             },
             btnContextImportCancel: function () {
                 VaibifyProjectContext.fnCloseImportPicker();

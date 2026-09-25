@@ -198,6 +198,76 @@ def test_remove_unknown_model_is_404(fixtureHarness):
     assert dictResponse.status_code == 404
 
 
+def _fsUpdatePath():
+    return "/api/workflow/" + S_CONTAINER_ID + "/ai-models/update"
+
+
+def _fdictUpdateBody(sOriginalModelId, **dictOverrides):
+    dictBody = _fdictClosedWeightsBody(**dictOverrides)
+    dictBody.update({
+        "sOriginalVendor": "ExampleVendor",
+        "sOriginalModelId": sOriginalModelId,
+    })
+    return dictBody
+
+
+def test_update_corrects_a_model_id_in_place_keeping_order(fixtureHarness):
+    """A corrected model id replaces the entry where it stood.
+
+    Declaring the corrected id instead would have appended a second
+    entry beside the wrong one, because declarations upsert on
+    (vendor, model id).
+    """
+    clientTest, dictWorkflow, _ = fixtureHarness
+    clientTest.post(_fsDeclarePath(), json=_fdictClosedWeightsBody())
+    clientTest.post(
+        _fsDeclarePath(),
+        json=_fdictClosedWeightsBody(sModelId="example-model-2"),
+    )
+    dictResponse = clientTest.post(_fsUpdatePath(), json=_fdictUpdateBody(
+        "example-model-1", sModelId="example-model-1b",
+    ))
+    assert dictResponse.status_code == 200, dictResponse.text
+    assert [
+        dictModel["sModelId"]
+        for dictModel in dictWorkflow["dictAiProvenance"][
+            "listDeclaredModels"]
+    ] == ["example-model-1b", "example-model-2"]
+
+
+def test_update_onto_another_declarations_key_is_409(fixtureHarness):
+    """An edit must never silently merge two declarations."""
+    clientTest, dictWorkflow, _ = fixtureHarness
+    clientTest.post(_fsDeclarePath(), json=_fdictClosedWeightsBody())
+    clientTest.post(
+        _fsDeclarePath(),
+        json=_fdictClosedWeightsBody(sModelId="example-model-2"),
+    )
+    dictResponse = clientTest.post(_fsUpdatePath(), json=_fdictUpdateBody(
+        "example-model-1", sModelId="example-model-2",
+    ))
+    assert dictResponse.status_code == 409
+    assert len(dictWorkflow["dictAiProvenance"]["listDeclaredModels"]) == 2
+
+
+def test_update_of_an_undeclared_model_is_404(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    dictResponse = clientTest.post(
+        _fsUpdatePath(), json=_fdictUpdateBody("never-declared"),
+    )
+    assert dictResponse.status_code == 404
+
+
+def test_update_validates_the_new_values(fixtureHarness):
+    clientTest = fixtureHarness[0]
+    clientTest.post(_fsDeclarePath(), json=_fdictClosedWeightsBody())
+    dictResponse = clientTest.post(_fsUpdatePath(), json=_fdictUpdateBody(
+        "example-model-1", sUseEndDate="soon",
+    ))
+    assert dictResponse.status_code == 400
+    assert "sUseEndDate" in dictResponse.json()["detail"]
+
+
 # ------------------------------------------------------------------
 # Prompt Record routes (configure / capture / approve)
 # ------------------------------------------------------------------
