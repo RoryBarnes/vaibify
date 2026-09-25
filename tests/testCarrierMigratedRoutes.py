@@ -4696,23 +4696,22 @@ def testAnUnadoptableRootFileIsRefusedWithoutQuarantining(tclientReplay):
 
 @pytest.mark.falsification
 def testThePromptRecordCaptureRunsUnderTheDrain(tclientReplay):
-    """POST .../prompt-record/capture runs its pass under mode (b).
+    """POST .../prompt-record/capture lands its results under mode (b).
 
     This carrier was reached by NO test when it was written -- verified
     by planting an unconditional raise in it and watching every replay,
     project-context and transcript test stay green. A carrier nothing
     executes is indistinguishable from one that was never added.
 
-    The capture PASS is stubbed, and the stub is not a stand-down: it
-    replaces only ``fdictRunCapturePass``, is called by the real handler
-    inside the real carrier, and does a real container write through the
-    real gate, so the admission asserted below is the one production
-    would have. It is stubbed because the genuine pass reads every agent
-    transcript in the container, and this harness models no transcripts
-    at all -- against it the real pass writes nothing and the assertion
-    would be about work that never happened.
+    The LANDING phase is stubbed, and the stub is not a stand-down: it
+    replaces only ``fdictLandSanitizedSessions``, is called by the real
+    handler inside the real carrier, and does a real container write
+    through the real gate, so the admission asserted below is the one
+    production would have. It is stubbed because this harness models no
+    transcripts at all -- against it the real phase lands nothing and
+    the assertion would be about work that never happened.
 
-    Kills: replacing ``_fdictRunTheCaptureUnderTheDrain``'s
+    Kills: replacing ``_fgenericRunCapturePhaseUnderTheDrain``'s
     fdictRunLockHeldMutation call with a direct call to its worker.
     """
     from vaibify.gui import promptRecordManager
@@ -4720,16 +4719,12 @@ def testThePromptRecordCaptureRunsUnderTheDrain(tclientReplay):
     client, connectionDocker = tclientReplay
     sIndexPath = S_PROJECT_REPO + "/.vaibify/promptRecord/index.json"
 
-    def fdictWriteAnIndexInstead(
-        connectionDockerArg, sContainerIdArg, filesRepoArg, listSecrets,
-    ):
-        connectionDockerArg.fnWriteFile(
-            sContainerIdArg, sIndexPath, b"{}",
-        )
-        return {"iTranscriptsCaptured": 0}
+    def fdictWriteAnIndexInstead(filesRepoArg, dictSanitized):
+        connectionDocker.fnWriteFile(S_CONTAINER_ID, sIndexPath, b"{}")
+        return {"listCapturedSessions": []}
 
     with patch.object(
-        promptRecordManager, "fdictRunCapturePass",
+        promptRecordManager, "fdictLandSanitizedSessions",
         fdictWriteAnIndexInstead,
     ):
         response = client.post(
@@ -4739,12 +4734,121 @@ def testThePromptRecordCaptureRunsUnderTheDrain(tclientReplay):
     _fnAssertSelectedRanUnder(
         connectionDocker,
         lambda dictReached: (
+            dictReached["sPrimitive"] == S_PRIMITIVE_EXEC
+            and ".claude/projects" in (dictReached["sCommand"] or "")
+        ),
+        mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
+        "transcript listing exec",
+    )
+    _fnAssertSelectedRanUnder(
+        connectionDocker,
+        lambda dictReached: (
             dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
             and dictReached["sPath"] == sIndexPath
         ),
         mutationAdmission.S_ADMISSION_MODE_LOCK_HELD,
         "write from the capture pass",
     )
+
+
+@pytest.mark.falsification
+def testThePromptRecordSanitizesWithoutHoldingTheDrain(tclientReplay):
+    """The expensive sanitizing phase holds neither the drain nor an admission.
+
+    Holding the drain through it shipped: a live agent's transcript grew
+    on every turn, each 30-second pass rescanned it under the lock, and
+    every write route on the container (commit, capture, push) timed out
+    for as long as the agent kept talking. Both halves are asserted from
+    INSIDE the phase: the container's mutation lock is free, and a
+    general exec is refused for want of an admission -- the gate's own
+    proof that no carrier is open around it.
+
+    Kills: running the sanitizing inside the listing phase's carrier.
+    """
+    from vaibify.gui import promptRecordManager
+
+    client, connectionDocker = tclientReplay
+    listObserved = []
+
+    def fdictObserveTheSanitizingPhase(*args):
+        sName = _fsContainerNameFor(client.app)
+        dictObserved = {
+            "bDrainHeld": sessionLifecycle.flockContainerMutationForAppState(
+                client.app.state, sName,
+            ).locked(),
+        }
+        try:
+            connectionDocker.ftRunInContainerStreamed(S_CONTAINER_ID, "true")
+            dictObserved["bExecAdmitted"] = True
+        except mutationAdmission.MutationNotAdmittedError:
+            dictObserved["bExecAdmitted"] = False
+        listObserved.append(dictObserved)
+        return {"listPending": [], "listOutsideProject": []}
+
+    with patch.object(
+        promptRecordManager, "fdictSanitizeNewTranscriptLines",
+        fdictObserveTheSanitizingPhase,
+    ):
+        response = client.post(
+            f"/api/workflow/{S_CONTAINER_ID}/prompt-record/capture",
+        )
+    assert response.status_code == 200, response.text
+    assert listObserved == [{"bDrainHeld": False, "bExecAdmitted": False}]
+
+
+@pytest.mark.falsification
+def testAnAutomaticCaptureStandsDownBehindARunningCapture(tclientReplay):
+    """The dashboard's poll answers paused instead of queuing a pass.
+
+    An explicit capture (an agent's) is held inside its sanitizing
+    phase; the dashboard's automatic poll must then answer at once with
+    ``bPaused`` rather than wait to run a second full pass behind it.
+    Queued passes behind a slow one are how four abandoned agent
+    requests each became a full rescan once.
+
+    Kills: deleting the ``bAutomatic and lockCapture.locked()`` branch,
+    which makes the automatic request wait on the capture lock.
+    """
+    from vaibify.gui import promptRecordManager
+
+    client, _connectionDocker = tclientReplay
+    eventEntered = threading.Event()
+    eventRelease = threading.Event()
+    dictResponses = {}
+
+    def fdictHoldTheSanitizingPhase(*args):
+        eventEntered.set()
+        eventRelease.wait(10)
+        return {"listPending": [], "listOutsideProject": []}
+
+    def fnPost(sKey, sQuery):
+        dictResponses[sKey] = client.post(
+            f"/api/workflow/{S_CONTAINER_ID}/prompt-record/capture"
+            + sQuery,
+        )
+
+    with patch.object(
+        promptRecordManager, "fdictSanitizeNewTranscriptLines",
+        fdictHoldTheSanitizingPhase,
+    ):
+        threadExplicit = threading.Thread(
+            target=fnPost, args=("explicit", ""),
+        )
+        threadExplicit.start()
+        assert eventEntered.wait(10), "the explicit capture never ran"
+        threadAutomatic = threading.Thread(
+            target=fnPost, args=("automatic", "?bAutomatic=true"),
+        )
+        threadAutomatic.start()
+        threadAutomatic.join(5)
+        bAutomaticAnswered = not threadAutomatic.is_alive()
+        eventRelease.set()
+        threadExplicit.join(10)
+        threadAutomatic.join(10)
+    assert bAutomaticAnswered, "the automatic poll queued behind a capture"
+    assert dictResponses["automatic"].json()["bPaused"] is True
+    assert dictResponses["explicit"].status_code == 200
+    assert dictResponses["explicit"].json()["bPaused"] is False
 
 
 def testThePersonalLayerHashReachesNoContainerPrimitive(

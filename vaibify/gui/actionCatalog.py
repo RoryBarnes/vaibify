@@ -933,10 +933,15 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/prompt-record/capture",
      "bAgentSafe": True,
-     "sDescription": "Run one Prompt Record capture pass: new or "
-                     "grown agent transcripts are sanitized "
+     "saQueryFields": ["bAutomatic"],
+     "sDescription": "Run one Prompt Record capture pass: the new "
+                     "lines of agent sessions launched inside this "
+                     "project's repository are sanitized "
                      "(explicit [REDACTED: …] markers) and landed at "
-                     ".vaibify/promptRecord/. Append-only and "
+                     ".vaibify/promptRecord/; sessions launched "
+                     "elsewhere are counted and left out. The first "
+                     "pass over a long history can take minutes. "
+                     "Append-only and "
                      "sanitized, so agent-safe; refuses (409) when "
                      "the record is not enabled."},
     {"sName": "view-prompt-record-status", "sCategory": "verification",

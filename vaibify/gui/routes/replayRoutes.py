@@ -33,6 +33,7 @@ over host files.
 
 __all__ = ["fnRegisterAll"]
 
+import asyncio
 import posixpath
 from datetime import datetime, timezone
 
@@ -605,15 +606,24 @@ def _fnRegisterPromptRecordConfigure(app, dictCtx):
 
 
 def _fnRegisterPromptRecordCapture(app, dictCtx):
-    """Register POST .../prompt-record/capture (one capture pass)."""
-    from .. import promptRecordManager
-    from ..routeContext import ffilesForWorkflow
+    """Register POST .../prompt-record/capture (one capture pass).
+
+    ``bAutomatic=true`` marks the dashboard's own 30-second poll. It
+    stands down (``bPaused``) when another capture of the same
+    container is already in flight -- that capture extends the coverage
+    interval itself -- instead of queuing a second full pass behind it.
+    It does NOT stand down for other work on the drain the way an
+    automatic repository read does: its drain phases are seconds long,
+    and pausing it for the length of a step run would open a coverage
+    gap that reads as "the hub was down" when it was not.
+    """
+    dictCaptureLocks = {}
 
     @ffnAgentAction("capture-prompt-record")
     @app.post("/api/workflow/{sContainerId}/prompt-record/capture")
     @ffnDeclareCarrierMode(S_CARRIER_MODE_B_LOCK_HELD)
     async def fdictCapturePromptRecord(
-        sContainerId: str, requestHttp: Request,
+        sContainerId: str, requestHttp: Request, bAutomatic: bool = False,
     ):
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
@@ -623,44 +633,92 @@ def _fnRegisterPromptRecordCapture(app, dictCtx):
         if dictRecord.get("bEnabled") is not True:
             raise HTTPException(409, "The Prompt Record is not enabled.")
         _fsContextAbsolutePath(dictWorkflow)
-        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
-
-        def fdictRunTheCapturePass(supervisor=None):
-            del supervisor
-            return promptRecordManager.fdictRunCapturePass(
-                dictCtx["docker"], sContainerId, filesRepo,
-                _flistGatherSessionSecrets(dictCtx, sContainerId),
-            )
-
-        # The journal target is the compile-time constant below, never
-        # a transcript path or any part of a captured prompt: this
-        # route's whole subject matter is text that may contain
-        # secrets, and the journal is an on-disk record with a
-        # different lifetime from the sanitized transcript.
-        dictSummary = await _fdictRunTheCaptureUnderTheDrain(
-            sContainerId, fdictRunTheCapturePass, requestHttp,
+        lockCapture = dictCaptureLocks.setdefault(
+            sContainerId, asyncio.Lock(),
         )
+        if bAutomatic and lockCapture.locked():
+            return _fdictPausedCapture("another Prompt Record capture")
+        async with lockCapture:
+            dictSummary = await _fdictRunTheCapturePhases(
+                dictCtx, sContainerId, dictWorkflow, requestHttp,
+            )
         dictSummary["bPendingReview"] = (
             dictRecord.get("bFirstCaptureReviewed") is not True
         )
         return dictSummary
 
 
-async def _fdictRunTheCaptureUnderTheDrain(
-    sContainerId, fdictRunTheCapturePass, requestHttp,
+def _fdictPausedCapture(sPausedBy):
+    """Return the typed answer of an automatic pass that stood down."""
+    return {"bPaused": True, "sPausedBy": sPausedBy}
+
+
+async def _fdictRunTheCapturePhases(
+    dictCtx, sContainerId, dictWorkflow, requestHttp,
 ):
-    """Run one Prompt Record capture pass under the drain.
+    """List under the drain, sanitize outside it, land under it.
 
-    Mode (b): the pass reads every agent transcript in the container,
-    scans each for secrets, and writes the sanitized copies plus an
-    index. It is unbounded in the number of transcripts, so an ownership
-    hand-over landing mid-capture would otherwise hand somebody else a
-    container still having transcripts written into it.
+    Sanitizing is the expensive phase -- seconds per megabyte of
+    transcript -- and it only reads, so it holds no lock. Holding the
+    drain through it once kept every write route on the container
+    waiting for as long as the agent kept talking, because each turn
+    grew the transcript the next pass had to rescan.
+    """
+    from .. import promptRecordManager
+    from ..routeContext import ffilesForWorkflow
+    filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    connectionDocker = dictCtx["docker"]
 
-    Nothing is carried back because the pass raises no HTTPException --
-    this route's one refusal is decided in the handler, before the
-    carrier exists. Anything escaping the pass leaves a partially
+    def fdictListTheTranscripts(supervisor=None):
+        del supervisor
+        return promptRecordManager.fdictListContainerTranscripts(
+            connectionDocker, sContainerId,
+        )
+
+    def fdictSanitizeTheNewLines(dictListing):
+        return promptRecordManager.fdictSanitizeNewTranscriptLines(
+            connectionDocker, sContainerId, filesRepo, dictListing,
+            dictWorkflow["sProjectRepoPath"],
+            _flistGatherSessionSecrets(dictCtx, sContainerId),
+        )
+
+    dictListing = await _fgenericRunCapturePhaseUnderTheDrain(
+        sContainerId, requestHttp, "prompt-record-list",
+        fdictListTheTranscripts,
+    )
+    dictSanitized = await asyncio.to_thread(
+        fdictSanitizeTheNewLines, dictListing,
+    )
+
+    def fdictLandTheSessions(supervisor=None):
+        del supervisor
+        return promptRecordManager.fdictLandSanitizedSessions(
+            filesRepo, dictSanitized,
+        )
+
+    dictSummary = await _fgenericRunCapturePhaseUnderTheDrain(
+        sContainerId, requestHttp, "prompt-record-capture",
+        fdictLandTheSessions,
+    )
+    dictSummary["bPaused"] = False
+    return dictSummary
+
+
+async def _fgenericRunCapturePhaseUnderTheDrain(
+    sContainerId, requestHttp, sTarget, fnWorker,
+):
+    """Run one short capture phase under the drain (mode b).
+
+    Returns the worker's result. Nothing is carried back because neither phase raises an HTTPException -- the
+    route's one refusal is decided in the handler, before any carrier
+    exists. Anything escaping the landing phase leaves a partially
     written transcript set and poisons, which is correct.
+
+    The journal target is the compile-time constant the caller passes,
+    never a transcript path or any part of a captured prompt: this
+    route's whole subject matter is text that may contain secrets, and
+    the journal is an on-disk record with a different lifetime from the
+    sanitized transcript.
     """
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -668,8 +726,7 @@ async def _fdictRunTheCaptureUnderTheDrain(
     )
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
-        sContainerId, dictLaneTuple, "helper", "prompt-record-capture",
-        fdictRunTheCapturePass,
+        sContainerId, dictLaneTuple, "helper", sTarget, fnWorker,
     )
     return dictOutcome["result"]
 
@@ -729,6 +786,7 @@ def _fnRegisterPromptRecordStatus(app, dictCtx):
             "dictPromptRecord": dictRecord,
             "listCaptures": dictIndex["listCaptures"],
             "listCoverageIntervals": dictIndex["listCoverageIntervals"],
+            "iSessionsOutsideProject": dictIndex["iSessionsOutsideProject"],
             "bChainIntact": promptRecordManager.fbVerifyCaptureChain(
                 dictIndex,
             ),

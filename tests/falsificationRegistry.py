@@ -7376,15 +7376,14 @@ def _fdictEntry(sRel):
             '    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n'
             '        requestHttp.app.state, dictLaneTuple["sContainerName"],'
             '\n'
-            '        sContainerId, dictLaneTuple, "helper", '
-            '"prompt-record-capture",\n'
-            '        fdictRunTheCapturePass,\n'
+            '        sContainerId, dictLaneTuple, "helper", sTarget, '
+            'fnWorker,\n'
             '    )\n'
             '    return dictOutcome["result"]\n'
         ),
         new=(
             '    del dictLaneTuple\n'
-            '    return fdictRunTheCapturePass()\n'
+            '    return fnWorker()\n'
         ),
     ),
     # --- The batched existence probe (ruling 3, 2026-08-05) ---
@@ -23607,5 +23606,138 @@ def _fdictEntry(sRel):
             'SET_ROUTES_SERVED_IN_THE_AGENTS_PROJECT:\n'
         ),
         new='    ):\n',
+    ),
+    # --- 2026-09-25: the Prompt Record capture no longer wedges the
+    # container's writes, and captures only its own project's sessions.
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testThePromptRecordSanitizesWithoutHoldingTheDrain'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '    dictSanitized = await asyncio.to_thread(\n'
+            '        fdictSanitizeTheNewLines, dictListing,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictSanitized = await '
+            '_fgenericRunCapturePhaseUnderTheDrain(\n'
+            '        sContainerId, requestHttp, "prompt-record-sanitize",\n'
+            '        lambda supervisor=None: '
+            'fdictSanitizeTheNewLines(dictListing),\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCarrierMigratedRoutes.py::'
+            'testAnAutomaticCaptureStandsDownBehindARunningCapture'
+        ),
+        source='vaibify/gui/routes/replayRoutes.py',
+        old=(
+            '        if bAutomatic and lockCapture.locked():\n'
+            '            return _fdictPausedCapture('
+            '"another Prompt Record capture")\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_appended_capture_is_byte_identical_to_whole_recapture'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='        "sSanitizedText": (sPriorText or "") + sSanitized,\n',
+        new='        "sSanitizedText": sSanitized,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_partial_trailing_line_waits_for_its_newline'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='    iCompleteBytes = baRaw.rfind(b"\\n") + 1\n',
+        new='    iCompleteBytes = len(baRaw)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_rewritten_transcript_is_recaptured_whole'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=(
+            '    return _fsSha256Hex(baRaw[:iCapturedBytes]) == '
+            'sCapturedSha256\n'
+        ),
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_edited_session_file_is_recaptured_not_appended_to'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=(
+            '    if _fsSha256Hex(sPriorText.encode("utf-8")) != '
+            'sExpectedSha256:\n'
+            '        return None\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_sessions_launched_outside_the_project_are_not_captured'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=(
+            '        if not fbSessionBelongsToProject(\n'
+            '            dictEntry["sLaunchDirectory"], sProjectRepoPath,\n'
+            '        ):\n'
+        ),
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_landing_defers_a_session_another_pass_already_moved'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=(
+            '        if not _fbPendingStillApplies(filesRepo, dictIndex, '
+            'dictPending):\n'
+        ),
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_the_container_listing_program_reads_each_launch_directory'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old=(
+            "                sLaunchDirectory = str(dictLine['cwd'])\n"
+            "                break\n"
+        ),
+        new="                sLaunchDirectory = str(dictLine['cwd'])\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePromptRecordNamesWhatItLeftOut.py::'
+            'test_the_dialog_names_the_sessions_it_left_out'
+        ),
+        source='vaibify/gui/static/scriptPromptRecordConfig.js',
+        old='            _fsRenderSessionsOutsideProject(dictStatus) +\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePromptRecordNamesWhatItLeftOut.py::'
+            'test_the_dashboard_capture_poll_declares_itself_automatic'
+        ),
+        source='vaibify/gui/static/scriptPolling.js',
+        old='                        "/prompt-record/capture?bAutomatic=true",\n',
+        new='                        "/prompt-record/capture",\n',
     ),
 ]

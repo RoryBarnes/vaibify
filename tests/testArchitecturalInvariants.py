@@ -6885,7 +6885,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # comment recording why it is the one project-structure action
     # that is bAgentSafe True. The policy reversal is the part a
     # reader will want justified, so it is written beside the row.
-    "actionCatalog.py": 1367,
+    # +5 (2026-09-25): capture-prompt-record declares its bAutomatic
+    # query field and says what it now captures -- only sessions
+    # launched inside the project -- and that a first pass is slow, so
+    # an agent reads a long wait as work rather than a dead hub.
+    "actionCatalog.py": 1372,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7046,7 +7050,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # halves have to exist together: a refusal with no way out would
     # strand a workflow, and a way out with no refusal would let the
     # log keep claiming attribution it cannot support.
-    "routes/replayRoutes.py": 1049,
+    # +58 (2026-09-25): the Prompt Record capture split into list /
+    # sanitize / land. Holding the drain through the whole-file
+    # sanitize wedged every write route on a container while an agent
+    # was active; the two short drain phases, the unlocked phase
+    # between them, and the automatic poll's stand-down behind a
+    # running capture are one route's orchestration, in the module
+    # that owns the Replay axis.
+    "routes/replayRoutes.py": 1107,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a

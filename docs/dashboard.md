@@ -497,8 +497,17 @@ an action exists — a button that performs it in place:
   secrets, the detect-secrets pattern catalog, vendor token
   prefixes, and a conservative high-entropy check) and every hit
   becomes a visible `[REDACTED: category]` marker with a per-category
-  count. You review a sample of the first capture before the record
-  counts (the agent cannot approve its own transcript). Captures are
+  count. Only sessions the agent started inside the project's
+  folder are captured: a container can hold several projects, so a
+  session started at the workspace root or in another project is
+  left out rather than published into this one; the dialog shows how
+  many were left out, so start the agent from inside the project
+  folder when you want its session recorded. After the first
+  capture, each pass scans only the lines a session has added, and
+  it holds the container's write lock only to list transcripts and
+  to save results, never while scanning, so a commit or push waits
+  seconds at most. You review a sample of the first capture before
+  the record counts (the agent cannot approve its own transcript). Captures are
   hash-chained — editing or removing one breaks the chain loudly —
   and coverage intervals are listed so time the hub was down reads
   as an explicit gap, never implied continuity. The record is
