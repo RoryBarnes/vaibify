@@ -2096,12 +2096,20 @@ var VaibifyWorkflowRequirements = (function () {
         'wf-view-prompt-record">View Record</button>';
 
     function _fsSupervisionWarning(dictSupervision) {
-        if (dictSupervision.bEnabled !== true) return "";
+        // Permanent flags and broken chains outlive the switch that
+        // raised them: supervision turned off must not hide what it
+        // found, so they are checked before whether it is on.
         if ((dictSupervision.iFlagCount || 0) > 0) {
             return dictSupervision.iFlagCount + " permanent supervision " +
                 "flag(s).";
         }
-        if (dictSupervision.bClean !== true) {
+        if (dictSupervision.bFlagChainIntact === false ||
+                dictSupervision.bEventChainIntact === false ||
+                dictSupervision.bPersistedFlagCountMatches === false) {
+            return "The supervision evidence does not check out.";
+        }
+        if (dictSupervision.bEnabled === true &&
+                dictSupervision.bClean !== true) {
             return "The supervision evidence does not check out.";
         }
         return "";

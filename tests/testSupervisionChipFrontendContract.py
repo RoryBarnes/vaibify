@@ -38,28 +38,47 @@ def _fsExtractFunctionBlock(sSource, sFunctionName):
     return sSource[iStart:iNext if iNext != -1 else len(sSource)]
 
 
-def _fsPromptRecordBlock():
+def _fsSupervisionFunction(sFunctionName):
     return _fsExtractFunctionBlock(
-        _fsReadStaticFile("scriptWorkflowRequirements.js"),
-        "_fsRenderPromptRecordBlock",
+        _fsReadStaticFile("scriptWorkflowRequirements.js"), sFunctionName,
     )
 
 
-def testDisabledPromptRecordStillRendersTheSupervisionChip():
-    """The record-off branch must call the chip renderer too."""
-    sBlock = _fsPromptRecordBlock()
-    iEarlyReturn = sBlock.find("dictRecord.bEnabled !== true")
-    assert iEarlyReturn != -1, (
-        "the record-disabled branch is gone; re-point this contract"
+def testThePermanentFlagsRenderWhateverTheSwitchesSay():
+    """Supervised mode's row renders its chip with no early return.
+
+    The flags used to live inside the Prompt Record block, after an
+    early return taken whenever the record was off. They now have their
+    own row, whose detail has one return, and the chip is in it.
+    Re-pointed 2026-09-25 when the AI block became rows.
+    """
+    sDetail = _fsSupervisionFunction("_fsRenderSupervisionDetail")
+    # Two returns: the flag list's per-flag callback, and the one that
+    # builds the detail. A third is an early exit -- how the chip was
+    # hidden before -- whether or not it sits inside an ``if``.
+    assert sDetail.count("return ") == 2, (
+        "Supervised mode's detail gained an early return; that is how "
+        "the chip was hidden before"
     )
-    iNextBranch = sBlock.find("var sState", iEarlyReturn)
-    assert iNextBranch != -1
-    assert "_fsRenderSupervisionChip(dictDetail)" in sBlock[
-        iEarlyReturn:iNextBranch
-    ], (
-        "disabling the Prompt Record must not hide permanent "
-        "supervision flags"
+    sFinal = sDetail[sDetail.rindex("return "):]
+    assert "_fsRenderSupervisionChip(dictDetail)" in sFinal, (
+        "disabling a switch must not hide permanent supervision flags"
     )
+
+
+def testTheRowWarningNamesFlagsEvenWithSupervisionOff():
+    """The collapsed row's ⚠ counts flags before asking if it is on.
+
+    A row whose ⚠ answered "" whenever supervision was off hid the
+    flags a supervised period left behind from the collapsed block.
+    """
+    sWarning = _fsSupervisionFunction("_fsSupervisionWarning")
+    iFlags = sWarning.index("iFlagCount")
+    iEnabled = sWarning.find("bEnabled")
+    assert iEnabled == -1 or iFlags < iEnabled, (
+        "the ⚠ must name permanent flags before it consults the switch"
+    )
+    assert 'bEnabled !== true) return ""' not in sWarning
 
 
 def testSupervisionChipRendersEveryTamperSignal():
