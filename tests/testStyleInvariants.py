@@ -161,8 +161,8 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     # Approved 2026-09-25, on the same precedent: `executorPool` and
     # `executorIo` were already the codebase's live spellings for a
     # concurrent.futures executor (resourceMonitor, systemRoutes,
-    # serverLifespan) and sat in the frozen seed. The transcript
-    # sanitizer's worker pool binds a third.
+    # serverLifespan) and sat in the frozen seed. The CPU worker pool
+    # (config/workerProcessPool) binds a third.
     "executor": {"ThreadPoolExecutor", "ProcessPoolExecutor"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
@@ -231,7 +231,7 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # named. The burn-down is the registry entry, not a rename.
 # 346 -> 342 (2026-09-25): registering `executor` retired four seeded
 # bindings (executorPool, executorIo) on the same shape, and the
-# transcript sanitizer's new worker pool binds a conforming fifth.
+# CPU worker pool (config/workerProcessPool) binds a conforming fifth.
 I_LEGACY_VARIABLE_BUDGET = 342
 
 DICT_BUDGETS = {

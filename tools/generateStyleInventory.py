@@ -158,8 +158,8 @@ DICT_TIER_TWO_REGISTRY = {
     # Approved 2026-09-25, on the same precedent: `executorPool` and
     # `executorIo` were already the codebase's live spellings for a
     # concurrent.futures executor (resourceMonitor, systemRoutes,
-    # serverLifespan) and sat in the frozen seed. The transcript
-    # sanitizer's worker pool binds a third.
+    # serverLifespan) and sat in the frozen seed. The CPU worker pool
+    # (config/workerProcessPool) binds a third.
     "executor": {"ThreadPoolExecutor", "ProcessPoolExecutor"},
     "admission": {"MutationAdmission"},
     "module": {"ModuleType"},
