@@ -10832,7 +10832,10 @@ def _fdictEntry(sRel):
         old=(
             '    if agentProjectScope.fbAgentProjectDiffers(\n'
             '        sAgentProjectDirectory, dictServedProject.get("sWorkflowPath", ""),\n'
-            '    ):\n'
+            '    ) and (\n'
+            '        request.method, _fsRouteTemplateForRequest(request),\n'
+            '    ) not in agentProjectScope.'
+            'SET_ROUTES_SERVED_IN_THE_AGENTS_PROJECT:\n'
         ),
         new='    if False:\n',
     ),
