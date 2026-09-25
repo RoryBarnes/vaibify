@@ -23733,8 +23733,8 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testThePromptRecordNamesWhatItLeftOut.py::'
-            'test_the_dashboard_capture_poll_declares_itself_automatic'
+            'tests/testPromptRecordPollFrontendContract.py::'
+            'test_the_capture_poll_url_carries_the_automatic_flag'
         ),
         source='vaibify/gui/static/scriptPolling.js',
         old='                        "/prompt-record/capture?bAutomatic=true",\n',

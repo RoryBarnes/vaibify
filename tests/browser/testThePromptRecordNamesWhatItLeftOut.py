@@ -36,7 +36,8 @@ from tests.browser.conftest import (
 pytestmark = pytest.mark.browser
 
 I_SESSIONS_OUTSIDE_PROJECT = 3
-F_POLL_WAIT_SECONDS = 45.0
+I_POLL_FAST_FORWARD_MILLISECONDS = 31000
+F_POLL_WAIT_SECONDS = 10.0
 
 
 def _fnEnableTheRecordWithAGap(serverHub):
@@ -88,13 +89,24 @@ def _flistInterceptTheCapturePoll(pageDashboard):
 def test_the_dialog_names_the_sessions_it_left_out(
     pageDashboard, serverHub,
 ):
-    """The left-out count reaches the researcher, with the remedy.
+    """The left-out count reaches the researcher, and the poll says automatic.
+
+    Both halves share one page on purpose. Each open of the host
+    project waits for the previous test's claim to be released, and the
+    poll fires on a 30-second interval: as two tests they cost the
+    Firefox lane ninety seconds it did not have. The page clock is
+    fast-forwarded to fire the poll instead of waiting for it.
+
+    The poll half is registered through
+    ``tests/testPromptRecordPollFrontendContract.py``; a registry entry
+    names one test.
 
     Kills: removing the out-of-project paragraph from the dialog's
     status render.
     """
     _fnEnableTheRecordWithAGap(serverHub)
-    _flistInterceptTheCapturePoll(pageDashboard)
+    listCaptureUrls = _flistInterceptTheCapturePoll(pageDashboard)
+    pageDashboard.clock.install()
     fnOpenTheSeededHostWorkflow(
         pageDashboard, serverHub, bAwaitProjectBlock=True,
     )
@@ -111,27 +123,10 @@ def test_the_dialog_names_the_sessions_it_left_out(
         "outside this project" in sBody
     ), sBody
     assert "change into the project folder" in sBody, sBody
-    assert pageDashboard.listPageErrors == []
-
-
-@pytest.mark.falsification
-def test_the_dashboard_capture_poll_declares_itself_automatic(
-    pageDashboard, serverHub,
-):
-    """Every capture the dashboard issues on its own carries the flag.
-
-    Without it the backend treats the poll as a researcher's request
-    and queues it behind a capture already running -- one more full
-    pass per 30 seconds for as long as the first one lasts.
-
-    Kills: dropping ``?bAutomatic=true`` from the poller's URL.
-    """
-    _fnEnableTheRecordWithAGap(serverHub)
-    listCaptureUrls = _flistInterceptTheCapturePoll(pageDashboard)
-    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.clock.fast_forward(I_POLL_FAST_FORWARD_MILLISECONDS)
     fDeadline = time.monotonic() + F_POLL_WAIT_SECONDS
     while not listCaptureUrls and time.monotonic() < fDeadline:
-        pageDashboard.wait_for_timeout(500)
+        pageDashboard.wait_for_timeout(250)
     assert listCaptureUrls, (
         "the dashboard never polled the Prompt Record capture while "
         "the record was enabled"
