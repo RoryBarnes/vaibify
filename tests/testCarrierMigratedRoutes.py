@@ -4796,8 +4796,27 @@ def testThePromptRecordSanitizesWithoutHoldingTheDrain(tclientReplay):
     assert listObserved == [{"bDrainHeld": False, "bExecAdmitted": False}]
 
 
+def _tBuildAsgiClientOverTheReplayAxis():
+    """Return ``(app, clientAsync)`` over the Replay-axis double, in-loop."""
+    connectionDocker = DockerDoubleForTheReplayAxis()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        app = pipelineServer.fappCreateApplication(
+            sWorkspaceRoot="/workspace",
+            sTerminalUserArg="testuser",
+        )
+    return app, httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://hub",
+        headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
+
+
 @pytest.mark.falsification
-def testAnAutomaticCaptureStandsDownBehindARunningCapture(tclientReplay):
+@pytest.mark.asyncio
+async def testAnAutomaticCaptureStandsDownBehindARunningCapture():
     """The dashboard's poll answers paused instead of queuing a pass.
 
     An explicit capture (an agent's) is held inside its sanitizing
@@ -4806,49 +4825,54 @@ def testAnAutomaticCaptureStandsDownBehindARunningCapture(tclientReplay):
     Queued passes behind a slow one are how four abandoned agent
     requests each became a full rescan once.
 
+    Both requests share ONE event loop, driven over ASGI rather than
+    ``TestClient``. ``TestClient`` gives each request its own loop, and
+    under the mutation below the queued request then waited on a lock
+    held from a different loop, was never woken, and kept the process
+    alive: the Python 3.14 falsification shard hung to its 45-minute
+    limit (reproduced on 3.12). In one loop the wait is bounded and the
+    mutant fails in five seconds.
+
     Kills: deleting the ``bAutomatic and lockCapture.locked()`` branch,
     which makes the automatic request wait on the capture lock.
     """
     from vaibify.gui import promptRecordManager
 
-    client, _connectionDocker = tclientReplay
+    _app, clientAsync = _tBuildAsgiClientOverTheReplayAxis()
+    sCaptureUrl = f"/api/workflow/{S_CONTAINER_ID}/prompt-record/capture"
     eventEntered = threading.Event()
     eventRelease = threading.Event()
-    dictResponses = {}
 
     def fdictHoldTheSanitizingPhase(*args):
         eventEntered.set()
         eventRelease.wait(10)
         return {"listPending": [], "listOutsideProject": []}
 
-    def fnPost(sKey, sQuery):
-        dictResponses[sKey] = client.post(
-            f"/api/workflow/{S_CONTAINER_ID}/prompt-record/capture"
-            + sQuery,
+    async with clientAsync:
+        clientAsync.headers["X-Vaibify-Lease"] = await _tConnectOverAsgi(
+            clientAsync,
         )
-
-    with patch.object(
-        promptRecordManager, "fdictSanitizeNewTranscriptLines",
-        fdictHoldTheSanitizingPhase,
-    ):
-        threadExplicit = threading.Thread(
-            target=fnPost, args=("explicit", ""),
-        )
-        threadExplicit.start()
-        assert eventEntered.wait(10), "the explicit capture never ran"
-        threadAutomatic = threading.Thread(
-            target=fnPost, args=("automatic", "?bAutomatic=true"),
-        )
-        threadAutomatic.start()
-        threadAutomatic.join(5)
-        bAutomaticAnswered = not threadAutomatic.is_alive()
-        eventRelease.set()
-        threadExplicit.join(10)
-        threadAutomatic.join(10)
-    assert bAutomaticAnswered, "the automatic poll queued behind a capture"
-    assert dictResponses["automatic"].json()["bPaused"] is True
-    assert dictResponses["explicit"].status_code == 200
-    assert dictResponses["explicit"].json()["bPaused"] is False
+        with patch.object(
+            promptRecordManager, "fdictSanitizeNewTranscriptLines",
+            fdictHoldTheSanitizingPhase,
+        ):
+            taskExplicit = asyncio.ensure_future(
+                clientAsync.post(sCaptureUrl),
+            )
+            try:
+                assert await asyncio.to_thread(eventEntered.wait, 10), (
+                    "the explicit capture never reached its sanitizing phase"
+                )
+                responseAutomatic = await asyncio.wait_for(
+                    clientAsync.post(sCaptureUrl + "?bAutomatic=true"), 5.0,
+                )
+            finally:
+                eventRelease.set()
+                responseExplicit = await asyncio.wait_for(taskExplicit, 15.0)
+    assert responseAutomatic.status_code == 200, responseAutomatic.text
+    assert responseAutomatic.json()["bPaused"] is True
+    assert responseExplicit.status_code == 200, responseExplicit.text
+    assert responseExplicit.json()["bPaused"] is False
 
 
 def testThePersonalLayerHashReachesNoContainerPrimitive(
