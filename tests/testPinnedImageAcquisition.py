@@ -902,7 +902,7 @@ def test_the_retry_without_additions_drops_them_before_obtaining(
             dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
         )
     assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
-    assert buildRoutes._fdictBuildFailureDetail(excinfo.value, "", "proj")[
+    assert buildRoutes._fdictAcquisitionFailureDetail(excinfo.value, "proj")[
         "sAction"
     ] == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
     assert store.dictHeld[S_BASE_ID].listTags == [], "refused before tagging"
@@ -1215,3 +1215,31 @@ def test_a_registry_miss_reads_as_the_chain_working_not_a_failure():
     assert sProgress == (
         "downloading the archived image: 476 MB of 951 MB (50%)"
     )
+
+
+@pytest.mark.falsification
+def test_an_acquisition_failure_is_reported_whole():
+    """Kills: cutting the chain's refusal to the build formatter's 240 chars.
+
+    The chain names every source it tried, registry first. An archived
+    image is never on a registry, so that first reason is long and
+    always there -- and a cut at 240 characters removed exactly the
+    reasons the archived copy and the local copy gave, which are the
+    ones a researcher can act on (2026-09-26).
+    """
+    sRegistryMiss = (
+        "registry pull: failed (ImageNotFound: 404 Client Error for "
+        "http+docker://localhost/v1.56/images/create?tag=sha256%3A"
+        + "5" * 64 + "&fromImage=example&platform=linux%2Famd64: Not Found)"
+    )
+    errorRefused = PinnedImageAcquisitionRefusedError(
+        "the pinned image could not be obtained: no link of the chain "
+        "yielded example@sha256:" + "5" * 64 + ". Links tried: "
+        + sRegistryMiss + "; archived deposit: failed (the archive's "
+        "decisive reason); copy on this daemon: failed (no copy)."
+    )
+    sMessage = buildRoutes._fdictAcquisitionFailureDetail(
+        errorRefused, "proj")["sMessage"]
+    assert "the archive's decisive reason" in sMessage
+    assert sMessage.startswith("Obtaining the author's pinned image")
+    assert "Build of" not in sMessage

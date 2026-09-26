@@ -24102,4 +24102,14 @@ def _fdictEntry(sRel):
         old='                if (_fbSelectionEndsInside(el)) return;\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_acquisition_failure_is_reported_whole'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the acquisition message is cut the way the build one is
+        old='            f"{error}"\n',
+        new='            f"{str(error)[:240]}"\n',
+    ),
 ]
