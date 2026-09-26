@@ -979,3 +979,36 @@ def test_a_record_without_a_size_is_refused_before_any_fetch(tmp_path, monkeypat
             "iTarballBytes": 0,
         }, str(tmp_path), lambda dictStatus: None)
     assert "no size" in str(excinfo.value)
+
+
+@pytest.mark.falsification
+def test_a_zstd_deposit_this_python_cannot_open_is_refused_before_downloading(
+    monkeypatch,
+):
+    """Kills: dropping the codec check that runs before the download.
+
+    A hub with no zstd codec fetched the whole archive -- about a
+    gigabyte for a small project -- and only then refused to open it
+    (2026-09-26, on Python 3.10). The refusal must come first, name
+    the codec to install, and leave the download untouched.
+    """
+    monkeypatch.setattr(imageDeposit, "_ftResolveZstdCodec", lambda: None)
+
+    def fnDownloadMustNotRun(*args, **kwargs):
+        raise AssertionError("the archive was downloaded before the refusal")
+
+    monkeypatch.setattr(
+        imageAcquisition, "fsDownloadVerifiedTarball", fnDownloadMustNotRun,
+    )
+    listAttempts = []
+    sLoaded = imageAcquisition._fsArchiveServes(
+        None,
+        {"dictContainer": {"dictImageArchive": {
+            "sTarballName": "environment-image.tar.zst",
+        }}},
+        listAttempts, lambda dictEvent: None,
+    )
+    assert sLoaded == ""
+    sReason = str(listAttempts[-1])
+    assert "pip install zstandard" in sReason, sReason
+    assert "not downloaded" in sReason, sReason

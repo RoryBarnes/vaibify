@@ -7004,6 +7004,11 @@ const VaibifyApp = (function () {
         );
         if (fnOnClick) {
             el.addEventListener("click", function () {
+                /* A drag that selects the toast's text ends in a click;
+                   treating it as "act" made a failure impossible to
+                   copy, because the toast vanished into the action
+                   (researcher-reported, 2026-09-26). */
+                if (_fbSelectionEndsInside(el)) return;
                 fnOnClick();
                 el.remove();
             });
@@ -7012,6 +7017,12 @@ const VaibifyApp = (function () {
             setTimeout(function () { el.remove(); }, 4000);
         }
         document.getElementById("toastContainer").appendChild(el);
+    }
+
+    function _fbSelectionEndsInside(el) {
+        var selection = window.getSelection ? window.getSelection() : null;
+        return Boolean(selection && String(selection).length > 0 &&
+            el.contains(selection.focusNode));
     }
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;

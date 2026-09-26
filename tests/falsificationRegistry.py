@@ -24069,4 +24069,37 @@ def _fdictEntry(sRel):
             '                (str(error) or "vaibify cannot obtain the "\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_zstd_deposit_this_python_cannot_open_is_refused_before_downloading'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the codec is asked only after the whole archive is fetched
+        old=(
+            '        _fnRefuseWithoutACodecFor(str(dictRecord.get('
+            '"sTarballName") or ""))\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFailureToastOffersADiagnosis.py::'
+            'testTheDiagnosisOpensWithTheFailureItself'
+        ),
+        source='vaibify/gui/static/scriptDiagnosis.js',
+        # the report again shows only the machine's checks
+        old='        if (!sFailure) return "";\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFailureToastOffersADiagnosis.py::'
+            'testSelectingAToastsTextDoesNotOpenTheDiagnosis'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the click that ends a selection acts again
+        old='                if (_fbSelectionEndsInside(el)) return;\n',
+        new='',
+    ),
 ]

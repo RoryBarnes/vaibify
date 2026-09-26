@@ -284,6 +284,13 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
             "no deposit on record",
         )
         return ""
+    try:
+        _fnRefuseWithoutACodecFor(str(dictRecord.get("sTarballName") or ""))
+    except ImageAcquisitionRefusedError as error:
+        _fnRecordAttempt(
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
+        )
+        return ""
     sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
     try:
         sTarballPath = fsDownloadVerifiedTarball(
@@ -531,16 +538,30 @@ def _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus):
         ) from error
 
 
+def _fnRefuseWithoutACodecFor(sTarballName):
+    """Refuse a zstd deposit this Python cannot decompress -- before fetching it.
+
+    Asked before the download as well as at the load, because the
+    answer does not change in between: a hub with no zstd codec used
+    to fetch the whole archive, then refuse to open it.
+    """
+    if not sTarballName.endswith(".zst"):
+        return
+    if imageDeposit._ftResolveZstdCodec() is None:
+        raise ImageAcquisitionRefusedError(
+            "the deposit is zstd-compressed and this Python cannot "
+            "decompress zstd, so it was not downloaded. Install the codec "
+            "with `python3 -m pip install zstandard` in the Python that "
+            "runs vaibify, restart vaibify, then choose Re-obtain the "
+            "pinned image from the environment's menu"
+        )
+
+
 def _ffileOpenByCodec(sTarballPath):
     """Open a tarball for reading through the codec its name implies."""
     if sTarballPath.endswith(".zst"):
-        tZstd = imageDeposit._ftResolveZstdCodec()
-        if tZstd is None:
-            raise ImageAcquisitionRefusedError(
-                "the deposit is zstd-compressed and no zstd codec is "
-                "available on this host"
-            )
-        return tZstd[2](open(sTarballPath, "rb"))
+        _fnRefuseWithoutACodecFor(sTarballPath)
+        return imageDeposit._ftResolveZstdCodec()[2](open(sTarballPath, "rb"))
     if sTarballPath.endswith(".gz"):
         return gzip.open(sTarballPath, "rb")
     return open(sTarballPath, "rb")

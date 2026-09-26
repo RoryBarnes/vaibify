@@ -38,11 +38,12 @@ COMPRESSION IS CHOSEN, NOT ASSUMED
 
 zstd is preferred (measured: a 3.54 GB image compresses to 821 MB) and
 is reached through the interpreter's own ``compression.zstd`` on 3.14+
-or the ``zstandard`` wheel where it is installed. Neither is
-guaranteed across the Python versions vaibify supports, so gzip —
-always present — is the fallback. The choice is recorded in the file
-NAME, which is what ``reproduce.sh`` reads to know how to unpack it;
-nothing infers it.
+or the ``zstandard`` wheel, which is a runtime dependency below 3.14
+because READING a zstd deposit has no fallback -- the reader cannot
+choose how the author compressed it. Depositing still falls back to
+gzip, always present, if neither codec imports. The choice is recorded
+in the file NAME, which is what ``reproduce.sh`` reads to know how to
+unpack it; nothing infers it.
 """
 
 __all__ = [

@@ -49,6 +49,13 @@ dependencies = [
     "uv>=0.5.0",
     "pytest>=7.0",
     "pytest-cov",
+    # Reading an archived environment image: a deposit made with zstd
+    # can only be obtained by a hub that can decompress it, and the
+    # reader cannot choose how the author compressed it. The standard
+    # library has zstd from 3.14 (`compression.zstd`); before that this
+    # wheel is the only codec. Without it, every zstd deposit failed to
+    # load on 3.9-3.13 after a full download (2026-09-26).
+    "zstandard>=0.21; python_version < '3.14'",
 ]
 
 [project.optional-dependencies]
@@ -77,13 +84,9 @@ dev = [
     # under a fully green suite -- a defect no fixture reached, and one
     # a static sweep catches for every route at once.
     "pyflakes>=2.3",
-    # The environment-archive deposit compresses with zstd where a
-    # zstd codec exists and falls back to gzip where none does
-    # (`compression.zstd` arrived in 3.14; the wheel is not a runtime
-    # dependency because a compressor a researcher cannot install
-    # must not be the difference between depositing and not). Pinned
-    # into the dev extra so CI exercises the zstd branch rather than
-    # only the fallback.
+    # Also a runtime dependency below 3.14 (see `dependencies`); kept
+    # here without the marker so a 3.14 CI leg exercises the wheel as
+    # well as the standard library's codec.
     "zstandard>=0.21",
 ]
 browser = [

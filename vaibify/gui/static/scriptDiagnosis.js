@@ -19,8 +19,11 @@
        The same, from a thrown API error.
    - VaibifyDiagnosis.fnRenderFailureInline(elTarget, sPrefix, error)
        The same next step inside a card or panel rather than a toast.
-   - VaibifyDiagnosis.fnShowDoctorReport()
-       Runs the checks and opens the report modal.
+   - VaibifyDiagnosis.fnShowDoctorReport(sFailureMessage)
+       Runs the checks and opens the report modal. A failure message,
+       when given, heads the report: the checks are about the machine
+       and can all pass while the failure sits in a download, a build
+       or a container, so the report must never stand in for it.
 */
 
 var VaibifyDiagnosis = (function () {
@@ -37,9 +40,10 @@ var VaibifyDiagnosis = (function () {
     };
 
     function fnReportFailure(sMessage) {
+        var sFailure = sMessage || "An error occurred.";
         VaibifyApp.fnShowToast(
-            (sMessage || "An error occurred.") + _S_CLICK_SUFFIX,
-            "error", fnShowDoctorReport);
+            sFailure + _S_CLICK_SUFFIX, "error",
+            function () { fnShowDoctorReport(sFailure); });
     }
 
     function fsExplainError(error) {
@@ -71,7 +75,9 @@ var VaibifyDiagnosis = (function () {
         elButton.type = "button";
         elButton.className = "diagnosis-link";
         elButton.textContent = "Run a diagnosis";
-        elButton.addEventListener("click", fnShowDoctorReport);
+        elButton.addEventListener("click", function () {
+            fnShowDoctorReport(fsExplainError(error));
+        });
         elTarget.appendChild(elButton);
     }
 
@@ -115,11 +121,43 @@ var VaibifyDiagnosis = (function () {
             'one check decides.</p>';
     }
 
-    async function fnShowDoctorReport() {
+    function _fsRenderFailureBlock(sFailure) {
+        if (!sFailure) return "";
+        return '<h3 class="diagnosis-heading">What happened</h3>' +
+            '<pre class="diagnosis-failure">' +
+            VaibifyUtilities.fnEscapeHtml(sFailure) + '</pre>' +
+            '<button type="button" class="btn diagnosis-copy">' +
+            'Copy message</button>' +
+            '<p class="diagnosis-note">The checks below are about this ' +
+            'machine. They can all pass when the failure happened inside ' +
+            'a download, a build or a container; the message above is ' +
+            'the failure itself.</p>';
+    }
+
+    function _fnBindCopyFailure(sFailure) {
+        var elCopy = document.querySelector("#modalInfo .diagnosis-copy");
+        if (!elCopy) return;
+        elCopy.addEventListener("click", async function () {
+            try {
+                await navigator.clipboard.writeText(sFailure);
+                elCopy.textContent = "Copied";
+            } catch (error) {
+                elCopy.textContent = "Select the text above to copy it";
+            }
+        });
+    }
+
+    async function fnShowDoctorReport(sFailureMessage) {
+        /* Also bound directly as a click handler, which passes an
+           event: only a string is a failure to show. */
+        var sFailure = typeof sFailureMessage === "string"
+            ? sFailureMessage : "";
         VaibifyModals.fnShowInfoModal(
             "Diagnosis",
+            _fsRenderFailureBlock(sFailure) +
             "<p>Running the checks of <code>vaibify doctor</code> on " +
             "this machine\u2026</p>");
+        _fnBindCopyFailure(sFailure);
         var sBodyHtml;
         try {
             var dictReport = await VaibifyApi.fdictGet("/api/system/doctor");
@@ -133,7 +171,8 @@ var VaibifyDiagnosis = (function () {
                 "on this machine instead.</p>";
         }
         var elBody = document.querySelector("#modalInfo .modal-info-body");
-        if (elBody) elBody.innerHTML = sBodyHtml;
+        if (elBody) elBody.innerHTML = _fsRenderFailureBlock(sFailure) + sBodyHtml;
+        _fnBindCopyFailure(sFailure);
     }
 
     return {
