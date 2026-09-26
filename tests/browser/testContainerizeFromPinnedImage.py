@@ -248,15 +248,15 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     assert listRequests == [], (
         "a request left the page before the researcher clicked Convert"
     )
-    assert pageDashboard.text_content("#btnWizardNext").strip() == "Convert"
+    # The Summary is the only confirmation: it names what starts next
+    # -- an acquisition, not a build -- and where the image comes from.
+    sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "When you press Convert and obtain" in sSummary, sSummary
+    assert "pinned image" in sSummary
+    assert "Image comes from" in sSummary, sSummary
+    assert pageDashboard.text_content(
+        "#btnWizardNext").strip() == "Convert and obtain"
     pageDashboard.click("#btnWizardNext")
-    # The confirm modal sits between Convert and the request, and it
-    # names what starts next -- an acquisition, not a build.
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
-    assert listRequests == [], "a request left before the confirm"
-    sConfirmBody = pageDashboard.text_content("#modalConfirm")
-    assert "pinned image" in sConfirmBody
-    pageDashboard.click("#btnConfirmOk")
     pageDashboard.wait_for_timeout(1500)
     listKinds = [tRequest[0] for tRequest in listRequests]
     assert listKinds[0] == "convert"

@@ -218,15 +218,15 @@ def _fsDescribeAcquisitionEvent(dictEvent):
     """Render one chain event as a progress line."""
     sPhase = str(dictEvent.get("sPhase") or "")
     if sPhase == "attempt":
-        return (
-            f"{dictEvent.get('sLink')}: "
-            + ("served" if dictEvent.get("bSucceeded") else "failed")
-            + (f" ({dictEvent.get('sDetail')})" if dictEvent.get("sDetail") else "")
-        )
+        return _fsDescribeAttempt(dictEvent)
     if sPhase == "downloading":
         iBytes = int(dictEvent.get("iBytes") or 0)
         iTotal = int(dictEvent.get("iTotalBytes") or 0)
-        return f"downloading the archived image: {iBytes} of {iTotal} bytes"
+        sPercent = f" ({100 * iBytes // iTotal}%)" if iTotal else ""
+        return (
+            f"downloading the archived image: {iBytes / 1e6:.0f} MB of "
+            f"{iTotal / 1e6:.0f} MB{sPercent}"
+        )
     if sPhase == "pulling":
         return f"pulling {dictEvent.get('sImageReference')} for {dictEvent.get('sPlatform')}"
     if sPhase == "acquired":
@@ -236,6 +236,41 @@ def _fsDescribeAcquisitionEvent(dictEvent):
             + (" (emulated)" if dictEvent.get("bEmulated") else "")
         )
     return sPhase
+
+
+def _fsDescribeAttempt(dictEvent):
+    """Say what one source of the chain answered, and what happens next.
+
+    A source that does not have the image is the chain working, not a
+    failure: an image that was archived rather than published to a
+    registry is never on one, so the first line of every such download
+    used to read "registry pull: failed" above a download that then
+    succeeded. Docker's own words stay in brackets for anyone
+    diagnosing a source that should have answered.
+    """
+    from vaibify.reproducibility.imageAcquisition import (
+        S_LINK_ARCHIVE,
+        S_LINK_LOCAL,
+        S_LINK_REGISTRY,
+    )
+    sLink = str(dictEvent.get("sLink") or "")
+    sDetail = str(dictEvent.get("sDetail") or "")
+    sSaid = f" (Docker said: {sDetail})" if sDetail else ""
+    if dictEvent.get("bSucceeded"):
+        return f"{sLink}: served"
+    dictNotAvailable = {
+        S_LINK_REGISTRY: (
+            "no registry has this image -- normal for an image that was "
+            "archived rather than published -- so vaibify tries the "
+            "next source"
+        ),
+        S_LINK_ARCHIVE: (
+            "the archived copy could not be used, so vaibify looks for a "
+            "copy already on this machine"
+        ),
+        S_LINK_LOCAL: "no copy of the image is on this machine either",
+    }
+    return dictNotAvailable.get(sLink, f"{sLink}: not available") + sSaid
 
 
 def flistProveOverlayBaseline(

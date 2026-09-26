@@ -1187,3 +1187,31 @@ def test_a_container_fact_refusal_names_the_switch_for_a_built_clone(
         {}, None, {"bChecked": True, "bMatches": True},
         {"bDockerfileDescribesPinnedImage": True}, dictBuiltClone,
     ) == "digest"
+
+
+def test_a_registry_miss_reads_as_the_chain_working_not_a_failure():
+    """An archived-only image is never on a registry; that is not an error.
+
+    The first line of every such download used to read "registry pull:
+    failed" above a download that then succeeded. Docker's own words
+    stay, in brackets, for anyone diagnosing a registry that should
+    have answered.
+    """
+    from vaibify.docker.pinnedImageAcquisition import (
+        _fsDescribeAcquisitionEvent,
+    )
+    from vaibify.reproducibility.imageAcquisition import S_LINK_REGISTRY
+    sLine = _fsDescribeAcquisitionEvent({
+        "sPhase": "attempt", "sLink": S_LINK_REGISTRY,
+        "bSucceeded": False, "sDetail": "ImageNotFound: 404",
+    })
+    assert "failed" not in sLine
+    assert "no registry has this image" in sLine
+    assert "Docker said: ImageNotFound: 404" in sLine
+    sProgress = _fsDescribeAcquisitionEvent({
+        "sPhase": "downloading", "iBytes": 475505283,
+        "iTotalBytes": 951010566,
+    })
+    assert sProgress == (
+        "downloading the archived image: 476 MB of 951 MB (50%)"
+    )

@@ -56,6 +56,9 @@ from vaibify.reproducibility.reproductionSource import (
 __all__ = [
     "ImageAcquisitionRefusedError",
     "fsDownloadVerifiedTarball",
+    "S_LINK_ARCHIVE",
+    "S_LINK_LOCAL",
+    "S_LINK_REGISTRY",
     "S_OBTAINED_ARCHIVE",
     "S_OBTAINED_LOCAL",
     "S_OBTAINED_REGISTRY",
@@ -77,9 +80,9 @@ S_OBTAINED_REGISTRY = "registry"
 S_OBTAINED_ARCHIVE = "archive"
 S_OBTAINED_LOCAL = "local"
 
-_S_LINK_REGISTRY = "registry pull"
-_S_LINK_ARCHIVE = "archived deposit"
-_S_LINK_LOCAL = "copy on this daemon"
+S_LINK_REGISTRY = "registry pull"
+S_LINK_ARCHIVE = "archived deposit"
+S_LINK_LOCAL = "copy on this daemon"
 
 # The resolver is the FALLBACK for a record the client cannot address,
 # and it is followed by hand: the record page and the deposit both
@@ -255,7 +258,7 @@ def _fbRegistryServes(
     """Link one: pull the reference for the required platform."""
     if "@sha256:" not in sPinnedReference:
         _fnRecordAttempt(
-            listAttempts, fnStatus, _S_LINK_REGISTRY, False,
+            listAttempts, fnStatus, S_LINK_REGISTRY, False,
             "the envelope pins a local-only image ID, which no registry "
             "serves",
         )
@@ -266,7 +269,7 @@ def _fbRegistryServes(
         dockerDisposable, sPinnedReference, sRequiredPlatform,
     )
     _fnRecordAttempt(
-        listAttempts, fnStatus, _S_LINK_REGISTRY, dictPull["bPulled"],
+        listAttempts, fnStatus, S_LINK_REGISTRY, dictPull["bPulled"],
         "" if dictPull["bPulled"] else dictPull["sDetail"],
     )
     return dictPull["bPulled"]
@@ -277,7 +280,7 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
     dictRecord = imageArchive.fdictReadArchiveRecord(dictEnvironment)
     if dictRecord is None:
         _fnRecordAttempt(
-            listAttempts, fnStatus, _S_LINK_ARCHIVE, False,
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False,
             "no deposit on record",
         )
         return ""
@@ -289,12 +292,12 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
         sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)
     except ImageAcquisitionRefusedError as error:
         _fnRecordAttempt(
-            listAttempts, fnStatus, _S_LINK_ARCHIVE, False, str(error),
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
         )
         return ""
     finally:
         shutil.rmtree(sScratchDirectory, ignore_errors=True)
-    _fnRecordAttempt(listAttempts, fnStatus, _S_LINK_ARCHIVE, True, sLoadedId)
+    _fnRecordAttempt(listAttempts, fnStatus, S_LINK_ARCHIVE, True, sLoadedId)
     return sLoadedId
 
 
@@ -550,12 +553,12 @@ def _fbLocalCopyServes(dockerDisposable, sPinnedReference, listAttempts, fnStatu
     )
     if dictHeld is None:
         _fnRecordAttempt(
-            listAttempts, fnStatus, _S_LINK_LOCAL, False,
+            listAttempts, fnStatus, S_LINK_LOCAL, False,
             "no copy of the pinned reference is on this daemon",
         )
         return False
     _fnRecordAttempt(
-        listAttempts, fnStatus, _S_LINK_LOCAL, True,
+        listAttempts, fnStatus, S_LINK_LOCAL, True,
         "the registry did not serve it and no archived copy could be "
         "loaded, so a reproducer without this copy cannot obtain the "
         "image; only the author can take this path",

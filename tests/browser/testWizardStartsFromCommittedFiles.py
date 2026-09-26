@@ -114,8 +114,6 @@ def test_the_reader_can_start_the_container_from_the_committed_files(
     assert "the committed versions" in sSummary, sSummary
 
     pageDashboard.click("#btnWizardNext")
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
-    pageDashboard.click("#btnConfirmOk")
     locatorToast = pageDashboard.locator(
         ".toast", has_text="Copied").first
     locatorToast.wait_for(timeout=20000)

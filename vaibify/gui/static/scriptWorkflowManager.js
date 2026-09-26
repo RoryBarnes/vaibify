@@ -1383,7 +1383,7 @@ var VaibifyWorkflowManager = (function () {
                 if (_fbPromotingToHostProject()) {
                     _fnSubmitPromoteHostProject();
                 } else {
-                    _fnSubmitConvertProject();
+                    _fnExecuteConversion();
                 }
             } else {
                 _fnSubmitCreateProject();
@@ -1640,7 +1640,8 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsFinalButtonLabel() {
         if (_dictWizardData.sMode !== "convert") return "Create";
-        return _fbPromotingToHostProject() ? "Promote" : "Convert";
+        if (_fbPromotingToHostProject()) return "Promote";
+        return _fbUsingPinnedImage() ? "Convert and obtain" : "Convert and build";
     }
 
     function _fnRenderStepDirectory(elContent) {
@@ -2474,7 +2475,7 @@ var VaibifyWorkflowManager = (function () {
             _fsSummaryReposLine() + _fsSummarySeedLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
             _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
-            '</div>';
+            '</div>' + _fsSummaryConversionNextSteps();
     }
 
     function _fsSummarySeedLine() {
@@ -2564,8 +2565,22 @@ var VaibifyWorkflowManager = (function () {
             "Image",
             "the author’s pinned image " +
             (dictPinned.sPinnedImageReference || "") +
+            (dictPinned.sRequiredPlatform
+                ? " for " + dictPinned.sRequiredPlatform : "") +
             (_dictWizardData.bAllowEmulation ? " (emulation allowed)" : "")
-        );
+        ) + _fsSummaryRow("Image comes from", _fsPinnedImageSources(dictPinned));
+    }
+
+    function _fsPinnedImageSources(dictPinned) {
+        /* Where the image will come from, in the order it is tried, so
+           a researcher reading the Summary knows the download is from
+           the author's archive before it starts. */
+        var sArchive = dictPinned.bDepositOnRecord
+            ? "the archived copy on Zenodo (" +
+              (dictPinned.sDepositVersionDoi || "no DOI recorded") + ")"
+            : "no archived copy is on record";
+        return "a registry if one has it; otherwise " + sArchive +
+            "; otherwise a copy already on this machine";
     }
 
     function _fsSummaryAuthLine() {
@@ -2808,40 +2823,33 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
-    function _fnSubmitConvertProject() {
-        /* One confirm modal before the irreversible-ish step: it
-           re-registers the project under a new name, a build runs next
-           (minutes to hours), and the vaibify.yml is rewritten with
-           container fields. A project open in THIS tab is released by
-           the server as part of the conversion; only another session's
-           hold refuses. A failed build does NOT revert to host -- it
-           leaves a registered, not-yet-built container, exactly the
-           normal post-create state. */
+    function _fsSummaryConversionNextSteps() {
+        /* The Summary is the conversion's only confirmation, so it
+           says what the final button does: after it the project is
+           registered as a container and its vaibify.yml is rewritten,
+           which Back no longer undoes. A failed build or acquisition
+           does NOT revert to host -- it leaves a registered, unbuilt
+           container, exactly the normal post-create state. */
+        if (_dictWizardData.sMode !== "convert" ||
+                _fbPromotingToHostProject()) {
+            return "";
+        }
         var bPinned = _fbUsingPinnedImage();
-        VaibifyApp.fnShowConfirmModal(
-            "Convert to a containerized Project",
-            _fsConversionConfirmBody(),
-            _fnExecuteConversion,
-            {
-                sConfirmLabel: bPinned ? "Convert and obtain" : "Convert and build",
-                sCancelLabel: "Go back",
-                sDetails:
-                    "If the project is open in this tab it is closed " +
-                    "automatically; a project open in another session " +
-                    "must be closed there first. If the " +
-                    (bPinned ? "acquisition" : "build") + " fails, " +
-                    "the project stays registered as a container that " +
-                    "has not been built yet -- it does not revert to a " +
-                    "host sandbox -- and you can retry from its tile.",
-            }
-        );
+        return '<div class="wizard-summary-next"><p><strong>' +
+            'When you press ' +
+            (bPinned ? "Convert and obtain" : "Convert and build") +
+            ':</strong> ' +
+            VaibifyUtilities.fnEscapeHtml(_fsConversionNextStepsText()) +
+            '</p><p class="muted-text">If the project is open in this ' +
+            'tab it is closed automatically; a project open in another ' +
+            'session must be closed there first. If the ' +
+            (bPinned ? "download" : "build") + ' fails, the project ' +
+            'stays registered as a container that has not been ' +
+            (bPinned ? "obtained" : "built") + ' yet, and you can ' +
+            'retry from its tile.</p></div>';
     }
 
-    function _fsConversionConfirmBody() {
-        /* The last point at which Go back undoes everything: after
-           this the project is registered as a container and its
-           vaibify.yml is rewritten, so the dialog says both, and what
-           starts next. */
+    function _fsConversionNextStepsText() {
         var sWhatStartsNext = _fbUsingPinnedImage()
             ? "Only the runtime settings in its vaibify.yml change; " +
               "the environment stays the author’s. Next, vaibify " +
@@ -2868,6 +2876,11 @@ var VaibifyWorkflowManager = (function () {
     }
 
     async function _fnExecuteConversion() {
+        /* The Summary's final button is the only confirmation, so it
+           is held while the request is in flight: a second click
+           would ask to convert a project that no longer exists. */
+        var elButton = document.getElementById("btnWizardNext");
+        elButton.disabled = true;
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
         var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
@@ -2891,11 +2904,13 @@ var VaibifyWorkflowManager = (function () {
             if (bSocketWasOpen) {
                 VaibifyPipelineRunner.fnConnectPipelineWebSocket();
             }
+            elButton.disabled = false;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
+        elButton.disabled = false;
         _fnCloseWizard();
         if (bHeldByThisTab) {
             /* The conversion released this tab's session, and the
