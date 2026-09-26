@@ -228,7 +228,7 @@ def testConvertingFlipsTheTileFromHostToContainer(
     # The one confirm modal, warning before the irreversible-ish step.
     pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
     sBody = pageDashboard.text_content("#modalConfirm")
-    assert "Re-register" in sBody
+    assert "will become the containerized project" in sBody
     assert S_NEW_CONTAINER_NAME in sBody
     assert pageDashboard.text_content(
         "#btnConfirmOk",

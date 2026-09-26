@@ -2838,18 +2838,23 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _fsConversionConfirmBody() {
+        /* The last point at which Go back undoes everything: after
+           this the project is registered as a container and its
+           vaibify.yml is rewritten, so the dialog says both, and what
+           starts next. */
         var sWhatStartsNext = _fbUsingPinnedImage()
-            ? "only its runtime settings are rewritten, and the " +
-              "author’s pinned image is obtained next (a registry " +
-              "pull, then the archived deposit, then a copy on this " +
-              "daemon; agents you added are stacked on it)"
-            : "vaibify.yml is rewritten with the container settings " +
-              "you chose, and a Docker image build starts next (this " +
-              "can take minutes to hours)";
-        return "Re-register '" + _dictWizardData.sHostName +
-            "' as the containerized project '" +
-            _dictWizardData.sProjectName + "'. The project's " +
-            sWhatStartsNext + ".";
+            ? "Only the runtime settings in its vaibify.yml change; " +
+              "the environment stays the author’s. Next, vaibify " +
+              "downloads the author’s pinned image — from a registry " +
+              "if one has it, otherwise from the archived copy on " +
+              "Zenodo, otherwise a copy already on this machine — and " +
+              "adds any agents you chose on top of it."
+            : "Its vaibify.yml is rewritten with the container " +
+              "settings you chose, and a Docker image build starts " +
+              "next (this can take minutes to hours).";
+        return "'" + _dictWizardData.sHostName + "' will become the " +
+            "containerized project '" + _dictWizardData.sProjectName +
+            "'. " + sWhatStartsNext;
     }
 
     function _fbWizardTargetsTheOpenProject() {
