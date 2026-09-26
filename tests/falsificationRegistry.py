@@ -24112,4 +24112,14 @@ def _fdictEntry(sRel):
         old='            f"{error}"\n',
         new='            f"{str(error)[:240]}"\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_zstd_archive_loads_on_a_client_that_iterates_the_upload'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # the daemon is handed the decompressing reader itself
+        old='            dockerDisposable.images.load(fiterReadInChunks(fileStream)) or [],\n',
+        new='            dockerDisposable.images.load(fileStream) or [],\n',
+    ),
 ]
