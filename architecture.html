@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev58 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev134 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=27497488"></script>
+      <script src="_static/documentation_options.js?v=45e3c1d7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -77,6 +77,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#one-container-several-projects">One container, several projects</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#starting-a-container-is-a-server-owned-reservation">Starting a container is a server-owned reservation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
@@ -794,6 +795,95 @@ running), in which case the dead owner is released and the claim is
 granted fresh. The 409 never echoes the other owner’s lease.</p></li>
 </ol>
 </section>
+<section id="one-container-several-projects">
+<h3>One container, several projects<a class="headerlink" href="#one-container-several-projects" title="Link to this heading"></a></h3>
+<p>A container may hold several projects, each a repository under
+<code class="docutils literal notranslate"><span class="pre">/workspace</span></code>, and the hub serves ONE of them per container at a time:
+the one open in the dashboard. Everything that belongs to a project is
+therefore located by that project, never by the container:</p>
+<ul class="simple">
+<li><p><strong>Run state and logs</strong> live in <code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">repo&gt;/.vaibify/</span></code>
+(<code class="docutils literal notranslate"><span class="pre">pipelineState.fsStatePathFor</span></code>, <code class="docutils literal notranslate"><span class="pre">workflowManager.fsLogsDirectoryFor</span></code>).
+A run’s writers derive the path from the state they write, so a run
+keeps writing to its own project if the researcher opens another one
+mid-run. The readers answer for the open project; with none open,
+for the project of the run the hub has in flight
+(<code class="docutils literal notranslate"><span class="pre">fsResolveRunStateProjectRepoPath</span></code>). A single container-wide file
+once let a run in one project light steps in another.</p></li>
+<li><p><strong>Agent actions</strong> name their project. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> declares the
+directory holding <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code> above where it runs, and the
+hub refuses a declared project that is not the open one, before the
+action runs: <code class="docutils literal notranslate"><span class="pre">409</span> <span class="pre">project-mismatch</span></code> on HTTP
+(<code class="docutils literal notranslate"><span class="pre">serverMiddleware</span></code>), <code class="docutils literal notranslate"><span class="pre">runRefused</span></code>/<code class="docutils literal notranslate"><span class="pre">projectMismatch</span></code> on the pipeline
+socket. Every agent response names the project it was served
+against. An undeclared project (outside every project directory, or
+a <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> baked into an older image) is served as before;
+refusing it would strand every existing container until a rebuild.
+<code class="docutils literal notranslate"><span class="pre">agentProjectScope.py</span></code> holds the rule. RUNS are the exception:
+<code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> declares its project when it opens the pipeline socket
+(<code class="docutils literal notranslate"><span class="pre">sAgentProject</span></code>), and a socket declaring a project other than the
+open one binds to that project’s own workflow – found by discovery,
+never composed from the declaration; refused by name when absent or
+ambiguous – so an agent runs its own pipeline whichever project the
+dashboard shows. <code class="docutils literal notranslate"><span class="pre">get-pipeline-state</span></code> follows it through the hub’s
+own record of that project’s last run (<code class="docutils literal notranslate"><span class="pre">dictLastRunByProject</span></code>); the
+declared directory is a lookup key, never a path the hub opens.
+Every action that CHANGES a project’s definition still requires it
+to be open, where the researcher sees it.</p></li>
+<li><p><strong>Work in flight carries its own project.</strong> The open-project slot
+(<code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;workflows&quot;|&quot;paths&quot;][sContainerId]</span></code>) changes whenever the
+researcher switches projects, so anything that outlives a request —
+a save after an <code class="docutils literal notranslate"><span class="pre">await</span></code>, a poll, a run, its provenance commit, a
+Stop — takes its project from the workflow it holds, never from the
+slot. The loader stamps each workflow with the file it came from
+(<code class="docutils literal notranslate"><span class="pre">workflowManager.S_LOADED_FROM_KEY</span></code>, stripped on save). A save of a
+workflow read before a switch is refused (<code class="docutils literal notranslate"><span class="pre">409</span> <span class="pre">project-switched</span></code>,
+before any carrier opens a journal record), and the stamp only ever
+refuses: it never chooses where a write lands. The file-change
+baseline records whose files it measured, a run’s directory and
+provenance target come from the workflow it dispatched, Stop sweeps
+the running project’s commands, and the reload detector reloads only
+the open project’s file. The dashboard closes its pipeline socket on
+a switch, drops a poll answer whose <code class="docutils literal notranslate"><span class="pre">sServedWorkflowPath</span></code> is not the
+open project, and shows another project’s live run
+(<code class="docutils literal notranslate"><span class="pre">dictOtherProjectRun</span></code>) rather than reading as idle.</p></li>
+</ul>
+<p><strong>Several projects may run at once, after a warning.</strong> A run’s slot is
+its PROJECT (<code class="docutils literal notranslate"><span class="pre">pipelineRunSlots</span></code>): two runs of one project are refused,
+because they would write one run-state file and one set of outputs,
+and the refusal names the project. A run beside OTHER projects’ runs is
+the researcher’s decision, because they share the container’s CPU and
+memory: the hub answers an unacknowledged frame with
+<code class="docutils literal notranslate"><span class="pre">runRefused</span></code>/<code class="docutils literal notranslate"><span class="pre">concurrentRun</span></code>, naming the running projects and the
+container’s real limits (<code class="docutils literal notranslate"><span class="pre">fdictReadContainerLimits</span></code> – under a CPU
+quota <code class="docutils literal notranslate"><span class="pre">nproc</span></code> still counts the VM’s cores), the dashboard asks, and a
+confirmed frame carries <code class="docutils literal notranslate"><span class="pre">bAcknowledgeConcurrentRun</span></code>. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>
+acknowledges on the agent’s behalf and prints the
+<code class="docutils literal notranslate"><span class="pre">concurrentRunWarning</span></code> it gets back. The carrier still holds ONE
+durable record per container: runs of different projects JOIN it as
+members keyed by project (<code class="docutils literal notranslate"><span class="pre">commitCarrier.fdictLaunchDurableTask</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sJoinableKind</span></code>), so release, transfer, the reaper and the shutdown
+drain keep reading one unit of live work, every other kind of durable
+work still refuses to start beside it, and a transfer retags every
+member and adopts every command the record has in flight. Each run’s
+commands export its marker (<code class="docutils literal notranslate"><span class="pre">VAIBIFY_RUN_ID</span></code>, via
+<code class="docutils literal notranslate"><span class="pre">pipelineRunner.fsRunMarkerPrefix</span></code>), and Stop ends the OPEN project’s
+run by that marker alone; with no run to name (a hub restarted under
+it) the command-name sweep spares every process carrying another live
+run’s marker. The dashboard shows how many OTHER projects are running.</p>
+<p>One thing stays per CONTAINER, deliberately. The busy vetoes (release,
+idle self-exit) ask <code class="docutils literal notranslate"><span class="pre">pipelineState.fbContainerHasLiveRun</span></code>, which
+consults every project the hub knows is in the container: answering
+from the open project alone would hand over or abandon a container in
+the middle of another project’s run.</p>
+<p>The in-process records that describe one project’s state are keyed by
+PROJECT as well: the Level 3 verification’s status and no-verdict
+reason, the environment deposit, falsification runs, the dependency
+scan, the output checksum cache, the lock verdict, the remote checks,
+the git-fetch throttle and the push dedupe. Keyed by container alone,
+each showed one project’s state on another’s page or erased another
+project’s record.</p>
+</section>
 <section id="starting-a-container-is-a-server-owned-reservation">
 <h3>Starting a container is a server-owned reservation<a class="headerlink" href="#starting-a-container-is-a-server-owned-reservation" title="Link to this heading"></a></h3>
 <p>Starting a container is not a request-scoped action. A pull can outlast
@@ -1093,9 +1183,37 @@ drift into meaning different things by “never”. Sliding idle remains
 settable by environment and preference only, with no row: it is
 refreshed by every request and vetoed by a live socket, so a dashboard
 in use never approaches it.</p>
+<p><strong>The cap’s default and its notice were both the wrong shape</strong>, and
+they were wrong together. The default was twelve hours, which bounds a
+researcher’s working week rather than the unattended tab the cap exists
+for — and reaching it ends the agent conversations the session was
+holding, so the cost of the bound was days of context. The notice was a
+fixed fifteen-minute lead, which is most of a one-hour cap and a
+rounding error in a seven-day one: the same constant meant “plenty of
+notice” and “no notice” depending on a number set elsewhere. The
+default is now seven days, and the notice is three FRACTIONS of
+whatever cap is in force (<code class="docutils literal notranslate"><span class="pre">T_EXPIRY_WARNING_FRACTIONS</span></code>), so it stays
+proportional to the thing it warns about. Each warning carries a
+renewal (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/session/renew</span></code>), because a warning whose only
+remedy is “lose your tab” is a countdown rather than a warning. Two
+properties hold the renewal honest: it grants nothing the researcher
+could not already grant themselves by setting the cap to Never, and it
+is reachable <strong>only</strong> from an explicit click — never a poll, never the
+in-container agent, either of which would delete the cap while the
+Settings control went on claiming one existed. Which band a session is
+in is decided on the server and shipped in the payload; the dashboard
+holds no copy of the thresholds, for the same reason the determinism
+row renders its gate’s verdict rather than re-deriving it.</p>
+<p><strong>Host-global settings live in the toolbar, not in the project panel.</strong>
+Both timeouts were rendered into the Steps panel’s project gear, whose
+renderer returns early with no open project — and Blank Project mode
+does not render that panel at all. So the researcher whose
+blank-project session had just timed out was the one researcher who
+could not reach the control that prevents it. The toolbar gear
+(<code class="docutils literal notranslate"><span class="pre">fnRenderHostSettings</span></code>) is rendered in every dashboard mode, and
+<code class="docutils literal notranslate"><span class="pre">fnApplyToolbarVisibility</span></code> may never hide it.</p>
 <p>The designed mitigation for the cap is the pre-expiry dashboard
-warning (<code class="docutils literal notranslate"><span class="pre">fdictSessionExpiryView</span></code>, lead
-<code class="docutils literal notranslate"><span class="pre">F_EXPIRY_WARNING_LEAD_SECONDS</span></code>). <strong>It assumes an audience it
+warning (<code class="docutils literal notranslate"><span class="pre">fdictSessionExpiryView</span></code>). <strong>It assumes an audience it
 structurally may not have</strong>: a cap started in the afternoon expires in
 the small hours. So the hub also answers afterwards. Revocation
 records the sentence and the wall-clock time on the session record
@@ -1474,8 +1592,9 @@ updates during execution.</p></li>
 (per-category, legacy format).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">interactiveSteps.py</span></code> — interactive step pause/resume/complete
 protocol.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">pipelineState.py</span></code> — pipeline state persistence to
-<code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/pipeline_state.json</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pipelineState.py</span></code> — pipeline state persistence to each project’s
+<code class="docutils literal notranslate"><span class="pre">&lt;project</span> <span class="pre">repo&gt;/.vaibify/pipeline_state.json</span></code> (see “One container,
+several projects”).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">workflowManager.py</span></code> — project CRUD, variable resolution, step
 references, dependency graph. Uses <code class="docutils literal notranslate"><span class="pre">posixpath</span></code> because it operates
 on container paths. Its save path splits the merged in-memory dict
@@ -2870,12 +2989,48 @@ entropy plugins are excluded — via <code class="docutils literal notranslate">
 threshold and flag ordinary words; verified empirically), a
 vendor-token-prefix rule, and a guarded Shannon-entropy supplement
 (32+ characters, letters and digits, ≥ 4.5 bits/char) that leaves
-code identifiers and git hashes intact. Redactions are explicit
+code identifiers and git hashes intact. An agent transcript is JSONL,
+so a record is redacted as JSON rather than as raw text: the raw line
+is scanned for context (detect-secrets’ keyword rule needs the key
+beside its value), but replacements happen inside the DECODED strings,
+which are then re-encoded. Scanning raw text let a record’s escapes
+hide secrets – the <code class="docutils literal notranslate"><span class="pre">n</span></code> of a <code class="docutils literal notranslate"><span class="pre">\n</span></code> escape joined the token after it,
+so the vendor-prefix rule never saw <code class="docutils literal notranslate"><span class="pre">ghp_</span></code> at a word boundary, and an
+escaped quote defeated the keyword rule for <code class="docutils literal notranslate"><span class="pre">password</span> <span class="pre">=</span> <span class="pre">&quot;...&quot;</span></code> –
+and a replacement that swallowed an escape’s letter left the record
+invalid JSON. Redactions are explicit
 <code class="docutils literal notranslate"><span class="pre">[REDACTED:</span> <span class="pre">category]</span></code> markers with per-category counts; a human
 review gate (catalog-excluded — the agent must never approve its own
 transcript) sits before the first capture counts; and the scanner
 cannot catch prose the researcher considers private, which is what
 the review gate is for.</p>
+<p>Two further properties keep the record honest in a shared container.
+<strong>Scope:</strong> a session is captured only when the directory its agent
+was launched in lies inside the project repository; the agent CLI
+files every session under one root, and capturing them all once
+published one project’s transcripts into another’s record.
+<strong>Cost:</strong> a pass lists transcripts and lands results under the
+mutation drain but fetches and sanitizes outside it, and it
+sanitizes only the complete lines appended since the last capture.
+That is exact rather than approximate: the sanitizer is line-local
+and no redacted secret spans a newline, so the appended result is
+byte-identical to a whole-file recapture (a test asserts it). A
+trailing partial line waits, because a secret <em>can</em> span a mid-line
+boundary. Holding the drain through a whole-file rescan once kept
+every write route on a container waiting for as long as the agent
+kept talking: each turn grew the transcript the next pass rescanned.</p>
+<p>The scan itself is pure-Python regex work that holds the interpreter
+lock, so a first pass run in a hub thread starved the event loop: a
+34 MB history took about 14 minutes inside the hub against 6.6
+standalone, and the dashboard lagged throughout. A batch of a
+megabyte or more is therefore split at line boundaries (exact, for
+the same reason incremental capture is) and scanned in <code class="docutils literal notranslate"><span class="pre">spawn</span></code>ed
+worker processes on every core but one; smaller batches, the norm
+after the first pass, stay in-process because starting a worker costs
+about as much as scanning 100 KB. A pass runs as a task of its own,
+and a request waits for it at most 45 seconds before answering that
+it is still running, since an in-container agent’s client gives up at
+60 and used to report a busy host as an unreachable one.</p>
 </section>
 <section id="javascript-frontend">
 <h2>JavaScript frontend<a class="headerlink" href="#javascript-frontend" title="Link to this heading"></a></h2>

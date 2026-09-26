@@ -4258,12 +4258,34 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 852 (2026-09-21): a fourth background loop — the
+    # ten-minute reclaim of disposable containers a crashed process
+    # stranded. It belongs with the other three: this module's stated
+    # purpose is lifespan registration and the loops that hang off it,
+    # and the loop's Docker half was deliberately pushed down into
+    # disposableContainer so only the schedule lives here. The real
+    # seam in this file is the idle-shutdown watchdog — its busy
+    # predicates are close to half the module and change for entirely
+    # different reasons from lifespan plumbing — and splitting THAT is
+    # the conversation this entry is deferring, not avoiding.
+    "serverLifespan.py": 852,
     # NEW at 873 (2026-09-16): the manifest-body hydration helpers
     # moved here from pipelineRoutes when the readiness snapshot seam
     # became their second caller -- an unhydrated readiness snapshot
     # had the pre-flight reporting a complete manifest as incomplete.
     # Cross-route request helpers are this module's stated purpose.
-    "routeContext.py": 873,
+    # RAISED to 893 (2026-09-21): one more refusal of exactly that
+    # kind -- fnRefuseUnusableContainerFields, which grades a create
+    # request's container-identity fields with the build preflight's
+    # own check. It landed here rather than in registryRoutes
+    # precisely BECAUSE that module is the one this ratchet exists to
+    # contain, and registryRoutes falls to 2328 in the same commit.
+    # RAISED to 934 (2026-09-24): fnRefuseSaveIntoAnotherProject, the
+    # refusal a workflow save meets when the container has switched to
+    # another project since the workflow was read. It sits beside the
+    # carried save it guards, which must refuse before its carrier
+    # opens a journal record.
+    "routeContext.py": 934,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -5067,7 +5089,27 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # endgame call instead of the arrow-only one) and names the
     # compared-not-required paths for the copies rows. Payload
     # fields on the existing envelope builder, not a new concern.
-    "routes/pipelineRoutes.py": 3703,
+    # +81 (2026-09-24): a container hosts several projects. Stop reads
+    # the RUNNING project's workflow for its sweep and names the file
+    # its step number counts in; the poll describes the workflow it
+    # holds, names that file, and reports another project's live run.
+    # Each is a field or a lookup on a route this module already owns.
+    # +131 (2026-09-24, same day): Stop ends the OPEN project's run by
+    # its process marker and, with no run to name, sweeps command names
+    # sparing other projects' runs; the poll reports how many other
+    # projects run; the checksum cache, remote checks and lock verdict
+    # are read per project. The sweep scripts stay beside the Stop
+    # route they serve, with the name sweep they extend.
+    # +22 (2026-09-24, same day): an agent reads ITS project's run
+    # state through the hub's own record of that project's last run.
+    # +68 (2026-09-25): the poll's AI rows render the gate's verdict in
+    # words -- listAiModelDeclarationIssues, from the same per-model gap
+    # check fbWorkflowDeclaresAiModels applies -- and the Prompt Record
+    # summary counts redactions per session (a whole recapture used to
+    # be counted twice) and carries the index's chain check and
+    # left-out count, so the Project block never re-derives either;
+    # the supervision summary carries fbSupervisionClean's own verdict.
+    "routes/pipelineRoutes.py": 4005,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5080,7 +5122,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # crash-recovery record) is already out, in
     # reproducibility/archivePromotion.py; what is here is the HTTP
     # shell, the preflight order and the durable launch.
-    "routes/environmentArchiveRoutes.py": 835,
+    # +9 (2026-09-24): each deposit record names the project it
+    # deposits for, so another project's row neither pulses nor erases it.
+    "routes/environmentArchiveRoutes.py": 844,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5265,7 +5309,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # RAISED to 3631 (2026-09-16): the promote route logs
     # every refused publish -- the refusal used to return
     # as a silent 200 while the toast claimed success.
-    "routes/syncRoutes.py": 3631,
+    # +14 (2026-09-24): the push dedupe key carries the project and is
+    # skipped when HEAD is unreadable; the DAG reads its own workflow's
+    # dependency scan.
+    "routes/syncRoutes.py": 3645,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5313,7 +5360,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reason; the predicate itself lives in syncBookkeeping.
     # +4 (2026-09-15): the same host-mode fact threaded into this
     # module's fiProofLevel call, for the same reason.
-    "fileStatusManager.py": 2282,
+    # +9 (2026-09-23): the per-project run check reads the OPEN
+    # project's state file, and its docstring says why the container-
+    # wide question is asked elsewhere.
+    # +29 (2026-09-24): the file-change baseline records which
+    # project's files it measured, because a baseline measured for one
+    # project made every file of another read as changed.
+    # +1 (2026-09-24): the per-project last-run record joins the
+    # container-keyed caches the sweep evicts.
+    "fileStatusManager.py": 2321,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5450,7 +5505,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # instead of a second, drifting copy in reproducibility/.
     # +5 (2026-09-15): the host-mode fact reaches _fnDeriveProofLevel,
     # which both the load and the save paths call.
-    "workflowManager.py": 2849,
+    # +6 (2026-09-23): the logs directory takes the project it belongs
+    # to, because a container may host several.
+    # +23 (2026-09-24): a loaded workflow records the file it came
+    # from, and the save strips it -- the load/save authority owns
+    # the one transient field that says which file a workflow is.
+    "workflowManager.py": 2878,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5513,7 +5573,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # REFRESHES a stale copy instead of only creating a missing one --
     # write-when-missing left every established project on the old
     # list, which is where the blocked verifications were.
-    "stateManager.py": 1240,
+    # +7 (2026-09-23): the project gitignore covers the run state and
+    # logs, which moved into the project from the container root.
+    "stateManager.py": 1247,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -5814,7 +5876,27 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # credential-only flag a promotion needs. Both are fields on
     # shapes this module already owns.
     # +1 (2026-09-14): the promotion-recovery route module registers.
-    "pipelineServer.py": 3391,
+    # +55 (2026-09-23): the dispatch loop refuses a run aimed at
+    # another project and names the project whose pipeline holds the
+    # container, and the task records which project it runs. The
+    # refusal's CONTENT moved out to agentProjectScope; what stays is
+    # dispatch, which is this module's job.
+    # +46 (2026-09-24): each dispatch takes its workflow path, its
+    # directory and its provenance committer from the workflow it runs
+    # rather than from the socket or the open slot, and the save seam
+    # refuses a workflow read before a project switch. Dispatch again.
+    # +53 (2026-09-24, same day): dispatch admits a run beside other
+    # projects' runs once acknowledged, refuses a second run of the
+    # same project, gives each run its process marker, and reads each
+    # workflow's own dependency scan.
+    # +113 (2026-09-24, same day): an agent's pipeline socket binds to
+    # the project the agent works in -- found by discovery, read from
+    # its own file, reloaded by the freshness gate from that file --
+    # instead of the project the dashboard shows. Socket binding is
+    # this module's job; the rule for which project lives in
+    # agentProjectScope.
+    # +1 (2026-09-25): registers the Prompt Record viewer's route module.
+    "pipelineServer.py": 3659,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5866,7 +5948,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # why it is minted DURABLE -- the rerun's steps stream through the
     # durable-exec gate, and minted plain it refuses every step of
     # every shadow rerun (external-review finding).
-    "commitCarrier.py": 1202,
+    # +115 (2026-09-24): a durable launch may JOIN live work of its own
+    # joinable kind -- pipeline runs of different projects in one
+    # container share one durable record, which release, transfer and
+    # the reaper keep reading as the container's one unit of live work.
+    # The join, its member bookkeeping and the join-aware busy question
+    # are durable-launch semantics; they belong beside the launch.
+    "commitCarrier.py": 1317,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6049,7 +6137,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module already owns — deciding when a browser session ends —
     # and moving them out would put the policy in one file and the
     # numbers it reads in another.
-    "sessionLifecycle.py": 1758,
+    # 1758 -> 1825 (2026-09-21): the warning became a sequence of
+    # FRACTIONS of the cap rather than a fixed lead, and gained the
+    # renewal the researcher can answer it with. All three additions
+    # read or write the same clock this module already owns: the two
+    # band helpers answer "how far through its cap is this session",
+    # the renewal restarts that clock, and every one of them is
+    # meaningless away from the cap resolver above them. Homing the
+    # bands elsewhere is the specific mistake the frontend is forbidden
+    # to make — a second copy of the thresholds firing at a moment the
+    # server does not believe in. The band a session is in, and how
+    # loudly to announce it, are both decided here for that reason.
+    # +2 (2026-09-24): a transfer retags every project's run and adopts
+    # every command the shared durable record has in flight.
+    "sessionLifecycle.py": 1837,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6173,7 +6274,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # window threaded to the connection, beside the wall clock
     # that was already there. Same responsibility — this is where
     # a campaign's budgets become a runner's budgets.
-    "agentCouncilController.py": 2142,
+    # 2142 -> 2187 (2026-09-22), MEASURED on the file, not summed: a
+    # settled campaign's delete WAITS for the drive task's epilogue
+    # instead of refusing over it. The epilogue is this module's own
+    # turn retirement and egress teardown, and the wait reads the same
+    # liveness predicate every other continuation reads, so it belongs
+    # beside them; extracting it would put half of one refusal
+    # decision behind a call hop.
+    "agentCouncilController.py": 2187,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -6354,7 +6462,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # process. It sits here because a run is the moment a stale copy
     # starts to matter, and the collector is already the path that
     # reports to the researcher without blocking the run.
-    "pipelineRunner.py": 1769,
+    # +2 (2026-09-23): the run's state and logs name its project.
+    # +25 (2026-09-24): every container command a run starts exports
+    # that run's marker, so a Stop can find its processes among other
+    # projects' runs. The runner's command assembly is its job.
+    "pipelineRunner.py": 1796,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6375,7 +6487,14 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # record carries the downstream-of-degraded-provenance flag so a
     # reconnect re-renders the mark; the growth is the flag's
     # only-when-True install and the docstring saying why.
-    "pipelineState.py": 956,
+    # +105 (2026-09-23): run state is per PROJECT. The path resolver,
+    # the reader's choice of project (open, else the live run's), and
+    # the container-wide busy question that the release and idle-exit
+    # vetoes ask. All three are about where run state lives and who
+    # reads it, which is this module's one responsibility.
+    # +2 (2026-09-24): the live-run readers ask the per-project run
+    # slots instead of a single per-container task.
+    "pipelineState.py": 1063,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
@@ -6600,7 +6719,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2338,
+    "registryRoutes.py": 2328,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6767,7 +6886,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a list, all bAgentSafe False.
     # +11 (2026-09-15): merge-upstream, one row, bAgentSafe False --
     # it writes a merge commit into the researcher's history.
-    "actionCatalog.py": 1334,
+    # +5 (2026-09-21): session renewal joins the excluded set. An
+    # agent that could restart the researcher's session clock could
+    # keep a credential alive past the attention it exists to track.
+    # +28 (2026-09-21): adopt-directory-as-project, one row plus the
+    # comment recording why it is the one project-structure action
+    # that is bAgentSafe True. The policy reversal is the part a
+    # reader will want justified, so it is written beside the row.
+    # +5 (2026-09-25): capture-prompt-record declares its bAutomatic
+    # query field and says what it now captures -- only sessions
+    # launched inside the project -- and that a first pass is slow, so
+    # an agent reads a long wait as work rather than a dead hub.
+    # +23 (2026-09-25): update-ai-model (user-only: renaming a
+    # declaration rewrites provenance) and the viewer's two agent-safe
+    # reads, list-prompt-record-sessions and read-prompt-record-session.
+    "actionCatalog.py": 1395,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6826,7 +6959,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # concern would put "which file is the pull in?" between a reader
     # and the answer. The judgement-free half (preview classification,
     # the merge command) already lives in containerGit.
-    "routes/gitRoutes.py": 1266,
+    # +11 (2026-09-24): the fetch throttle is keyed by the project's
+    # repository as well as the container.
+    "routes/gitRoutes.py": 1277,
     # NEW at 811 (2026-08-21): the workspace seed, which carries chosen
     # content from the researcher's own directory into a container's
     # volume. Justified here rather than split: this module's
@@ -6900,7 +7035,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # class these guards exist to close.
     # +2 (2026-09-15): the host-mode fact again, at this module's one
     # fiProofLevel call.
-    "routes/stepRoutes.py": 864,
+    # +2 (2026-09-24): rename and align refuse only while THIS
+    # project runs; another project's run does not touch its steps.
+    "routes/stepRoutes.py": 866,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -6924,7 +7061,24 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # halves have to exist together: a refusal with no way out would
     # strand a workflow, and a way out with no refusal would let the
     # log keep claiming attribution it cannot support.
-    "routes/replayRoutes.py": 1049,
+    # +58 (2026-09-25): the Prompt Record capture split into list /
+    # sanitize / land. Holding the drain through the whole-file
+    # sanitize wedged every write route on a container while an agent
+    # was active; the two short drain phases, the unlocked phase
+    # between them, and the automatic poll's stand-down behind a
+    # running capture are one route's orchestration, in the module
+    # that owns the Replay axis.
+    # +105 (2026-09-25): the capture pass became a task of its own, one
+    # per container, that a request waits on for at most 45 s before
+    # answering bStillRunning -- an agent's client gave up at 60 s and
+    # reported a working hub as unreachable. The registry, the start,
+    # the bounded wait and the status route's in-flight report are the
+    # same route's orchestration; each helper has one caller, so a
+    # separate module would be a seam in name only.
+    # +63 (2026-09-25): edit a declared AI model in place. Declaring a
+    # corrected model id used to add a second entry beside the wrong
+    # one; the route beside declare and remove is where it belongs.
+    "routes/replayRoutes.py": 1275,
     # NEW at 923 (2026-08-06): reproducibilityRoutes.py crossed the cap
     # when its eight remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above and its 2026-08-06 clarification about a
@@ -7111,7 +7265,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # probe, and the timing line now states whether the probe RAN or
     # PAUSED and who held the carrier. Same readiness concern; the
     # third deferral of the seam split above.
-    "routes/reproducibilityRoutes.py": 2322,
+    # +22 (2026-09-24): verification records and the lock verdict are
+    # read and written for the project they describe, and a refusal
+    # names the project whose verification holds the container.
+    "routes/reproducibilityRoutes.py": 2344,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -7187,7 +7344,24 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # researcher out of the remedy. Another row in a map of rows.
     # +6 (2026-09-14): the promotion-recovery read joins the frozen
     # container-read allowlist, with the reason it is a read.
-    "routeScope.py": 1024,
+    # +6 (2026-09-21): session renewal is browser-hub scoped, with the
+    # reason it must NOT be container-scoped -- a session on the picker
+    # or in a Blank Project is under the same cap, and a container
+    # scope would leave exactly those researchers unable to answer the
+    # warning they were shown.
+    # 1030 -> 1046 (2026-09-22), MEASURED on the file: the lease may
+    # be presented in the query string on the download path, because a
+    # browser download is an anchor click that carries no headers and
+    # can be given none -- without it the route answered 403 for a
+    # lease the researcher held, and "Download to this computer" could
+    # not work in any browser. The growth is the carve-out plus the
+    # reasoning for it, which a security accommodation has to carry.
+    # It stays in this module because this is where a lease is read;
+    # the path segment itself is browserSession's, so the credential
+    # and lease carve-outs cannot drift apart.
+    # +8 (2026-09-25): the Prompt Record viewer's two GETs acknowledged
+    # as container reads, with why they are reads.
+    "routeScope.py": 1054,
 }
 
 

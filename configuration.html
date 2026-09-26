@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev58 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev134 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=27497488"></script>
+      <script src="_static/documentation_options.js?v=45e3c1d7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -63,6 +63,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#container-conf">container.conf</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#install-methods">Install Methods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-is-checked-before-a-build-starts">What is checked before a build starts</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id1">Example</a></li>
 </ul>
 </li>
@@ -264,7 +265,9 @@ validation. The image installs Miniforge, but there is no
 <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span></code> step and no build argument carries the list, so
 accepting the field would produce a container without the requested
 packages and say nothing. Refusing is the honest interim until the
-install step is wired; install what you need with <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code>, or
+install step is wired; install what you need with <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code> (every
+name is checked against pypi.org before the build starts, so a misspelling
+is refused in seconds rather than after the toolchain has installed), or
 add a <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">install</span></code> line to <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>.</p>
 </div>
 </section>
@@ -523,7 +526,7 @@ non-comment line has four pipe-separated fields:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span> <span class="pre">--no-deps</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pip_editable</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code> (needs a <code class="docutils literal notranslate"><span class="pre">setup.py</span></code> or <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>; a repository without one is cloned only, with a warning naming this table)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scripts_only</span></code></p></td>
 <td><p>Add to <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> and <code class="docutils literal notranslate"><span class="pre">PATH</span></code> only</p></td>
@@ -533,6 +536,49 @@ non-comment line has four pipe-separated fields:</p>
 </tr>
 </tbody>
 </table>
+</section>
+<section id="what-is-checked-before-a-build-starts">
+<h3>What is checked before a build starts<a class="headerlink" href="#what-is-checked-before-a-build-starts" title="Link to this heading"></a></h3>
+<p>A build takes an hour, and every failure below used to be discovered
+somewhere inside it. Both <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code> and the dashboard’s Build now
+ask the same questions first, of the authority that actually answers
+them:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Asked of</p></th>
+<th class="head"><p>A failure means</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">containerUser</span></code>, <code class="docutils literal notranslate"><span class="pre">pythonVersion</span></code>, <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code></p></td>
+<td><p>their own format</p></td>
+<td><p>the image recipe cannot use the value (<code class="docutils literal notranslate"><span class="pre">pythonVersion</span></code> becomes the apt package <code class="docutils literal notranslate"><span class="pre">python3.12</span></code>, so <code class="docutils literal notranslate"><span class="pre">3.12.1</span></code> is refused)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">systemPackages</span></code></p></td>
+<td><p>Launchpad, for the series <code class="docutils literal notranslate"><span class="pre">baseImage</span></code> names</p></td>
+<td><p>Ubuntu publishes no such package</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code></p></td>
+<td><p>pypi.org’s simple index</p></td>
+<td><p>the index serves no such project</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repositories[].branch</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">ls-remote</span></code> against the remote</p></td>
+<td><p>the remote has no such branch; the refusal names its default</p></td>
+</tr>
+</tbody>
+</table>
+<p>Three answers are deliberately <strong>not</strong> refusals, because none of them
+is evidence about the value: an index, archive or remote that cannot be
+reached, a <code class="docutils literal notranslate"><span class="pre">pipInstallFlags</span></code> naming an index other than pypi.org, and a
+<code class="docutils literal notranslate"><span class="pre">baseImage</span></code> outside the Ubuntu releases vaibify knows. Each reports
+“not checked” and the build goes ahead and asks for itself.</p>
+<p>Both setup wizards apply the same field rules when they SAVE, so a
+value the build would refuse is refused at the form. They also write
+each repository’s branch by asking the remote for its default rather
+than assuming <code class="docutils literal notranslate"><span class="pre">main</span></code>, and write <code class="docutils literal notranslate"><span class="pre">reference</span></code> for a GitHub repository
+they can see has no Python project file.</p>
 </section>
 <section id="id1">
 <h3>Example<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
@@ -593,15 +639,28 @@ step are untouched, and <code class="docutils literal notranslate"><span class="
 <p>It accepts the same vocabulary as the idle timeout — a non-negative
 number of seconds, or <code class="docutils literal notranslate"><span class="pre">never</span></code> (also <code class="docutils literal notranslate"><span class="pre">off</span></code>, <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">disabled</span></code>) — and
 resolves across the same three tiers: this variable, then the stored
-host-global Settings preference (the gear menu’s <strong>Session lifetime</strong>
-control), then the built-in default of <code class="docutils literal notranslate"><span class="pre">43200</span></code> (12 hours). Resolution
-happens on every evaluation, so a change applies without relaunching
-the hub, and <em>raising</em> the cap rescues a session that has not expired
-yet.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span>never<span class="w"> </span>vaibify<span class="w">   </span><span class="c1"># never sign out</span>
-<span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span><span class="m">86400</span><span class="w"> </span>vaibify<span class="w">   </span><span class="c1"># 24 hours</span>
+host-global Settings preference (the toolbar gear’s <strong>Session
+lifetime</strong> control), then the built-in default of <code class="docutils literal notranslate"><span class="pre">604800</span></code> (7 days).
+Resolution happens on every evaluation, so a change applies without
+relaunching the hub, and <em>raising</em> the cap rescues a session that has
+not expired yet.</p>
+<p>The default was twelve hours until 2026-09-21. What twelve hours
+actually bounded was a researcher’s working week: reaching the cap ends
+the browser session, and with it the agent conversations that session
+was holding, which is a loss measured in days of context paid to
+retire a credential on your own machine.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span>never<span class="w"> </span>vaibify<span class="w">     </span><span class="c1"># never sign out</span>
+<span class="nv">VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS</span><span class="o">=</span><span class="m">2592000</span><span class="w"> </span>vaibify<span class="w">   </span><span class="c1"># 30 days</span>
 </pre></div>
 </div>
+<p>You are warned as the cap approaches, at three quarters, nine tenths
+and nineteen twentieths of the way through it — fractions rather than a
+fixed lead, so the notice stays proportional to a cap you set. <strong>Each
+warning offers to renew the session</strong>: clicking it restarts the clock
+in place, keeping the open panels and agent conversations a fresh tab
+would lose. Renewal is only ever a click; nothing renews on a timer,
+because an automatic renewal would delete the cap while this control
+went on claiming one existed.</p>
 <p>Unlike the idle timeout, a live WebSocket does <strong>not</strong> veto this
 window. That asymmetry is deliberate — the case the cap exists to bound
 is a forgotten-open tab, which holds a live socket by definition — and

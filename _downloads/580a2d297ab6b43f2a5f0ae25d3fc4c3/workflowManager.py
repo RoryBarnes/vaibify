@@ -49,6 +49,8 @@ def fdictStepIdToIndex(dictWorkflow):
     return dictOut
 
 __all__ = [
+    "S_LOADED_FROM_KEY",
+    "fbWorkflowWasLoadedFrom",
     "fbDeclareZenodoRecord",
     "fbDeriveUnnecessaryVerification",
     "fbRemoveZenodoRecord",
@@ -127,6 +129,21 @@ __all__ = [
     "fsTestsDirectory",
     "fsToSyncStatusKey",
 ]
+
+# Transient: the file a cached workflow was loaded from. Stripped on
+# save; it only ever REFUSES a save, never chooses where one lands.
+S_LOADED_FROM_KEY = "_sLoadedFromPath"
+
+
+def fbWorkflowWasLoadedFrom(dictWorkflow, sWorkflowPath):
+    """Return False when the workflow was loaded from a different file.
+
+    A workflow built in memory (a new project, a test fixture) carries
+    no record of a file and is answered True, as before.
+    """
+    sLoadedFrom = (dictWorkflow or {}).get(S_LOADED_FROM_KEY, "")
+    return not sLoadedFrom or sLoadedFrom == sWorkflowPath
+
 
 DEFAULT_SEARCH_ROOT = "/workspace"
 
@@ -428,6 +445,11 @@ def fdictLoadWorkflowFromContainer(
         _ffilesContainerRepo(connectionDocker, sContainerId, sRepoPath),
         fbIsHostProject(sContainerId),
     )
+    # A container can host several projects and the hub's cache holds
+    # whichever one is open, so a workflow remembers the file it came
+    # from: a save still in flight when the dashboard switches projects
+    # must not land in the project that is open by then.
+    dictWorkflow[S_LOADED_FROM_KEY] = sWorkflowPath
     return dictWorkflow
 
 
@@ -1498,6 +1520,7 @@ def _fdictStripComputedFields(dictWorkflow):
     dictClean = dict(dictWorkflow)
     dictClean.pop("dictStateLoadNotice", None)
     dictClean.pop("_sSourceFingerprint", None)
+    dictClean.pop(S_LOADED_FROM_KEY, None)
     dictClean.pop("listUnresolvedRemoteDataMarkers", None)
     dictClean["listSteps"] = [
         _fdictStripStepTransientKeys(dictStep)
@@ -1990,8 +2013,12 @@ def ffResolveStepWallClockBudget(dictWorkflow, dictStep):
     )
 
 
-def fsLogsDirectoryFor(sResourceId):
-    """Return the directory this resource's pipeline logs live in.
+def fsLogsDirectoryFor(sResourceId, sProjectRepoPath=""):
+    """Return the directory one project's pipeline logs live in.
+
+    ``sProjectRepoPath`` is the project; empty is the direct library
+    lane and resolves to the resource root. Logs belong to a project
+    for the reason its run state does: a container may host several.
 
     Extracted on the third instance, which is when the rule of three
     says to: the runner, the test runner and the logs routes each built
@@ -2003,7 +2030,9 @@ def fsLogsDirectoryFor(sResourceId):
     """
     from .projectRoots import fsResolveProjectRoot
     return posixpath.join(
-        fsResolveProjectRoot(sResourceId, DEFAULT_SEARCH_ROOT),
+        fsResolveProjectRoot(
+            sResourceId, sProjectRepoPath or DEFAULT_SEARCH_ROOT,
+        ),
         VAIBIFY_LOGS_DIR,
     )
 

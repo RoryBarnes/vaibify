@@ -205,6 +205,34 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Prepare a plot/standard diff payload for one "
                      "figure. Read-only; returns data."},
     # ---- Workflow editing ----
+    # bAgentSafe=True reverses the sibling policy on create-project and
+    # init-project-repo, deliberately. Refusing adoption grants
+    # nothing: an agent can already run `git init` and write
+    # project.json with the shell, and that is exactly what it does
+    # when refused -- producing a directory the dashboard never hears
+    # about, which is the defect this action exists to end. The choice
+    # is between the agent doing this correctly and the agent doing it
+    # badly, not between doing it and not. It also reaches nothing
+    # outside the workspace the agent already writes to, and it cannot
+    # open the project, so the researcher still decides what to work
+    # in.
+    {"sName": "adopt-directory-as-project", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflows/{sContainerId}/adopt-directory",
+     "bAgentSafe": True,
+     "sDescription": "Turn an EXISTING workspace directory into a "
+                     "tracked Project in one step. Args: {sDirectory, "
+                     "sProjectName, sFileName (optional, derived from "
+                     "sProjectName)}. Makes the directory a git repo "
+                     "if it is not one, commits once if it has no "
+                     "commits, writes a project.json naming itself, "
+                     "and tracks the repo so the dashboard offers it. "
+                     "Idempotent: reports saStagesPerformed and "
+                     "saStagesAlreadySatisfied, and never overwrites "
+                     "an existing project file. Never creates the "
+                     "directory and never rewrites git history. Ask "
+                     "the researcher to open the project from the "
+                     "Project field afterwards; this cannot open it."},
     {"sName": "create-project", "sCategory": "workflow",
      "sMethod": "POST",
      "sPath": "/api/workflows/{sContainerId}/request-creation",
@@ -852,6 +880,14 @@ LIST_AGENT_ACTIONS = [
                      "sModelId}. User-only because deleting a "
                      "declaration erases provenance and can drop the "
                      "project below Level 2."},
+    {"sName": "update-ai-model", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/ai-models/update",
+     "bAgentSafe": False,
+     "sDescription": "Edit one declared AI model in place, found by "
+                     "{sOriginalVendor, sOriginalModelId}. User-only "
+                     "like removal: renaming a declaration rewrites "
+                     "provenance."},
     {"sName": "declare-personal-layer", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/personal-layer/declare",
@@ -905,12 +941,17 @@ LIST_AGENT_ACTIONS = [
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/prompt-record/capture",
      "bAgentSafe": True,
-     "sDescription": "Run one Prompt Record capture pass: new or "
-                     "grown agent transcripts are sanitized "
+     "saQueryFields": ["bAutomatic"],
+     "sDescription": "Run one Prompt Record capture pass: the new "
+                     "lines of agent sessions launched inside this "
+                     "project's repository are sanitized "
                      "(explicit [REDACTED: …] markers) and landed at "
-                     ".vaibify/promptRecord/. Append-only and "
-                     "sanitized, so agent-safe; refuses (409) when "
-                     "the record is not enabled."},
+                     ".vaibify/promptRecord/; sessions launched "
+                     "elsewhere are counted and left out. A first "
+                     "pass takes minutes: past 45 s it answers "
+                     "bStillRunning and lands by itself (check "
+                     "view-prompt-record-status, do not retry). "
+                     "Agent-safe; 409 when the record is not enabled."},
     {"sName": "view-prompt-record-status", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/prompt-record/status",
@@ -919,6 +960,21 @@ LIST_AGENT_ACTIONS = [
                      "coverage intervals (gaps are unmonitored time), "
                      "hash-chain integrity, and any tampered session "
                      "files. Read-only."},
+    {"sName": "list-prompt-record-sessions", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/sessions",
+     "bAgentSafe": True,
+     "sDescription": "List the Prompt Record's captured sessions with "
+                     "redaction counts, the hash-chain and file-tamper "
+                     "checks, and coverage. Read-only."},
+    {"sName": "read-prompt-record-session", "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/prompt-record/sessions/"
+              "{sSessionFileName}",
+     "bAgentSafe": True,
+     "saQueryFields": ["iOffset", "iLimit"],
+     "sDescription": "Read one captured session as redacted turns "
+                     "(prompts, replies, tool calls). Read-only."},
     {"sName": "run-falsification", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}/run-falsification",
@@ -1183,6 +1239,11 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # agents cannot usefully invoke them.
     ("POST", "/api/connect/{sContainerId}"),
     ("POST", "/api/session/spawn"),
+    # Renewing a browser session's absolute cap. The cap bounds a tab
+    # nobody is watching; an agent that could restart its clock could
+    # keep the researcher's credential alive past the attention it is
+    # supposed to track. The route itself 403s the agent lane too.
+    ("POST", "/api/session/renew"),
     ("POST", "/api/workflows/{sContainerId}/create"),
     # Docker-runtime retry — agents run inside the container that
     # needs Docker, so the UI is the only sensible caller.

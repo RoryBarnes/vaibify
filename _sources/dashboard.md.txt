@@ -55,6 +55,27 @@ vaibify reconcile
 Nothing is lost silently — a container in that state is quarantined
 until reconcile proves it, rather than being reported clean.
 
+### Getting text out of a pane
+
+A full-screen program — an agent, `vim`, `htop` — asks the terminal
+for the mouse, and while it holds it your drag belongs to the program
+rather than to the text. Dragging selects nothing, and the pane jumps
+to its newest line. Three ways out, in the order you will want them:
+
+- **Select text**, in the pane's tab bar, gives the mouse back to the
+  pane. While it is on the button is filled in, dragging selects,
+  dragging past the bottom edge scrolls further text into reach, and
+  the wheel moves through the scrollback. Turn it off to give the
+  mouse back to the program.
+- **Shift + wheel** always scrolls the pane, whether or not a program
+  is holding the mouse, and whether or not the mode above is on.
+- **Copy all** puts the pane's whole scrollback on the clipboard, with
+  wrapped lines rejoined as the program wrote them. It needs no
+  gesture at all, so nothing can take it from you.
+
+Selected text reaches the clipboard on its own; Cmd+C, Ctrl+Shift+C,
+Ctrl+Insert and right-click all copy it as well.
+
 **A project that runs on your machine has no in-dashboard terminal.**
 There is no container to open a shell inside, and your own terminal is
 the same shell with the same authority; the strip names the project's
@@ -179,7 +200,7 @@ right:
 
 Steps run from the toolbar's **Run** menu: **Run Selected Steps**,
 **Run All Steps**, **Clean Outputs**, **Force Run All (Clean)**, and
-**Stop All Running Tasks**, plus the verification sweeps **Verify
+**Stop This Project's Run**, plus the verification sweeps **Verify
 Outputs**, **Run All Unit Tests**, **Verify Dependencies**, and
 **Check Files Against Manifest**. Steps can be reordered by
 dragging, and an individual step's right-click menu offers **Run
@@ -391,7 +412,7 @@ collapsible sections:
 | **Artifacts** | The reproducibility envelope files: `MANIFEST.sha256`, `requirements.lock`, the environment snapshot, the `Dockerfile`, and `reproduce.sh`. |
 | **Determinism** | Your declared repeatability rules — how exactly a rerun must match your numbers (random seeding, numeric-library variance). |
 | **Published copies** | The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state. |
-| **AI** | The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and Personal AI Configuration (the researcher's private host-side agent configuration, accounted for — Level 2). Both count in the project row's Level 2 cell. The AI Declaration (the researcher's signed statement) is not a row here — it is a step, and its state lives on the step's own row. |
+| **AI** | Five rows. Two count toward Level 2: **AI models** (which models did the work) and **Personal AI Configuration** (the researcher's private host-side agent configuration, accounted for). Three are optional and never count toward a level: **Project instructions** (the standing agent instructions file), the **Prompt Record**, and **Supervised mode**. An optional row shows a dash until it is set up and a green check once it is; it is never red, and anything it needs from you is a ⚠ beside its title, echoed on the collapsed AI heading. The AI Declaration (the researcher's signed statement) is not a row here — it is a step, and its state lives on the step's own row. |
 | **Attestation** | The rebuild attestation (Level 3). |
 
 The AI section is where the process provenance lives. Every AI model
@@ -430,10 +451,14 @@ an action exists — a button that performs it in place:
 - **Configure arXiv…** to record the arXiv submission that must match
   the frozen Overleaf figures (optional — an untracked submission
   reads "not tracked" and never blocks Level 2).
-- **Declare model…** and per-model **Remove** in the AI section's
-  AI Model / Prompts row (removal is user-only — deleting a
+- **View Declaration** and **Edit Declaration** on the AI models row
+  (**Declare Model** when none is declared). The editor holds one card
+  per model, each saved on its own; correcting a vendor or model ID
+  edits that declaration in place rather than adding a second one.
+  **Delete** asks for confirmation first, because deleting a
   declaration erases provenance and can drop the project below
-  Level 2).
+  Level 2 (it is user-only; the in-container agent cannot delete or
+  rename one). When the row is red, it says what is missing.
 - The **Personal AI Configuration** row accounts for the fourth
   layer of the instruction stack that governed the AI's work: your
   private host-side agent configuration (global instruction file,
@@ -467,38 +492,59 @@ an action exists — a button that performs it in place:
   read and update the file via its own actions but can never pull
   files from your computer. Edits take effect for the agent's next
   session, not a running one.
-- **Prompt Record…** opens the opt-in transcript recorder (the
-  Replay axis's *Recorded* state, shown on the row's
-  Untracked → Declared → Recorded → Supervised ladder). When
-  enabled, the in-container agent's session transcripts are captured
+- The **Prompt Record** row is the opt-in transcript recorder.
+  **Recording settings** (**Set up recording** while it is off) holds
+  the one decision: whether the in-container agent's sessions are
+  recorded. When on, the agent's session transcripts are captured
   into `.vaibify/promptRecord/` every ~30 seconds as **redacted
   transcripts**: each capture is scanned (exact vaibify session
   secrets, the detect-secrets pattern catalog, vendor token
   prefixes, and a conservative high-entropy check) and every hit
   becomes a visible `[REDACTED: category]` marker with a per-category
-  count. You review a sample of the first capture before the record
-  counts (the agent cannot approve its own transcript). Captures are
-  hash-chained — editing or removing one breaks the chain loudly —
-  and coverage intervals are listed so time the hub was down reads
-  as an explicit gap, never implied continuity. The record is
-  tamper-evident, not proven complete; enabling it requires
-  `pip install vaibify[replay]` on the host. Off reads "Not tracked
-  — optional" and never blocks a level.
+  count. Only sessions the agent started inside the project's
+  folder are captured: a container can hold several projects, so a
+  session started at the workspace root or in another project is
+  left out rather than published into this one; the row says how
+  many were left out, so start the agent from inside the project
+  folder when you want its session recorded. After the first
+  capture, each pass scans only the lines a session has added, and
+  it holds the container's write lock only to list transcripts and
+  to save results, never while scanning, so a commit or push waits
+  seconds at most. The first pass over a long history still takes
+  minutes; Recording settings says a pass is running and since when,
+  and an agent that asks for a capture meanwhile is told the pass is
+  still running rather than that the host is unreachable.
 
-  The same dialog holds **Supervised mode** (the rung above
-  Recorded; requires the record enabled and reviewed). When on,
-  every repository change must attribute to a recorded action
-  channel — a pipeline dispatch, an editor save, or a context write —
-  within a 60-second window; changes with
-  no recorded cause become **permanent, hash-chained flags**
+  **View Record** opens the record: the captured sessions with their
+  redaction counts and integrity checks (captures are hash-chained,
+  so editing or removing one breaks the chain loudly, and each
+  session file must still match its capture), the coverage intervals
+  (time the hub was not watching reads as an explicit gap, never
+  implied continuity), and each session as a conversation — your
+  prompts and the agent's replies as text, tool calls, results and
+  reasoning folded to one line, every redaction highlighted, with a
+  filter that shows only the turns that carry one. **Review &
+  Approve** (shown until you approve) opens the same view with
+  **Approve first capture** at its foot; the record counts as a
+  recorded development history only after that approval, and the
+  agent can never approve its own transcript. The record is
+  tamper-evident, not proven complete; enabling it requires
+  `pip install vaibify[replay]` on the host.
+
+- The **Supervised mode** row is the rung above the Prompt Record,
+  available once the record is on and its first capture approved.
+  When on, every repository change must attribute to a recorded
+  action channel — a pipeline dispatch, an editor save, or a context
+  write — within a 60-second window; changes with no recorded cause
+  become **permanent, hash-chained flags**
   (`unattributed-modification`), and a repo that changed while the
   hub was not watching flags an `unsupervised-gap` on reconnect.
-  Flags render as a red chip on the AI row and are never cleared by
-  the tool; editing the flag file breaks its chain loudly.
-  Attribution granularity is honest but coarse: the window and the
-  channel, not the file path. Work done in a `docker exec` shell has
-  no recorded channel at all, so it flags as unattributed — which is
-  the truthful answer, not a gap to paper over.
+  Flags are listed on the row with a ⚠ and are never cleared by the
+  tool; editing the flag file breaks its chain loudly. Attribution
+  granularity is honest but coarse: the window and the channel, not
+  the file path. Work done in a `docker exec` shell has no recorded
+  channel at all, so it flags as unattributed — which is the
+  truthful answer, not a gap to paper over.
 - **Add AI declaration step** if the project has none, and **Verify
   Level 3 reproducibility** to launch the full rebuild-and-compare.
 

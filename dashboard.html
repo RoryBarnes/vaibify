@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev58 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev134 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=27497488"></script>
+      <script src="_static/documentation_options.js?v=45e3c1d7"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -54,7 +54,10 @@
 <li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">The Dashboard</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#layout">Layout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#terminal">Terminal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#terminal">Terminal</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#getting-text-out-of-a-pane">Getting text out of a pane</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#viewing-window">Viewing Window</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-main-tab">The Main tab</a><ul>
@@ -195,6 +198,26 @@ quiet, and asks you to settle it with:</p>
 </div>
 <p>Nothing is lost silently — a container in that state is quarantined
 until reconcile proves it, rather than being reported clean.</p>
+<section id="getting-text-out-of-a-pane">
+<h3>Getting text out of a pane<a class="headerlink" href="#getting-text-out-of-a-pane" title="Link to this heading"></a></h3>
+<p>A full-screen program — an agent, <code class="docutils literal notranslate"><span class="pre">vim</span></code>, <code class="docutils literal notranslate"><span class="pre">htop</span></code> — asks the terminal
+for the mouse, and while it holds it your drag belongs to the program
+rather than to the text. Dragging selects nothing, and the pane jumps
+to its newest line. Three ways out, in the order you will want them:</p>
+<ul class="simple">
+<li><p><strong>Select text</strong>, in the pane’s tab bar, gives the mouse back to the
+pane. While it is on the button is filled in, dragging selects,
+dragging past the bottom edge scrolls further text into reach, and
+the wheel moves through the scrollback. Turn it off to give the
+mouse back to the program.</p></li>
+<li><p><strong>Shift + wheel</strong> always scrolls the pane, whether or not a program
+is holding the mouse, and whether or not the mode above is on.</p></li>
+<li><p><strong>Copy all</strong> puts the pane’s whole scrollback on the clipboard, with
+wrapped lines rejoined as the program wrote them. It needs no
+gesture at all, so nothing can take it from you.</p></li>
+</ul>
+<p>Selected text reaches the clipboard on its own; Cmd+C, Ctrl+Shift+C,
+Ctrl+Insert and right-click all copy it as well.</p>
 <p><strong>A project that runs on your machine has no in-dashboard terminal.</strong>
 There is no container to open a shell inside, and your own terminal is
 the same shell with the same authority; the strip names the project’s
@@ -228,6 +251,7 @@ command — see the <strong>Using AI</strong> section of the <a class="reference
 and the <a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a>. The agent can in turn ask the
 dashboard to run steps, generate tests, push to GitHub, and so on —
 see <a class="reference internal" href="#agent-actions">Agent actions</a> below.</p>
+</section>
 </section>
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
@@ -308,7 +332,7 @@ that level’s section.</p></li>
 </ul>
 <p>Steps run from the toolbar’s <strong>Run</strong> menu: <strong>Run Selected Steps</strong>,
 <strong>Run All Steps</strong>, <strong>Clean Outputs</strong>, <strong>Force Run All (Clean)</strong>, and
-<strong>Stop All Running Tasks</strong>, plus the verification sweeps <strong>Verify
+<strong>Stop This Project’s Run</strong>, plus the verification sweeps <strong>Verify
 Outputs</strong>, <strong>Run All Unit Tests</strong>, <strong>Verify Dependencies</strong>, and
 <strong>Check Files Against Manifest</strong>. Steps can be reordered by
 dragging, and an individual step’s right-click menu offers <strong>Run
@@ -533,7 +557,7 @@ collapsible sections:</p>
 <td><p>The GitHub mirror, Zenodo deposit, Overleaf manuscript, and arXiv submission, with per-file sync state.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>AI</strong></p></td>
-<td><p>The Replay-axis provenance rows: the AI model declaration (which models did the work — Level 2) with the two standing prompt files, and Personal AI Configuration (the researcher’s private host-side agent configuration, accounted for — Level 2). Both count in the project row’s Level 2 cell. The AI Declaration (the researcher’s signed statement) is not a row here — it is a step, and its state lives on the step’s own row.</p></td>
+<td><p>Five rows. Two count toward Level 2: <strong>AI models</strong> (which models did the work) and <strong>Personal AI Configuration</strong> (the researcher’s private host-side agent configuration, accounted for). Three are optional and never count toward a level: <strong>Project instructions</strong> (the standing agent instructions file), the <strong>Prompt Record</strong>, and <strong>Supervised mode</strong>. An optional row shows a dash until it is set up and a green check once it is; it is never red, and anything it needs from you is a ⚠ beside its title, echoed on the collapsed AI heading. The AI Declaration (the researcher’s signed statement) is not a row here — it is a step, and its state lives on the step’s own row.</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Attestation</strong></p></td>
 <td><p>The rebuild attestation (Level 3).</p></td>
@@ -574,10 +598,14 @@ separate rules file).</p></li>
 <li><p><strong>Configure arXiv…</strong> to record the arXiv submission that must match
 the frozen Overleaf figures (optional — an untracked submission
 reads “not tracked” and never blocks Level 2).</p></li>
-<li><p><strong>Declare model…</strong> and per-model <strong>Remove</strong> in the AI section’s
-AI Model / Prompts row (removal is user-only — deleting a
+<li><p><strong>View Declaration</strong> and <strong>Edit Declaration</strong> on the AI models row
+(<strong>Declare Model</strong> when none is declared). The editor holds one card
+per model, each saved on its own; correcting a vendor or model ID
+edits that declaration in place rather than adding a second one.
+<strong>Delete</strong> asks for confirmation first, because deleting a
 declaration erases provenance and can drop the project below
-Level 2).</p></li>
+Level 2 (it is user-only; the in-container agent cannot delete or
+rename one). When the row is red, it says what is missing.</p></li>
 <li><p>The <strong>Personal AI Configuration</strong> row accounts for the fourth
 layer of the instruction stack that governed the AI’s work: your
 private host-side agent configuration (global instruction file,
@@ -611,38 +639,58 @@ writes). Import is researcher-only — the in-container agent can
 read and update the file via its own actions but can never pull
 files from your computer. Edits take effect for the agent’s next
 session, not a running one.</p></li>
-<li><p><strong>Prompt Record…</strong> opens the opt-in transcript recorder (the
-Replay axis’s <em>Recorded</em> state, shown on the row’s
-Untracked → Declared → Recorded → Supervised ladder). When
-enabled, the in-container agent’s session transcripts are captured
+<li><p>The <strong>Prompt Record</strong> row is the opt-in transcript recorder.
+<strong>Recording settings</strong> (<strong>Set up recording</strong> while it is off) holds
+the one decision: whether the in-container agent’s sessions are
+recorded. When on, the agent’s session transcripts are captured
 into <code class="docutils literal notranslate"><span class="pre">.vaibify/promptRecord/</span></code> every ~30 seconds as <strong>redacted
 transcripts</strong>: each capture is scanned (exact vaibify session
 secrets, the detect-secrets pattern catalog, vendor token
 prefixes, and a conservative high-entropy check) and every hit
 becomes a visible <code class="docutils literal notranslate"><span class="pre">[REDACTED:</span> <span class="pre">category]</span></code> marker with a per-category
-count. You review a sample of the first capture before the record
-counts (the agent cannot approve its own transcript). Captures are
-hash-chained — editing or removing one breaks the chain loudly —
-and coverage intervals are listed so time the hub was down reads
-as an explicit gap, never implied continuity. The record is
+count. Only sessions the agent started inside the project’s
+folder are captured: a container can hold several projects, so a
+session started at the workspace root or in another project is
+left out rather than published into this one; the row says how
+many were left out, so start the agent from inside the project
+folder when you want its session recorded. After the first
+capture, each pass scans only the lines a session has added, and
+it holds the container’s write lock only to list transcripts and
+to save results, never while scanning, so a commit or push waits
+seconds at most. The first pass over a long history still takes
+minutes; Recording settings says a pass is running and since when,
+and an agent that asks for a capture meanwhile is told the pass is
+still running rather than that the host is unreachable.</p>
+<p><strong>View Record</strong> opens the record: the captured sessions with their
+redaction counts and integrity checks (captures are hash-chained,
+so editing or removing one breaks the chain loudly, and each
+session file must still match its capture), the coverage intervals
+(time the hub was not watching reads as an explicit gap, never
+implied continuity), and each session as a conversation — your
+prompts and the agent’s replies as text, tool calls, results and
+reasoning folded to one line, every redaction highlighted, with a
+filter that shows only the turns that carry one. <strong>Review &amp;
+Approve</strong> (shown until you approve) opens the same view with
+<strong>Approve first capture</strong> at its foot; the record counts as a
+recorded development history only after that approval, and the
+agent can never approve its own transcript. The record is
 tamper-evident, not proven complete; enabling it requires
-<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">vaibify[replay]</span></code> on the host. Off reads “Not tracked
-— optional” and never blocks a level.</p>
-<p>The same dialog holds <strong>Supervised mode</strong> (the rung above
-Recorded; requires the record enabled and reviewed). When on,
-every repository change must attribute to a recorded action
-channel — a pipeline dispatch, an editor save, or a context write —
-within a 60-second window; changes with
-no recorded cause become <strong>permanent, hash-chained flags</strong>
+<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">vaibify[replay]</span></code> on the host.</p>
+</li>
+<li><p>The <strong>Supervised mode</strong> row is the rung above the Prompt Record,
+available once the record is on and its first capture approved.
+When on, every repository change must attribute to a recorded
+action channel — a pipeline dispatch, an editor save, or a context
+write — within a 60-second window; changes with no recorded cause
+become <strong>permanent, hash-chained flags</strong>
 (<code class="docutils literal notranslate"><span class="pre">unattributed-modification</span></code>), and a repo that changed while the
 hub was not watching flags an <code class="docutils literal notranslate"><span class="pre">unsupervised-gap</span></code> on reconnect.
-Flags render as a red chip on the AI row and are never cleared by
-the tool; editing the flag file breaks its chain loudly.
-Attribution granularity is honest but coarse: the window and the
-channel, not the file path. Work done in a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> shell has
-no recorded channel at all, so it flags as unattributed — which is
-the truthful answer, not a gap to paper over.</p>
-</li>
+Flags are listed on the row with a ⚠ and are never cleared by the
+tool; editing the flag file breaks its chain loudly. Attribution
+granularity is honest but coarse: the window and the channel, not
+the file path. Work done in a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> shell has no recorded
+channel at all, so it flags as unattributed — which is the
+truthful answer, not a gap to paper over.</p></li>
 <li><p><strong>Add AI declaration step</strong> if the project has none, and <strong>Verify
 Level 3 reproducibility</strong> to launch the full rebuild-and-compare.</p></li>
 </ul>
