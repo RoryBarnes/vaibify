@@ -301,6 +301,10 @@ _SET_LIFECYCLE_PATHS_PERMITTED_WHILE_STARTING = frozenset({
 # ``container-read`` must appear here, so a NEW owned-container GET fails
 # ``testContainerReadScopeIsAFrozenRatchetedAllowlist`` until acknowledged.
 SET_CONTAINER_READ_ROUTES = frozenset({
+    # Asks git which files the committed manifest pins now differ from
+    # the last commit in the owned container's repo. No host path, no
+    # write; the restore beside it is a POST under the drain.
+    ("GET", "/api/workflow/{sContainerId}/committed-file-differences"),
     # Admin > Environment Info. Reads the image's labels off the
     # daemon and the tool versions from inside the owned container;
     # writes nothing, and is on demand rather than on the poll path,

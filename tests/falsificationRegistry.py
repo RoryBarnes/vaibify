@@ -15309,6 +15309,10 @@ def _fdictEntry(sRel):
             '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
             '            return;\n'
             '        }\n'
@@ -15322,6 +15326,8 @@ def _fdictEntry(sRel):
         ),
         # Suppress the copy warning for everyone: the pre-flight would
         # then have traded one failure for a worse one.
+        # RE-ANCHORED 2026-09-26: the refusal branch first offers the
+        # committed-file restore, and the mutant takes that with it.
         source='vaibify/gui/static/scriptApplication.js',
         old=(
             '        if (dictReady && (dictReady.bL3ReadinessOK !== '
@@ -15332,6 +15338,10 @@ def _fdictEntry(sRel):
             '=== false ||\n'
             '                dictReady.bDockerfileDescribesPinnedImage '
             '=== false)) {\n'
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
             '            _fnShowLevel3NotReadyModal(dictReady);\n'
             '            return;\n'
             '        }\n'
@@ -23935,5 +23945,113 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/pipelineRoutes.py',
         old='        if listGaps:\n            listIssues.append(\n',
         new='        if False:\n            listIssues.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_only_pinned_files_that_differ_from_head_are_listed'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # every changed tracked file is listed, pinned or not
+        old='        if sPath in setPinnedPaths\n',
+        new='        if sPath or setPinnedPaths\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_regenerated_manifest_is_itself_listed'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the manifest no longer pins itself
+        old='    setPinnedPaths.add(_S_MANIFEST_RELATIVE_PATH)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_the_restore_writes_the_committed_bytes_and_nothing_else'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the restore reaches the index, never the working tree
+        old='         "--worktree", "--", *listBatch],\n',
+        new='         "--staged", "--", *listBatch],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_pinned_name_that_looks_like_a_pattern_restores_only_itself'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # a pinned name is read as a pattern that matches unpinned work
+        old='        ["--literal-pathspecs", "restore", "--source=HEAD",\n',
+        new='        ["restore", "--source=HEAD",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_the_restore_refuses_the_researchers_own_directory'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the restore runs in the researcher's own directory
+        old=(
+            '    if filesRepo.fsLocalRootOrNone() is not None:\n'
+            '        raise CommittedFilesUndeterminedError(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise CommittedFilesUndeterminedError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_path_that_is_not_pinned_is_never_restored'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the caller's list is trusted instead of re-asked
+        old=(
+            '        sPath for sPath in listPathsToRestore '
+            'if sPath in setStillDiffering\n'
+        ),
+        new='        sPath for sPath in listPathsToRestore\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFileRoutes.py::'
+            'test_the_seed_restores_only_within_the_entries_it_copied'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # every pinned path counts as copied, so an excluded one returns
+        old='            return True\n    return False\n',
+        new='            return True\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWizardStartsFromCommittedFiles.py::'
+            'test_the_reader_can_start_the_container_from_the_committed_files'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # the researcher's choice never reaches the seed request
+        old=(
+            '                    bRestoreCommittedFiles:\n'
+            '                        _dictWizardData.bRestoreCommittedFiles '
+            '=== true,\n'
+        ),
+        new='                    bRestoreCommittedFiles: false,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyOffersCommittedRestore.py::'
+            'test_a_foreign_manifest_is_offered_the_committed_files_then_the_copy'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the pre-flight goes straight to the regenerate checklist
+        old=(
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
+        ),
+        new='',
     ),
 ]

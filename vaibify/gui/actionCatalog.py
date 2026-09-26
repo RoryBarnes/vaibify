@@ -640,6 +640,25 @@ LIST_AGENT_ACTIONS = [
                      "isolated and logged; the response carries the "
                      "fresh L3 readiness gaps so the caller sees what "
                      "the regeneration achieved."},
+    {"sName": "list-committed-file-differences",
+     "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/committed-file-differences",
+     "bAgentSafe": True,
+     "sDescription": "List the files MANIFEST.sha256 pins (as committed "
+                     "at HEAD, plus the manifest) whose working copy "
+                     "differs from the last commit, with whose manifest "
+                     "it is. Changes nothing."},
+    # User-only: it discards the container's changes to those files.
+    {"sName": "restore-committed-files", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/restore-committed-files",
+     "bAgentSafe": False,
+     "sDescription": "Inside a container only, write the last commit's "
+                     "version of every pinned file that differs from "
+                     "it, so the manifest describes the files again. "
+                     "Discards the container's changes to those files; "
+                     "a project on this machine is refused."},
     {"sName": "verify-dependency-lock", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/dependencies/verify",

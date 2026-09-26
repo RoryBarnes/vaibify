@@ -242,7 +242,10 @@ var VaibifyProofTab = (function () {
                  "work against what it says.",
              sHow: "Regenerate the envelope from the Artifacts " +
                  "section of the Project block; the manifest is " +
-                 "written last, after the files it pins.",
+                 "written last, after the files it pins. On a clone " +
+                 "whose manifest someone else committed, restore the " +
+                 "committed files instead -- Verify offers it in a " +
+                 "container.",
              sFixTabPanel: "steps",
              sFixLabel: "Open the Main tab"},
             {sStateKey: "bDependencyLockHashed",

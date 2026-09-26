@@ -25,6 +25,7 @@ __all__ = [
     "S_MANIFEST_OWNERSHIP_FOREIGN",
     "S_MANIFEST_OWNERSHIP_OWN",
     "S_MANIFEST_OWNERSHIP_UNDETERMINED",
+    "fbHeadTracksManifest",
     "fbManifestDiffersFromHead",
     "fbRepositoryCarriesForeignManifest",
     "fbRepositoryCarriesForeignTrackedFile",
@@ -150,14 +151,8 @@ def fbRepositoryCarriesForeignTrackedFile(ftRunGit, sRelativePath, sWhat):
     return sCommitter.lower() != sOwnEmail.lower()
 
 
-def fbManifestDiffersFromHead(ftRunGit):
-    """True iff HEAD tracks MANIFEST.sha256 and the working copy differs from it.
-
-    A manifest HEAD does not track has nothing to differ from and
-    answers False. ``git diff --quiet`` exits 0 for identical content
-    and 1 for a difference; any other exit is UNDETERMINED, because a
-    check that cannot tell reads as "the same" only by silence.
-    """
+def fbHeadTracksManifest(ftRunGit):
+    """True iff HEAD names a commit and that commit tracks MANIFEST.sha256."""
     if not _fbRepositoryHasACommit(ftRunGit):
         return False
     iExitCode, sTracked = _ftAskGit(
@@ -169,7 +164,18 @@ def fbManifestDiffersFromHead(ftRunGit):
             "git could not list HEAD to see whether the manifest is "
             f"tracked (exit {iExitCode})"
         )
-    if not sTracked:
+    return bool(sTracked)
+
+
+def fbManifestDiffersFromHead(ftRunGit):
+    """True iff HEAD tracks MANIFEST.sha256 and the working copy differs from it.
+
+    A manifest HEAD does not track has nothing to differ from and
+    answers False. ``git diff --quiet`` exits 0 for identical content
+    and 1 for a difference; any other exit is UNDETERMINED, because a
+    check that cannot tell reads as "the same" only by silence.
+    """
+    if not fbHeadTracksManifest(ftRunGit):
         return False
     iExitCode, _sOutput = _ftAskGit(
         ftRunGit, ["diff", "--quiet", "HEAD", "--", _S_MANIFEST_RELATIVE_PATH],

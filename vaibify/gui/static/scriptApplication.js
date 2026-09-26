@@ -5804,6 +5804,10 @@ const VaibifyApp = (function () {
                 dictReady.bImageMatchesDeclaredPackages === false ||
                 dictReady.bLockDoesNotBlockVerification === false ||
                 dictReady.bDockerfileDescribesPinnedImage === false)) {
+            if (await _fbOfferCommittedFileRestore(
+                    dictReady, fnOnConfirm, elButton)) {
+                return;
+            }
             _fnShowLevel3NotReadyModal(dictReady);
             return;
         }
@@ -5831,6 +5835,105 @@ const VaibifyApp = (function () {
                 sCancelLabel: "Not now",
             }
         );
+    }
+
+    async function _fbOfferCommittedFileRestore(
+        dictReady, fnOnConfirm, elButton,
+    ) {
+        /* The one refusal whose usual remedy is wrong on a clone. The
+           manifest misdescribes its files because the reader re-ran
+           the project somewhere else, and "Regenerate the envelope"
+           would replace the AUTHOR's manifest with the reader's own
+           bytes -- after which the verification compares the reader
+           with themselves. For a manifest someone else committed, in
+           a container, the remedy is the committed versions. The
+           gate is unchanged: this only names a different way through
+           it. Anything short of all three facts falls back to the
+           ordinary checklist. */
+        if (dictReady.bManifestMatchesTheFiles !== false) return false;
+        var dictDifferences = await _fdictFetchCommittedFileDifferences();
+        var listPaths = (dictDifferences || {}).listDifferingPaths || [];
+        if (!dictDifferences ||
+                dictDifferences.sManifestOwnership !== "foreign" ||
+                dictDifferences.bRestoreRunsInContainer !== true ||
+                listPaths.length === 0) {
+            return false;
+        }
+        fnShowConfirmModal(
+            "Restore the committed files first",
+            _fsDescribeCommittedFileRemedy(dictReady, listPaths),
+            function () {
+                _fnRestoreCommittedFilesThenVerify(fnOnConfirm, elButton);
+            },
+            {
+                sDetails: "Files that differ from the last commit: " +
+                    listPaths.join(", "),
+                sCommand: "git restore --source=HEAD --worktree -- " +
+                    listPaths.join(" "),
+                sConfirmLabel: "Restore the committed versions",
+                sCancelLabel: "Not now",
+            }
+        );
+        return true;
+    }
+
+    function _fsDescribeCommittedFileRemedy(dictReady, listPaths) {
+        var sLabel = _DICT_L3_READINESS_LABELS.bManifestMatchesTheFiles;
+        var listOthers = _flistNamePendingReadiness(dictReady).filter(
+            function (sItem) { return sItem !== sLabel; });
+        return listPaths.length + " file" +
+            (listPaths.length === 1 ? "" : "s") + " the author's " +
+            "manifest pins differ" + (listPaths.length === 1 ? "s" : "") +
+            " from the last commit, usually because the project was " +
+            "re-run outside the author's environment. Verification " +
+            "compares a fresh run against the author's manifest, so " +
+            "the manifest has to describe the files first.\n\n" +
+            "Restoring puts the committed versions back in this " +
+            "container and discards the container's changes to those " +
+            "files. Nothing outside the container is touched. " +
+            "(Regenerating the envelope instead would replace the " +
+            "author's manifest with your own results.)" +
+            (listOthers.length === 0 ? "" :
+                "\n\nAlso still to do before verifying:\n\u2022 " +
+                listOthers.join("\n\u2022 "));
+    }
+
+    async function _fdictFetchCommittedFileDifferences() {
+        try {
+            return await VaibifyApi.fdictGet(
+                "/api/workflow/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/committed-file-differences");
+        } catch (error) {
+            console.warn("[l3] committed-file check failed:",
+                error && error.message);
+            return null;
+        }
+    }
+
+    async function _fnRestoreCommittedFilesThenVerify(fnOnConfirm, elButton) {
+        /* Straight back into the verification once the files are
+           restored: the readiness is asked again rather than assumed,
+           so a remaining gap still gets its checklist. */
+        var fnRelease = _ffnHoldButtonBusy(elButton, "Restoring\u2026");
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/workflow/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/restore-committed-files", {});
+            var iRestored = (dictResult.listRestoredPaths || []).length;
+            fnShowToast("Restored the committed version" +
+                (iRestored === 1 ? "" : "s") + " of " + iRestored +
+                " file" + (iRestored === 1 ? "" : "s") + ".", "success");
+        } catch (error) {
+            fnShowToast("The committed files were not restored: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        } finally {
+            fnRelease();
+        }
+        await fnConfirmLevel3Verification(fnOnConfirm, elButton);
     }
 
     function _fsDescribeRerunCost(dictReady) {

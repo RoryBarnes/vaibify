@@ -197,6 +197,14 @@ from source.
    `generate-l3-envelope` is READ-ONLY despite its name — a
    diagnostic view, not a regeneration. Calling it and expecting
    files to change is a documented dead end.
+   On a CLONE, check first: when "Manifest matches the files" fails
+   and `vaibify-do list-committed-file-differences` reports
+   `sManifestOwnership: "foreign"`, the manifest is the author's claim
+   and regenerating replaces it with this container's bytes. The
+   remedy is the committed versions of the files it lists —
+   `restore-committed-files`, which is USER-ONLY because it discards
+   the container's changes to them. Name the files and let the
+   researcher choose; Verify offers the same restore.
 5. `vaibify-do view-l3-attestation` — has the rebuild been done, and
    why is the badge lit or not.
 6. USER-ONLY, surface never invoke: `pin-base-image-digest`

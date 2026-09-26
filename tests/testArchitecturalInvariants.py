@@ -5896,7 +5896,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module's job; the rule for which project lives in
     # agentProjectScope.
     # +1 (2026-09-25): registers the Prompt Record viewer's route module.
-    "pipelineServer.py": 3659,
+    # +1 (2026-09-26): registers the committed-file route module.
+    "pipelineServer.py": 3660,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6719,7 +6720,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2328,
+    # +35 (2026-09-26): the Files page's read of which pinned files in
+    # the researcher's own directory differ from the last commit. It
+    # sits beside the wizard's other reads of that directory (the git
+    # remote, the dependency scan), sharing their directory lookup and
+    # agent-lane refusal; the restore itself runs in the container.
+    "registryRoutes.py": 2363,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6900,7 +6906,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +23 (2026-09-25): update-ai-model (user-only: renaming a
     # declaration rewrites provenance) and the viewer's two agent-safe
     # reads, list-prompt-record-sessions and read-prompt-record-session.
-    "actionCatalog.py": 1395,
+    # +19 (2026-09-26): list-committed-file-differences (agent-safe
+    # read) and restore-committed-files (user-only: it discards the
+    # container's changes to the files it restores).
+    "actionCatalog.py": 1414,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -6977,7 +6986,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # .vaibify DURING the conversion, i.e. after the researcher chose
     # from a list that could not have offered it, so the selection
     # alone cannot carry it.
-    "routes/fileRoutes.py": 840,
+    # +59 (2026-09-26): the seed can start the container from the
+    # committed versions of the pinned files that differ, among the
+    # entries copied. It must run inside the seed's own admission,
+    # after the copy lands and before anyone else can see the tree.
+    "routes/fileRoutes.py": 899,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -7361,7 +7374,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and lease carve-outs cannot drift apart.
     # +8 (2026-09-25): the Prompt Record viewer's two GETs acknowledged
     # as container reads, with why they are reads.
-    "routeScope.py": 1054,
+    # +4 (2026-09-26): committed-file-differences acknowledged as a
+    # container read, with why it is one.
+    "routeScope.py": 1058,
 }
 
 

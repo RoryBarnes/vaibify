@@ -1980,7 +1980,7 @@ var VaibifyWorkflowManager = (function () {
             '<div id="wizardSeedRemoteNotice"></div>' +
             '<div id="wizardSeedList" class="wizard-feature-list">' +
             '<p class="muted-text">Reading the folder&hellip;</p>' +
-            '</div></div>';
+            '</div><div id="wizardCommittedFiles"></div></div>';
         _fnLoadSeedCandidates();
     }
 
@@ -2004,6 +2004,57 @@ var VaibifyWorkflowManager = (function () {
                         error.message)) + '</p>';
         }
         _fnLoadSeedRemoteNotice();
+        _fnLoadCommittedFileDifferences();
+    }
+
+    async function _fnLoadCommittedFileDifferences() {
+        /* A reader who re-ran a published project on this machine has,
+           by design, files that differ from the ones the author's
+           manifest pins -- and Level 3 verification refuses a project
+           in that state. Offered only when it is true, and never
+           ticked for them: copying the folder as it is stays the
+           default, because some researchers mean to keep their run. */
+        var elCommitted = document.getElementById("wizardCommittedFiles");
+        if (!elCommitted) return;
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/registry/" +
+                encodeURIComponent(_dictWizardData.sHostName) +
+                "/committed-file-differences");
+            var listPaths = dictResult.listDifferingPaths || [];
+            _dictWizardData.listCommittedFileDifferences = listPaths;
+            if (listPaths.length === 0) {
+                _dictWizardData.bRestoreCommittedFiles = false;
+            }
+            elCommitted.innerHTML = _fsRenderCommittedFileChoice(listPaths);
+        } catch (error) {
+            elCommitted.innerHTML = '<p class="muted-text">' +
+                VaibifyUtilities.fnEscapeHtml(
+                    "Could not compare this folder with its last " +
+                    "commit, so it will be copied as it is: " +
+                    VaibifyUtilities.fsSanitizeErrorForUser(
+                        error.message)) + '</p>';
+        }
+    }
+
+    function _fsRenderCommittedFileChoice(listPaths) {
+        if (listPaths.length === 0) return "";
+        return '<label class="wizard-feature-row">' +
+            '<input type="checkbox" id="wizardRestoreCommittedFiles"' +
+            (_dictWizardData.bRestoreCommittedFiles ? " checked" : "") +
+            '><span><strong>Start from the committed files</strong> ' +
+            '&mdash; ' + listPaths.length + ' file' +
+            (listPaths.length === 1 ? "" : "s") + ' the manifest ' +
+            'pins differ' + (listPaths.length === 1 ? "s" : "") +
+            ' from the last commit. Tick to put the committed ' +
+            'versions in the container; your own versions in this ' +
+            'folder are not touched.</span></label>' +
+            '<details class="wizard-committed-files"><summary>' +
+            'Which files</summary><ul>' +
+            listPaths.map(function (sPath) {
+                return '<li><code>' +
+                    VaibifyUtilities.fnEscapeHtml(sPath) + '</code></li>';
+            }).join("") + '</ul></details>';
     }
 
     function _fnRenderSeedCandidates(listEntries) {
@@ -2424,7 +2475,17 @@ var VaibifyWorkflowManager = (function () {
         var saSeedPaths = _dictWizardData.saSeedPaths || [];
         var sValue = saSeedPaths.length > 0
             ? saSeedPaths.join(", ") : "Nothing";
-        return _fsSummaryRow("Copied into the container", sValue);
+        return _fsSummaryRow("Copied into the container", sValue) +
+            _fsSummaryCommittedFilesLine();
+    }
+
+    function _fsSummaryCommittedFilesLine() {
+        var iDiffering =
+            (_dictWizardData.listCommittedFileDifferences || []).length;
+        if (iDiffering === 0) return "";
+        return _fsSummaryRow("Pinned files that differ (" + iDiffering +
+            ")", _dictWizardData.bRestoreCommittedFiles
+                ? "the committed versions" : "copied as they are");
     }
 
     function _fsSummaryHeadBlock() {
@@ -2550,6 +2611,11 @@ var VaibifyWorkflowManager = (function () {
         /* Only read when the page is actually on screen: a blank list
            saved from some other page would read as "the researcher
            unticked everything" and silently copy nothing. */
+        var elRestore = document.getElementById(
+            "wizardRestoreCommittedFiles");
+        if (elRestore) {
+            _dictWizardData.bRestoreCommittedFiles = elRestore.checked;
+        }
         var listRows = document.querySelectorAll(".wizard-seed-input");
         if (listRows.length === 0) return;
         _dictWizardData.saSeedPaths = Array.prototype.filter.call(
@@ -2926,17 +2992,39 @@ var VaibifyWorkflowManager = (function () {
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/files/" + encodeURIComponent(sContainerId) +
-                "/seed-workspace", {saRelativePaths: saSeedPaths});
+                "/seed-workspace", {
+                    saRelativePaths: saSeedPaths,
+                    bRestoreCommittedFiles:
+                        _dictWizardData.bRestoreCommittedFiles === true,
+                });
             VaibifyApp.fnShowToast(
                 "Copied " + dictResult.iCopiedCount +
-                " item(s) into " + dictResult.sDestination + ".",
-                "success");
+                " item(s) into " + dictResult.sDestination + "." +
+                _fsDescribeCommittedRestore(dictResult),
+                dictResult.sRestoreRefusal ? "warning" : "success");
         } catch (error) {
             VaibifyApp.fnShowToast(
                 "The container was built, but copying your files in " +
                 "failed: " + VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
         }
+    }
+
+    function _fsDescribeCommittedRestore(dictResult) {
+        /* A restore that did not happen is said as loudly as the copy
+           that did: the researcher asked for the committed versions,
+           and a container quietly holding their own would make the
+           verification they are heading for refuse without a reason. */
+        if (dictResult.sRestoreRefusal) {
+            return " The committed versions were NOT put in place, so " +
+                "your own versions are in the container: " +
+                dictResult.sRestoreRefusal;
+        }
+        var iRestored = (dictResult.listRestoredPaths || []).length;
+        if (iRestored === 0) return "";
+        return " " + iRestored + " pinned file" +
+            (iRestored === 1 ? " is" : "s are") + " the committed " +
+            "version" + (iRestored === 1 ? "" : "s") + ".";
     }
 
     async function _fnSubmitPromoteHostProject() {

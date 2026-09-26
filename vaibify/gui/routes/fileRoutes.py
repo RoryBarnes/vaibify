@@ -58,9 +58,12 @@ class WorkspaceSeedRequest(BaseModel):
     The paths are relative to the project's REGISTERED host directory,
     never absolute, so the request cannot nominate a location outside
     it; the handler proves containment again after resolving each one.
+    ``bRestoreCommittedFiles`` starts the container from the committed
+    versions of the pinned files that differ, among those copied.
     """
 
     saRelativePaths: List[str]
+    bRestoreCommittedFiles: bool = False
 
 
 # The write denylist moved to pipelineServer on 2026-07-25 so the test
@@ -538,22 +541,23 @@ def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
         sHostDirectory = _fsRequireHostDirectoryForSeed(
             dictLaneTuple["sContainerName"],
         )
+        listCopiedEntries = _flistAppendAlwaysSeededEntries(
+            sHostDirectory, request.saRelativePaths,
+        )
         listHostPaths = _flistResolveSeedPaths(
-            sHostDirectory,
-            _flistAppendAlwaysSeededEntries(
-                sHostDirectory, request.saRelativePaths,
-            ),
+            sHostDirectory, listCopiedEntries,
         )
         sDestination = posixpath.join(
             sWorkspaceRoot, os.path.basename(sHostDirectory),
         )
-        _fnCommitWorkspaceSeed(
+        dictRestore = _fdictCommitWorkspaceSeed(
             dictCtx, sContainerId, sDestination, listHostPaths,
             dictLaneTuple, requestHttp,
+            listCopiedEntries if request.bRestoreCommittedFiles else None,
         )
         return {
             "bSuccess": True, "sDestination": sDestination,
-            "iCopiedCount": len(listHostPaths),
+            "iCopiedCount": len(listHostPaths), **dictRestore,
         }
 
 
@@ -630,14 +634,19 @@ def _flistResolveSeedPaths(sHostDirectory, saRelativePaths):
     return listResolved
 
 
-def _fnCommitWorkspaceSeed(
+def _fdictCommitWorkspaceSeed(
     dictCtx, sContainerId, sDestination, listHostPaths,
-    dictLaneTuple, requestHttp,
+    dictLaneTuple, requestHttp, listRestoreWithinEntries=None,
 ):
-    """Commit the tree copy through carrier mode (a) (design §8)."""
+    """Commit the tree copy through carrier mode (a) (design §8).
+
+    ``listRestoreWithinEntries`` asks for the container to start from
+    the committed versions of the pinned files that differ, among the
+    entries copied; ``None`` copies the researcher's files as they are.
+    """
     from .. import commitCarrier
 
-    def fnSeedTheWorkspace():
+    def fdictSeedTheWorkspace():
         try:
             dictCtx["docker"].ftResultExecuteCommand(
                 sContainerId, f"mkdir -p {fsShellQuote(sDestination)}",
@@ -649,6 +658,12 @@ def _fnCommitWorkspaceSeed(
             raise
         except Exception as error:
             raise HTTPException(500, str(error))
+        if listRestoreWithinEntries is None:
+            return {"listRestoredPaths": [], "sRestoreRefusal": ""}
+        return _fdictRestoreCommittedFilesAfterSeed(
+            dictCtx["docker"], sContainerId, sDestination,
+            listRestoreWithinEntries,
+        )
 
     # Journalled as a file-write, the kind it actually is, rather than
     # a "workspace-seed" kind of its own: the journal's allowlist is
@@ -656,12 +671,56 @@ def _fnCommitWorkspaceSeed(
     # new kind is a promise the reconciler has to keep. The seed writes
     # files into the workspace and settles exactly like the upload
     # route beside it.
-    commitCarrier.fdictCommitSynchronousMutation(
+    return commitCarrier.fdictCommitSynchronousMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "file-write", sDestination,
-        fnSeedTheWorkspace,
+        fdictSeedTheWorkspace,
         fdictStampDockerIdForJournal(sContainerId),
+    )["result"]
+
+
+def _fdictRestoreCommittedFilesAfterSeed(
+    connectionDocker, sContainerId, sDestination, listCopiedEntries,
+):
+    """Restore the pinned files that differ from HEAD, among those copied.
+
+    The copy has already landed, so a git that cannot answer is
+    reported beside the success rather than raised: the files are all
+    there, as the researcher had them, and a raise here would
+    quarantine a container whose state is fully known. A pinned file
+    under an entry the researcher chose NOT to copy is left absent
+    rather than recreated from the commit.
+    """
+    from vaibify.reproducibility import committedFiles
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    filesContainer = ContainerRepoFiles(
+        connectionDocker, sContainerId, sDestination,
     )
+    try:
+        listWithinCopy = [
+            sPath for sPath in
+            committedFiles.flistPinnedPathsDifferingFromHead(filesContainer)
+            if _fbPathIsWithinEntries(sPath, listCopiedEntries)
+        ]
+        return {
+            "listRestoredPaths": committedFiles.flistRestorePinnedPathsFromHead(
+                filesContainer, listWithinCopy,
+            ),
+            "sRestoreRefusal": "",
+        }
+    except committedFiles.CommittedFilesUndeterminedError as error:
+        return {"listRestoredPaths": [], "sRestoreRefusal": str(error)}
+
+
+def _fbPathIsWithinEntries(sRelativePath, listEntries):
+    """True iff a repo-relative path is one of the entries or lies under one."""
+    for sEntry in listEntries:
+        sNormalized = posixpath.normpath(sEntry).strip("/")
+        if sRelativePath == sNormalized or sRelativePath.startswith(
+            sNormalized + "/",
+        ):
+            return True
+    return False
 
 
 def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):
