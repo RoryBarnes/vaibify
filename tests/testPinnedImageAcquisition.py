@@ -772,6 +772,31 @@ def test_the_pinned_environment_is_described_from_the_clone(tmp_path):
     ] is False
 
 
+@pytest.mark.falsification
+def test_a_refusal_is_said_in_the_researchers_words_first(tmp_path):
+    """Kills: showing the rule text where the researcher's sentence belongs.
+
+    The Environment page is read before anything has run, by someone
+    who has never met "rule 2" -- and the rule's own remedy (regenerate
+    the envelope) would rewrite a published clone's record. The plain
+    sentence names the cause and the one check a reader can make; the
+    rule stays available as the detail.
+    """
+    sRepo = str(tmp_path / "clone")
+    dictEnvelope = fdictBuildEnvelope()
+    dictEnvelope["dictContainer"].pop("sArchitecture")
+    fnWriteJson(sRepo, ".vaibify/environment.json", dictEnvelope)
+    dictRefused = fdictDescribePinnedEnvironment(sRepo)
+    sPlain = dictRefused["sPlainRefusal"]
+    assert "kind of processor" in sPlain
+    assert "git status" in sPlain
+    assert "rule 2" not in sPlain and "Regenerate" not in sPlain
+    assert dictRefused["sRefusal"].startswith("rule 2")
+    assert fdictDescribePinnedEnvironment(str(tmp_path / "nowhere"))[
+        "sPlainRefusal"
+    ].startswith("This folder has no record")
+
+
 def test_the_conversion_result_names_the_acquire_hand_off(tmp_path):
     _fdictRegisterObtainedProject(tmp_path, [], [])
     dictResult = registryRoutes._fdictConversionResult("proj", True)

@@ -1514,10 +1514,7 @@ var VaibifyWorkflowManager = (function () {
             (bPinnedChosen ? " checked" : "") +
             (bObtainable ? "" : " disabled") + '>' +
             '<span>Use the author’s pinned image</span></label>' +
-            (bObtainable ? "" :
-                '<div class="wizard-environment-refusal">' +
-                VaibifyUtilities.fnEscapeHtml(dictPinned.sRefusal || "") +
-                '</div>') +
+            (bObtainable ? "" : _fsRenderEnvironmentRefusal(dictPinned)) +
             (bObtainable ?
                 '<table class="wizard-environment-facts">' +
                 _fsEnvironmentFactRow("Pinned image",
@@ -1547,6 +1544,19 @@ var VaibifyWorkflowManager = (function () {
             'different image digest, so the result will not carry the ' +
             'author’s digest and cannot reproduce their bytes ' +
             'exactly.</div></div>';
+    }
+
+    function _fsRenderEnvironmentRefusal(dictPinned) {
+        /* The researcher's sentence first; the rule it comes from,
+           which is what the command line prints, one click away. */
+        var sPlain = dictPinned.sPlainRefusal || dictPinned.sRefusal || "";
+        var sDetails = dictPinned.sPlainRefusal ? (dictPinned.sRefusal || "") : "";
+        return '<div class="wizard-environment-refusal">' +
+            VaibifyUtilities.fnEscapeHtml(sPlain) +
+            (sDetails ? '<details class="wizard-environment-refusal-details">' +
+                '<summary>Details</summary>' +
+                VaibifyUtilities.fnEscapeHtml(sDetails) + '</details>' : "") +
+            '</div>';
     }
 
     function _fnBindEnvironmentChoice(elContent) {

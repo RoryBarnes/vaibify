@@ -17996,7 +17996,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testReproductionSource.py::test_rule_2_a_tag_instead_of_a_digest_refuses',
         source='vaibify/reproducibility/reproductionSource.py',
-        old='    except ShadowRerunRefusedError as error:\n        raise ReproductionSourceRefusedError(\n            f"rule 2 (environment envelope): {error}"\n        ) from error\n',
+        # RE-ANCHORED 2026-09-26: the refusal now carries a plain reason.
+        old='    except ShadowRerunRefusedError as error:\n        raise ReproductionSourceRefusedError(\n            f"rule 2 (environment envelope): {error}",\n            "This copy of the project does not name the author\'s image "\n            "exactly, so vaibify cannot obtain it.",\n        ) from error\n',
         new='    except ShadowRerunRefusedError:\n        sPinned = ""\n',
     ),
     Falsification(
@@ -24053,5 +24054,19 @@ def _fdictEntry(sRel):
             '            }\n'
         ),
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_refusal_is_said_in_the_researchers_words_first'
+        ),
+        source='vaibify/reproducibility/reproductionSource.py',
+        # the plain field carries the rule text again
+        old=(
+            '                (error.sPlainReason or "vaibify cannot obtain the "\n'
+        ),
+        new=(
+            '                (str(error) or "vaibify cannot obtain the "\n'
+        ),
     ),
 ]
