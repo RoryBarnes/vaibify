@@ -62,8 +62,12 @@ class WorkspaceSeedRequest(BaseModel):
     versions of the pinned files that differ, among those copied.
     """
 
-    saRelativePaths: List[str]
+    saRelativePaths: List[str] = []
     bRestoreCommittedFiles: bool = False
+    # Copy what the conversion recorded, if anything: the paths and the
+    # committed-files choice then come from the registry entry, never
+    # from this request. Nothing pending answers bNothingPending.
+    bApplyPending: bool = False
 
 
 # The write denylist moved to pipelineServer on 2026-07-25 so the test
@@ -538,11 +542,14 @@ def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
         dictLaneTuple = fdictRequireLaneTupleForCommit(
             requestHttp, sContainerId, "The workspace seed",
         )
-        sHostDirectory = _fsRequireHostDirectoryForSeed(
-            dictLaneTuple["sContainerName"],
-        )
+        sContainerName = dictLaneTuple["sContainerName"]
+        tSeed = _ftSeedChoice(sContainerName, request)
+        if tSeed is None:
+            return {"bSuccess": True, "bNothingPending": True}
+        saRelativePaths, bRestoreCommittedFiles = tSeed
+        sHostDirectory = _fsRequireHostDirectoryForSeed(sContainerName)
         listCopiedEntries = _flistAppendAlwaysSeededEntries(
-            sHostDirectory, request.saRelativePaths,
+            sHostDirectory, saRelativePaths,
         )
         listHostPaths = _flistResolveSeedPaths(
             sHostDirectory, listCopiedEntries,
@@ -553,12 +560,38 @@ def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
         dictRestore = _fdictCommitWorkspaceSeed(
             dictCtx, sContainerId, sDestination, listHostPaths,
             dictLaneTuple, requestHttp,
-            listCopiedEntries if request.bRestoreCommittedFiles else None,
+            listCopiedEntries if bRestoreCommittedFiles else None,
         )
+        from vaibify.config.registryManager import fnSetPendingSeed
+        fnSetPendingSeed(sContainerName, None)
         return {
             "bSuccess": True, "sDestination": sDestination,
             "iCopiedCount": len(listHostPaths), **dictRestore,
         }
+
+
+def _ftSeedChoice(sContainerName, request):
+    """Return ``(saRelativePaths, bRestoreCommittedFiles)``, or ``None``.
+
+    ``None`` only when the request asks for the pending copy and the
+    registry records none -- the ordinary answer for every container
+    start after the first.
+    """
+    if not request.bApplyPending:
+        return request.saRelativePaths, request.bRestoreCommittedFiles
+    from vaibify.config.registryManager import (
+        S_PENDING_SEED_KEY,
+        fdictGetProject,
+    )
+    dictPending = (fdictGetProject(sContainerName) or {}).get(
+        S_PENDING_SEED_KEY)
+    if not isinstance(dictPending, dict) or not dictPending.get(
+            "saRelativePaths"):
+        return None
+    return (
+        list(dictPending["saRelativePaths"]),
+        bool(dictPending.get("bRestoreCommittedFiles")),
+    )
 
 
 def _fsRequireHostDirectoryForSeed(sContainerName):

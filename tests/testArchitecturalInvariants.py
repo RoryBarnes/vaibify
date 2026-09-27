@@ -6725,7 +6725,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # sits beside the wizard's other reads of that directory (the git
     # remote, the dependency scan), sharing their directory lookup and
     # agent-lane refusal; the restore itself runs in the container.
-    "registryRoutes.py": 2363,
+    # +12 (2026-09-27): the conversion records the Files page's choice
+    # on the registry entry, so the first start that succeeds -- not
+    # only the wizard's own -- copies it.
+    "registryRoutes.py": 2375,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6990,7 +6993,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # committed versions of the pinned files that differ, among the
     # entries copied. It must run inside the seed's own admission,
     # after the copy lands and before anyone else can see the tree.
-    "routes/fileRoutes.py": 899,
+    # +33 (2026-09-27): the seed applies the conversion's recorded
+    # choice when asked for the pending copy, and clears it once the
+    # copy lands -- one seed route for the wizard and every retry.
+    "routes/fileRoutes.py": 932,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one

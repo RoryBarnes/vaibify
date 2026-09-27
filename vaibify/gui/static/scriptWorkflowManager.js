@@ -1592,11 +1592,18 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _flistAuthorEnabledFeatures() {
-        var dictAuthor = (_dictWizardData.dictPinnedEnvironment || {})
-            .dictAuthorFeatures || {};
+        /* Agents from the list the conversion itself will use; the
+           other toggles from the author's vaibify.yml. */
+        var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
+        var dictAuthor = dictPinned.dictAuthorFeatures || {};
+        var listAgents = dictPinned.listAgentOverlays || [];
+        var listAuthorAgents = dictPinned.listAuthorOverlays || [];
         return _LIST_FEATURE_DEFINITIONS.map(function (dictFeature) {
             return dictFeature.sKey;
         }).filter(function (sKey) {
+            if (listAgents.indexOf(sKey) !== -1) {
+                return listAuthorAgents.indexOf(sKey) !== -1;
+            }
             return dictAuthor[sKey] === true;
         });
     }
@@ -1608,10 +1615,10 @@ var VaibifyWorkflowManager = (function () {
            addition. */
         if (!_fbUsingPinnedImage()) return "";
         var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
-        var dictAuthor = dictPinned.dictAuthorFeatures || {};
         var listAgents = dictPinned.listAgentOverlays || [];
+        var listAuthorAgents = dictPinned.listAuthorOverlays || [];
         if (listAgents.indexOf(sKey) !== -1) {
-            return dictAuthor[sKey] === true ? "author" : "";
+            return listAuthorAgents.indexOf(sKey) !== -1 ? "author" : "";
         }
         return "base";
     }
@@ -2930,16 +2937,20 @@ var VaibifyWorkflowManager = (function () {
             "Converted '" + sHostName + "' to '" + sNewName + "'. " +
             (bAcquire ? "Obtaining the author’s pinned image now."
                 : "Building the image now."), "success");
+        /* The files chosen on the Files page were recorded with the
+           conversion, and are copied by the first start that succeeds
+           -- this one, or a retry from the tile after a failure. */
         var bBuiltAndRunning = bAcquire
             ? await VaibifyContainerManager.fnAcquireImage(
                 sNewName, _dictWizardData.bAllowEmulation === true)
             : await VaibifyContainerManager.fnBuildContainer(sNewName);
-        /* A failed build has already said so, with the builder's own
-           output. Attempting the copy anyway would bury that behind a
-           second, vaguer message about a container that was never
-           created. */
-        if (bBuiltAndRunning) {
-            await _fnCopySelectedFilesIntoContainer(sNewName);
+        if (!bBuiltAndRunning &&
+                (_dictWizardData.saSeedPaths || []).length > 0) {
+            VaibifyApp.fnShowToast(
+                "Your files have not been copied into '" + sNewName +
+                "' yet. They are copied the first time the container " +
+                "starts, including after a retry from its tile; your " +
+                "originals are untouched.", "info");
         }
         VaibifyContainerManager.fnLoadContainers();
     }
@@ -2975,86 +2986,6 @@ var VaibifyWorkflowManager = (function () {
         return Object.assign({}, _dictWizardData, {
             listPythonPackages: listMerged,
         });
-    }
-
-    async function _fnCopySelectedFilesIntoContainer(sNewName) {
-        /* After the build AND the start it performs: the workspace is
-           a Docker volume that does not exist until the container
-           runs, so there is nowhere to copy to before this point. A
-           failure is reported and never swallowed -- a container the
-           researcher believes holds their files but does not is the
-           dashboard lying about state. */
-        var saSeedPaths = _dictWizardData.saSeedPaths || [];
-        if (saSeedPaths.length === 0) return;
-        /* Claim first. Copying into a container is a container
-           mutation, so it is refused unless this session holds the
-           lease -- and nobody holds one on a container that came into
-           existence thirty seconds ago. Claiming is honest here rather
-           than a workaround: this tab created the container and is
-           about to put the researcher's files in it, which is exactly
-           what owning it means. */
-        if (!await VaibifyContainerManager.fbClaimContainer(sNewName)) {
-            VaibifyApp.fnShowToast(
-                "The container was built, but your files were not " +
-                "copied in: it is in use in another session.", "error");
-            return;
-        }
-        /* The route is container-SCOPED, so its path segment must be
-           the container id the authority resolves against the owner
-           map -- the name the wizard has been carrying is not
-           interchangeable there. */
-        var sContainerId =
-            await VaibifyContainerManager.fsResolveContainerId(sNewName);
-        if (!sContainerId) {
-            /* Name the recovery, not just the symptom: the originals
-               are untouched on the host, so the researcher needs to
-               know nothing was lost and what to do next. Drag-and-drop
-               onto the Files panel is the affordance that actually
-               exists (scriptFiles.js); do not promise a re-copy
-               button here until there is one. */
-            VaibifyApp.fnShowToast(
-                "Your files were not copied in: '" + sNewName +
-                "' is not running yet. Your originals are untouched " +
-                "— start it from its tile, then drag them onto the " +
-                "Files panel.", "error");
-            return;
-        }
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/files/" + encodeURIComponent(sContainerId) +
-                "/seed-workspace", {
-                    saRelativePaths: saSeedPaths,
-                    bRestoreCommittedFiles:
-                        _dictWizardData.bRestoreCommittedFiles === true,
-                });
-            VaibifyApp.fnShowToast(
-                "Copied " + dictResult.iCopiedCount +
-                " item(s) into " + dictResult.sDestination + "." +
-                _fsDescribeCommittedRestore(dictResult),
-                dictResult.sRestoreRefusal ? "warning" : "success");
-        } catch (error) {
-            VaibifyApp.fnShowToast(
-                "The container was built, but copying your files in " +
-                "failed: " + VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
-        }
-    }
-
-    function _fsDescribeCommittedRestore(dictResult) {
-        /* A restore that did not happen is said as loudly as the copy
-           that did: the researcher asked for the committed versions,
-           and a container quietly holding their own would make the
-           verification they are heading for refuse without a reason. */
-        if (dictResult.sRestoreRefusal) {
-            return " The committed versions were NOT put in place, so " +
-                "your own versions are in the container: " +
-                dictResult.sRestoreRefusal;
-        }
-        var iRestored = (dictResult.listRestoredPaths || []).length;
-        if (iRestored === 0) return "";
-        return " " + iRestored + " pinned file" +
-            (iRestored === 1 ? " is" : "s are") + " the committed " +
-            "version" + (iRestored === 1 ? "" : "s") + ".";
     }
 
     async function _fnSubmitPromoteHostProject() {

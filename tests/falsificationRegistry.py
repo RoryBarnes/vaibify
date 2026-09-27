@@ -24031,14 +24031,15 @@ def _fdictEntry(sRel):
             'tests/browser/testWizardStartsFromCommittedFiles.py::'
             'test_the_reader_can_start_the_container_from_the_committed_files'
         ),
-        source='vaibify/gui/static/scriptWorkflowManager.js',
-        # the researcher's choice never reaches the seed request
+        source='vaibify/gui/registryRoutes.py',
+        # RE-ANCHORED 2026-09-27: the choice rides the conversion into
+        # the registry and the first start copies it; the mutant drops
+        # it there, where the seed now reads it.
         old=(
-            '                    bRestoreCommittedFiles:\n'
-            '                        _dictWizardData.bRestoreCommittedFiles '
-            '=== true,\n'
+            '                    "bRestoreCommittedFiles": bool(\n'
+            '                        request.bRestoreCommittedFiles),\n'
         ),
-        new='                    bRestoreCommittedFiles: false,\n',
+        new='                    "bRestoreCommittedFiles": False,\n',
     ),
     Falsification(
         nodeid=(
@@ -24121,5 +24122,29 @@ def _fdictEntry(sRel):
         # the daemon is handed the decompressing reader itself
         old='            dockerDisposable.images.load(fiterReadInChunks(fileStream)) or [],\n',
         new='            dockerDisposable.images.load(fileStream) or [],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_files_a_conversion_chose_stay_pending_until_copied'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # the pending request seeds from its own (empty) fields
+        old='    if not request.bApplyPending:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_wizard_reads_the_authors_agents_the_way_the_conversion_does'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # the page reads the author's agents from vaibify.yml alone again
+        old='        listAuthorOverlays=_flistCandidateOverlaysOrEmpty(dictProject),\n',
+        new=(
+            '        listAuthorOverlays=[sKey for sKey, bOn in '
+            '_fdictReadAuthorFeatures(dictProject["sConfigPath"]).items() '
+            'if bOn is True],\n'
+        ),
     ),
 ]

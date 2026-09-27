@@ -1243,3 +1243,59 @@ def test_an_acquisition_failure_is_reported_whole():
     assert "the archive's decisive reason" in sMessage
     assert sMessage.startswith("Obtaining the author's pinned image")
     assert "Build of" not in sMessage
+
+
+@pytest.mark.falsification
+def test_the_files_a_conversion_chose_stay_pending_until_copied(tmp_path):
+    """Kills: seeding from the request instead of the recorded choice.
+
+    The wizard used to copy the chosen files itself, only when its own
+    first acquisition succeeded; a failed download followed by Re-obtain
+    from the tile opened an empty workspace (2026-09-26). The choice is
+    now recorded with the conversion, and whichever start succeeds
+    first asks for it.
+    """
+    from vaibify.gui.routes import fileRoutes
+    _fdictRegisterObtainedProject(tmp_path, [], [])
+    registryManager.fnSetPendingSeed("proj", {
+        "saRelativePaths": ["Step", "MANIFEST.sha256"],
+        "bRestoreCommittedFiles": True,
+    })
+    requestPending = fileRoutes.WorkspaceSeedRequest(bApplyPending=True)
+    assert fileRoutes._ftSeedChoice("proj", requestPending) == (
+        ["Step", "MANIFEST.sha256"], True,
+    )
+    registryManager.fnSetPendingSeed("proj", None)
+    assert fileRoutes._ftSeedChoice("proj", requestPending) is None
+    assert "dictPendingSeed" not in registryManager.fdictGetProject("proj")
+    requestExplicit = fileRoutes.WorkspaceSeedRequest(
+        saRelativePaths=["data"], bRestoreCommittedFiles=False,
+    )
+    assert fileRoutes._ftSeedChoice("proj", requestExplicit) == (
+        ["data"], False,
+    )
+
+
+@pytest.mark.falsification
+def test_the_wizard_reads_the_authors_agents_the_way_the_conversion_does(
+    tmp_path,
+):
+    """Kills: marking agents as the author's from vaibify.yml alone.
+
+    A published clone's Dockerfile header said the image was built with
+    no overlays while its vaibify.yml enabled Claude and Codex. The
+    page showed both as already installed; the conversion, reading the
+    header, asked to add them; the acquisition refused (2026-09-27).
+    """
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictDescribePinnedEnvironmentForWizard,
+    )
+    dictProject = _fdictRegisterObtainedProject(tmp_path, [], [])
+    with open(os.path.join(dictProject["sDirectory"], "Dockerfile"), "w") as fileHandle:
+        fileHandle.write(
+            "# vaibify:generated-image-dockerfile\n"
+            "#   base + overlays in order: (none)\n"
+        )
+    dictDescribed = fdictDescribePinnedEnvironmentForWizard(dictProject, None)
+    assert dictDescribed["dictAuthorFeatures"].get("claude") is True
+    assert dictDescribed["listAuthorOverlays"] == []

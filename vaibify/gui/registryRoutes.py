@@ -165,6 +165,12 @@ class ConvertToContainerRequest(BaseModel):
     # attempt: an obtained image built for another architecture runs
     # under emulation only when the researcher said so twice.
     bAllowEmulation: bool = False
+    # The Files page: what to copy into the container once it first
+    # runs, and whether pinned files that differ from the last commit
+    # start as their committed versions. Recorded on the entry, never
+    # held by the page, because the first run may be a later retry.
+    saSeedPaths: List[str] = []
+    bRestoreCommittedFiles: bool = False
 
 
 class PromoteHostProjectRequest(BaseModel):
@@ -1726,6 +1732,12 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             registryManager.fnConvertProjectToContainer(
                 sName, request.sProjectName, dictImageSource,
             )
+            if request.saSeedPaths:
+                registryManager.fnSetPendingSeed(request.sProjectName, {
+                    "saRelativePaths": list(request.saSeedPaths),
+                    "bRestoreCommittedFiles": bool(
+                        request.bRestoreCommittedFiles),
+                })
         except KeyError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:

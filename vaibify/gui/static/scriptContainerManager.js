@@ -1764,7 +1764,9 @@ var VaibifyContainerManager = (function () {
         if (!sName) return;
         fnSetTilePending(sName);
         try {
-            await _fnFollowStartToItsOutcome(sName, {});
+            if (await _fnFollowStartToItsOutcome(sName, {})) {
+                await _fnCopyPendingFilesIntoContainer(sName);
+            }
         } catch (error) {
             _fnForgetPendingStart();
         }
@@ -1778,7 +1780,9 @@ var VaibifyContainerManager = (function () {
                 _fsContainerUrl(sName, "/start"),
                 _fdictStartBody(sName)
             );
-            await _fnFollowStartToItsOutcome(sName, dictStart);
+            if (await _fnFollowStartToItsOutcome(sName, dictStart)) {
+                await _fnCopyPendingFilesIntoContainer(sName);
+            }
         } catch (error) {
             _fnForgetPendingStart();
             if (_fbOfferReleaseOfHeldContainer(
@@ -1850,8 +1854,7 @@ var VaibifyContainerManager = (function () {
                 continue;
             }
             if (dictStatus.sState !== "PENDING") {
-                _fnReportStartOutcome(sName, dictStatus);
-                return;
+                return _fbReportStartOutcome(sName, dictStatus);
             }
             _fnWarnOnStalledStart(sName, dictStatus, iAttempt);
             await _fnSleepMilliseconds(_I_START_POLL_INTERVAL_MILLISECONDS);
@@ -1861,16 +1864,19 @@ var VaibifyContainerManager = (function () {
             "Container '" + sName + "' is still starting. Its status "
             + "stays available; use Cancel Start if it is stuck.",
             "warning");
+        return false;
     }
 
-    function _fnReportStartOutcome(sName, dictStatus) {
+    function _fbReportStartOutcome(sName, dictStatus) {
+        /* Returns whether the container is now running and this tab
+           holds it -- what the pending file copy needs to know. */
         _fnForgetPendingStart();
         if (dictStatus.sState === "SUCCEEDED") {
             if (dictStatus.sLeaseId) {
                 VaibifyApp.fnRecordClaimedLease(sName, dictStatus.sLeaseId);
             }
             VaibifyApp.fnShowToast("Container started", "success");
-            return;
+            return true;
         }
         /* OWNED is not an outcome: it means no start result is on
            record and this session still owns the container, which is
@@ -1884,7 +1890,7 @@ var VaibifyContainerManager = (function () {
             VaibifyApp.fnShowToast(
                 "Container '" + sName + "' is running and still yours.",
                 "success");
-            return;
+            return true;
         }
         _dictAcknowledgedStartFailure[sName] = dictStatus.sReservationId;
         VaibifyDiagnosis.fnReportFailure(
@@ -1892,7 +1898,56 @@ var VaibifyContainerManager = (function () {
                 dictStatus.sError
                 || ("Start of '" + sName + "' failed, and the hub " +
                     "recorded no reason.")));
+        return false;
     }
+
+    async function _fnCopyPendingFilesIntoContainer(sName) {
+        /* A conversion records the files chosen on its Files page; the
+           first start that succeeds copies them, whichever action
+           started it. Every later start asks as well and is told
+           nothing is pending. A failed copy stays pending, so the next
+           start tries again -- the originals are on the host either
+           way. */
+        var sContainerId = await fsResolveContainerId(sName);
+        if (!sContainerId) return;
+        var dictResult;
+        try {
+            dictResult = await VaibifyApi.fdictPost(
+                "/api/files/" + encodeURIComponent(sContainerId) +
+                "/seed-workspace", {bApplyPending: true});
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                "The container started, but your project's files were " +
+                "not copied in: " + VaibifyDiagnosis.fsExplainError(error) +
+                " They will be copied the next time it starts; your " +
+                "originals are untouched.", "error");
+            return;
+        }
+        if (dictResult.bNothingPending) return;
+        VaibifyApp.fnShowToast(
+            "Copied " + dictResult.iCopiedCount + " item(s) into " +
+            dictResult.sDestination + "." +
+            _fsDescribeCommittedRestore(dictResult),
+            dictResult.sRestoreRefusal ? "warning" : "success");
+    }
+
+    function _fsDescribeCommittedRestore(dictResult) {
+        /* A restore that did not happen is said as loudly as the copy
+           that did: the researcher asked for the committed versions,
+           and a container quietly holding their own would make the
+           verification they are heading for refuse without a reason. */
+        if (dictResult.sRestoreRefusal) {
+            return " The committed versions were NOT put in place, so " +
+                "your own versions are in the container: " +
+                dictResult.sRestoreRefusal;
+        }
+        var iRestored = (dictResult.listRestoredPaths || []).length;
+        if (iRestored === 0) return "";
+        return " " + iRestored + " pinned file" +
+            (iRestored === 1 ? " is" : "s are") + " the committed " +
+            "version" + (iRestored === 1 ? "" : "s") + ".";
+    }
+
 
     function _fnWarnOnStalledStart(sName, dictStatus, iAttempt) {
         if (!dictStatus.bHeartbeatStale || iAttempt % 30 !== 0) return;

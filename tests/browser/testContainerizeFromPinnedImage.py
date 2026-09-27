@@ -42,6 +42,9 @@ def _fdictPinnedAnswer(bObtainable=True, bMatches=True):
             "sRequiredPlatform": "linux/amd64", "bArchitectureMatches": bMatches,
         },
         "dictAuthorFeatures": {"claude": True, "latex": True, "codex": False},
+        # What the route sends beside the feature toggles: the agents
+        # the conversion itself takes the author's image to hold.
+        "listAuthorOverlays": ["claude"],
         "listAgentOverlays": [
             "claude", "codex", "gemini", "antigravity", "opencode", "cline",
             "openhands", "pi",
