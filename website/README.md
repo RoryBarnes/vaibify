@@ -6,9 +6,13 @@ application server, analytics, or credential configuration in the page.
 The existing documentation and its GitHub Pages deployment stay separate.
 All documentation links currently point to `RoryBarnes.github.io/vaibify`.
 
-The two diagrams are labeled illustrations, not live project state or
-application screenshots. The logo and favicon are copies of the existing
-application assets. Update these copies if the application branding changes.
+The homepage shows the real dashboard image from
+`docs/vaibify_screenshot.png`, copied unchanged to
+`public/assets/vaibifyDashboard.png`. It is a recorded research session,
+not live project state; the caption identifies the pending verification.
+Replace the copy when updating the screenshot and check its caption against
+what the new image actually shows. The logo and favicon use the existing
+application branding.
 
 ## Preview locally
 
