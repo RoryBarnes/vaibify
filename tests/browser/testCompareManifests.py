@@ -423,3 +423,38 @@ def test_the_confirm_names_the_attestation_otherwise(
     assert ".vaibify/reproductions" not in sText, sText
     assert "attestation" in sText.lower(), sText
     assert "copy" in sText.lower(), sText
+
+
+@pytest.mark.falsification
+def test_each_file_outcome_reads_at_the_panel_width(pageDashboard, serverHub):
+    """Kills: squeezing the path and the verdict into a sliver.
+
+    The outcomes were a four-column table in a narrow panel: the two
+    hash columns took their full width and the path and verdict were
+    broken to a character or two per line (researcher-reported,
+    2026-09-27). Measured on the live card: every path is at least a
+    third of the card wide, and every verdict sits on one line.
+    """
+    _fnOpenTheProofTab(
+        pageDashboard, serverHub,
+        _fdictAttestationPayload(_fdictAttestation(None)),
+    )
+    listRows = pageDashboard.evaluate("""() => {
+        const elCard = document.querySelector('.proof-attestation-card');
+        const fCard = elCard.getBoundingClientRect().width;
+        return Array.from(elCard.querySelectorAll('.file-outcome')).map(el => {
+            const elPath = el.querySelector('.file-outcome-path');
+            const elWord = el.querySelector('.file-outcome-word');
+            const fLine = parseFloat(getComputedStyle(elWord).lineHeight) || 16;
+            return {
+                fPathShare: elPath.getBoundingClientRect().width / fCard,
+                fWordHeight: elWord.getBoundingClientRect().height,
+                fLine: fLine,
+            };
+        });
+    }""")
+    assert listRows, "the card rendered no file outcomes"
+    for dictRow in listRows:
+        assert dictRow["fPathShare"] >= 0.33, dictRow
+        assert dictRow["fWordHeight"] <= dictRow["fLine"] * 1.5, dictRow
+    assert pageDashboard.listPageErrors == []

@@ -24147,4 +24147,17 @@ def _fdictEntry(sRel):
             'if bOn is True],\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCompareManifests.py::'
+            'test_each_file_outcome_reads_at_the_panel_width'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # the verdict is squeezed into a sliver, as the table did
+        old='.file-outcome-word {\n    white-space: nowrap;\n}\n',
+        new=(
+            '.file-outcome-word {\n    display: inline-block;\n'
+            '    width: 2ch;\n    word-break: break-all;\n}\n'
+        ),
+    ),
 ]

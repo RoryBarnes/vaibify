@@ -51,32 +51,36 @@ var VaibifyFileOutcomes = (function () {
         });
     }
 
-    function _fsRenderHashCell(sHash) {
-        if (!sHash) return "<td class=\"file-outcome-hash\">—</td>";
-        return '<td class="file-outcome-hash" title="' +
-            fnEscapeHtml(sHash) + '"><code>' +
+    function _fsRenderHash(sLabel, sHash) {
+        if (!sHash) return sLabel + " \u2014";
+        return sLabel + ' <code title="' + fnEscapeHtml(sHash) + '">' +
             fnEscapeHtml(String(sHash).slice(0, _I_SHORT_HASH_CHARACTERS)) +
-            "</code></td>";
+            "</code>";
     }
 
     function _fsRenderOutcomeRow(dictOutcome) {
+        /* Two lines per file, not four columns: these cards sit in a
+           narrow panel, where a table gave the hashes their full width
+           and squeezed the path and the verdict to a character or two
+           (researcher-reported, 2026-09-27). The full hash stays one
+           hover away. */
         var sStatus = dictOutcome.sStatus || "";
         var sWord = _DICT_STATUS_WORDS[sStatus] || sStatus;
-        return '<tr class="file-outcome-' + fnEscapeHtml(sStatus) + '">' +
-            "<td>" + fnEscapeHtml(dictOutcome.sPath || "") + "</td>" +
-            _fsRenderHashCell(dictOutcome.sExpected) +
-            _fsRenderHashCell(dictOutcome.sObserved) +
-            "<td>" + fnEscapeHtml(sWord) + "</td></tr>";
+        return '<li class="file-outcome file-outcome-' +
+            fnEscapeHtml(sStatus) + '"><div class="file-outcome-head">' +
+            '<span class="file-outcome-path">' +
+            fnEscapeHtml(dictOutcome.sPath || "") + "</span>" +
+            '<span class="file-outcome-word">' + fnEscapeHtml(sWord) +
+            "</span></div>" + '<div class="file-outcome-hashes">' +
+            _fsRenderHash("expected", dictOutcome.sExpected) + " \u00b7 " +
+            _fsRenderHash("observed", dictOutcome.sObserved) + "</div></li>";
     }
 
     function fsRenderFileOutcomesTable(listFileOutcomes) {
         if (!listFileOutcomes || !listFileOutcomes.length) return "";
         var sRows = flistSortOutcomes(listFileOutcomes)
             .map(_fsRenderOutcomeRow).join("");
-        return '<table class="file-outcomes"><thead><tr>' +
-            "<th>File</th><th>Expected</th><th>Observed</th>" +
-            "<th>Outcome</th></tr></thead><tbody>" + sRows +
-            "</tbody></table>";
+        return '<ul class="file-outcomes">' + sRows + "</ul>";
     }
 
     function flistOutcomesFromPathLists(listDiverged, listCarried,

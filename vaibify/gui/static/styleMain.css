@@ -4407,31 +4407,45 @@ body.proof-level-3 .toolbar-label {
    attestation card and the "Your reproduction" card
    (scriptFileOutcomes.js). */
 .file-outcomes {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
+    list-style: none;
     margin: 8px 0 12px;
+    padding: 0;
+    font-size: 12px;
 }
 
-.file-outcomes th,
-.file-outcomes td {
-    text-align: left;
-    padding: 3px 8px 3px 0;
+.file-outcome {
+    padding: 4px 0;
     border-bottom: 1px solid var(--border-color);
-    word-break: break-all;
 }
 
-.file-outcomes .file-outcome-hash {
+.file-outcome-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 2px 12px;
+}
+
+.file-outcome-path {
+    overflow-wrap: anywhere;
+}
+
+.file-outcome-word {
     white-space: nowrap;
-    color: var(--text-secondary);
 }
 
-.file-outcomes tr.file-outcome-diverged td,
-.file-outcomes tr.file-outcome-missing td {
+.file-outcome-hashes {
+    color: var(--text-secondary);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.file-outcomes .file-outcome-diverged,
+.file-outcomes .file-outcome-missing {
     color: var(--color-red-text);
 }
 
-.file-outcomes tr.file-outcome-carried td {
+.file-outcomes .file-outcome-carried {
     color: var(--text-secondary);
     font-style: italic;
 }
