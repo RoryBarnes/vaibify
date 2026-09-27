@@ -11,8 +11,9 @@ The homepage shows the real dashboard image from
 `public/assets/vaibifyDashboard.png`. It is a recorded research session,
 not live project state; the caption identifies the pending verification.
 Replace the copy when updating the screenshot and check its caption against
-what the new image actually shows. The logo and favicon use the existing
-application branding.
+what the new image actually shows. The logo uses the existing application
+branding. The favicon is an unchanged copy of
+`vaibify/gui/static/favicon.png`, the icon used by the application.
 
 ## Preview locally
 
