@@ -59,13 +59,16 @@
     </header>
     <main id="main" tabindex="-1">
       <section class="introduction pageWidth" aria-labelledby="pageTitle">
-        <p class="sectionLabel">Research software</p>
-        <h1 id="pageTitle">AI-assisted scientific computing</h1>
+        <h1 id="pageTitle">Vibe boldly. Verify everything.</h1>
+        <p class="introductionSubtitle">
+          AI-assisted scientific computing with you in the loop
+        </p>
         <p class="introductionText">
-          Vaibify is a browser-based application for developing and running
-          scientific workflows. Work with coding agents in Docker containers,
-          inspect figures and data, and record the tests and human review behind
-          each result.
+          Vaibify is a browser-based application for developing, running, and
+          verifying scientific workflows. Work with coding agents in secure
+          Docker containers, visually inspect figures and data, verify your
+          pipeline steps are accurate, and enable others to reproduce your
+          results at the byte level.
         </p>
         <div class="introductionLinks">
           <a href="https://RoryBarnes.github.io/vaibify/quickStart.html"
@@ -97,8 +100,11 @@
         </a>
         <figcaption id="dashboardCaption">
           <p>
-            <strong>The dashboard during a research project.</strong> The
-            selected step has passing dependencies and pending researcher
+            <strong
+              >The dashboard shows the up-to-date status of a research project
+              in the secured computing environment.</strong
+            >
+            The selected step has passing dependencies and pending researcher
             approval. Verification is still in progress.
             <a href="/assets/vaibifyDashboard.png"
               >View full-resolution image <span aria-hidden="true">↗</span></a
@@ -111,8 +117,8 @@
                 verification
               </dt>
               <dd>
-                Inspect each step’s commands, files, dependencies, tests, and
-                researcher approval.
+                Inspect each pipeline step’s commands, files, dependencies, and
+                unit tests. When <em>you’re</em> satisfied, approve it.
               </dd>
             </div>
             <div>
@@ -162,7 +168,7 @@
             <dt>Run coding agents</dt>
             <dd>
               Use Claude Code, Codex, or Gemini in the dashboard’s terminals.
-              Docker provides a separate environment for the project’s code,
+              Docker provides a secure environment for the project’s code,
               dependencies, and agent sessions.
             </dd>
           </div>
@@ -199,6 +205,42 @@
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        class="contentSection pageWidth sectionGrid"
+        aria-labelledby="motivationTitle"
+      >
+        <div class="sectionIntroduction">
+          <p class="sectionLabel">Scientific motivation</p>
+          <h2 id="motivationTitle">
+            Verification remains part of the research
+          </h2>
+        </div>
+        <div class="prose">
+          <p>
+            Coding agents can write an analysis quickly. Establishing that its
+            results are meaningful still requires inspecting the data, testing
+            the calculations, and understanding the assumptions. An agent can
+            also revise a script after its outputs have been reviewed, leaving
+            earlier figures and conclusions out of date.
+          </p>
+          <p>
+            Vaibify brings the code’s execution, its outputs, and their
+            verification status into the same view. Explicit dependencies and
+            recorded checks help researchers see what needs to be examined
+            again, while archived files and a pinned environment provide a basis
+            for reproducing the computation.
+          </p>
+          <p class="researchPrinciple">
+            Reproducing a computation does not establish that its scientific
+            interpretation is correct. That judgment remains with the
+            researcher.
+          </p>
+          <a href="https://RoryBarnes.github.io/vaibify/philosophy.html"
+            >Read the design philosophy <span aria-hidden="true">↗</span></a
+          >
+        </div>
       </section>
 
       <section
@@ -272,42 +314,6 @@
               >
             </p>
           </div>
-        </div>
-      </section>
-
-      <section
-        class="contentSection pageWidth sectionGrid"
-        aria-labelledby="motivationTitle"
-      >
-        <div class="sectionIntroduction">
-          <p class="sectionLabel">Scientific motivation</p>
-          <h2 id="motivationTitle">
-            Verification remains part of the research
-          </h2>
-        </div>
-        <div class="prose">
-          <p>
-            Coding agents can write an analysis quickly. Establishing that its
-            results are meaningful still requires inspecting the data, testing
-            the calculations, and understanding the assumptions. An agent can
-            also revise a script after its outputs have been reviewed, leaving
-            earlier figures and conclusions out of date.
-          </p>
-          <p>
-            Vaibify brings the code’s execution, its outputs, and their
-            verification status into the same view. Explicit dependencies and
-            recorded checks help researchers see what needs to be examined
-            again, while archived files and a pinned environment provide a basis
-            for reproducing the computation.
-          </p>
-          <p class="researchPrinciple">
-            Reproducing a computation does not establish that its scientific
-            interpretation is correct. That judgment remains with the
-            researcher.
-          </p>
-          <a href="https://RoryBarnes.github.io/vaibify/philosophy.html"
-            >Read the design philosophy <span aria-hidden="true">↗</span></a
-          >
         </div>
       </section>
 
