@@ -138,27 +138,76 @@ def fnBuildImage(config, sDockerDir, bNoCache=False):
         Path to the directory containing Dockerfiles.
     bNoCache : bool
         If True, pass --no-cache to docker build.
+    Every stage is labelled with what IT holds -- the overlays built
+    into it so far and the fingerprint of the texts that built it --
+    never with the whole chain's. The stage below the first coding
+    agent is the environment a researcher publishes, and a reproducer
+    later proves what it holds by exactly these labels. Every stage
+    that installs an agent or an agent's prerequisite also names that
+    agent-free stage's image ID, which is how the envelope finds it.
     """
     sProjectName = config.sProjectName
     listOverlays = flistDetermineOverlays(config)
-    sRecipeFingerprint = _fsComputeChainFingerprint(
-        sDockerDir, listOverlays,
-    )
     fnBuildBase(
         config, sDockerDir, bNoCache,
-        sRecipeFingerprint=sRecipeFingerprint, listOverlays=listOverlays,
+        sRecipeFingerprint=_fsComputeChainFingerprint(sDockerDir, []),
+        listOverlays=[],
     )
     sPreviousTag = "base"
-    for sOverlayName in listOverlays:
-        sNewTag = sOverlayName
+    sEnvironmentImageId = ""
+    for iIndex, sOverlayName in enumerate(listOverlays):
+        if not sEnvironmentImageId and not fbOverlayBelongsToEnvironment(
+                sOverlayName):
+            sEnvironmentImageId = fsReadImageId(
+                f"{sProjectName}:{sPreviousTag}",
+            )
+        listStageOverlays = listOverlays[:iIndex + 1]
         fnApplyOverlay(
             sProjectName, sOverlayName, sDockerDir,
             sPreviousTag, bNoCache,
-            sRecipeFingerprint=sRecipeFingerprint, listOverlays=listOverlays,
+            sRecipeFingerprint=_fsComputeChainFingerprint(
+                sDockerDir, listStageOverlays,
+            ),
+            listOverlays=listStageOverlays,
+            sEnvironmentImageId=sEnvironmentImageId,
         )
-        sPreviousTag = sNewTag
+        sPreviousTag = sOverlayName
     _fnTagFinalImage(sProjectName, sPreviousTag)
     _fnPruneDanglingImages()
+
+
+def fbOverlayBelongsToEnvironment(sOverlayName):
+    """True iff an overlay is part of the environment a result is computed in.
+
+    Coding agents and the prerequisites installed only for them are
+    NOT: they help write the code and never compute a result, so the
+    published environment stops below them and a reproducer brings
+    whichever agents they like. The canonical order puts every
+    environment overlay before every agent-side one, so the
+    environment is always a PREFIX of the chain.
+    """
+    return sOverlayName in T_BASE_OVERLAY_NAMES
+
+
+def fsReadImageId(sImageReference):
+    """Return the content ID of an image this daemon holds, or raise.
+
+    Asked of the daemon right after the stage was built, so a failure
+    here is a daemon fault, and a stage labelled with an empty
+    environment ID would silently pin the agents' image instead.
+    """
+    processResult = subprocess.run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}",
+         sImageReference],
+        capture_output=True, text=True,
+    )
+    sImageId = (processResult.stdout or "").strip()
+    if processResult.returncode != 0 or not sImageId.startswith("sha256:"):
+        raise RuntimeError(
+            f"could not read the image ID of {sImageReference} after "
+            "building it: " + (processResult.stderr or "").strip()
+        )
+    return sImageId
 
 
 def fsComputeShippedRecipeFingerprint(sDockerDir, listOverlays):
@@ -231,7 +280,7 @@ def flistOverlaysForFeatures(dictFeatureFlags):
 
 def fsStackOverlaysOnObtainedBase(
     sProjectName, sBaseImageId, listOverlayChain, sDockerDir, sPlatform,
-    listLabelOverlays, bNoCache=False,
+    listProvenOverlays, bNoCache=False,
 ):
     """Build ``listOverlayChain`` on top of an OBTAINED base image.
 
@@ -239,20 +288,29 @@ def fsStackOverlaysOnObtainedBase(
     daemon could have moved), every stage requests the required
     platform -- under emulation the installers run under qemu, slowly
     -- and every stage carries ``vaibify.pinnedBaseImageId`` plus the
-    overlays label naming the proven set AND the chain, so the result
-    reads as DERIVED from the base and never as the base. Returns the
-    tag of the last stage, or the base ID itself when the chain is
-    empty; the caller resolves and tags the final image by ID.
+    overlays label naming the proven set AND the chain so far, so the
+    result reads as DERIVED from the base and never as the base. An
+    agent-side stage also names the base as its environment image: the
+    author's pinned image is the environment, whatever is stacked on
+    it. Returns the tag of the last stage, or the base ID itself when
+    the chain is empty; the caller resolves and tags the final image by
+    ID.
     """
     from vaibify.config.imageOrigins import S_PINNED_BASE_LABEL
     from vaibify.reproducibility.dockerfileComposer import (
+        S_ENVIRONMENT_IMAGE_LABEL,
         S_OVERLAYS_IMAGE_LABEL,
         fsRenderOverlaysLabelValue,
     )
     if not listOverlayChain:
         return sBaseImageId
     sPreviousReference = sBaseImageId
-    for sOverlayName in listOverlayChain:
+    for iIndex, sOverlayName in enumerate(listOverlayChain):
+        listLabelOverlays = flistCanonicalizeOverlaySet(
+            list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1]),
+        )
+        sEnvironmentImageId = "" if fbOverlayBelongsToEnvironment(
+            sOverlayName) else sBaseImageId
         sNewTag = f"{sProjectName}:{sOverlayName}"
         saCommand = _flistOverlayCommand(
             _fsResolveOverlayDockerfile(sOverlayName, sDockerDir),
@@ -268,6 +326,7 @@ def fsStackOverlaysOnObtainedBase(
                 f"{S_OVERLAYS_IMAGE_LABEL}="
                 + fsRenderOverlaysLabelValue(listLabelOverlays)
             ),
+            "--label", f"{S_ENVIRONMENT_IMAGE_LABEL}={sEnvironmentImageId}",
         ]
         _fnRunDockerBuild(saCommand)
         sPreviousReference = sNewTag
@@ -277,8 +336,8 @@ def fsStackOverlaysOnObtainedBase(
 def _fsComputeChainFingerprint(sDockerDir, listOverlays):
     """Fingerprint the exact Dockerfile texts this build will use.
 
-    Stamped onto every image in the chain as
-    ``dockerfileComposer.S_RECIPE_IMAGE_LABEL`` so the exported repo
+    Stamped onto each stage of the chain, over that stage's own
+    prefix, as ``dockerfileComposer.S_RECIPE_IMAGE_LABEL`` so the exported repo
     Dockerfile — which carries the fingerprint of the texts IT was
     composed from — can later be proven to describe this image rather
     than merely resemble one. An unreadable file yields "" and no
@@ -301,16 +360,21 @@ def _fsComputeChainFingerprint(sDockerDir, listOverlays):
     return fsComputeRecipeFingerprint(sBaseText, listTOverlays)
 
 
-def _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays=None):
+def _flistRecipeLabelArguments(
+    sRecipeFingerprint, listOverlays=None, sEnvironmentImageId="",
+):
     """Return the ``--label`` argv pairs the build chain is stamped with.
 
     The recipe fingerprint rides only when one was computed; the
     overlays label rides whenever a list is given, an empty chain
     included -- an image that says "no overlays" is a different image
     from one that says nothing, and a project containerized from the
-    author's pinned image relies on that difference.
+    author's pinned image relies on that difference. The environment
+    label rides beside it, EMPTY on an agent-free stage, so a stage can
+    never inherit another image's value through its ``FROM``.
     """
     from vaibify.reproducibility.dockerfileComposer import (
+        S_ENVIRONMENT_IMAGE_LABEL,
         S_OVERLAYS_IMAGE_LABEL,
         S_RECIPE_IMAGE_LABEL,
         fsRenderOverlaysLabelValue,
@@ -326,6 +390,7 @@ def _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays=None):
                 f"{S_OVERLAYS_IMAGE_LABEL}="
                 + fsRenderOverlaysLabelValue(listOverlays)
             ),
+            "--label", f"{S_ENVIRONMENT_IMAGE_LABEL}={sEnvironmentImageId}",
         ]
     return listArguments
 
@@ -480,6 +545,7 @@ def _flistBuildArgPairs(config, sBaseImage):
 def fnApplyOverlay(
     sProjectName, sOverlayName, sDockerDir, sFromTag,
     bNoCache=False, sRecipeFingerprint="", listOverlays=None,
+    sEnvironmentImageId="",
 ):
     """Build a single overlay Dockerfile on top of the previous tag.
 
@@ -503,7 +569,9 @@ def fnApplyOverlay(
         sDockerfile, sNewTag, sFromImage, sDockerDir)
     if bNoCache:
         saCommand.append("--no-cache")
-    saCommand += _flistRecipeLabelArguments(sRecipeFingerprint, listOverlays)
+    saCommand += _flistRecipeLabelArguments(
+        sRecipeFingerprint, listOverlays, sEnvironmentImageId,
+    )
     _fnRunDockerBuild(saCommand)
 
 

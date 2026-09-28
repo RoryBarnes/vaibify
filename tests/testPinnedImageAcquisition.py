@@ -65,6 +65,7 @@ from vaibify.gui.registryRoutes import (
 )
 from vaibify.reproducibility import shadowRerun
 from vaibify.reproducibility.dockerfileComposer import (
+    S_ENVIRONMENT_IMAGE_LABEL,
     S_OVERLAYS_IMAGE_LABEL,
     S_RECIPE_IMAGE_LABEL,
     flistExtractOverlayOrder,
@@ -196,7 +197,11 @@ def test_the_build_stamps_the_overlays_label_beside_the_recipe():
     assert f"{S_OVERLAYS_IMAGE_LABEL}=node,claude" in listArguments
     assert _flistRecipeLabelArguments("", []) == [
         "--label", f"{S_OVERLAYS_IMAGE_LABEL}=",
+        "--label", f"{S_ENVIRONMENT_IMAGE_LABEL}=",
     ]
+    assert f"{S_ENVIRONMENT_IMAGE_LABEL}=sha256:e" in _flistRecipeLabelArguments(
+        "", ["claude"], "sha256:e",
+    )
     assert _flistRecipeLabelArguments("", None) == []
 
 
@@ -363,6 +368,23 @@ def _fdictRegisterObtainedProject(tmp_path, listAuthorOverlays, listAdditional,
     return registryManager.fdictGetProject("proj")
 
 
+def _flistPatchTheSeparationCheck(monkeypatch, listViolations=()):
+    """Answer the layer check without a daemon; return the calls it saw."""
+    listChecked = []
+
+    def fdictCheck(sEnvironmentImageId, sAgentImageId):
+        listChecked.append((sEnvironmentImageId, sAgentImageId))
+        return {
+            "listViolations": list(listViolations), "iAgentLayers": 1,
+            "iAddedPaths": 1,
+        }
+    monkeypatch.setattr(
+        "vaibify.reproducibility.agentLayerSeparation."
+        "fdictCheckAgentLayerSeparation", fdictCheck,
+    )
+    return listChecked
+
+
 def _fnPatchTheChain(monkeypatch, listAcquisitionCalls):
     monkeypatch.setattr(
         pinnedImageAcquisition, "_fdictRecheckTheClone",
@@ -452,9 +474,40 @@ def test_the_origin_record_is_written_last(tmp_path, monkeypatch):
         pinnedImageAcquisition, "_fnWriteAgentInstallKeys",
         lambda *aArgs: (_ for _ in ()).throw(OSError("disk full")),
     )
+    _flistPatchTheSeparationCheck(monkeypatch)
     with pytest.raises(OSError):
         fdictAcquireForProject(dictProject, False, dockerDisposable=store)
     assert store.dictHeld[S_DERIVED_ID].listTags == ["proj:latest"]
+    assert fdictReadOriginRecord("proj") is None
+
+
+@pytest.mark.falsification
+def test_added_agents_that_reach_the_environment_are_never_tagged(
+    tmp_path, monkeypatch,
+):
+    """The reader's agents are checked against the author's image before the tag.
+
+    Kills: skipping the layer check on a stacked image.
+    """
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
+    _fnPatchTheChain(monkeypatch, [])
+    store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
+    store.dictHeld[S_DERIVED_ID] = _FakeImage(
+        S_DERIVED_ID, {S_PINNED_BASE_LABEL: S_BASE_ID},
+    )
+    monkeypatch.setattr(
+        pinnedImageAcquisition, "_fsStackAndResolve",
+        lambda *aArgs, **kwargs: S_DERIVED_ID,
+    )
+    listChecked = _flistPatchTheSeparationCheck(monkeypatch, [
+        {"sRule": "shadows", "sPath": "/usr/local/bin/python3", "sDetail": "d"},
+    ])
+    with pytest.raises(PinnedImageAcquisitionRefusedError) as excinfo:
+        fdictAcquireForProject(dictProject, False, dockerDisposable=store)
+    assert listChecked == [(S_BASE_ID, S_DERIVED_ID)]
+    assert "/usr/local/bin/python3" in str(excinfo.value)
+    assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
+    assert store.dictHeld[S_DERIVED_ID].listTags == []
     assert fdictReadOriginRecord("proj") is None
 
 
@@ -814,6 +867,16 @@ def test_the_conversion_result_names_the_acquire_hand_off(tmp_path):
 # ---------------------------------------------------------------------
 
 
+def _fdictLabelsOfBuild(saCommand):
+    """Return the ``--label`` pairs one docker build argv stamps."""
+    dictLabels = {}
+    for iIndex, sArgument in enumerate(saCommand):
+        if sArgument == "--label":
+            sKey, _, sValue = saCommand[iIndex + 1].partition("=")
+            dictLabels[sKey] = sValue
+    return dictLabels
+
+
 def _fnPatchTheBuildContext(monkeypatch, tmp_path):
     """Keep the overlay stack off the real build context; the label is the point."""
     monkeypatch.setattr(
@@ -841,6 +904,10 @@ def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
     ``flistParseOverlaysLabel`` (reproduced), and an image so labelled
     could never again be acquired as a pinned image.
 
+    Each stage is labelled with the set it holds SO FAR, and names the
+    obtained base as its environment image: whatever is stacked on the
+    author's pin, the pin stays the environment.
+
     Kills: stamping ``listProven + listChain`` as the label.
     """
     dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
@@ -849,25 +916,33 @@ def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
     store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
     sDerivedId = "sha256:" + "d" * 64
     store.dictHeld[sDerivedId] = _FakeImage(sDerivedId, {})
-    listStackCalls = []
-
-    def fsStack(sProjectName, sBaseImageId, listChain, sStagedDir, sPlatform,
-                listLabelOverlays, bNoCache=False):
-        listStackCalls.append((list(listChain), list(listLabelOverlays)))
-        return sDerivedId
-    monkeypatch.setattr(imageBuilder, "fsStackOverlaysOnObtainedBase", fsStack)
+    store.dictHeld["proj:gemini"] = store.dictHeld[sDerivedId]
+    listBuildCommands = []
+    monkeypatch.setattr(
+        imageBuilder, "_fnRunDockerBuild",
+        lambda saCommand: listBuildCommands.append(list(saCommand)),
+    )
+    _flistPatchTheSeparationCheck(monkeypatch)
     dictRecord = fdictAcquireForProject(
         dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
     )
-    listChain, listLabel = listStackCalls[0]
-    assert listChain == ["node", "gemini"], "build order: the prerequisite first"
+    listStages = [
+        _fdictLabelsOfBuild(saCommand) for saCommand in listBuildCommands
+    ]
+    assert [saCommand[saCommand.index("-t") + 1] for saCommand in
+            listBuildCommands] == ["proj:node", "proj:gemini"], (
+        "build order: the prerequisite first"
+    )
     listCanonical = imageBuilder.flistCanonicalizeOverlaySet(["claude", "node", "gemini"])
     assert listCanonical == ["node", "claude", "gemini"]
-    assert listLabel == listCanonical
-    assert listLabel != ["claude"] + listChain, "the label must not be build order"
-    assert flistParseOverlaysLabel(
-        fsRenderOverlaysLabelValue(listLabel), imageBuilder.flistCanonicalOverlayOrder(),
-    ) == listLabel
+    assert listStages[0][S_OVERLAYS_IMAGE_LABEL] == "node,claude"
+    assert listStages[1][S_OVERLAYS_IMAGE_LABEL] == "node,claude,gemini"
+    for dictLabels in listStages:
+        assert flistParseOverlaysLabel(
+            dictLabels[S_OVERLAYS_IMAGE_LABEL],
+            imageBuilder.flistCanonicalOverlayOrder(),
+        )
+        assert dictLabels[S_ENVIRONMENT_IMAGE_LABEL] == S_BASE_ID
     assert dictRecord["listResolvedOverlays"] == listCanonical
     assert dictRecord["sRunningImageId"] == sDerivedId
     assert registryManager.fdictGetProject("proj")["dictImageSource"][

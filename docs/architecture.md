@@ -2189,6 +2189,52 @@ what it does not contain is the kernel (containers use the host's),
 source for anything compiled, or the project itself, which lives in a
 runtime volume and is deposited separately.
 
+### The archive is the agent-free environment
+
+Nor does it contain the coding agents. They write code and compute
+nothing, so a reproduction must not need them — and a public deposit
+that carried one vendor's agent would tie a result to that vendor.
+The envelope therefore pins the build stage below the first coding
+agent, and everything that follows the pin (the shadow rerun,
+`reproduce.sh`, the deposit, a reader's acquisition) runs that image.
+
+Three mechanisms make the pin findable and the claim checkable.
+**Truthful stage labels**: `fnBuildImage` stamps each stage with the
+overlays IT holds and the recipe fingerprint of ITS prefix, where it
+used to stamp the whole chain's list on every stage (so the agent-free
+`:base` claimed agents it did not hold). Canonical order puts every
+environment overlay before every agent-side one, so the environment is
+always a prefix of the chain, which a test pins. **The environment
+label**: an agent or prerequisite stage carries
+`vaibify-environment-image-id` naming the agent-free stage's image ID,
+and every other stage carries it EMPTY, so a stage built FROM another
+vaibify image cannot inherit that image's value.
+`environmentSnapshot.fsResolveEnvironmentImageId` follows it only after
+confirming the named image's layers are a prefix of the running
+image's; a label the daemon cannot vouch for pins NOTHING (with
+`sUnpinnedReason`), because falling back to the running image would
+publish the agents while every record said otherwise. Currency reads a
+pin on the environment below the live image as `sRelation: "derived"`,
+the note obtained images already used; the rebuild-drift warning and
+the exported Dockerfile compare and compose from the environment too.
+**The layer check**: `reproducibility/agentLayerSeparation` streams
+`docker save` of the agents' image, names each blob by the sha256 of
+its uncompressed bytes (the diff ID `docker image inspect` lists —
+the containerd store compresses layers and writes the manifest last),
+and applies five rules to the layers above the environment: no
+overwrite or removal, no shadowed command, nothing added where a
+program searches, startup files gain only `PATH` prepends, settings
+unchanged but for `PATH`. It runs before a deposit saves a byte and
+before a reader's stacked agents are tagged, and an unrun check
+refuses, since it established nothing.
+
+Two limits are stated rather than hidden. The rules enumerate the
+search mechanisms vaibify knows; a pass is evidence, and the Level 3
+rerun — which regenerates the outputs in the agent-free image — is the
+proof. And agents update themselves at container start, writing into
+the home directory at run time where no image check reaches; the
+agent-free pin is why that cannot touch a verification.
+
 ### One row, two blocks, and the L3 half never reads the L2 answer
 
 | Block | Criterion | Passes on |

@@ -91,6 +91,15 @@ S_OVERLAYS_IMAGE_LABEL = "vaibify-overlays"
 S_OVERLAYS_HEADER_PREFIX = "#   base + overlays in order: "
 _S_OVERLAYS_HEADER_NONE = "(none)"
 
+# The ID of the agent-free image a stage was stacked on, stamped on
+# every stage that installs a coding agent or its prerequisite, and
+# stamped EMPTY on every other stage so a base image built FROM some
+# other vaibify image cannot inherit that image's value. The
+# environment the researcher publishes is that agent-free image: agents
+# help write the code and never compute a result, so a reproduction
+# must not need them.
+S_ENVIRONMENT_IMAGE_LABEL = "vaibify-environment-image-id"
+
 # Docker compares stage names case-insensitively and accepts
 # [a-zA-Z0-9][a-zA-Z0-9_.-]*; overlay names like "nestedSampling"
 # are camelCase, so they are lower-cased rather than passed through.

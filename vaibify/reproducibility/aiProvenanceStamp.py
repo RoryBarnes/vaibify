@@ -165,11 +165,9 @@ def _fbStampShapeIntact(dictStamp):
     dictVersions = dictStamp.get("dictAgentCliVersions")
     if not isinstance(dictVersions, dict):
         return False
+    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
     if any(
-        sAgent not in {
-            "claude", "codex", "gemini", "opencode", "cline",
-            "openhands", "pi",
-        }
+        sAgent not in T_AGENT_OVERLAY_NAMES
         or not isinstance(sVersion, str)
         or len(sVersion) > 200
         for sAgent, sVersion in dictVersions.items()

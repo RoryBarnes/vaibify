@@ -3273,13 +3273,16 @@ def _fdictEntry(sRel):
         # attestation claim.
         nodeid='tests/testAiProvenanceStamp.py::test_agent_version_stamp_rejects_unexpected_provider_name',
         source='vaibify/reproducibility/aiProvenanceStamp.py',
-        old=(
-            '        sAgent not in {\n'
-            '            "claude", "codex", "gemini", "opencode", "cline",\n'
-            '            "openhands", "pi",\n'
-            '        }\n'
-        ),
+        old='        sAgent not in T_AGENT_OVERLAY_NAMES\n',
         new='        False\n',
+    ),
+    Falsification(
+        # Antigravity is asked for by its overlay name, a command no
+        # image installs, so its version is never recorded.
+        nodeid='tests/testAiProvenanceStamp.py::test_the_capture_asks_each_agent_by_the_command_it_installs',
+        source='vaibify/gui/aiProvenanceCapture.py',
+        old='_DICT_AGENT_COMMANDS = {"antigravity": "agy"}\n',
+        new='_DICT_AGENT_COMMANDS = {}\n',
     ),
     Falsification(
         # A disabled update choice is an explicit user preference. If this
@@ -14710,12 +14713,160 @@ def _fdictEntry(sRel):
         # staleness goes back to being invisible while every surface
         # still renders.
         source='vaibify/docker/imageBuilder.py',
-        old=(
-            '    sRecipeFingerprint = _fsComputeChainFingerprint(\n'
-            '        sDockerDir, listOverlays,\n'
-            '    )'
+        old='        sRecipeFingerprint=_fsComputeChainFingerprint(sDockerDir, []),\n',
+        new='        sRecipeFingerprint="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentSnapshot.py::'
+            'test_the_envelope_pins_the_environment_below_the_agents'
         ),
-        new='    sRecipeFingerprint = ""',
+        # Pin the container's own image -- the agents' -- so every
+        # reproduction and every deposit carries the agents again.
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old='        sImageId = fsResolveEnvironmentImageId(sRunningImageId)\n',
+        new='        sImageId = sRunningImageId\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentSnapshot.py::'
+            'test_an_environment_the_image_is_not_built_on_pins_nothing'
+        ),
+        # Trust the label without asking the layers.
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old=(
+            '    if listOwnLayers[:len(listEnvironmentLayers)] != '
+            'listEnvironmentLayers:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentDrift.py::'
+            'test_a_rebuild_is_compared_on_its_environment_not_its_agents'
+        ),
+        # Compare the pin against :latest, so every rebuild with an
+        # agent reports that the environment moved.
+        source='vaibify/cli/commandBuild.py',
+        old='    sImageReference = _fsBuiltEnvironmentReference(config.sProjectName)\n',
+        new='    sImageReference = f"{config.sProjectName}:latest"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_the_export_describes_the_pinned_image_not_the_config'
+        ),
+        # Compose from vaibify.yml even when the pinned image says what
+        # it holds, so the header claims the agents above the pin.
+        source='vaibify/reproducibility/imageDockerfileExport.py',
+        old='    if listLabelled is not None:\n        return listLabelled\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_overwriting_or_removing_an_environment_file_is_caught'
+        ),
+        # A path the environment holds is judged as a new one.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if dictOld is not None:\n        return _flistJudgeExistingPath(sPath, dictEntry, dictOld)\n',
+        new='    if False:\n        return _flistJudgeExistingPath(sPath, dictEntry, dictOld)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_command_the_environment_already_runs_is_caught'
+        ),
+        # An agent's command never reads as shadowing the environment's.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='        and posixpath.basename(sPath) in setBaseCommands\n',
+        new='        and False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_adding_where_programs_search_is_caught'
+        ),
+        # Additions to searched locations pass.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if sSearched:\n        return [_fdictViolation("searched", sPath, sSearched)]\n',
+        new='    if False:\n        return [_fdictViolation("searched", sPath, sSearched)]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_startup_file_may_only_gain_path_prepends'
+        ),
+        # Any appended startup line is accepted.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='            if sDirectory is None:\n',
+        new='            if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_the_images_settings_may_only_gain_path_directories'
+        ),
+        # Every environment variable reads as unchanged.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='        if dictBaseEnvironment.get(sName) == dictAgentEnvironment.get(sName):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_pin_that_holds_agents_is_never_deposited'
+        ),
+        # An image that says it holds agents is deposited as the environment.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if listAgentsInside:\n        raise AgentLayerSeparationError(\n',
+        new='    if False:\n        raise AgentLayerSeparationError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_agents_that_reach_the_environment_stop_the_deposit'
+        ),
+        # The layer check runs and its violations are ignored.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if dictChecked["listViolations"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_the_deposit_refuses_before_saving_anything'
+        ),
+        # The deposit never asks the gate.
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old='        _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_added_agents_that_reach_the_environment_are_never_tagged'
+        ),
+        # The stacked image is tagged without reading its layers back.
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        old=(
+            '    _fnRefuseAgentsThatReachTheEnvironment(\n'
+            '        sBaseImageId, sRunningImageId, fnReport,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_each_stage_is_labelled_with_what_it_holds'
+        ),
+        # Every stage carries the finished chain's list again, so the
+        # agent-free stage claims the agents above it and can never be
+        # published as agent-free.
+        source='vaibify/docker/imageBuilder.py',
+        old='            listOverlays=listStageOverlays,\n',
+        new='            listOverlays=listOverlays,\n',
     ),
     Falsification(
         nodeid=(
@@ -19877,15 +20028,17 @@ def _fdictEntry(sRel):
             'tests/testPinnedImageAcquisition.py::'
             'test_a_derived_image_is_labelled_with_the_set_in_canonical_order'
         ),
-        source='vaibify/docker/pinnedImageAcquisition.py',
+        source='vaibify/docker/imageBuilder.py',
         # the label is stamped in BUILD order, which its parser refuses
         old=(
-            '            imageBuilder.flistCanonicalizeOverlaySet(\n'
-            '                list(listProven) + list(listChain),\n'
-            '            ),\n'
+            '        listLabelOverlays = flistCanonicalizeOverlaySet(\n'
+            '            list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1]),\n'
+            '        )\n'
         ),
         new=(
-            '            list(listProven) + list(listChain),\n'
+            '        listLabelOverlays = (\n'
+            '            list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1])\n'
+            '        )\n'
         ),
     ),
     Falsification(

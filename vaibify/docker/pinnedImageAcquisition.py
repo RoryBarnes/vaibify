@@ -28,7 +28,9 @@ THE ORDER IS THE CONTRACT
    tagged.
 4. Stack the DIFFERENTIAL overlays -- the resolved chain minus the
    proven set -- on the obtained image ID, requesting the pinned
-   platform, labelling the result as derived from the base.
+   platform, labelling the result as derived from the base. Then read
+   the stacked layers back and refuse if they reach the author's
+   environment (``agentLayerSeparation``).
 5. Tag the result as ``<projectName>:latest``, by ID.
 6. Describe before enabling: the agent install keys go into
    ``vaibify.yml`` and the resolved chain into the registry entry.
@@ -143,6 +145,9 @@ def fdictAcquireForProject(
         dictProject, sBaseImageId, listChain, listProven,
         dictAcquired["sRequiredPlatform"], sDockerDir, fnReport,
         dockerDisposable,
+    )
+    _fnRefuseAgentsThatReachTheEnvironment(
+        sBaseImageId, sRunningImageId, fnReport,
     )
     fnReport(f"Tagging {sRunningImageId[:19]}... as {dictProject['sName']}:latest")
     disposableContainer.fnTagImage(
@@ -397,15 +402,12 @@ def _fsStackAndResolve(
     try:
         fnPrepareBuildContext(configProject, sStagedDir, dictProject["sDirectory"])
         # The chain is stacked in BUILD order (a prerequisite before
-        # the agent that needs it); the label records the resulting
-        # SET in canonical order, which is the only form its parser
-        # accepts.
+        # the agent that needs it); each stage's label records the
+        # SET so far in canonical order, which is the only form its
+        # parser accepts.
         sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
             dictProject["sName"], sBaseImageId, listChain, sStagedDir,
-            sPlatform,
-            imageBuilder.flistCanonicalizeOverlaySet(
-                list(listProven) + list(listChain),
-            ),
+            sPlatform, list(listProven),
         )
     finally:
         fnDiscardBuildContext(sStagedDir)
@@ -418,6 +420,41 @@ def _fsStackAndResolve(
             "inspected, so nothing was tagged"
         )
     return dictRunning["sId"]
+
+
+def _fnRefuseAgentsThatReachTheEnvironment(sBaseImageId, sRunningImageId, fnReport):
+    """Step 4b: the stacked agents leave the author's environment untouched.
+
+    The reader's agents are the reader's choice precisely because they
+    cannot change what the author's environment computes; this is where
+    that is checked, on the image actually built, before anything is
+    tagged. A check that could not run refuses too -- an unrun check
+    establishes nothing.
+    """
+    from vaibify.reproducibility.agentLayerSeparation import (
+        AgentLayerSeparationError,
+        fdictCheckAgentLayerSeparation,
+        fsDescribeViolations,
+    )
+    if sRunningImageId == sBaseImageId:
+        return
+    fnReport("checking that the added agents leave the author's environment untouched")
+    try:
+        dictChecked = fdictCheckAgentLayerSeparation(sBaseImageId, sRunningImageId)
+    except AgentLayerSeparationError as errorCheck:
+        raise PinnedImageAcquisitionRefusedError(
+            "the added agents could not be checked against the author's "
+            f"environment ({errorCheck}), so nothing was tagged.",
+            sAction=S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
+        ) from errorCheck
+    if dictChecked["listViolations"]:
+        raise PinnedImageAcquisitionRefusedError(
+            "the added agents reach into the author's environment: "
+            + fsDescribeViolations(dictChecked["listViolations"])
+            + ". Nothing was tagged. Re-obtain the pinned image without "
+            "them, or choose other agents.",
+            sAction=S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
+        )
 
 
 def _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport):

@@ -5126,7 +5126,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # deposits for, so another project's row neither pulses nor erases it.
     # +4 (2026-09-27): the deposit names the record the environment was
     # archived under before, so a changed image is its next version.
-    "routes/environmentArchiveRoutes.py": 848,
+    # +29 (2026-09-28): the deposit refuses, before saving, an
+    # environment the coding agents are part of or reach, and names the
+    # agents it leaves out; the check and the sentence live in
+    # reproducibility/agentLayerSeparation.py, the call sites here.
+    "routes/environmentArchiveRoutes.py": 877,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5899,7 +5903,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # agentProjectScope.
     # +1 (2026-09-25): registers the Prompt Record viewer's route module.
     # +1 (2026-09-26): registers the committed-file route module.
-    "pipelineServer.py": 3660,
+    # +2 (2026-09-28): the envelope-currency comparison passes the
+    # agent-free environment's identity, so a pin on the environment
+    # below the agents reads as derived rather than as drift.
+    "pipelineServer.py": 3662,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

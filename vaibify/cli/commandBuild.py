@@ -222,6 +222,29 @@ def _ftReadPinnedEnvironment():
     return (sPinnedDigest, fsReadImageRecipeLabel(sPinnedDigest))
 
 
+def _fsBuiltEnvironmentReference(sProjectName):
+    """Return the agent-free environment image the fresh build stands on.
+
+    The envelope pins the environment, never the coding agents stacked
+    on it, so the rebuild is compared on the same footing -- comparing
+    against ``:latest`` would report every build with agents as drift.
+    Degrades to ``:latest`` when the environment cannot be resolved:
+    this feeds a warning, which must never abort a finished build.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fsResolveEnvironmentImageId,
+    )
+    sLatest = f"{sProjectName}:latest"
+    try:
+        sImageId = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", sLatest],
+            capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+        return fsResolveEnvironmentImageId(sImageId) or sLatest
+    except Exception:  # noqa: BLE001 — a warning never aborts a build
+        return sLatest
+
+
 def fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore):
     """Tell the researcher when a rebuild moved the environment.
 
@@ -242,7 +265,7 @@ def fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore):
     sPinnedDigest, sPinnedRecipe = tPinnedBefore
     if not sPinnedDigest:
         return
-    sImageReference = f"{config.sProjectName}:latest"
+    sImageReference = _fsBuiltEnvironmentReference(config.sProjectName)
     dictBuilt = fdictCaptureBuiltImageIdentity(sImageReference)
     listLines = flistDescribeEnvironmentDrift(
         fdictCompareRebuiltEnvironment(

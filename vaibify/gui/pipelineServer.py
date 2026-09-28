@@ -2810,6 +2810,8 @@ def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
         sPinned,
         dictIdentity.get("sImageDigest") or "",
         dictIdentity.get("sImageId") or "",
+        dictIdentity.get("sEnvironmentImageDigest") or "",
+        dictIdentity.get("sEnvironmentImageId") or "",
     )
     dictDerivation = dictIdentity.get("dictDerivation")
     dictAnswer["bEnvironmentObtained"] = dictDerivation is not None

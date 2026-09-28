@@ -211,3 +211,48 @@ def testThePinIsReadBeforeTheBuildRewritesIt():
 
     assert listOrder.index("read-pin") < listOrder.index("build")
     assert listOrder.index("read-pin") < listOrder.index("rewrite-envelope")
+
+
+@pytest.mark.falsification
+def test_a_rebuild_is_compared_on_its_environment_not_its_agents(capsys):
+    """The envelope pins the agent-free environment, so the rebuild must too.
+
+    A rebuild that reproduced the environment exactly still produces a
+    NEW agents' image on top of it (the installers fetch today's
+    versions). Compared against ``:latest``, every such rebuild would
+    announce that the environment moved -- a false alarm on every build
+    of every project with a coding agent.
+
+    Kills: comparing the pin against ``<project>:latest``.
+    """
+    from vaibify.cli import commandBuild
+    from vaibify.reproducibility import environmentSnapshot
+
+    sEnvironmentId = "sha256:" + "e" * 64
+    sAgentsId = "sha256:" + "a" * 64
+    dictIdentities = {
+        sEnvironmentId: {"sImageDigest": sEnvironmentId, "sImageId": sEnvironmentId},
+        "proj:latest": {"sImageDigest": sAgentsId, "sImageId": sAgentsId},
+    }
+
+    class _ConfigNamed:
+        sProjectName = "proj"
+
+    with mock.patch.object(
+        commandBuild.subprocess, "run",
+        return_value=mock.Mock(stdout=sAgentsId + "\n"),
+    ), mock.patch.object(
+        environmentSnapshot, "fsResolveEnvironmentImageId",
+        side_effect=lambda sId: sEnvironmentId if sId == sAgentsId else sId,
+    ), mock.patch.object(
+        environmentSnapshot, "fdictCaptureBuiltImageIdentity",
+        side_effect=lambda sRef: dictIdentities[sRef],
+    ), mock.patch.object(
+        environmentSnapshot, "fsReadImageRecipeLabel", return_value="r" * 64,
+    ):
+        commandBuild.fnWarnIfRebuildChangedEnvironment(
+            _ConfigNamed(), (sEnvironmentId, "r" * 64),
+        )
+    assert capsys.readouterr().out == "", (
+        "an unchanged environment under fresh agents reported drift"
+    )

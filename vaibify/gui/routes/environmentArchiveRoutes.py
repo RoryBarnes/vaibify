@@ -44,7 +44,7 @@ from ..routeScope import (
     S_CARRIER_MODE_C_DURABLE,
     ffnDeclareCarrierMode,
 )
-from ...reproducibility import imageArchive, imageDeposit
+from ...reproducibility import agentLayerSeparation, imageArchive, imageDeposit
 from ...reproducibility.imageDeposit import (
     _fbRepinManifestOrWarn,
     fdictStampArchiveRecord as _fdictStampArchiveRecord,
@@ -519,6 +519,7 @@ def _fdictDepositSynchronously(
         )
 
     try:
+        _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer)
         return imageDeposit.fdictDepositImageArchive(
             ZenodoClient(
                 dictWorkflow.get("sZenodoService") or "sandbox",
@@ -527,7 +528,9 @@ def _fdictDepositSynchronously(
             str(dictContainer.get("sImageDigest") or ""),
             str(dictContainer.get("sArchitecture") or ""),
             sScratchDirectory,
-            _fdictBuildArchiveDepositMetadata(dictWorkflow),
+            _fdictBuildArchiveDepositMetadata(
+                dictWorkflow, dictContainer, dictAttestation,
+            ),
             fnReportSaveProgress,
             dictAttestation,
             fnReportUploadStarted=fnReportUploadStarted,
@@ -544,7 +547,25 @@ def _fdictDepositSynchronously(
         shutil.rmtree(sScratchDirectory, ignore_errors=True)
 
 
-def _fdictBuildArchiveDepositMetadata(dictWorkflow):
+def _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer):
+    """Raise before any byte is saved if the agents are, or reach, the environment.
+
+    The layer check reads the container's whole image (about half a
+    minute for a few gigabytes); a refusal lands on the deposit row as
+    its failure, naming what to do.
+    """
+    from ...reproducibility.environmentSnapshot import (
+        fdictCaptureLiveImageIdentity,
+    )
+    agentLayerSeparation.fdictVerifyAgentsLeaveThePinAlone(
+        str(dictContainer.get("sImageDigest") or ""),
+        fdictCaptureLiveImageIdentity(sContainerId),
+    )
+
+
+def _fdictBuildArchiveDepositMetadata(
+    dictWorkflow, dictContainer=None, dictAttestation=None,
+):
     """Return the vaibify-shaped metadata for the image deposit.
 
     A SEPARATE record from the science deposit, not a version of it,
@@ -552,6 +573,9 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
     forward: one image used for N papers is one large upload plus N
     small science records that reference it, and versioning would mean
     re-uploading the image every time.
+
+    The image is the agent-free ENVIRONMENT; the coding agents stacked
+    above it during the work are named, not included.
     """
     from .. import workflowManager
     dictScience = dict(workflowManager.fdictGetZenodoMetadata(dictWorkflow))
@@ -564,11 +588,14 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
     return {
         "sTitle": "Container image for " + sProjectTitle,
         "sDescription": (
-            "The container image these results were produced in, "
+            "The container image these results are computed in, "
             "saved with 'docker save' and compressed. Load it with "
             "'docker load' to obtain the exact compiler, numeric "
             "libraries, interpreter and installed packages the "
             "original run used."
+            + agentLayerSeparation.fsDescribeAgentsLeftOut(
+                dictContainer, dictAttestation,
+            )
         ),
         "listCreators": dictScience.get("listCreators") or [],
         "sLicense": dictScience.get("sLicense") or "",
@@ -744,7 +771,9 @@ async def _fnRunPromotionWorker(
         dictRecord, sPromotionId = await asyncio.to_thread(
             archivePromotion.ftPromoteImageArchive,
             dictContainer, sToken, filesRepo, sSidecarKey,
-            _fdictBuildArchiveDepositMetadata(dictWorkflow),
+            _fdictBuildArchiveDepositMetadata(
+                dictWorkflow, dictContainer, fdictReadAttestation(filesRepo),
+            ),
             _fdictBuildPromotionProgressHooks(sContainerId),
         )
         syncBookkeeping.fnMirrorPendingPromotions(

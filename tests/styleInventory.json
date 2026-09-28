@@ -283,6 +283,7 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowManager.py::fsRemapStepReferences.fsReplaceMatch::resultMatch", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowManager.py::fsResolveVariables.fsReplaceMatch::resultMatch", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/workflowMigrations.py::fnRewritePositionalToSymbolic.fsReplaceMatch::resultMatch", "sReason": ""},
+    {"sDebtClass": "interface-method", "sIdentity": "vaibify/reproducibility/agentLayerSeparation.py::_HashingReader.read", "sReason": "file-like protocol method consumed by tarfile"},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/aiProvenanceStamp.py::_fbCapturedAtPlausible.dtCaptured", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/arxivClient.py::_fnExtractTarballSafely.memberTar", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/arxivClient.py::_fnExtractTarballSafely.tarballHandle", "sReason": ""},

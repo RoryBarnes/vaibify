@@ -195,6 +195,22 @@ def test_agent_version_stamp_rejects_unexpected_provider_name():
     assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is False
 
 
+def test_the_stamp_accepts_every_agent_the_builder_installs():
+    """The stamp and the builder read one agent list, so none goes unrecorded.
+
+    Antigravity was installable while both hand-written copies of the
+    list omitted it, so its version could never be captured.
+    """
+    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
+    dictWorkflow = _fdictWorkflowWithOneModel()
+    dictStamp = fdictBuildAiProvenanceStamp(
+        dictWorkflow, "/nonexistent",
+        dictAgentCliVersions={s: "1.0" for s in T_AGENT_OVERLAY_NAMES},
+    )
+    assert "antigravity" in T_AGENT_OVERLAY_NAMES
+    assert fbStampMatchesDeclaration(dictStamp, dictWorkflow) is True
+
+
 def test_agent_version_stamp_accepts_additional_provider_name():
     """Versions captured from an installed additional agent are valid."""
     dictWorkflow = _fdictWorkflowWithOneModel()
@@ -228,3 +244,39 @@ def test_unanswerable_isolation_probe_is_recorded_as_unknown(
         _StubDockerConnection(b""),
     )
     assert dictStamp["bNetworkIsolatedAtCapture"] is None
+
+
+@pytest.mark.falsification
+def test_the_capture_asks_each_agent_by_the_command_it_installs(tmp_path):
+    """Driven through real bash: Antigravity's command is ``agy``, not its name.
+
+    Kills: asking every agent by its overlay name, so Antigravity's
+    version is never captured.
+    """
+    import os
+    import subprocess
+    from types import SimpleNamespace
+    from vaibify.gui.aiProvenanceCapture import _fdictCaptureAgentCliVersions
+    for sBinary, sVersion in (("claude", "2.1.0 (Claude Code)"), ("agy", "0.9")):
+        pathBinary = tmp_path / sBinary
+        pathBinary.write_text(f"#!/bin/sh\necho '{sVersion}'\n")
+        pathBinary.chmod(0o755)
+    # The container's coreutils ``timeout``; macOS ships none.
+    pathTimeout = tmp_path / "timeout"
+    pathTimeout.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+    pathTimeout.chmod(0o755)
+
+    class _BashConnection:
+        def ftRunInContainerStreamed(self, sContainerId, sCommand):
+            processResult = subprocess.run(
+                ["bash", "-c", sCommand], capture_output=True, text=True,
+                env=dict(os.environ, PATH=f"{tmp_path}:/usr/bin:/bin"),
+            )
+            return SimpleNamespace(
+                iExitCode=processResult.returncode,
+                sStdout=processResult.stdout,
+            )
+
+    assert _fdictCaptureAgentCliVersions(_BashConnection(), "cid") == {
+        "claude": "2.1.0 (Claude Code)", "antigravity": "0.9",
+    }

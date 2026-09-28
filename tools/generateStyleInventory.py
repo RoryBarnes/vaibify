@@ -257,6 +257,10 @@ DICT_REVIEWED_DISPOSITIONS = {
         S_CATEGORY_INTERFACE,
         "file-like protocol method consumed by tarfile",
     ),
+    "vaibify/reproducibility/agentLayerSeparation.py::_HashingReader.read": (
+        S_CATEGORY_INTERFACE,
+        "file-like protocol method consumed by tarfile",
+    ),
     "vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request": (
         S_CATEGORY_INTERFACE,
         "urllib HTTPRedirectHandler override; the name is the protocol",

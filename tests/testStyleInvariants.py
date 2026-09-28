@@ -300,6 +300,7 @@ interface-method	vaibify/gui/routeScope.py::ContainerAwareRoute.get_route_handle
 interface-method	vaibify/gui/serverMiddleware.py::ActivityTrackingMiddleware.dispatch
 interface-method	vaibify/gui/serverMiddleware.py::SecurityHeadersMiddleware.dispatch
 interface-method	vaibify/gui/serverMiddleware.py::SessionTokenMiddleware.dispatch
+interface-method	vaibify/reproducibility/agentLayerSeparation.py::_HashingReader.read
 interface-method	vaibify/reproducibility/githubMirror.py::_AuthStrippingRedirectHandler.redirect_request
 legacy-annotation-mismatch	vaibify/gui/commitCarrier.py::DurableTaskRecord.admission
 legacy-annotation-mismatch	vaibify/gui/containerOwnership.py::ConnectionRecord.connection
