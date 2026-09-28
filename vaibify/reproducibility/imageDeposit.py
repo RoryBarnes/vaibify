@@ -50,6 +50,7 @@ __all__ = [
     "ArchiveVerificationError",
     "I_PROGRESS_CHUNK_BYTES",
     "flistDescribeArchiveDisagreement",
+    "fiParentDepositIdOnService",
     "fnRefuseUnlessArchiveHoldsWhatWeSent",
     "fdictDepositImageArchive",
     "fdictRecheckArchiveAgainstLocalImage",
@@ -368,6 +369,7 @@ def fdictDepositImageArchive(
     clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
     dictMetadata, fnReportProgress=None, dictAttestation=None,
     fnReportUploadStarted=None, fnReportVerifying=None,
+    dictParentArchive=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
@@ -394,6 +396,7 @@ def fdictDepositImageArchive(
         tTarball, dictAttestation=dictAttestation,
         fnReportUploadStarted=fnReportUploadStarted,
         fnReportVerifying=fnReportVerifying,
+        dictParentArchive=dictParentArchive,
     )
 
 
@@ -401,6 +404,7 @@ def fdictUploadAndPublishImageArchive(
     clientZenodo, sImageReference, sArchitecture, dictMetadata,
     tTarball, dictAttestation=None, fnReportUploadStarted=None,
     fnReportDraftCreated=None, sProvenance="", fnReportVerifying=None,
+    dictParentArchive=None,
 ):
     """Upload one already-written tarball, publish it, return its record.
 
@@ -421,6 +425,12 @@ def fdictUploadAndPublishImageArchive(
     mints a permanent DOI, and a lost one cannot be recovered by
     guessing -- so the id must be durable before the long operation
     that can be interrupted, not after it returns.
+
+    ``dictParentArchive`` names the record the environment was archived
+    under before (its version DOI and service). On the same Zenodo
+    service the deposit becomes a NEW VERSION of it, so one project's
+    images stay one lineage; on another service, where Zenodo cannot
+    version across instances, it is a fresh record.
     """
     sTarballPath, sSha256, iBytes, sStreamSha256, sMd5 = tTarball
     dictRecord = imageArchive.fdictBuildArchiveRecord(
@@ -443,18 +453,26 @@ def fdictUploadAndPublishImageArchive(
     # published record's `description` when a researcher references an
     # existing deposit -- so translating first would drop the one
     # field that lets a reference be verified at all.
-    dictDraft = clientZenodo.fdictCreateDraft(
-        zenodoClient.fdictBuildApiMetadata(
-            imageArchive.fdictStampDepositMetadata(
-                dictMetadata, dictRecord,
-            ),
-            S_IMAGE_UPLOAD_TYPE,
-        ),
+    dictApiMetadata = zenodoClient.fdictBuildApiMetadata(
+        imageArchive.fdictStampDepositMetadata(dictMetadata, dictRecord),
+        S_IMAGE_UPLOAD_TYPE,
+    )
+    iParentDepositId = fiParentDepositIdOnService(
+        dictParentArchive, clientZenodo.sService,
+    )
+    dictDraft = (
+        clientZenodo.fdictGetNewVersionDraft(iParentDepositId)
+        if iParentDepositId else clientZenodo.fdictCreateDraft(dictApiMetadata)
     )
     iDepositId = dictDraft["id"]
     if fnReportDraftCreated is not None:
         fnReportDraftCreated(iDepositId)
     try:
+        if iParentDepositId:
+            # A new-version draft inherits the parent's files and
+            # metadata: clear the old image out and describe this one.
+            clientZenodo.fnClearDraftFiles(iDepositId)
+            clientZenodo.fnSetMetadata(iDepositId, dictApiMetadata)
         if fnReportUploadStarted is not None:
             fnReportUploadStarted(iBytes)
         clientZenodo.fnUploadToBucket(
@@ -472,6 +490,7 @@ def fdictUploadAndPublishImageArchive(
             fnReportVerifying()
         fnRefuseUnlessArchiveHoldsWhatWeSent(
             clientZenodo, iDepositId, dictRecord,
+            bVersioned=bool(iParentDepositId),
         )
         dictPublished = clientZenodo.fdictPublishDraft(iDepositId)
     except Exception:
@@ -484,7 +503,7 @@ def fdictUploadAndPublishImageArchive(
 
 
 def fnRefuseUnlessArchiveHoldsWhatWeSent(
-    clientZenodo, iDepositId, dictRecord,
+    clientZenodo, iDepositId, dictRecord, bVersioned=False,
 ):
     """Ask the archive what it stored, and raise unless it agrees.
 
@@ -527,7 +546,7 @@ def fnRefuseUnlessArchiveHoldsWhatWeSent(
         return
     dictDeposit = clientZenodo.fdictGetDeposit(iDepositId)
     listProblems = flistDescribeArchiveDisagreement(
-        dictDeposit, dictRecord,
+        dictDeposit, dictRecord, bVersioned,
     )
     if listProblems:
         raise ArchiveVerificationError(
@@ -537,7 +556,7 @@ def fnRefuseUnlessArchiveHoldsWhatWeSent(
         )
 
 
-def flistDescribeArchiveDisagreement(dictDeposit, dictRecord):
+def flistDescribeArchiveDisagreement(dictDeposit, dictRecord, bVersioned=False):
     """Return every way the archive's own report contradicts the record.
 
     The environment archive is a single file, so this states the
@@ -547,17 +566,45 @@ def flistDescribeArchiveDisagreement(dictDeposit, dictRecord):
     place the two deposit lanes can share this check instead of
     drifting apart on it.
 
-    No unexpected-file check: this lane always uploads into a FRESH
-    draft, so a file it did not send cannot be there.
+    A NEW-VERSION draft is also asked for files it holds that were not
+    sent: it inherits the previous image, and a clear that quietly did
+    not happen would publish both.
     """
-    return zenodoClient.flistDescribeDepositDisagreement(
-        dictDeposit,
-        [{
-            "sKey": str(dictRecord.get("sTarballName") or ""),
-            "sMd5": str(dictRecord.get("sTarballMd5") or ""),
-            "iBytes": int(dictRecord.get("iTarballBytes") or 0),
-        }],
+    listExpected = [{
+        "sKey": str(dictRecord.get("sTarballName") or ""),
+        "sMd5": str(dictRecord.get("sTarballMd5") or ""),
+        "iBytes": int(dictRecord.get("iTarballBytes") or 0),
+    }]
+    listProblems = zenodoClient.flistDescribeDepositDisagreement(
+        dictDeposit, listExpected,
     )
+    if bVersioned:
+        listProblems += zenodoClient.flistDescribeUnexpectedDepositFiles(
+            dictDeposit, listExpected,
+        )
+    return listProblems
+
+
+def fiParentDepositIdOnService(dictParentArchive, sService):
+    """Return the parent record's deposit id on ``sService``, or 0.
+
+    0 means "start a fresh record": no parent, a parent on the other
+    Zenodo service (sandbox and production cannot version each other),
+    or a version DOI that names no Zenodo record. A published record's
+    id and its deposition id are the same number.
+    """
+    from vaibify.gui.workflowManager import fsZenodoRecordIdFromDoi
+    dictParent = dictParentArchive or {}
+    sVersionDoi = str(dictParent.get("sVersionDoi") or "")
+    if not sVersionDoi:
+        return 0
+    sParentService = str(dictParent.get("sZenodoService") or "") or (
+        zenodoClient.fsServiceForDoi(sVersionDoi)
+    )
+    if sParentService != sService:
+        return 0
+    sRecordId = str(fsZenodoRecordIdFromDoi(sVersionDoi) or "")
+    return int(sRecordId) if sRecordId.isdigit() else 0
 
 
 def _fnDiscardDraft(clientZenodo, iDepositId):

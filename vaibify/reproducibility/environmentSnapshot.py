@@ -33,7 +33,9 @@ __all__ = [
     "fdictCaptureLiveImageIdentity",
     "fdictCaptureBuiltImageIdentity",
     "fbImageExistsLocally",
+    "S_ARCHIVE_LINEAGE_KEY",
     "S_SUPERSEDED_ARCHIVE_KEY",
+    "fdictArchiveLineageOf",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
     "fsReadContainerConfigurationLabel",
@@ -55,6 +57,14 @@ _SCHEMA_VERSION = "1"
 # exists so a researcher can still see the identifiers of the deposit
 # their permanent one superseded.
 S_SUPERSEDED_ARCHIVE_KEY = "dictSupersededImageArchive"
+
+# Which Zenodo record the environment was last archived under, kept when
+# the image changes and the record stops covering the envelope. Also a
+# NOTE: no gate reads it. The next deposit of a new image is made a new
+# VERSION of that record, so an environment's images stay one lineage
+# on Zenodo instead of a string of unrelated records.
+S_ARCHIVE_LINEAGE_KEY = "dictImageArchiveLineage"
+_T_LINEAGE_FIELDS = ("sVersionDoi", "sConceptDoi", "sZenodoService")
 _OS_RELEASE_PATH = "/etc/os-release"
 _DOCKER_INSTALL_HINT = (
     "docker executable not found on PATH. Install Docker Desktop, "
@@ -363,13 +373,49 @@ def fdictCarryImageArchiveForward(dictPrevious, dictFresh):
     for sField in ("sImageDigest", "sArchitecture"):
         sPrevious = str((dictPrevious or {}).get(sField) or "")
         if not sPrevious or sPrevious != str(dictFresh.get(sField) or ""):
-            return dictFresh
+            return _fdictWithArchiveLineage(dictPrevious, dictFresh)
     dictCarried = dict(dictFresh)
-    for sKey in ("dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY):
+    for sKey in (
+        "dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY, S_ARCHIVE_LINEAGE_KEY,
+    ):
         dictRecord = (dictPrevious or {}).get(sKey)
         if isinstance(dictRecord, dict):
             dictCarried[sKey] = dictRecord
     return dictCarried if dictCarried != dict(dictFresh) else dictFresh
+
+
+def _fdictWithArchiveLineage(dictPrevious, dictFresh):
+    """Return ``dictFresh`` noting the record the previous image was archived under.
+
+    The record itself is dropped -- it covers the old image, not this
+    one -- but which Zenodo record it was is what lets the next deposit
+    continue that record's versions. A previous envelope with no record
+    of its own passes its lineage note on unchanged.
+    """
+    dictLineage = fdictArchiveLineageOf(dictPrevious)
+    if not dictLineage:
+        return dictFresh
+    dictNoted = dict(dictFresh)
+    dictNoted[S_ARCHIVE_LINEAGE_KEY] = dictLineage
+    return dictNoted
+
+
+def fdictArchiveLineageOf(dictContainer):
+    """Return ``{sVersionDoi, sConceptDoi, sZenodoService}`` or ``{}``.
+
+    The container block's own deposit record when it has one, else the
+    lineage note it already carries; empty when neither names a
+    version DOI.
+    """
+    dictContainer = dictContainer or {}
+    for sKey in ("dictImageArchive", S_ARCHIVE_LINEAGE_KEY):
+        dictRecord = dictContainer.get(sKey)
+        if isinstance(dictRecord, dict) and dictRecord.get("sVersionDoi"):
+            return {
+                sField: str(dictRecord.get(sField) or "")
+                for sField in _T_LINEAGE_FIELDS
+            }
+    return {}
 
 
 def _fnEnsureDockerAvailable():

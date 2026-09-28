@@ -5124,7 +5124,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shell, the preflight order and the durable launch.
     # +9 (2026-09-24): each deposit record names the project it
     # deposits for, so another project's row neither pulses nor erases it.
-    "routes/environmentArchiveRoutes.py": 844,
+    # +4 (2026-09-27): the deposit names the record the environment was
+    # archived under before, so a changed image is its next version.
+    "routes/environmentArchiveRoutes.py": 848,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

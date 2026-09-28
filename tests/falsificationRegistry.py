@@ -17893,12 +17893,15 @@ def _fdictEntry(sRel):
             'test_a_regeneration_of_the_same_image_keeps_the_deposit_record'
         ),
         source='vaibify/reproducibility/environmentSnapshot.py',
+        # RE-ANCHORED 2026-09-27: the carried keys now include the
+        # lineage note; the mutant still carries nothing.
         old=(
-            '    dictCarried = dict(dictFresh)\n'
-            '    for sKey in ("dictImageArchive", '
-            'S_SUPERSEDED_ARCHIVE_KEY):\n'
+            '    for sKey in (\n'
+            '        "dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY, '
+            'S_ARCHIVE_LINEAGE_KEY,\n'
+            '    ):\n'
         ),
-        new='    dictCarried = dict(dictFresh)\n    for sKey in ():\n',
+        new='    for sKey in ():\n',
     ),
     Falsification(
         nodeid=(
@@ -18524,17 +18527,18 @@ def _fdictEntry(sRel):
         # posted straight to Zenodo, refused for three missing
         # required fields AFTER the image had been saved and
         # compressed.
+        # RE-ANCHORED 2026-09-27: the metadata is built once, before
+        # the draft, so the new-version lane can set it too.
         old=(
-            '        zenodoClient.fdictBuildApiMetadata(\n'
-            '            imageArchive.fdictStampDepositMetadata(\n'
-            '                dictMetadata, dictRecord,\n'
-            '            ),\n'
-            '            S_IMAGE_UPLOAD_TYPE,\n'
-            '        ),\n'
+            '    dictApiMetadata = zenodoClient.fdictBuildApiMetadata(\n'
+            '        imageArchive.fdictStampDepositMetadata(dictMetadata, '
+            'dictRecord),\n'
+            '        S_IMAGE_UPLOAD_TYPE,\n'
+            '    )\n'
         ),
         new=(
-            '        imageArchive.fdictStampDepositMetadata('
-            'dictMetadata, dictRecord),\n'
+            '    dictApiMetadata = imageArchive.fdictStampDepositMetadata('
+            'dictMetadata, dictRecord)\n'
         ),
     ),
     Falsification(
@@ -20801,9 +20805,11 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/imageDeposit.py',
         # The deposit hands back a record over an archive nobody
         # asked, which is the state this feature exists to end.
+        # RE-ANCHORED 2026-09-27: the call names the versioned lane.
         old=(
             '        fnRefuseUnlessArchiveHoldsWhatWeSent(\n'
             '            clientZenodo, iDepositId, dictRecord,\n'
+            '            bVersioned=bool(iParentDepositId),\n'
             '        )\n'
         ),
         new='',
@@ -24159,5 +24165,39 @@ def _fdictEntry(sRel):
             '.file-outcome-word {\n    display: inline-block;\n'
             '    width: 2ch;\n    word-break: break-all;\n}\n'
         ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_changed_image_keeps_the_record_it_was_archived_under'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # the lineage goes with the record when the image changes
+        old='            return _fdictWithArchiveLineage(dictPrevious, dictFresh)\n',
+        new='            return dictFresh\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_new_image_on_the_same_service_is_a_new_version'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # every deposit opens a fresh record again
+        old=(
+            '    iParentDepositId = fiParentDepositIdOnService(\n'
+            '        dictParentArchive, clientZenodo.sService,\n'
+            '    )\n'
+        ),
+        new='    iParentDepositId = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_new_version_still_holding_the_old_image_is_never_published'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # a new-version draft is not asked for leftover files
+        old='    if bVersioned:\n',
+        new='    if False:\n',
     ),
 ]

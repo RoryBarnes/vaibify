@@ -502,6 +502,7 @@ def _fdictDepositSynchronously(
 ):
     """Run the whole deposit on a worker thread; return the record."""
     import shutil
+    from ...reproducibility.environmentSnapshot import fdictArchiveLineageOf
     from ...reproducibility.zenodoClient import ZenodoClient
     sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
 
@@ -533,6 +534,9 @@ def _fdictDepositSynchronously(
             fnReportVerifying=lambda: archiveProgress.fnRecordProgress(
                 sContainerId, archiveProgress.S_PHASE_VERIFYING, 0, 0,
             ),
+            # The record this environment was archived under before, so
+            # a changed image is deposited as its next version.
+            dictParentArchive=fdictArchiveLineageOf(dictContainer),
         )
     finally:
         # 800 MB must not survive the operation that made it, whether

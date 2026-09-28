@@ -2223,6 +2223,15 @@ because the envelope is regenerated whenever a workflow crosses Level 1
 and a record carried forward on adjacency alone would describe an image
 nobody deposited.
 
+When the image changes, the record is dropped but a lineage note,
+`dictContainer.dictImageArchiveLineage` (the old version DOI, concept DOI
+and service), is kept. No gate reads it. The next deposit on the same
+Zenodo service is made a new VERSION of that record, so one project's
+environments stay one history on Zenodo; across services, which Zenodo
+cannot version, the deposit starts a fresh record. A new-version draft
+inherits the previous image, so it is also checked for files vaibify did
+not send before it is published.
+
 Three hazards are structural, each a plausible simplification that
 breaks the feature silently:
 
