@@ -14905,6 +14905,26 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_project_returning_to_level_three_is_shown_the_order'
+        ),
+        # Any outstanding Level 2 blocker silences the arrow again.
+        source='vaibify/reproducibility/levelOrdering.py',
+        old='    if listLevel2Blockers and not fbOnlyRepublishingIsOutstanding(\n',
+        new='    if listLevel2Blockers or not fbOnlyRepublishingIsOutstanding(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
+            'test_a_first_climb_is_still_sent_to_publish_first'
+        ),
+        # Publishing blockers alone read as a return to Level 3.
+        source='vaibify/reproducibility/levelOrdering.py',
+        old='    return bool(\n        fiResolveZenodoParentDepositId(dictWorkflow)\n',
+        new='    return True or bool(\n        fiResolveZenodoParentDepositId(dictWorkflow)\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileProvenance.py::'
             'test_each_stage_is_labelled_with_what_it_holds'
         ),
@@ -21903,9 +21923,13 @@ def _fdictEntry(sRel):
         # removed (it silenced the arrow exactly when ordering
         # mattered), and the surviving Level 2 half moved into
         # fdictDescribeOrderedEndgame, which also empties the blocked
-        # map below Level 2.
+        # map below Level 2. RE-ANCHORED 2026-09-28: the gate now lets
+        # a RETURN to Level 3 through (only a republish outstanding);
+        # dropping the whole gate is the same shipped behaviour.
         old=(
-            '    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):\n'
+            '    if listLevel2Blockers and not fbOnlyRepublishingIsOutstanding(\n'
+            '        listLevel2Blockers, dictWorkflow, filesRepo,\n'
+            '    ):\n'
             '        return {"dictNextStep": None, "dictBlockedRows": {}}\n'
         ),
         new='',

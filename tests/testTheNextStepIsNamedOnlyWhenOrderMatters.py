@@ -737,3 +737,98 @@ def test_an_unasked_lock_leaves_the_row_and_the_arrow_green(sProjectRepo):
             dictWorkflow, sProjectRepo, dictVerdict, dictCurrency,
         )
         assert dictRows["dependencyLock"] is True, sLabel
+
+
+def _fnWriteReturnEvidence(sProjectRepo, bWithArchiveLineage=True):
+    """Write what a project that went through the endgame leaves on disk."""
+    import json
+    dictContainer = {"sImageDigest": "sha256:" + "e" * 64}
+    if bWithArchiveLineage:
+        dictContainer["dictImageArchiveLineage"] = {
+            "sVersionDoi": "10.5281/zenodo.1", "sConceptDoi": "",
+            "sZenodoService": "zenodo",
+        }
+    with open(os.path.join(sProjectRepo, ".vaibify", "environment.json"),
+              "w") as fileHandle:
+        json.dump({"dictContainer": dictContainer}, fileHandle)
+    with open(os.path.join(sProjectRepo, ".vaibify", "l3_attestation.json"),
+              "w") as fileHandle:
+        json.dump({"sStatus": "failed"}, fileHandle)
+
+
+def _fdictEndgameWithRepublishBlockers(monkeypatch, sProjectRepo, dictWorkflow,
+                                       listCriteria):
+    """Rory's state after regenerating: the four endgame rows unmet."""
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [
+            {"iStepIndex": -1, "sCriterion": sCriterion}
+            for sCriterion in listCriteria
+        ],
+    )
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: _fdictAllSatisfiedExcept(
+            "environmentArchive", "rebuildAttestation",
+            "envelopeMirror", "envelopeArchive",
+        ),
+    )
+    return levelOrdering.fdictDescribeOrderedEndgame(dictWorkflow, sProjectRepo)
+
+
+@pytest.mark.falsification
+def test_a_project_returning_to_level_three_is_shown_the_order(
+    monkeypatch, sProjectRepo,
+):
+    """Back at Level 1 only for want of a republish, the arrow still leads.
+
+    Regenerating a verified project's envelope drops it to Level 1,
+    because its published copies no longer match. Silencing the arrow
+    there left the researcher with no way to know the environment
+    deposit and the rerun come BEFORE the publish -- and a publish in
+    the natural order costs an immutable Zenodo version
+    (researcher-reported, 2026-09-28). The evidence of a return is
+    real files on disk, never a stubbed predicate.
+
+    Kills: silencing the arrow on any outstanding Level 2 blocker.
+    """
+    _fnWriteReturnEvidence(sProjectRepo)
+    dictReturning = {"sZenodoDepositionId": "123"}
+    dictEndgame = _fdictEndgameWithRepublishBlockers(
+        monkeypatch, sProjectRepo, dictReturning,
+        ["github-verify-stale", "zenodo-verify-stale"],
+    )
+    assert dictEndgame["dictNextStep"]["sRowKey"] == "environmentArchive"
+    assert {"rebuildAttestation", "envelopeMirror", "envelopeArchive"} <= set(
+        dictEndgame["dictBlockedRows"]
+    ), "publishing before the deposit and the rerun must read as premature"
+    dictOtherWork = _fdictEndgameWithRepublishBlockers(
+        monkeypatch, sProjectRepo, dictReturning,
+        ["github-verify-stale", "ai-declaration-unsigned"],
+    )
+    assert dictOtherWork["dictNextStep"] is None, (
+        "Level 2 work that is not a republish still comes first"
+    )
+
+
+@pytest.mark.falsification
+def test_a_first_climb_is_still_sent_to_publish_first(monkeypatch, sProjectRepo):
+    """No evidence of an earlier endgame: publishing IS simply next.
+
+    The 2026-09-16 ruling stands for a project climbing for the first
+    time, and each piece of evidence is required -- a project with an
+    attestation but no archive lineage, or with both but no recorded
+    Zenodo deposit, has not been through the endgame.
+
+    Kills: treating publishing blockers alone as a return.
+    """
+    _fnWriteReturnEvidence(sProjectRepo, bWithArchiveLineage=False)
+    assert _fdictEndgameWithRepublishBlockers(
+        monkeypatch, sProjectRepo, {"sZenodoDepositionId": "123"},
+        ["not-in-github-mirror"],
+    )["dictNextStep"] is None
+    _fnWriteReturnEvidence(sProjectRepo)
+    assert _fdictEndgameWithRepublishBlockers(
+        monkeypatch, sProjectRepo, {}, ["not-in-github-mirror"],
+    )["dictNextStep"] is None

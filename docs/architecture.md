@@ -2814,6 +2814,21 @@ are genuinely independent and the arrow disappears exactly when order
 stops mattering. An arrow on the wrong row is worse than no arrow,
 because it carries more authority than the row it points at.
 
+**The arrow speaks only inside the endgame, and a return trip counts.**
+Outstanding Level 2 work silences it (2026-09-16): on a first climb,
+publishing IS the next step, and an arrow sequencing the Level 3 rows
+over it pointed past where the researcher was. A project RETURNING to
+Level 3 is different (2026-09-28). Regenerating a verified project's
+envelope drops it to Level 1 because its published copies no longer
+match, and the only remedy for that — publishing — is the step that
+must come last, since a Zenodo version is immutable. So when every
+Level 2 blocker is a republish and the project carries the evidence of
+an earlier endgame (a recorded Zenodo deposit, an environment-archive
+record or its lineage note, an attestation record),
+`fbOnlyRepublishingIsOutstanding` lets the endgame answer: the arrow
+names the environment deposit, then the rerun, and the publish rows
+read as premature until then.
+
 The order ships in the poll payload. Re-deriving it in JavaScript
 would be a second authority on a question that has one — the mistake
 the determinism row made. The arrow's own verdicts must also agree
