@@ -626,13 +626,21 @@ all of it was baked in at build time. Nothing on screen said so. Now a
 banner does, and it names the remedy:
 
 ```
-This container predates your vaibify.yml
-  vaibify.yml has changed since this image was built, so the container
-  is still running the old recipe.
-  Rebuild the environment to apply it. Ports, mounts, secrets and
-  resource limits are not part of this — those apply on the next start
-  and never need a rebuild.
+This container is running an older version of your environment
+  The environment's settings (its packages, repositories, Python
+  version or features) changed after this container was built, so
+  those changes are not in effect yet.
+  Rebuild the environment to apply them; the container restarts on the
+  new build when it finishes. Ports, shared folders, passwords and
+  memory limits never need a rebuild: they take effect the next time
+  the container starts.
 ```
+
+The comparison is against `vaibify.yml` as you wrote it. A build also
+adds the project's own repository to the list the container clones,
+but that addition belongs to the build, not to your file, and it is
+kept out of the stamp — otherwise every fresh container would claim to
+predate the file it was just built from.
 
 **The second line is as load-bearing as the first.** Ports, bind
 mounts, secrets, network isolation and the CPU/memory ceilings are

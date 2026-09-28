@@ -450,18 +450,28 @@ def fnPruneDanglingImages():
 
 
 def fnPrepareBuildContext(config, sDockerDir, sProjectDirectory=None):
-    """Generate all config-derived files in the Docker build context."""
+    """Generate all config-derived files in the Docker build context.
+
+    Works on a COPY of ``config``. Adding the project's own repository
+    to the list the entrypoint clones is a fact about this build
+    context, never about the researcher's ``vaibify.yml``; added to the
+    caller's object it reached the configuration fingerprint the build
+    stamps next, so the stamp never matched the file and every freshly
+    built container announced it predated its own ``vaibify.yml``.
+    """
+    import copy
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
-    fnIncludeProjectRepo(config, sProjectDirectory)
+    configContext = copy.deepcopy(config)
+    fnIncludeProjectRepo(configContext, sProjectDirectory)
     fnGenerateContainerConf(
-        config, os.path.join(sDockerDir, "container.conf")
+        configContext, os.path.join(sDockerDir, "container.conf")
     )
-    fnWriteSystemPackages(config, sDockerDir)
-    fnWritePythonPackages(config, sDockerDir)
-    fnWritePipInstallFlags(config, sDockerDir)
-    fnWriteBinariesEnv(config, sDockerDir)
+    fnWriteSystemPackages(configContext, sDockerDir)
+    fnWritePythonPackages(configContext, sDockerDir)
+    fnWritePipInstallFlags(configContext, sDockerDir)
+    fnWriteBinariesEnv(configContext, sDockerDir)
     fnCopyContainerScripts(sDockerDir)
     fnStageCuratedDocs(sDockerDir)
 

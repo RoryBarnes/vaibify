@@ -114,6 +114,13 @@ it back into a lie:
 - **No label is *nothing determined*, never drift.** An image built
   before the stamp existed carries none, and the comparison is
   three-state for the same reason `environmentDrift` is.
+- **The stamp is the file AS WRITTEN.** The build adds the project's
+  own repository to what the container clones; that addition belongs
+  to the build context, and `fnPrepareBuildContext` works on a copy so
+  it never reaches the fingerprint. When it did, every freshly built
+  container claimed to predate the file it was built from
+  (researcher-reported, 2026-09-28) --
+  `testAFreshBuildStampsTheFileItWasBuiltFrom` drives real `git`.
 - **It rides its own key, not `saWarnings`.** That list is headed
   "from the most recent container start"; this is a statement about a
   file the researcher edited since, and filing it there would make the

@@ -2880,6 +2880,27 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
+    var S_IMAGE_CURRENCY_WARNING_TOOLTIP =
+        "The container you have open runs a different image than " +
+        "the one this envelope pins, and verifications grade the " +
+        "pinned image. Open this row to regenerate or to keep the pin.";
+
+    function _fsImageCurrencyRowWarning(sKey, dictImageCurrency) {
+        /* The ⚠ BESIDE the row, echoed on the Artifacts heading, and
+           never a change of the row's colour or its Level 3 cell
+           (researcher's ruling, 2026-09-28): the pinned envelope is
+           still true of the published record, so the level stands,
+           but a warning only visible inside an expanded row went
+           unseen. Only a determined MISMATCH raises it -- null is
+           "nothing determined", and "derived" is agents stacked on
+           the pin, which is the pin working as designed. */
+        if (sKey !== "environmentSnapshot") return "";
+        if ((dictImageCurrency || {}).bPinnedImageIsLive !== false) {
+            return "";
+        }
+        return S_IMAGE_CURRENCY_WARNING_TOOLTIP;
+    }
+
     function _fdictArtifactRow(
         sKey, dictArtifact, dictImageCurrency, dictDetailForLock
     ) {
@@ -2888,6 +2909,7 @@ var VaibifyWorkflowRequirements = (function () {
             iLevel: 3,
             sTitle: _DICT_ENVELOPE_ARTIFACT_LABELS[sKey],
             sState: _fsArtifactStateFromDetail(dictArtifact),
+            sWarning: _fsImageCurrencyRowWarning(sKey, dictImageCurrency),
             fsDetail: function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,

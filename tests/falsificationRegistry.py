@@ -14872,6 +14872,27 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testAContainerOffThePinWarnsBesideTheSnapshotRow.py::'
+            'test_a_container_off_the_pin_raises_the_glyph_and_nothing_else'
+        ),
+        # The mismatch is again reported only inside the expanded row.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return S_IMAGE_CURRENCY_WARNING_TOOLTIP;\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testAFreshBuildStampsTheFileItWasBuiltFrom'
+        ),
+        # The build adds the project repository to the caller's config,
+        # so the stamp never matches the file again.
+        source='vaibify/cli/commandBuild.py',
+        old='    configContext = copy.deepcopy(config)\n',
+        new='    configContext = config\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileProvenance.py::'
             'test_each_stage_is_labelled_with_what_it_holds'
         ),

@@ -2346,7 +2346,8 @@ var VaibifyContainerManager = (function () {
         }
         elBanner.innerHTML =
             '<div class="build-warnings-banner-header">' +
-            '<span>This container predates your vaibify.yml</span>' +
+            '<span>This container is running an older version of ' +
+            'your environment</span>' +
             '</div>' +
             '<ul class="build-warnings-banner-list">' +
             listLines.map(function (sLine) {
