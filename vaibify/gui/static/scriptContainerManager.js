@@ -2332,10 +2332,14 @@ var VaibifyContainerManager = (function () {
            container with one computed from vaibify.yml as it is now,
            and answers with NO lines for anything it could not
            establish -- so an empty list means "no drift or nothing
-           determined", and the banner is simply absent. It is NOT
-           dismissible: the condition it reports does not go away by
-           being acknowledged, and it disappears of its own accord the
-           moment the rebuild it asks for lands. */
+           determined", and the banner is simply absent. The x hides it
+           for THIS visit only, as it does for the build warnings
+           beside it: the condition does not go away by being
+           acknowledged, so it renders again the next time the
+           container is opened while it is still true, and it goes
+           away of its own accord once the rebuild it asks for lands.
+           A researcher who has read it must not have to stare at it
+           (researcher-reported, 2026-09-28). */
         var elBanner = document.getElementById(
             "configurationDriftBanner");
         if (!elBanner) return;
@@ -2348,6 +2352,11 @@ var VaibifyContainerManager = (function () {
             '<div class="build-warnings-banner-header">' +
             '<span>This container is running an older version of ' +
             'your environment</span>' +
+            '<button type="button" ' +
+            'class="build-warnings-banner-dismiss" ' +
+            'id="btnDismissConfigurationDrift" ' +
+            'aria-label="Hide this notice until the container is ' +
+            'next opened">×</button>' +
             '</div>' +
             '<ul class="build-warnings-banner-list">' +
             listLines.map(function (sLine) {
@@ -2357,6 +2366,14 @@ var VaibifyContainerManager = (function () {
             }).join("") +
             '</ul>';
         elBanner.style.display = "block";
+        var elDismiss = document.getElementById(
+            "btnDismissConfigurationDrift");
+        if (elDismiss) {
+            elDismiss.addEventListener("click", function () {
+                elBanner.style.display = "none";
+                elBanner.innerHTML = "";
+            });
+        }
     }
 
     function _fnRenderBuildWarningsBanner(listWarnings) {
@@ -2821,5 +2838,6 @@ var VaibifyContainerManager = (function () {
         fnResumeInterruptedStart: fnResumeInterruptedStart,
         fnBuildContainer: fnBuildContainer,
         fnAcquireImage: fnAcquireImage,
+        fnSurfaceReadinessOutcome: _fnSurfaceReadinessOutcome,
     };
 })();

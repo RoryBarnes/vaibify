@@ -5,8 +5,8 @@ open container runs was reported only INSIDE the expanded Environment
 snapshot row, under a collapsed Artifacts group, so a researcher who
 had just rebuilt saw Level 3 and nothing else (researcher-reported,
 2026-09-28). The ruling: the level stands -- the published record is
-still true -- and the ⚠ rides BESIDE the row and on the Artifacts
-heading, as the sandbox-deposit warning does.
+still true -- and the ⚠ sits in the warning column just left of the
+level cells, on the row and on the Artifacts heading.
 
 Three things only a rendered page shows: the glyph appears on the row
 and on the collapsed heading for a determined mismatch; it appears for
@@ -60,9 +60,16 @@ def _fsSnapshotRow(sHtml):
 
 
 def _fsRowHeader(sRow):
-    """Return the row's header markup: title, glyph and level cells."""
-    return sRow.split("requirement-row-header")[1].split(
-        "requirement-next-step")[0].split('<div class="requirement-row-detail')[0]
+    """Return THIS row's header: title, warning column and level cells.
+
+    ``sRow`` starts inside the header's opening tag, so the header ends
+    at its first closing ``</div>``. An earlier draft searched for the
+    header's class name, which appears only in the NEXT row, and so
+    compared two copies of the wrong row.
+    """
+    sHeader = sRow.split("</div>")[0]
+    assert "Environment snapshot" in sHeader
+    return sHeader
 
 
 def _fsArtifactsHeading(sHtml):
@@ -93,10 +100,15 @@ def test_a_container_off_the_pin_raises_the_glyph_and_nothing_else(
     )
     sQuietHeader = _fsRowHeader(_fsSnapshotRow(sQuiet))
     assert "requirement-row-warning" not in sQuietHeader
-    sGlyph = sRow.split('<span class="requirement-row-warning"')[1]
-    sGlyph = '<span class="requirement-row-warning"' + sGlyph.split(
-        "</span>")[0] + "</span>"
-    assert _fsRowHeader(sRow).replace(sGlyph, "") == sQuietHeader, (
+    sOpenHeader = _fsRowHeader(sRow)
+    sGlyphCell = '<span class="step-regression-cell' + sOpenHeader.split(
+        '<span class="step-regression-cell')[1].split("</span>")[0] + "</span>"
+    assert "regression-warning-orange" in sGlyphCell, (
+        "the glyph sits in the warning column, in the legend's orange"
+    )
+    assert sOpenHeader.replace(
+        sGlyphCell, '<span class="step-regression-cell"></span>',
+    ) == sQuietHeader, (
         "the glyph is the ONLY difference: the row's colour and its "
         "Level 3 cell do not move"
     )

@@ -139,6 +139,13 @@ def testAnUnlabelledImageIsNeverReportedAsDrifted():
     assert any("Rebuild" in sLine for sLine in listLines), (
         "a drift warning must name its remedy"
     )
+    sAll = " ".join(listLines)
+    assert "Admin \u2192 Environments" in sAll, (
+        "Rebuild lives on the Environments hub, not the Project hub"
+    )
+    assert "Environment snapshot" in sAll, (
+        "and say WHERE the buttons that apply it are"
+    )
 
 
 def testTheBuildStampsTheConfigurationLabel():

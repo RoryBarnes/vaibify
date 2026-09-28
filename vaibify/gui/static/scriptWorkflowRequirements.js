@@ -2980,14 +2980,22 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsRenderLevelStrip(
         dictStateByLevel, sTitle, dictReasonByLevel, dictCheckingByLevel,
+        sWarning, sWarningClass,
     ) {
-        // Three cells (L1 | L2 | L3) behind a warning-column spacer,
-        // so every strip in the column shares the banner's four-slot
-        // geometry: the levels this requirement gates carry its
-        // state; the others show the n/a dash — a user hunting for
-        // Level 2 blockers scans one column.
+        // Three cells (L1 | L2 | L3) behind the warning column, so
+        // every strip shares the banner's four-slot geometry: the
+        // levels this requirement gates carry its state; the others
+        // show the n/a dash — a user hunting for Level 2 blockers
+        // scans one column. A requirement's ⚠ sits in the warning
+        // column, where a step's does, in the legend's orange: it
+        // says "look here", and never changes a level cell.
         var sHtml = '<span class="step-level-strip">' +
-            '<span class="step-regression-cell"></span>';
+            (sWarning
+                ? '<span class="step-regression-cell ' +
+                  'regression-warning-orange ' + sWarningClass +
+                  '" title="' + fnEscapeHtml(sWarning) +
+                  '">\u26a0</span>'
+                : '<span class="step-regression-cell"></span>');
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             var sLevelState = dictStateByLevel[iLevel] ||
                 "not-applicable";
@@ -3122,19 +3130,18 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
             _fsExpandTriangle(bOpen) +
-            fnEscapeHtml(dictRow.sTitle) +
-            // BESIDE the state, never replacing it. A sandbox deposit
-            // really does hold matching bytes, so moving the row's
-            // colour would be a claim nobody earned; the glyph says
-            // the bytes are somewhere that promises nothing.
-            (dictRow.sWarning
-                ? '<span class="requirement-row-warning" title="' +
-                  fnEscapeHtml(dictRow.sWarning) + '">\u26a0</span>'
-                : '') + '</span>' +
+            fnEscapeHtml(dictRow.sTitle) + '</span>' +
+            // BESIDE the state, never replacing it: the glyph sits in
+            // the warning column, and the level cells keep the row's
+            // own colour. A sandbox deposit really does hold matching
+            // bytes, so moving that colour would be a claim nobody
+            // earned; the glyph says the bytes are somewhere that
+            // promises nothing.
             _fsRenderLevelStrip(
                 dictStateByLevel, dictRow.sTitle,
                 dictRow.dictReasonByLevel,
-                _fdictCheckingLevelsOf([dictRow])) +
+                _fdictCheckingLevelsOf([dictRow]),
+                dictRow.sWarning || "", "requirement-row-warning") +
             '</div>' +
             _fsRenderNextStepReason(dictRow, dictNextStep);
         if (bOpen) {
@@ -3312,19 +3319,17 @@ var VaibifyWorkflowRequirements = (function () {
         return dictByLevel;
     }
 
-    function _fsRenderGroupWarning(listRows) {
+    function _fsGroupWarningText(listRows) {
         /* Groups start collapsed, and a row's ⚠ inside one was the
            easiest thing on the page to miss -- "first capture awaiting
            your review" sat unseen under a closed AI heading. The glyph
-           is echoed on the heading, naming each row that raised it. */
-        var listWarnings = listRows.filter(function (dictRow) {
+           is echoed in the heading's warning column, naming each row
+           that raised it. */
+        return listRows.filter(function (dictRow) {
             return Boolean(dictRow.sWarning);
         }).map(function (dictRow) {
             return dictRow.sTitle + ": " + dictRow.sWarning;
-        });
-        if (listWarnings.length === 0) return "";
-        return ' <span class="requirement-group-warning" title="' +
-            fnEscapeHtml(listWarnings.join("\n")) + '">\u26a0</span>';
+        }).join("\n");
     }
 
     function _fsRenderRequirementGroup(
@@ -3346,8 +3351,7 @@ var VaibifyWorkflowRequirements = (function () {
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
             _fsExpandTriangle(bOpen) +
-            _DICT_GROUP_TITLES[sGroupKey] +
-            _fsRenderGroupWarning(listRows) + '</span>' +
+            _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
             _fsRenderOrderingArrow(
                 dictNextStep,
                 _fbGroupHoldsTheNextRow(listRows, dictNextStep)
@@ -3355,7 +3359,9 @@ var VaibifyWorkflowRequirements = (function () {
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
                 _DICT_GROUP_TITLES[sGroupKey], null,
-                _fdictCheckingLevelsOf(listRows)) + '</div>';
+                _fdictCheckingLevelsOf(listRows),
+                _fsGroupWarningText(listRows),
+                "requirement-group-warning") + '</div>';
         if (bOpen) {
             sHtml += '<div class="requirement-group-body">';
             for (var i = 0; i < listRows.length; i++) {

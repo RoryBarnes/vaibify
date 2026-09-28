@@ -7409,13 +7409,13 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    itself. Orange rather than muted grey: it is a consequence the
    researcher is choosing, not a footnote about one. */
 /* A deposit whose bytes match the envelope but whose host promises
-   nothing. It rides BESIDE the row's state: the glyph in the banner,
+   nothing. It rides BESIDE the row's state: the glyph in the banner's
+   warning column,
    the explanation and the offer in the expanded detail. Orange, never
    red — red would say the deposit diverges, which it does not. */
 .requirement-row-warning,
 .requirement-group-warning {
     color: var(--color-orange);
-    margin-left: 6px;
     font-weight: bold;
     cursor: help;
 }

@@ -14893,6 +14893,18 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testTheDriftBannerHidesForThisVisit.py::'
+            'test_the_drift_banner_closes_for_this_visit_and_returns_while_true'
+        ),
+        # The banner renders with no way to close it again.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            "            'id=\"btnDismissConfigurationDrift\" ' +\n"
+        ),
+        new="            'id=\"btnDismissConfigurationDriftGone\" ' +\n",
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileProvenance.py::'
             'test_each_stage_is_labelled_with_what_it_holds'
         ),

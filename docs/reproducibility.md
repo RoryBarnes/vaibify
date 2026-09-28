@@ -630,10 +630,14 @@ This container is running an older version of your environment
   The environment's settings (its packages, repositories, Python
   version or features) changed after this container was built, so
   those changes are not in effect yet.
-  Rebuild the environment to apply them; the container restarts on the
-  new build when it finishes. Ports, shared folders, passwords and
-  memory limits never need a rebuild: they take effect the next time
-  the container starts.
+  To apply them, open Admin → Environments and choose Rebuild from the
+  ⋮ menu on this environment's tile; the container restarts on the new
+  build when it finishes.
+  If this project is already verified, the rebuild changes its
+  environment: afterwards open Project → Artifacts → Environment
+  snapshot, click Regenerate now, and verify again.
+  Ports, shared folders, passwords and memory limits never need a
+  rebuild: they take effect the next time the container starts.
 ```
 
 The comparison is against `vaibify.yml` as you wrote it. A build also
