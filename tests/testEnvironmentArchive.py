@@ -127,6 +127,37 @@ def test_a_project_with_no_envelope_yet_is_not_asked(sProjectRepo):
     assert levelGates.fbImageArchiveQuestionSettled({}, sProjectRepo) is True
 
 
+@pytest.mark.falsification
+def test_a_rebuilt_image_does_not_unanswer_the_question(sProjectRepo):
+    """Depositing an earlier image of this environment answered it.
+
+    Driven through the real carry-forward a regeneration performs: a
+    changed image drops the deposit record and keeps only its lineage
+    note. Read without the note, the question went back to unanswered,
+    a Level 2 blocker appeared in front of a project returning to
+    Level 3, and the arrow that would have sent it to deposit the new
+    image fell silent (researcher-reported, 2026-09-28). Level 3 still
+    asks for the NEW image to be archived.
+
+    Kills: settling the question on the deposit record alone.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictCarryImageArchiveForward,
+    )
+    dictDeposited = _fdictBuildEnvelope(_fdictBuildRecord())
+    dictRepinned = dict(dictDeposited)
+    dictRepinned["dictContainer"] = fdictCarryImageArchiveForward(
+        dictDeposited["dictContainer"],
+        {"sImageDigest": "sha256:" + "f" * 64, "sArchitecture": "arm64"},
+    )
+    assert "dictImageArchive" not in dictRepinned["dictContainer"]
+    _fnWriteEnvelope(sProjectRepo, dictRepinned)
+    assert levelGates.fbImageArchiveQuestionSettled({}, sProjectRepo) is True
+    assert levelGates.fbImageArchiveDeposited(sProjectRepo) is False, (
+        "the new image is not archived, and Level 3 must still say so"
+    )
+
+
 def test_a_deposit_settles_the_question_without_a_recorded_answer(
     sProjectRepo,
 ):

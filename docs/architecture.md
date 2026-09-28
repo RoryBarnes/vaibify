@@ -2252,7 +2252,10 @@ than a lock: change the answer, deposit, and the level opens with
 nothing to undo. The one direction that IS sound is the other:
 `fbImageArchiveQuestionSettled` reads the deposit record, because
 having deposited is having decided, evidenced more strongly than a
-recorded answer.
+recorded answer. The lineage note a changed image leaves behind counts
+too: a rebuild does not unanswer the question, and reading only the
+record put a Level 2 blocker in front of every project returning to
+Level 3, where it silenced the arrow pointing at the new deposit.
 
 This is the third requirement on the ladder where declining passes,
 after Personal AI Configuration and the determinism block, so the

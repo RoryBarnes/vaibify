@@ -47,6 +47,7 @@ from .determinismGate import (
 from .environmentSnapshot import (
     fbEnvironmentDigestPinned,
     fbImageDigestPullable,
+    fdictArchiveLineageOf,
     fdictReadEnvironmentJson,
 )
 from .l3Attestation import (
@@ -1250,6 +1251,15 @@ def fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
     task whose request is long gone, so it holds no commit lane to
     persist an answer through, and a hub restart would otherwise put
     the Level 2 row back to unanswered over an archive that exists.
+
+    The LINEAGE note settles it too (2026-09-28). A changed image drops
+    the deposit record -- it covers the old image -- and keeps a note of
+    the record it was archived under. The researcher answered
+    "archived" by depositing, and a rebuild does not unanswer it; read
+    without the note, every regenerated envelope put a Level 2 blocker
+    in front of a project returning to Level 3, and silenced the arrow
+    that would have sent it to deposit the new image. That the NEW
+    image is archived remains Level 3's question, unchanged.
     """
     dictEnvironment = fdictReadEnvironmentJson(filesRepo)
     dictContainer = (dictEnvironment or {}).get("dictContainer")
@@ -1258,6 +1268,8 @@ def fbImageArchiveQuestionSettled(dictWorkflow, filesRepo):
     if not dictContainer.get("sImageDigest"):
         return True
     if imageArchive.fdictReadArchiveRecord(dictEnvironment) is not None:
+        return True
+    if fdictArchiveLineageOf(dictContainer):
         return True
     return imageArchive.fbWorkflowAnswersImageArchive(dictWorkflow)
 

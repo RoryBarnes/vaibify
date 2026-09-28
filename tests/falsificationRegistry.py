@@ -14925,6 +14925,18 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_rebuilt_image_does_not_unanswer_the_question'
+        ),
+        # A regenerated envelope's lineage note no longer answers the
+        # Level 2 question, so a returning project drops a rung and the
+        # arrow falls silent.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if fdictArchiveLineageOf(dictContainer):\n        return True\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileProvenance.py::'
             'test_each_stage_is_labelled_with_what_it_holds'
         ),
