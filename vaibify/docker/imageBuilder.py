@@ -669,15 +669,25 @@ def fbRemoveImage(sImageReference):
 
 
 def _fnRunDockerBuildCapturing(saCommand):
-    """Run docker build, streaming stderr to the user and capturing the tail.
+    """Run docker build, streaming its output to the user and capturing the tail.
+
+    stdout is MERGED into the one pipe this reads. BuildKit writes its
+    progress to stderr, but the legacy builder -- what runs wherever
+    buildx is not installed -- writes every step and every command's
+    output to stdout, and with stdout left to the hub's terminal the
+    dashboard's live pane showed a researcher nothing but the
+    deprecation notice for the whole build. Merged, both builders feed
+    the pane, and the failure tail keeps each builder's lines in the
+    order they were written.
 
     On non-zero exit, raises RuntimeError with ``sStderrTail`` set to
-    the last ``_I_BUILD_STDERR_TAIL_LINES`` lines of stderr so callers
-    can classify build failures.
+    the last ``_I_BUILD_STDERR_TAIL_LINES`` lines of that output so
+    callers can classify build failures.
     """
     procBuild = subprocess.Popen(
         saCommand,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
     )
@@ -792,7 +802,10 @@ def _fbLineIsBuildKitPostMortem(sLine):
 
 
 def _fsStreamAndCaptureStderr(procBuild):
-    """Tee subprocess stderr to sys.stderr; return the captured tail.
+    """Tee the build's output to sys.stderr; return the captured tail.
+
+    Reads stderr when it was piped on its own, else the merged stdout
+    pipe ``_fnRunDockerBuildCapturing`` opens.
 
     Two windows, not one. BuildKit ends a failed build by echoing the
     whole failing step -- sixty lines of source for a long RUN -- and
@@ -804,10 +817,13 @@ def _fsStreamAndCaptureStderr(procBuild):
     """
     dequeOutput = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
     dequePostMortem = deque(maxlen=_I_BUILD_STDERR_TAIL_LINES)
-    if procBuild.stderr is None:
+    fileOutput = procBuild.stderr
+    if fileOutput is None:
+        fileOutput = getattr(procBuild, "stdout", None)
+    if fileOutput is None:
         return ""
     fnLineSink = getattr(_threadLocalBuildSink, "fnLineSink", None)
-    for sLine in procBuild.stderr:
+    for sLine in fileOutput:
         sys.stderr.write(sLine)
         if _fbLineIsBuildKitPostMortem(sLine):
             dequePostMortem.append(sLine)

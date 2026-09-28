@@ -492,3 +492,40 @@ def test_a_build_whose_fields_cannot_make_a_container_is_refused(
     assert dictDetail["sRefusal"] == (
         buildRoutes.S_REFUSAL_UNUSABLE_CONFIGURATION
     )
+
+
+@pytest.mark.falsification
+def test_the_legacy_builders_stdout_reaches_the_live_pane():
+    """Without buildx, every step is written to STDOUT; the pane must see it.
+
+    Driven through the real launcher with a real process shaped like
+    the legacy builder: step lines and command output on stdout, the
+    failure sentence on stderr. The pane once showed only the stderr
+    deprecation notice for a whole legacy build, and the failure tail
+    held the failure sentence without the output that explained it.
+
+    Kills: piping only stderr in _fnRunDockerBuildCapturing.
+    """
+    sScript = (
+        "import sys\n"
+        "sys.stderr.write('DEPRECATED: The legacy builder is deprecated\\n')\n"
+        "sys.stdout.write('Step 5/37 : RUN apt-get install -y gfortran\\n')\n"
+        "sys.stdout.write('E: Unable to locate package gfortran\\n')\n"
+        "sys.stdout.flush()\n"
+        "sys.stderr.write(\"The command '/bin/sh -c apt-get install' "
+        "returned a non-zero code: 100\\n\")\n"
+        "sys.exit(100)\n"
+    )
+    listCaptured = []
+    imageBuilder.fnSetThreadBuildLineSink(listCaptured.append)
+    try:
+        with pytest.raises(RuntimeError) as excinfo:
+            imageBuilder._fnRunDockerBuildCapturing([sys.executable, "-c", sScript])
+    finally:
+        imageBuilder.fnSetThreadBuildLineSink(None)
+    sPane = "".join(listCaptured)
+    assert "Step 5/37 : RUN apt-get install" in sPane
+    assert "Unable to locate package gfortran" in sPane
+    sTail = excinfo.value.sStderrTail
+    assert "Unable to locate package gfortran" in sTail
+    assert "returned a non-zero code: 100" in sTail

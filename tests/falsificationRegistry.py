@@ -14858,6 +14858,20 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_the_legacy_builders_stdout_reaches_the_live_pane'
+        ),
+        # Pipe only stderr again, so the legacy builder's steps go to
+        # the hub's terminal and the live pane stays blank.
+        source='vaibify/docker/imageBuilder.py',
+        old=(
+            '        stdout=subprocess.PIPE,\n'
+            '        stderr=subprocess.STDOUT,\n'
+        ),
+        new='        stderr=subprocess.PIPE,\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDockerfileProvenance.py::'
             'test_each_stage_is_labelled_with_what_it_holds'
         ),
