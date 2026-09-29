@@ -185,6 +185,33 @@ def test_an_upload_shows_its_bytes_and_a_restarted_attempt(
     assert "attempt 2" in dictSeen["sText"], dictSeen["sText"]
 
 
+@pytest.mark.falsification
+def test_every_step_between_the_counters_names_itself(
+    pageDashboard, serverHub,
+):
+    """The steps with no bytes to count still say what they are.
+
+    Kills: rendering nothing for a phase that has no byte counter,
+    which is how the agent check and the draft preparation sat behind
+    an unexplained pulse.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictExpected = {
+        "checking-agents": "coding agents leave the environment",
+        "preparing-draft": "Preparing the Zenodo draft",
+        "verifying": "Zenodo holds exactly what was sent",
+    }
+    for sPhase, sExpected in dictExpected.items():
+        dictSeen = pageDashboard.evaluate(_S_DRIVE_ROW, _fdictArchivePayload(
+            "running",
+            dictDeposit={"sPhase": sPhase, "iBytesRead": 0,
+                         "iBytesTotal": 0, "sReason": ""},
+        ))
+        assert sExpected in dictSeen["sText"], (sPhase, dictSeen["sText"])
+
+
 def test_an_archived_row_names_the_platform_and_the_doi(
     pageDashboard, serverHub,
 ):

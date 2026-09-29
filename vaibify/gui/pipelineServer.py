@@ -2780,13 +2780,10 @@ def _fsArchiveCheckState(dictDeposit):
     """
     sPhase = (dictDeposit or {}).get("sPhase") or ""
     from vaibify.gui import archiveProgress
-    if sPhase in (
-        archiveProgress.S_PHASE_STARTING,
-        archiveProgress.S_PHASE_SAVING,
-        archiveProgress.S_PHASE_UPLOADING,
-    ):
-        return "checking"
-    return ""
+    # The progress record's own list of live phases: a copy here once
+    # left out "verifying", so the row stopped reading as in progress
+    # during the last check before the publish.
+    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) else ""
 
 
 def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):

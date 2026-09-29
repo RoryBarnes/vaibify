@@ -23,13 +23,16 @@ project's row to pulse nor this project's answer to erase.
 
 __all__ = [
     "DICT_DEPOSITS",
+    "S_PHASE_CHECKING_AGENTS",
     "S_PHASE_FAILED",
+    "S_PHASE_PREPARING_DRAFT",
     "S_PHASE_SAVING",
     "S_PHASE_SETTLED",
     "S_PHASE_STARTING",
     "S_PHASE_UPLOADING",
     "S_PHASE_VERIFYING",
     "fbDepositIsLive",
+    "fbPhaseIsLive",
     "fdictReadDeposit",
     "fnForgetDeposit",
     "fnRecordFailure",
@@ -42,7 +45,13 @@ import threading
 
 
 S_PHASE_STARTING = "starting"
+# Reading the whole image to prove the coding agents' layers leave the
+# environment alone -- tens of seconds that used to show as "starting".
+S_PHASE_CHECKING_AGENTS = "checking-agents"
 S_PHASE_SAVING = "saving"
+# Creating the Zenodo draft (or the new version of the earlier record),
+# clearing the inherited image out of it and describing this one.
+S_PHASE_PREPARING_DRAFT = "preparing-draft"
 S_PHASE_UPLOADING = "uploading"
 # Asking the archive what it stored, after the upload and before the
 # record is called good. Seconds, not minutes: Zenodo reports the MD5
@@ -56,9 +65,14 @@ S_PHASE_FAILED = "failed"
 # a settled one, so a caller cannot make the row pulse forever by
 # inventing a name.
 _T_LIVE_PHASES = (
-    S_PHASE_STARTING, S_PHASE_SAVING, S_PHASE_UPLOADING,
-    S_PHASE_VERIFYING,
+    S_PHASE_STARTING, S_PHASE_CHECKING_AGENTS, S_PHASE_SAVING,
+    S_PHASE_PREPARING_DRAFT, S_PHASE_UPLOADING, S_PHASE_VERIFYING,
 )
+
+
+def fbPhaseIsLive(sPhase):
+    """True when ``sPhase`` names a deposit still under way."""
+    return sPhase in _T_LIVE_PHASES
 
 DICT_DEPOSITS = {}
 _LOCK_DEPOSITS = threading.Lock()

@@ -1096,8 +1096,27 @@ var VaibifyWorkflowRequirements = (function () {
                 fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +
                 '</div>';
         }
-        return "";
+        var sStep = _DICT_DEPOSIT_STEP_SENTENCES[dictDeposit.sPhase];
+        return sStep
+            ? '<div class="requirement-row-status">' +
+              fnEscapeHtml(sStep) + '</div>'
+            : "";
     }
+
+    /* Every step of a deposit names itself. The steps between the
+       byte counters used to show nothing but the row's pulse, so a
+       researcher watched "depositing now" and then "uploading" with
+       unexplained waits between (researcher-reported, 2026-09-29). */
+    var _DICT_DEPOSIT_STEP_SENTENCES = {
+        starting: "Starting the deposit.",
+        "checking-agents": "Checking that the coding agents leave the " +
+            "environment untouched. This reads the whole image and " +
+            "usually takes under a minute.",
+        "preparing-draft": "Preparing the Zenodo draft that will " +
+            "receive the image.",
+        verifying: "Checking that Zenodo holds exactly what was sent, " +
+            "then publishing.",
+    };
 
     function _fsDescribeUploadProgress(dictDeposit) {
         /* The upload is the longest silent stretch of a deposit, and a

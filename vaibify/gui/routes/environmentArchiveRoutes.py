@@ -562,6 +562,9 @@ def _fdictDepositSynchronously(
         )
 
     try:
+        archiveProgress.fnRecordProgress(
+            sContainerId, archiveProgress.S_PHASE_CHECKING_AGENTS,
+        )
         _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer)
         return imageDeposit.fdictDepositImageArchive(
             ZenodoClient(dictDestination["sZenodoService"], sToken=sToken),
@@ -581,6 +584,9 @@ def _fdictDepositSynchronously(
             # they chose a new record.
             dictParentArchive=dictDestination["dictParentArchive"],
             fnReportUploadProgress=_ffnReportUploadProgress(sContainerId),
+            fnReportPreparingDraft=_ffnReportPhase(
+                sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
+            ),
         )
     finally:
         # 800 MB must not survive the operation that made it, whether
@@ -877,7 +883,17 @@ def _fdictBuildPromotionProgressHooks(sContainerId):
             )
         ),
         "fnReportUploadProgress": _ffnReportUploadProgress(sContainerId),
+        "fnReportPreparingDraft": _ffnReportPhase(
+            sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
+        ),
     }
+
+
+def _ffnReportPhase(sContainerId, sPhase):
+    """Return a callback that puts one byte-less phase on the row."""
+    def fnReportPhase():
+        archiveProgress.fnRecordProgress(sContainerId, sPhase)
+    return fnReportPhase
 
 
 def _ffnReportUploadProgress(sContainerId):

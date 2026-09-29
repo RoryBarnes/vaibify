@@ -5137,7 +5137,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # referenced DOI is looked up on the Zenodo it names.
     # +12 (2026-09-29): the deposit and the promotion put the upload's
     # bytes and attempt on the row, through one callback factory.
-    "routes/environmentArchiveRoutes.py": 929,
+    # +16 (2026-09-29): every byte-less step of a deposit (the agent
+    # check, the draft preparation) names itself on the row.
+    "routes/environmentArchiveRoutes.py": 945,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

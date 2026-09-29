@@ -370,6 +370,7 @@ def fdictDepositImageArchive(
     dictMetadata, fnReportProgress=None, dictAttestation=None,
     fnReportUploadStarted=None, fnReportVerifying=None,
     dictParentArchive=None, fnReportUploadProgress=None,
+    fnReportPreparingDraft=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
@@ -398,6 +399,7 @@ def fdictDepositImageArchive(
         fnReportVerifying=fnReportVerifying,
         dictParentArchive=dictParentArchive,
         fnReportUploadProgress=fnReportUploadProgress,
+        fnReportPreparingDraft=fnReportPreparingDraft,
     )
 
 
@@ -406,6 +408,7 @@ def fdictUploadAndPublishImageArchive(
     tTarball, dictAttestation=None, fnReportUploadStarted=None,
     fnReportDraftCreated=None, sProvenance="", fnReportVerifying=None,
     dictParentArchive=None, fnReportUploadProgress=None,
+    fnReportPreparingDraft=None,
 ):
     """Upload one already-written tarball, publish it, return its record.
 
@@ -461,6 +464,8 @@ def fdictUploadAndPublishImageArchive(
     iParentDepositId = fiParentDepositIdOnService(
         dictParentArchive, clientZenodo.sService,
     )
+    if fnReportPreparingDraft is not None:
+        fnReportPreparingDraft()
     dictDraft = (
         clientZenodo.fdictGetNewVersionDraft(iParentDepositId)
         if iParentDepositId else clientZenodo.fdictCreateDraft(dictApiMetadata)

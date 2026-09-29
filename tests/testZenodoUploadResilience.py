@@ -188,3 +188,74 @@ def test_the_upload_progress_reaches_the_row_record():
     assert dictSeen["sPhase"] == archiveProgress.S_PHASE_UPLOADING
     assert (dictSeen["iBytesRead"], dictSeen["iBytesTotal"],
             dictSeen["iAttempt"]) == (512, 2048, 2)
+
+
+@pytest.mark.falsification
+def test_every_step_of_a_deposit_names_itself_in_order(tmp_path, monkeypatch):
+    """The row never sits on a stale phase while other work goes on.
+
+    Driven through the route's synchronous deposit with only the image
+    save, the separation check and Zenodo itself replaced. The steps
+    between the byte counters -- reading the image to check the agents,
+    preparing the draft -- used to leave the row on "starting" and then
+    "saving" (researcher-reported, 2026-09-29).
+
+    Kills: preparing the Zenodo draft without saying so, which leaves
+    the finished save on screen while the draft is made.
+    """
+    pathTarball = tmp_path / "environment-image.tar.zst"
+    pathTarball.write_bytes(b"not really an image")
+
+    def ftFakeSave(sImageReference, sScratchDirectory, fnReportProgress):
+        fnReportProgress(19, 19)
+        return (str(pathTarball), "sha256:" + "b" * 64, 19,
+                "sha256:" + "c" * 64, "d" * 32)
+
+    class _FakeClient:
+        def __init__(self, sService, sToken=None):
+            self.sService = sService
+
+        def fdictCreateDraft(self, dictMetadata):
+            return {"id": 7, "links": {"bucket": "https://example/b"}}
+
+        def fnUploadToBucket(self, sUrl, sPath, fnReportProgress=None):
+            fnReportProgress(19, 19, 1)
+
+        def fdictGetDeposit(self, iDepositId):
+            return {"files": [{"key": "environment-image.tar.zst",
+                               "checksum": "md5:" + "d" * 32,
+                               "filesize": 19}]}
+
+        def fdictPublishDraft(self, iDepositId):
+            return {"doi": "10.5072/zenodo.7", "conceptdoi": ""}
+
+    from vaibify.reproducibility import imageDeposit
+    listPhases = []
+    monkeypatch.setattr(imageDeposit, "ftSaveAndCompressImage", ftFakeSave)
+    monkeypatch.setattr(
+        imageDeposit, "fsResolveDepositScratchDirectory",
+        lambda: str(tmp_path / "scratch"),
+    )
+    monkeypatch.setattr(zenodoClient, "ZenodoClient", _FakeClient)
+    monkeypatch.setattr(
+        environmentArchiveRoutes, "_fnRefuseAgentsInTheEnvironment",
+        lambda sContainerId, dictContainer: None,
+    )
+    monkeypatch.setattr(
+        archiveProgress, "fnRecordProgress",
+        lambda sContainerId, sPhase, *listArgs, **dictKwargs: (
+            listPhases.append(sPhase)
+            if not listPhases or listPhases[-1] != sPhase else None
+        ),
+    )
+    environmentArchiveRoutes._fdictDepositSynchronously(
+        "cid", {"sWorkflowName": "w"},
+        {"sImageDigest": "registry.example/p@sha256:" + "a" * 64,
+         "sArchitecture": "arm64"},
+        {"sZenodoService": "sandbox", "dictParentArchive": {}},
+        "token", None,
+    )
+    assert listPhases == [
+        "checking-agents", "saving", "preparing-draft", "uploading",
+        "verifying",
+    ]

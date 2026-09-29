@@ -17976,12 +17976,17 @@ def _fdictEntry(sRel):
             'earns'
         ),
         source='vaibify/gui/pipelineServer.py',
-        old='        return "checking"\n    return ""\n',
+        # RE-ANCHORED 2026-09-29: the live phases are now asked of
+        # archiveProgress.fbPhaseIsLive; the mutation is unchanged.
+        old=(
+            '    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) '
+            'else ""\n'
+        ),
         new=(
-            '        return "checking"\n'
             '    if sPhase == archiveProgress.S_PHASE_FAILED:\n'
             '        return "uncheckable"\n'
-            '    return ""\n'
+            '    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) '
+            'else ""\n'
         ),
     ),
     Falsification(
@@ -24585,5 +24590,27 @@ def _fdictEntry(sRel):
             '                fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +\n'
         ),
         new='                fnEscapeHtml("Uploading to Zenodo") +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_every_step_of_a_deposit_names_itself_in_order'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # the draft is prepared under the finished save's message
+        old=(
+            '    if fnReportPreparingDraft is not None:\n'
+            '        fnReportPreparingDraft()\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_every_step_between_the_counters_names_itself'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        var sStep = _DICT_DEPOSIT_STEP_SENTENCES[dictDeposit.sPhase];\n',
+        new='        var sStep = "";\n',
     ),
 ]
