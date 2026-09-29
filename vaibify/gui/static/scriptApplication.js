@@ -6762,8 +6762,14 @@ const VaibifyApp = (function () {
                 dictStatus.dictStepLevelWarnings;
         }
         if (dictStatus.dictWorkflowEnvelopeDetail) {
+            var bAttestationWasRunning = (
+                _dictWorkflowState.dictWorkflowEnvelopeDetail || {}
+            ).bRebuildAttestationRunning === true;
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
+            _fnRecheckRemotesWhenAttestationSettles(
+                bAttestationWasRunning,
+                dictStatus.dictWorkflowEnvelopeDetail);
         }
         // An empty map is a real answer here — "no check is running"
         // — and `{}` is truthy, so it is adopted. Only a payload from
@@ -6773,6 +6779,26 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictRemoteChecks =
                 dictStatus.dictRemoteChecks;
         }
+    }
+
+    function _fnRecheckRemotesWhenAttestationSettles(
+        bWasRunning, dictEnvelopeDetail
+    ) {
+        /* A settled verification writes the attestation and the
+           reproduced manifest, so every published copy is behind it
+           the moment it lands. The badges kept the pre-run answer
+           until someone pressed Verify, and the Attestation row read
+           as passing beside a GitHub row that was quietly out of date
+           (researcher-reported, 2026-09-29). Only a run THIS tab saw
+           end triggers it -- a reload finds the run already settled
+           and changes nothing -- and the check is the same one opening
+           a project starts, whose badges pulse until each answers. */
+        if (!bWasRunning ||
+                dictEnvelopeDetail.bRebuildAttestationRunning !== false) {
+            return;
+        }
+        VaibifySyncManager.fnRefreshConfiguredRemotes(
+            _dictSessionState.sContainerId);
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {

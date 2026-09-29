@@ -24699,4 +24699,17 @@ def _fdictEntry(sRel):
         ),
         new='            _fsRenderDepositPhase(dictDeposit);\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testASettledAttestationRechecksTheRemotes.py::'
+            'test_a_settled_verification_rechecks_the_remotes_once'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            _fnRecheckRemotesWhenAttestationSettles(\n'
+            '                bAttestationWasRunning,\n'
+            '                dictStatus.dictWorkflowEnvelopeDetail);\n'
+        ),
+        new='',
+    ),
 ]
