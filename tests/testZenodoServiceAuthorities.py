@@ -78,8 +78,9 @@ def test_a_cross_instance_parent_is_refused_by_name():
     sRefusal = syncBookkeeping.fsDescribeCrossInstanceParent(
         _fdictPromotedWorkflow(), "sandbox",
     )
-    assert "zenodo" in sRefusal and "sandbox" in sRefusal
-    assert "new concept" in sRefusal
+    assert "zenodo.org" in sRefusal and "sandbox" in sRefusal
+    assert "new version" in sRefusal
+    assert "new, separate record" in sRefusal
 
 
 def test_an_ordinary_publish_to_its_own_instance_is_not_refused():

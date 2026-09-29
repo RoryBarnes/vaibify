@@ -1624,8 +1624,7 @@ var VaibifyWorkflowRequirements = (function () {
             sPermanence: (dictDetail.dictArchivePermanence || {})
                 .sProjectArchivePermanence || "",
             sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
-            sCrossInstance:
-                dictDetail.sZenodoCrossInstanceRefusal || "",
+            dictCrossInstance: dictDetail.dictZenodoCrossInstance || {},
             /* The gate's own tri-state verdict, not a re-derivation:
                "the archive carries an attestation covering its own
                manifest" is a Level 3 conjunct of THIS row, and the
@@ -1638,16 +1637,34 @@ var VaibifyWorkflowRequirements = (function () {
         };
     }
 
-    function _fsRenderCrossInstanceRemedy(sRefusal) {
-        /* A refusal naming a remedy that has no control is the "name
-           the cause" rule failing in its worst direction: the
-           researcher follows the instruction and finds nothing to
-           press. The backend's own sentence is the explanation. */
-        if (!sRefusal) return "";
+    var _DICT_ZENODO_SITE_NAMES = {
+        zenodo: "zenodo.org",
+        sandbox: "the Zenodo sandbox",
+    };
+
+    function _fsRenderCrossInstanceRemedy(dictCrossInstance) {
+        /* Both remedies the refusal names, each a button labeled with
+           the Zenodo it acts on. Setting the instance back used to
+           have no control at all -- it lived in a settings dialog a
+           researcher could not find -- and the one button offered,
+           "Start a new concept", was Zenodo jargon for giving up the
+           version chain (researcher-reported, 2026-09-29). The
+           backend's own sentence is the explanation. */
+        if (!dictCrossInstance || !dictCrossInstance.sMessage) return "";
+        var sRecordedSite = _DICT_ZENODO_SITE_NAMES[
+            dictCrossInstance.sRecordedService] ||
+            dictCrossInstance.sRecordedService;
+        var sTargetSite = _DICT_ZENODO_SITE_NAMES[
+            dictCrossInstance.sTargetService] ||
+            dictCrossInstance.sTargetService;
         return '<div class="permanence-warning">\u26a0 ' +
-            fnEscapeHtml(sRefusal) + '</div>' +
+            fnEscapeHtml(dictCrossInstance.sMessage) + '</div>' +
+            _fsRenderActionButton(
+                "publish-where-the-zenodo-record-is", "",
+                "Deposit a new version on " + sRecordedSite + "\u2026") +
             _fsRenderActionButton("start-new-zenodo-concept", "",
-                "Start a new concept\u2026", false, true);
+                "Start a new, separate record on " + sTargetSite +
+                "\u2026", false, true);
     }
 
     function _fsRenderArchivedDoiRow(sDoi) {
@@ -1775,7 +1792,7 @@ var VaibifyWorkflowRequirements = (function () {
                 dictArchiveInfo) +
             _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
             _fsRenderCrossInstanceRemedy(
-                dictArchive.sCrossInstance) +
+                dictArchive.dictCrossInstance) +
             _fsRenderPermanenceNote(
                 dictArchive.sPermanence,
                 "This project's Zenodo deposit",

@@ -2692,11 +2692,15 @@ whole Zenodo verify over a promotion that had nothing to do with them.
 The consequence is a guard: Zenodo's `newversion` flow asks ONE
 instance for a new version of a record it holds, so a publish whose
 recorded deposit and declared target disagree is refused locally and by
-name, rather than sent out to come back as a bare 404. The remedy it
-names exists — `start-new-concept` retires the recorded identifiers
-into a superseded note so the next publish creates a fresh concept —
-because a refusal pointing at a remedy that does not exist is worse
-than no refusal at all.
+name, rather than sent out to come back as a bare 404. Both remedies
+it names have a button on the Zenodo row, labeled with the site each
+acts on, because a refusal pointing at a remedy that does not exist is
+worse than no refusal at all. `publish-where-the-record-is` sets the
+declaration to the instance holding the record -- the researcher's
+explicit choice, writing what the Zenodo settings dialog writes -- so
+the next publish is a new version and the chain is kept.
+`start-new-concept` retires the recorded identifiers into a superseded
+note so the next publish creates a fresh, unlinked record.
 
 ### The promotion is bracketed, because a lost DOI cannot be guessed
 

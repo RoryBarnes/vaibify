@@ -5333,7 +5333,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +14 (2026-09-24): the push dedupe key carries the project and is
     # skipped when HEAD is unreadable; the DAG reads its own workflow's
     # dependency scan.
-    "routes/syncRoutes.py": 3645,
+    # +43 (2026-09-29): publish-where-the-record-is, the cross-instance
+    # refusal's OTHER remedy, beside the start-new-concept route that
+    # is its twin -- same flow, same bookkeeping, same module.
+    "routes/syncRoutes.py": 3688,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -6942,7 +6945,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # required sChoice argument.
     # +10 (2026-09-29): stop-environment-archive-deposit (user-only,
     # like the deposit it stops).
-    "actionCatalog.py": 1429,
+    # +11 (2026-09-29): publish-where-the-zenodo-record-is (user-only:
+    # it decides where a permanent DOI is minted).
+    "actionCatalog.py": 1440,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

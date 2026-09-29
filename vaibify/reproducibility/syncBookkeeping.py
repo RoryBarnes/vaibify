@@ -41,6 +41,7 @@ from .scheduledReverify import fsSyncStatusRelativePath
 
 __all__ = [
     "DICT_REMOTE_PRODUCED_FIELDS",
+    "fdictDescribeCrossInstanceParent",
     "fiResolveZenodoParentDepositId",
     "fsDescribeCrossInstanceParent",
     "fsResolveRecordedZenodoService",
@@ -270,32 +271,59 @@ def fsResolveRecordedZenodoService(dictWorkflow):
     )
 
 
-def fsDescribeCrossInstanceParent(dictWorkflow, sTargetService):
-    """Return why a publish would cross instances, or ``""``.
+# How each Zenodo service is named to a researcher. "concept" and
+# "instance" are Zenodo's vocabulary, not theirs.
+_DICT_SERVICE_PHRASES = {
+    "zenodo": "zenodo.org (permanent)",
+    "sandbox": "the Zenodo sandbox (testing only)",
+}
+
+
+def fdictDescribeCrossInstanceParent(dictWorkflow, sTargetService):
+    """Return the cross-instance facts and sentence, or ``{}``.
 
     Zenodo's ``newversion`` flow asks ONE instance for a new version
     of a record it holds. A project whose recorded deposit lives on
-    sandbox and whose declared target is production would send that
-    sandbox deposit id to zenodo.org, which knows no such record --
-    an unhelpful remote 404 in place of a local refusal that can name
-    the remedy.
+    one and whose declared target is the other would send that
+    deposit id where no such record exists -- an unhelpful remote 404
+    in place of a local refusal that can name the remedy. The facts
+    ride beside the sentence so the Zenodo row can label its two
+    remedies with the instances they act on.
     """
     sRecorded = fsResolveRecordedZenodoService(dictWorkflow)
     sTarget = str(sTargetService or "").strip()
     if not fiResolveZenodoParentDepositId(dictWorkflow):
-        return ""
+        return {}
     if not sTarget or sTarget == sRecorded:
-        return ""
-    return (
-        "This project's Zenodo deposit was published on "
-        f"{sRecorded} and the project is now set to publish to "
-        f"{sTarget}. Zenodo cannot make a new version of a record "
-        "held on the other instance -- sandbox and production are "
-        "separate systems and nothing transfers between them. Either "
-        "set the instance back to " + sRecorded + ", or start a new "
-        "concept on " + sTarget + ", which publishes a first version "
-        "there and keeps the old identifiers as a superseded note."
-    )
+        return {}
+    sRecordDoi = str((
+        ((dictWorkflow or {}).get("dictRemotes") or {}).get("zenodo") or {}
+    ).get("sDoi") or "")
+    sRecordedPhrase = _DICT_SERVICE_PHRASES.get(sRecorded, sRecorded)
+    sTargetPhrase = _DICT_SERVICE_PHRASES.get(sTarget, sTarget)
+    return {
+        "sRecordedService": sRecorded,
+        "sTargetService": sTarget,
+        "sRecordDoi": sRecordDoi,
+        "sMessage": (
+            "This project's Zenodo record"
+            + (f", {sRecordDoi}," if sRecordDoi else "")
+            + f" is on {sRecordedPhrase}, but the project is set to "
+            f"publish to {sTargetPhrase}. Zenodo can add a new version "
+            "only on the site that holds the record, so either deposit "
+            f"a new version on {sRecordedPhrase} -- which sets this "
+            "project to publish there -- or start a new, separate "
+            f"record on {sTargetPhrase}. The existing record is "
+            "untouched either way."
+        ),
+    }
+
+
+def fsDescribeCrossInstanceParent(dictWorkflow, sTargetService):
+    """Return why a publish would cross instances, or ``""``."""
+    return fdictDescribeCrossInstanceParent(
+        dictWorkflow, sTargetService,
+    ).get("sMessage", "")
 
 
 def fiResolveZenodoParentDepositId(dictWorkflow):

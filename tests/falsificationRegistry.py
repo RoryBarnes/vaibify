@@ -24712,4 +24712,36 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- 2026-09-29: the Zenodo row offers both cross-instance
+    # remedies, the chain-keeping one included ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoPublishWhereTheRecordIs.py::'
+            'test_a_new_version_keeps_the_chain_and_publishes_where_the_'
+            'record_is'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictWorkflow["sZenodoService"] = '
+            'dictCrossInstance["sRecordedService"]\n'
+        ),
+        new=(
+            '        dictWorkflow["sZenodoService"] = '
+            'dictCrossInstance["sTargetService"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersBothRemedies.py::'
+            'test_a_record_on_the_other_zenodo_offers_both_remedies'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '            _fsRenderActionButton(\n'
+            '                "publish-where-the-zenodo-record-is", "",\n'
+            '                "Deposit a new version on " + sRecordedSite + '
+            '"\\u2026") +\n'
+        ),
+        new='',
+    ),
 ]

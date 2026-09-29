@@ -880,6 +880,17 @@ LIST_AGENT_ACTIONS = [
                      "different Zenodo instances. User-only: it gives "
                      "up a version chain, which is not a judgement an "
                      "agent should make."},
+    {"sName": "publish-where-the-zenodo-record-is", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo/{sContainerId}/publish-where-the-record-is",
+     "bAgentSafe": False,
+     "sDescription": "Set the project to publish on the Zenodo instance "
+                     "that holds its recorded deposit, so the next "
+                     "publish is a new version of that record. The "
+                     "other remedy for a project whose recorded deposit "
+                     "and declared target differ; refused (409) when "
+                     "they agree. Changes project.json. User-only: it "
+                     "decides where a permanent DOI is minted."},
     {"sName": "promote-environment-archive",
      "sCategory": "verification", "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/environment-archive/promote",

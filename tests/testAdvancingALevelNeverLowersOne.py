@@ -155,6 +155,9 @@ DICT_LADDER_ACTION_RUNGS = {
     # Level 2: it changes what the published-copies rows compare
     # against, by retiring the deposit those rows are checked against.
     "start-new-zenodo-concept": 2,
+    # Level 2 too: it changes the declared publish target, which
+    # project.json carries and the published-copies rows compare.
+    "publish-where-the-zenodo-record-is": 2,
     "remove-ai-model": 0,
 }
 

@@ -4263,20 +4263,36 @@ const VaibifyApp = (function () {
             sAbsolutePath:
                 "/api/zenodo/{sContainerId}/start-new-concept",
             dictConfirm: {
-                sTitle: "Start a new Zenodo concept",
-                sMessage: "Your next Zenodo publish will create a " +
-                    "FRESH record rather than a new version of the " +
-                    "one on file, so the two will not be linked as a " +
-                    "version chain. The existing deposit is " +
-                    "untouched and its DOI keeps resolving to " +
-                    "exactly what it already holds; vaibify moves " +
-                    "its identifiers into a superseded note so you " +
-                    "can still see them. Use this when your recorded " +
-                    "deposit and the instance you want to publish to " +
-                    "are on different Zenodo sites.",
+                sTitle: "Start a new, separate Zenodo record",
+                sMessage: "Your next Zenodo publish will create a NEW " +
+                    "record, with a DOI of its own, rather than a new " +
+                    "version of the one on file, so the two will not " +
+                    "be linked. The existing record is untouched and " +
+                    "its DOI keeps resolving to exactly what it " +
+                    "already holds; vaibify keeps its identifiers in " +
+                    "a note so you can still see them. To keep adding " +
+                    "versions to the existing record instead, choose " +
+                    "\"Deposit a new version\".",
             },
-            sToast: "The recorded deposit was retired. Your next " +
-                "publish starts a new concept.",
+            sToast: "Your next Zenodo publish will start a new, " +
+                "separate record.",
+        },
+        "publish-where-the-zenodo-record-is": {
+            sAbsolutePath:
+                "/api/zenodo/{sContainerId}/publish-where-the-record-is",
+            dictConfirm: {
+                sTitle: "Deposit a new version of this record",
+                sMessage: "Vaibify will set this project to publish " +
+                    "to the Zenodo site that holds its record, so " +
+                    "your next Zenodo publish becomes a new version " +
+                    "of that record under the same record DOI. This " +
+                    "changes project.json, so push to GitHub as well " +
+                    "as publishing to Zenodo. Nothing is published " +
+                    "until you publish from the Zenodo row.",
+            },
+            sToast: "This project now publishes where its Zenodo " +
+                "record is. Publish from the Zenodo row to add the " +
+                "new version.",
         },
         "promote-environment-archive": {
             sPath: "/environment-archive/promote",
