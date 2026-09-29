@@ -321,16 +321,12 @@ confirmation names the chosen destination, and a missing token for
 that Zenodo is asked for without changing where the project
 publishes.
 
-The Environment archive row names every place a deposit can go before
-anything is uploaded: a new version of the project's earlier record
-(on the Zenodo that holds it), a new record on zenodo.org, or a new
-record on the Zenodo sandbox, which is for practice and never
-satisfies Level 3. When the project has deposited before, the row says
-so and recommends continuing a permanent record; otherwise it
-recommends a new permanent one. Nothing is pre-selected, the
-confirmation names the chosen destination, and a missing token for
-that Zenodo is asked for without changing where the project
-publishes.
+While a deposit runs, the row names each step and counts the bytes
+uploaded. A dropped connection is retried twice, and each attempt that
+ended is kept on the row with how far it got and how long it ran. A
+running deposit can be stopped from the row up to the moment it starts
+publishing; after that the DOI is being minted and cannot be taken
+back. A stopped deposit publishes nothing.
 
 #### The archived environment holds no coding agent
 
