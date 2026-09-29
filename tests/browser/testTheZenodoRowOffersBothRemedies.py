@@ -1,4 +1,4 @@
-"""A record on the other Zenodo offers both remedies, named in plain words.
+"""A record on the other Zenodo offers both remedies, in plain words.
 
 A promoted project's record lives on zenodo.org while its declared
 target stayed on the sandbox. The row showed a refusal and one button,
@@ -53,7 +53,7 @@ def _fsSelectRow(sHtml, sKey):
 def test_a_record_on_the_other_zenodo_offers_both_remedies(
     pageDashboard, serverHub,
 ):
-    """Both buttons, each naming the Zenodo it acts on; no jargon.
+    """Both buttons, short labels, both sites named above them; no jargon.
 
     Kills: offering only "start a new record" again, which leaves the
     remedy that keeps the version chain without a control.
@@ -74,9 +74,11 @@ def test_a_record_on_the_other_zenodo_offers_both_remedies(
     )
 
     assert 'data-wf-action="publish-where-the-zenodo-record-is"' in sRow
-    assert "Deposit a new version on zenodo.org" in sRow, sRow[:2000]
+    assert "Deposit a new version\u2026" in sRow, sRow[:2000]
     assert 'data-wf-action="start-new-zenodo-concept"' in sRow
-    assert "Start a new, separate record on the Zenodo sandbox" in sRow
+    assert "Start a new deposit\u2026" in sRow
+    assert "zenodo.org (permanent)" in sRow
+    assert "the Zenodo sandbox (testing only)" in sRow
     assert "10.5281/zenodo.991" in sRow
     assert "concept" not in re.sub(r'data-wf-action="[^"]*"', "", sRow), (
         "Zenodo's word for the record group reached the researcher"

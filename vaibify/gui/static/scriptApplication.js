@@ -4263,7 +4263,7 @@ const VaibifyApp = (function () {
             sAbsolutePath:
                 "/api/zenodo/{sContainerId}/start-new-concept",
             dictConfirm: {
-                sTitle: "Start a new, separate Zenodo record",
+                sTitle: "Start a new deposit",
                 sMessage: "Your next Zenodo publish will create a NEW " +
                     "record, with a DOI of its own, rather than a new " +
                     "version of the one on file, so the two will not " +

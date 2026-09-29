@@ -24739,8 +24739,7 @@ def _fdictEntry(sRel):
         old=(
             '            _fsRenderActionButton(\n'
             '                "publish-where-the-zenodo-record-is", "",\n'
-            '                "Deposit a new version on " + sRecordedSite + '
-            '"\\u2026") +\n'
+            '                "Deposit a new version\\u2026") +\n'
         ),
         new='',
     ),

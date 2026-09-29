@@ -1637,34 +1637,23 @@ var VaibifyWorkflowRequirements = (function () {
         };
     }
 
-    var _DICT_ZENODO_SITE_NAMES = {
-        zenodo: "zenodo.org",
-        sandbox: "the Zenodo sandbox",
-    };
-
     function _fsRenderCrossInstanceRemedy(dictCrossInstance) {
-        /* Both remedies the refusal names, each a button labeled with
-           the Zenodo it acts on. Setting the instance back used to
-           have no control at all -- it lived in a settings dialog a
-           researcher could not find -- and the one button offered,
-           "Start a new concept", was Zenodo jargon for giving up the
-           version chain (researcher-reported, 2026-09-29). The
-           backend's own sentence is the explanation. */
+        /* Both remedies the refusal names, each a button. Setting the
+           instance back used to have no control at all -- it lived in
+           a settings dialog a researcher could not find -- and the one
+           button offered, "Start a new concept", was Zenodo jargon for
+           giving up the version chain (researcher-reported,
+           2026-09-29). The labels are short and the researcher's own
+           (ruled 2026-09-29): the backend's sentence directly above
+           them names both sites, so the buttons need not. */
         if (!dictCrossInstance || !dictCrossInstance.sMessage) return "";
-        var sRecordedSite = _DICT_ZENODO_SITE_NAMES[
-            dictCrossInstance.sRecordedService] ||
-            dictCrossInstance.sRecordedService;
-        var sTargetSite = _DICT_ZENODO_SITE_NAMES[
-            dictCrossInstance.sTargetService] ||
-            dictCrossInstance.sTargetService;
         return '<div class="permanence-warning">\u26a0 ' +
             fnEscapeHtml(dictCrossInstance.sMessage) + '</div>' +
             _fsRenderActionButton(
                 "publish-where-the-zenodo-record-is", "",
-                "Deposit a new version on " + sRecordedSite + "\u2026") +
+                "Deposit a new version\u2026") +
             _fsRenderActionButton("start-new-zenodo-concept", "",
-                "Start a new, separate record on " + sTargetSite +
-                "\u2026", false, true);
+                "Start a new deposit\u2026", false, true);
     }
 
     function _fsRenderArchivedDoiRow(sDoi) {
