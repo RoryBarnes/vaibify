@@ -366,6 +366,23 @@ S_TYPED_READ_REPO_SNAPSHOT = "repoSnapshot"
 S_TYPED_READ_GIT_REPO_STATUS = "gitRepoStatus"
 S_TYPED_READ_GIT_WORKTREE_IDENTITIES = "gitWorktreeIdentities"
 S_TYPED_READ_REPOSITORY_WEIGHT = "repositoryWeight"
+# The council's git-tracked snapshot scope (2026-09-29). The index is
+# read from TWO enumerations joined by path, because neither alone says
+# enough: ``ls-files -s`` carries mode and merge stage but hides the
+# skip-worktree bit, and ``ls-files -t`` shows that bit as the tag
+# ``S``. Presence is then decided by ``lstat`` on the worktree, never
+# inferred from a bit, and content identity is the git blob sha of the
+# CURRENT worktree bytes -- the same raw-byte domain the whole-directory
+# observation uses, so the two scopes compare on the same terms.
+S_TYPED_READ_GIT_TRACKED_IDENTITIES = "gitTrackedIdentities"
+# What a git-tracked snapshot leaves behind: untracked and ignored
+# files, with their sizes, enumerated ONCE and bounded. A wholly ignored
+# directory is listed by git as one entry and walked here, so the walk
+# itself stops at the budget instead of git first materializing a
+# third of a million names.
+S_TYPED_READ_GIT_UNTRACKED_INVENTORY = "gitUntrackedInventory"
+I_MAX_OMISSION_INVENTORY_PATHS = 1000000
+I_MAX_OMISSION_INVENTORY_NAME_BYTES = 64 * 1024 * 1024
 # The probe stops counting past this many files. Comfortably above the
 # council's own 20,000-member bound, so a repository that the snapshot
 # would accept is always counted exactly; only one that is already
@@ -936,6 +953,134 @@ _DICT_TYPED_READ_PROGRAMS = {
     # deleted from the worktree (or one that vanishes between
     # enumeration and stat) reports as ``missing``; the caller decides
     # what a missing path means for its lane.
+    S_TYPED_READ_GIT_TRACKED_IDENTITIES: (
+        "import hashlib,json,os,stat,subprocess,sys\n"
+        "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "def fnFail(sReason):\n"
+        "    sys.stdout.write(json.dumps({'bSuccess':False,"
+        "'sReason':sReason,'dictEntries':{}}))\n"
+        "    sys.exit(0)\n"
+        "def fprocessRunGit(listArguments):\n"
+        "    return subprocess.run(\n"
+        "        ['git','-c','core.fsmonitor=false','-C',sRepo]\n"
+        "        +listArguments,\n"
+        "        capture_output=True,text=True,timeout=120)\n"
+        "def fsBlobSha(sAbsolute):\n"
+        "    hashBlob=hashlib.sha1()\n"
+        "    hashBlob.update(('blob '+str(os.path.getsize(sAbsolute))\n"
+        "        +chr(0)).encode())\n"
+        "    with open(sAbsolute,'rb') as fileIn:\n"
+        "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
+        "            hashBlob.update(baChunk)\n"
+        "    return hashBlob.hexdigest()\n"
+        "def fdictDescribe(sRelative):\n"
+        "    sAbsolute=os.path.join(sRepo,sRelative)\n"
+        "    try: st=os.lstat(sAbsolute)\n"
+        "    except FileNotFoundError:\n"
+        "        return {'sType':'missing','sIdentity':'','iSizeBytes':0}\n"
+        "    if stat.S_ISLNK(st.st_mode):\n"
+        "        return {'sType':'symlink',\n"
+        "            'sIdentity':os.readlink(sAbsolute),'iSizeBytes':0}\n"
+        "    if stat.S_ISREG(st.st_mode):\n"
+        "        return {'sType':'file','sIdentity':fsBlobSha(sAbsolute),\n"
+        "            'iSizeBytes':st.st_size}\n"
+        "    if stat.S_ISDIR(st.st_mode):\n"
+        "        return {'sType':'directory','sIdentity':'','iSizeBytes':0}\n"
+        "    return {'sType':'special','sIdentity':'','iSizeBytes':0}\n"
+        "try:\n"
+        "    if fprocessRunGit(\n"
+        "            ['rev-parse','--is-inside-work-tree']).returncode!=0:\n"
+        "        fnFail('not a git work tree')\n"
+        "    processStage=fprocessRunGit(['ls-files','-s','-z'])\n"
+        "    processTag=fprocessRunGit(['ls-files','-t','-z'])\n"
+        "    if processStage.returncode!=0 or processTag.returncode!=0:\n"
+        "        fnFail('index enumeration failed')\n"
+        "    dictTags={}\n"
+        "    for sLine in processTag.stdout.split(chr(0)):\n"
+        "        if len(sLine)>2: dictTags[sLine[2:]]=sLine[0]\n"
+        "    dictEntries={}\n"
+        "    for sLine in processStage.stdout.split(chr(0)):\n"
+        "        if not sLine: continue\n"
+        "        sMeta,sRelative=sLine.split(chr(9),1)\n"
+        "        sMode,sIndexSha,sStage=sMeta.split(' ')\n"
+        "        dictEntry=dictEntries.setdefault(sRelative,\n"
+        "            {'sMode':sMode,'listStages':[],\n"
+        "             'bSkipWorktree':dictTags.get(sRelative,'H')=='S'})\n"
+        "        dictEntry['listStages'].append(int(sStage))\n"
+        "    for sRelative,dictEntry in dictEntries.items():\n"
+        "        if dictEntry['sMode']!='160000':\n"
+        "            dictEntry.update(fdictDescribe(sRelative))\n"
+        "    processHead=fprocessRunGit(['rev-parse','--verify','HEAD'])\n"
+        "    sHeadSha=(processHead.stdout.strip()\n"
+        "        if processHead.returncode==0 else '')\n"
+        "    processStatus=fprocessRunGit(\n"
+        "        ['status','--porcelain=v2','--untracked-files=no'])\n"
+        "    if processStatus.returncode!=0:\n"
+        "        fnFail('status enumeration failed')\n"
+        "except Exception as error:\n"
+        "    fnFail(type(error).__name__+': '+str(error))\n"
+        "listChanged=[sLine for sLine in processStatus.stdout.splitlines()\n"
+        "    if sLine and not sLine.startswith('#')]\n"
+        "sys.stdout.write(json.dumps({'bSuccess':True,'sReason':'',\n"
+        "    'sHeadSha':sHeadSha,'iChangedCount':len(listChanged),\n"
+        "    'sPorcelainDigest':hashlib.sha256(\n"
+        "        processStatus.stdout.encode()).hexdigest(),\n"
+        "    'dictEntries':dictEntries}))\n"
+    ),
+    S_TYPED_READ_GIT_UNTRACKED_INVENTORY: (
+        "import json,os,stat,subprocess,sys\n"
+        "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "iMaxPaths=" + str(I_MAX_OMISSION_INVENTORY_PATHS) + "\n"
+        "iMaxNameBytes=" + str(I_MAX_OMISSION_INVENTORY_NAME_BYTES) + "\n"
+        "listEntries=[]; iNameBytes=0; bComplete=True\n"
+        "def fnFail(sReason):\n"
+        "    sys.stdout.write(json.dumps({'bSuccess':False,"
+        "'sReason':sReason,'listEntries':[]}))\n"
+        "    sys.exit(0)\n"
+        "def fbAppend(sRelative,sReason):\n"
+        "    global iNameBytes,bComplete\n"
+        "    if len(listEntries)>=iMaxPaths or iNameBytes>=iMaxNameBytes:\n"
+        "        bComplete=False\n"
+        "        return False\n"
+        "    try: st=os.lstat(os.path.join(sRepo,sRelative))\n"
+        "    except OSError: return True\n"
+        "    iSize=st.st_size if stat.S_ISREG(st.st_mode) else 0\n"
+        "    listEntries.append([sRelative,sReason,iSize])\n"
+        "    iNameBytes+=len(sRelative)\n"
+        "    return True\n"
+        "def fbWalk(sRelativeDirectory,sReason):\n"
+        "    for sDirectory,listDirs,listFiles in os.walk(\n"
+        "            os.path.join(sRepo,sRelativeDirectory)):\n"
+        "        listDirs.sort()\n"
+        "        for sName in sorted(listFiles):\n"
+        "            if not fbAppend(os.path.relpath(\n"
+        "                    os.path.join(sDirectory,sName),sRepo),sReason):\n"
+        "                return False\n"
+        "    return True\n"
+        "def flistRunGit(listArguments):\n"
+        "    processGit=subprocess.run(\n"
+        "        ['git','-c','core.fsmonitor=false','-C',sRepo]\n"
+        "        +listArguments,capture_output=True,text=True,timeout=300)\n"
+        "    if processGit.returncode!=0:\n"
+        "        fnFail('enumeration failed: '+' '.join(listArguments))\n"
+        "    return sorted(s for s in processGit.stdout.split(chr(0)) if s)\n"
+        "try:\n"
+        "    for sReason,listArguments in (\n"
+        "            ('untracked',['ls-files','--others','--exclude-standard',\n"
+        "                          '-z']),\n"
+        "            ('ignored',['ls-files','--others','--ignored',\n"
+        "                        '--exclude-standard','--directory','-z'])):\n"
+        "        for sRelative in flistRunGit(listArguments):\n"
+        "            bGoOn=(fbWalk(sRelative.rstrip('/'),sReason)\n"
+        "                if sRelative.endswith('/')\n"
+        "                else fbAppend(sRelative,sReason))\n"
+        "            if not bGoOn: break\n"
+        "        if not bComplete: break\n"
+        "except Exception as error:\n"
+        "    fnFail(type(error).__name__+': '+str(error))\n"
+        "sys.stdout.write(json.dumps({'bSuccess':True,'sReason':'',\n"
+        "    'bComplete':bComplete,'listEntries':listEntries}))\n"
+    ),
     S_TYPED_READ_GIT_WORKTREE_IDENTITIES: (
         "import hashlib,json,os,subprocess,sys\n"
         "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
@@ -1084,6 +1229,19 @@ def _fdictDecodeProbeAnswer(tExecResult):
         return {"bAnswered": False, "sError": "unreadable probe output"}
     dictAnswer["bAnswered"] = True
     return dictAnswer
+
+
+def _fdictParseJsonTypedRead(tExecResult, sWhat):
+    """Return a JSON typed read's answer; raise OSError on any failure."""
+    if tExecResult.iExitCode != 0:
+        raise OSError(
+            f"Cannot read the {sWhat} in container "
+            f"({tExecResult.sStderr.strip()})")
+    try:
+        return json.loads(tExecResult.sStdout.strip() or "{}")
+    except ValueError as errorParse:
+        raise OSError(
+            f"The {sWhat} read answered unparseable output: {errorParse}")
 
 
 def _fsTypedReadPathLiteral(objPaths):
@@ -1988,6 +2146,34 @@ class DockerConnection:
                 "The repository status read answered unparseable "
                 f"output: {errorParse}"
             )
+
+    def fdictFetchTrackedIdentities(self, sContainerId, sRepoPath):
+        """Return the git-tracked index joined to the worktree, per path.
+
+        The council's git-tracked snapshot scope reads through this: the
+        declared ``gitTrackedIdentities`` program joins ``ls-files -s``
+        (mode, merge stages) with ``ls-files -t`` (the skip-worktree
+        tag), then ``lstat``s each path and hashes the current worktree
+        bytes in the container. Returns the program's ``{"bSuccess",
+        "sReason", "sHeadSha", "sPorcelainDigest", "iChangedCount",
+        "dictEntries"}``; ``bSuccess`` False is a refusal to observe.
+        A failed READ, or unparseable output, raises ``OSError``.
+        """
+        return _fdictParseJsonTypedRead(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_GIT_TRACKED_IDENTITIES, sRepoPath,
+        ), "tracked identities")
+
+    def fdictFetchUntrackedInventory(self, sContainerId, sRepoPath):
+        """Return the bounded untracked and ignored inventory for a repo.
+
+        Names and sizes only -- contents are never read. The program
+        stops at :data:`I_MAX_OMISSION_INVENTORY_PATHS` paths or
+        :data:`I_MAX_OMISSION_INVENTORY_NAME_BYTES` of names and says so
+        with ``bComplete`` False, so every screen can say "at least".
+        """
+        return _fdictParseJsonTypedRead(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_GIT_UNTRACKED_INVENTORY, sRepoPath,
+        ), "untracked inventory")
 
     def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
         """Return the changed-path identity observation for one repo.

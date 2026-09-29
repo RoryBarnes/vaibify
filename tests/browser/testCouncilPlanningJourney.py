@@ -72,7 +72,8 @@ def _fnIsolateCouncilStore(serverHub):
 def _fdictWriteLaneSnapshot(connectionDocker, sContainerId,
                             sProjectRepoPath, sCampaignId,
                             sSnapshotStoreRoot=None, dictBounds=None,
-                            listExcludedPaths=None):
+                            listExcludedPaths=None,
+                            dictSnapshotScope=None):
     """Write a minimal sealed snapshot the way the real capture would.
 
     The browser lane's fake Docker adapter cannot serve get_archive or
@@ -94,7 +95,8 @@ def _fdictWriteLaneSnapshot(connectionDocker, sContainerId,
             "sCommitSha": "fixturecommit0001",
             "sDirtyStateDigest": "fixturedigest0001",
             "sBaselineHeadSha": "fixturecommit0001",
-            "sBaselinePorcelainDigest": "fixtureporcelain0001"}))
+            "sBaselinePorcelainDigest": "fixtureporcelain0001",
+            "dictSnapshotScope": dictSnapshotScope}))
     return {"sSnapshotSha256": "browser-lane-snapshot-hash"}
 
 

@@ -318,6 +318,16 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # entitles somebody to.
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/chat"),
     ("GET", "/api/agent-councils/{sContainerId}/{sCampaignId}/plan.md"),
+    # The council credential panel and a credential test's progress. They
+    # read host state about the researcher's consent for this project's
+    # image, which only the lease holder has standing to see.
+    ("GET", "/api/council-credentials/{sContainerId}/panel"),
+    ("GET",
+     "/api/council-credentials/{sContainerId}/credential-test/{sJobId}"),
+    # A page of the files a git-tracked council snapshot would leave out.
+    # Names only, but names can be sensitive: a lease-holder read.
+    ("GET",
+     "/api/council-snapshots/{sContainerId}/omissions/{sObservationId}"),
     ("GET", "/api/containers/{sContainerId}/isolation"),
     ("GET", "/api/containers/{sContainerId}/ready"),
     ("GET", "/api/draft/{sContainerId}/{sFilePath:path}"),

@@ -197,6 +197,7 @@ def _fappBuildApplication(dictConfig):
     # behind, and reloads accepted campaigns from durable app-data,
     # before any new council starts.
     _fnRegisterCouncilLifecycle(app)
+    _fnRegisterCredentialTestSweep(app)
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
     routeScope.fnValidateRouteScopesOrRaise(app)
@@ -459,6 +460,38 @@ def _fnReconcileCouncilRunners(app):
         logger.warning(
             "startup council egress sweep could not settle: %s",
             dictSwept["listIndeterminateResources"])
+
+
+def _fnRegisterCredentialTestSweep(app):
+    """Settle credential tests a dead hub left running, at startup."""
+
+    async def fnSweepCredentialTestsOnStartup(app):
+        await asyncio.to_thread(
+            _fnSweepOrphanedCredentialTests,
+            _fdockerCreateCouncilClientOrNone())
+
+    app.state.listLifespanStartup.append(fnSweepCredentialTestsOnStartup)
+
+
+def _fnSweepOrphanedCredentialTests(dockerCouncil):
+    """Settle credential tests whose hub died; spare a live peer's.
+
+    Runs before the labeled-runner reconcile and with or without a
+    daemon: a job left ``running`` by a dead hub keeps its provider
+    suspended until it is recorded ``incomplete``, and that record needs
+    no Docker. Its runners and egress are removed when a daemon answers.
+    """
+    from . import agentCouncilCredentialTest
+    try:
+        dictReport = (
+            agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests(
+                dockerCouncil))
+    except Exception:
+        logger.warning("credential-test restart sweep failed", exc_info=True)
+        return
+    if dictReport["listSwept"]:
+        logger.info("recorded %d interrupted credential test(s) as "
+                    "incomplete", len(dictReport["listSwept"]))
 
 
 def _flistSelectSweepableCampaigns(dictStore):

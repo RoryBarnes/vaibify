@@ -1,4 +1,4 @@
-"""A shut credential gate must SAY so when the researcher clicks.
+"""A shut credential gate must SAY so — and now OFFER — when clicked.
 
 The live report that produced this file: the button did nothing at all.
 The explanation code existed — ``fnHandleToolbarClick`` has always
@@ -48,18 +48,39 @@ def _fnShutTheCredentialGate(monkeypatch):
 
     Patched explicitly rather than relying on the absence of a record,
     so the test states its own premise and cannot be quietly enabled by
-    a developer's real ~/.vaibify evidence file.
+    a developer's real ~/.vaibify evidence file. The panel the consent
+    modal reads is pointed at a throwaway document for the same reason.
     """
+    import tempfile
     from vaibify.gui import agentCouncilCredentialGate
+    sDirectory = tempfile.mkdtemp(prefix="councilBlockedLane")
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fsResolveCredentialEvidencePath",
+        lambda: sDirectory + "/credentialEvidence.json")
     monkeypatch.setattr(
         agentCouncilCredentialGate, "fdictEvaluateCredentialEnablement",
         lambda sProvider, sImageIdentity=None: {
             "bEnabled": False,
-            "sReason": ("the runner backend is disabled: no "
-                        "credential-verification evidence record exists "
-                        "on this machine."),
+            "sReason": ("no credential test has been run for this "
+                        "provider in this project's image on this "
+                        "computer."),
+            "sState": "noConsent",
             "dictRecord": None,
         })
+
+
+def _fnRemoveTheProjectLogin(monkeypatch):
+    """Make the refusal a real wall: no login, so nothing to consent to.
+
+    Since the consent modal, a shut credential gate WITH a login opens a
+    modal rather than a toast. The tests about refusals that must speak
+    therefore need a refusal that still is one.
+    """
+    from vaibify.gui.routes import councilRoutes
+    monkeypatch.setattr(
+        councilRoutes, "fdictReadProjectLoginState",
+        lambda dictCtx, sContainerId, sProvider="claude": {
+            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0})
 
 
 def _fdictActivateCouncilToolbar(page, serverHub):
@@ -90,7 +111,12 @@ def _fdictActivateCouncilToolbar(page, serverHub):
 
 
 def testAShutGateLeavesTheButtonClickableNotDead(pageDashboard, serverHub):
-    """The regression itself: disabled would swallow the click again."""
+    """The regression itself: disabled would swallow the click again.
+
+    Since the 2026-09-29 ruling a shut credential gate with a login to
+    test is a consent the researcher can give from the button, so the
+    button is live AND unblocked; its title names the step.
+    """
     dictState = _fdictActivateCouncilToolbar(pageDashboard, serverHub)
 
     assert dictState["bDisabled"] is False, (
@@ -98,8 +124,9 @@ def testAShutGateLeavesTheButtonClickableNotDead(pageDashboard, serverHub):
         "shut, so clicking it does nothing and the researcher is told "
         "nothing — this is the reported defect"
     )
-    assert dictState["bBlockedClass"] is True, (
-        "a clickable-but-unusable button must still LOOK unusable"
+    assert dictState["bBlockedClass"] is False, (
+        "a gate the researcher can open from here must not look like a "
+        "wall"
     )
     assert "credential" in dictState["sTitle"].lower()
 
@@ -107,27 +134,28 @@ def testAShutGateLeavesTheButtonClickableNotDead(pageDashboard, serverHub):
 def testClickingTheBlockedButtonNamesTheFixOnScreen(
     pageDashboard, serverHub,
 ):
-    """Not merely 'a toast appeared' — the remediation must be IN it.
+    """Not merely 'something appeared' — the way forward must be ON it.
 
     The whole point of the report was that the researcher could not
-    tell what to do next, so asserting the presence of a toast would
-    re-pass while saying nothing useful.
+    tell what to do next. The fix is now a consent modal that runs the
+    test itself, so the click must open it with the action named,
+    instead of naming a file only a maintainer could write.
     """
     _fdictActivateCouncilToolbar(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
-    pageDashboard.wait_for_selector(".toast", timeout=8000)
-    sToast = pageDashboard.inner_text(".toast")
+    pageDashboard.wait_for_selector("#btnCouncilConsentRun", timeout=8000)
+    sModal = pageDashboard.inner_text("#councilConsentModalBody")
 
-    assert "credentialEvidence.json" in sToast, (
-        f"the toast never names where to record the result: {sToast!r}")
-    assert "sha256" in sToast, (
-        f"the toast never says a tag is refused: {sToast!r}")
-    assert "paid account" in sToast, (
-        f"the toast never names the check that opens the gate: {sToast!r}")
+    assert "Run the test and continue" in sModal, (
+        f"the consent modal never names the action: {sModal!r}")
+    assert "First council with this project's image" in sModal, (
+        f"the consent modal never says what it is for: {sModal!r}")
+    assert "credentialEvidence.json" not in sModal, (
+        "the researcher is still being sent to write a file by hand")
 
 
 def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
-    pageDashboard, serverHub,
+    pageDashboard, serverHub, monkeypatch,
 ):
     """The SECOND silent dead click, from the same button.
 
@@ -143,6 +171,7 @@ def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
     becomes visible. (On the landing page it is hidden, so no click is
     possible there; verified before writing this.)
     """
+    _fnRemoveTheProjectLogin(monkeypatch)
     pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
     pageDashboard.wait_for_selector(".container-tile", timeout=10000)
     pageDashboard.evaluate(
@@ -284,13 +313,14 @@ def testCancellingAnUntouchedCouncilDoesNotNagTheResearcher(
 
 
 def testTheExplanationDoesNotSelfDestructBeforeItCanBeRead(
-    pageDashboard, serverHub,
+    pageDashboard, serverHub, monkeypatch,
 ):
     """An info toast disappears after 4s; this one must not.
 
-    A refusal carrying a filesystem path and an image-id rule is not
+    A refusal naming a remedy — here, where to log in — is not
     readable, let alone actionable, in four seconds.
     """
+    _fnRemoveTheProjectLogin(monkeypatch)
     _fdictActivateCouncilToolbar(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector(".toast", timeout=8000)

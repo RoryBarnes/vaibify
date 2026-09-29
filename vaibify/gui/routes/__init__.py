@@ -29,6 +29,8 @@ __all__ = [
     "remoteRefreshRoutes",
     "councilRoutes",
     "councilChatRoutes",
+    "councilCredentialRoutes",
+    "councilSnapshotRoutes",
 ]
 
 from . import (
@@ -60,4 +62,6 @@ from . import (
     remoteRefreshRoutes,
     councilRoutes,
     councilChatRoutes,
+    councilCredentialRoutes,
+    councilSnapshotRoutes,
 )

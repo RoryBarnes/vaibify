@@ -225,6 +225,25 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(
         preferencesStore, "fsSlidingIdlePreference", lambda: "",
     )
+    # The council credential document and the snapshot-scope store are
+    # resolved from os.path.expanduser("~") at CALL time, so a test that
+    # reaches the gate, an admission, or the capabilities probe without
+    # its own redirect would read — and an admission would WRITE — the
+    # researcher's real ~/.vaibify/agentCouncils. Redirected by patching
+    # the two resolvers, which every caller asks; a test that patches
+    # its own path still overrides these.
+    from vaibify.gui import (
+        agentCouncilCredentialGate, agentCouncilSnapshotScope,
+    )
+    monkeypatch.setattr(
+        agentCouncilCredentialGate, "fsResolveCredentialEvidencePath",
+        lambda: os.path.join(sHome, "agentCouncils",
+                             "credentialEvidence.json"),
+    )
+    monkeypatch.setattr(
+        agentCouncilSnapshotScope, "fsResolveSnapshotScopeDirectory",
+        lambda: os.path.join(sHome, "agentCouncils", "snapshotScope"),
+    )
     # ephemeralStore is deliberately NOT redirected here: it computes
     # its root from os.path.expanduser("~") at call time (no import-time
     # constant to patch), and its own tests exercise that real behaviour

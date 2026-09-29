@@ -213,6 +213,20 @@ var VaibifyAgentCouncil = (function () {
            the click is for everyone who does not. Kept disabled only
            for the two states where there is nothing to say yet: no
            project open, and capabilities still loading. */
+        /* A gate the researcher can open from here is ENABLED, not
+           blocked: the click opens the step that opens it. */
+        if (_fbReadinessOffersAStep(dictCapabilities)) {
+            return {
+                bDisabled: false, bAttention: false, bRunning: false,
+                bBlocked: false,
+                sTitle: dictCapabilities.sCouncilReadiness ===
+                    "needsCredentialTest"
+                    ? "Convene an Agent Council — first, a one-time " +
+                      "credential test for this project's image."
+                    : "Convene an Agent Council — first, choose what to " +
+                      "copy: this project is too large to copy in full.",
+            };
+        }
         if (!dictCapabilities.bAvailable) {
             return _fdictUnavailableButExplainable(
                 _fsUnavailableExplanation(dictCapabilities));
@@ -294,16 +308,47 @@ var VaibifyAgentCouncil = (function () {
                 "output out of this one — a council reasons about your " +
                 "code and inputs, not your generated results.";
         }
+        /* A shut credential gate is normally a consent the researcher
+           gives from the button itself; it is blocked only when there
+           is no login to test, and the readiness reason says so. */
         if (dictCapabilities.sUnavailableIn === "credential-evidence") {
-            return (dictCapabilities.sReason || "") +
-                " To open it: run the live credential check on a paid " +
-                "account, then record the result at " +
-                "~/.vaibify/agentCouncils/credentialEvidence.json. The " +
-                "record must name this project's own image by its " +
-                "sha256 id — a tag is refused.";
+            return dictCapabilities.sReadinessReason
+                || dictCapabilities.sReason || "";
         }
         return dictCapabilities.sReason
             || "Convening a council is unavailable on this project.";
+    }
+
+    var SET_READINESS_STEPS = {
+        needsCredentialTest: true, needsSnapshotChoice: true,
+        needsBoth: true,
+    };
+
+    function _fbReadinessOffersAStep(dictCapabilities) {
+        return SET_READINESS_STEPS[dictCapabilities.sCouncilReadiness]
+            === true;
+    }
+
+    function _fnOpenReadinessStep() {
+        /* Both modals belong to their own modules; this panel only
+           decides WHEN each opens. Size comes first — it is the free
+           question — and every step re-reads capabilities afterwards,
+           so the next click follows the server's new verdict: after
+           the size modal in "needsBoth", that verdict is the consent. */
+        var fnAfterStep = async function () {
+            await fnRefreshCapabilities();
+            fnHandleToolbarClick();
+        };
+        var sReadiness = _dictState.dictCapabilities.sCouncilReadiness;
+        if (sReadiness === "needsSnapshotChoice" ||
+                sReadiness === "needsBoth") {
+            VaibifyCouncilSnapshotScope.fnOpenSizeModal(
+                _dictState.sContainerId, _dictState.dictCapabilities,
+                fnAfterStep);
+            return;
+        }
+        VaibifyCouncilConsent.fnOpenConsent(
+            _dictState.sContainerId, fnAfterStep);
     }
 
     function _fiSupportedParticipantCount(dictCapabilities) {
@@ -326,6 +371,10 @@ var VaibifyAgentCouncil = (function () {
             return;
         }
         var dictCapabilities = _dictState.dictCapabilities;
+        if (dictCapabilities && _fbReadinessOffersAStep(dictCapabilities)) {
+            _fnOpenReadinessStep();
+            return;
+        }
         if (!dictCapabilities || !dictCapabilities.bAvailable) {
             /* "warning", not "info": an info toast self-destructs after
                four seconds, which is not long enough to read a refusal
@@ -419,8 +468,15 @@ var VaibifyAgentCouncil = (function () {
             (bListingStillLoading
                 ? "<p class=\"council-open-when\">Loading past " +
                   "councils…</p>"
-                : _fsListRefusalNotice());
+                : _fsListRefusalNotice()) +
+            "<p class=\"council-credential-link\"><button type=\"button\" " +
+            "id=\"btnCouncilCredentialTests\" class=\"btn-link\">" +
+            "Credential tests</button> — which provider logins councils " +
+            "may use with this project's image.</p>";
         _fnBindChooser();
+        _fnBindElement("btnCouncilCredentialTests", function () {
+            VaibifyCouncilConsent.fnOpenPanel(_dictState.sContainerId);
+        });
     }
 
     function _fsChoiceButton(sId, sLabel, sExplain, bEnabled, sCount,
@@ -893,6 +949,8 @@ var VaibifyAgentCouncil = (function () {
                 delete _dictState.dictFeasibilityByDirectory[sKey];
             });
         _dictState.setExcludedPaths.clear();
+        _dictState.sSnapshotScope = (((_dictState.dictCapabilities || {})
+            .dictSnapshotScopeDefault) || {}).sScope || "";
         var dictOwn = (_dictState.dictCapabilities || {})
             .dictSnapshotFeasibility;
         if (dictOwn) {
@@ -1052,6 +1110,34 @@ var VaibifyAgentCouncil = (function () {
         return _dictState.dictFeasibilityByDirectory[sChosen] || null;
     }
 
+    function _fsSnapshotScopeChoiceMarkup() {
+        /* The remembered scope, shown as a visible default the
+           researcher can change here. Start re-validates whichever is
+           chosen against the current tree. */
+        if (!(_dictState.dictCapabilities || {}).dictSnapshotScopeDefault) {
+            return "";
+        }
+        var sScope = _dictState.sSnapshotScope;
+        return "<p class=\"council-snapshot-scope-line\"><label>Copy " +
+            "for the council: <select id=\"councilSnapshotScopeChoice\">" +
+            "<option value=\"wholeDirectory\"" +
+            (sScope === "wholeDirectory" ? " selected" : "") +
+            ">the whole directory</option>" +
+            "<option value=\"gitTracked\"" +
+            (sScope === "gitTracked" ? " selected" : "") +
+            ">only the files git tracks</option></select></label> " +
+            "<span class=\"council-hint\">(remembered for this " +
+            "project)</span></p>";
+    }
+
+    function _fnBindSnapshotScopeChoice() {
+        var elChoice = document.getElementById("councilSnapshotScopeChoice");
+        if (!elChoice) return;
+        elChoice.addEventListener("change", function () {
+            _dictState.sSnapshotScope = elChoice.value;
+        });
+    }
+
     function _fnRenderSnapshotScope() {
         /* The offending files, named, each with the tick that leaves it
            out. Rendered into the form rather than raised as an error,
@@ -1063,10 +1149,11 @@ var VaibifyAgentCouncil = (function () {
         var listOversized = dictFeasibility
             ? (dictFeasibility.listOversizedFiles || []) : [];
         if (!listOversized.length) {
-            elScope.innerHTML = "";
+            elScope.innerHTML = _fsSnapshotScopeChoiceMarkup();
+            _fnBindSnapshotScopeChoice();
             return;
         }
-        elScope.innerHTML =
+        elScope.innerHTML = _fsSnapshotScopeChoiceMarkup() +
             "<fieldset class=\"council-snapshot-scope\">" +
             "<legend>⚠ Files too large for a snapshot</legend>" +
             "<p class=\"council-hint\">A council ships a copy of the " +
@@ -1083,6 +1170,7 @@ var VaibifyAgentCouncil = (function () {
                   "more.</p>"
                 : "") +
             "</fieldset>";
+        _fnBindSnapshotScopeChoice();
         _fnBindOversizedCheckboxes();
     }
 
@@ -1238,6 +1326,9 @@ var VaibifyAgentCouncil = (function () {
             "credential — revoke at the provider if a run is " +
             "compromised.</p>" +
             _fsExecutionHostDisclosure() +
+            "<p class=\"council-residual-risk\">" +
+            _fsEscape(VaibifyCouncilConsent.S_RESIDUAL_RISK_PARAGRAPH) +
+            "</p>" +
             "<p><strong>Provider content and billing.</strong> Every " +
             "provider you configure a participant for receives your " +
             "project's content. The runner backend bills your existing " +
@@ -1486,6 +1577,7 @@ var VaibifyAgentCouncil = (function () {
             dictSettings: _fdictReadSettingsForm(),
             sProjectDirectory: _fsReadValue("councilDirectory"),
             listExcludedPaths: Array.from(_dictState.setExcludedPaths),
+            sSnapshotScope: _dictState.sSnapshotScope || "",
         };
         var dictSeed = _dictState.dictImplementationSeed;
         if (dictSeed) {

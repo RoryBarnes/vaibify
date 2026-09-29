@@ -250,10 +250,12 @@ def fpreflightCouncilCredentialEvidence():
     display-ready reason, so this reports that reason rather than
     composing a second one.
 
-    It REPORTS; it must never offer to satisfy the prerequisite. The
-    evidence record is deliberately not writable by any agent or CI --
-    that is the whole gate -- so a doctor that offered to write one
-    would defeat it rather than describe it.
+    It REPORTS; it must never offer to satisfy the prerequisite, and it
+    never writes. Consent is recorded only by a request from an
+    authenticated browser session holding the container's lease, and a
+    credential test runs only after that consent -- so neither an agent
+    nor CI nor this command can enable the backend, and a doctor that
+    offered to would defeat the gate rather than describe it.
     """
     from vaibify.gui.agentCouncilProviderRegistry import (
         SET_COUNCIL_PROVIDERS,
@@ -267,12 +269,13 @@ def fpreflightCouncilCredentialEvidence():
         sProvider for sProvider in listProviders
         if dictVerdicts[sProvider].get("bEnabled")
     ]
+    sKeys = _fsDescribeCouncilCredentialKeys()
     if listEnabled:
         return PreflightResult(
             sName="council-credentials", sLevel="ok",
             sMessage=(
                 "the Agent Council runner backend is enabled for: "
-                + ", ".join(listEnabled)
+                + ", ".join(listEnabled) + sKeys
             ),
         )
     sReason = str(
@@ -281,8 +284,26 @@ def fpreflightCouncilCredentialEvidence():
     return PreflightResult(
         sName="council-credentials", sLevel="info",
         sMessage="the Agent Council is unavailable on this machine: "
-                 + sReason,
+                 + sReason + sKeys,
     )
+
+
+def _fsDescribeCouncilCredentialKeys():
+    """Return the per-image consent lines, indented, or "" when none.
+
+    Read-only, like the rest of this check: which images have consent,
+    how each one's latest credential test ended, and the project it was
+    run from. Never raises -- a readiness report is the wrong place to
+    learn about a fault by traceback.
+    """
+    from vaibify.gui.agentCouncilCredentialGate import (
+        flistDescribeCredentialKeys,
+    )
+    try:
+        listLines = flistDescribeCredentialKeys()
+    except Exception as errorKeys:
+        return f"\n    (the credential records could not be read: {errorKeys})"
+    return "".join(f"\n    {sLine}" for sLine in listLines)
 
 
 # -----------------------------------------------------------------------

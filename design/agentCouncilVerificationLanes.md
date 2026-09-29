@@ -55,17 +55,27 @@ planReady over real disposable runners.
 Does NOT prove: a real Claude CLI turn (the in-runner provider is a
 scripted fake), or anything about a real subscription credential.
 
-## Lane 4 — paid-account credential check (MAINTAINER, manual)
+## Lane 4 — paid-account credential check (in-app after consent; manual fallback)
 
-Not runnable by any agent or CI. The maintainer personally runs, on a
-paid account and the real project image: one runner, the copied
-access-token only, a trivial headless turn, the project login still
-valid afterwards, the token not rotated, the staged files gone —
-across a failure and a crash-recovery. The result is recorded as the
-machine-readable evidence file at
-`~/.vaibify/agentCouncils/credentialEvidence.json` carrying every key
-in `agentCouncilCredentialGate.LIST_EVIDENCE_REQUIRED_KEYS`; the
-runner backend stays DISABLED until that record exists and matches,
-and no green test in lanes 1–3 implies these properties hold. The
+Not runnable by any agent or CI, because it spends a real
+subscription. Since the 2026-09-29 ruling the researcher runs it from
+vaibify itself: clicking the council button on a project whose image
+has no passed test opens a consent modal, and after consent vaibify
+runs the credential test (`vaibify/gui/agentCouncilCredentialTest.py`)
+on the real project image by its sha256 id — one runner, the copied
+access token only, a trivial headless turn, the project login present
+and unchanged afterwards, the token not rotated, the staged files gone,
+across a failure and a runner killed mid-turn. The consent and the
+outcome are recorded separately in the host document at
+`~/.vaibify/agentCouncils/credentialEvidence.json`
+(`agentCouncilCredentialStore`, schema v3), and the runner backend is
+enabled only while that consent is active and its latest outcome is a
+pass under the current consent generation. The manual procedure — the
+maintainer runs the same checks by hand and writes a record carrying
+every key in `agentCouncilCredentialGate.LIST_EVIDENCE_REQUIRED_KEYS`
+— is the fallback, and records written that way (v1/v2) are still
+read, until the researcher withdraws consent for their key. No green
+test in lanes 1–3 implies these properties hold for a real
+subscription token. The
 per-adapter empiric of R11 (a hostile agent doc does not steer a REAL
 model over the charter) belongs to this lane too.

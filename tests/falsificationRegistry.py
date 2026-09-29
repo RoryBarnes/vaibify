@@ -23936,4 +23936,472 @@ def _fdictEntry(sRel):
         old='        if listGaps:\n            listIssues.append(\n',
         new='        if False:\n            listIssues.append(\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_row_starting_a_retest_suspends_the_older_pass'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    if dictInFlight is not None:\n        return S_STATE_TEST_IN_FLIGHT\n',
+        new='    if False:\n        return S_STATE_TEST_IN_FLIGHT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_row_a_legacy_record_cannot_resurrect_a_withdrawn_key'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    if dictOutcome.get("iConsentGeneration") != (\n            dictConsent.get("iConsentGeneration")):\n        return S_STATE_STALE_GENERATION\n',
+        new='    if False:\n        return S_STATE_STALE_GENERATION\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_row_withdraw_advances_the_generation_and_disables'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    if dictConsent.get("sState") != S_CONSENT_ACTIVE:\n        return S_STATE_WITHDRAWN\n',
+        new='    if False:\n        return S_STATE_WITHDRAWN\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_row_a_failed_check_is_written_and_does_not_authorize'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    if dictOutcome.get("sOutcome") == S_OUTCOME_PASSED:\n        return S_STATE_AUTHORIZED\n',
+        new='    if dictOutcome.get("sOutcome") != S_OUTCOME_INCOMPLETE:\n        return S_STATE_AUTHORIZED\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_the_store_lock_excludes_across_processes_despite_a_replace'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='S_STORE_LOCK_BASENAME = "credentialStore.lock"\n',
+        new='S_STORE_LOCK_BASENAME = "credentialEvidence.json"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_one_job_for_two_concurrent_requests_on_one_key'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='        fcntl.flock(fileLock, fcntl.LOCK_EX | fcntl.LOCK_NB)\n',
+        new='        fcntl.flock(fileLock, fcntl.LOCK_SH | fcntl.LOCK_NB)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_a_damaged_file_is_reported_then_renamed_never_rewritten'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='        if dictRead["sDamage"]:\n            _fsSetDamagedDocumentAside(sEvidencePath)\n',
+        new='        if False:\n            _fsSetDamagedDocumentAside(sEvidencePath)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_a_real_shape_v2_file_enables_exactly_what_it_did_before'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='        list(listRecords) if isinstance(listRecords, list)\n        else [jsonDocument])\n',
+        new='        [jsonDocument])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_a_legacy_record_one_key_short_names_the_key'
+        ),
+        source='vaibify/gui/agentCouncilCredentialGate.py',
+        old='    if not sDetail:\n        return sReason\n',
+        new='    if True:\n        return sReason\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_withdrawal_between_two_turns_refuses_the_second'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='        if not dictEvaluation["bAuthorized"]:\n            return dictEvaluation\n        listStagedPaths.append(\n',
+        new='        listStagedPaths.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_withdrawal_during_the_fetch_is_seen_at_the_recheck'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='        if not dictEvaluation["bAuthorized"]:\n            return dictEvaluation\n        listStagedPaths.append(\n',
+        new='        listStagedPaths.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_the_turn_is_evaluated_for_the_campaigns_pinned_image'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='            return ftAdmitCouncilTurnCredential(\n                sProvider, sImageIdentity, dictCredential, sContainerId)\n',
+        new='            return ftAdmitCouncilTurnCredential(\n                sProvider, "sha256:" + "e5" * 32, dictCredential, sContainerId)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_refused_admission_is_filed_as_needing_the_researcher'
+        ),
+        source='vaibify/gui/agentCouncil.py',
+        old='            sFailureClass = getattr(\n                error, "sCouncilFailureClass", "turnRaised")\n',
+        new='            sFailureClass = "turnRaised"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_stale_job_replaced_by_a_newer_one_is_refused'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictMarker is None or dictMarker.get("sJobId") != sJobId:\n',
+        new='    if dictMarker is None:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_marker_naming_another_image_is_refused'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictMarker.get("sProvider") != sProvider or dictMarker.get(\n            "sImageIdentity") != sImageIdentity:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_withdrawn_consent_at_the_jobs_generation_is_refused'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictConsent.get("sState") != (\n            agentCouncilCredentialStore.S_CONSENT_ACTIVE):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_consent_generation_change_refuses_the_test'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictConsent.get("iConsentGeneration") != dictMarker.get(\n            "iConsentGeneration"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialAdmission.py::'
+            'test_a_campaign_runner_is_refused_even_with_a_valid_job_id'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if not fbRunnerLabelBelongsToJob(sRunnerCouncilLabel, sJobId):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialRoutes.py::'
+            'test_the_handler_alone_refuses_an_agent_read'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='    fnRejectAgentTokenLane(requestHttp)\n    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)\n',
+        new='    sName = fsContainerNameForId(dictCtx.get("docker"), sContainerId)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialRoutes.py::'
+            'test_the_middleware_alone_refuses_agent_mutations'
+        ),
+        source='vaibify/gui/actionCatalog.py',
+        old='    ("POST", "/api/council-credentials/{sContainerId}/credential-test"),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialRoutes.py::'
+            'test_a_missing_lease_is_refused'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old='    if containerOwnership.fbBrowserSessionOwnsLease(\n',
+        new='    if True or containerOwnership.fbBrowserSessionOwnsLease(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_one_fails_without_a_login'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='        raise CredentialCheckFailedError(sCheckId, str(error))\n',
+        new='        return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_two_fails_when_the_turn_is_refused'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if sEmpty:\n        raise CredentialCheckFailedError(\n            "trivialTurn"',
+        new='    if False:\n        raise CredentialCheckFailedError(\n            "trivialTurn"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_a_timeout_is_a_durable_incomplete_and_stays_disabled'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if sEmpty == agentCouncilProviders.S_EMPTY_BECAUSE_WALL_CLOCK:\n        raise CredentialTestIncompleteError(\n            "trivialTurn"',
+        new='    if False:\n        raise CredentialTestIncompleteError(\n            "trivialTurn"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_four_fails_when_the_login_is_rotated'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if sDigestAfter != sDigestBefore:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_five_fails_when_a_staged_copy_survives'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if listLeft:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_five_fails_when_the_runner_is_not_proven_destroyed'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictTurn["sCompletion"] != agentCouncilProviders.S_COMPLETION_TERMINAL:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_six_fails_when_an_invalid_model_answers'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if not sEmpty:\n        raise CredentialCheckFailedError(\n            "failurePath"',
+        new='    if False:\n        raise CredentialCheckFailedError(\n            "failurePath"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_check_seven_is_incomplete_when_the_turn_was_not_killed'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if not sEmpty:\n        raise CredentialTestIncompleteError(\n            "runnerKilledMidTurn"',
+        new='    if False:\n        raise CredentialTestIncompleteError(\n            "runnerKilledMidTurn"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_a_cancel_ends_the_job_incomplete_and_leaves_nothing'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if dictRuntime["eventCancel"].is_set():\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_two_requests_for_one_key_share_one_job'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    if fileJobLock is None:\n        return {"sJobId": _fsRunningJobIdFor(',
+        new='    if False:\n        return {"sJobId": _fsRunningJobIdFor(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_restart_sweep_records_a_dead_hubs_job_incomplete'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='            _fnSettleOrphanedJob(dictJob, dockerCouncil)\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_restart_sweep_spares_a_job_whose_project_a_live_peer_holds'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='        if containerLock.fdictReadLockHolder(dictJob.get("sResourceName", "")):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_restart_sweep_spares_a_live_job_and_sweeps_it_once_its_hub_dies'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='        if fileJobLock is None:\n            dictReport["listSpared"].append(dictJob["sJobId"])\n',
+        new='        if False:\n            dictReport["listSpared"].append(dictJob["sJobId"])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_a_credential_marker_is_a_consent_not_a_wall'
+        ),
+        source='vaibify/gui/agentCouncilReadiness.py',
+        old='    "image-unresolvable",\n})\n',
+        new='    "image-unresolvable", "credential-evidence",\n})\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilCredentialConsent.py::'
+            'testANeedsTestButtonIsEnabledAndOpensTheConsentModal'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        return SET_READINESS_STEPS[dictCapabilities.sCouncilReadiness]\n            === true;\n',
+        new='        return false;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilCredentialConsent.py::'
+            'testAPassingTestContinuesToTheCouncil'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='            await fnRefreshCapabilities();\n            fnHandleToolbarClick();\n',
+        new='            fnHandleToolbarClick();\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilCredentialConsent.py::'
+            'testNoLoginIsAWallWithTheLoginRemedy'
+        ),
+        source='vaibify/gui/agentCouncilReadiness.py',
+        old='    if bNeedsCredentialTest and not bAnyProviderHasLogin:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialStore.py::'
+            'test_the_doctor_lists_each_key_and_never_renames_a_damaged_file'
+        ),
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    except (OSError, ValueError) as error:\n        return {"dictDocument": _fdictEmptyDocument(), "bExists": True,\n',
+        new='    except (OSError, ValueError) as error:\n        _fsSetDamagedDocumentAside(sEvidencePath)\n        return {"dictDocument": _fdictEmptyDocument(), "bExists": True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_merge_conflict_refuses_naming_the_path'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if any(iStage != 0 for iStage in dictEntry.get("listStages", [0])):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_tracked_capture_never_fetches_the_repository_root'
+        ),
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    if dictScope["sScope"] != agentCouncilSnapshotScope.S_SCOPE_GIT_TRACKED:\n        return _fdictStreamValidatedArchive(\n',
+        new='    if True:\n        return _fdictStreamValidatedArchive(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_an_eligible_file_turned_directory_before_its_fetch_refuses'
+        ),
+        source='vaibify/gui/agentCouncilContext.py',
+        old='                if len(listMembers) > 1 or infoMember.isdir() or (\n                        infoMember.name != posixpath.basename(sRelative)):\n',
+        new='                if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_new_untracked_file_leaves_a_tracked_council_fresh'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        [\'status\',\'--porcelain=v2\',\'--untracked-files=no\'])\\n"\n',
+        new='        "        [\'status\',\'--porcelain=v2\',\'--untracked-files=normal\'])\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_group_totals_equal_the_omitted_total'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    return sPath.split("/", 1)[0] if "/" in sPath else _S_TOP_LEVEL_GROUP\n',
+        new='    return sPath.rsplit("/", 1)[0] if "/" in sPath else _S_TOP_LEVEL_GROUP\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_superseded_or_expired_observation_is_refused'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if dictLatest.get(sKey) != sObservationId:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_the_scope_note_is_the_approved_wording'
+        ),
+        source='vaibify/gui/agentCouncilCharter.py',
+        old='        f"{sLabel}: {dictByReason[sReason][\'iCount\']}"\n        for sReason, sLabel in _TUPLE_TRACKED_OMISSION_REASONS\n        if (dictByReason.get(sReason) or {}).get("iCount"))\n',
+        new='        f"{sLabel}: {(dictByReason.get(sReason) or {}).get(\'iCount\', 0)}"\n        for sReason, sLabel in _TUPLE_TRACKED_OMISSION_REASONS)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilSnapshotScopeModal.py::'
+            'testATooLargeProjectOpensTheSizeModalWithTheNumbers'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        if (sReadiness === "needsSnapshotChoice" ||\n                sReadiness === "needsBoth") {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilSnapshotScopeModal.py::'
+            'testNeedsBothAsksAboutSizeBeforeConsent'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        if (sReadiness === "needsSnapshotChoice" ||\n                sReadiness === "needsBoth") {\n',
+        new='        if (sReadiness === "needsSnapshotChoice") {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotRoutes.py::'
+            'test_the_handler_alone_refuses_an_agent_page_read'
+        ),
+        source='vaibify/gui/routes/councilSnapshotRoutes.py',
+        old='        councilRouteGuards.fsGuardCouncilRoute(\n            dictCtx, requestHttp, sContainerId)\n        try:\n',
+        new='        try:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_a_remembered_tracked_scope_is_ready'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    bRememberedTracked = bool(dictRemembered) and (\n        dictRemembered["sScope"] == S_SCOPE_GIT_TRACKED)\n',
+        new='    bRememberedTracked = False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_only_old_council_token_copies_are_swept'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='            and os.path.getmtime(os.path.join(sRoot, sName)) < fCutoff]\n',
+        new='            ]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_superseded_inventory_file_is_deleted'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    _fnPruneInventories(sDirectory, sSuperseded)\n',
+        new='    pass\n',
+    ),
 ]

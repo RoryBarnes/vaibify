@@ -4482,7 +4482,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # budget and applies it to the campaign, so retry can change
     # the condition that caused the failure rather than repeat
     # it.
-    "routes/councilRoutes.py": 1525,
+    # 1525 -> 1528 (2026-09-29): each credential stager is built for the campaign's
+    # pinned image, so every turn's admission checks consent for it.
+    # 1528 -> 1571 (2026-09-29): the snapshot scope travels from the start
+    # request into the campaign, the capture and the staleness poll, and
+    # capabilities reports readiness (contract C).
+    "routes/councilRoutes.py": 1571,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4524,7 +4529,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # beside the writer. Three call sites were composing
     # <store>/<campaign>/snapshot/... by hand, which is a layout
     # spelled in several places and checked in none.
-    "agentCouncilContext.py": 1219,
+    # 1219 -> 1358 (2026-09-29): the per-path git-tracked capture. It must live
+    # here: testGetArchiveKeepsExactlyItsTwoHomes pins get_archive to this
+    # module; the scope's definition, observation and inventory live in
+    # agentCouncilSnapshotScope.
+    "agentCouncilContext.py": 1358,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
@@ -4631,12 +4640,25 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # engine gained two more endings, not a second responsibility.
     # 1512 -> 1521 (2026-08-30): the stall explanation, which is a
     # new way for a turn to end and belongs beside the other four.
-    "agentCouncil.py": 1549,
+    # 1549 -> 1550 (2026-09-29): a raised turn may name its own failure
+    # class, so a refused credential admission is not filed as a
+    # transient transport fault.
+    "agentCouncil.py": 1550,
+    # NEW at 821 (2026-09-29): the in-app council credential test — its
+    # narrow admitter, its seven checks, its job lifecycle and its
+    # restart cleanup. One responsibility (turning a consent into an
+    # authorization, or a named refusal); the durable record format was
+    # split out to agentCouncilCredentialTestRecords along the one real
+    # seam it had.
+    "agentCouncilCredentialTest.py": 821,
     # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
     # and the deliberation-summary phase instruction plus its schema
     # extension. This module IS the instruction contract and the turn
     # schema; growing the contract is what growing it looks like.
-    "agentCouncilCharter.py": 1213,
+    # 1213 -> 1275 (2026-09-29): the approved git-tracked scope paragraph
+    # participants are told (ruling 4); this module IS the instruction
+    # contract, so its wording lives here.
+    "agentCouncilCharter.py": 1275,
     # NEW at 810 (2026-08-29): the notes derivation joins the decision
     # grouping and the held-question descriptor. All three are the same
     # responsibility — reading a settled record into what a researcher
@@ -5896,7 +5918,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module's job; the rule for which project lives in
     # agentProjectScope.
     # +1 (2026-09-25): registers the Prompt Record viewer's route module.
-    "pipelineServer.py": 3659,
+    # 3659 -> 3660 (2026-09-29): one registration line for councilCredentialRoutes.
+    # 3660 -> 3661 (2026-09-29): one registration line for councilSnapshotRoutes.
+    "pipelineServer.py": 3661,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6281,7 +6305,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # liveness predicate every other continuation reads, so it belongs
     # beside them; extracting it would put half of one refusal
     # decision behind a call hop.
-    "agentCouncilController.py": 2187,
+    # 2187 -> 2188 (2026-09-29): the launch passes the manifest to the scope
+    # note so participants learn what a tracked snapshot left out.
+    "agentCouncilController.py": 2188,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -6900,7 +6926,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +23 (2026-09-25): update-ai-model (user-only: renaming a
     # declaration rewrites provenance) and the viewer's two agent-safe
     # reads, list-prompt-record-sessions and read-prompt-record-session.
-    "actionCatalog.py": 1395,
+    # 1395 -> 1409 (2026-09-29): the council credential consent, cancel and withdraw
+    # routes join the human-only exclusions, with the reason.
+    # 1409 -> 1413 (2026-09-29): the snapshot-scope choice joins the human-only
+    # exclusions beside the credential consent routes.
+    "actionCatalog.py": 1413,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7361,7 +7391,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and lease carve-outs cannot drift apart.
     # +8 (2026-09-25): the Prompt Record viewer's two GETs acknowledged
     # as container reads, with why they are reads.
-    "routeScope.py": 1054,
+    # 1054 -> 1060 (2026-09-29): the council credential panel and test-progress reads
+    # join the container-read allowlist.
+    # 1060 -> 1064 (2026-09-29): the omission page joins the container-read
+    # allowlist.
+    "routeScope.py": 1064,
 }
 
 

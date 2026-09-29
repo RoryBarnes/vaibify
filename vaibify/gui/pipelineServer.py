@@ -3543,6 +3543,8 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.remoteRefreshRoutes.fnRegisterAll(app, dictCtx)
     routes.councilRoutes.fnRegisterAll(app, dictCtx)
     routes.councilChatRoutes.fnRegisterAll(app, dictCtx)
+    routes.councilCredentialRoutes.fnRegisterAll(app, dictCtx)
+    routes.councilSnapshotRoutes.fnRegisterAll(app, dictCtx)
     _fnRegisterStaticFiles(app, dictCtx)
 
 
