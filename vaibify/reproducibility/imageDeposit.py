@@ -276,6 +276,12 @@ def _fnStreamSaveIntoTarball(
         sStderr = (processSave.stderr.read() or b"").decode(
             "utf-8", "replace",
         )
+    except BaseException:
+        # A save abandoned mid-stream -- a stop, a full disk -- must not
+        # leave docker save running, or unreaped, behind it.
+        processSave.kill()
+        processSave.wait()
+        raise
     finally:
         processSave.stderr.close()
     if processSave.wait() != 0:
@@ -371,6 +377,7 @@ def fdictDepositImageArchive(
     fnReportUploadStarted=None, fnReportVerifying=None,
     dictParentArchive=None, fnReportUploadProgress=None,
     fnReportPreparingDraft=None, fnReportUploadAttemptFailed=None,
+    fnReportPublishing=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
@@ -401,6 +408,7 @@ def fdictDepositImageArchive(
         fnReportUploadProgress=fnReportUploadProgress,
         fnReportPreparingDraft=fnReportPreparingDraft,
         fnReportUploadAttemptFailed=fnReportUploadAttemptFailed,
+        fnReportPublishing=fnReportPublishing,
     )
 
 
@@ -410,6 +418,7 @@ def fdictUploadAndPublishImageArchive(
     fnReportDraftCreated=None, sProvenance="", fnReportVerifying=None,
     dictParentArchive=None, fnReportUploadProgress=None,
     fnReportPreparingDraft=None, fnReportUploadAttemptFailed=None,
+    fnReportPublishing=None,
 ):
     """Upload one already-written tarball, publish it, return its record.
 
@@ -504,6 +513,11 @@ def fdictUploadAndPublishImageArchive(
             clientZenodo, iDepositId, dictRecord,
             bVersioned=bool(iParentDepositId),
         )
+        # The last moment the deposit can still be abandoned: a caller
+        # that raises here has the draft discarded like any failure,
+        # and after the publish below a DOI exists.
+        if fnReportPublishing is not None:
+            fnReportPublishing()
         dictPublished = clientZenodo.fdictPublishDraft(iDepositId)
     except Exception:
         _fnDiscardDraft(clientZenodo, iDepositId)

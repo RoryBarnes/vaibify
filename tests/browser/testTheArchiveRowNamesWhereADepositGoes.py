@@ -229,3 +229,75 @@ def test_the_deposit_sends_the_choice_only_after_a_confirmation_naming_it(
         "input[name='zenodoInstance'][value='production']"), (
         "the token prompt did not ask for the instance that was chosen"
     )
+
+
+def _fdictRunningDeposit(sPhase, bStopRequested=False):
+    dictPayload = _fdictArchivePayload()
+    dictPayload["sState"] = "running"
+    dictPayload["dictDeposit"] = {
+        "sPhase": sPhase, "iBytesRead": 1024 ** 3 // 10,
+        "iBytesTotal": 1024 ** 3, "iAttempt": 1, "sReason": "",
+        "listAttempts": [], "bStoppable": True,
+        "bStopRequested": bStopRequested,
+    }
+    return dictPayload
+
+
+_S_READ_STOP = """() => {
+    const elHost = document.getElementById('archiveRowUnderTest');
+    const elButton = elHost.querySelector(
+        '[data-wf-action="stop-environment-archive-deposit"]');
+    const sText = elHost.textContent;
+    elHost.remove();
+    return {bButton: Boolean(elButton), sText: sText};
+}"""
+
+
+def test_a_publishing_deposit_offers_no_stop(pageDashboard, serverHub):
+    """The publish mints a DOI; a Stop there would be a false promise."""
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    pageDashboard.evaluate(_S_MOUNT_ROW, _fdictRunningDeposit("publishing"))
+    dictPublishing = pageDashboard.evaluate(_S_READ_STOP)
+    assert dictPublishing["bButton"] is False
+    assert "can no longer be stopped" in dictPublishing["sText"]
+    pageDashboard.evaluate(
+        _S_MOUNT_ROW, _fdictRunningDeposit("uploading", bStopRequested=True))
+    dictStopping = pageDashboard.evaluate(_S_READ_STOP)
+    assert dictStopping["bButton"] is False
+    assert "Stopping the deposit" in dictStopping["sText"]
+
+
+@pytest.mark.falsification
+def test_stop_asks_first_then_sends_the_stop(pageDashboard, serverHub):
+    """A running deposit offers Stop; nothing is sent until confirmed.
+
+    Kills: dropping the Stop control from a running deposit's row.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    listStops = []
+    pageDashboard.route(
+        "**/api/workflow/**/environment-archive/deposit/stop",
+        lambda route: (listStops.append(route.request.method),
+                       route.fulfill(status=200,
+                                     content_type="application/json",
+                                     body='{"bStopRequested": true}')),
+    )
+    pageDashboard.evaluate(_S_MOUNT_ROW, _fdictRunningDeposit("uploading"))
+    pageDashboard.click(
+        '#archiveRowUnderTest [data-wf-action="stop-environment-archive-deposit"]')
+    pageDashboard.wait_for_selector(
+        "#modalConfirm", state="visible", timeout=5000)
+    assert "Nothing will be published" in pageDashboard.inner_text(
+        "#modalConfirm")
+    assert listStops == [], "the stop was sent before it was confirmed"
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_function(
+        "() => document.getElementById('modalConfirm') === null",
+        timeout=5000,
+    )
+    pageDashboard.wait_for_timeout(300)
+    assert listStops == ["POST"]

@@ -5141,7 +5141,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # check, the draft preparation) names itself on the row.
     # +13 (2026-09-29): each upload attempt that ends without Zenodo's
     # answer is kept on the row, through one callback factory.
-    "routes/environmentArchiveRoutes.py": 958,
+    # +61 (2026-09-29): a running deposit can be stopped -- the stop
+    # route, and the checkpoint every progress report now passes
+    # through. Still one lane (this project's image archive); the stop
+    # state and its lock live in gui/archiveProgress.py.
+    "routes/environmentArchiveRoutes.py": 1019,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -6936,7 +6940,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container's changes to the files it restores).
     # +5 (2026-09-28): deposit-environment-archive documents its
     # required sChoice argument.
-    "actionCatalog.py": 1419,
+    # +10 (2026-09-29): stop-environment-archive-deposit (user-only,
+    # like the deposit it stops).
+    "actionCatalog.py": 1429,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

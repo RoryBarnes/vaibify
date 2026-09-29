@@ -336,3 +336,29 @@ def test_an_unreadable_token_slot_is_not_reported_as_an_empty_one(
     assert "Could not read the credential slot" in (
         responseHttp.json()["detail"]
     )
+
+
+def test_the_stop_route_stops_only_a_running_deposit(sProjectRepo):
+    """409 with nothing to stop; 200 and a raised flag with a deposit live."""
+    from vaibify.gui import archiveProgress
+    from vaibify.gui.routes.environmentArchiveRoutes import (
+        ffilesForWorkflow,
+    )
+    from vaibify.reproducibility.repoFiles import fsRepoRootOf
+    clientTest, dictWorkflow = _fclientBuild(sProjectRepo)
+    sStopPath = _fsDepositPath() + "/stop"
+    assert clientTest.post(sStopPath).status_code == 409
+    sRepoKey = fsRepoRootOf(ffilesForWorkflow(
+        {"workflows": {S_CONTAINER_ID: dictWorkflow}, "docker": None,
+         "workflowDir": lambda sId: sProjectRepo},
+        S_CONTAINER_ID, dictWorkflow,
+    ))
+    archiveProgress.fnRegisterDeposit(
+        S_CONTAINER_ID, None, sRepoKey, bStoppable=True)
+    try:
+        responseHttp = clientTest.post(sStopPath)
+        dictSeen = archiveProgress.fdictReadDeposit(S_CONTAINER_ID, sRepoKey)
+    finally:
+        archiveProgress.fnForgetDeposit(S_CONTAINER_ID, sRepoKey)
+    assert responseHttp.status_code == 200
+    assert dictSeen["bStopRequested"] is True

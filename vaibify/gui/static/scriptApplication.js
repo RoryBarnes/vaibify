@@ -4149,6 +4149,19 @@ const VaibifyApp = (function () {
                 "appears on the Environment archive row; the DOI is " +
                 "recorded when it finishes.",
         },
+        "stop-environment-archive-deposit": {
+            sPath: "/environment-archive/deposit/stop",
+            dictConfirm: {
+                sTitle: "Stop the deposit",
+                sMessage: "Stop depositing the environment image? " +
+                    "Nothing will be published: vaibify discards the " +
+                    "Zenodo draft, and the upload so far is lost. You " +
+                    "can deposit again at any time. Once publishing " +
+                    "has begun it can no longer be stopped, because " +
+                    "the DOI is being minted.",
+            },
+            sToast: "Stopping the deposit at its next step.",
+        },
         "reconcile-promotion": {
             sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
                 "{sPromotionId}/reconcile",

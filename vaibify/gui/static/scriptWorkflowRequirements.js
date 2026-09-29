@@ -1080,7 +1080,30 @@ var VaibifyWorkflowRequirements = (function () {
         var dictDeposit = dictArchive.dictDeposit;
         if (!dictDeposit) return "";
         return _fsRenderFailedUploadAttempts(dictDeposit) +
-            _fsRenderDepositPhase(dictDeposit);
+            _fsRenderDepositPhase(dictDeposit) +
+            _fsRenderDepositStopControl(dictArchive);
+    }
+
+    function _fsRenderDepositStopControl(dictArchive) {
+        /* A deposit can be stopped up to the publish, and not after:
+           the publish mints a DOI. The hub decides both (bStoppable,
+           and the phase it refuses a stop in); the row only offers
+           what the hub would accept. A requested stop takes effect at
+           the next checkpoint -- within one MiB of the upload -- so
+           the row says it is under way rather than claiming it done. */
+        var dictDeposit = dictArchive.dictDeposit;
+        if (dictArchive.sState !== "running" || !dictDeposit.bStoppable ||
+                dictDeposit.sPhase === "publishing") {
+            return "";
+        }
+        if (dictDeposit.bStopRequested) {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml("Stopping the deposit at its next step\u2026") +
+                '</div>';
+        }
+        return _fsRenderActionButton(
+            "stop-environment-archive-deposit", "", "Stop the deposit",
+            false, true);
     }
 
     function _fsRenderDepositPhase(dictDeposit) {
@@ -1121,6 +1144,10 @@ var VaibifyWorkflowRequirements = (function () {
             "receive the image.",
         verifying: "Checking that Zenodo holds exactly what was sent, " +
             "then publishing.",
+        publishing: "Publishing on Zenodo. This step mints the DOI and " +
+            "can no longer be stopped.",
+        stopped: "You stopped the deposit. Nothing was published, and " +
+            "you can deposit again at any time.",
     };
 
     var _DICT_UPLOAD_ATTEMPT_ENDINGS = {

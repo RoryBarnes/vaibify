@@ -24658,4 +24658,45 @@ def _fdictEntry(sRel):
         old='            iSize if bReadAll else max(iSize, _CHUNK_SIZE),\n',
         new='            iSize,\n',
     ),
+    # --- 2026-09-29: a running environment deposit can be stopped,
+    # until the publish begins ---
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_a_stop_mid_upload_publishes_nothing_and_discards_the_draft'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old='    archiveProgress.fnRaiseIfStopRequested(sContainerId)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_a_stop_cannot_land_once_the_publish_has_begun'
+        ),
+        source='vaibify/gui/archiveProgress.py',
+        old='            or dictEntry.get("sPhase") == S_PHASE_PUBLISHING\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_an_abandoned_save_kills_and_reaps_docker_save'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old='        processSave.kill()\n        processSave.wait()\n        raise\n',
+        new='        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_stop_asks_first_then_sends_the_stop'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '            _fsRenderDepositPhase(dictDeposit) +\n'
+            '            _fsRenderDepositStopControl(dictArchive);\n'
+        ),
+        new='            _fsRenderDepositPhase(dictDeposit);\n',
+    ),
 ]

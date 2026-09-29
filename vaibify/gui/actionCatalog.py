@@ -807,6 +807,16 @@ LIST_AGENT_ACTIONS = [
                      "researcher's credentials is outward-facing and "
                      "irreversible, so a compromised container agent "
                      "must not be able to trigger it."},
+    {"sName": "stop-environment-archive-deposit",
+     "sCategory": "verification", "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/environment-archive/"
+              "deposit/stop",
+     "bAgentSafe": False,
+     "sDescription": "Ask the running environment-archive deposit to "
+                     "stop at its next checkpoint; the Zenodo draft is "
+                     "discarded and nothing is published. Refused (409) "
+                     "once the publish has begun. User-only, like the "
+                     "deposit it stops."},
     {"sName": "reconcile-promotion", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/promotions/"

@@ -138,6 +138,9 @@ DICT_LADDER_ACTION_RUNGS = {
     "answer-environment-archive": 2,
     "clear-environment-archive-answer": 0,
     "deposit-environment-archive": 3,
+    # Withdraws a deposit in progress and writes nothing: it can only
+    # leave the ladder where it was.
+    "stop-environment-archive-deposit": 0,
     # The two promotions reach for Level 3: a sandbox deposit cannot
     # carry the permanence claim that rung asks for.
     "promote-environment-archive": 3,
