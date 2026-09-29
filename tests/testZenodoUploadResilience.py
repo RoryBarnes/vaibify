@@ -1,0 +1,190 @@
+"""A bucket upload says how far it got, and survives a dropped connection.
+
+A one-gigabyte environment deposit failed live on an SSL EOF twenty-odd
+minutes into a single PUT, having shown nothing but "Uploading to
+Zenodo" the whole time (2026-09-29). These tests drive the REAL
+``requests`` stack against a loopback HTTP server, because both
+properties live in how ``requests`` treats the body object: whether it
+declares a length or falls back to chunked encoding, and whether a
+connection the server drops surfaces as an error the retry catches.
+"""
+
+import http.server
+import threading
+
+import pytest
+
+from vaibify.gui import archiveProgress
+from vaibify.gui.routes import environmentArchiveRoutes
+from vaibify.reproducibility import zenodoClient
+
+
+_I_FILE_BYTES = 3 * 1024 * 1024 + 17
+
+
+class _BucketServer:
+    """A loopback bucket that can drop its first N uploads mid-body."""
+
+    def __init__(self, iDropFirst=0, iStatus=200):
+        self.listBodies = []
+        self.listHeaders = []
+        self.iRequests = 0
+        serverSelf = self
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_PUT(self):
+                serverSelf.iRequests += 1
+                serverSelf.listHeaders.append(dict(self.headers))
+                if serverSelf.iRequests <= iDropFirst:
+                    self.rfile.read(64 * 1024)
+                    self.close_connection = True
+                    self.connection.close()
+                    return
+                iLength = int(self.headers.get("Content-Length") or 0)
+                serverSelf.listBodies.append(self.rfile.read(iLength))
+                self.send_response(iStatus)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *listArgs):
+                pass
+
+        self._server = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", 0), _Handler,
+        )
+        self.sBucketUrl = (
+            f"http://127.0.0.1:{self._server.server_address[1]}/bucket"
+        )
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, daemon=True,
+        )
+        self._thread.start()
+
+    def fnStop(self):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+@pytest.fixture
+def sTarballPath(tmp_path):
+    pathFile = tmp_path / "environment-image.tar.zst"
+    pathFile.write_bytes(bytes(range(256)) * (_I_FILE_BYTES // 256) + b"x" * (
+        _I_FILE_BYTES % 256))
+    return str(pathFile)
+
+
+@pytest.fixture
+def fixtureNoRetryWait(monkeypatch):
+    monkeypatch.setattr(zenodoClient, "_F_UPLOAD_RETRY_WAIT_SECONDS", 0.0)
+
+
+def _fclientZenodo():
+    return zenodoClient.ZenodoClient("sandbox", sToken="test-token")
+
+
+@pytest.mark.falsification
+def test_an_upload_arrives_whole_with_its_length_declared(sTarballPath):
+    """The counting wrapper must not change what reaches the server.
+
+    A body object ``requests`` cannot size is sent as zero bytes or
+    chunked; either would be an upload that "succeeded" with the wrong
+    content. The progress callback must end at the file's size.
+
+    Kills: dropping the wrapper's ``__len__``.
+    """
+    serverBucket = _BucketServer()
+    listReports = []
+    try:
+        _fclientZenodo().fnUploadToBucket(
+            serverBucket.sBucketUrl, sTarballPath,
+            fnReportProgress=lambda *tReport: listReports.append(tReport),
+        )
+    finally:
+        serverBucket.fnStop()
+    with open(sTarballPath, "rb") as fileHandle:
+        baExpected = fileHandle.read()
+    assert serverBucket.listBodies == [baExpected]
+    assert serverBucket.listHeaders[0].get("Content-Length") == str(
+        _I_FILE_BYTES)
+    assert "Transfer-Encoding" not in serverBucket.listHeaders[0]
+    assert listReports[-1] == (_I_FILE_BYTES, _I_FILE_BYTES, 1)
+    assert len(listReports) >= 3, "the counter never moved mid-upload"
+
+
+@pytest.mark.falsification
+def test_a_dropped_connection_is_retried_from_the_start(
+    sTarballPath, fixtureNoRetryWait,
+):
+    """The server drops the first upload mid-body; the second lands.
+
+    Kills: a single upload attempt, which turns one dropped connection
+    into a failed deposit -- the live failure.
+    """
+    serverBucket = _BucketServer(iDropFirst=1)
+    listReports = []
+    try:
+        _fclientZenodo().fnUploadToBucket(
+            serverBucket.sBucketUrl, sTarballPath,
+            fnReportProgress=lambda *tReport: listReports.append(tReport),
+        )
+    finally:
+        serverBucket.fnStop()
+    assert serverBucket.iRequests == 2
+    assert len(serverBucket.listBodies[0]) == _I_FILE_BYTES
+    assert listReports[-1] == (_I_FILE_BYTES, _I_FILE_BYTES, 2)
+
+
+def test_every_attempt_dropped_names_the_attempts(
+    sTarballPath, fixtureNoRetryWait,
+):
+    serverBucket = _BucketServer(iDropFirst=99)
+    try:
+        with pytest.raises(zenodoClient.ZenodoError, match="all 3 attempts"):
+            _fclientZenodo().fnUploadToBucket(
+                serverBucket.sBucketUrl, sTarballPath,
+            )
+    finally:
+        serverBucket.fnStop()
+    assert serverBucket.iRequests == 3
+
+
+def test_a_gateway_error_is_retried_and_a_refusal_is_not(
+    sTarballPath, fixtureNoRetryWait,
+):
+    """A 503 is Zenodo's overload; a 403 is Zenodo saying no."""
+    serverGateway = _BucketServer(iStatus=503)
+    try:
+        with pytest.raises(zenodoClient.ZenodoError, match="503"):
+            _fclientZenodo().fnUploadToBucket(
+                serverGateway.sBucketUrl, sTarballPath,
+            )
+    finally:
+        serverGateway.fnStop()
+    assert serverGateway.iRequests == 3
+    serverRefusing = _BucketServer(iStatus=403)
+    try:
+        with pytest.raises(zenodoClient.ZenodoAuthError):
+            _fclientZenodo().fnUploadToBucket(
+                serverRefusing.sBucketUrl, sTarballPath,
+            )
+    finally:
+        serverRefusing.fnStop()
+    assert serverRefusing.iRequests == 1
+
+
+def test_the_upload_progress_reaches_the_row_record():
+    """The hub's record carries the bytes and the attempt to the poll."""
+    sContainerId, sRepo = "cid-upload-progress", "/repo/upload-progress"
+    archiveProgress.fnRegisterDeposit(sContainerId, None, sRepo)
+    try:
+        environmentArchiveRoutes._ffnReportUploadProgress(sContainerId)(
+            512, 2048, 2,
+        )
+        dictSeen = archiveProgress.fdictReadDeposit(sContainerId, sRepo)
+    finally:
+        archiveProgress.fnForgetDeposit(sContainerId, sRepo)
+    assert dictSeen["sPhase"] == archiveProgress.S_PHASE_UPLOADING
+    assert (dictSeen["iBytesRead"], dictSeen["iBytesTotal"],
+            dictSeen["iAttempt"]) == (512, 2048, 2)

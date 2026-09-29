@@ -28,6 +28,7 @@ implementing every HTTP path. That deployment has two consequences:
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -104,6 +105,21 @@ _matchZenodoDoiGrammar = re.compile(r"(?:^|/)10\.\d{4,9}/zenodo\.(\d+)$")
 _I_MAX_REDIRECT_HOPS = 5
 
 _CHUNK_SIZE = 1024 * 1024
+
+# A bucket PUT is one long HTTPS request with no resume, so a connection
+# dropped at 60 percent costs the whole transfer -- which is how a
+# one-gigabyte environment deposit failed live (2026-09-29, an SSL EOF
+# twenty-odd minutes in). Retrying is safe because a PUT to a draft's
+# bucket REPLACES the object under that key; nothing accumulates, and
+# nothing is published until the caller publishes. The retry covers a
+# dropped connection and a gateway error, never a refusal: a 4xx means
+# Zenodo read the request and said no, and asking again changes nothing.
+_I_UPLOAD_ATTEMPTS = 3
+_F_UPLOAD_RETRY_WAIT_SECONDS = 30.0
+_T_RETRYABLE_UPLOAD_STATUSES = (502, 503, 504)
+_T_RETRYABLE_UPLOAD_ERRORS = (
+    requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+)
 _HASH_CHUNK_SIZE = 64 * 1024
 # A ceiling for reading a deposit file INTO MEMORY. The hashing
 # path streams and needs no cap; the JSON path materializes, and
@@ -179,7 +195,7 @@ class ZenodoClient:
         sBucketUrl = _fsExtractBucketUrl(dictDeposit)
         _fnStreamUpload(self, sBucketUrl, sFilePath)
 
-    def fnUploadToBucket(self, sBucketUrl, sFilePath):
+    def fnUploadToBucket(self, sBucketUrl, sFilePath, fnReportProgress=None):
         """Upload a file directly to a known bucket URL.
 
         Host callers use :meth:`fnUploadFile`, which refetches the
@@ -187,19 +203,37 @@ class ZenodoClient:
         the bucket URL from the draft they just created, so this path
         skips the extra GET and the tqdm progress bar (tqdm is not
         guaranteed to be installed inside the container).
+
+        ``fnReportProgress(iBytesSent, iBytesTotal, iAttempt)`` is
+        called as the bytes go out, so a long upload can be told apart
+        from a stalled one. A dropped connection or a gateway error is
+        retried from the start, up to ``_I_UPLOAD_ATTEMPTS`` times.
         """
         pathFile = Path(sFilePath)
         if not pathFile.is_file():
             raise FileNotFoundError(f"File not found: '{sFilePath}'")
         sUploadUrl = f"{sBucketUrl}/{pathFile.name}"
-        dictHeaders = _fdictBuildAuthHeader(self._fsGetToken())
-        dictHeaders["Content-Type"] = "application/octet-stream"
-        with open(pathFile, "rb") as fileHandle:
-            responseHttp = requests.put(
-                sUploadUrl, headers=dictHeaders, data=fileHandle,
-                timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
-            )
-        _fnCheckResponse(responseHttp)
+        for iAttempt in range(1, _I_UPLOAD_ATTEMPTS + 1):
+            bLastAttempt = iAttempt == _I_UPLOAD_ATTEMPTS
+            try:
+                responseHttp = _fresponsePutFileOnce(
+                    self, sUploadUrl, pathFile, fnReportProgress, iAttempt,
+                )
+            except _T_RETRYABLE_UPLOAD_ERRORS as errorConnection:
+                if bLastAttempt:
+                    raise ZenodoError(
+                        "Zenodo dropped the connection during the upload "
+                        f"on all {_I_UPLOAD_ATTEMPTS} attempts (last: "
+                        f"{type(errorConnection).__name__}). Try again "
+                        "from a faster or steadier connection."
+                    ) from errorConnection
+            else:
+                if bLastAttempt or responseHttp.status_code not in (
+                    _T_RETRYABLE_UPLOAD_STATUSES
+                ):
+                    _fnCheckResponse(responseHttp)
+                    return
+            time.sleep(_F_UPLOAD_RETRY_WAIT_SECONDS)
 
     def fnDownloadFile(self, iRecordId, sFileName, sDestination):
         """Download a named file from a published record."""
@@ -711,6 +745,59 @@ def _fdictBuildUploadHeaders(clientZenodo):
     dictHeaders = _fdictBuildAuthHeader(clientZenodo._fsGetToken())
     dictHeaders["Content-Type"] = "application/octet-stream"
     return dictHeaders
+
+
+class _ProgressReportingReader:
+    """A file handle that reports how many bytes the upload has read.
+
+    ``requests`` streams any body with a ``read`` method, and sizes the
+    request from ``__len__``. Deliberately NOT iterable: an iterable
+    body is sent with chunked transfer encoding, which a Zenodo bucket
+    does not need and a declared length makes unnecessary.
+    """
+
+    def __init__(self, fileHandle, iBytesTotal, fnReportProgress, iAttempt):
+        self._fileHandle = fileHandle
+        self._iBytesTotal = iBytesTotal
+        self._fnReportProgress = fnReportProgress
+        self._iAttempt = iAttempt
+        self._iBytesSent = 0
+        self._iBytesReported = 0
+
+    def __len__(self):
+        return self._iBytesTotal
+
+    def __bool__(self):
+        return True
+
+    def read(self, iSize=-1):
+        baChunk = self._fileHandle.read(iSize)
+        self._iBytesSent += len(baChunk)
+        bFinished = not baChunk
+        if self._fnReportProgress is not None and (
+            bFinished
+            or self._iBytesSent - self._iBytesReported >= _CHUNK_SIZE
+        ):
+            self._iBytesReported = self._iBytesSent
+            self._fnReportProgress(
+                self._iBytesSent, self._iBytesTotal, self._iAttempt,
+            )
+        return baChunk
+
+
+def _fresponsePutFileOnce(
+    clientZenodo, sUploadUrl, pathFile, fnReportProgress, iAttempt,
+):
+    """Send one PUT of the whole file and return Zenodo's response."""
+    with open(pathFile, "rb") as fileHandle:
+        return requests.put(
+            sUploadUrl, headers=_fdictBuildUploadHeaders(clientZenodo),
+            data=_ProgressReportingReader(
+                fileHandle, pathFile.stat().st_size, fnReportProgress,
+                iAttempt,
+            ),
+            timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
+        )
 
 
 def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):

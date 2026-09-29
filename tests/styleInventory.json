@@ -340,6 +340,7 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/scheduledReverify.py::_fnBumpSyncEpochForVerifiedContainers.entryWorkflow", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/scheduledReverify.py::_ftResolveWorkflowEntry::entryWorkflow", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/scheduledReverify.py::fdictRunReverifyOnce.entryWorkflow", "sReason": ""},
+    {"sDebtClass": "interface-method", "sIdentity": "vaibify/reproducibility/zenodoClient.py::_ProgressReportingReader.read", "sReason": "file-like protocol method consumed by requests' upload body"},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/zenodoClient.py::_fiterReadChunks::barProgress", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/zenodoClient.py::_fnReraiseRecordError.clsError", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/reproducibility/zenodoClient.py::_fnReraiseRecordError::excOriginal", "sReason": ""},

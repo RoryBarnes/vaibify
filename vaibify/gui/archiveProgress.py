@@ -77,8 +77,15 @@ def fnRegisterDeposit(sContainerId, taskWorker, sProjectRepoPath):
         }
 
 
-def fnRecordProgress(sContainerId, sPhase, iBytesRead=0, iBytesTotal=0):
-    """Update one live deposit's phase and byte counters."""
+def fnRecordProgress(
+    sContainerId, sPhase, iBytesRead=0, iBytesTotal=0, iAttempt=0,
+):
+    """Update one live deposit's phase, byte counters and upload attempt.
+
+    ``iAttempt`` is the upload attempt under way, 0 when none is: a
+    dropped connection restarts the upload from zero, and a byte
+    counter that goes backwards unexplained reads as a fault.
+    """
     with _LOCK_DEPOSITS:
         dictEntry = DICT_DEPOSITS.get(sContainerId)
         if dictEntry is None:
@@ -86,6 +93,7 @@ def fnRecordProgress(sContainerId, sPhase, iBytesRead=0, iBytesTotal=0):
         dictEntry["sPhase"] = sPhase
         dictEntry["iBytesRead"] = iBytesRead
         dictEntry["iBytesTotal"] = iBytesTotal
+        dictEntry["iAttempt"] = iAttempt
 
 
 def fnSettleDeposit(sContainerId):
@@ -130,5 +138,6 @@ def fdictReadDeposit(sContainerId, sProjectRepoPath):
             "sPhase": dictEntry.get("sPhase") or "",
             "iBytesRead": dictEntry.get("iBytesRead") or 0,
             "iBytesTotal": dictEntry.get("iBytesTotal") or 0,
+            "iAttempt": dictEntry.get("iAttempt") or 0,
             "sReason": dictEntry.get("sReason") or "",
         }

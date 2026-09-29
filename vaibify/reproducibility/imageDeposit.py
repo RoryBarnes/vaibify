@@ -369,7 +369,7 @@ def fdictDepositImageArchive(
     clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
     dictMetadata, fnReportProgress=None, dictAttestation=None,
     fnReportUploadStarted=None, fnReportVerifying=None,
-    dictParentArchive=None,
+    dictParentArchive=None, fnReportUploadProgress=None,
 ):
     """Save, upload and publish one image; return its deposit record.
 
@@ -397,6 +397,7 @@ def fdictDepositImageArchive(
         fnReportUploadStarted=fnReportUploadStarted,
         fnReportVerifying=fnReportVerifying,
         dictParentArchive=dictParentArchive,
+        fnReportUploadProgress=fnReportUploadProgress,
     )
 
 
@@ -404,7 +405,7 @@ def fdictUploadAndPublishImageArchive(
     clientZenodo, sImageReference, sArchitecture, dictMetadata,
     tTarball, dictAttestation=None, fnReportUploadStarted=None,
     fnReportDraftCreated=None, sProvenance="", fnReportVerifying=None,
-    dictParentArchive=None,
+    dictParentArchive=None, fnReportUploadProgress=None,
 ):
     """Upload one already-written tarball, publish it, return its record.
 
@@ -475,8 +476,12 @@ def fdictUploadAndPublishImageArchive(
             clientZenodo.fnSetMetadata(iDepositId, dictApiMetadata)
         if fnReportUploadStarted is not None:
             fnReportUploadStarted(iBytes)
+        # The bytes sent, and which attempt: the upload is the longest
+        # silent stretch of a deposit, and a dropped connection is
+        # retried from zero, so a counter going backwards needs saying.
         clientZenodo.fnUploadToBucket(
             dictDraft["links"]["bucket"], sTarballPath,
+            fnReportProgress=fnReportUploadProgress,
         )
         # BEFORE the publish, not after, and the ordering is the whole
         # safety property. Zenodo computes each file's checksum when

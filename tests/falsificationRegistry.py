@@ -24554,4 +24554,36 @@ def _fdictEntry(sRel):
         ),
         new='                ? ""\n',
     ),
+    # --- 2026-09-29: a bucket upload reports its bytes and survives a
+    # dropped connection (a live deposit failed on an SSL EOF) ---
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_an_upload_arrives_whole_with_its_length_declared'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # requests can no longer size the body
+        old='    def __len__(self):\n        return self._iBytesTotal\n\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_a_dropped_connection_is_retried_from_the_start'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        old='_I_UPLOAD_ATTEMPTS = 3\n',
+        new='_I_UPLOAD_ATTEMPTS = 1\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_an_upload_shows_its_bytes_and_a_restarted_attempt'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '                fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +\n'
+        ),
+        new='                fnEscapeHtml("Uploading to Zenodo") +\n',
+    ),
 ]

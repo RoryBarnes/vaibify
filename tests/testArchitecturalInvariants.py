@@ -5135,7 +5135,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # archiveDepositPlan.py holds the policy), the chosen Zenodo's token
     # is read, and a missing one is a 409 naming its instance; a
     # referenced DOI is looked up on the Zenodo it names.
-    "routes/environmentArchiveRoutes.py": 917,
+    # +12 (2026-09-29): the deposit and the promotion put the upload's
+    # bytes and attempt on the row, through one callback factory.
+    "routes/environmentArchiveRoutes.py": 929,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

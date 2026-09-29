@@ -72,7 +72,7 @@ class _FakeZenodo:
     def fnSetMetadata(self, iDepositId, dictMetadata):
         self.listPhases.append("metadata")
 
-    def fnUploadToBucket(self, sBucketUrl, sPath):
+    def fnUploadToBucket(self, sBucketUrl, sPath, fnReportProgress=None):
         self.listPhases.append("upload")
         baContent = open(sPath, "rb").read()
         self.dictUploaded[sPath.rsplit("/", 1)[-1]] = baContent

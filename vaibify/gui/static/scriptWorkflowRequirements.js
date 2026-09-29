@@ -1085,17 +1085,35 @@ var VaibifyWorkflowRequirements = (function () {
                     (dictDeposit.sReason || "no reason recorded")) +
                 '</div>';
         }
-        if (dictDeposit.sPhase === "saving" ||
-            dictDeposit.sPhase === "uploading") {
+        if (dictDeposit.sPhase === "saving") {
             return '<div class="requirement-row-status">' +
-                fnEscapeHtml(dictDeposit.sPhase === "saving"
-                    ? "Saving the image: " +
-                        _fsFormatGigabytes(dictDeposit.iBytesRead) +
-                        " of " +
-                        _fsFormatGigabytes(dictDeposit.iBytesTotal)
-                    : "Uploading to Zenodo") + '</div>';
+                fnEscapeHtml("Saving the image: " +
+                    _fsFormatGigabytes(dictDeposit.iBytesRead) + " of " +
+                    _fsFormatGigabytes(dictDeposit.iBytesTotal)) + '</div>';
+        }
+        if (dictDeposit.sPhase === "uploading") {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +
+                '</div>';
         }
         return "";
+    }
+
+    function _fsDescribeUploadProgress(dictDeposit) {
+        /* The upload is the longest silent stretch of a deposit, and a
+           researcher who saw only "Uploading to Zenodo" for twenty
+           minutes could not tell slow from stuck (researcher-reported,
+           2026-09-29). A dropped connection restarts from zero, so a
+           counter that went backwards says why. */
+        if (!dictDeposit.iBytesTotal) return "Uploading to Zenodo";
+        var sSent = dictDeposit.iBytesRead
+            ? _fsFormatGigabytes(dictDeposit.iBytesRead) : "0.00 GB";
+        return "Uploading to Zenodo: " + sSent + " of " +
+            _fsFormatGigabytes(dictDeposit.iBytesTotal) + " sent" +
+            (dictDeposit.iAttempt > 1
+                ? " (the connection dropped, so this is attempt " +
+                  dictDeposit.iAttempt + ")"
+                : "");
     }
 
     function _fsFormatGigabytes(iBytes) {

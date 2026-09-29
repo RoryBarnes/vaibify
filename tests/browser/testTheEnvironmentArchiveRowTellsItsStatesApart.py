@@ -154,6 +154,37 @@ def test_a_running_deposit_shows_the_bytes_it_has_moved(
     assert "4.00 GB" in dictSeen["sText"]
 
 
+@pytest.mark.falsification
+def test_an_upload_shows_its_bytes_and_a_restarted_attempt(
+    pageDashboard, serverHub,
+):
+    """The upload is the longest silent stretch, and a retry restarts it.
+
+    "Uploading to Zenodo" for twenty minutes could not be told from a
+    hang (researcher-reported, 2026-09-29), and a dropped connection
+    restarts the upload from zero -- a counter that goes backwards has
+    to say why.
+
+    Kills: rendering the upload phase as a bare "Uploading to Zenodo"
+    again.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    dictSeen = pageDashboard.evaluate(_S_DRIVE_ROW, _fdictArchivePayload(
+        "running",
+        dictDeposit={
+            "sPhase": "uploading", "iBytesRead": 1024 ** 3 // 2,
+            "iBytesTotal": 1024 ** 3, "iAttempt": 2, "sReason": "",
+        },
+    ))
+
+    assert "0.50 GB of 1.00 GB sent" in dictSeen["sText"], (
+        "the upload shows no progress: " + dictSeen["sText"]
+    )
+    assert "attempt 2" in dictSeen["sText"], dictSeen["sText"]
+
+
 def test_an_archived_row_names_the_platform_and_the_doi(
     pageDashboard, serverHub,
 ):

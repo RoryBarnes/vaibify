@@ -580,6 +580,7 @@ def _fdictDepositSynchronously(
             # The record the researcher chose to continue, or none when
             # they chose a new record.
             dictParentArchive=dictDestination["dictParentArchive"],
+            fnReportUploadProgress=_ffnReportUploadProgress(sContainerId),
         )
     finally:
         # 800 MB must not survive the operation that made it, whether
@@ -875,7 +876,18 @@ def _fdictBuildPromotionProgressHooks(sContainerId):
                 0, iBytes,
             )
         ),
+        "fnReportUploadProgress": _ffnReportUploadProgress(sContainerId),
     }
+
+
+def _ffnReportUploadProgress(sContainerId):
+    """Return the callback that puts the upload's bytes on the row."""
+    def fnReportUploadProgress(iBytesSent, iBytesTotal, iAttempt):
+        archiveProgress.fnRecordProgress(
+            sContainerId, archiveProgress.S_PHASE_UPLOADING,
+            iBytesSent, iBytesTotal, iAttempt=iAttempt,
+        )
+    return fnReportUploadProgress
 
 
 def _fdictStampPromotedRecord(
