@@ -1079,6 +1079,11 @@ var VaibifyWorkflowRequirements = (function () {
            deposit that is working from one that stopped. */
         var dictDeposit = dictArchive.dictDeposit;
         if (!dictDeposit) return "";
+        return _fsRenderFailedUploadAttempts(dictDeposit) +
+            _fsRenderDepositPhase(dictDeposit);
+    }
+
+    function _fsRenderDepositPhase(dictDeposit) {
         if (dictDeposit.sPhase === "failed") {
             return '<div class="requirement-row-status">' +
                 fnEscapeHtml("The deposit failed: " +
@@ -1117,6 +1122,41 @@ var VaibifyWorkflowRequirements = (function () {
         verifying: "Checking that Zenodo holds exactly what was sent, " +
             "then publishing.",
     };
+
+    var _DICT_UPLOAD_ATTEMPT_ENDINGS = {
+        dropped: "the connection was dropped",
+        "timed-out": "the upload stalled and timed out",
+    };
+
+    function _fsRenderFailedUploadAttempts(dictDeposit) {
+        /* Each attempt that ended without Zenodo's answer stays on the
+           row -- through the attempts after it and past a final
+           failure -- so a researcher can judge from how far each got,
+           and how long it ran, whether trying again is worthwhile
+           (researcher-requested, 2026-09-29). */
+        return (dictDeposit.listAttempts || []).map(function (dictAttempt) {
+            return '<div class="requirement-row-status ' +
+                'environment-archive-attempt">' +
+                fnEscapeHtml(_fsDescribeFailedAttempt(dictAttempt)) +
+                '</div>';
+        }).join("");
+    }
+
+    function _fsDescribeFailedAttempt(dictAttempt) {
+        var sEnding = _DICT_UPLOAD_ATTEMPT_ENDINGS[dictAttempt.sCause] ||
+            ("Zenodo answered " + (dictAttempt.iStatus || "an error") +
+             ", meaning its servers were overloaded");
+        var fSeconds = dictAttempt.fSeconds || 0;
+        var sDuration = fSeconds < 60
+            ? Math.round(fSeconds) + " seconds"
+            : (fSeconds / 60).toFixed(1) + " minutes";
+        var sSent = dictAttempt.iBytesSent
+            ? _fsFormatGigabytes(dictAttempt.iBytesSent) : "0.00 GB";
+        return "Attempt " + dictAttempt.iAttempt + ": " + sEnding +
+            " at " + sSent + " of " +
+            _fsFormatGigabytes(dictAttempt.iBytesTotal) + ", after " +
+            sDuration + ".";
+    }
 
     function _fsDescribeUploadProgress(dictDeposit) {
         /* The upload is the longest silent stretch of a deposit, and a

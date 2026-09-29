@@ -212,6 +212,46 @@ def test_every_step_between_the_counters_names_itself(
         assert sExpected in dictSeen["sText"], (sPhase, dictSeen["sText"])
 
 
+@pytest.mark.falsification
+def test_a_failed_deposit_keeps_every_attempt_on_the_row(
+    pageDashboard, serverHub,
+):
+    """Whether to try again is judged from how far each attempt got.
+
+    Kills: rendering only the final failure reason, which hides the
+    attempts that preceded it.
+    """
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True,
+    )
+    iGigabyte = 1024 ** 3
+    dictSeen = pageDashboard.evaluate(_S_DRIVE_ROW, _fdictArchivePayload(
+        "none",
+        dictDeposit={
+            "sPhase": "failed", "iBytesRead": 0, "iBytesTotal": 0,
+            "sReason": "The upload to Zenodo did not complete in 3 attempts",
+            "listAttempts": [
+                {"iAttempt": 1, "iBytesSent": iGigabyte * 7 // 100,
+                 "iBytesTotal": iGigabyte * 68 // 100, "fSeconds": 438.0,
+                 "sCause": "dropped", "iStatus": 0},
+                {"iAttempt": 2, "iBytesSent": iGigabyte * 30 // 100,
+                 "iBytesTotal": iGigabyte * 68 // 100, "fSeconds": 900.0,
+                 "sCause": "timed-out", "iStatus": 0},
+                {"iAttempt": 3, "iBytesSent": 0,
+                 "iBytesTotal": iGigabyte * 68 // 100, "fSeconds": 12.0,
+                 "sCause": "gateway", "iStatus": 503},
+            ],
+        },
+    ))
+
+    sText = dictSeen["sText"]
+    assert ("Attempt 1: the connection was dropped at 0.07 GB of "
+            "0.68 GB, after 7.3 minutes.") in sText, sText
+    assert "Attempt 2: the upload stalled and timed out" in sText, sText
+    assert "Attempt 3: Zenodo answered 503" in sText, sText
+    assert "The deposit failed:" in sText, sText
+
+
 def test_an_archived_row_names_the_platform_and_the_doi(
     pageDashboard, serverHub,
 ):

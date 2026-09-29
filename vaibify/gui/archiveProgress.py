@@ -37,6 +37,7 @@ __all__ = [
     "fnForgetDeposit",
     "fnRecordFailure",
     "fnRecordProgress",
+    "fnRecordUploadAttemptFailed",
     "fnRegisterDeposit",
     "fnSettleDeposit",
 ]
@@ -88,6 +89,7 @@ def fnRegisterDeposit(sContainerId, taskWorker, sProjectRepoPath):
             "iBytesRead": 0,
             "iBytesTotal": 0,
             "sReason": "",
+            "listAttempts": [],
         }
 
 
@@ -108,6 +110,27 @@ def fnRecordProgress(
         dictEntry["iBytesRead"] = iBytesRead
         dictEntry["iBytesTotal"] = iBytesTotal
         dictEntry["iAttempt"] = iAttempt
+
+
+def fnRecordUploadAttemptFailed(sContainerId, dictAttempt):
+    """Keep one upload attempt that ended without Zenodo's answer.
+
+    Kept past the attempts after it and past the deposit's failure: a
+    researcher deciding whether to try again needs to see how far each
+    attempt got and how long it ran, not only the last one's reason.
+    Only the named fields are copied, so nothing else the upload knew
+    can reach the poll.
+    """
+    with _LOCK_DEPOSITS:
+        dictEntry = DICT_DEPOSITS.get(sContainerId)
+        if dictEntry is None:
+            return
+        dictEntry.setdefault("listAttempts", []).append({
+            sKey: dictAttempt.get(sKey) for sKey in (
+                "iAttempt", "iBytesSent", "iBytesTotal", "fSeconds",
+                "sCause", "iStatus",
+            )
+        })
 
 
 def fnSettleDeposit(sContainerId):
@@ -154,4 +177,8 @@ def fdictReadDeposit(sContainerId, sProjectRepoPath):
             "iBytesTotal": dictEntry.get("iBytesTotal") or 0,
             "iAttempt": dictEntry.get("iAttempt") or 0,
             "sReason": dictEntry.get("sReason") or "",
+            "listAttempts": [
+                dict(dictAttempt)
+                for dictAttempt in dictEntry.get("listAttempts") or []
+            ],
         }

@@ -141,7 +141,7 @@ def test_every_attempt_dropped_names_the_attempts(
 ):
     serverBucket = _BucketServer(iDropFirst=99)
     try:
-        with pytest.raises(zenodoClient.ZenodoError, match="all 3 attempts"):
+        with pytest.raises(zenodoClient.ZenodoError, match="did not complete in 3 attempts"):
             _fclientZenodo().fnUploadToBucket(
                 serverBucket.sBucketUrl, sTarballPath,
             )
@@ -218,7 +218,7 @@ def test_every_step_of_a_deposit_names_itself_in_order(tmp_path, monkeypatch):
         def fdictCreateDraft(self, dictMetadata):
             return {"id": 7, "links": {"bucket": "https://example/b"}}
 
-        def fnUploadToBucket(self, sUrl, sPath, fnReportProgress=None):
+        def fnUploadToBucket(self, sUrl, sPath, fnReportProgress=None, fnReportAttemptFailed=None):
             fnReportProgress(19, 19, 1)
 
         def fdictGetDeposit(self, iDepositId):
@@ -259,3 +259,82 @@ def test_every_step_of_a_deposit_names_itself_in_order(tmp_path, monkeypatch):
         "checking-agents", "saving", "preparing-draft", "uploading",
         "verifying",
     ]
+
+
+@pytest.mark.falsification
+def test_each_failed_attempt_is_reported_with_how_far_it_got(
+    sTarballPath, fixtureNoRetryWait,
+):
+    """A researcher judges a retry by how far each attempt got.
+
+    The server drops the first upload after reading 64 KB, so the
+    attempt's bytes are real socket traffic, not a stubbed number.
+
+    Kills: retrying without reporting the attempt that ended.
+    """
+    serverBucket = _BucketServer(iDropFirst=1)
+    listFailed = []
+    try:
+        _fclientZenodo().fnUploadToBucket(
+            serverBucket.sBucketUrl, sTarballPath,
+            fnReportAttemptFailed=listFailed.append,
+        )
+    finally:
+        serverBucket.fnStop()
+    assert [d["iAttempt"] for d in listFailed] == [1]
+    dictFailed = listFailed[0]
+    assert dictFailed["sCause"] == "dropped"
+    assert 0 < dictFailed["iBytesSent"] <= _I_FILE_BYTES
+    assert dictFailed["iBytesTotal"] == _I_FILE_BYTES
+    assert dictFailed["fSeconds"] >= 0
+    assert set(dictFailed) == {
+        "iAttempt", "iBytesSent", "iBytesTotal", "fSeconds", "sCause",
+        "iStatus",
+    }, "the report must carry no response or exception object"
+
+
+def test_a_gateway_attempt_is_reported_with_its_status(
+    sTarballPath, fixtureNoRetryWait,
+):
+    serverGateway = _BucketServer(iStatus=503)
+    listFailed = []
+    try:
+        with pytest.raises(zenodoClient.ZenodoError):
+            _fclientZenodo().fnUploadToBucket(
+                serverGateway.sBucketUrl, sTarballPath,
+                fnReportAttemptFailed=listFailed.append,
+            )
+    finally:
+        serverGateway.fnStop()
+    assert [(d["sCause"], d["iStatus"]) for d in listFailed] == [
+        ("gateway", 503)] * 3
+
+
+@pytest.mark.falsification
+def test_failed_attempts_outlive_the_deposit_and_not_the_next_one():
+    """All three stay visible after a final failure; a new deposit starts clean.
+
+    Kills: the poll's wire record dropping the attempts.
+    """
+    sContainerId, sRepo = "cid-attempts", "/repo/attempts"
+    archiveProgress.fnRegisterDeposit(sContainerId, None, sRepo)
+    try:
+        fnReport = environmentArchiveRoutes._ffnReportUploadAttemptFailed(
+            sContainerId)
+        for iAttempt in (1, 2, 3):
+            fnReport({"iAttempt": iAttempt, "iBytesSent": iAttempt * 10,
+                      "iBytesTotal": 100, "fSeconds": 60.0,
+                      "sCause": "dropped", "iStatus": 0})
+            archiveProgress.fnRecordProgress(
+                sContainerId, archiveProgress.S_PHASE_UPLOADING, 0, 100,
+                iAttempt=iAttempt + 1,
+            )
+        archiveProgress.fnRecordFailure(sContainerId, sRepo, "gave up")
+        dictFailed = archiveProgress.fdictReadDeposit(sContainerId, sRepo)
+        archiveProgress.fnRegisterDeposit(sContainerId, None, sRepo)
+        dictFresh = archiveProgress.fdictReadDeposit(sContainerId, sRepo)
+    finally:
+        archiveProgress.fnForgetDeposit(sContainerId, sRepo)
+    assert [d["iBytesSent"] for d in dictFailed["listAttempts"]] == [
+        10, 20, 30]
+    assert dictFresh["listAttempts"] == []

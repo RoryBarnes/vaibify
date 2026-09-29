@@ -587,6 +587,9 @@ def _fdictDepositSynchronously(
             fnReportPreparingDraft=_ffnReportPhase(
                 sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
             ),
+            fnReportUploadAttemptFailed=_ffnReportUploadAttemptFailed(
+                sContainerId,
+            ),
         )
     finally:
         # 800 MB must not survive the operation that made it, whether
@@ -886,7 +889,17 @@ def _fdictBuildPromotionProgressHooks(sContainerId):
         "fnReportPreparingDraft": _ffnReportPhase(
             sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
         ),
+        "fnReportUploadAttemptFailed": _ffnReportUploadAttemptFailed(
+            sContainerId,
+        ),
     }
+
+
+def _ffnReportUploadAttemptFailed(sContainerId):
+    """Return the callback that keeps a failed upload attempt on the row."""
+    def fnReportUploadAttemptFailed(dictAttempt):
+        archiveProgress.fnRecordUploadAttemptFailed(sContainerId, dictAttempt)
+    return fnReportUploadAttemptFailed
 
 
 def _ffnReportPhase(sContainerId, sPhase):

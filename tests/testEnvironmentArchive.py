@@ -689,7 +689,7 @@ def test_the_upload_phase_is_reported_before_the_bytes_go_up(
             del dictMetadata
             return {"id": 7, "links": {"bucket": "https://zenodo.example/b"}}
 
-        def fnUploadToBucket(self, sBucketUrl, sTarballPath, fnReportProgress=None):
+        def fnUploadToBucket(self, sBucketUrl, sTarballPath, fnReportProgress=None, fnReportAttemptFailed=None):
             del sBucketUrl
             listEvents.append(("upload", sTarballPath))
 
@@ -719,7 +719,7 @@ def test_the_upload_phase_is_reported_before_the_bytes_go_up(
 
     sTarballPath = str(tmp_path / "environment-image.tar.zst")
 
-    def ftSaveWithoutADaemon(sReference, sScratch, fnReportProgress=None):
+    def ftSaveWithoutADaemon(sReference, sScratch, fnReportProgress=None, fnReportAttemptFailed=None):
         del sReference, sScratch, fnReportProgress
         return (
             sTarballPath, "sha256:" + "b" * 64, 4096,
@@ -1055,7 +1055,7 @@ def test_the_deposit_sends_the_fields_zenodo_requires(tmp_path):
             listDrafts.append(dictMetadata)
             return {"id": 1, "links": {"bucket": "https://b"}}
 
-        def fnUploadToBucket(self, sBucket, sPath, fnReportProgress=None):
+        def fnUploadToBucket(self, sBucket, sPath, fnReportProgress=None, fnReportAttemptFailed=None):
             return None
 
         def fdictPublishDraft(self, iDepositId):

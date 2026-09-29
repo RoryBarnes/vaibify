@@ -296,6 +296,9 @@ def ftPromoteImageArchive(
             fnReportPreparingDraft=dictProgressHooks.get(
                 "fnReportPreparingDraft",
             ),
+            fnReportUploadAttemptFailed=dictProgressHooks.get(
+                "fnReportUploadAttemptFailed",
+            ),
             fnReportDraftCreated=lambda iDepositId: (
                 _fnRecordDraftCreated(
                     filesRepo, sSidecarKey, sPromotionId, iDepositId,

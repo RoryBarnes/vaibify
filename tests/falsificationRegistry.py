@@ -24613,4 +24613,39 @@ def _fdictEntry(sRel):
         old='        var sStep = _DICT_DEPOSIT_STEP_SENTENCES[dictDeposit.sPhase];\n',
         new='        var sStep = "";\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_each_failed_attempt_is_reported_with_how_far_it_got'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        old=(
+            '            if fnReportAttemptFailed is not None:\n'
+            '                fnReportAttemptFailed(dictAttempt)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_failed_attempts_outlive_the_deposit_and_not_the_next_one'
+        ),
+        source='vaibify/gui/archiveProgress.py',
+        old=(
+            '            "listAttempts": [\n'
+            '                dict(dictAttempt)\n'
+            '                for dictAttempt in dictEntry.get("listAttempts") or []\n'
+            '            ],\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_failed_deposit_keeps_every_attempt_on_the_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return _fsRenderFailedUploadAttempts(dictDeposit) +\n',
+        new='        return "" +\n',
+    ),
 ]

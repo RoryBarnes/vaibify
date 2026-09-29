@@ -27,7 +27,7 @@ class _FakeZenodoClient:
         del dictMetadata
         return {"id": 4242, "links": {"bucket": "https://example/bucket"}}
 
-    def fnUploadToBucket(self, sBucketUrl, sTarballPath, fnReportProgress=None):
+    def fnUploadToBucket(self, sBucketUrl, sTarballPath, fnReportProgress=None, fnReportAttemptFailed=None):
         self.listUploaded.append((sBucketUrl, sTarballPath))
 
     def fdictPublishDraft(self, iDepositId):
@@ -122,7 +122,7 @@ def test_the_deposit_id_is_reported_before_any_byte_goes_up(tmp_path):
     """
     listEvents = []
     clientZenodo = _FakeZenodoClient()
-    clientZenodo.fnUploadToBucket = lambda sUrl, sPath, fnReportProgress=None: listEvents.append(
+    clientZenodo.fnUploadToBucket = lambda sUrl, sPath, fnReportProgress=None, fnReportAttemptFailed=None: listEvents.append(
         "upload",
     )
     imageDeposit.fdictUploadAndPublishImageArchive(

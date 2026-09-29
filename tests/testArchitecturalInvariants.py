@@ -5139,7 +5139,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # bytes and attempt on the row, through one callback factory.
     # +16 (2026-09-29): every byte-less step of a deposit (the agent
     # check, the draft preparation) names itself on the row.
-    "routes/environmentArchiveRoutes.py": 945,
+    # +13 (2026-09-29): each upload attempt that ends without Zenodo's
+    # answer is kept on the row, through one callback factory.
+    "routes/environmentArchiveRoutes.py": 958,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than

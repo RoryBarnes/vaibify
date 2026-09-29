@@ -57,7 +57,7 @@ class _FakeZenodo:
     def fnSetMetadata(self, iDepositId, dictMetadata):
         self.listCalls.append(("metadata", iDepositId))
 
-    def fnUploadToBucket(self, sBucketUrl, sPath, fnReportProgress=None):
+    def fnUploadToBucket(self, sBucketUrl, sPath, fnReportProgress=None, fnReportAttemptFailed=None):
         self.listCalls.append(("upload", sBucketUrl))
 
     def fdictGetDeposit(self, iDepositId):

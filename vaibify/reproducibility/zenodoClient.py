@@ -117,9 +117,6 @@ _CHUNK_SIZE = 1024 * 1024
 _I_UPLOAD_ATTEMPTS = 3
 _F_UPLOAD_RETRY_WAIT_SECONDS = 30.0
 _T_RETRYABLE_UPLOAD_STATUSES = (502, 503, 504)
-_T_RETRYABLE_UPLOAD_ERRORS = (
-    requests.exceptions.ConnectionError, requests.exceptions.Timeout,
-)
 _HASH_CHUNK_SIZE = 64 * 1024
 # A ceiling for reading a deposit file INTO MEMORY. The hashing
 # path streams and needs no cap; the JSON path materializes, and
@@ -195,7 +192,10 @@ class ZenodoClient:
         sBucketUrl = _fsExtractBucketUrl(dictDeposit)
         _fnStreamUpload(self, sBucketUrl, sFilePath)
 
-    def fnUploadToBucket(self, sBucketUrl, sFilePath, fnReportProgress=None):
+    def fnUploadToBucket(
+        self, sBucketUrl, sFilePath, fnReportProgress=None,
+        fnReportAttemptFailed=None,
+    ):
         """Upload a file directly to a known bucket URL.
 
         Host callers use :meth:`fnUploadFile`, which refetches the
@@ -206,33 +206,32 @@ class ZenodoClient:
 
         ``fnReportProgress(iBytesSent, iBytesTotal, iAttempt)`` is
         called as the bytes go out, so a long upload can be told apart
-        from a stalled one. A dropped connection or a gateway error is
-        retried from the start, up to ``_I_UPLOAD_ATTEMPTS`` times.
+        from a stalled one. A dropped connection, a timeout or a
+        gateway error is retried from the start, up to
+        ``_I_UPLOAD_ATTEMPTS`` times, and each attempt that ends that
+        way is reported to ``fnReportAttemptFailed`` with how far it
+        got, how long it ran and why it ended -- the evidence a
+        researcher needs to judge whether trying again is worthwhile.
         """
         pathFile = Path(sFilePath)
         if not pathFile.is_file():
             raise FileNotFoundError(f"File not found: '{sFilePath}'")
         sUploadUrl = f"{sBucketUrl}/{pathFile.name}"
         for iAttempt in range(1, _I_UPLOAD_ATTEMPTS + 1):
-            bLastAttempt = iAttempt == _I_UPLOAD_ATTEMPTS
-            try:
-                responseHttp = _fresponsePutFileOnce(
-                    self, sUploadUrl, pathFile, fnReportProgress, iAttempt,
-                )
-            except _T_RETRYABLE_UPLOAD_ERRORS as errorConnection:
-                if bLastAttempt:
-                    raise ZenodoError(
-                        "Zenodo dropped the connection during the upload "
-                        f"on all {_I_UPLOAD_ATTEMPTS} attempts (last: "
-                        f"{type(errorConnection).__name__}). Try again "
-                        "from a faster or steadier connection."
-                    ) from errorConnection
-            else:
-                if bLastAttempt or responseHttp.status_code not in (
-                    _T_RETRYABLE_UPLOAD_STATUSES
-                ):
-                    _fnCheckResponse(responseHttp)
-                    return
+            dictAttempt = _fdictPutFileOnce(
+                self, sUploadUrl, pathFile, fnReportProgress, iAttempt,
+            )
+            responseHttp = dictAttempt.pop("responseHttp")
+            errorConnection = dictAttempt.pop("errorConnection")
+            if responseHttp is not None and responseHttp.status_code not in (
+                _T_RETRYABLE_UPLOAD_STATUSES
+            ):
+                _fnCheckResponse(responseHttp)
+                return
+            if fnReportAttemptFailed is not None:
+                fnReportAttemptFailed(dictAttempt)
+            if iAttempt == _I_UPLOAD_ATTEMPTS:
+                _fnRaiseUploadExhausted(responseHttp, errorConnection)
             time.sleep(_F_UPLOAD_RETRY_WAIT_SECONDS)
 
     def fnDownloadFile(self, iRecordId, sFileName, sDestination):
@@ -761,7 +760,7 @@ class _ProgressReportingReader:
         self._iBytesTotal = iBytesTotal
         self._fnReportProgress = fnReportProgress
         self._iAttempt = iAttempt
-        self._iBytesSent = 0
+        self.iBytesSent = 0
         self._iBytesReported = 0
 
     def __len__(self):
@@ -772,32 +771,65 @@ class _ProgressReportingReader:
 
     def read(self, iSize=-1):
         baChunk = self._fileHandle.read(iSize)
-        self._iBytesSent += len(baChunk)
+        self.iBytesSent += len(baChunk)
         bFinished = not baChunk
         if self._fnReportProgress is not None and (
             bFinished
-            or self._iBytesSent - self._iBytesReported >= _CHUNK_SIZE
+            or self.iBytesSent - self._iBytesReported >= _CHUNK_SIZE
         ):
-            self._iBytesReported = self._iBytesSent
+            self._iBytesReported = self.iBytesSent
             self._fnReportProgress(
-                self._iBytesSent, self._iBytesTotal, self._iAttempt,
+                self.iBytesSent, self._iBytesTotal, self._iAttempt,
             )
         return baChunk
 
 
-def _fresponsePutFileOnce(
+def _fdictPutFileOnce(
     clientZenodo, sUploadUrl, pathFile, fnReportProgress, iAttempt,
 ):
-    """Send one PUT of the whole file and return Zenodo's response."""
+    """Send one PUT of the whole file; return what happened to it.
+
+    ``sCause`` is ``""`` when Zenodo answered, else why the attempt
+    ended without an answer it could act on: ``dropped`` (the
+    connection closed mid-transfer), ``timed-out`` (nothing moved for
+    the timeout), or ``gateway`` (a 502/503/504, with ``iStatus``).
+    """
+    iBytesTotal = pathFile.stat().st_size
+    fStarted = time.monotonic()
+    responseHttp, errorConnection, sCause = None, None, ""
     with open(pathFile, "rb") as fileHandle:
-        return requests.put(
-            sUploadUrl, headers=_fdictBuildUploadHeaders(clientZenodo),
-            data=_ProgressReportingReader(
-                fileHandle, pathFile.stat().st_size, fnReportProgress,
-                iAttempt,
-            ),
-            timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
+        fileBody = _ProgressReportingReader(
+            fileHandle, iBytesTotal, fnReportProgress, iAttempt,
         )
+        try:
+            responseHttp = requests.put(
+                sUploadUrl, headers=_fdictBuildUploadHeaders(clientZenodo),
+                data=fileBody, timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
+            )
+        except requests.exceptions.Timeout as errorTimeout:
+            errorConnection, sCause = errorTimeout, "timed-out"
+        except requests.exceptions.ConnectionError as errorDropped:
+            errorConnection, sCause = errorDropped, "dropped"
+    iStatus = responseHttp.status_code if responseHttp is not None else 0
+    if iStatus in _T_RETRYABLE_UPLOAD_STATUSES:
+        sCause = "gateway"
+    return {
+        "iAttempt": iAttempt, "iBytesSent": fileBody.iBytesSent,
+        "iBytesTotal": iBytesTotal,
+        "fSeconds": round(time.monotonic() - fStarted, 1),
+        "sCause": sCause, "iStatus": iStatus,
+        "responseHttp": responseHttp, "errorConnection": errorConnection,
+    }
+
+
+def _fnRaiseUploadExhausted(responseHttp, errorConnection):
+    """Raise for an upload whose every attempt ended without an answer."""
+    if responseHttp is not None:
+        _fnCheckResponse(responseHttp)
+    raise ZenodoError(
+        f"The upload to Zenodo did not complete in {_I_UPLOAD_ATTEMPTS} "
+        f"attempts (last: {type(errorConnection).__name__})."
+    ) from errorConnection
 
 
 def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
