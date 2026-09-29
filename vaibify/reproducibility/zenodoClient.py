@@ -753,6 +753,16 @@ class _ProgressReportingReader:
     request from ``__len__``. Deliberately NOT iterable: an iterable
     body is sent with chunked transfer encoding, which a Zenodo bucket
     does not need and a declared length makes unnecessary.
+
+    It hands the connection ``_CHUNK_SIZE`` bytes per read whatever
+    size is asked for, and that is the difference between a usable and
+    an unusable deposit. ``http.client`` asks for 8 KB at a time, and
+    every block sent has to win the interpreter lock back; inside the
+    hub, where other threads are busy, each win waits for the lock's
+    switch interval. Measured with one busy thread beside the upload:
+    8 KB blocks ran at 0.7 MB/s, 1 MiB blocks at 26 MB/s, the same as
+    an idle process (2026-09-29, after three deposits of a 0.7 GB
+    image timed out on a link a browser used at full speed).
     """
 
     def __init__(self, fileHandle, iBytesTotal, fnReportProgress, iAttempt):
@@ -770,7 +780,10 @@ class _ProgressReportingReader:
         return True
 
     def read(self, iSize=-1):
-        baChunk = self._fileHandle.read(iSize)
+        bReadAll = iSize is None or iSize < 0
+        baChunk = self._fileHandle.read(
+            iSize if bReadAll else max(iSize, _CHUNK_SIZE),
+        )
         self.iBytesSent += len(baChunk)
         bFinished = not baChunk
         if self._fnReportProgress is not None and (

@@ -24648,4 +24648,14 @@ def _fdictEntry(sRel):
         old='        return _fsRenderFailedUploadAttempts(dictDeposit) +\n',
         new='        return "" +\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_the_upload_hands_the_connection_large_blocks'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # back to the 8 KB blocks http.client asks for
+        old='            iSize if bReadAll else max(iSize, _CHUNK_SIZE),\n',
+        new='            iSize,\n',
+    ),
 ]

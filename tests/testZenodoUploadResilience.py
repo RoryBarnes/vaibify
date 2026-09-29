@@ -338,3 +338,32 @@ def test_failed_attempts_outlive_the_deposit_and_not_the_next_one():
     assert [d["iBytesSent"] for d in dictFailed["listAttempts"]] == [
         10, 20, 30]
     assert dictFresh["listAttempts"] == []
+
+
+@pytest.mark.falsification
+def test_the_upload_hands_the_connection_large_blocks(sTarballPath):
+    """8 KB blocks starve inside a busy hub; 1 MiB blocks do not.
+
+    ``http.client`` asks the body for 8 KB at a time, and each block
+    sent must win the interpreter lock back. Measured with one busy
+    thread beside the upload (2026-09-29): 8 KB blocks ran at 0.7 MB/s
+    and 1 MiB blocks at 26 MB/s -- the difference between three
+    timed-out deposits and a deposit at the link's speed. Asserted on
+    the block the reader returns, because a throughput threshold would
+    be a flaky test on a shared CI runner.
+
+    Kills: reading only the size the caller asks for.
+    """
+    with open(sTarballPath, "rb") as fileHandle:
+        fileBody = zenodoClient._ProgressReportingReader(
+            fileHandle, _I_FILE_BYTES, None, 1,
+        )
+        listBlockSizes = []
+        while True:
+            baBlock = fileBody.read(8192)
+            if not baBlock:
+                break
+            listBlockSizes.append(len(baBlock))
+    assert listBlockSizes[0] == zenodoClient._CHUNK_SIZE
+    assert sum(listBlockSizes) == _I_FILE_BYTES
+    assert len(listBlockSizes) == -(-_I_FILE_BYTES // zenodoClient._CHUNK_SIZE)
