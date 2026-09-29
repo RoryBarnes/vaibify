@@ -2274,12 +2274,18 @@ nobody deposited.
 
 When the image changes, the record is dropped but a lineage note,
 `dictContainer.dictImageArchiveLineage` (the old version DOI, concept DOI
-and service), is kept. No gate reads it. The next deposit on the same
-Zenodo service is made a new VERSION of that record, so one project's
-environments stay one history on Zenodo; across services, which Zenodo
-cannot version, the deposit starts a fresh record. A new-version draft
-inherits the previous image, so it is also checked for files vaibify did
-not send before it is published.
+and service), is kept. No gate reads it. Where the next deposit goes
+is the researcher's explicit choice, never the project's Zenodo
+setting: `archiveDepositPlan` offers a new VERSION of that record (only
+on the Zenodo that holds it, because Zenodo cannot version across
+services), a new permanent record, or a new sandbox record, and
+recommends continuing a permanent record and otherwise a new permanent
+one. The poll ships that plan, the Environment archive row renders its
+options and pre-selects none, and the deposit route resolves the
+chosen option through the same module, so the destination the row
+names is the one the upload uses. A new-version draft inherits the
+previous image, so it is also checked for files vaibify did not send
+before it is published.
 
 Three hazards are structural, each a plausible simplification that
 breaks the feature silently:

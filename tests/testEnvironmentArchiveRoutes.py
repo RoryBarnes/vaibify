@@ -227,10 +227,14 @@ def test_a_verified_reference_lands_in_the_envelope(
     assert dictOnDisk["sImageStreamSha256"] == "sha256:" + "c" * 64
 
 
-def test_a_deposit_without_a_stored_token_is_a_409_not_a_500(
+def test_a_deposit_without_a_stored_token_names_the_instance_it_needs(
     sProjectRepo,
 ):
-    """A researcher who has not connected Zenodo gets an instruction."""
+    """A missing token is a 409 the dashboard turns into a prompt.
+
+    The instance rides in the detail because a deposit can now go to
+    either Zenodo, and the prompt must ask for the one chosen.
+    """
 
     class _ConnectionWithoutAToken:
         """Answers the keyring read the way an unconfigured project does."""
@@ -242,18 +246,52 @@ def test_a_deposit_without_a_stored_token_is_a_409_not_a_500(
     clientTest, _dictWorkflow = _fclientBuild(
         sProjectRepo, connectionDocker=_ConnectionWithoutAToken(),
     )
-    responseHttp = clientTest.post(_fsDepositPath())
+    responseHttp = clientTest.post(
+        _fsDepositPath(), json={"sChoice": "new-record-permanent"},
+    )
     assert responseHttp.status_code == 409
-    assert "Connect Zenodo" in responseHttp.json()["detail"]
+    dictDetail = responseHttp.json()["detail"]
+    assert dictDetail["sError"] == "ZENODO-TOKEN-MISSING"
+    assert dictDetail["sInstance"] == "production"
 
 
-def test_a_deposit_asks_the_slot_its_service_names(sProjectRepo):
-    """Sandbox and production keep separate tokens; the wrong one 401s.
+@pytest.mark.falsification
+def test_a_deposit_with_no_choice_is_refused_before_any_token_is_read(
+    sProjectRepo,
+):
+    """The destination is the researcher's to name, never a default.
 
-    Asserted on the SLOT rather than on a success, because the value
-    never appears in a response and a deposit that reached for the
-    production slot on a sandbox project would fail much later, with
-    a Zenodo error that names nothing about slots.
+    Kills: defaulting a missing choice to the project's Zenodo setting,
+    which is how a deposit came to go somewhere the row never named.
+    """
+    listAsked = []
+
+    class _RecordingConnection:
+        def fsFetchKeyringSecret(self, sContainerId, sSlotName):
+            del sContainerId
+            listAsked.append(sSlotName)
+            return "token"
+
+    clientTest, _dictWorkflow = _fclientBuild(
+        sProjectRepo, connectionDocker=_RecordingConnection(),
+    )
+    responseHttp = clientTest.post(_fsDepositPath(), json={})
+    assert responseHttp.status_code == 422
+    assert "new-record-permanent" in responseHttp.json()["detail"]
+    assert listAsked == []
+
+
+@pytest.mark.falsification
+def test_a_deposit_asks_the_slot_of_the_chosen_destination(sProjectRepo):
+    """The CHOSEN Zenodo's token is read, not the project setting's.
+
+    The project publishes to the sandbox and the researcher chose
+    production, so the two candidate slots are distinct and a route
+    still reading the project setting asks the wrong one. Asserted on
+    the SLOT because the value never appears in a response.
+
+    Kills: reading the token of the project's Zenodo setting instead
+    of the chosen destination's.
     """
     listAsked = []
 
@@ -263,13 +301,38 @@ def test_a_deposit_asks_the_slot_its_service_names(sProjectRepo):
             listAsked.append(sSlotName)
             return ""
 
-    dictWorkflow = {
-        "sProjectRepoPath": sProjectRepo, "listSteps": [],
-        "sZenodoService": "zenodo",
-    }
-    clientTest, _dictWorkflow = _fclientBuild(
-        sProjectRepo, dictWorkflow=dictWorkflow,
-        connectionDocker=_RecordingConnection(),
+    clientTest, dictWorkflow = _fclientBuild(
+        sProjectRepo, connectionDocker=_RecordingConnection(),
     )
-    clientTest.post(_fsDepositPath())
+    assert dictWorkflow["sZenodoService"] == "sandbox"
+    clientTest.post(
+        _fsDepositPath(), json={"sChoice": "new-record-permanent"},
+    )
     assert listAsked == ["zenodo_token_production"]
+
+
+def test_an_unreadable_token_slot_is_not_reported_as_an_empty_one(
+    sProjectRepo,
+):
+    """A keyring that cannot be read is not "no token stored".
+
+    Answering it with the credential prompt would tell the researcher
+    to add a token they may already have, and storing one would fix
+    nothing.
+    """
+
+    class _ConnectionWithABrokenKeyring:
+        def fsFetchKeyringSecret(self, sContainerId, sSlotName):
+            del sContainerId
+            raise LookupError(f"Could not read the credential slot {sSlotName!r}.")
+
+    clientTest, _dictWorkflow = _fclientBuild(
+        sProjectRepo, connectionDocker=_ConnectionWithABrokenKeyring(),
+    )
+    responseHttp = clientTest.post(
+        _fsDepositPath(), json={"sChoice": "new-record-sandbox"},
+    )
+    assert responseHttp.status_code == 409
+    assert "Could not read the credential slot" in (
+        responseHttp.json()["detail"]
+    )

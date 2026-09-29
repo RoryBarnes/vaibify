@@ -332,8 +332,9 @@ def test_the_deposit_refuses_before_saving_anything(monkeypatch, tmp_path):
     ])
     with pytest.raises(agentLayerSeparation.AgentLayerSeparationError):
         environmentArchiveRoutes._fdictDepositSynchronously(
-            "cid", {"sZenodoService": "sandbox"},
+            "cid", {},
             {"sImageDigest": S_ENVIRONMENT_ID, "sArchitecture": "arm64"},
+            {"sZenodoService": "sandbox", "dictParentArchive": {}},
             "token", None,
         )
     assert listDeposited == []

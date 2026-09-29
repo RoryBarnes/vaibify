@@ -4136,18 +4136,15 @@ const VaibifyApp = (function () {
         },
         "deposit-environment-archive": {
             sPath: "/environment-archive/deposit",
+            fdictBodyFromElement: _fdictReadEnvironmentDepositChoice,
             dictConfirm: {
                 sTitle: "Deposit the container image",
-                sMessage: "Vaibify will save this project's " +
-                    "container image, compress it, and publish it to " +
-                    "Zenodo under a new DOI. Deleting a Zenodo " +
-                    "deposit later requires contacting Zenodo, and " +
-                    "the DOI is tombstoned rather than removed. The " +
-                    "image is " +
-                    "usually several gigabytes, so this takes " +
-                    "minutes and needs that much free disk space " +
-                    "while it runs.",
+                // The row composed this sentence from the same plan
+                // the route resolves the choice through, so the
+                // confirmation names the destination the upload uses.
+                fsMessageFromElement: _fsReadEnvironmentDepositConfirm,
             },
+            dictCredentialPrompt: {sError: "ZENODO-TOKEN-MISSING"},
             sToast: "Depositing the container image. Progress " +
                 "appears on the Environment archive row; the DOI is " +
                 "recorded when it finishes.",
@@ -4426,6 +4423,27 @@ const VaibifyApp = (function () {
         return dictBody;
     }
 
+    function _felReadCheckedArchiveChoice(elButton) {
+        var elForm = elButton.closest(".environment-archive-form");
+        return elForm ? elForm.querySelector(
+            ".environment-archive-answer:checked") : null;
+    }
+
+    function _fdictReadEnvironmentDepositChoice(elButton) {
+        var elChecked = _felReadCheckedArchiveChoice(elButton);
+        if (!elChecked) {
+            fnShowToast(
+                "Choose where to deposit the image first.", "error");
+            return null;
+        }
+        return {sChoice: elChecked.value};
+    }
+
+    function _fsReadEnvironmentDepositConfirm(elButton) {
+        var elChecked = _felReadCheckedArchiveChoice(elButton);
+        return elChecked ? elChecked.dataset.archiveConfirm || "" : "";
+    }
+
     function _fdictReadBinaryRemoval(sBinaryPath) {
         // Re-declare the list minus the removed entry.
         var listRemaining = ((_dictWorkflowState.dictWorkflow || {})
@@ -4473,9 +4491,13 @@ const VaibifyApp = (function () {
         if (dictAction.dictConfirm) {
             var dictNoConfirm = _fdictFreezeFormBody(dictAction, elButton);
             if (!dictNoConfirm) return;
+            var sConfirmMessage = dictAction.dictConfirm
+                .fsMessageFromElement
+                ? dictAction.dictConfirm.fsMessageFromElement(elButton)
+                : dictAction.dictConfirm.sMessage;
             fnShowConfirmModal(
                 dictAction.dictConfirm.sTitle,
-                dictAction.dictConfirm.sMessage,
+                sConfirmMessage,
                 function () {
                     _fnExecuteProjectAction(
                         dictNoConfirm, sContainerId, sArg, elButton);
@@ -4694,8 +4716,11 @@ const VaibifyApp = (function () {
            refusal is reported rather than asked again. */
         fnShowToast(
             error.dictDetail.sMessage || error.message || "", "warning");
+        // A refusal that names its instance wins: a deposit can go
+        // to either Zenodo, and the prompt must ask for the one chosen.
         var bStored = await VaibifySyncManager
             .fpromiseConnectZenodoCredentialOnly(
+                error.dictDetail.sInstance ||
                 dictAction.dictCredentialPrompt.sInstance);
         if (!bStored) return;
         var dictOnce = Object.assign({}, dictAction);

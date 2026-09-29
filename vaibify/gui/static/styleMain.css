@@ -7434,6 +7434,37 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     color: var(--color-orange);
 }
 
+/* What this project deposited before and which choice vaibify
+   recommends, above the choices themselves: a researcher who has been
+   through this once must be able to see so before starting an
+   unrelated record. */
+.environment-archive-guidance {
+    padding: 4px 0;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.environment-archive-recommended {
+    margin-left: 4px;
+    padding: 0 5px;
+    border: 1px solid var(--highlight-color);
+    border-radius: 3px;
+    font-size: 10px;
+    color: var(--highlight-color);
+}
+
+.environment-archive-choice-detail {
+    display: block;
+    padding-left: 22px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.environment-archive-reference {
+    padding-left: 22px;
+}
+
 .determinism-omp-threads {
     width: 64px;
     margin-left: 4px;

@@ -310,6 +310,28 @@ satisfies Level 2 and blocks only the Level 3 criterion, which never
 reads the answer — so a project that declined and later deposits
 reaches Level 3 with nothing to undo.
 
+The Environment archive row names every place a deposit can go before
+anything is uploaded: a new version of the project's earlier record
+(on the Zenodo that holds it), a new record on zenodo.org, or a new
+record on the Zenodo sandbox, which is for practice and never
+satisfies Level 3. When the project has deposited before, the row says
+so and recommends continuing a permanent record; otherwise it
+recommends a new permanent one. Nothing is pre-selected, the
+confirmation names the chosen destination, and a missing token for
+that Zenodo is asked for without changing where the project
+publishes.
+
+The Environment archive row names every place a deposit can go before
+anything is uploaded: a new version of the project's earlier record
+(on the Zenodo that holds it), a new record on zenodo.org, or a new
+record on the Zenodo sandbox, which is for practice and never
+satisfies Level 3. When the project has deposited before, the row says
+so and recommends continuing a permanent record; otherwise it
+recommends a new permanent one. Nothing is pre-selected, the
+confirmation names the chosen destination, and a missing token for
+that Zenodo is asked for without changing where the project
+publishes.
+
 #### The archived environment holds no coding agent
 
 Coding agents help write the code; they compute no result. So the

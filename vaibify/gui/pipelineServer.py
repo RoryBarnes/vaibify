@@ -2681,7 +2681,7 @@ def fdictBuildImageArchiveDetail(
     from vaibify.gui import archiveProgress
     from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import (
-        archivePermanence, imageArchive, levelGates,
+        archiveDepositPlan, archivePermanence, imageArchive, levelGates,
     )
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson,
@@ -2706,13 +2706,14 @@ def fdictBuildImageArchiveDetail(
     except LookupError as errorLookup:
         listIssues = []
         sUncheckedReason = str(errorLookup)
+    sState = imageArchive.fsResolveArchiveState(
+        dictEnvironment, dictWorkflow,
+        sCheckState=_fsArchiveCheckState(dictDeposit),
+        bPinnedImageInLocalStore=bPinnedImageInLocalStore,
+        bHostProject=fbIsHostProject(sContainerId),
+    )
     return {
-        "sState": imageArchive.fsResolveArchiveState(
-            dictEnvironment, dictWorkflow,
-            sCheckState=_fsArchiveCheckState(dictDeposit),
-            bPinnedImageInLocalStore=bPinnedImageInLocalStore,
-            bHostProject=fbIsHostProject(sContainerId),
-        ),
+        "sState": sState,
         # The row renders a cell per level from this one payload, so
         # the LEVEL 2 half travels as the gate's own verdict. Deriving
         # it in JavaScript would make the frontend a second authority
@@ -2737,6 +2738,14 @@ def fdictBuildImageArchiveDetail(
         # those bytes went; "unknown" renders exactly as today.
         "sPermanence": archivePermanence.fsClassifyDepositRecord(
             imageArchive.fdictReadArchiveRecord(dictEnvironment),
+        ),
+        # Where a deposit from this row can go, the deposit this
+        # project made before, and which choice is recommended -- from
+        # the module the deposit route resolves the choice through, so
+        # the row cannot name a destination the upload does not use.
+        "dictDepositPlan": archiveDepositPlan.fdictBuildDepositPlan(
+            (dictEnvironment or {}).get("dictContainer"),
+            bCovered=(sState == "attained"),
         ),
     }
 

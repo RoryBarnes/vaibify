@@ -5130,7 +5130,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment the coding agents are part of or reach, and names the
     # agents it leaves out; the check and the sentence live in
     # reproducibility/agentLayerSeparation.py, the call sites here.
-    "routes/environmentArchiveRoutes.py": 877,
+    # +40 (2026-09-28): the deposit goes where the researcher CHOSE --
+    # the request's choice is resolved (reproducibility/
+    # archiveDepositPlan.py holds the policy), the chosen Zenodo's token
+    # is read, and a missing one is a 409 naming its instance; a
+    # referenced DOI is looked up on the Zenodo it names.
+    "routes/environmentArchiveRoutes.py": 917,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5906,7 +5911,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-28): the envelope-currency comparison passes the
     # agent-free environment's identity, so a pin on the environment
     # below the agents reads as derived rather than as drift.
-    "pipelineServer.py": 3662,
+    # +9 (2026-09-28): the archive row's payload carries the deposit
+    # plan -- where a deposit can go and which is recommended.
+    "pipelineServer.py": 3671,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6921,7 +6928,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +19 (2026-09-26): list-committed-file-differences (agent-safe
     # read) and restore-committed-files (user-only: it discards the
     # container's changes to the files it restores).
-    "actionCatalog.py": 1414,
+    # +5 (2026-09-28): deposit-environment-archive documents its
+    # required sChoice argument.
+    "actionCatalog.py": 1419,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache

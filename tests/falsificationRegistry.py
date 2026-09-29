@@ -19064,8 +19064,8 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         # leaves every radio blank, so a recorded answer reads as a save
         # that did not take
-        old="            return sAnswer === sValue ? ' checked' : '';",
-        new="            return '';",
+        old='            dictChoice.bChecked = dictChoice.sValue === sSelected;\n',
+        new='            dictChoice.bChecked = false;\n',
     ),
     Falsification(
         nodeid=(
@@ -24435,5 +24435,148 @@ def _fdictEntry(sRel):
         # a new-version draft is not asked for leftover files
         old='    if bVersioned:\n',
         new='    if False:\n',
+    ),
+    # --- 2026-09-28: the Environment archive row names where a deposit
+    # goes and recommends one; the route deposits where it was told ---
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_permanent_earlier_deposit_is_continued_as_a_new_version'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # a continuable permanent record is recommended a duplicate
+        old='        return S_CHOICE_NEW_VERSION\n',
+        new='        return S_CHOICE_NEW_RECORD_PERMANENT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_sandbox_earlier_deposit_is_recommended_a_new_permanent_'
+            'record'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # any continuable record is recommended a new version
+        old=(
+            '        dictPrevious["sPermanence"]\n'
+            '        == archivePermanence.S_PERMANENCE_PERMANENT\n'
+        ),
+        new='        True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_new_record_starts_fresh_even_on_the_zenodo_holding_the_'
+            'last'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # every choice continues the earlier record, as the route once did
+        old='            if sChoice == S_CHOICE_NEW_VERSION else {}\n',
+        new='            if True else {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_the_chosen_destination_reaches_the_upload'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # the upload goes where the project setting says, not the row
+        old=(
+            '            ZenodoClient(dictDestination["sZenodoService"], '
+            'sToken=sToken),\n'
+        ),
+        new=(
+            '            ZenodoClient(dictWorkflow.get("sZenodoService") or '
+            '"sandbox", sToken=sToken),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_referenced_doi_is_looked_up_on_the_zenodo_it_names'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # a permanent DOI is looked for on the sandbox
+        old='        zenodoClient.fsServiceForDoi(sVersionDoi),\n',
+        new='        "sandbox",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_the_row_payload_ships_the_plan'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        "dictDepositPlan": archiveDepositPlan.fdictBuildDepositPlan(\n'
+        ),
+        new=(
+            '        "dictDepositPlanDropped": '
+            'archiveDepositPlan.fdictBuildDepositPlan(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_deposit_with_no_choice_is_refused_before_any_token_is_read'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # a missing choice quietly becomes a new permanent record
+        old='    sChoice = str((dictBody or {}).get("sChoice") or "").strip()\n',
+        new=(
+            '    sChoice = str((dictBody or {}).get("sChoice") or '
+            '"new-record-permanent").strip()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_deposit_asks_the_slot_of_the_chosen_destination'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '            dictCtx["docker"], sContainerId,\n'
+            '            dictDestination["sZenodoService"],\n'
+        ),
+        new=(
+            '            dictCtx["docker"], sContainerId,\n'
+            '            dictWorkflow.get("sZenodoService") or "sandbox",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_row_names_the_earlier_deposit_and_marks_the_'
+            'recommendation'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the earlier deposit and the recommendation vanish from the row
+        old='        var sHtml = _fsRenderArchiveGuidance(dictArchive) +\n',
+        new='        var sHtml = "" +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_button_names_the_option_the_researcher_clicked'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        # a click on an option no longer reaches the button
+        old=(
+            '        ".environment-archive-answer": '
+            '_fnHandleEnvironmentArchiveChoice,\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_deposit_sends_the_choice_only_after_a_confirmation_'
+            'naming_it'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the confirmation stops naming the destination
+        old=(
+            '                ? dictAction.dictConfirm.fsMessageFromElement'
+            '(elButton)\n'
+        ),
+        new='                ? ""\n',
     ),
 ]
