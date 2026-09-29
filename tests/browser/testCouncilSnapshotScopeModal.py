@@ -106,7 +106,7 @@ def testTheMissingFilesPageFromTheServer(pageDashboard, serverHub,
     assert pageDashboard.locator(sSelector).count() == 200
     pageDashboard.click(".council-omission-more")
     pageDashboard.wait_for_function(
-        f"document.querySelectorAll(\"{sSelector}\").length === 400",
+        f"() => document.querySelectorAll(\"{sSelector}\").length === 400",
         timeout=8000)
     assert "output/run0000.bin" in pageDashboard.inner_text(
         ".council-omission-group[data-directory='output']")
