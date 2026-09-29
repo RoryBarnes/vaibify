@@ -14905,32 +14905,11 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
-            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
-            'test_a_project_returning_to_level_three_is_shown_the_order'
-        ),
-        # Any outstanding Level 2 blocker silences the arrow again.
-        source='vaibify/reproducibility/levelOrdering.py',
-        old='    if listLevel2Blockers and not fbOnlyRepublishingIsOutstanding(\n',
-        new='    if listLevel2Blockers or not fbOnlyRepublishingIsOutstanding(\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testTheNextStepIsNamedOnlyWhenOrderMatters.py::'
-            'test_a_first_climb_is_still_sent_to_publish_first'
-        ),
-        # Publishing blockers alone read as a return to Level 3.
-        source='vaibify/reproducibility/levelOrdering.py',
-        old='    return bool(\n        fiResolveZenodoParentDepositId(dictWorkflow)\n',
-        new='    return True or bool(\n        fiResolveZenodoParentDepositId(dictWorkflow)\n',
-    ),
-    Falsification(
-        nodeid=(
             'tests/testEnvironmentArchive.py::'
             'test_a_rebuilt_image_does_not_unanswer_the_question'
         ),
         # A regenerated envelope's lineage note no longer answers the
-        # Level 2 question, so a returning project drops a rung and the
-        # arrow falls silent.
+        # Level 2 question, so a returning project drops a rung.
         source='vaibify/reproducibility/levelGates.py',
         old='    if fdictArchiveLineageOf(dictContainer):\n        return True\n',
         new='',
@@ -21935,13 +21914,9 @@ def _fdictEntry(sRel):
         # removed (it silenced the arrow exactly when ordering
         # mattered), and the surviving Level 2 half moved into
         # fdictDescribeOrderedEndgame, which also empties the blocked
-        # map below Level 2. RE-ANCHORED 2026-09-28: the gate now lets
-        # a RETURN to Level 3 through (only a republish outstanding);
-        # dropping the whole gate is the same shipped behaviour.
+        # map below Level 2.
         old=(
-            '    if listLevel2Blockers and not fbOnlyRepublishingIsOutstanding(\n'
-            '        listLevel2Blockers, dictWorkflow, filesRepo,\n'
-            '    ):\n'
+            '    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):\n'
             '        return {"dictNextStep": None, "dictBlockedRows": {}}\n'
         ),
         new='',

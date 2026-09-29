@@ -81,8 +81,6 @@ disappears exactly when order stops mattering.
 
 __all__ = [
     "T_LEVEL3_ORDERING_EDGES",
-    "T_REPUBLISHING_LEVEL2_CRITERIA",
-    "fbOnlyRepublishingIsOutstanding",
     "fdictDescribeNextOrderedStep",
     "fdictDescribeOrderedEndgame",
     "fdictJudgeOrderedRequirements",
@@ -339,18 +337,14 @@ def fdictDescribeOrderedEndgame(
     remedy down there, and a circle-slash over the remedy is the
     dashboard refusing the researcher's next step.
 
-    EXTENDED 2026-09-28, the researcher's ruling: a project RETURNING
-    to Level 3 is not below the endgame, it is inside it. Regenerating
-    a verified project's envelope drops it to Level 1, because its
-    published copies no longer match -- and the one remedy for that,
-    publishing, is exactly the step that must come LAST, since a Zenodo
-    version is immutable. The gate silenced the arrow there, the
-    researcher had no way to know the deposit and the rerun come
-    first, and a publish made in the natural order costs a version. So
-    when every outstanding Level 2 blocker is a republish and the
-    project has been through the endgame before
-    (``fbOnlyRepublishingIsOutstanding``), the endgame answers as usual.
-    A first climb is unchanged: its publishing IS simply next.
+    This holds for a project RETURNING to Level 3 too. A 2026-09-28
+    extension let the endgame speak when the only Level 2 work was a
+    republish of a project that had attested before, to steer the
+    deposit and the rerun ahead of an immutable Zenodo version. It
+    grayed out the very push the researcher needed on a project they
+    had just dropped to Level 0, and they withdrew it the next day:
+    guiding a project back to Level 3 is not worth refusing its
+    remedy. Do not reintroduce it.
 
     A second condition -- Level 3 readiness -- gated the arrow for
     part of 2026-09-16 and was REMOVED the same day. Readiness is
@@ -360,12 +354,7 @@ def fdictDescribeOrderedEndgame(
     ``manifest`` open got no arrow, and doing them in the wrong order
     is the doubled work the arrow exists to prevent.
     """
-    listLevel2Blockers = levelGates.flistLevel2Blockers(
-        dictWorkflow, filesRepo,
-    )
-    if listLevel2Blockers and not fbOnlyRepublishingIsOutstanding(
-        listLevel2Blockers, dictWorkflow, filesRepo,
-    ):
+    if levelGates.flistLevel2Blockers(dictWorkflow, filesRepo):
         return {"dictNextStep": None, "dictBlockedRows": {}}
     dictSatisfied = fdictJudgeOrderedRequirements(
         dictWorkflow, filesRepo, dictLockSatisfaction, dictImageCurrency,
@@ -375,51 +364,6 @@ def fdictDescribeOrderedEndgame(
         "dictNextStep": _fdictSelectSingleRootStep(listLive),
         "dictBlockedRows": _fdictMapBlockedRows(listLive),
     }
-
-
-# Level 2 blockers whose only remedy is a push to the GitHub mirror or
-# a publish to Zenodo -- the very buttons the endgame ends on.
-T_REPUBLISHING_LEVEL2_CRITERIA = (
-    "github-verify-stale", "not-in-github-mirror",
-    "zenodo-verify-stale", "not-in-zenodo-deposit",
-)
-
-
-def fbOnlyRepublishingIsOutstanding(
-    listLevel2Blockers, dictWorkflow, filesRepo,
-):
-    """True when Level 2 waits only on a republish of a project that had reached Level 3.
-
-    Both halves are required. Publishing blockers alone describe a
-    first climb too, where publishing is simply next (2026-09-16).
-    What makes this a RETURN is evidence the project went through the
-    endgame before, all of it already in hand on the poll: a recorded
-    Zenodo deposit, an environment-archive record or the lineage note a
-    changed image leaves behind, and an attestation record of any
-    status. The attestation history would say "passed once" directly,
-    but reading it is a container exec, and the poll may make none.
-    """
-    from vaibify.reproducibility.environmentSnapshot import (
-        fdictArchiveLineageOf, fdictReadEnvironmentJson,
-    )
-    from vaibify.reproducibility.l3Attestation import fdictReadAttestation
-    from vaibify.reproducibility.syncBookkeeping import (
-        fiResolveZenodoParentDepositId,
-    )
-    if any(
-        dictBlocker.get("sCriterion") not in T_REPUBLISHING_LEVEL2_CRITERIA
-        for dictBlocker in listLevel2Blockers
-    ):
-        return False
-    filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    dictContainer = (
-        fdictReadEnvironmentJson(filesRepo) or {}
-    ).get("dictContainer") or {}
-    return bool(
-        fiResolveZenodoParentDepositId(dictWorkflow)
-        and fdictArchiveLineageOf(dictContainer)
-        and fdictReadAttestation(filesRepo) is not None
-    )
 
 
 def fdictDescribeNextOrderedStep(
