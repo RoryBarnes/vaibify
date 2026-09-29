@@ -462,7 +462,14 @@ def test_paging_serves_every_path_once_while_the_tree_changes(pathRepo):
 @pytest.mark.falsification
 def test_a_superseded_or_expired_observation_is_refused(pathRepo,
                                                         monkeypatch):
-    """Kills: pages served from an inventory a newer look replaced."""
+    """Kills: pages served from an inventory a newer look replaced.
+
+    Pruning is switched off here so the superseded file still exists:
+    the supersession check itself must refuse it, not the file's
+    absence (pruning has its own test).
+    """
+    monkeypatch.setattr(agentCouncilSnapshotScope, "_fnPruneInventories",
+                        lambda sDirectory, sSupersededId: None)
     connection = LocalRepoConnection(pathRepo)
     dictFirst = _fdictProbe(connection)
     dictSecond = _fdictProbe(connection)

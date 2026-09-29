@@ -304,9 +304,21 @@ def test_a_tracked_set_too_large_too_is_blocked_with_the_reason(
 
 def test_start_records_and_remembers_the_chosen_scope(
         tmp_path, monkeypatch, sEvidencePath):
-    """Recorded per campaign, carried into the capture, remembered."""
+    """Recorded per campaign, carried into the capture, remembered.
+
+    The provider seam is the gated fake the other start tests use, so
+    no runner — and no Docker client — is ever built; the gate is opened
+    at the end so the drive settles.
+    """
     import json
-    from vaibify.gui import agentCouncilSnapshotScope
+    import threading
+    from vaibify.gui import agentCouncilController, agentCouncilSnapshotScope
+    from tests.testCouncilRoutes import _GatedFakeConnection
+    eventGate = threading.Event()
+    monkeypatch.setattr(
+        agentCouncilController, "fconnectionBuildParticipantConnection",
+        lambda dictRuntime, dictParticipant: _GatedFakeConnection(
+            eventGate, dictParticipant["sRequestedModel"]))
     monkeypatch.setattr(
         agentCouncilSnapshotScope, "fsResolveSnapshotScopeDirectory",
         lambda: str(tmp_path / "scopeStore"))
@@ -328,6 +340,7 @@ def test_start_records_and_remembers_the_chosen_scope(
         "gitTracked")
     assert agentCouncilSnapshotScope.fdictReadRememberedScope(
         S_CONTAINER_NAME, S_PROJECT_REPO)["sScope"] == "gitTracked"
+    eventGate.set()
 
 
 def test_start_refuses_an_unknown_scope(tmp_path, monkeypatch, sEvidencePath):
