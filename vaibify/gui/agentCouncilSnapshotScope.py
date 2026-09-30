@@ -25,9 +25,11 @@ The git-tracked set (plan contract B1), per path, from the declared
 * tracked but deleted in the worktree — omitted, "deleted in worktree";
 * skip-worktree and absent — omitted, "not checked out (skip-worktree)";
 * under a mandatory component exclusion — omitted with that reason;
-* a merge conflict (any stage other than 0), a gitlink/submodule, or a
-  tracked path that is now a directory or special file — REFUSED,
-  naming the paths.
+* a merge conflict (any stage other than 0), a gitlink/submodule, a
+  tracked path that is now a directory or special file, or a tracked
+  path that lies BEYOND a symbolic link (a parent directory replaced by
+  a link, which would otherwise read files from wherever it points) —
+  REFUSED, naming the paths.
 
 Untracked and ignored files are omitted with those reasons. The full
 omission list stays HOST-SIDE, in an owner-only compressed inventory
@@ -166,7 +168,8 @@ def fdictInterpretTrackedIndex(dictRead, ftFindExcludedComponent):
     """
     dictAnswer = {"dictEligible": {}, "dictTrackedOmissions": {},
                   "listConflicts": [], "listSubmodules": [],
-                  "listUnrepresentable": [], "listSkipWorktreePaths": []}
+                  "listBeyondSymlink": [], "listUnrepresentable": [],
+                  "listSkipWorktreePaths": []}
     for sPath, dictEntry in sorted(dictRead.get("dictEntries", {}).items()):
         _fnClassifyTrackedPath(dictAnswer, sPath, dictEntry,
                                ftFindExcludedComponent)
@@ -183,6 +186,9 @@ def _fnClassifyTrackedPath(dictAnswer, sPath, dictEntry,
         dictAnswer["listSubmodules"].append(sPath)
         return
     sType = dictEntry.get("sType", "missing")
+    if sType == "beyondSymlink":
+        dictAnswer["listBeyondSymlink"].append(sPath)
+        return
     if ftFindExcludedComponent(sPath) is not None:
         dictAnswer["dictTrackedOmissions"][sPath] = (
             S_REASON_POLICY_EXCLUDED, dictEntry.get("iSizeBytes", 0))
@@ -207,6 +213,10 @@ def _fnRefuseUnrepresentableIndex(dictInterpreted, fnRefuse):
     for sKey, sWhat in (
             ("listConflicts", "unresolved merge conflicts"),
             ("listSubmodules", "submodules (gitlinks)"),
+            ("listBeyondSymlink",
+             "tracked paths that now lie beyond a symbolic link (a "
+             "tracked directory was replaced by a link, so its files "
+             "would be read from wherever the link points)"),
             ("listUnrepresentable",
              "tracked paths that are now directories or special files")):
         listPaths = dictInterpreted[sKey]

@@ -24220,7 +24220,7 @@ def _fdictEntry(sRel):
             'tests/testCouncilCredentialTestJob.py::'
             'test_restart_sweep_records_a_dead_hubs_job_incomplete'
         ),
-        source='vaibify/gui/agentCouncilCredentialTest.py',
+        source='vaibify/gui/agentCouncilCredentialTestRecovery.py',
         old='            _fnSettleOrphanedJob(dictJob, dockerCouncil)\n',
         new='            pass\n',
     ),
@@ -24229,7 +24229,7 @@ def _fdictEntry(sRel):
             'tests/testCouncilCredentialTestJob.py::'
             'test_restart_sweep_spares_a_job_whose_project_a_live_peer_holds'
         ),
-        source='vaibify/gui/agentCouncilCredentialTest.py',
+        source='vaibify/gui/agentCouncilCredentialTestRecovery.py',
         old='        if containerLock.fdictReadLockHolder(dictJob.get("sResourceName", "")):\n',
         new='        if False:\n',
     ),
@@ -24238,7 +24238,7 @@ def _fdictEntry(sRel):
             'tests/testCouncilCredentialTestJob.py::'
             'test_restart_sweep_spares_a_live_job_and_sweeps_it_once_its_hub_dies'
         ),
-        source='vaibify/gui/agentCouncilCredentialTest.py',
+        source='vaibify/gui/agentCouncilCredentialTestRecovery.py',
         old='        if fileJobLock is None:\n            dictReport["listSpared"].append(dictJob["sJobId"])\n',
         new='        if False:\n            dictReport["listSpared"].append(dictJob["sJobId"])\n',
     ),
@@ -24386,11 +24386,6 @@ def _fdictEntry(sRel):
         old='    bRememberedTracked = bool(dictRemembered) and (\n        dictRemembered["sScope"] == S_SCOPE_GIT_TRACKED)\n',
         new='    bRememberedTracked = False\n',
     ),
-    Falsification(
-        nodeid=(
-            'tests/testCouncilCredentialTestJob.py::'
-            'test_only_old_council_token_copies_are_swept'
-        ),
         source='vaibify/gui/agentCouncilCredentialTest.py',
         old='            and os.path.getmtime(os.path.join(sRoot, sName)) < fCutoff]\n',
         new='            ]\n',
@@ -24403,5 +24398,32 @@ def _fdictEntry(sRel):
         source='vaibify/gui/agentCouncilSnapshotScope.py',
         old='    _fnPruneInventories(sDirectory, sSuperseded)\n',
         new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_tracked_directory_replaced_by_an_outside_link_refuses'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    if fbBeyondSymlink(sRelative):\\n"\n        "        return {\'sType\':\'beyondSymlink\',\'sIdentity\':\'\',\'iSizeBytes\':0}\\n"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_an_unheld_copy_is_swept_at_any_age_and_a_held_one_never'
+        ),
+        source='vaibify/gui/agentCouncilStagedCopies.py',
+        old='    try:\n        fcntl.flock(fileProbe, fcntl.LOCK_EX | fcntl.LOCK_NB)\n    except BlockingIOError:\n        fileProbe.close()\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCouncilCredentialTestJob.py::'
+            'test_unproven_cleanup_is_never_a_pass'
+        ),
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='            if sOutcome == agentCouncilCredentialStore.S_OUTCOME_PASSED:\n                sOutcome, sCheckId = (\n',
+        new='            if False:\n                sOutcome, sCheckId = (\n',
     ),
 ]

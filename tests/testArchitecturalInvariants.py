@@ -4644,13 +4644,6 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # class, so a refused credential admission is not filed as a
     # transient transport fault.
     "agentCouncil.py": 1550,
-    # NEW at 821 (2026-09-29): the in-app council credential test — its
-    # narrow admitter, its seven checks, its job lifecycle and its
-    # restart cleanup. One responsibility (turning a consent into an
-    # authorization, or a named refusal); the durable record format was
-    # split out to agentCouncilCredentialTestRecords along the one real
-    # seam it had.
-    "agentCouncilCredentialTest.py": 821,
     # 931 -> 1110 (2026-08-29): charter 1.7.0 — clause 6's notes field
     # and the deliberation-summary phase instruction plus its schema
     # extension. This module IS the instruction contract and the turn

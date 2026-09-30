@@ -24,7 +24,9 @@ from vaibify.gui import (
     agentCouncilCredentialStore,
     agentCouncilCredentialTest,
     agentCouncilCredentialTestRecords,
+    agentCouncilCredentialTestRecovery,
     agentCouncilProviders,
+    agentCouncilStagedCopies,
 )
 
 S_IMAGE = "sha256:" + "7a" * 32
@@ -478,8 +480,8 @@ def _fdictWriteOrphanJob(sEvidencePath, pathStagingRoot):
         sJobId, "claude", S_IMAGE, S_RESOURCE, S_CONTAINER_ID, "haiku")
     pathStaged = pathStagingRoot / "vc_secret_claudeCouncilAccessToken_x.tmp"
     pathStaged.write_text("leftover")
-    fOld = time.time() - 3600
-    os.utime(pathStaged, (fOld, fOld))
+    fRecent = time.time() - 10
+    os.utime(pathStaged, (fRecent, fRecent))
     dictJob["sCurrentCheck"] = "trivialTurn"
     agentCouncilCredentialTestRecords.fnWriteJobRecord(dictJob)
     return dictJob, pathStaged
@@ -494,7 +496,7 @@ def test_restart_sweep_records_a_dead_hubs_job_incomplete(
     suspended forever.
     """
     dictJob, pathStaged = _fdictWriteOrphanJob(sEvidencePath, pathStagingRoot)
-    dictReport = agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests()
+    dictReport = agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests()
     assert dictReport["listSwept"] == [dictJob["sJobId"]]
     assert not pathStaged.exists()
     dictAfter = agentCouncilCredentialTestRecords.fdictReadJobRecord(
@@ -515,7 +517,7 @@ def test_restart_sweep_spares_a_job_whose_project_a_live_peer_holds(
     monkeypatch.setattr(
         containerLock, "fdictReadLockHolder",
         lambda sName: {"iPid": 1} if sName == S_RESOURCE else {})
-    dictReport = agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests()
+    dictReport = agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests()
     assert dictReport["listSpared"] == [dictJob["sJobId"]]
     assert agentCouncilCredentialTestRecords.fdictReadJobRecord(
         dictJob["sJobId"])["sStatus"] == "running"
@@ -549,35 +551,121 @@ def test_restart_sweep_spares_a_live_job_and_sweeps_it_once_its_hub_dies(
     try:
         assert processHub.stdout.readline().strip() == "held"
         dictReport = (
-            agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests())
+            agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests())
         assert dictReport["listSpared"] == [dictJob["sJobId"]]
         assert _fdictEnablement()["sState"] == "testInFlight"
     finally:
         processHub.kill()
         processHub.wait(timeout=10)
-    dictReport = agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests()
+    dictReport = agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests()
     assert dictReport["listSwept"] == [dictJob["sJobId"]]
     assert not pathStaged.exists()
 
 
 @pytest.mark.falsification
-def test_only_old_council_token_copies_are_swept(pathStagingRoot):
-    """A live copy is milliseconds old; an orphan is minutes old.
+def test_an_unheld_copy_is_swept_at_any_age_and_a_held_one_never(
+        pathStagingRoot):
+    """Ownership is proven by a lock, not guessed from an age.
 
-    Kills: the staged-copy sweep ignoring age, which would delete a copy
-    a live turn on another hub is about to deliver.
+    Kills: the sweep deleting a copy without first taking its lock,
+    which would remove the copy a live peer hub is delivering.
     """
-    fOld = time.time() - 3600
-    pathOrphan = pathStagingRoot / "vc_secret_codexCouncilAccessToken_a.tmp"
-    pathLive = pathStagingRoot / "vc_secret_claudeCouncilAccessToken_b.tmp"
-    pathOther = pathStagingRoot / "vc_secret_githubToken_c.tmp"
-    for pathFile in (pathOrphan, pathLive, pathOther):
+    fRecent = time.time() - 10
+    listPaths = [pathStagingRoot / f"vc_secret_{sName}.tmp" for sName in (
+        "claudeCouncilAccessToken_orphan", "codexCouncilAccessToken_held",
+        "githubToken_other")]
+    for pathFile in listPaths:
         pathFile.write_text("x")
-    os.utime(pathOrphan, (fOld, fOld))
-    os.utime(pathOther, (fOld, fOld))
-    assert agentCouncilCredentialTest.fiSweepOrphanedStagedCredentials() == 1
-    assert not pathOrphan.exists()
-    assert pathLive.exists() and pathOther.exists()
+        os.utime(pathFile, (fRecent, fRecent))
+    agentCouncilStagedCopies.fnHoldStagedCopy(str(listPaths[1]))
+    assert agentCouncilStagedCopies.fiSweepOrphanedStagedCopies() == 1
+    assert not listPaths[0].exists()
+    assert listPaths[1].exists() and listPaths[2].exists()
+    listPaths[1].unlink()
+    assert agentCouncilStagedCopies.fiReleaseVanishedHolds() == 1
+
+
+def test_a_copy_younger_than_the_lock_grace_is_left_alone(pathStagingRoot):
+    pathFresh = pathStagingRoot / "vc_secret_claudeCouncilAccessToken_new.tmp"
+    pathFresh.write_text("x")
+    assert agentCouncilStagedCopies.fiSweepOrphanedStagedCopies() == 0
+    assert pathFresh.exists()
+
+
+def test_a_copy_held_by_another_live_process_is_spared(pathStagingRoot):
+    pathHeld = pathStagingRoot / "vc_secret_claudeCouncilAccessToken_peer.tmp"
+    pathHeld.write_text("x")
+    fOld = time.time() - 10
+    os.utime(pathHeld, (fOld, fOld))
+    processPeer = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl,sys,time; f=open(sys.argv[1],'rb'); "
+         "fcntl.flock(f, fcntl.LOCK_EX); print('held', flush=True); "
+         "time.sleep(60)", str(pathHeld)],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert processPeer.stdout.readline().strip() == "held"
+        assert agentCouncilStagedCopies.fiSweepOrphanedStagedCopies() == 0
+        assert pathHeld.exists()
+    finally:
+        processPeer.kill()
+        processPeer.wait(timeout=10)
+    assert agentCouncilStagedCopies.fiSweepOrphanedStagedCopies() == 1
+
+
+@pytest.mark.falsification
+def test_unproven_cleanup_is_never_a_pass(sEvidencePath, pathStagingRoot,
+                                          monkeypatch):
+    """Review finding 2026-09-30: a pass needs its clean-up PROVEN.
+
+    Kills: an unproven egress removal left as detail text on a passed
+    outcome, which enabled the provider over resources nobody proved
+    gone.
+    """
+    from vaibify.gui import agentCouncilDockerGateway
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sScope: {"saIndeterminateResources": ["proxy-x"]})
+    listScript = _flistPassingScript()
+    dictRuntime = _fdictBuildRuntime(listScript)
+    dictRuntime["fdictProvisionEgress"] = lambda dictJob, dictRuntime: (
+        dictRuntime.update({"bEgressProvisioned": True}) or {})
+    dictJobs = {}
+    dictStarted = agentCouncilCredentialTest.fdictStartCredentialTest(
+        dictJobs, "claude", S_IMAGE, S_RESOURCE, "haiku", dictRuntime)
+    dictJobs[dictStarted["sJobId"]]["threadJob"].join(timeout=30)
+    dictJob = agentCouncilCredentialTestRecords.fdictReadJobRecord(
+        dictStarted["sJobId"])
+    assert (dictJob["sStatus"], dictJob["sFailedCheck"]) == (
+        "incomplete", "stagingCleaned")
+    assert dictJob["listUnsettledResources"] == ["proxy-x"]
+    assert _fdictEnablement()["bEnabled"] is False
+
+
+def test_unsettled_leftovers_are_retried_until_proven(
+        sEvidencePath, pathStagingRoot, monkeypatch):
+    from vaibify.gui import agentCouncilDockerGateway
+    dictAnswers = {"saIndeterminateResources": ["proxy-x"]}
+    monkeypatch.setattr(
+        agentCouncilDockerGateway, "fdictRemoveCampaignEgressResources",
+        lambda dictGateway, sScope: dict(dictAnswers))
+    monkeypatch.setattr(agentCouncilDockerGateway,
+                        "flistDiscoverLabeledRunners", lambda docker: [])
+    dictRuntime = _fdictBuildRuntime(_flistPassingScript())
+    dictRuntime["fdictProvisionEgress"] = lambda dictJob, dictRuntime: (
+        dictRuntime.update({"bEgressProvisioned": True}) or {})
+    dictJobs = {}
+    dictStarted = agentCouncilCredentialTest.fdictStartCredentialTest(
+        dictJobs, "claude", S_IMAGE, S_RESOURCE, "haiku", dictRuntime)
+    dictJobs[dictStarted["sJobId"]]["threadJob"].join(timeout=30)
+    dockerFake = object()
+    assert agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests(
+        dockerFake)["listReconciled"] == []
+    dictAnswers["saIndeterminateResources"] = []
+    assert agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests(
+        dockerFake)["listReconciled"] == [dictStarted["sJobId"]]
+    assert agentCouncilCredentialTestRecords.fdictReadJobRecord(
+        dictStarted["sJobId"])["listUnsettledResources"] == []
 
 
 def test_no_record_names_a_credential_path(sEvidencePath, pathStagingRoot):

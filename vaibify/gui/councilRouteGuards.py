@@ -471,6 +471,7 @@ def ftAdmitCouncilTurnCredential(sProvider, sImageIdentity,
     from . import agentCouncilCredentialGate
     from . import agentCouncilCredentialStore
     from . import agentCouncilProviderRegistry
+    from . import agentCouncilStagedCopies
     listStagedPaths = []
 
     def _fdictAdmitUnderStoreLock(dictDocument):
@@ -482,6 +483,7 @@ def ftAdmitCouncilTurnCredential(sProvider, sImageIdentity,
         listStagedPaths.append(
             agentCouncilProviderRegistry.fsStageProviderCredential(
                 sProvider, dictCredential))
+        agentCouncilStagedCopies.fnHoldStagedCopy(listStagedPaths[-1])
         agentCouncilCredentialStore.fnRecordAdmission(
             dictDocument, agentCouncilCredentialStore.fsComposeCredentialKey(
                 sProvider, sImageIdentity),

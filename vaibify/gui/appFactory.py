@@ -463,14 +463,50 @@ def _fnReconcileCouncilRunners(app):
 
 
 def _fnRegisterCredentialTestSweep(app):
-    """Settle credential tests a dead hub left running, at startup."""
+    """Settle credential tests a dead hub left, at startup and after.
+
+    At startup: jobs a dead hub left running, and any council token
+    copy no live process holds. After startup, the copy sweep repeats on
+    the reaper's cadence, because a PEER hub can die at any time and
+    nothing else would ever remove the copy it was holding.
+    """
 
     async def fnSweepCredentialTestsOnStartup(app):
         await asyncio.to_thread(
             _fnSweepOrphanedCredentialTests,
             _fdockerCreateCouncilClientOrNone())
 
+    async def fnStartStagedCopySweep(app):
+        app.state.taskStagedCopySweep = asyncio.create_task(
+            _fnStagedCopySweepLoop(F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            name="vaibify-council-staged-copy-sweep")
+
+    async def fnStopStagedCopySweep(app):
+        await serverLifespan.fnCancelBackgroundTask(
+            app, "taskStagedCopySweep")
+
     app.state.listLifespanStartup.append(fnSweepCredentialTestsOnStartup)
+    serverLifespan.fnRegisterLifespanTask(
+        app, fnStartStagedCopySweep, fnStopStagedCopySweep)
+
+
+async def _fnStagedCopySweepLoop(fInterval):
+    """Remove council token copies no live process holds, forever.
+
+    One failed pass is logged and the loop continues, like the chat
+    reaper beside it.
+    """
+    from . import agentCouncilStagedCopies
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await asyncio.to_thread(
+                agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning("council staged-copy sweep iteration failed",
+                           exc_info=True)
 
 
 def _fnSweepOrphanedCredentialTests(dockerCouncil):
@@ -481,11 +517,10 @@ def _fnSweepOrphanedCredentialTests(dockerCouncil):
     suspended until it is recorded ``incomplete``, and that record needs
     no Docker. Its runners and egress are removed when a daemon answers.
     """
-    from . import agentCouncilCredentialTest
+    from . import agentCouncilCredentialTestRecovery as moduleRecovery
     try:
-        dictReport = (
-            agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests(
-                dockerCouncil))
+        dictReport = moduleRecovery.fdictSweepOrphanedCredentialTests(
+            dockerCouncil)
     except Exception:
         logger.warning("credential-test restart sweep failed", exc_info=True)
         return

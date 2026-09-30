@@ -174,3 +174,49 @@ def test_live_per_path_capture_at_the_twenty_thousand_file_bound(tmp_path,
           f"elapsed={fElapsed:.1f}s per-file={1000 * fElapsed / iFiles:.2f}ms "
           f"members={dictManifest['iIncludedMemberCount']}")
     assert iFiles == 19990
+
+
+S_LINKED_PARENT_SCRIPT = f"""
+set -e
+mkdir -p {S_REPO_ROOT}/nested /home/researcher/outside && cd {S_REPO_ROOT}
+git init -q
+git config user.email fixture@example.invalid
+git config user.name Fixture
+printf 'tracked\\n' > nested/file.txt
+git add -A && git commit -q -m initial
+printf 'OUTSIDE SECRET\\n' > /home/researcher/outside/file.txt
+rm -rf nested && ln -s ../outside nested
+"""
+
+
+def test_live_a_tracked_directory_replaced_by_a_link_is_refused(
+        tmp_path, monkeypatch):
+    """Review finding 2026-09-30, on a real daemon: nothing leaks out.
+
+    The daemon's get_archive resolves parent links inside the container,
+    so the observation itself must refuse before any fetch.
+    """
+    fnRequireDaemonReachable()
+    import docker
+    from vaibify.docker.dockerConnection import DockerConnection
+    from vaibify.gui import (
+        agentCouncilContext, agentCouncilSnapshotScope, containerGit)
+    monkeypatch.setattr(
+        containerGit, "fsDetectProjectRepoInContainer",
+        lambda connectionDocker, sId, sPath: S_REPO_ROOT)
+    sName, container = _fcontainerStart(docker.from_env(),
+                                        S_LINKED_PARENT_SCRIPT)
+    try:
+        connection = DockerConnection()
+        listPaths = _fnRecordArchivePaths(container, connection)
+        with pytest.raises(agentCouncilContext.SnapshotRefusedError,
+                           match="beyond a symbolic link"):
+            agentCouncilContext.fdictCaptureProjectContextSnapshot(
+                connection, container.id, S_REPO_ROOT, "live-linked",
+                sSnapshotStoreRoot=str(tmp_path),
+                dictSnapshotScope=agentCouncilSnapshotScope.
+                fdictComposeSnapshotScope("gitTracked"))
+    finally:
+        container.remove(force=True)
+    assert listPaths == []
+    assert not (tmp_path / "live-linked").exists()

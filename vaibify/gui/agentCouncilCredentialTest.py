@@ -26,11 +26,11 @@ from . import agentCouncilCredentialGate
 from . import agentCouncilCredentialStore
 from . import agentCouncilProviderRegistry
 from . import agentCouncilRunner
+from . import agentCouncilStagedCopies
 from .agentCouncilCredentialTestRecords import (
     F_TURN_TIMEOUT_SECONDS,
     SET_CHECK_IDS,
     fdictCreateJobRecord,
-    flistReadRunningJobRecords,
     fnWriteJobRecord,
 )
 
@@ -53,9 +53,9 @@ __all__ = [
     "fdictStartCredentialTest",
     "fnRunCredentialTestJob",
     "fbRequestCredentialTestCancel",
-    "fdictSweepOrphanedCredentialTests",
-    "fiSweepOrphanedStagedCredentials",
-    "TUPLE_STAGED_CREDENTIAL_NAMES",
+    "flistRemoveTestEgress",
+    "fsDescribeUnsettled",
+    "fnPublishJobOutcome",
 ]
 
 # A credential test's runners are reserved under this pseudo-campaign
@@ -144,6 +144,7 @@ def ftAdmitCredentialTestCredential(sJobId, sProvider, sImageIdentity,
         listStagedPaths.append(
             agentCouncilProviderRegistry.fsStageProviderCredential(
                 sProvider, dictCredential))
+        agentCouncilStagedCopies.fnHoldStagedCopy(listStagedPaths[-1])
         agentCouncilCredentialStore.fnRecordAdmission(dictDocument, sKey, {
             "sAdmissionKind": "credentialTest", "sJobId": sJobId,
             "iConsentGeneration":
@@ -281,9 +282,10 @@ def _ffnBuildTestStager(dictJob, dictRuntime):
     Both slow steps — the runner's label inspect and the login fetch —
     happen BEFORE :func:`ftAdmitCredentialTestCredential` takes the
     store lock. The staged path is remembered IN MEMORY only, for check
-    5; no record ever names a credential path. A hub that dies in the
-    milliseconds a copy exists leaves a file restart cleanup removes by
-    its name prefix and age (:func:`fiSweepOrphanedStagedCredentials`).
+    5; no record ever names a credential path. The admitter holds a lock
+    on the copy, so a hub that dies in the milliseconds it exists leaves
+    a copy the sweep can prove orphaned
+    (``agentCouncilStagedCopies.fiSweepOrphanedStagedCopies``).
     """
     from . import agentCouncilDockerGateway
 
@@ -649,24 +651,45 @@ def fnRunCredentialTestJob(dictJob, dictRuntime):
 
 
 def _fnFinishJob(dictJob, dictRuntime, sOutcome, sCheckId, sDetail):
-    """Release resources, publish the outcome, persist, drop the lock."""
+    """Release resources, publish the outcome, persist, drop the lock.
+
+    Cleanup that cannot be PROVEN is never a pass: a runner or network
+    left unproven turns a passing test into ``incomplete`` at the
+    clean-up check, the leftovers are named in the job record, and the
+    restart sweep keeps retrying them until they are proven gone.
+    """
     try:
-        sDetail = _fsReleaseTestResources(dictJob, dictRuntime) or sDetail
+        listUnsettled = _flistReleaseTestResources(dictJob, dictRuntime)
+        dictJob["listUnsettledResources"] = listUnsettled
+        if listUnsettled:
+            sDetail = fsDescribeUnsettled(listUnsettled, sDetail)
+            if sOutcome == agentCouncilCredentialStore.S_OUTCOME_PASSED:
+                sOutcome, sCheckId = (
+                    agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
+                    "stagingCleaned")
         if sCheckId in SET_CHECK_IDS:
             _fnMarkCheck(dictJob, sCheckId, sOutcome, sDetail)
-        _fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail)
+        fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail)
     finally:
         fileJobLock = dictRuntime.pop("fileJobLock", None)
         if fileJobLock is not None:
             fileJobLock.close()
 
 
-def _fsReleaseTestResources(dictJob, dictRuntime):
+def fsDescribeUnsettled(listUnsettled, sDetail):
+    """Name what could not be proven removed, keeping any earlier detail."""
+    sUnsettled = (
+        "the test's own resources could not be proven removed ("
+        + ", ".join(listUnsettled) + "); they are kept for the next start "
+        "to reconcile, and the provider stays off until a test passes")
+    return f"{sDetail}; {sUnsettled}" if sDetail else sUnsettled
+
+
+def _flistReleaseTestResources(dictJob, dictRuntime):
     """Destroy live runners, remove egress, delete staged copies.
 
-    Returns a sentence when something could not be proven gone, which
-    then replaces a passed outcome's empty detail — it never upgrades a
-    failure.
+    Returns the resources whose removal was NOT proven — empty only
+    when every runner was proven destroyed and the egress proven gone.
     """
     import os
     from . import agentCouncilDockerGateway
@@ -675,19 +698,35 @@ def _fsReleaseTestResources(dictJob, dictRuntime):
         [sPath for sPath in dictRuntime.get("listStagedPaths", [])
          if os.path.exists(sPath)])
     dictGateway = dictRuntime.get("dictGateway") or {}
-    for sHandle in list(dictGateway.get("dictHandlesById") or {}):
-        agentCouncilDockerGateway.fdictDestroyAndSettle(dictGateway, sHandle)
-    if not dictRuntime.get("bEgressProvisioned"):
-        return ""
-    dictRemoved = agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
-        dictGateway, fsComposeTestCampaignId(dictJob["sJobId"]))
-    if dictRemoved["saIndeterminateResources"]:
-        return ("the test's network resources could not be proven removed: "
-                + ", ".join(dictRemoved["saIndeterminateResources"]))
-    return ""
+    listUnsettled = []
+    for sHandle, dictHandle in list(
+            (dictGateway.get("dictHandlesById") or {}).items()):
+        try:
+            sOutcome = agentCouncilDockerGateway.fdictDestroyAndSettle(
+                dictGateway, sHandle).get("sOutcome")
+        except Exception:
+            sOutcome = ""
+        if sOutcome != agentCouncilRunner.S_OUTCOME_DESTROYED:
+            listUnsettled.append(
+                "runner " + dictHandle.get("sContainerName", sHandle))
+    if dictRuntime.get("bEgressProvisioned"):
+        listUnsettled.extend(flistRemoveTestEgress(dictJob, dictGateway))
+    return listUnsettled
 
 
-def _fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail):
+def flistRemoveTestEgress(dictJob, dictGateway):
+    """Remove the job's proxy and network; return what stayed unproven."""
+    from . import agentCouncilDockerGateway
+    try:
+        dictRemoved = (
+            agentCouncilDockerGateway.fdictRemoveCampaignEgressResources(
+                dictGateway, fsComposeTestCampaignId(dictJob["sJobId"])))
+    except Exception:
+        return ["the test's network and proxy"]
+    return list(dictRemoved["saIndeterminateResources"])
+
+
+def fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail):
     """Publish to the store and persist the job's terminal record."""
     dictDetails = {"sFailedCheck": sCheckId if sOutcome != (
         agentCouncilCredentialStore.S_OUTCOME_PASSED) else "",
@@ -730,92 +769,3 @@ def fbRequestCredentialTestCancel(dictJobsInProcess, sJobId):
         agentCouncilDockerGateway.fdictDestroyRunnerAndProveAbsence(
             dictGateway["dockerCouncil"], dictHandle["sContainerId"])
     return True
-
-
-# ----- restart cleanup ----------------------------------------------------------------
-
-
-def fdictSweepOrphanedCredentialTests(dockerCouncil=None):
-    """Settle every job whose hub died; never touch a live peer's job.
-
-    Two proofs a job is NOT orphaned, either of which spares it: a
-    DIFFERENT live process holds the job's project lock (the peer-hub
-    test campaigns use), or the job's own test lock is still held —
-    the lock its hub keeps for the whole test and the kernel drops the
-    moment that hub dies. A swept job is recorded ``incomplete``, its
-    staged copies deleted, and its runners and egress removed.
-    """
-    from ..config import containerLock
-    sDirectory = agentCouncilCredentialGate.fsResolveCredentialStoreDirectory()
-    dictReport = {"listSwept": [], "listSpared": [],
-                  "iStagedCopiesRemoved": fiSweepOrphanedStagedCredentials()}
-    for dictJob in flistReadRunningJobRecords():
-        if containerLock.fdictReadLockHolder(dictJob.get("sResourceName", "")):
-            dictReport["listSpared"].append(dictJob["sJobId"])
-            continue
-        fileJobLock = agentCouncilCredentialStore.ffileTryAcquireTestLock(
-            sDirectory, dictJob["sProvider"], dictJob["sImageIdentity"])
-        if fileJobLock is None:
-            dictReport["listSpared"].append(dictJob["sJobId"])
-            continue
-        try:
-            _fnSettleOrphanedJob(dictJob, dockerCouncil)
-        finally:
-            fileJobLock.close()
-        dictReport["listSwept"].append(dictJob["sJobId"])
-    return dictReport
-
-
-# Every council token copy is staged under one of these names, and lives
-# for the milliseconds between staging and its tarball. One older than
-# the age below cannot belong to any live turn, on any hub.
-TUPLE_STAGED_CREDENTIAL_NAMES = (
-    "claudeCouncilAccessToken", "codexCouncilAccessToken",
-    "antigravityCouncilAccessToken")
-F_ORPHANED_STAGED_COPY_AGE_SECONDS = 300.0
-
-
-def fiSweepOrphanedStagedCredentials(
-        fMinimumAgeSeconds=F_ORPHANED_STAGED_COPY_AGE_SECONDS):
-    """Delete council token copies a dead hub left; return how many.
-
-    Identified by the staging name prefix and an age no live copy can
-    reach, so no record ever has to name a credential path to make its
-    cleanup possible. Failures are swallowed: a sweep must never be the
-    reason a hub fails to start.
-    """
-    import os
-    import time
-    from ..config import secretManager
-    try:
-        sRoot = secretManager._fsGetTempDirectory()
-        fCutoff = time.time() - fMinimumAgeSeconds
-        listOrphans = [
-            os.path.join(sRoot, sName) for sName in os.listdir(sRoot)
-            if any(sName.startswith(f"vc_secret_{sPrefix}_")
-                   for sPrefix in TUPLE_STAGED_CREDENTIAL_NAMES)
-            and os.path.getmtime(os.path.join(sRoot, sName)) < fCutoff]
-        secretManager.fnCleanupSecretFiles(listOrphans)
-    except OSError:
-        return 0
-    return len(listOrphans)
-
-
-def _fnSettleOrphanedJob(dictJob, dockerCouncil):
-    """Remove an orphaned job's leftovers and record it ``incomplete``."""
-    from . import agentCouncilDockerGateway
-    dictRuntime = {"dictGateway": agentCouncilDockerGateway.
-                   fdictCreateCouncilDockerGateway(dockerCouncil, {}),
-                   "bEgressProvisioned": dockerCouncil is not None}
-    if dockerCouncil is not None:
-        for dictSurvivor in agentCouncilDockerGateway.flistDiscoverLabeledRunners(
-                dockerCouncil):
-            if fbRunnerLabelBelongsToJob(
-                    dictSurvivor["sReservationId"], dictJob["sJobId"]):
-                agentCouncilDockerGateway.fdictDestroyRunnerAndProveAbsence(
-                    dockerCouncil, dictSurvivor["sContainerId"])
-    sDetail = _fsReleaseTestResources(dictJob, dictRuntime)
-    _fnPublishJobOutcome(
-        dictJob, agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
-        dictJob.get("sCurrentCheck", ""),
-        sDetail or "the hub running this test stopped before it finished")

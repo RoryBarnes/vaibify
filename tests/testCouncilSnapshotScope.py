@@ -571,3 +571,61 @@ def test_a_superseded_inventory_file_is_deleted(pathRepo, tmp_path):
         tmp_path / "scopeStore" / "inventories").iterdir()
         if pathFile.name.endswith(".jsonl.gz")]
     assert len(listInventories) == 1
+
+
+# ----- a tracked directory replaced by a link (review finding, 2026-09-30) -----
+
+
+def _fnReplaceDirectoryWithOutsideLink(pathRepo, sDirectory, sOutsideText):
+    """Replace a tracked directory with a link to one outside the repo."""
+    pathOutside = pathRepo.parent / "outside"
+    pathOutside.mkdir(exist_ok=True)
+    for pathTracked in (pathRepo / sDirectory).iterdir():
+        (pathOutside / pathTracked.name).write_text(sOutsideText)
+    shutil.rmtree(pathRepo / sDirectory)
+    os.symlink(str(pathOutside), pathRepo / sDirectory)
+
+
+@pytest.mark.falsification
+def test_a_tracked_directory_replaced_by_an_outside_link_refuses(
+        pathRepo, tmp_path):
+    """lstat follows parents: the observation must refuse, never read through.
+
+    Kills: the tracked-identities program describing a path whose parent
+    is a link, which copied the link target's bytes into the snapshot.
+    """
+    _fnReplaceDirectoryWithOutsideLink(pathRepo, "code", "OUTSIDE SECRET\n")
+    connection = LocalRepoConnection(pathRepo)
+    with pytest.raises(SnapshotRefusedError,
+                       match="beyond a symbolic link.*code/step.py"):
+        _fdictCaptureTracked(connection, tmp_path)
+    assert f"{S_REPO_ROOT}/code/step.py" not in (
+        connection.container.listRequestedPaths)
+    assert not (tmp_path / "councils" / "campaign-scope").exists()
+
+
+def test_a_directory_swapped_for_a_link_before_its_fetch_refuses(
+        pathRepo, tmp_path):
+    """The race after observation: the archive's bytes must match.
+
+    The daemon resolves parent links when it serves a path, so a swap
+    between observation and fetch hands back the target's bytes; the
+    per-member identity check against the PRE-observation refuses them.
+    """
+    connection = LocalRepoConnection(pathRepo, dictBeforeFetch={
+        "code/step.py": lambda: _fnReplaceDirectoryWithOutsideLink(
+            pathRepo, "code", "OUTSIDE SECRET\n")})
+    with pytest.raises(SnapshotRefusedError):
+        _fdictCaptureTracked(connection, tmp_path)
+    assert not (tmp_path / "councils" / "campaign-scope").exists()
+
+
+def test_a_link_to_a_directory_inside_the_repository_also_refuses(pathRepo):
+    """Fail closed on any linked parent: the tracked set is no longer the
+    index's, whether the link points in or out."""
+    (pathRepo / "elsewhere").mkdir()
+    _fnWrite(pathRepo, "elsewhere/step.py", "print(3)\n")
+    shutil.rmtree(pathRepo / "code")
+    os.symlink("elsewhere", pathRepo / "code")
+    with pytest.raises(SnapshotRefusedError, match="code/step.py"):
+        _fdictObserve(LocalRepoConnection(pathRepo))

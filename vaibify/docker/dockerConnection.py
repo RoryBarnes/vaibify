@@ -973,8 +973,24 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        for baChunk in iter(lambda: fileIn.read(65536), b''):\n"
         "            hashBlob.update(baChunk)\n"
         "    return hashBlob.hexdigest()\n"
+        # lstat does not follow the FINAL component but does follow
+        # every parent, so a tracked parent directory replaced by a link
+        # would have its target's files read as the tracked path. Such a
+        # path is reported as lying beyond a link, never described.
+        "sRepoReal=os.path.realpath(sRepo)\n"
+        "def fbBeyondSymlink(sRelative):\n"
+        "    listParts=sRelative.split('/')[:-1]\n"
+        "    for iDepth in range(1,len(listParts)+1):\n"
+        "        if os.path.islink(os.path.join(sRepo,*listParts[:iDepth])):\n"
+        "            return True\n"
+        "    sParent=os.path.realpath(os.path.dirname(\n"
+        "        os.path.join(sRepo,sRelative)))\n"
+        "    return not (sParent==sRepoReal\n"
+        "        or sParent.startswith(sRepoReal+os.sep))\n"
         "def fdictDescribe(sRelative):\n"
         "    sAbsolute=os.path.join(sRepo,sRelative)\n"
+        "    if fbBeyondSymlink(sRelative):\n"
+        "        return {'sType':'beyondSymlink','sIdentity':'','iSizeBytes':0}\n"
         "    try: st=os.lstat(sAbsolute)\n"
         "    except FileNotFoundError:\n"
         "        return {'sType':'missing','sIdentity':'','iSizeBytes':0}\n"

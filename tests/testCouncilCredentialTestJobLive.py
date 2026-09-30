@@ -95,8 +95,8 @@ def test_live_credential_test_passes_every_check_over_real_runners(sLiveHome):
 def test_live_a_hub_killed_mid_test_is_swept_at_restart(sLiveHome):
     """A second hub spares a live test; after SIGKILL it settles it."""
     from vaibify.gui import (
-        agentCouncilCredentialGate, agentCouncilCredentialTest,
-        agentCouncilCredentialTestRecords, agentCouncilDockerGateway)
+        agentCouncilCredentialGate, agentCouncilCredentialTestRecords,
+        agentCouncilCredentialTestRecovery, agentCouncilDockerGateway)
     sImageIdentity = _fsResolveImageIdentity()
     sRepository = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     processHub = subprocess.Popen(
@@ -113,7 +113,7 @@ def test_live_a_hub_killed_mid_test_is_swept_at_restart(sLiveHome):
             time.sleep(1)
         assert _flistRunnersOfJob(sJobId), "the job never started a runner"
         dictWhileAlive = (
-            agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests(
+            agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests(
                 agentCouncilDockerGateway.fdockerCreateCouncilClient()))
         assert sJobId in dictWhileAlive["listSpared"], (
             "a second hub swept a LIVE hub's credential test")
@@ -122,7 +122,7 @@ def test_live_a_hub_killed_mid_test_is_swept_at_restart(sLiveHome):
     finally:
         processHub.send_signal(signal.SIGKILL)
         processHub.wait(timeout=30)
-    dictReport = agentCouncilCredentialTest.fdictSweepOrphanedCredentialTests(
+    dictReport = agentCouncilCredentialTestRecovery.fdictSweepOrphanedCredentialTests(
         agentCouncilDockerGateway.fdockerCreateCouncilClient())
     assert sJobId in dictReport["listSwept"]
     assert _flistRunnersOfJob(sJobId) == []

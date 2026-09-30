@@ -101,7 +101,7 @@ def fdictCreateJobRecord(sJobId, sProvider, sImageIdentity, sResourceName,
         "listChecks": [{"sCheckId": sCheckId, "sLabel": sLabel,
                         "sStatus": "pending", "sDetail": ""}
                        for sCheckId, sLabel in LIST_CHECKS],
-        "sCliVersion": "",
+        "sCliVersion": "", "listUnsettledResources": [],
         "fTurnTimeoutSeconds": F_TURN_TIMEOUT_SECONDS,
     }
 
