@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1e1f2e" />
+    <title>Vaibify — AI-assisted scientific computing</title>
+    <meta
+      name="description"
+      content="Vaibify combines AI coding agents, scientific workflows, figure inspection, and reproducibility checks in a local browser application. Run in Docker or on your own machine."
+    />
+    <link rel="canonical" href="https://vaibify.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vaibify" />
+    <meta
+      property="og:title"
+      content="Vaibify — AI-assisted scientific computing"
+    />
+    <meta
+      property="og:description"
+      content="Develop scientific workflows with coding agents. Inspect the outputs, track dependencies, and record tests and researcher approval at each step."
+    />
+    <meta property="og:url" content="https://vaibify.com/" />
+    <meta
+      property="og:image"
+      content="https://vaibify.com/assets/vaibifyDashboard.png"
+    />
+    <meta
+      property="og:image:alt"
+      content="The Vaibify dashboard, showing workflow steps, scientific figures, and coding-agent terminals."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/assets/favicon.png" type="image/png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skipLink" href="#main">Skip to content</a>
+    <header class="siteHeader">
+      <div class="pageWidth headerContents">
+        <a class="brand" href="/" aria-label="Vaibify home">
+          <img
+            src="/assets/vaibifyLogo.png"
+            alt="Vaibify"
+            width="1444"
+            height="706"
+          />
+        </a>
+        <nav class="mainNavigation" aria-label="Main navigation">
+          <a href="#workflow">Workflow</a>
+          <a href="#reproducibility">Reproducibility</a>
+          <a href="https://RoryBarnes.github.io/vaibify/"
+            >Documentation <span aria-hidden="true">↗</span></a
+          >
+          <a href="https://github.com/RoryBarnes/vaibify"
+            >GitHub <span aria-hidden="true">↗</span></a
+          >
+        </nav>
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      <section class="introduction pageWidth" aria-labelledby="pageTitle">
+        <h1 id="pageTitle">Vibe boldly. Verify everything.</h1>
+        <p class="introductionSubtitle">
+          AI-assisted scientific computing with <em>you</em> in the loop
+        </p>
+        <p class="introductionText">
+          Vaibify is a browser-based application for developing, running, and
+          verifying scientific workflows. Work with coding agents in secure
+          Docker containers, visually inspect figures and data, verify your
+          pipeline steps are accurate, and enable others to reproduce your
+          results at the byte level.
+        </p>
+        <div class="introductionLinks">
+          <a href="https://RoryBarnes.github.io/vaibify/quickStart.html"
+            >Quickstart guide <span aria-hidden="true">↗</span></a
+          >
+          <a href="#installation"
+            >Installation <span aria-hidden="true">↓</span></a
+          >
+          <span class="platformNote">Python 3.9+ · macOS &amp; Linux</span>
+        </div>
+      </section>
+
+      <figure
+        class="dashboardFigure pageWidth"
+        aria-labelledby="dashboardCaption"
+      >
+        <a
+          class="screenshotLink"
+          href="/assets/vaibifyDashboard.png"
+          aria-label="Open the Vaibify dashboard screenshot at full resolution"
+        >
+          <img
+            src="/assets/vaibifyDashboard.png"
+            alt="Vaibify during an analysis: the left panel lists workflow steps and verification status; two figure viewers sit above terminals for interactive analysis and a coding agent."
+            width="1984"
+            height="1121"
+            fetchpriority="high"
+          />
+        </a>
+        <figcaption id="dashboardCaption">
+          <p>
+            <strong
+              >The dashboard shows the up-to-date status of a research project
+              in the secured computing environment.</strong
+            >
+            The selected step has passing dependencies and pending researcher
+            approval. Verification is still in progress.
+            <a href="/assets/vaibifyDashboard.png"
+              >View full-resolution image <span aria-hidden="true">↗</span></a
+            >
+          </p>
+          <dl class="figureGuide">
+            <div>
+              <dt>
+                <span class="positionLabel">Left</span> Workflow &amp;
+                verification
+              </dt>
+              <dd>
+                Inspect each pipeline step’s commands, files, dependencies, and
+                unit tests. When <em>you</em> are satisfied, approve it.
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span class="positionLabel">Upper right</span> Figures &amp;
+                data
+              </dt>
+              <dd>
+                Examine outputs side by side and compare figures with saved
+                standards.
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span class="positionLabel">Lower right</span> Terminals &amp;
+                agents
+              </dt>
+              <dd>
+                Run commands, make interactive decisions, and work with an AI
+                coding agent.
+              </dd>
+            </div>
+          </dl>
+        </figcaption>
+      </figure>
+
+      <section
+        class="contentSection pageWidth sectionGrid"
+        id="workflow"
+        aria-labelledby="workflowTitle"
+      >
+        <div class="sectionIntroduction">
+          <p class="sectionLabel">Working with Vaibify</p>
+          <h2 id="workflowTitle">
+            From an exploratory analysis to a verified workflow
+          </h2>
+          <p>
+            Start in a sandbox, develop a reusable toolkit, or organize an
+            investigation as a Project with explicit steps and dependencies.
+          </p>
+          <a href="https://RoryBarnes.github.io/vaibify/dashboard.html"
+            >Dashboard reference <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <dl class="capabilities">
+          <div>
+            <dt>Run coding agents</dt>
+            <dd>
+              Use Claude Code, Codex, or Gemini in the dashboard’s terminals.
+              Docker provides a secure environment for the project’s code,
+              dependencies, and agent sessions.
+            </dd>
+          </div>
+          <div>
+            <dt>Define the analysis</dt>
+            <dd>
+              Combine automatic and interactive steps. Each step records its
+              input data, analysis commands, output files, plot commands, and
+              dependencies on other steps.
+            </dd>
+          </div>
+          <div>
+            <dt>Inspect and test outputs</dt>
+            <dd>
+              View figures and text files alongside the terminal. Compare plots
+              with saved standards and run integrity, qualitative, and
+              quantitative tests. Researcher approval is recorded separately.
+            </dd>
+          </div>
+          <div>
+            <dt>Track what changed</dt>
+            <dd>
+              Vaibify monitors the workflow’s files and declared dependencies.
+              When an input or script changes, the dashboard identifies stale
+              results and affected downstream steps that need attention.
+            </dd>
+          </div>
+          <div>
+            <dt>Check published copies</dt>
+            <dd>
+              Compare local files with their GitHub and Zenodo copies using
+              SHA-256 hashes. Optional Overleaf and arXiv checks help track
+              whether manuscript figures match the local results.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section
+        class="contentSection pageWidth sectionGrid"
+        aria-labelledby="motivationTitle"
+      >
+        <div class="sectionIntroduction">
+          <p class="sectionLabel">Scientific motivation</p>
+          <h2 id="motivationTitle">
+            Keep your computer safe while you verify the AI’s work
+          </h2>
+        </div>
+        <div class="prose">
+          <p>
+            Docker containers give coding agents a dedicated environment for the
+            project’s code and dependencies. Within that environment,
+            establishing that an analysis is meaningful still requires
+            inspecting the data, testing the calculations, and understanding the
+            assumptions. An agent can also revise a script after its outputs
+            have been reviewed, leaving earlier figures and conclusions out of
+            date.
+          </p>
+          <p>
+            Vaibify brings the code’s execution, its outputs, and their
+            verification status into the same view. Explicit dependencies and
+            recorded checks help researchers see what needs to be examined
+            again, while archived files and a pinned environment provide a basis
+            for reproducing the computation.
+          </p>
+          <p class="researchPrinciple">
+            Reproducing a computation does not establish that its scientific
+            interpretation is correct. That judgment remains with the
+            researcher.
+          </p>
+          <a href="https://RoryBarnes.github.io/vaibify/philosophy.html"
+            >Read the design philosophy <span aria-hidden="true">↗</span></a
+          >
+        </div>
+      </section>
+
+      <section
+        class="proofSection"
+        id="reproducibility"
+        aria-labelledby="proofTitle"
+      >
+        <div class="pageWidth sectionGrid">
+          <div class="sectionIntroduction">
+            <p class="sectionLabel">Reproducibility</p>
+            <h2 id="proofTitle">The PROOF ladder</h2>
+            <p>
+              The PROOF tab lists the evidence required for each level and shows
+              which requirements a project has met.
+            </p>
+            <p class="proofExpansion">
+              Provenance, Reproducibility, Openness, Oversight, Falsifiability.
+            </p>
+            <a href="https://RoryBarnes.github.io/vaibify/reproducibility.html"
+              >Reproducibility reference <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div>
+            <table class="proofTable">
+              <caption>
+                Levels currently implemented in Vaibify
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Level</th>
+                  <th scope="col">Evidence checked</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">
+                    <span class="levelNumber">1</span> Self-consistent
+                  </th>
+                  <td>
+                    Declared inputs, current outputs, passing tests, researcher
+                    approval, and satisfied dependencies.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <span class="levelNumber">2</span> Published
+                  </th>
+                  <td>
+                    Matching copies on GitHub and Zenodo, together with
+                    declarations of AI use.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <span class="levelNumber">3</span> Reproducible
+                  </th>
+                  <td>
+                    A pinned container environment, a manifest of the project’s
+                    artifacts, and a recorded rerun whose output hashes match
+                    the manifest.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="tableNote">
+              Each level includes the requirements of the preceding levels. The
+              full framework has six levels; Vaibify currently implements the
+              first three.
+              <a href="https://RoryBarnes.github.io/vaibify/vision.html"
+                >Read the framework <span aria-hidden="true">↗</span></a
+              >
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="installationSection pageWidth sectionGrid"
+        id="installation"
+        aria-labelledby="installationTitle"
+      >
+        <div class="sectionIntroduction">
+          <p class="sectionLabel">Using the software</p>
+          <h2 id="installationTitle">Install Vaibify</h2>
+          <p>Python 3.9 or later, on macOS or Linux.</p>
+        </div>
+        <div class="prose">
+          <pre aria-label="Install and launch Vaibify"><code>pip install vaibify
+vaibify</code></pre>
+          <p>
+            The application opens locally in your browser. You can work on your
+            own machine, or use Docker for container isolation and Level 3
+            reproducibility.
+          </p>
+          <p>
+            Follow the
+            <a href="https://RoryBarnes.github.io/vaibify/quickStart.html"
+              >Quickstart guide</a
+            >
+            for setup and a first reproduction. The
+            <a href="https://RoryBarnes.github.io/vaibify/">documentation</a>
+            covers environments, workflows, verification, and external services.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer class="siteFooter pageWidth">
+      <p>
+        Vaibify · Developed by
+        <a href="https://github.com/RoryBarnes">Rory Barnes</a> for scientific
+        research.
+      </p>
+      <nav aria-label="Project links">
+        <a href="https://github.com/RoryBarnes/vaibify">Source code</a>
+        <a href="https://github.com/RoryBarnes/vaibify/issues"
+          >Report an issue</a
+        >
+        <a href="https://github.com/RoryBarnes/vaibify/blob/main/LICENSE"
+          >License</a
+        >
+      </nav>
+    </footer>
+  </body>
+</html>
