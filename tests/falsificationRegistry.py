@@ -24386,10 +24386,6 @@ def _fdictEntry(sRel):
         old='    bRememberedTracked = bool(dictRemembered) and (\n        dictRemembered["sScope"] == S_SCOPE_GIT_TRACKED)\n',
         new='    bRememberedTracked = False\n',
     ),
-        source='vaibify/gui/agentCouncilCredentialTest.py',
-        old='            and os.path.getmtime(os.path.join(sRoot, sName)) < fCutoff]\n',
-        new='            ]\n',
-    ),
     Falsification(
         nodeid=(
             'tests/testCouncilSnapshotScope.py::'
