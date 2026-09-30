@@ -350,8 +350,10 @@ uncommitted edits — and an expandable list of **Files that will be
 missing**, grouped by top-level folder and reason (untracked, ignored,
 deleted in the working tree, not checked out, excluded by vaibify
 policy). Tracked files are copied as they are in the working tree,
-uncommitted edits included. A merge conflict or a submodule in the
-index refuses the scope, naming the paths.
+uncommitted edits included. A merge conflict, a submodule in the index,
+or a tracked directory replaced by a symbolic link refuses the scope,
+naming the paths — a linked directory would otherwise have its target's
+files copied in place of the tracked ones.
 
 The choice is remembered for the project and shown in the convene form,
 where it can be changed; every start re-checks it against the current
