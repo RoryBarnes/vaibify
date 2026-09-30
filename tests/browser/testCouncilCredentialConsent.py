@@ -57,7 +57,7 @@ def _fnScriptJobOutcome(monkeypatch, sOutcome, sFailedCheck=""):
                 dictCheck["sStatus"] = sOutcome
                 break
         try:
-            agentCouncilCredentialTest._fnPublishJobOutcome(
+            agentCouncilCredentialTest.fnPublishJobOutcome(
                 dictJob, sOutcome, sFailedCheck,
                 "scripted in the browser lane" if sFailedCheck else "")
         finally:
