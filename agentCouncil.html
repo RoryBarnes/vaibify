@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.0.14.dev134 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.0.14.dev142 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=45e3c1d7"></script>
+      <script src="_static/documentation_options.js?v=cf0ce29e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -68,6 +68,8 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#the-charter-the-by-laws-every-participant-is-bound-by">The charter — the by-laws every participant is bound by</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#execution-backend">Execution backend</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-first-council-on-a-computer">The first council on a computer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#credential-risk-disclosure">Credential-risk disclosure</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#output">Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#asking-the-chairbot">Asking the chairbot</a></li>
@@ -180,7 +182,13 @@ council runner the refresh token.</p>
 <ol class="arabic simple">
 <li><p>Open a containerized project in the dashboard.</p></li>
 <li><p>Click <strong>Agent Council</strong> in the toolbar (between the project name and
-the Run menu).</p></li>
+the Run menu). The first time, one or two questions come first:
+if the project is too large to copy in full, a size window offers
+to copy only the files git tracks
+(<a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a>);
+and if this project’s image has not been used for a council on this
+computer, a consent window asks to run a short credential test
+(<a class="reference internal" href="#the-first-council-on-a-computer">The first council on a computer</a>).</p></li>
 <li><p>Choose <strong>Plan a change</strong> — or <strong>Implement a plan</strong>, which is
 enabled once a planning council has an accepted plan to seed it.</p></li>
 <li><p>Write the question, add at least two participants covering two
@@ -417,6 +425,77 @@ below.</p>
 separate execution engine with its own tool, credential, accounting, and
 containment design; the runner adapters do not silently switch to it.</p>
 </section>
+<section id="the-first-council-on-a-computer">
+<h2>The first council on a computer<a class="headerlink" href="#the-first-council-on-a-computer" title="Link to this heading"></a></h2>
+<p>A council copies this project’s provider login into each disposable
+runner, so the first council with a project’s image on a computer asks
+first. The window, <strong>First council with this project’s image on this
+computer</strong>, lists the providers this project is logged in to; tick the
+ones councils may use and choose <strong>Run the test and continue</strong>. Codex
+and Gemini ask for the model id to test with, because vaibify cannot
+list their models.</p>
+<p>vaibify then runs a short credential test against the project’s image,
+by its immutable id, in a disposable runner — the same machinery a
+council uses:</p>
+<ol class="arabic simple">
+<li><p>a copyable login is present;</p></li>
+<li><p>a copy of the access token only (never the refresh token)
+authenticates one trivial, paid turn;</p></li>
+<li><p>the project’s own login is still present and unchanged (vaibify does
+not spend a request to prove it still works);</p></li>
+<li><p>the login’s token was not rotated;</p></li>
+<li><p>the copied token is gone from this computer and the runner was
+destroyed;</p></li>
+<li><p>a turn with a model that does not exist is reported as a failure,
+and checks 4 and 5 still hold;</p></li>
+<li><p>a runner killed part-way through a turn is cleaned up, and checks 4
+and 5 still hold.</p></li>
+</ol>
+<p>Each provider costs about two paid requests. Nothing is retried; a turn
+that does not answer within its timeout ends the test as <em>did not
+finish</em>. Only a passed test enables the provider, and your consent
+applies to <strong>every project on this computer that uses this image</strong>.</p>
+<p><strong>Credential tests panel.</strong> The council’s first screen links to
+<strong>Credential tests</strong>, which shows each provider’s consent, its latest
+test (passed on a date, failed at a named check, or did not finish),
+and the running projects that share the image. <strong>Re-run test</strong> suspends
+the current pass until the new test passes — a test that does not
+finish leaves the provider off. <strong>Withdraw</strong> takes effect at once:
+turns already running finish, and no later turn, for any project using
+this image, is given a copy of the login until you consent and a test
+passes again. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> reports the same records and never
+changes them.</p>
+<p>What the consent can guarantee is narrow and stated honestly: it is
+recorded only from an authenticated vaibify browser session holding the
+project’s lease. That excludes agents inside containers and local
+processes without your browser credential; it is not proof that a
+person clicked.</p>
+</section>
+<section id="projects-too-large-to-copy-in-full">
+<h2>Projects too large to copy in full<a class="headerlink" href="#projects-too-large-to-copy-in-full" title="Link to this heading"></a></h2>
+<p>Each participant works on its own copy of the project, held in memory on
+this computer. A project that keeps generated output inside its
+repository can be far over the snapshot’s limits even when its code is
+small, because the whole-directory copy includes files git ignores.</p>
+<p>When that happens and the files git tracks would fit, the council button
+opens <strong>This project is too large to copy in full for a council</strong>. It
+shows why (this project’s size against the limits), the option — <strong>Copy
+only the files git tracks</strong>, with their count, size, and how many have
+uncommitted edits — and an expandable list of <strong>Files that will be
+missing</strong>, grouped by top-level folder and reason (untracked, ignored,
+deleted in the working tree, not checked out, excluded by vaibify
+policy). Tracked files are copied as they are in the working tree,
+uncommitted edits included. A merge conflict, a submodule in the index,
+or a tracked directory replaced by a symbolic link refuses the scope,
+naming the paths — a linked directory would otherwise have its target’s
+files copied in place of the tracked ones.</p>
+<p>The choice is remembered for the project and shown in the convene form,
+where it can be changed; every start re-checks it against the current
+tree. Participants are told what was left out — counts, sizes and
+top-level folders, never file names — and that they must not assume the
+contents of omitted files. In this scope a new untracked output file
+does not mark a finished council stale; an edit to a tracked file does.</p>
+</section>
 <section id="credential-risk-disclosure">
 <h2>Credential-risk disclosure<a class="headerlink" href="#credential-risk-disclosure" title="Link to this heading"></a></h2>
 <p>The runner backend reuses the provider account already configured for
@@ -433,6 +512,14 @@ through the one network path it is allowed (its provider’s API). The
 copy is destroyed with the container, but <strong>destroying the copy does
 not revoke the credential</strong> — revoke at the provider if a run is
 compromised.</p>
+</div></blockquote>
+<p>The consent window and the launch form both add:</p>
+<blockquote>
+<div><p>While a council runs, each participant holds a copy of your access
+token. A participant manipulated by something it reads could read that
+copy. The token expires and cannot renew itself, but until it expires
+it works. This test shows the sharing works as designed; it does not
+make that risk zero.</p>
 </div></blockquote>
 <p>Exposure is narrowed: one provider’s token per runner (never the shared
 store), the shortest-lived credential that works, and egress restricted

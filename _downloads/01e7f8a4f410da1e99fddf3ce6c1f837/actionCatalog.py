@@ -1183,6 +1183,24 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
      "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/ask"),
     ("POST",
      "/api/agent-councils/{sContainerId}/{sCampaignId}/chat/close"),
+    # Council credential consent (2026-09-29 ruling): consenting starts a
+    # paid test that copies the researcher's provider login into a
+    # runner, withdrawing ends every later admission, and cancelling
+    # ends a running test. All three are the researcher's decision by
+    # definition -- the consent IS the researcher's act -- so the
+    # middleware refuses the agent lane here AND every handler refuses
+    # it itself.
+    ("POST", "/api/council-credentials/{sContainerId}/credential-test"),
+    ("POST",
+     "/api/council-credentials/{sContainerId}/credential-test/{sJobId}"
+     "/cancel"),
+    ("DELETE",
+     "/api/council-credentials/{sContainerId}/credential-consent"
+     "/{sProvider}"),
+    # Choosing what a council snapshot copies is the researcher's
+    # decision about what every participant will be shown; an agent that
+    # could change it could hide files from a council.
+    ("POST", "/api/council-snapshots/{sContainerId}/scope"),
     # The dependency scan READS the researcher's own Python files on
     # the host and reports what they import. It writes nothing -- it
     # is a POST only because its input is a list -- but agent-invokable
