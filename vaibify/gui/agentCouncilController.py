@@ -1201,7 +1201,8 @@ async def fdictLaunchCampaignDeliberation(
             dictManifest["sSnapshotSha256"])
         dictCampaign["dictProjectIdentity"]["sSnapshotScopeNote"] = (
             agentCouncilCharter.fsDescribeSnapshotScope(
-                dictManifest.get("listResearcherExcludedPaths") or []))
+                dictManifest.get("listResearcherExcludedPaths") or [],
+                dictManifest))
         baSnapshotTar = _fbaReadSealedSnapshot(dictStore, sCampaignId)
         # Pinned before the first turn, checkpointed with the snapshot
         # identity: the image the runners execute in and the sealed

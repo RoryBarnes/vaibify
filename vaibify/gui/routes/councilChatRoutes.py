@@ -112,7 +112,7 @@ def _fnRegisterChairbotChat(app, dictCtx):
                 "sImageReference": sImageReference,
                 "ftStageRunnerCredential":
                     councilRouteGuards.ffnBuildCredentialStager(
-                        dictCtx, sContainerId, sProvider),
+                        dictCtx, sContainerId, sProvider, sImageReference),
             })
 
         return await councilRouteGuards.fgenericSubmitMapped(

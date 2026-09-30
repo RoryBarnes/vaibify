@@ -23,14 +23,16 @@ __all__ = [
     "flistTrackedDirectoryNames",
     "fsResolveDominantRepositoryPath",
     "fsRepositoryBoundToCampaign",
+    "fsGuardCouncilRoute",
     "ftResolveCouncilPrincipal",
     "fjsonRequireCampaign",
     "fgenericSubmitMapped",
     "fnRefuseRunnerBackendUnlessEnabled",
     "fnRefuseStartWithoutAProjectLogin",
-    "fiReadProjectLoginExpiry",
+    "fdictReadProjectLoginState",
     "ffnBuildImageResolver",
     "ffnBuildCredentialStager",
+    "ftAdmitCouncilTurnCredential",
     "fdictBuildCredentialStagers",
 ]
 
@@ -86,7 +88,7 @@ def fdictControllerState(requestHttp):
     )
 
 
-def _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
+def fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId):
     """Reject the agent lane, refuse a host project, require the daemon.
 
     The container lease is already enforced by ``ContainerAwareRoute``
@@ -165,7 +167,7 @@ def ftResolveCouncilPrincipal(dictCtx, requestHttp, sContainerId,
     the researcher's own already-recorded statement about which
     directories matter.
     """
-    sName = _fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
+    sName = fsGuardCouncilRoute(dictCtx, requestHttp, sContainerId)
     dictWorkflow = (dictCtx.get("workflows") or {}).get(sContainerId) or {}
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if sProjectRepoPath:
@@ -406,79 +408,154 @@ def ffnBuildImageResolver(dictCtx, sContainerId):
     return _fsResolveRunnerImage
 
 
-def fiReadProjectLoginExpiry(dictCtx, sContainerId, sProvider="claude"):
-    """Return when this project's Claude login expires, or 0 if unknown.
+def fdictReadProjectLoginState(dictCtx, sContainerId, sProvider="claude"):
+    """Return whether this project holds a copyable login, and its expiry.
 
-    The ABSOLUTE timestamp, never a remaining duration, so the convene
-    form computes the life left at the moment it renders. Capabilities
-    are fetched once when a project is activated and the form may open
-    hours later; a duration measured here would be wrong by exactly as
-    long as the researcher took to click.
+    One read answers both, so the capabilities poll never fetches a login
+    twice. ``iExpiresAtEpochMilliseconds`` is the ABSOLUTE timestamp,
+    never a remaining duration, so the convene form computes the life
+    left at the moment it renders; 0 means "this cannot be said" — a
+    login with no stated expiry is still a login. ``bHasLogin`` is what
+    readiness asks: is there anything a consent modal could offer?
 
-    Never a downgrade of availability. An unreadable, missing or
-    lapsed login answers 0 — "this cannot be said" — and
+    Never a downgrade of availability, and never the refusal. An
+    unreadable, missing or lapsed login answers ``bHasLogin`` False and
     :func:`fnRefuseStartWithoutAProjectLogin` remains the single
-    authority that refuses a launch. Showing a researcher the cap their
-    login imposes is a courtesy; letting a capabilities poll decide a
-    council would put two authorities on one question.
+    authority that refuses a launch. The credential is discarded here;
+    only the boolean and the timestamp return.
     """
-    from . import agentCouncilProviderRegistry
     from . import agentCouncilProviders
-    from . import projectRoots
     try:
-        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
-            sContainerId, WORKSPACE_ROOT)
-        return agentCouncilProviderRegistry.fdictExtractProviderCredential(
-            sProvider, dictCtx["docker"], sContainerId,
-            agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
-                sProvider, sWorkspaceRoot),
-        )["iExpiresAtEpochMilliseconds"]
+        dictCredential = _fdictExtractProjectCredential(
+            dictCtx, sContainerId, sProvider)
     except (agentCouncilProviders.RunnerCredentialError,
             OSError, ValueError, KeyError):
-        return 0
+        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0}
+    try:
+        return {"bHasLogin": True, "iExpiresAtEpochMilliseconds":
+                int(dictCredential.get("iExpiresAtEpochMilliseconds") or 0)}
+    finally:
+        dictCredential.clear()
 
 
-def ffnBuildCredentialStager(dictCtx, sContainerId, sProvider="claude"):
-    """Build the closure that stages the runner's host credential copy.
+def _fdictExtractProjectCredential(dictCtx, sContainerId, sProvider):
+    """Read the project's login into memory: a Docker fetch, never locked.
+
+    The one slow step of an admission, so it runs BEFORE the store lock
+    is taken; the lock then covers only the recheck and the local write.
+    """
+    from . import agentCouncilProviderRegistry
+    from . import projectRoots
+    sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
+        sContainerId, WORKSPACE_ROOT)
+    return agentCouncilProviderRegistry.fdictExtractProviderCredential(
+        sProvider, dictCtx["docker"], sContainerId,
+        agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
+            sProvider, sWorkspaceRoot))
+
+
+def ftAdmitCouncilTurnCredential(sProvider, sImageIdentity,
+                                 dictCredential, sContainerId=""):
+    """Stage an in-memory credential only if the key is authorized NOW.
+
+    The per-turn admission point (contract A6), one of exactly TWO
+    functions that stage a council token (the other is the credential
+    test's own narrow admitter). Under the store lock it re-evaluates
+    consent + outcome for this provider and the campaign's pinned
+    image, and only then writes the 0600 staged file from memory and
+    records the admission. A withdrawal that landed while the login was
+    being fetched is therefore seen here, and a refused admission never
+    writes the token anywhere. Returns ``(sStagedPath, iExpiresAt)``.
+    """
+    import uuid
+    from . import agentCouncilCredentialGate
+    from . import agentCouncilCredentialStore
+    from . import agentCouncilProviderRegistry
+    from . import agentCouncilStagedCopies
+    listStagedPaths = []
+
+    def _fdictAdmitUnderStoreLock(dictDocument):
+        dictEvaluation = (
+            agentCouncilCredentialStore.fdictEvaluateCredentialKey(
+                dictDocument, sProvider, sImageIdentity))
+        if not dictEvaluation["bAuthorized"]:
+            return dictEvaluation
+        listStagedPaths.append(
+            agentCouncilProviderRegistry.fsStageProviderCredential(
+                sProvider, dictCredential))
+        agentCouncilStagedCopies.fnHoldStagedCopy(listStagedPaths[-1])
+        agentCouncilCredentialStore.fnRecordAdmission(
+            dictDocument, agentCouncilCredentialStore.fsComposeCredentialKey(
+                sProvider, sImageIdentity),
+            {"sAdmissionKind": "councilTurn",
+             "sAdmissionId": uuid.uuid4().hex,
+             "sContainerId": sContainerId,
+             "iConsentGeneration":
+                 dictEvaluation["dictConsent"]["iConsentGeneration"]})
+        return dictEvaluation
+
+    try:
+        dictEvaluation = (
+            agentCouncilCredentialStore.fdictMutateCredentialDocument(
+                agentCouncilCredentialGate.fsResolveCredentialEvidencePath(),
+                _fdictAdmitUnderStoreLock))
+    except BaseException:
+        _fnDiscardStagedPaths(listStagedPaths)
+        raise
+    if not dictEvaluation["bAuthorized"]:
+        raise agentCouncilCredentialStore.CredentialAdmissionRefusedError(
+            f"{sProvider}: this turn was not admitted — "
+            + agentCouncilCredentialGate.fsExplainCredentialState(
+                dictEvaluation)
+            + " Turns already running were not interrupted.")
+    return (listStagedPaths[0],
+            dictCredential.get("iExpiresAtEpochMilliseconds", 0))
+
+
+def _fnDiscardStagedPaths(listStagedPaths):
+    """Delete staged files an admission wrote but could not complete."""
+    from ..config import secretManager
+    secretManager.fnCleanupSecretFiles(listStagedPaths)
+
+
+def ffnBuildCredentialStager(dictCtx, sContainerId, sProvider,
+                             sImageIdentity):
+    """Build the closure every campaign and chat turn stages through.
 
     Invoked in the launch worker thread by the controller's PRODUCTION
-    connection factory on the first connection build — a patched fake
-    seam never lands there, so no fake lane needs a persisted login.
-    Extraction reads the narrowest authenticating field from the login
-    the project container already persists (a file fetch, never a
-    container command) and materializes it as an ephemeral mode-600
-    host file; the workspace root goes through ``projectRoots``, never
-    a ``/workspace`` literal.
+    connection factory on each turn — a patched fake seam never lands
+    there, so no fake lane needs a persisted login. Each call is one
+    ADMISSION (contract A6): the login is fetched into memory outside
+    any lock (the narrowest authenticating field, through a file fetch,
+    never a container command), then :func:`ftAdmitCouncilTurnCredential`
+    rechecks the credential gate for ``sImageIdentity`` — the image the
+    campaign's runners launch from — under the store lock and stages
+    the ephemeral mode-600 host file only if the key is still
+    authorized. The in-memory copy is dropped on every path.
 
     It returns the staged path AND the login's expiry, because the
     extraction has already read the document and a second read to learn
     the same timestamp would be a second chance for the two answers to
     disagree. The connection clamps the turn's wall clock with it.
     """
-    from . import agentCouncilProviderRegistry
-    from . import projectRoots
 
     def _ftStageRunnerCredential():
-        sWorkspaceRoot = projectRoots.fsResolveProjectRoot(
-            sContainerId, WORKSPACE_ROOT)
-        dictCredential = (
-            agentCouncilProviderRegistry.fdictExtractProviderCredential(
-                sProvider, dictCtx["docker"], sContainerId,
-                agentCouncilProviderRegistry.fsComposeProviderCredentialPath(
-                    sProvider, sWorkspaceRoot)))
-        return (
-            agentCouncilProviderRegistry.fsStageProviderCredential(
-                sProvider, dictCredential),
-            dictCredential["iExpiresAtEpochMilliseconds"],
-        )
+        dictCredential = _fdictExtractProjectCredential(
+            dictCtx, sContainerId, sProvider)
+        try:
+            return ftAdmitCouncilTurnCredential(
+                sProvider, sImageIdentity, dictCredential, sContainerId)
+        finally:
+            dictCredential.clear()
 
     return _ftStageRunnerCredential
 
 
-def fdictBuildCredentialStagers(dictCtx, sContainerId, setProviders):
+def fdictBuildCredentialStagers(dictCtx, sContainerId, setProviders,
+                                sImageIdentity):
     """Build one independent per-turn credential stager per provider."""
     return {
         sProvider: ffnBuildCredentialStager(
-            dictCtx, sContainerId, sProvider)
+            dictCtx, sContainerId, sProvider, sImageIdentity)
         for sProvider in sorted(setProviders)
     }

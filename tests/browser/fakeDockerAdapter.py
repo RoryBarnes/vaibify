@@ -202,6 +202,12 @@ class FailClosedDockerAdapter:
             "listEscapingSymlinks": [], "listSpecialFiles": [],
             "listSubmodules": [],
         }
+        # The git-tracked snapshot scope's two reads. None means "every
+        # byte is tracked and nothing is untracked", so a journey that
+        # only raises the weight still meets the size wall; a journey
+        # about the tracked-files offer supplies both answers.
+        self.dictTrackedIdentities = None
+        self.dictUntrackedInventory = None
         # What the Repos panel's discovery finds under the workspace
         # root: the lane's one project repository.
         self.setWorkspaceRepositories = {
@@ -235,6 +241,34 @@ class FailClosedDockerAdapter:
                 f"this fake does not speak for: {sRepositoryPath}"
             )
         return dict(self.dictRepositoryWeight)
+
+    def fdictFetchTrackedIdentities(self, sContainerId, sRepositoryPath):
+        """Answer the tracked-scope read; scoped to the workspace volume."""
+        self._fnRefuseOutsideWorkspace(sRepositoryPath)
+        if self.dictTrackedIdentities is not None:
+            return dict(self.dictTrackedIdentities)
+        return {
+            "bSuccess": True, "sReason": "", "sHeadSha": "lanehead0001",
+            "sPorcelainDigest": "laneporcelain0001", "iChangedCount": 0,
+            "dictEntries": {"project.json": {
+                "sMode": "100644", "listStages": [0], "bSkipWorktree": False,
+                "sType": "file", "sIdentity": "0" * 40,
+                "iSizeBytes": self.dictRepositoryWeight["iTotalBytes"]}}}
+
+    def fdictFetchUntrackedInventory(self, sContainerId, sRepositoryPath):
+        """Answer the omission inventory read; scoped like the weigh."""
+        self._fnRefuseOutsideWorkspace(sRepositoryPath)
+        if self.dictUntrackedInventory is not None:
+            return dict(self.dictUntrackedInventory)
+        return {"bSuccess": True, "sReason": "", "bComplete": True,
+                "listEntries": []}
+
+    def _fnRefuseOutsideWorkspace(self, sRepositoryPath):
+        if not sRepositoryPath.startswith(S_WORKSPACE_ROOT):
+            raise UnmodelledContainerCall(
+                "Repository read outside the workspace volume, which "
+                f"this fake does not speak for: {sRepositoryPath}"
+            )
 
     def fnTouchFile(self, sPath, iModifiedTime):
         """Age or freshen one watched path, as an in-container edit would."""

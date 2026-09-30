@@ -1282,6 +1282,30 @@
     </div>
 </div>
 
+<!-- Agent Council size modal: offered when the project is too large to
+     copy in full and the files git tracks would fit. Rendered by
+     scriptCouncilSnapshotScope.js. -->
+<div id="councilSnapshotScopeModal" class="modal-overlay"
+     style="display: none;">
+    <div class="modal-content council-modal">
+        <button type="button" id="btnCouncilSnapshotScopeModalClose"
+                class="modal-close" aria-label="Close">&times;</button>
+        <div id="councilSnapshotScopeModalBody"></div>
+    </div>
+</div>
+
+<!-- Agent Council credential consent, test progress and the Credential
+     tests panel. Its own overlay so a consent can open above the
+     council's modal without disturbing it. Rendered by
+     scriptCouncilConsent.js. -->
+<div id="councilConsentModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content council-modal">
+        <button type="button" id="btnCouncilConsentModalClose"
+                class="modal-close" aria-label="Close">&times;</button>
+        <div id="councilConsentModalBody"></div>
+    </div>
+</div>
+
 <!-- Agent Council workspace: a dockable, collapsible lower panel
      (design section 6.4). NOT attached to the terminal route. The tab
      bar and consoles are rendered by scriptAgentCouncil.js from the
@@ -1359,6 +1383,8 @@
 <script src="/static/scriptTerminal.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepEditor.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptResourceMonitor.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptCouncilConsent.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptCouncilSnapshotScope.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAgentCouncil.js?v=__CACHE_VERSION__"></script>
 </body>
 </html>

@@ -1100,9 +1100,10 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 connectionForTurn.fdictCollectStructuredResult())
             sCompletion = await connectionForTurn.fsReportCompletion()
         except Exception as error:
-            return {"sOutcome": "raised",
-                    "sFailureClass": "turnRaised",
-                    "sFailureReason": f"turnRaised: {error}"}
+            sFailureClass = getattr(
+                error, "sCouncilFailureClass", "turnRaised")
+            return {"sOutcome": "raised", "sFailureClass": sFailureClass,
+                    "sFailureReason": f"{sFailureClass}: {error}"}
         iResultBytes = len(json.dumps(dictRawResult, default=str)
                            .encode("utf-8"))
         iOutputBudget = self.dictCampaign["dictSettings"][

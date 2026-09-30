@@ -61,7 +61,7 @@ from ..councilRouteGuards import (
     ffnBuildCredentialStager,
     ffnBuildImageResolver,
     fgenericSubmitMapped,
-    fiReadProjectLoginExpiry,
+    fdictReadProjectLoginState,
     fjsonRequireCampaign,
     fnRefuseRunnerBackendUnlessEnabled,
     fnRefuseStartWithoutAProjectLogin,
@@ -92,6 +92,8 @@ from ..routeScope import (
 # provider convenes a campaign that can never run. An unrecognised
 # provider is refused at validation.
 from .. import agentCouncilProviderRegistry
+from .. import agentCouncilReadiness
+from .. import agentCouncilSnapshotScope
 
 SET_ALLOWED_PROVIDERS = agentCouncilProviderRegistry.SET_COUNCIL_PROVIDERS
 
@@ -157,6 +159,9 @@ class CouncilStartRequest(BaseModel):
     # from client text.
     sCampaignKind: str = Field(default="planning", max_length=32)
     sSourceCampaignId: str = Field(default="", max_length=128)
+    # What the snapshot copies: "wholeDirectory" or "gitTracked". Empty
+    # means this project's remembered choice, else the whole directory.
+    sSnapshotScope: str = Field(default="", max_length=32)
 
 
 class CouncilDecisionAnswer(BaseModel):
@@ -303,7 +308,7 @@ def _fnRefuseLaunchWhileCampaignBusy(dictControllerState, dictRegistry,
 
 def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
                              sProjectRepoPath, sCampaignId, sName,
-                             listExcludedPaths=None):
+                             listExcludedPaths=None, dictSnapshotScope=None):
     """Build the closure that captures the snapshot under the project lock.
 
     The bounded project lock (design section 9.2) is the commit
@@ -347,7 +352,8 @@ def _ffnBuildSnapshotCapture(dictCtx, requestHttp, sContainerId,
                             fdictCampaignStore(requestHttp)[
                                 "sDurableStoreRoot"],
                             dictBounds=dictBounds,
-                            listExcludedPaths=listExcludedPaths),
+                            listExcludedPaths=listExcludedPaths,
+                            dictSnapshotScope=dictSnapshotScope),
                 }
             except agentCouncilContext.SnapshotRefusedError as error:
                 return {"bRefused": True, "sRefusalReason": str(error)}
@@ -437,6 +443,24 @@ def _fdictCreateCampaignFromRequest(request, dictProjectIdentity,
         raise HTTPException(400, str(error))
 
 
+def _fdictResolveRequestedScope(sRequestedScope, sName, sProjectRepoPath):
+    """Return the convene's scope: the request's, remembered, or whole.
+
+    Re-validated at every start by the capture itself, which observes
+    the tree in this scope before copying anything.
+    """
+    try:
+        if sRequestedScope:
+            return agentCouncilSnapshotScope.fdictComposeSnapshotScope(
+                sRequestedScope)
+    except agentCouncilSnapshotScope.SnapshotScopeError as error:
+        raise HTTPException(400, str(error))
+    return (agentCouncilSnapshotScope.fdictReadRememberedScope(
+        sName, sProjectRepoPath)
+        or agentCouncilSnapshotScope.fdictComposeSnapshotScope(
+            agentCouncilSnapshotScope.S_SCOPE_WHOLE_DIRECTORY))
+
+
 def _fnRegisterCapabilities(app, dictCtx):
     """Register GET /api/agent-councils/{sContainerId}/capabilities."""
 
@@ -453,13 +477,16 @@ def _fnRegisterCapabilities(app, dictCtx):
         dictCtx["require"](sContainerId)
         dictCapabilities = await _fdictContainerCapabilities(
             dictCtx, sContainerId)
-        # The snapshot pre-flight runs LAST and only when everything
-        # else already permits a council: it costs a metadata walk, and
-        # there is no sense weighing a repository for a project whose
-        # runner backend is disabled anyway.
-        if dictCapabilities["bAvailable"]:
+        # The snapshot pre-flight no longer waits for credentials: size
+        # is the free question and is asked first (plan section D), so
+        # a researcher who has not yet consented still learns whether
+        # the repository fits before spending anything on a test.
+        bCredentialAuthorized = dictCapabilities["bAvailable"]
+        if dictCapabilities["sUnavailableIn"] != "image-unresolvable":
             _fnApplySnapshotFeasibility(
                 dictCtx, requestHttp, sContainerId, dictCapabilities)
+        agentCouncilReadiness.fnApplyCouncilReadiness(
+            dictCapabilities, bCredentialAuthorized)
         return dictCapabilities
 
 
@@ -511,13 +538,18 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
     # A repository whose ONLY problem is named oversized files is not
     # unavailable — it is a choice the researcher has not made yet, and
     # blocking the button would hide the modal that offers the choice.
-    # The count and total bounds stay hard: no per-file decision helps
-    # a repository that is simply the wrong shape for a council.
+    # The count and total bounds stay hard for the whole directory; the
+    # git-tracked scope is weighed next and may turn the wall into a
+    # choice (agentCouncilSnapshotScope.fnApplyTrackedScopeOffer).
     if not dictFeasibility["bFits"] and not dictFeasibility[
             "bResolvableByExcludingFiles"]:
         dictCapabilities["bAvailable"] = False
         dictCapabilities["sUnavailableIn"] = S_UNAVAILABLE_SNAPSHOT_TOO_LARGE
         dictCapabilities["sReason"] = dictFeasibility["sReason"]
+    agentCouncilSnapshotScope.fnApplyTrackedScopeOffer(
+        dictCtx["docker"], sContainerId,
+        fsContainerNameForId(dictCtx.get("docker"), sContainerId),
+        sProjectRepoPath, dictCapabilities)
 
 
 def _fnRegisterSnapshotFeasibility(app, dictCtx):
@@ -576,6 +608,7 @@ def _fdictHostModeCapabilities():
             "projects. This project runs directly on this machine and "
             "has no container to build a runner from."
         ),
+        "sCouncilReadiness": agentCouncilReadiness.S_BLOCKED,
         "listProviders": [],
     }
 
@@ -613,16 +646,18 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
             agentCouncilProviderRegistry.fdictBuildProviderCapability(
                 sProvider, dictEnablement.get("dictRecord"),
                 dictEnablement["bEnabled"]))
+        dictLogin = await asyncio.to_thread(
+            fdictReadProjectLoginState, dictCtx, sContainerId, sProvider)
+        dictLoginExpiries[sProvider] = dictLogin["iExpiresAtEpochMilliseconds"]
         listProviders.append({
             "sProvider": sProvider,
             "sBackend": dictContract["sBackend"],
             "bAvailable": dictEnablement["bEnabled"],
             "sReason": dictEnablement["sReason"],
+            "sCredentialState": dictEnablement.get("sState", ""),
+            "bHasProjectLogin": dictLogin["bHasLogin"],
             "dictModelDiscovery": dictContract["dictModelDiscovery"],
         })
-        dictLoginExpiries[sProvider] = (
-            await asyncio.to_thread(
-                fiReadProjectLoginExpiry, dictCtx, sContainerId, sProvider))
     listEnabled = [dictProvider for dictProvider in listProviders
                    if dictProvider["bAvailable"]]
     sReason = "" if listEnabled else "; ".join(
@@ -635,7 +670,7 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
         # thing to go and do", and only that third case earns
         # instructions in the toolbar's explanation.
         "sUnavailableIn": (
-            "" if listEnabled
+            "" if listEnabled else "image-unresolvable" if sImageFailure
             else S_UNAVAILABLE_UNTIL_CREDENTIAL_EVIDENCE),
         "sReason": sReason,
         "listProviders": listProviders,
@@ -752,6 +787,7 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
     """
     import json as moduleJson
     import os
+    from .. import agentCouncilContext
     sManifestPath = os.path.join(
         dictStore["sDurableStoreRoot"], sCampaignId, "snapshot",
         "manifest.json")
@@ -767,8 +803,11 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
                     "sPlanningBaselineSummary":
                         "the sealed manifest predates the baseline "
                         "identity fields"}
-        dictObservation = dictCtx["docker"].fdictFetchWorktreeIdentities(
-            sContainerId, sProjectRepoPath)
+        dictObservation = (
+            agentCouncilSnapshotScope.fdictObserveForStaleness(
+                dictCtx["docker"], sContainerId, sProjectRepoPath,
+                jsonManifest.get("dictSnapshotScope"),
+                agentCouncilContext.ftFindExcludedComponent))
         if not dictObservation.get("bSuccess"):
             raise RuntimeError(
                 dictObservation.get("sReason") or "observation failed")
@@ -784,7 +823,6 @@ def _fdictComputeBaselineStaleness(dictCtx, dictStore, sContainerId,
     # The porcelain digest never hashes worktree bytes, so a dirty
     # file whose CONTENT changed again moves only the per-path
     # identity digest; compared whenever the manifest recorded one.
-    from .. import agentCouncilContext
     sBaselineContentDigest = jsonManifest.get(
         "sBaselinePathIdentitiesDigest")
     bContentMoved = bool(sBaselineContentDigest) and (
@@ -921,6 +959,8 @@ def _fnRegisterStartCouncil(app, dictCtx):
                         agentCouncilCampaign.fbCampaignMatchesPrincipal(
                             dictOther, sName, sProjectRepoPath))],
             sSeedPlanDocument=sSeedPlanDocument)
+        dictCampaign["dictSnapshotScope"] = _fdictResolveRequestedScope(
+            request.sSnapshotScope, sName, sProjectRepoPath)
 
         dictControllerState = fdictControllerState(requestHttp)
         sCampaignId = dictCampaign["sCampaignId"]
@@ -953,10 +993,14 @@ def _fnRegisterStartCouncil(app, dictCtx):
                     _ffnBuildSnapshotCapture(
                         dictCtx, requestHttp, sContainerId,
                         sProjectRepoPath, sCampaignId, sName,
-                        request.listExcludedPaths),
+                        request.listExcludedPaths,
+                        dictCampaign["dictSnapshotScope"]),
                     sImageReference,
                     ftStageRunnerCredential=fdictBuildCredentialStagers(
-                        dictCtx, sContainerId, setProviders)))
+                        dictCtx, sContainerId, setProviders,
+                        sImageReference)))
+            agentCouncilSnapshotScope.fnRememberScope(
+                sName, sProjectRepoPath, dictCampaign["dictSnapshotScope"])
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
                 _fdictBuildEvent("campaignStarted", dictLaunched["sTurnId"]))
@@ -999,7 +1043,7 @@ async def _fdictBuildRebuildMaterials(dictCtx, dictControllerState,
         setProviders)
     return {"sImageReference": sImageReference,
             "ftStageRunnerCredential": fdictBuildCredentialStagers(
-                dictCtx, sContainerId, setProviders)}
+                dictCtx, sContainerId, setProviders, sImageReference)}
 
 
 def _fnRegisterResume(app, dictCtx):
@@ -1054,7 +1098,8 @@ def _fnRegisterResume(app, dictCtx):
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
                     ftStageRunnerCredential=fdictBuildCredentialStagers(
-                        dictCtx, sContainerId, setProviders),
+                        dictCtx, sContainerId, setProviders,
+                        sImageReference),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,
@@ -1135,7 +1180,8 @@ def _fnRegisterRetry(app, dictCtx):
                     dictControllerState, dictStore, dictRegistry,
                     sCampaignId, sImageReference,
                     ftStageRunnerCredential=fdictBuildCredentialStagers(
-                        dictCtx, sContainerId, setProviders),
+                        dictCtx, sContainerId, setProviders,
+                        sImageReference),
                     bClearStopRequest=request.bClearStopRequest))
             agentCouncilStore.fdictAppendCampaignEvent(
                 dictStore, sCampaignId,

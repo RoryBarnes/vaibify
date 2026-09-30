@@ -117,6 +117,8 @@ __all__ = [
     "fdictCaptureProjectContextSnapshot",
     "fsComputePathIdentitiesDigest",
     "fsResolveSnapshotDirectory",
+    "ftFindExcludedComponent",
+    "S_OMISSION_INVENTORY_BASENAME",
 ]
 
 import hashlib
@@ -130,7 +132,11 @@ import tarfile
 from datetime import datetime, timezone
 
 from vaibify.docker import dockerConnection
-from vaibify.gui import agentCouncilCapacity, containerGit
+from vaibify.gui import (
+    agentCouncilCapacity,
+    agentCouncilSnapshotScope,
+    containerGit,
+)
 
 
 # The three bounds below are FLOORS, not the bounds a capture actually
@@ -161,6 +167,7 @@ I_MAX_SNAPSHOT_TOTAL_BYTES = (
 
 S_SNAPSHOT_ARCHIVE_BASENAME = "snapshot.tar"
 S_SNAPSHOT_MANIFEST_BASENAME = "manifest.json"
+S_OMISSION_INVENTORY_BASENAME = "omissions.jsonl.gz"
 S_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1"
 
 _S_PARTIAL_SUFFIX = ".partial"
@@ -247,6 +254,7 @@ class SnapshotRefusedError(Exception):
 def fdictCaptureProjectContextSnapshot(
     connectionDocker, sContainerId, sProjectRepoPath, sCampaignId,
     sSnapshotStoreRoot=None, dictBounds=None, listExcludedPaths=None,
+    dictSnapshotScope=None,
 ):
     """Capture one bounded, validated, immutable project snapshot.
 
@@ -269,26 +277,35 @@ def fdictCaptureProjectContextSnapshot(
     would have REFUSED outright (see ``_fbExcludeOversizedByRequest``),
     so it converts a dead end into a recorded partial snapshot and can
     never be used to hide an ordinary file from a council.
+
+    ``dictSnapshotScope`` selects what is copied (see
+    ``agentCouncilSnapshotScope``); absent means the whole directory. In
+    git-tracked scope every identity read is taken in that scope and the
+    archive is fetched PER ELIGIBLE PATH, so nothing omitted at
+    observation time is ever streamed.
     """
     _fnValidateCampaignIdentifier(sCampaignId)
+    dictScope = agentCouncilSnapshotScope.fdictNormaliseSnapshotScope(
+        dictSnapshotScope)
     sRepoRoot = _fsValidateProjectRepositoryRoot(
         connectionDocker, sContainerId, sProjectRepoPath,
     )
     dictIdentityBefore = _fdictReadRepositoryIdentity(
-        connectionDocker, sContainerId, sRepoRoot,
+        connectionDocker, sContainerId, sRepoRoot, dictScope,
     )
     sCaptureStartIso = datetime.now(timezone.utc).isoformat()
     sSnapshotDirectory = _fsCreateSnapshotDirectory(
         sCampaignId, sSnapshotStoreRoot,
     )
     try:
-        dictCapture = _fdictStreamValidatedArchive(
+        dictCapture = _fdictStreamScopedArchive(
             connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
             dictBounds or agentCouncilCapacity.fdictFloorCouncilCapacity(),
             _fsetValidateExclusionRequest(listExcludedPaths),
+            dictScope, dictIdentityBefore,
         )
         dictIdentityAfter = _fdictReadRepositoryIdentity(
-            connectionDocker, sContainerId, sRepoRoot,
+            connectionDocker, sContainerId, sRepoRoot, dictScope,
         )
         _fnRefuseIncoherentCapture(dictIdentityBefore, dictIdentityAfter)
         _fnRefuseArchiveObservationMismatch(dictIdentityBefore, dictCapture)
@@ -296,6 +313,13 @@ def fdictCaptureProjectContextSnapshot(
             sSnapshotDirectory, S_SNAPSHOT_ARCHIVE_BASENAME,
         )
         os.replace(sArchivePath + _S_PARTIAL_SUFFIX, sArchivePath)
+        dictCapture["dictSnapshotScope"] = dictScope
+        dictCapture["dictScopeRecord"] = (
+            agentCouncilSnapshotScope.fdictRecordCaptureOmissions(
+                connectionDocker, sContainerId, sRepoRoot,
+                os.path.join(sSnapshotDirectory,
+                             S_OMISSION_INVENTORY_BASENAME),
+                dictScope, dictIdentityBefore, _fnRaiseSnapshotRefusal))
         return _fdictWriteSnapshotManifest(
             sSnapshotDirectory, sContainerId, sRepoRoot, sCampaignId,
             dictIdentityBefore, dictIdentityAfter, sCaptureStartIso,
@@ -362,8 +386,12 @@ def _fsValidateProjectRepositoryRoot(
     return sNormalized
 
 
-def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
+def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot,
+                                 dictScope=None):
     """Return one full repository observation via the git authority.
+
+    In git-tracked scope the observation is the scope module's, which
+    carries the same keys over the eligible tracked set only.
 
     Carries the HEAD commit, a digest of the porcelain file-state map
     (an edit, add, or delete anywhere in the working tree changes it),
@@ -372,6 +400,11 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
     scope). No remote URL is read or recorded: a remote URL can embed
     a credential, and nothing secret may enter the manifest.
     """
+    if dictScope and dictScope["sScope"] == (
+            agentCouncilSnapshotScope.S_SCOPE_GIT_TRACKED):
+        return agentCouncilSnapshotScope.fdictObserveTrackedScope(
+            connectionDocker, sContainerId, sRepoRoot,
+            ftFindExcludedComponent, _fnRaiseSnapshotRefusal)
     dictGitStatus = containerGit.fdictGitStatusInContainer(
         connectionDocker, sContainerId, sWorkspace=sRepoRoot,
     )
@@ -401,7 +434,7 @@ def _fdictReadRepositoryIdentity(connectionDocker, sContainerId, sRepoRoot):
         for sPath, dictPathIdentity in sorted(
             dictObservation["dictPathIdentities"].items(),
         )
-        if _ftFindExcludedComponent(sPath) is None
+        if ftFindExcludedComponent(sPath) is None
     }
     return {
         "sCommitSha": dictGitStatus.get("sHeadSha") or "",
@@ -515,16 +548,7 @@ def _fdictStreamValidatedArchive(
     sPartialPath = os.path.join(
         sSnapshotDirectory, S_SNAPSHOT_ARCHIVE_BASENAME + _S_PARTIAL_SUFFIX,
     )
-    dictCapture = {
-        "setSeenPaths": set(),
-        "dictOmissionReasons": {},
-        "listIncludedEntries": [],
-        "iIncludedMemberCount": 0,
-        "iTotalContentBytes": 0,
-        "dictBounds": dictBounds,
-        "setExcludedPaths": setExcludedPaths,
-        "setHonouredExclusions": set(),
-    }
+    dictCapture = _fdictNewCaptureAccount(dictBounds, setExcludedPaths)
     filePipe = dockerConnection._BytesGeneratorPipe(iterTarStream)
     fileArchiveOutput = os.fdopen(
         os.open(
@@ -548,6 +572,113 @@ def _fdictStreamValidatedArchive(
     return dictCapture
 
 
+def _fdictStreamScopedArchive(
+    connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+    dictBounds, setExcludedPaths, dictScope, dictIdentityBefore,
+):
+    """Stream the archive the scope names: whole directory, or per path."""
+    if dictScope["sScope"] != agentCouncilSnapshotScope.S_SCOPE_GIT_TRACKED:
+        return _fdictStreamValidatedArchive(
+            connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+            dictBounds, setExcludedPaths)
+    return _fdictStreamTrackedArchive(
+        connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+        dictBounds, setExcludedPaths, dictIdentityBefore["dictEligible"])
+
+
+def _fdictStreamTrackedArchive(
+    connectionDocker, sContainerId, sRepoRoot, sSnapshotDirectory,
+    dictBounds, setExcludedPaths, dictEligible,
+):
+    """Fetch each eligible tracked path on its own; never the repo root.
+
+    One ``get_archive`` per eligible file or symlink, so nothing omitted
+    at observation time is streamed. Each member still passes every
+    check the whole-directory capture applies (path, exclusion, bounds,
+    symlink escape, duplicate), and the combined archive meets the same
+    post-read identity comparison. Parent directories are written as
+    bare directory entries so the runner copy-in has somewhere to put
+    each file; they are never counted as content or given an identity.
+    """
+    container = connectionDocker.fcontainerGetById(sContainerId)
+    sRootComponent = posixpath.basename(sRepoRoot)
+    dictCapture = _fdictNewCaptureAccount(dictBounds, setExcludedPaths)
+    fileArchiveOutput = os.fdopen(os.open(
+        os.path.join(sSnapshotDirectory,
+                     S_SNAPSHOT_ARCHIVE_BASENAME + _S_PARTIAL_SUFFIX),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb")
+    try:
+        with tarfile.open(fileobj=fileArchiveOutput,
+                          mode="w") as fileTarOutput:
+            setParents = set()
+            for sRelative in sorted(dictEligible):
+                _fnAddParentDirectories(fileTarOutput, sRelative, setParents)
+                _fnFetchOneTrackedMember(
+                    container, sRepoRoot, sRootComponent, sRelative,
+                    fileTarOutput, dictCapture)
+    finally:
+        fileArchiveOutput.close()
+    return dictCapture
+
+
+def _fdictNewCaptureAccount(dictBounds, setExcludedPaths):
+    """Return an empty capture accounting record."""
+    return {"setSeenPaths": set(), "dictOmissionReasons": {},
+            "listIncludedEntries": [], "iIncludedMemberCount": 0,
+            "iTotalContentBytes": 0, "dictBounds": dictBounds,
+            "setExcludedPaths": setExcludedPaths,
+            "setHonouredExclusions": set()}
+
+
+def _fnAddParentDirectories(fileTarOutput, sRelative, setParents):
+    """Write each missing parent directory of a member as a bare entry."""
+    listParts = sRelative.split("/")[:-1]
+    for iDepth in range(1, len(listParts) + 1):
+        sParent = "/".join(listParts[:iDepth])
+        if sParent in setParents:
+            continue
+        setParents.add(sParent)
+        infoDirectory = tarfile.TarInfo(name=sParent)
+        infoDirectory.type = tarfile.DIRTYPE
+        infoDirectory.mode = 0o755
+        fileTarOutput.addfile(infoDirectory)
+
+
+def _fnFetchOneTrackedMember(container, sRepoRoot, sRootComponent,
+                             sRelative, fileTarOutput, dictCapture):
+    """Fetch ONE eligible path; refuse anything but its single member.
+
+    The header arrives before any payload, so a path that became a
+    directory, or a file that grew past the bounds, is refused before
+    its contents are consumed: the race costs at most one member bound.
+    """
+    iterTarStream, _ = container.get_archive(
+        posixpath.join(sRepoRoot, sRelative))
+    try:
+        filePipe = dockerConnection._BytesGeneratorPipe(iterTarStream)
+        with tarfile.open(fileobj=filePipe, mode="r|") as fileTarSource:
+            listMembers = []
+            for infoMember in fileTarSource:
+                listMembers.append(infoMember.name)
+                if len(listMembers) > 1 or infoMember.isdir() or (
+                        infoMember.name != posixpath.basename(sRelative)):
+                    raise SnapshotRefusedError(
+                        f"Tracked path {sRelative!r} no longer fetches as "
+                        "the single file or link it was observed as; "
+                        "capture refused.")
+                infoMember.name = f"{sRootComponent}/{sRelative}"
+                _fnAppendValidatedMember(
+                    fileTarSource, fileTarOutput, infoMember,
+                    sRootComponent, dictCapture)
+    finally:
+        _fnCloseArchiveStream(iterTarStream)
+
+
+def _fnRaiseSnapshotRefusal(sReason):
+    """Raise the capture's own refusal type (handed to the scope module)."""
+    raise SnapshotRefusedError(sReason)
+
+
 def _fnAppendValidatedMember(
     fileTarSource, fileTarOutput, infoMember, sRootComponent, dictCapture,
 ):
@@ -557,7 +688,7 @@ def _fnAppendValidatedMember(
     )
     if sRelativePath is None:
         return
-    tExclusion = _ftFindExcludedComponent(sRelativePath)
+    tExclusion = ftFindExcludedComponent(sRelativePath)
     if tExclusion is not None:
         sOmissionPath, sReason = tExclusion
         dictCapture["dictOmissionReasons"].setdefault(sOmissionPath, sReason)
@@ -630,7 +761,7 @@ def _fsValidateMemberPath(sMemberName, sRootComponent, setSeenPaths):
     return sRelativePath
 
 
-def _ftFindExcludedComponent(sRelativePath):
+def ftFindExcludedComponent(sRelativePath):
     """Return ``(sOmissionPath, sReason)`` for a policy-excluded path.
 
     The omission is recorded at the SHALLOWEST excluded component, so a
@@ -946,7 +1077,7 @@ def fsComputePathIdentitiesDigest(dictPathIdentitiesRaw):
     dictFiltered = {
         sPath: dictPathIdentity
         for sPath, dictPathIdentity in sorted(dictPathIdentitiesRaw.items())
-        if _ftFindExcludedComponent(sPath) is None
+        if ftFindExcludedComponent(sPath) is None
     }
     return hashlib.sha256(
         json.dumps(dictFiltered, sort_keys=True).encode("utf-8"),
@@ -1004,7 +1135,10 @@ def _fdictWriteSnapshotManifest(
         "sCampaignId": sCampaignId,
         "sContainerId": sContainerId,
         "sProjectRepoPath": sRepoRoot,
-        "sCaptureMethod": "docker get_archive (daemon API read)",
+        "sCaptureMethod": (
+            "docker get_archive per eligible tracked path (daemon API read)"
+            if dictCapture.get("dictScopeRecord")
+            else "docker get_archive (daemon API read)"),
         "sCoherenceMethod": _S_COHERENCE_METHOD,
         "sCommitSha": dictIdentityBefore["sCommitSha"],
         "sDirtyStateDigest": dictIdentityBefore["sDirtyStateDigest"],
@@ -1048,7 +1182,10 @@ def _fdictWriteSnapshotManifest(
         ),
         "listIncludedEntries": dictCapture["listIncludedEntries"],
         "listOmissions": listOmissions,
+        "dictSnapshotScope": agentCouncilSnapshotScope.
+        fdictNormaliseSnapshotScope(dictCapture.get("dictSnapshotScope")),
     }
+    dictManifest.update(dictCapture.get("dictScopeRecord") or {})
     sManifestPath = os.path.join(
         sSnapshotDirectory, S_SNAPSHOT_MANIFEST_BASENAME,
     )
@@ -1150,6 +1287,8 @@ def fdictAssessSnapshotFeasibility(connectionDocker, sContainerId,
         "iTotalBytes": dictWeight["iTotalBytes"],
         "bTruncated": dictWeight["bTruncated"],
         "iMaxSnapshotMemberBytes": dictBounds["iMaxSnapshotMemberBytes"],
+        "iMaxSnapshotFileCount": dictBounds["iMaxSnapshotFileCount"],
+        "iMaxSnapshotTotalBytes": dictBounds["iMaxSnapshotTotalBytes"],
         "sReason": (
             "" if not listReasons else
             "This project cannot be snapshotted for a council because "

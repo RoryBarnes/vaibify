@@ -1,20 +1,23 @@
 """The credential-enablement gate defaults OFF and names every mismatch.
 
 Remediation R10: the runner backend reuses the researcher's provider
-subscription, so it is enabled only against a machine-readable evidence
-record the maintainer writes after personally running the live
-credential check on a paid account. These tests prove the gate's
-falsifiable half: no record, an unreadable record, a missing key, and
-every keyed mismatch evaluate to DISABLED with the reason named; a
-fully matching record enables; and the HTTP surface carries the truth —
-capabilities report unavailable with the reason, and start refuses 409.
+subscription, so it is enabled only by the researcher's consent plus a
+passed credential test (vaibify runs that test in-app since the
+2026-09-29 ruling; the maintainer's manual check is the fallback, and
+the legacy records it wrote are what this file exercises). These tests
+prove the gate's falsifiable half for those legacy records: no record,
+an unreadable record, a missing key, and every keyed mismatch evaluate
+to DISABLED with the reason named; a fully matching record enables; and
+the HTTP surface carries the truth — capabilities report unavailable
+with the reason, and start refuses 409. The consent and outcome
+transitions are ``testCouncilCredentialStore.py``.
 
-NO GREEN TEST HERE IMPLIES THE LIVE PROPERTIES HOLD. The live check
-(one runner, the copied access token only, a trivial headless turn, the
-project login intact afterwards, the token not rotated, the staged
-files gone, across a failure and a crash-recovery) is the maintainer's
-paid-account action; this file only proves the gate that reads its
-result.
+NO GREEN TEST HERE IMPLIES THE LIVE PROPERTIES HOLD. Whether a real
+subscription token survives being shared (one runner, the copied access
+token only, a trivial headless turn, the project login intact
+afterwards, the token not rotated, the staged files gone) is only
+knowable on a paid account; this file only proves the gate that reads
+the result.
 """
 
 import json
@@ -74,8 +77,8 @@ def test_no_record_means_disabled_with_the_reason_named(pathEvidence):
         agentCouncilCredentialGate.fdictEvaluateCredentialEnablement(
             "claude"))
     assert dictAnswer["bEnabled"] is False
-    assert "no credential-verification evidence record" in (
-        dictAnswer["sReason"])
+    assert "no credential test has been run" in dictAnswer["sReason"]
+    assert dictAnswer["sState"] == "noConsent"
 
 
 def test_unreadable_record_means_disabled(pathEvidence):
@@ -185,7 +188,7 @@ def test_capabilities_report_disabled_by_default_with_the_reason(
     assert response.status_code == 200, response.text
     dictCapabilities = response.json()
     assert dictCapabilities["bAvailable"] is False
-    assert "evidence record" in dictCapabilities["sReason"]
+    assert "no credential test has been run" in dictCapabilities["sReason"]
     listProviders = dictCapabilities["listProviders"]
     assert [dictProvider["sProvider"]
             for dictProvider in listProviders] == [
@@ -207,7 +210,7 @@ def test_start_refuses_409_while_the_gate_is_off(
             ],
         })
     assert response.status_code == 409, response.text
-    assert "evidence record" in response.json()["detail"]
+    assert "no credential test has been run" in response.json()["detail"]
 
 
 def test_codex_and_gemini_are_in_the_reviewed_provider_vocabulary():

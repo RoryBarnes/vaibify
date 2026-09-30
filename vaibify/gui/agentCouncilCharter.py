@@ -68,6 +68,7 @@ __all__ = [
     "fsComposeChatInstruction",
     "fsComposeTurnInstruction",
     "fsDescribeSnapshotScope",
+    "fsFormatByteCount",
 ]
 
 S_PHASE_PROPOSAL = "independentProposals"
@@ -778,7 +779,7 @@ def fsComposeRepairInstruction(listSchemaProblems):
 S_CHARTER_TEXT = _S_CHARTER_CLAUSES + "\n" + fsComposeExactResultSchema()
 
 
-def fsDescribeSnapshotScope(listExcludedPaths):
+def fsDescribeSnapshotScope(listExcludedPaths, dictManifest=None):
     """Return the sentence a participant needs about a PARTIAL snapshot.
 
     Empty for a whole-repository snapshot, so the ordinary case adds
@@ -790,9 +791,10 @@ def fsDescribeSnapshotScope(listExcludedPaths):
     available to it, and saying so is the only thing that keeps the
     absence from being read as evidence.
     """
+    sTracked = _fsDescribeTrackedScope(dictManifest or {})
     if not listExcludedPaths:
-        return ""
-    return (
+        return sTracked
+    return sTracked + (" " if sTracked else "") + (
         "SNAPSHOT SCOPE: this copy of the repository is PARTIAL. The "
         "researcher excluded the following file(s) because each is "
         "larger than a single snapshot member may be: "
@@ -801,6 +803,66 @@ def fsDescribeSnapshotScope(listExcludedPaths):
         "not available to you. Treat them as present-but-unreadable, "
         "never as absent, and never assert what they contain."
     )
+
+
+# The git-tracked scope's reasons, in the order the approved wording
+# (ruling 4, 2026-09-29) names them. The labels are that wording's.
+_TUPLE_TRACKED_OMISSION_REASONS = (
+    ("untracked", "untracked"),
+    ("ignored", "ignored"),
+    ("deletedInWorktree", "tracked but deleted in the working tree"),
+    ("notCheckedOut", "not checked out (skip-worktree)"),
+    ("policyExcluded", "excluded by vaibify policy (credential stores, "
+                       "agent instruction files, caches)"),
+)
+
+
+def fsFormatByteCount(iBytes):
+    """Return a byte count as a short human-readable size."""
+    fValue = float(iBytes)
+    for sUnit in ("bytes", "KB", "MB", "GB"):
+        if fValue < 1000 or sUnit == "GB":
+            return (f"{int(fValue)} {sUnit}" if sUnit == "bytes"
+                    else f"{fValue:.1f} {sUnit}")
+        fValue /= 1000
+    return f"{fValue:.1f} TB"
+
+
+def _fsDescribeTrackedScope(dictManifest):
+    """Return the approved git-tracked scope paragraph, or "".
+
+    Only the bounded summary reaches a participant — counts, sizes and
+    top-level groups, never the omitted file names, which can be
+    sensitive. Reasons with a count of zero are left out, and an
+    incomplete inventory says "or more".
+    """
+    if (dictManifest.get("dictSnapshotScope") or {}).get(
+            "sScope") != "gitTracked":
+        return ""
+    dictSummary = dictManifest.get("dictOmissionSummary") or {}
+    dictByReason = dictSummary.get("dictByReason") or {}
+    sMore = "" if dictManifest.get("bOmissionInventoryComplete") else (
+        " or more")
+    sReasons = "; ".join(
+        f"{sLabel}: {dictByReason[sReason]['iCount']}"
+        for sReason, sLabel in _TUPLE_TRACKED_OMISSION_REASONS
+        if (dictByReason.get(sReason) or {}).get("iCount"))
+    sGroups = ", ".join(
+        f"{dictGroup['sDirectory']} ({dictGroup['sReason']}, "
+        f"{dictGroup['iCount']} files, "
+        f"{fsFormatByteCount(dictGroup['iBytes'])})"
+        for dictGroup in (dictSummary.get("listGroups") or [])[:5])
+    return (
+        "This copy of the project contains the eligible files git "
+        "tracks, as they are in the working tree (including uncommitted "
+        "edits to tracked files), subject to the omissions listed below. "
+        "Untracked and git-ignored files are not included. Omitted: "
+        f"{dictSummary.get('iOmittedCount', 0)}{sMore} files "
+        f"({fsFormatByteCount(dictSummary.get('iOmittedBytes', 0))}), by "
+        f"reason — {sReasons}. Largest omitted groups: {sGroups}. Results "
+        "that would have come from omitted files are not available to "
+        "you. Do not assume their contents. Say what you would need "
+        "regenerated or provided.")
 
 
 def _flistComposeStandingSections(dictCampaign, dictParticipant):

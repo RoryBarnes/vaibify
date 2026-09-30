@@ -63,7 +63,13 @@ council runner the refresh token.
 
 1. Open a containerized project in the dashboard.
 2. Click **Agent Council** in the toolbar (between the project name and
-   the Run menu).
+   the Run menu). The first time, one or two questions come first:
+   if the project is too large to copy in full, a size window offers
+   to copy only the files git tracks
+   ([Projects too large to copy in full](#projects-too-large-to-copy-in-full));
+   and if this project's image has not been used for a council on this
+   computer, a consent window asks to run a short credential test
+   ([The first council on a computer](#the-first-council-on-a-computer)).
 3. Choose **Plan a change** — or **Implement a plan**, which is
    enabled once a planning council has an accepted plan to seed it.
 4. Write the question, add at least two participants covering two
@@ -280,6 +286,82 @@ There is no API-key fallback. A future direct-API backend would be a
 separate execution engine with its own tool, credential, accounting, and
 containment design; the runner adapters do not silently switch to it.
 
+## The first council on a computer
+
+A council copies this project's provider login into each disposable
+runner, so the first council with a project's image on a computer asks
+first. The window, **First council with this project's image on this
+computer**, lists the providers this project is logged in to; tick the
+ones councils may use and choose **Run the test and continue**. Codex
+and Gemini ask for the model id to test with, because vaibify cannot
+list their models.
+
+vaibify then runs a short credential test against the project's image,
+by its immutable id, in a disposable runner — the same machinery a
+council uses:
+
+1. a copyable login is present;
+2. a copy of the access token only (never the refresh token)
+   authenticates one trivial, paid turn;
+3. the project's own login is still present and unchanged (vaibify does
+   not spend a request to prove it still works);
+4. the login's token was not rotated;
+5. the copied token is gone from this computer and the runner was
+   destroyed;
+6. a turn with a model that does not exist is reported as a failure,
+   and checks 4 and 5 still hold;
+7. a runner killed part-way through a turn is cleaned up, and checks 4
+   and 5 still hold.
+
+Each provider costs about two paid requests. Nothing is retried; a turn
+that does not answer within its timeout ends the test as *did not
+finish*. Only a passed test enables the provider, and your consent
+applies to **every project on this computer that uses this image**.
+
+**Credential tests panel.** The council's first screen links to
+**Credential tests**, which shows each provider's consent, its latest
+test (passed on a date, failed at a named check, or did not finish),
+and the running projects that share the image. **Re-run test** suspends
+the current pass until the new test passes — a test that does not
+finish leaves the provider off. **Withdraw** takes effect at once:
+turns already running finish, and no later turn, for any project using
+this image, is given a copy of the login until you consent and a test
+passes again. `vaibify doctor` reports the same records and never
+changes them.
+
+What the consent can guarantee is narrow and stated honestly: it is
+recorded only from an authenticated vaibify browser session holding the
+project's lease. That excludes agents inside containers and local
+processes without your browser credential; it is not proof that a
+person clicked.
+
+## Projects too large to copy in full
+
+Each participant works on its own copy of the project, held in memory on
+this computer. A project that keeps generated output inside its
+repository can be far over the snapshot's limits even when its code is
+small, because the whole-directory copy includes files git ignores.
+
+When that happens and the files git tracks would fit, the council button
+opens **This project is too large to copy in full for a council**. It
+shows why (this project's size against the limits), the option — **Copy
+only the files git tracks**, with their count, size, and how many have
+uncommitted edits — and an expandable list of **Files that will be
+missing**, grouped by top-level folder and reason (untracked, ignored,
+deleted in the working tree, not checked out, excluded by vaibify
+policy). Tracked files are copied as they are in the working tree,
+uncommitted edits included. A merge conflict, a submodule in the index,
+or a tracked directory replaced by a symbolic link refuses the scope,
+naming the paths — a linked directory would otherwise have its target's
+files copied in place of the tracked ones.
+
+The choice is remembered for the project and shown in the convene form,
+where it can be changed; every start re-checks it against the current
+tree. Participants are told what was left out — counts, sizes and
+top-level folders, never file names — and that they must not assume the
+contents of omitted files. In this scope a new untracked output file
+does not mark a finished council stale; an edit to a tracked file does.
+
 ## Credential-risk disclosure
 
 The runner backend reuses the provider account already configured for
@@ -296,6 +378,14 @@ language before you convene:
 > copy is destroyed with the container, but **destroying the copy does
 > not revoke the credential** — revoke at the provider if a run is
 > compromised.
+
+The consent window and the launch form both add:
+
+> While a council runs, each participant holds a copy of your access
+> token. A participant manipulated by something it reads could read that
+> copy. The token expires and cannot renew itself, but until it expires
+> it works. This test shows the sharing works as designed; it does not
+> make that risk zero.
 
 Exposure is narrowed: one provider's token per runner (never the shared
 store), the shortest-lived credential that works, and egress restricted

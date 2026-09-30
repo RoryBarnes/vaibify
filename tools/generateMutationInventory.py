@@ -299,6 +299,15 @@ DICT_PRIMITIVE_ACCESS = {
     # program table. It replaced a bash while-loop the caller
     # assembled and ran through the general exec primitive.
     "fdictFetchWorktreeIdentities": S_ACCESS_TYPED_READ,
+    # The council's git-tracked snapshot scope (2026-09-29): the declared
+    # ``gitTrackedIdentities`` program joins two ``git ls-files``
+    # enumerations and lstats and hashes each tracked path; the
+    # declared ``gitUntrackedInventory`` program lists untracked and
+    # ignored files with their sizes, bounded. Both on the same terms as
+    # the identity read above: the caller varies only the repo path
+    # literal, and neither program writes anything.
+    "fdictFetchTrackedIdentities": S_ACCESS_TYPED_READ,
+    "fdictFetchUntrackedInventory": S_ACCESS_TYPED_READ,
     # The three container-scope diagnostic probes. Typed reads on the
     # same terms as their neighbours -- each names one program from the
     # fixed table and supplies only string arguments -- and each one

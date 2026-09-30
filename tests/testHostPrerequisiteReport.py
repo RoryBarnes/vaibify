@@ -15,9 +15,9 @@ Two properties are load-bearing and easy to undo. The report must not
 GATE: none of these is a fault, and a doctor that failed on an unusual
 Docker context would put a red line in front of everyone running
 rootless Docker. And it must never offer to SATISFY the council's
-evidence record, whose whole purpose is that only the maintainer can
-write one -- an offer there would defeat the gate rather than report
-it.
+credential consent, which is given only from an authenticated browser
+session holding the container's lease -- a doctor that wrote consent
+would defeat the gate rather than report it.
 """
 
 from unittest.mock import patch
@@ -94,26 +94,26 @@ def test_the_connection_and_the_report_read_the_same_endpoint():
 
 
 def test_the_council_evidence_is_reported_and_never_graded_a_failure():
-    """A machine without the record is not a broken machine.
+    """A machine without consent is not a broken machine.
 
-    The evidence record is written by the maintainer alone, after a
-    live credential check on a paid account. Every other researcher's
-    machine legitimately lacks it, so grading it would make the report
-    fail for almost everyone who runs it -- and a report that always
-    fails is a report nobody reads.
+    Consent and a passed credential test exist only once the researcher
+    has convened a council and agreed to the test in the browser. Most
+    machines that run the doctor have never done that, so grading it
+    would make the report fail for almost everyone who runs it -- and a
+    report that always fails is a report nobody reads.
     """
     with patch(
         "vaibify.gui.agentCouncilCredentialGate."
         "fdictEvaluateCredentialEnablement",
         return_value={
             "bEnabled": False,
-            "sReason": "no credential-verification evidence record exists",
+            "sReason": "no credential test has been run for this provider",
             "dictRecord": None,
         },
     ):
         resultCouncil = preflightChecks.fpreflightCouncilCredentialEvidence()
     assert resultCouncil.sLevel == "info"
-    assert "evidence record" in resultCouncil.sMessage
+    assert "no credential test has been run" in resultCouncil.sMessage
     assert not resultCouncil.sRemediation
 
 

@@ -8069,6 +8069,70 @@ details.proof-legend-section {
     font-size: 0.9em;
 }
 
+/* The credential consent modal, test progress and Credential tests
+   panel (scriptCouncilConsent.js). The residual risk is stated in the
+   same weight everywhere it appears. */
+.council-residual-risk {
+    border-left: 3px solid var(--color-orange);
+    padding-left: 10px;
+    color: var(--text-secondary);
+}
+
+.council-consent-providers {
+    list-style: none;
+    padding-left: 0;
+}
+
+.council-consent-providers li {
+    margin: 6px 0;
+}
+
+.council-consent-model {
+    margin-left: 12px;
+}
+
+.council-consent-note {
+    color: var(--text-muted);
+    font-size: 0.88em;
+}
+
+.council-consent-warning {
+    color: var(--warning-color, #b8860b);
+}
+
+.council-consent-details summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.council-consent-job ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.council-check-failed,
+.council-check-incomplete {
+    color: var(--warning-color, #b8860b);
+}
+
+.council-credential-panel {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.council-credential-panel th,
+.council-credential-panel td {
+    text-align: left;
+    padding: 4px 8px;
+    vertical-align: top;
+}
+
+.council-credential-link {
+    margin-top: 12px;
+    color: var(--text-muted);
+    font-size: 0.88em;
+}
+
 .council-disclosure {
     background: var(--bg-error-tint);
     border: 1px solid var(--color-orange);
@@ -9118,3 +9182,19 @@ body.council-workspace-open #mainLayout {
     margin-top: 12px;
 }
 
+
+/* The Agent Council size modal (scriptCouncilSnapshotScope.js). */
+.council-omission-group summary,
+.council-missing-files summary {
+    cursor: pointer;
+}
+
+.council-omission-paths {
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 0.88em;
+}
+
+.council-snapshot-scope-line {
+    margin: 8px 0;
+}

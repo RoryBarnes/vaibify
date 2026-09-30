@@ -110,6 +110,25 @@ class MockDockerCouncil:
             "sImageIdentity": S_IMAGE_IDENTITY,
         }]
 
+    def fdictFetchTrackedIdentities(self, sContainerId, sRepositoryPath):
+        """Model a repository whose every byte is tracked.
+
+        The git-tracked snapshot scope then sheds nothing, so a test
+        that makes the repository too large still meets a wall rather
+        than an offer — the premise those tests were written under.
+        """
+        return {
+            "bSuccess": True, "sReason": "", "sHeadSha": "fixturecommit0001",
+            "sPorcelainDigest": "fixtureporcelain0001", "iChangedCount": 0,
+            "dictEntries": {"project.json": {
+                "sMode": "100644", "listStages": [0], "bSkipWorktree": False,
+                "sType": "file", "sIdentity": "0" * 40,
+                "iSizeBytes": self.dictRepositoryWeight["iTotalBytes"]}}}
+
+    def fdictFetchUntrackedInventory(self, sContainerId, sRepositoryPath):
+        return {"bSuccess": True, "sReason": "", "bComplete": True,
+                "listEntries": []}
+
     def fbaFetchCredentialFile(self, sContainerId, sPath):
         return self.fbaFetchFile(sContainerId, sPath)
 
@@ -219,7 +238,8 @@ class _GatedFakeConnection:
 def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
                                sProjectRepoPath, sCampaignId,
                                sSnapshotStoreRoot=None, dictBounds=None,
-                               listExcludedPaths=None):
+                               listExcludedPaths=None,
+                               dictSnapshotScope=None):
     """Write a minimal sealed snapshot the way the real capture would."""
     sDirectory = os.path.join(sSnapshotStoreRoot, sCampaignId, "snapshot")
     os.makedirs(sDirectory, exist_ok=True)
@@ -236,7 +256,8 @@ def _fdictWriteFixtureSnapshot(connectionDocker, sContainerId,
             "sCommitSha": "fixturecommit0001",
             "sDirtyStateDigest": "fixturedigest0001",
             "sBaselineHeadSha": "fixturecommit0001",
-            "sBaselinePorcelainDigest": "fixtureporcelain0001"}))
+            "sBaselinePorcelainDigest": "fixtureporcelain0001",
+            "dictSnapshotScope": dictSnapshotScope}))
     return {"sSnapshotSha256": "fixture-snapshot-hash"}
 
 

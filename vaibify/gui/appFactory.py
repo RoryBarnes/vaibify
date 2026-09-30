@@ -197,6 +197,7 @@ def _fappBuildApplication(dictConfig):
     # behind, and reloads accepted campaigns from durable app-data,
     # before any new council starts.
     _fnRegisterCouncilLifecycle(app)
+    _fnRegisterCredentialTestSweep(app)
     _fnRegisterHubLifecycle(app, dictCtx, dictConfig)
     _fnRegisterBackgroundTasks(app, dictCtx)
     routeScope.fnValidateRouteScopesOrRaise(app)
@@ -459,6 +460,73 @@ def _fnReconcileCouncilRunners(app):
         logger.warning(
             "startup council egress sweep could not settle: %s",
             dictSwept["listIndeterminateResources"])
+
+
+def _fnRegisterCredentialTestSweep(app):
+    """Settle credential tests a dead hub left, at startup and after.
+
+    At startup: jobs a dead hub left running, and any council token
+    copy no live process holds. After startup, the copy sweep repeats on
+    the reaper's cadence, because a PEER hub can die at any time and
+    nothing else would ever remove the copy it was holding.
+    """
+
+    async def fnSweepCredentialTestsOnStartup(app):
+        await asyncio.to_thread(
+            _fnSweepOrphanedCredentialTests,
+            _fdockerCreateCouncilClientOrNone())
+
+    async def fnStartStagedCopySweep(app):
+        app.state.taskStagedCopySweep = asyncio.create_task(
+            _fnStagedCopySweepLoop(F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            name="vaibify-council-staged-copy-sweep")
+
+    async def fnStopStagedCopySweep(app):
+        await serverLifespan.fnCancelBackgroundTask(
+            app, "taskStagedCopySweep")
+
+    app.state.listLifespanStartup.append(fnSweepCredentialTestsOnStartup)
+    serverLifespan.fnRegisterLifespanTask(
+        app, fnStartStagedCopySweep, fnStopStagedCopySweep)
+
+
+async def _fnStagedCopySweepLoop(fInterval):
+    """Remove council token copies no live process holds, forever.
+
+    One failed pass is logged and the loop continues, like the chat
+    reaper beside it.
+    """
+    from . import agentCouncilStagedCopies
+    while True:
+        try:
+            await asyncio.sleep(fInterval)
+            await asyncio.to_thread(
+                agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning("council staged-copy sweep iteration failed",
+                           exc_info=True)
+
+
+def _fnSweepOrphanedCredentialTests(dockerCouncil):
+    """Settle credential tests whose hub died; spare a live peer's.
+
+    Runs before the labeled-runner reconcile and with or without a
+    daemon: a job left ``running`` by a dead hub keeps its provider
+    suspended until it is recorded ``incomplete``, and that record needs
+    no Docker. Its runners and egress are removed when a daemon answers.
+    """
+    from . import agentCouncilCredentialTestRecovery as moduleRecovery
+    try:
+        dictReport = moduleRecovery.fdictSweepOrphanedCredentialTests(
+            dockerCouncil)
+    except Exception:
+        logger.warning("credential-test restart sweep failed", exc_info=True)
+        return
+    if dictReport["listSwept"]:
+        logger.info("recorded %d interrupted credential test(s) as "
+                    "incomplete", len(dictReport["listSwept"]))
 
 
 def _flistSelectSweepableCampaigns(dictStore):

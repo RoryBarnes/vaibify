@@ -329,6 +329,12 @@ SET_RETRYABLE_TURN_FAILURE_REASONS = frozenset({
     # dead proxy, a mid-restart Docker VM. The network healing is
     # exactly the case a re-run serves (2026-08-27).
     "networkUnreachable",
+    # The researcher's consent refused the turn's credential admission.
+    # A retry is the researcher's own action after consenting and
+    # re-testing, and the retry route re-checks the credential gate
+    # before any runner exists, so admitting it here spends nothing
+    # the researcher has not just authorized.
+    "credentialAdmissionRefused",
 })
 
 I_MAX_CAMPAIGN_NAME_LENGTH = 80
