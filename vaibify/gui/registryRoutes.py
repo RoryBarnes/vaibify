@@ -699,6 +699,7 @@ def _fnRegisterRemoveProject(app, dictCtx):
     """Register DELETE /api/registry/{sName}."""
 
     @app.delete("/api/registry/{sName}")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRemoveProject(sName: str):
         from vaibify.config.registryManager import (
             fnRemoveProject,
