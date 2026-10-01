@@ -536,7 +536,8 @@ async def _fnFinalizeRun(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )
     if sWorkflowPath:
-        dictOutcome = _fdictPersistRunResultsToState(
+        dictOutcome = await asyncio.to_thread(
+            _fdictPersistRunResultsToState,
             connectionDocker, sContainerId, dictState, dictWorkflow,
             sWorkflowPath,
         )
@@ -549,8 +550,8 @@ async def _fnFinalizeRun(
     dictCompleted["bRunMetadataPersisted"] = dictOutcome["bPersisted"]
     dictCompleted["sRunMetadataDetail"] = dictOutcome["sDetail"]
     if stateWriter is not None:
-        bTerminalFlushed = stateWriter.fbFlushTerminalStateAcknowledged(
-            dictCompleted,
+        bTerminalFlushed = await asyncio.to_thread(
+            stateWriter.fbFlushTerminalStateAcknowledged, dictCompleted,
         )
     else:
         with lockState:

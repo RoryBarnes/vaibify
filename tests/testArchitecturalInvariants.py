@@ -4255,7 +4255,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # predicates are close to half the module and change for entirely
     # different reasons from lifespan plumbing — and splitting THAT is
     # the conversation this entry is deferring, not avoiding.
-    "serverLifespan.py": 852,
+    # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
+    # worker threads, and the reaper reads the probe's snapshot.
+    "serverLifespan.py": 885,
     # NEW at 819 (2026-10-01): the credential test publishes only
     # sanitized sentences (fsSanitizeJobDetail) and records an
     # unexpected fault by type; one cohesive job module.
@@ -6512,7 +6514,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # projects' runs. The runner's command assembly is its job.
     # 1796 -> 1818 (2026-09-30): the attestation rerun's run mode, and
     # Verify using the run's own variables.
-    "pipelineRunner.py": 1818,
+    # 1818 -> 1843 (2026-10-01): preflight, the warning probes and the
+    # teardown joins run on worker threads, bounded.
+    "pipelineRunner.py": 1843,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6540,7 +6544,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reads it, which is this module's one responsibility.
     # +2 (2026-09-24): the live-run readers ask the per-project run
     # slots instead of a single per-container task.
-    "pipelineState.py": 1063,
+    # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
+    "pipelineState.py": 1068,
     "dataLoaders.py": 1222,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer

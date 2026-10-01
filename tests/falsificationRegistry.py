@@ -4123,10 +4123,10 @@ def _fdictEntry(sRel):
         old='''    def fbGuardedWorkLive(sName):
         return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            or fbPipelineRunning(sName)
         )''',
         new='''    def fbGuardedWorkLive(sName):
-        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
+        return fbPipelineRunning(sName)''',
     ),
     # Case 38 (holder half): neutralizing the holder comparison admits
     # any holder under a merely-present record.
@@ -4673,10 +4673,10 @@ def _fdictEntry(sRel):
         old='''    def fbGuardedWorkLive(sName):
         return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            or fbPipelineRunning(sName)
         )''',
         new='''    def fbGuardedWorkLive(sName):
-        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
+        return fbPipelineRunning(sName)''',
     ),
     # Case 20, slice-5 half (an admitted agent request pins the record
     # for its FULL duration through the in-flight bracket):
@@ -12039,7 +12039,8 @@ def _fdictEntry(sRel):
         # edit the reload detector accepted mid-run.
         old=(
             '    if sWorkflowPath:\n'
-            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
             '            connectionDocker, sContainerId, dictState,'
             ' dictWorkflow,\n'
             '            sWorkflowPath,\n'
@@ -12053,7 +12054,8 @@ def _fdictEntry(sRel):
             '            _json.dumps(dictWorkflow, indent=2)'
             '.encode("utf-8"),\n'
             '        )\n'
-            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
             '            connectionDocker, sContainerId, dictState,'
             ' dictWorkflow,\n'
             '            sWorkflowPath,\n'
@@ -25057,5 +25059,138 @@ def _fdictEntry(sRel):
         source='vaibify/config/processLiveness.py',
         old='    datetimeNow = datetime.datetime.now(datetime.timezone.utc)\n    return datetimeNow - ',
         new='    datetimeNow = datetime.datetime.now().replace(\n        tzinfo=datetime.timezone.utc)\n    return datetimeNow - ',
+    ),
+    # --- A pipeline run's container I/O and the idle watchdog's daemon
+    # probes run on worker threads, never on the event loop ---
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightChecksRunOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    return await asyncio.to_thread(\n'
+            '        _flistValidateStepsBlocking, connectionDocker, sContainerId,\n'
+            '        dictWorkflow, dictVariables, iStartStep, setRunStepIndices,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _flistValidateStepsBlocking(\n'
+            '        connectionDocker, sContainerId,\n'
+            '        dictWorkflow, dictVariables, iStartStep, setRunStepIndices,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightWarningsAreCollectedOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    listPreflightWarnings = await asyncio.to_thread(\n'
+            '        _flistCollectPreflightWarnings,\n'
+            '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
+            '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheRunTeardownJoinsAreOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '        await asyncio.to_thread(\n'
+            '            _fnJoinRunBackgroundThreads, threadHeartbeat, stateWriter.fnStop,\n'
+            '        )\n'
+        ),
+        new=(
+            '        _fnJoinRunBackgroundThreads(threadHeartbeat, stateWriter.fnStop)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheRunTeardownJoinsAreBounded',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    fnStopWriter(fJoinTimeoutSeconds=F_BACKGROUND_THREAD_JOIN_SECONDS)\n'
+        ),
+        new=(
+            '    fnStopWriter()\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheCompletionMergeRunsOffTheEventLoop',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
+            '            connectionDocker, sContainerId, dictState, dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState, dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheAcknowledgedTerminalFlushRunsOffTheEventLoop',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '        bTerminalFlushed = await asyncio.to_thread(\n'
+            '            stateWriter.fbFlushTerminalStateAcknowledged, dictCompleted,\n'
+            '        )\n'
+        ),
+        new=(
+            '        bTerminalFlushed = stateWriter.fbFlushTerminalStateAcknowledged(\n'
+            '            dictCompleted,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheOwnedPipelineProbeRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            dictPipelineRunning = await asyncio.to_thread(\n'
+            '                _fdictSnapshotPipelineRunningByOwnedName, app, dictCtx,\n'
+            '            )\n'
+        ),
+        new=(
+            '            dictPipelineRunning = (\n'
+            '                _fdictSnapshotPipelineRunningByOwnedName(app, dictCtx)\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheSleepPreventionSweepRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            await asyncio.to_thread(\n'
+            '                _fnSweepSleepPreventionForApp, app, dictCtx,\n'
+            '            )\n'
+        ),
+        new=(
+            '            _fnSweepSleepPreventionForApp(app, dictCtx)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheSelfExitDecisionRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            if await asyncio.to_thread(\n'
+            '                pipelineServer._fbHubShouldSelfExit,\n'
+            '                app, dictCtx, fLiveTimeout,\n'
+            '            ):\n'
+        ),
+        new=(
+            '            if pipelineServer._fbHubShouldSelfExit(\n'
+            '                app, dictCtx, fLiveTimeout,\n'
+            '            ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testAnOwnerMissingFromTheSnapshotIsNotReaped',
+        source='vaibify/gui/serverLifespan.py',
+        old='        return dictPipelineRunningByName.get(sName, True)\n',
+        new='        return dictPipelineRunningByName.get(sName, False)\n',
     ),
 ]

@@ -553,8 +553,31 @@ def _flistRunningIdsForName(dictCtx, sName):
     ]
 
 
-def _fnReapIdleOwnershipsForApp(app, dictCtx):
+def _fdictSnapshotPipelineRunningByOwnedName(app, dictCtx):
+    """Ask, for every owner record, whether its pipeline is mid-run.
+
+    The answer needs container round trips, so the watchdog runs this
+    on a worker thread and hands the result to the reaper, which stays
+    on the event loop with the owner map. A name absent from the
+    snapshot (claimed after it was taken) reads as busy there.
+    """
+    if not getattr(app.state, "bReapOwnerships", False):
+        return {}
+    dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
+    return {
+        sName: _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        for sName in list(dictContainerOwners.keys())
+    }
+
+
+def _fnReapIdleOwnershipsForApp(
+    app, dictCtx, dictPipelineRunningByName=None,
+):
     """Release every idle, past-grace owner record that holds no live run.
+
+    ``dictPipelineRunningByName`` is the watchdog's pre-fetched answer
+    (:func:`_fdictSnapshotPipelineRunningByOwnedName`); without it the
+    pipeline probe runs here, as direct callers expect.
 
     Only hubs enable this (``bReapOwnerships``); the single-container
     viewer's served record carries no host flock and dies with the
@@ -583,10 +606,15 @@ def _fnReapIdleOwnershipsForApp(app, dictCtx):
     from . import terminalContainment
     dictContainerOwners = getattr(app.state, "dictContainerOwners", {})
 
+    def fbPipelineRunning(sName):
+        if dictPipelineRunningByName is None:
+            return _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+        return dictPipelineRunningByName.get(sName, True)
+
     def fbGuardedWorkLive(sName):
         return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            or fbPipelineRunning(sName)
         )
 
     def fbReapIsVetoed(sName):
@@ -731,12 +759,18 @@ async def _fnIdleShutdownWatchdogLoop(app, dictCtx, fInterval, fTimeout):
     while True:
         try:
             await asyncio.sleep(fInterval)
+            dictPipelineRunning = await asyncio.to_thread(
+                _fdictSnapshotPipelineRunningByOwnedName, app, dictCtx,
+            )
             _fnPruneSpawnedChildrenForApp(app)
-            _fnReapIdleOwnershipsForApp(app, dictCtx)
-            _fnSweepSleepPreventionForApp(app, dictCtx)
+            _fnReapIdleOwnershipsForApp(app, dictCtx, dictPipelineRunning)
+            await asyncio.to_thread(
+                _fnSweepSleepPreventionForApp, app, dictCtx,
+            )
             from . import pipelineServer
             fLiveTimeout = _ffCurrentIdleTimeout(app, fTimeout)
-            if pipelineServer._fbHubShouldSelfExit(
+            if await asyncio.to_thread(
+                pipelineServer._fbHubShouldSelfExit,
                 app, dictCtx, fLiveTimeout,
             ):
                 logger.warning(
