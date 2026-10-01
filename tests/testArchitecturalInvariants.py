@@ -5525,7 +5525,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2878 -> 2909 (2026-09-30): fsWorkflowLoadedFromPath, the one
     # reader of the loaded-from key; the loader's refusal of command
     # lists no run executes.
-    "workflowManager.py": 2909,
+    # 2909 -> 2918 (2026-10-01): the loader calls the typed-field check
+    # (workflowFieldTypes) before and after the state merge.
+    "workflowManager.py": 2918,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

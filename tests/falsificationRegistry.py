@@ -24773,4 +24773,35 @@ def _fdictEntry(sRel):
             '        return el.innerHTML;\n'
         ),
     ),
+    # --- Container-writable project data reaches the page as data ---
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testAHostileVerificationStateNeverBecomesAnAttribute',
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old='        return SET_VERIFICATION_STATE_CLASSES.has(sState)\n            ? sState : "untested";\n',
+        new='        return sState || "untested";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testAHostileRuntimeLimitCannotLeaveTheValueAttribute',
+        source='vaibify/gui/static/scriptModals.js',
+        old='        var sPrefill = VaibifyUtilities.fsFiniteNumberText(\n            dictOptions.fCurrentBudget || fSuggestion, "");\n',
+        new='        var sPrefill = dictOptions.fCurrentBudget || fSuggestion || "";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testTheContainerProducedDiagramIsAnImageNotInlineMarkup',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        var elDag = _felBuildDagImage(sSvgText, dScale);\n        if (elDag) elContainer.appendChild(elDag);\n',
+        new='        elContainer.innerHTML = sSvgText;\n',
+    ),
+    Falsification(
+        nodeid='tests/testWorkflowFieldTypesAreValidatedAtLoad.py::testAHostileNumericFieldIsRefusedByNameAtLoad',
+        source='vaibify/gui/workflowManager.py',
+        old='    sUntyped = fsDescribeUntypedField(dictWorkflow)\n    if sUntyped:\n        return sUntyped\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testWorkflowFieldTypesAreValidatedAtLoad.py::testAHostileStateMergedFromStateJsonIsRefusedAfterTheMerge',
+        source='vaibify/gui/workflowManager.py',
+        old='    sUntypedState = fsDescribeUntypedField(dictWorkflow)\n    if sUntypedState:\n        raise ValueError(\n            f"Invalid state for {sWorkflowPath}: {sUntypedState}"\n        )\n',
+        new='',
+    ),
 ]

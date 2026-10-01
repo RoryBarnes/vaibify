@@ -26,6 +26,19 @@ var VaibifyUtilities = (function () {
             .replace(/'/g, "&#39;");
     }
 
+    function fsFiniteNumberText(value, sFallback) {
+        // A number bound for an HTML attribute or form value. A
+        // project field the container can write may hold anything, so
+        // it is coerced to a number and refused (-> sFallback) unless
+        // finite; markup can never survive the coercion.
+        if (value === null || value === undefined || value === "" ||
+            typeof value === "boolean") {
+            return sFallback;
+        }
+        var fValue = Number(value);
+        return Number.isFinite(fValue) ? String(fValue) : sFallback;
+    }
+
     /* --- Level-cell vocabulary (single owner) ---
        Every attained favicon and every L1/L2/L3 level cell in the
        GUI is built here, so the step rows, the Project block, the
@@ -399,6 +412,7 @@ var VaibifyUtilities = (function () {
 
     return {
         fnEscapeHtml: fnEscapeHtml,
+        fsFiniteNumberText: fsFiniteNumberText,
         fbPlatformIsMacintosh: fbPlatformIsMacintosh,
         fsNameSelectionModifierKey: fsNameSelectionModifierKey,
         fsNameCopyShortcut: fsNameCopyShortcut,

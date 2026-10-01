@@ -10,6 +10,7 @@ from collections import OrderedDict
 
 from vaibify.config.registryManager import fbIsHostProject
 from . import stateManager, workflowMigrations
+from .workflowFieldTypes import fsDescribeUntypedField
 from .workflowMigrations import (
     fbMigrateModifiedFilesToRepoRelative,
     fdictMigrateTestFormat,
@@ -453,6 +454,11 @@ def fdictLoadWorkflowFromContainer(
         connectionDocker, sContainerId, dictWorkflow, sRepoPath,
         sWorkflowPath,
     )
+    sUntypedState = fsDescribeUntypedField(dictWorkflow)
+    if sUntypedState:
+        raise ValueError(
+            f"Invalid state for {sWorkflowPath}: {sUntypedState}"
+        )
     fbDeriveUnnecessaryVerification(dictWorkflow)
     fnAttachStepLabels(dictWorkflow)
     fnAttachComputedTrackedPaths(dictWorkflow)
@@ -818,6 +824,9 @@ def fsDescribeValidationFailure(dictWorkflow):
         sUnexecuted = _fsDescribeUnexecutedCommandField(sLabel, dictStep)
         if sUnexecuted:
             return sUnexecuted
+    sUntyped = fsDescribeUntypedField(dictWorkflow)
+    if sUntyped:
+        return sUntyped
     from .pipelineUtils import (
         fsDescribeRemoteDataPathConflict, fsDescribeStepIdConflict,
     )

@@ -102,6 +102,12 @@ The defenses are designed to contain:
   configured provider's session was exposed".
 - **Privilege escalation** -- the container runs as an unprivileged user
   with no `sudo` access.
+- **Markup injected through project data** -- `project.json`,
+  `state.json`, directory names and the dependency diagram are all
+  writable from inside the container. The loader refuses a numeric or
+  state field of the wrong type by name, every frontend module escapes
+  with one quote-safe function, and the diagram is shown as an image, so
+  none of them can add an element or an attribute to the dashboard.
 
 Vaibify does **not** defend against kernel-level container escapes. For
 high-security workloads, run Vaibify inside a virtual machine or use a
