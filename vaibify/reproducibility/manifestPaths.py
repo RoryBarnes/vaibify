@@ -15,13 +15,15 @@ Path safety:
 
 * All inputs are workflow-declared user-controlled strings. ``..``
   traversal is preserved in the output so the downstream
-  ``_fnRejectPathEscape`` guard in ``manifestWriter`` sees and rejects
-  it; the helpers do not collapse traversal to a benign-looking path.
+  ``_fnRejectAbsolutePath`` / ``_fnRejectAdapterFindings`` guards in
+  ``manifestWriter`` see and reject it; the helpers do not collapse
+  traversal to a benign-looking path.
 * Container-absolute paths under ``/workspace/`` are stripped to
   repo-relative (the canonical legacy form). Other absolute paths have
   their leading ``/`` stripped (matching ``stateContract`` behaviour);
-  callers that go on to hash the result rely on the ``..`` and
-  symlink guards to catch any actual escape.
+  callers that go on to hash the result rely on the ``..`` guard,
+  and on out-of-root symlinks being skipped per file, to catch any
+  actual escape.
 """
 
 import posixpath
@@ -60,8 +62,9 @@ def fsToRepoRelative(sPath):
     Strips a leading ``/workspace/`` so host callers can safely join
     the result against a host workspace root. Other absolute paths
     have their leading ``/`` stripped; the manifest writer's
-    ``_fnRejectPathEscape`` and ``_fnRejectSymlinkComponent`` guards
-    catch any actual escape downstream.
+    ``_fnRejectAbsolutePath`` / ``_fnRejectAdapterFindings`` guards,
+    and its per-file skip of out-of-root symlinks, catch any actual
+    escape downstream.
     """
     if not sPath:
         return ""

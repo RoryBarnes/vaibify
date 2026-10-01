@@ -302,7 +302,9 @@ DICT_EMPTY_PROJECT_IDENTITY = {
 # and would spend the researcher's subscription proving it. Mirrors
 # the provider classification constants in ``agentCouncilProviders``
 # (S_FAILURE_*), pinned by testTheRetryWhitelistMirrorsTheProvider
-# Vocabulary — this module stays pure, so the strings live here.
+# Vocabulary — this module stays pure, so the strings live here. It
+# also carries agentCouncilCredentialStore.S_FAILURE_CLASS_ADMISSION_REFUSED,
+# pinned by test_the_refusal_class_is_on_the_retry_whitelist.
 # The kind vocabulary lives in the charter (the import leaf) and is
 # re-exported here as domain vocabulary. Old records carry no kind and
 # read as planning.

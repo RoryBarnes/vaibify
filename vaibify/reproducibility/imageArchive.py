@@ -133,7 +133,8 @@ DICT_IMAGE_ARCHIVE_QUESTION = {
 # Row states. Mismatched and Closed share a colour and differ in SHAPE,
 # because their remedies are opposite: "fix your deposit" versus
 # "nothing can be done". Shape is also the channel that survives
-# colour-blindness.
+# colour-blindness. The dashboard maps these in scriptWorkflowRequirements.js
+# (_DICT_ARCHIVE_STATE_MARKS and _DICT_ARCHIVE_STATE_TITLES).
 S_STATE_ARCHIVED = "attained"
 S_STATE_NOT_ARCHIVED = "none"
 S_STATE_ARCHIVING = "running"

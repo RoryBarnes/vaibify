@@ -929,11 +929,11 @@ async def fnPipelineMessageLoop(
 ):
     """Receive and dispatch pipeline WebSocket messages.
 
-    Event types the server emits on this socket (consumed by frontend
-    dispatchers and the in-container ``vaibify-do`` CLI):
+    Events emitted on this socket (read by the dashboard and ``vaibify-do``):
 
-    - ``output`` / ``commandFailed`` / ``stepResult`` / ``completed`` /
-      ``progress`` / ``error`` / ``pipelineError`` — pipeline status.
+    - ``started``, ``stepStarted``, ``output``, ``outputBatch``, ``stepPass``,
+      ``stepFail``, ``testResult``, ``stepStats``, ``commandFailed``,
+      ``completed``, ``failed``, ``error`` — status; never ``pipelineError``.
     - ``runRefused`` — a dispatch arrived while another pipeline action
       for the same container was still live; nothing was started.
     - ``wsHeartbeat`` — emitted by ``_fcontextWebSocketHeartbeat`` in
@@ -2953,9 +2953,9 @@ async def _fnRefreshConftestsAndMigrateMarkers(
     """Refresh stale conftests and migrate flat markers at connect time.
 
     Both operations are process-cached inside ``conftestManager`` so
-    poll-time calls in ``_fdictAttachTestStatus`` become no-ops after
-    the first sweep here. The migration is namespaced by the workflow
-    slug derived from ``sWorkflowPath`` so flat markers land in the
+    poll-time calls in ``pipelineRoutes._fdictFetchTestStatus`` become
+    no-ops after the first sweep here. The migration is namespaced by the
+    workflow slug from ``sWorkflowPath`` so flat markers land in the
     same per-slug subdirectory the poll path reads. Failures log and
     swallow so a connect handshake never fails on a migration issue.
     """

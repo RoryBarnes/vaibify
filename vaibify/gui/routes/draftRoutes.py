@@ -52,7 +52,7 @@ def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     connect handler is the only place it's resolved authoritatively;
     the cached workflow dict does not carry it directly. The slug
     derivation in :mod:`vaibify.gui.draftManager` mirrors what
-    ``fnCollectMarkerPathsByStep`` uses for test markers, so drafts
+    ``fdictHandleCollectMarkerPathsByStep`` uses for test markers, so drafts
     namespace by the same workflow basename as markers.
     """
     dictWorkflow = dictCtx["workflows"].get(sContainerId)

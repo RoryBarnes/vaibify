@@ -253,8 +253,9 @@ def fpreflightCouncilCredentialEvidence():
     It REPORTS; it must never offer to satisfy the prerequisite, and it
     never writes. Consent is recorded only by a request from an
     authenticated browser session holding the container's lease, and a
-    credential test runs only after that consent -- so neither an agent
-    nor CI nor this command can enable the backend, and a doctor that
+    credential test runs only after that consent -- so (apart from a
+    legacy maintainer record) neither an agent nor CI nor this command
+    can enable the backend, and a doctor that
     offered to would defeat the gate rather than describe it.
     """
     from vaibify.gui.agentCouncilProviderRegistry import (

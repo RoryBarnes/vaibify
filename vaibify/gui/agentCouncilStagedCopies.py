@@ -30,7 +30,9 @@ __all__ = [
 ]
 
 # Every council token copy is staged under one of these names (the
-# provider adapters' ``fsMaterializeSecretValue`` names).
+# provider adapters' ``fsMaterializeSecretValue`` names, spelled again in
+# agentCouncilProviders, agentCouncilCodexProvider and
+# agentCouncilAntigravityProvider).
 TUPLE_STAGED_CREDENTIAL_NAMES = (
     "claudeCouncilAccessToken", "codexCouncilAccessToken",
     "antigravityCouncilAccessToken")
@@ -68,7 +70,11 @@ def fiReleaseVanishedHolds():
 
 
 def _flistCouncilCopies(sRoot):
-    """Return the council token copies under the staging root."""
+    """Return the council token copies under the staging root.
+
+    The ``vc_secret_<name>_`` prefix is the one
+    ``secretManager._fsWriteEphemeralFile`` writes.
+    """
     return [os.path.join(sRoot, sName) for sName in sorted(os.listdir(sRoot))
             if any(sName.startswith(f"vc_secret_{sPrefix}_")
                    for sPrefix in TUPLE_STAGED_CREDENTIAL_NAMES)]

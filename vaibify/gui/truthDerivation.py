@@ -13,17 +13,10 @@ leaf module — same pattern as ``stepPredicates.py`` and
 ``pipelineUtils.py`` — so anywhere in the package can call it without
 introducing a cycle.
 
-The canonical-truth pattern is what PROOF Levels 2 and 3 will follow
-for every new truth they monitor. Today only the Level 1 four-axis
-test-state computation is implemented (``fdictComputeTestAxes``);
-the reserved namespace below names the functions Levels 2 and 3 will
-add without scattering new writer sites across the codebase:
-
-- ``# fdictComputeGithubSyncStatus``  (reserved for L2)
-- ``# fdictComputeZenodoSyncStatus``  (reserved for L2)
-- ``# fdictComputeManifestStatus``    (reserved for L3)
-- ``# fdictComputeReadinessStatus``   (reserved for L3)
-- ``# fdictComputeAttestationStatus`` (reserved for L3)
+Only the Level 1 four-axis test-state computation lives here
+(``fdictComputeTestAxes``). The PROOF Level 2 and 3 truths are
+computed by the gate functions in ``vaibify.reproducibility.levelGates``;
+the names once reserved here for them were never added.
 
 Any module that today writes ``"passed"`` / ``"passed-from-marker"``
 / ``"failed"`` directly to a truth-claim axis must instead either

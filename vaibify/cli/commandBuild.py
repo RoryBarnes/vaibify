@@ -1109,10 +1109,11 @@ def flistRunBuildPreflight(config):
     return listResults
 
 
-# The config-scoped checks, named once so the dashboard's build route
-# can be held to the SAME set: two lanes that each listed their own
-# would drift, and the lane a researcher used would be the one missing
-# a check. testBothBuildLanesRunTheSameConfigurationChecks binds them.
+# The config-scoped checks. The dashboard's build route re-lists the
+# SAME set, with refusal codes, in buildRoutes._flistConfigurationPreflights:
+# two lanes that drifted would leave the lane a researcher used missing
+# a check, so tests/testBothBuildLanesPreflightAlike.py::
+# test_both_build_lanes_run_the_same_configuration_checks binds them.
 T_CONFIGURATION_PREFLIGHTS = (
     fpreflightConfigurationFields,
     fpreflightSystemPackageNames,

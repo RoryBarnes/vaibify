@@ -118,7 +118,7 @@ class ControlPlaneRefusalError(Exception):
     Nothing in production catches either class by name, and nothing
     depended on the ``OSError`` ancestry; the two host-filesystem
     handlers that catch ``PermissionError``
-    (``registryRoutes._fsCreateHostFolder``, ``_flistScanHostEntries``)
+    (``registryRoutes._fsCreateHostFolder``, ``flistQueryHostDirectory``)
     guard ``os.makedirs`` and ``os.scandir``, which cannot reach a
     container.
     """
@@ -131,13 +131,14 @@ class MutationNotAdmittedError(ControlPlaneRefusalError):
 def fnReRaiseControlPlaneRefusal(error):
     """Re-raise ``error`` if it is a refusal rather than an I/O outcome.
 
-    :class:`MutationNotAdmittedError` subclasses ``PermissionError`` and
-    is therefore an ``OSError``, so EVERY ``except OSError`` in the
-    codebase catches it — not only the broad ``except Exception`` ones.
-    That is the whole hazard: a caller written to answer conservatively
-    when a file cannot be read ("not verified", "hash unavailable")
-    gives exactly that answer to a refusal, and the refusal disappears.
-    No exception, no log line, a wrong answer on the dashboard.
+    The refusals once subclassed ``PermissionError`` and were therefore
+    ``OSError``, so EVERY ``except OSError`` in the codebase caught them;
+    today only a broad handler (``except Exception``, a bare ``except:``)
+    can. The hazard is the same either way: a caller written to answer
+    conservatively when a file cannot be read ("not verified", "hash
+    unavailable") gives exactly that answer to a refusal, and the
+    refusal disappears. No exception, no log line, a wrong answer on the
+    dashboard.
 
     It has bitten twice already in different shapes. ``fileRoutes`` and
     ``draftRoutes`` each hand-wrote ``except PermissionError: raise``

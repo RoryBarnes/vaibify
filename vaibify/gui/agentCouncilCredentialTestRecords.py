@@ -10,7 +10,8 @@ never a credential path, which a restart finds by name and age.
 
 The format changes for different reasons than the checks do, and the
 restart sweep reads records without running a check, so it is its own
-leaf module.
+module. It is not a leaf: it imports the credential gate and store, and
+the gate imports it back lazily.
 """
 
 import json

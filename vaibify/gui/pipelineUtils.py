@@ -188,7 +188,11 @@ def fsValidateStepName(sNameRaw):
 
 
 def fsSlugFromStepName(sName):
-    """Return the directory basename the contract derives from a name."""
+    """Return the directory basename the contract derives from a name.
+
+    Display mirror: ``fsSlugFromStepName`` in scriptUtilities.js;
+    tests/testStepSlugContract.py pins both.
+    """
     listWords = (sName or "").split()
     return "".join(
         sWord[0].upper() + sWord[1:] for sWord in listWords if sWord

@@ -512,10 +512,11 @@ async def _fnStagedCopySweepLoop(fInterval):
 def _fnSweepOrphanedCredentialTests(dockerCouncil):
     """Settle credential tests whose hub died; spare a live peer's.
 
-    Runs before the labeled-runner reconcile and with or without a
-    daemon: a job left ``running`` by a dead hub keeps its provider
-    suspended until it is recorded ``incomplete``, and that record needs
-    no Docker. Its runners and egress are removed when a daemon answers.
+    Runs after the labeled-runner reconcile (its startup hook is registered
+    later) and with or without a daemon: a job left ``running`` by a dead hub
+    keeps its provider suspended until it is recorded ``incomplete``, and that
+    record needs no Docker. Its runners and egress are removed when a daemon
+    answers.
     """
     from . import agentCouncilCredentialTestRecovery as moduleRecovery
     try:

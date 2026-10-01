@@ -435,7 +435,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # hostile filename in the file browser could otherwise reach
             # even under the script-src restriction. No CDN origin is
             # granted script execution: pdf.js and xterm are vendored
-            # locally, so script-src and worker-src are 'self' only.
+            # locally, so script-src is 'self' only and worker-src adds
+            # only blob:.
             "base-uri 'none'; "
             "form-action 'self'; "
             "frame-ancestors 'none'"

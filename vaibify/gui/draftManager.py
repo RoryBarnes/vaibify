@@ -71,7 +71,7 @@ def fsDraftDirectory(sProjectRepoPath, sWorkflowPath):
 
     Returns an empty string when either argument is empty so callers
     can short-circuit cleanly — mirrors the convention used by
-    :func:`vaibify.gui.fileStatusManager.fdictCollectMarkerPathsByStep`.
+    :func:`vaibify.gui.fileStatusManager.fdictHandleCollectMarkerPathsByStep`.
     """
     sSlug = fsWorkflowSlugFromPath(sWorkflowPath)
     if not sProjectRepoPath or not sSlug:

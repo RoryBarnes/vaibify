@@ -23,6 +23,8 @@ gathered, never stored, and START re-validates every one of those facts
 itself — so no state here can be used to bypass a gate by calling start
 directly. The order at convene (plan section D) puts the free question
 before the paid one: size and scope first, then consent and the test.
+The button reads these states in scriptAgentCouncil.js
+(``SET_READINESS_STEPS``, ``_fnOpenReadinessStep``).
 """
 
 __all__ = [
@@ -44,7 +46,9 @@ S_BLOCKED = "blocked"
 
 # Unavailability markers that no modal can resolve. The credential
 # marker is deliberately absent: a shut credential gate is a consent the
-# researcher can give, not a wall.
+# researcher can give, not a wall. The first three respell
+# routeContext.S_UNAVAILABLE_*; "image-unresolvable" has no constant and
+# is spelled literally in councilRoutes.
 SET_BLOCKING_MARKERS = frozenset({
     "host-mode", "no-dominant-directory", "snapshot-too-large",
     "image-unresolvable",

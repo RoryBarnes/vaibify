@@ -8,9 +8,9 @@ inside a project repository. Walks five tiers in sequence:
   ``requirements.lock``.
 * Tier 3 — container image digest pull via
   ``.vaibify/environment.json``.
-* Tier 4 — L3 artifact coherence. Runs six of the seven verifiers
+* Tier 4 — L3 artifact coherence. Runs all eight verifiers
   ``levelGates.fbL3ReadinessOK`` composes; see :func:`fbVerifyTier4`
-  for the one it cannot evaluate and why.
+  for the one it evaluates per workflow and why.
 * Tier 5 — opt-in rebuild and hash compare via ``--rerun``. The
   workflow is re-run in a SHADOW container built from the image digest
   ``.vaibify/environment.json`` pins — the same container
@@ -420,7 +420,7 @@ def _fsLoadImageDigest(pathEnvironment, sProjectRepo):
 
 
 def fbVerifyTier4(sProjectRepo):
-    """Verify all seven PROOF L3 readiness checks.
+    """Verify all eight PROOF L3 readiness checks.
 
     Reuses the host-side ``levelGates`` verifiers so the CLI and the
     dashboard apply the same rule to every check, and now cover the
@@ -488,7 +488,7 @@ def _fbEveryWorkflowDeclaresBinaries(sProjectRepo):
 def _flistRunReadinessVerifiers(sProjectRepo, dictWorkflow):
     """Return ``[(label, bool)]`` for each L3 readiness verifier in order.
 
-    All seven of ``fbL3ReadinessOK``'s verifiers, so the CLI grades a
+    All eight of ``fbL3ReadinessOK``'s verifiers, so the CLI grades a
     repo exactly as the dashboard does. The binaries check ran nowhere
     here until 2026-07-27 because the aggregate carried no declaration
     state, which let a repo clear this tier and still be blocked by the

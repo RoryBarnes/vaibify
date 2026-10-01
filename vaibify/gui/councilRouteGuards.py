@@ -322,7 +322,8 @@ def fnRefuseRunnerBackendUnlessEnabled(sImageIdentity, setProviders=None):
 
     The gate defaults OFF (remediation R10): starting a council is paid
     provider work over a copied credential, and nothing but the
-    maintainer's recorded live check enables that. The start path
+    researcher's consent plus a passed credential test for this image
+    (or a legacy maintainer record) enables that. The start path
     resolves the project image FIRST and passes it here, so the
     evidence record's image pin is ALWAYS compared before a campaign
     is registered — an evidence record verified in a different image
@@ -344,17 +345,16 @@ def fnRefuseStartWithoutAProjectLogin(dictCtx, sContainerId,
                                       setProviders=None):
     """Refuse a launch when the project holds no copyable provider token.
 
-    R10's live PRESENCE probe, at the cheapest correct point: the
-    credential gate says the maintainer's evidence record permits paid
-    work in this image, and this says the project actually has a login
-    the runner lane could copy. It proves presence, never usability —
-    a token that no longer authenticates is only discoverable by
-    spending a turn, and the first turn's authentication-classified
-    failure is what reports that. It runs before the campaign
-    registers and before any runner exists; the per-turn extraction
-    would otherwise discover an absent login only after a runner had
-    been created and destroyed, and the researcher would read a failed
-    turn instead of "log in". The token is discarded inside the probe;
+    R10's live PRESENCE probe, at the cheapest correct point: the credential
+    gate says consent plus a passed test (or a legacy maintainer record)
+    permits paid work in this image, and this says the project actually has a
+    login the runner lane could copy. It proves presence, never usability — a
+    token that no longer authenticates is only discoverable by spending a turn,
+    and the first turn's authentication-classified failure is what reports
+    that. It runs before the campaign registers and before any runner exists;
+    the per-turn extraction would otherwise discover an absent login only after
+    a runner had been created and destroyed, and the researcher would read a
+    failed turn instead of "log in". The token is discarded inside the probe;
     only a boolean returns.
 
     It no longer takes the turn budget. A login shorter than the budget

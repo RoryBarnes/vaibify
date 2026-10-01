@@ -1,16 +1,14 @@
 """PROOF Level 1-3 gate functions.
 
 Single source of truth for the ``iProofLevel`` integer that drives the
-dashboard theme. ``fiProofLevel`` short-circuits up the ladder. All
-three rungs are implemented here: L1 (Self-Consistent), L2
-(Publication) via ``_fbComputeLevel2``'s seven conjuncts, and L3
-(Reproducible) via ``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s
-seven verifiers plus a current L3 attestation plus the
-published-envelope pair (envelope matching the GitHub mirror and
-present in the Zenodo archive). L4 (Traceable), L5 (Regenerated) and
-L6 (Attested) are outside vaibify's scope by design; see
-``docs/reproducibility.md`` for the ceiling and ``docs/vision.md``
-for the full six-rung ladder.
+dashboard theme. ``fiProofLevel`` short-circuits up the ladder. All three rungs
+are implemented here: L1 (Self-Consistent), L2 (Publication) via
+``_fbComputeLevel2``'s seven conjuncts, and L3 (Reproducible) via
+``fbAtLeastLevel3`` -- L2 plus ``fbL3ReadinessOK``'s verifiers plus every
+workflow-scope check ``_fdictL3WorkflowChecks`` returns (attestation, published
+envelope, archives). L4 (Traceable), L5 (Regenerated) and L6 (Attested) are
+outside vaibify's scope by design; see ``docs/reproducibility.md`` for the
+ceiling and ``docs/vision.md`` for the full six-rung ladder.
 
 Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
 L2 predicates are split across this module and ``scheduledReverify``
@@ -347,13 +345,11 @@ def fiProofLevel(
 def fbAtLeastLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
     """Return True iff the workflow meets the L1 Self-Consistent gate.
 
-    L1 requires four criteria, all enforced per-step: workflow lives
-    in a git project repo, every step is user-approved, every step is
-    timing-clean (no upstream-modified flag, no outstanding modified
-    files), and every step's defined test categories are green. When
-    ``dictScriptStatus`` is provided, the script-stale criterion also
-    blocks the gate; callers without script-status info preserve the
-    historical truth-table.
+    L1 requires a git project repo, a non-empty step list, and no
+    per-step blocker from ``flistLevel1Blockers``, whose docstring
+    lists the criteria. When ``dictScriptStatus`` is provided, the
+    script-stale criterion also blocks the gate; callers without
+    script-status info preserve the historical truth-table.
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL1" in dictMemo:
@@ -3513,7 +3509,7 @@ def _fdictBuildL3StepBlocker(
 def _flistL3StepFailures(iStepIndex, dictStep, dictContext):
     """Return every failing ``(sCriterion, listOffendingFiles)`` pair.
 
-    Evaluates ALL five criteria — no early return — in priority order,
+    Evaluates EVERY criterion — no early return — in priority order,
     so callers see the complete failure set, not just the dominant one.
     """
     listFailures = []
@@ -3818,6 +3814,7 @@ _T_TIMING_BLOCKER_CRITERIA = (
     "upstream-modified", "script-stale", "attestation-stale",
 )
 
+# Row labels: _DICT_REQUIREMENT_LABELS in scriptStepRenderer.js.
 _T_STEP_LEVEL3_CRITERIA = (
     "missing-from-manifest", "script-not-pinned",
     "nondeterminism-undeclared", "binary-not-declared",

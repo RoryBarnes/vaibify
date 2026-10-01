@@ -4,10 +4,10 @@ This module contains the functions that build, execute, and parse the
 output of a self-contained Python script that runs inside Docker
 containers to introspect data files and generate benchmark values.
 
-The introspection script is a large f-string that duplicates format
-handling logic from dataLoaders.py.  This duplication is inherent:
-the script runs inside containers that cannot import from the host
-Python environment.
+The introspection script is a large f-string that duplicates format handling
+logic from dataLoaders.py. This duplication is inherent: the script runs inside
+containers that cannot import from the host Python environment. No test binds
+its ``_DICT_FORMAT_MAP`` to ``dataLoaders.DICT_FORMAT_MAP``; keep them in step.
 """
 
 __all__ = []

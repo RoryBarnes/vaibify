@@ -53,6 +53,7 @@ __all__ = [
 ]
 
 
+# Respelled in scriptWorkflowRequirements.js (_S_CHECK_CHECKING, ...).
 S_STATE_CHECKING = "checking"
 S_STATE_SETTLED = "settled"
 S_STATE_UNCHECKABLE = "uncheckable"

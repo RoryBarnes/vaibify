@@ -930,29 +930,10 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    listStatuses.append(dictStatus)\n"
         "sys.stdout.write(json.dumps(listStatuses))\n"
     ),
-    # The coherence observation behind every bulk repository export:
-    # the type and content identity of EVERY present worktree path —
-    # all tracked paths plus untracked-not-ignored — read immediately
-    # before and immediately after the archive streams, so a capture
-    # the repository moved under is refused rather than sealed. Full
-    # width, not changed-paths-only, is the point: a CLEAN tracked
-    # file changed mid-stream and reverted leaves HEAD, the porcelain
-    # digest, and the changed-path set all equal, and only a raw-byte
-    # identity taken outside the stream can contradict the archive's
-    # intermediate bytes. Git enumerates (it is the only honest way to
-    # ask git what exists); the blob identity is then computed HERE
-    # over the raw worktree bytes — sha1 over ``blob <size>\\0`` +
-    # content, byte-identical to ``git hash-object --no-filters`` — so
-    # no clean-filter rewriting can make two different byte states
-    # report one identity, and the comparison never crosses into the
-    # filtered object-store domain (which would break repositories
-    # using content filters). A symlink records its readlink target
-    # instead, because hashing reads THROUGH a link. Fail-CLOSED: any
-    # enumeration fault answers ``bSuccess`` False, never an empty
-    # observation masquerading as a quiet repository. A tracked path
-    # deleted from the worktree (or one that vanishes between
-    # enumeration and stat) reports as ``missing``; the caller decides
-    # what a missing path means for its lane.
+    # The index view of a repository: every index entry's mode, merge
+    # stages and skip-worktree flag, with the worktree type and raw-byte
+    # blob identity of each path, plus HEAD and a porcelain digest.
+    # Fail-CLOSED like the worktree read below.
     S_TYPED_READ_GIT_TRACKED_IDENTITIES: (
         "import hashlib,json,os,stat,subprocess,sys\n"
         "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
@@ -1097,6 +1078,29 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps({'bSuccess':True,'sReason':'',\n"
         "    'bComplete':bComplete,'listEntries':listEntries}))\n"
     ),
+    # The coherence observation behind every bulk repository export:
+    # the type and content identity of EVERY present worktree path —
+    # tracked, untracked and ignored alike — read immediately
+    # before and immediately after the archive streams, so a capture
+    # the repository moved under is refused rather than sealed. Full
+    # width, not changed-paths-only, is the point: a CLEAN tracked
+    # file changed mid-stream and reverted leaves HEAD, the porcelain
+    # digest, and the changed-path set all equal, and only a raw-byte
+    # identity taken outside the stream can contradict the archive's
+    # intermediate bytes. Git enumerates (it is the only honest way to
+    # ask git what exists); the blob identity is then computed HERE
+    # over the raw worktree bytes — sha1 over ``blob <size>\\0`` +
+    # content, byte-identical to ``git hash-object --no-filters`` — so
+    # no clean-filter rewriting can make two different byte states
+    # report one identity, and the comparison never crosses into the
+    # filtered object-store domain (which would break repositories
+    # using content filters). A symlink records its readlink target
+    # instead, because hashing reads THROUGH a link. Fail-CLOSED: any
+    # enumeration fault answers ``bSuccess`` False, never an empty
+    # observation masquerading as a quiet repository. A tracked path
+    # deleted from the worktree (or one that vanishes between
+    # enumeration and stat) reports as ``missing``; the caller decides
+    # what a missing path means for its lane.
     S_TYPED_READ_GIT_WORKTREE_IDENTITIES: (
         "import hashlib,json,os,subprocess,sys\n"
         "sRepo=" + _S_TYPED_READ_PATH_SLOT + "\n"
@@ -2192,19 +2196,20 @@ class DockerConnection:
         ), "untracked inventory")
 
     def fdictFetchWorktreeIdentities(self, sContainerId, sRepoPath):
-        """Return the changed-path identity observation for one repo.
+        """Return the worktree path identity observation for one repo.
 
-        The coherence read behind a bulk repository export: the
-        declared ``gitWorktreeIdentities`` program enumerates every
-        changed worktree path and computes each one's content identity
-        in the container, over the raw bytes. The command is not built
-        here — this names a declared read operation and
-        :meth:`_ftRunTypedRead` builds it, so the repository path
-        cannot become program or shell syntax. Returns the program's
-        ``{"bSuccess", "sReason", "dictPathIdentities"}`` answer;
-        callers must treat ``bSuccess`` False as a refusal to observe,
-        never as a quiet repository. A failed READ raises ``OSError``,
-        and so does an unparseable answer.
+        The coherence read behind a bulk repository export: the declared
+        ``gitWorktreeIdentities`` program enumerates every present worktree
+        path (tracked, untracked and ignored) and computes each one's content
+        identity in the container, over the raw bytes. The command is not built
+        here — this names a declared read operation and :meth:`_ftRunTypedRead`
+        builds it, so the repository path cannot become program or shell
+        syntax. Returns the program's ``{"bSuccess", "sReason", "sHeadSha",
+        "sPorcelainDigest", "listIgnoredPaths", "dictPathIdentities"}`` answer
+        (a failure carries only ``bSuccess``, ``sReason`` and an empty
+        ``dictPathIdentities``); callers must treat ``bSuccess`` False as a
+        refusal to observe, never as a quiet repository. A failed READ raises
+        ``OSError``, and so does an unparseable answer.
         """
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_GIT_WORKTREE_IDENTITIES, sRepoPath,

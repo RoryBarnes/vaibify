@@ -2133,11 +2133,11 @@ def _ffilesFetchPollSnapshot(
 ):
     """Fetch the one-exec container snapshot every poll gate reads.
 
-    Returns the raw repo path string (host dual-accept) when there is
-    no project repo or the context predates the ``files`` callable, so
-    legacy callers and tests keep host-clone semantics. The manifest
-    body is no longer carried inline on every poll; it is fetched once
-    per manifest sha by the lazy cache below.
+    Returns the raw repo path string (host dual-accept; a misnaming tracked in
+    LIST_REVIEW_TRACKED_MISNAMINGS) when there is no project repo or the
+    context predates the ``files`` callable, so legacy callers and tests keep
+    host-clone semantics. The manifest body is no longer carried inline on
+    every poll; it is fetched once per manifest sha by the lazy cache below.
     """
     from vaibify.reproducibility.levelGates import (
         _flistAllStepScriptPaths, flistWorkflowBinaryPaths,
@@ -2523,9 +2523,9 @@ def _fdictBuildWorkflowEnvelopeDetail(
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
-    Built entirely from sources this poll already fetched (the
-    one-exec container snapshot plus the workflow dict) — NO
-    additional container execs. Wire shape::
+    Built entirely from sources this poll already fetched (the one-exec
+    container snapshot plus the workflow dict) — NO additional container execs.
+    Wire shape (partial; scriptWorkflowRequirements.js reads the full dict)::
 
         {"listBinaries": [...per-binary capture status...],
          "dictArtifacts": {sName: {"bPresent", "bSatisfied"}}
@@ -2597,12 +2597,6 @@ def _fdictBuildWorkflowEnvelopeDetail(
                 dictImageCurrency,
             ) if bHasRepo else {}
         ),
-        # The one blocked requirement that must be fixed BEFORE the
-        # others, or None when order does not matter -- which is the
-        # usual answer and is information, not a gap. Computed on this
-        # side so the dashboard renders a verdict it never re-derives;
-        # a mirrored ordering in JavaScript would be a second
-        # authority on a question that has one.
         # WHY the last verification established nothing. It was
         # recorded all along and rendered only on the PROOF tab, so a
         # researcher working in the Project block watched the marker
@@ -2617,6 +2611,12 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "dictLockSatisfaction": (
             dictLockSatisfaction if bHasRepo else None
         ),
+        # The one blocked requirement that must be fixed BEFORE the
+        # others, or None when order does not matter -- which is the
+        # usual answer and is information, not a gap. Computed on this
+        # side so the dashboard renders a verdict it never re-derives;
+        # a mirrored ordering in JavaScript would be a second
+        # authority on a question that has one.
         "dictNextOrderedStep": dictOrderedEndgame["dictNextStep"],
         # Every endgame row that is premature RIGHT NOW, with the
         # edge's reason -- the arrow's superset. The arrow goes
@@ -3382,7 +3382,7 @@ async def _fnRefreshConftestsAndMigrateMarkers(
 
     Replaces the older missing-only backfill: when the template's
     version stamp bumps, every previously-written conftest gets
-    rewritten on the next connect tick so test-framework behaviour
+    rewritten on the next poll so test-framework behaviour
     can't drift between fresh and old workspaces. The flat-marker
     migration moves markers from the legacy
     ``.vaibify/test_markers/<step>.json`` layout into the per-slug

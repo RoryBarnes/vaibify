@@ -61,7 +61,7 @@ __all__ = [
 # A credential test's runners are reserved under this pseudo-campaign
 # id, so the reservation id — and therefore the ``vaibify-council``
 # label every runner wears — names the job it serves. No campaign id
-# can take this shape: campaign ids are minted hex.
+# can take this shape: campaign ids are minted ``campaign-<12 hex>``.
 S_TEST_CAMPAIGN_PREFIX = "credentialTest-"
 
 
