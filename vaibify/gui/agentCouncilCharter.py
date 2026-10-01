@@ -418,8 +418,8 @@ DICT_VERDICT_REQUIRES_NONEMPTY = {
 # fake lane could have surfaced it.
 S_EVIDENCE_KEY = "listEvidence"
 # Spelled here for the same reason TUPLE_TURN_VERDICTS is: the
-# campaign module imports this one. testEvidenceVocabularyMatches
-# TheEngine pins them together.
+# campaign module imports this one. tests/testCouncilRunnerAccess.py::
+# testTheEvidenceVocabularyMatchesTheEngine pins them together.
 S_EVIDENCE_STATUS_CONFIRMED = "confirmed"
 S_EVIDENCE_STATE_MODIFIED = "modifiedState"
 TUPLE_EVIDENCE_CLAIM_STATUSES = (
@@ -805,8 +805,8 @@ def fsDescribeSnapshotScope(listExcludedPaths, dictManifest=None):
     )
 
 
-# The git-tracked scope's reasons, in the order the approved wording
-# (ruling 4, 2026-09-29) names them. The labels are that wording's.
+# The git-tracked scope's reasons and labels, in the approved wording and
+# order (ruling 4, 2026-09-29); agentCouncilSnapshotScope keeps a copy.
 _TUPLE_TRACKED_OMISSION_REASONS = (
     ("untracked", "untracked"),
     ("ignored", "ignored"),

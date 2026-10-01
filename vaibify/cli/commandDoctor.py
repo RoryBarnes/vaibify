@@ -31,7 +31,7 @@ import sys
 
 import click
 
-from .configLoader import fconfigResolveProject
+from .configLoader import ConfigLoadFailedExit, fconfigResolveProject
 from .preflightChecks import (
     fpreflightColimaHostagentLog,
     fpreflightColimaVersion,
@@ -49,7 +49,7 @@ from .preflightResult import (
 )
 
 
-__all__ = ["doctor", "flistRunDoctorChecks"]
+__all__ = ["fnDoctorCommand", "flistRunDoctorChecks"]
 
 
 def _flistBuildOnlyChecks(config):
@@ -620,14 +620,19 @@ def fnDoctorCommand(
     bOnline, bJson, sExplainCheck,
 ):
     """Run pre-flight checks and print a status report."""
-    config = _fconfigResolveProjectOrNone(sProjectName)
-    if config is None and not bJson:
+    try:
+        config = _fconfigResolveProjectOrNone(sProjectName)
+        listConfigResults = []
+    except ConfigLoadFailedExit:
+        config = None
+        listConfigResults = [_fpreflightConfigLoadFailed()]
+    if config is None and not listConfigResults and not bJson:
         click.echo(
             "No project configured yet; running the environment "
             "checks only. Project-scoped checks (image, ports, "
             "mounts) run once a project exists."
         )
-    listResults = flistRunDoctorChecks(
+    listResults = listConfigResults + flistRunDoctorChecks(
         config, bBuildScope, bStartScope, bContainerScope, bOnline,
     )
     if sExplainCheck:
@@ -638,6 +643,18 @@ def fnDoctorCommand(
         listResults,
         _ftRequestedScopes(bBuildScope, bStartScope, bContainerScope),
     ))
+
+
+def _fpreflightConfigLoadFailed():
+    """Return the failed check for a project file that cannot be loaded."""
+    return PreflightResult(
+        "project-configuration", S_LEVEL_FAIL,
+        "the project's vaibify.yml exists but could not be loaded "
+        "(the reason is printed above)",
+        "Fix the file named above, or run 'vaibify init' to create a "
+        "new one.",
+        sScope=S_SCOPE_PROJECT,
+    )
 
 
 def _fnReportDoctorResults(listResults, bQuiet, bJson):
@@ -671,5 +688,7 @@ def _fconfigResolveProjectOrNone(sProjectName):
         return fconfigResolveProject(sProjectName)
     try:
         return fconfigResolveProject(None)
+    except ConfigLoadFailedExit:
+        raise
     except SystemExit:
         return None

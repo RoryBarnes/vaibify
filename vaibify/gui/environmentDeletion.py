@@ -55,7 +55,8 @@ def fsConfirmationPhraseFor(sName):
 
     Defined HERE and validated on the server, so the confirmation is a
     real gate rather than a dialog the client could skip. The modal
-    builds the same sentence to show it, the way the step-slug rule has
+    builds the same sentence to show it (``_fsDeletionPhraseFor`` in
+    scriptContainerManager.js), the way the step-slug rule has
     a display-only mirror in the frontend: this side is the authority.
     """
     return f"permanently delete {sName}"

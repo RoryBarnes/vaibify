@@ -1480,10 +1480,10 @@ async def fdictRejectCampaignCandidate(dictControllerState, dictStore,
                                        sReasonText):
     """Reject/archive the candidate — exhausted exit 3, or at planReady.
 
-    Synchronous: rejection drives no provider turn, so with no live
-    runtime the engine is rebuilt around the restored record with inert
-    connections, exactly as acceptance does. The engine's own guard
-    decides which states may reject.
+    Inline, with no drive task: rejection drives no provider turn, so with no
+    live runtime the engine is rebuilt around the restored record with inert
+    connections, exactly as acceptance does. The engine's own guard decides
+    which states may reject.
     """
     from .agentCouncil import CouncilEngine
     _fnRefuseWhileDriveIsLive(dictControllerState, sCampaignId, "reject")

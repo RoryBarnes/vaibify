@@ -141,7 +141,7 @@ class RefreshRemotesRequest(BaseModel):
 
 
 def _fsRequireProjectRepo(dictWorkflow):
-    """Return the active workflow's project repo path or raise 404.
+    """Return the active workflow's project repo path, or "" when absent.
 
     The empty-string sentinel means the workflow loaded successfully
     but is not inside a git work tree (legacy ``project.json`` at

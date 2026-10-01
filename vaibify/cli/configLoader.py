@@ -10,6 +10,14 @@ _sConfigFileName = "vaibify.yml"
 _sConfigOverride = None
 
 
+class ConfigLoadFailedExit(SystemExit):
+    """The exit taken when a vaibify.yml exists but cannot be loaded.
+
+    A distinct type so a caller that tolerates "no project yet" can
+    still tell it from a project whose configuration is broken.
+    """
+
+
 def fnSetConfigPath(sPath):
     """Override the default config file path."""
     global _sConfigOverride
@@ -175,10 +183,9 @@ def _fconfigParse(sPath):
             fconfigLoadFromFile,
         )
         return fconfigLoadFromFile(sPath)
-    except (ValueError, FileNotFoundError, TypeError,
-            yaml.YAMLError) as error:
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as error:
         click.echo(f"Error: Failed to load {sPath}: {error}")
-        sys.exit(1)
+        raise ConfigLoadFailedExit(1)
 
 
 def fconfigLoadFromPath(sPath):

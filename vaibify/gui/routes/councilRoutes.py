@@ -622,8 +622,8 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
     optimism that start would immediately contradict. A project whose
     image cannot be resolved reports disabled with that reason. The
     reason travels with the answer so the toolbar can explain itself
-    instead of failing on click. Only Claude is advertised — no
-    adapter-less provider appears at all.
+    instead of failing on click. Each provider in SET_ALLOWED_PROVIDERS is
+    reported with its own enablement; no adapter-less provider appears.
     """
     from .. import agentCouncilCredentialGate
     try:

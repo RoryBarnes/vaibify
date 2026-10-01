@@ -182,7 +182,7 @@ _S_PARTIAL_SUFFIX = ".partial"
 # matches at any depth. Repository internals are excluded because the
 # manifest records the commit and dirty-state digest instead; the
 # generated-output seeds are conservative and grow by review, never by
-# pattern-widening.
+# pattern-widening. dockerConnection's size probe mirrors it; a test pins both.
 DICT_EXCLUDED_COMPONENT_REASONS = {
     ".git": "repository internals; commit and dirty-state digest are "
             "recorded in the manifest instead",

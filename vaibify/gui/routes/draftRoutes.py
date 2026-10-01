@@ -21,6 +21,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..routeContext import (
@@ -52,7 +53,7 @@ def _ftRequireProjectRepoAndWorkflowPath(dictCtx, sContainerId):
     connect handler is the only place it's resolved authoritatively;
     the cached workflow dict does not carry it directly. The slug
     derivation in :mod:`vaibify.gui.draftManager` mirrors what
-    ``fnCollectMarkerPathsByStep`` uses for test markers, so drafts
+    ``fdictHandleCollectMarkerPathsByStep`` uses for test markers, so drafts
     namespace by the same workflow basename as markers.
     """
     dictWorkflow = dictCtx["workflows"].get(sContainerId)
@@ -177,12 +178,11 @@ def _fnCommitDraftWrite(
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sDraftPath, baPayload,
             )
-        except PermissionError:
+        except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
             # would hide exactly what this boundary exists to surface.
-            raise
-        except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(
                 500,
                 f"Draft write failed: "

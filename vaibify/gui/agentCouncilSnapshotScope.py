@@ -92,6 +92,9 @@ S_REASON_DELETED_IN_WORKTREE = "deletedInWorktree"
 S_REASON_NOT_CHECKED_OUT = "notCheckedOut"
 S_REASON_POLICY_EXCLUDED = "policyExcluded"
 
+# No Python reader. Hand-kept copies, unbound by any test: the charter's
+# _TUPLE_TRACKED_OMISSION_REASONS and scriptCouncilSnapshotScope.js
+# (which shortens the policyExcluded label).
 DICT_REASON_LABELS = {
     S_REASON_UNTRACKED: "untracked",
     S_REASON_IGNORED: "ignored",
@@ -596,6 +599,8 @@ def fdictRecordCaptureOmissions(connectionDocker, sContainerId, sRepoRoot,
     included as worktree bytes. Nothing for the whole-directory scope.
     Churn among omitted files between probe and capture changes only
     this record, never the capture: only eligible identities are pinned.
+    agentCouncilContext merges these fields into the snapshot manifest;
+    agentCouncilCharter._fsDescribeTrackedScope reads the summary back.
     """
     if dictScope["sScope"] != S_SCOPE_GIT_TRACKED:
         return {}
@@ -633,7 +638,9 @@ def fnApplyTrackedScopeOffer(connectionDocker, sContainerId, sResourceName,
     size refusal; a whole directory that does not fit, beside a tracked
     set that does, becomes a CHOICE (``bNeedsSnapshotChoice``); a
     tracked set that does not fit either leaves the refusal standing,
-    with the tracked numbers attached so the modal can say why.
+    with the tracked numbers attached so the modal can say why. The
+    stamped keys are read in scriptAgentCouncil.js and
+    scriptCouncilSnapshotScope.js.
     """
     dictRemembered = fdictReadRememberedScope(sResourceName, sRepoRoot)
     dictCapabilities["dictSnapshotScopeDefault"] = (

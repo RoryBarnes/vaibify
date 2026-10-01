@@ -179,8 +179,9 @@ def fsFingerprintLockBytes(baLockContent, sRunningImageIdentity):
     It must agree with :func:`fsFingerprintLockState` for an unchanged
     file, because the poll computes the comparison side that way and a
     disagreement would downgrade every verdict on the next tick.
-    ``testTheTwoFingerprintsAgreeOnAnUnchangedLock`` drives both over
-    one file rather than leaving that to inspection.
+    ``tests/testTheLockVerdictCarriesItsFingerprint.py::
+    test_the_two_fingerprints_agree_on_an_unchanged_lock`` drives both
+    over one file rather than leaving that to inspection.
     """
     sDigest = hashlib.sha256(baLockContent or b"").hexdigest()
     return f"{sDigest}|{sRunningImageIdentity or ''}"

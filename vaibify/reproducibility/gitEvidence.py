@@ -1,15 +1,15 @@
 """Git evidence about who owns a tracked file, asked of a real git.
 
-A leaf module: the reproducibility layer's questions about a
-repository's committed files -- whose identity last committed one,
-whether the working copy differs from HEAD -- with the runner that
-binds them to a repo-files adapter, host or container. It exists apart
-from ``reproductionRecord`` because the callers that need the MANIFEST
-question sit on the poll path (``fileStatusManager``) and in the
-manifest check (``pipelineRoutes``), and an architectural test keeps
-every reader of the reproduction RECORDS off that path; the git
-questions are not records, so they live here and both modules import
-them.
+A low-level module (not a leaf: it imports ``repoFiles``, ``gitHardening`` and
+``mutationAdmission``, never ``vaibify.gui``): the reproducibility layer's
+questions about a repository's committed files -- whose identity last committed
+one, whether the working copy differs from HEAD -- with the runner that binds
+them to a repo-files adapter, host or container. It exists apart from
+``reproductionRecord`` because the callers that need the MANIFEST question sit
+on the poll path (``fileStatusManager``) and in the manifest check
+(``pipelineRoutes``), and an architectural test keeps every reader of the
+reproduction RECORDS off that path; the git questions are not records, so they
+live here and both modules import them.
 
 Every answer is settled by git's own exit code, measured 2026-09-12:
 ``rev-parse --verify --quiet HEAD`` exits 1 with no commits and 128

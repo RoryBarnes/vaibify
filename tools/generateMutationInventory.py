@@ -154,7 +154,7 @@ SET_MUTATING_DOCKER_SUBCOMMANDS = frozenset({
 # Every primitive that reaches a container or the Docker daemon, and the
 # access each one grants. Adding a primitive to the codebase without
 # adding it here is caught by
-# testMutationInventory::testEveryDockerPrimitiveIsInTheScopeList.
+# testMutationInventory::testEveryPublicGatewayMethodIsInTheScopeList.
 DICT_PRIMITIVE_ACCESS = {
     # --- vaibify/docker/dockerConnection.py: mutation-capable ---
     "ftRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,

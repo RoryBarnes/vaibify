@@ -1,11 +1,11 @@
 """Data file loaders for quantitative benchmark tests.
 
-This module is the single source of truth for all data-loading logic used
-by vaibify's quantitative test templates.  The function
-``fsReadLoaderSource()`` returns the Python source between the
-begin/end markers in this file.
-testGenerator.py embeds this source verbatim into the self-contained
-test file deployed to containers.
+This module holds the data-loading logic of vaibify's quantitative test
+templates (``introspectionScript.py`` keeps a deliberate container-side copy
+of the format handling). ``fsReadLoaderSource()`` returns the Python source
+between the begin/end markers in this file, and
+``templateManager.fsBuildQuantitativeTestCode`` embeds it verbatim into the
+self-contained test file deployed to containers.
 
 Public API
 ----------
@@ -1208,8 +1208,8 @@ def ffLoadValue(sDataFile, sAccessPath, sStepDirectory, sFormat=""):
 def fsReadLoaderSource():
     """Return the embeddable loader source between the markers.
 
-    testGenerator.py calls this to build the self-contained quantitative
-    test template without duplicating the loader code.
+    ``templateManager.fsBuildQuantitativeTestCode`` calls this to build the
+    self-contained quantitative test template without duplicating the loader.
     """
     sSourcePath = str(pathlib.Path(__file__))
     with open(sSourcePath, encoding="utf-8") as fileHandle:

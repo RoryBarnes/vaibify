@@ -188,8 +188,8 @@ I_REJECT_STARTING = 409
 # single-user, so for both the browser credential is the boundary and the
 # lease is live-session coordination. ``connect`` and ``release`` are
 # session-bound by their own authorities (owner-establishing / the
-# bound-lease check in ``fnReleaseOwnership``). See docs/architecture.md,
-# "Single browser session per container".
+# bound-lease check in ``containerOwnership.fbReleaseOwnership``). See
+# docs/architecture.md, "Single browser session per container".
 DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/transfer"): S_SCOPE_BOOTSTRAP_CAPABILITY,

@@ -509,7 +509,7 @@ def _fnRegisterDeterministicGenerate(app, dictCtx):
         dictResult = await _fdictRunTestGeneration(
             dictCtx, sContainerId, iStepIndex, dictWorkflow,
             fdictGenerateTheCategories, _DeterministicGenerateRequest(),
-            requestHttp,
+            requestHttp, None,
         )
         if dictResult.get("bNeedsOverwriteConfirm"):
             return {

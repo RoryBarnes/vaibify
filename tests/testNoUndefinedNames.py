@@ -37,10 +37,6 @@ _RE_LOCATION = re.compile(r":\d+:\d+:? ")
 
 # file -> {message: count}. Frozen 2026-08-29.
 DICT_SEEDED_UNDEFINED_NAMES = {
-    "vaibify/cli/commandDoctor.py": {
-        "undefined name 'doctor' in __all__": 1},
-    "vaibify/cli/commandReproduce.py": {
-        "undefined name 'reproduce' in __all__": 1},
     "vaibify/gui/commitCarrier.py": {
         "undefined name 'Callable'": 1,
         "undefined name 'MutationAdmission'": 1,

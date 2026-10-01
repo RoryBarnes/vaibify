@@ -143,11 +143,12 @@ S_REFUSAL_UNUSABLE_CONFIGURATION = "unusable-configuration"
 def _flistConfigurationPreflights():
     """Return ``(check, refusal code)`` for every config-scoped preflight.
 
-    One table rather than a helper per check: five checks with the same
-    shape were three copies of the same twelve lines away from being
-    unmaintainable, and a sixth would have been written the same way.
+    One table rather than a helper per check: four checks with the same
+    shape were copies of the same twelve lines away from being
+    unmaintainable, and a fifth would have been written the same way.
     Each check answers for the researcher's vaibify.yml and is the same
-    one ``vaibify build`` runs, so the two lanes cannot drift.
+    one ``vaibify build`` runs; the set must match
+    ``commandBuild.T_CONFIGURATION_PREFLIGHTS``, which a test enforces.
     """
     from vaibify.cli.configFieldPreflight import fpreflightConfigurationFields
     from vaibify.cli.pythonPackagePreflight import (

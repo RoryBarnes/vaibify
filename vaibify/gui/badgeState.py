@@ -16,8 +16,11 @@ Badge values:
 - ``unknown``    no comparison has been made for this file
 - ``none``       the remote does not have this file, or the service
                  is not configured for it
+- ``not-compared``  no verify compares this path against a remote
 - ``dirty`` / ``untracked`` / ``ignored``  local git states, carried
                  on ``sGitState`` only — never on a remote key
+
+Tooltips for these values: ``_DICT_BADGE_TITLES`` in scriptGitBadges.js.
 
 **The GitHub badge is agreement with the remote, not local git
 cleanliness (2026-08-25).** It read ``git status --porcelain`` until

@@ -1745,6 +1745,7 @@ async def _fnRunSupervisionWatchdog(
     if bPipelineRunning:
         return
     try:
+        tPriorJudgment = _ftCaptureJudgmentState(dictWorkflow)
         bDigestRatcheted = _fbRatchetSupervisedDigest(
             dictWorkflow, filesPoll,
         )
@@ -1756,16 +1757,48 @@ async def _fnRunSupervisionWatchdog(
             if bDigestRatcheted:
                 dictCtx["save"](sContainerId, dictWorkflow)
             return
-        await asyncio.to_thread(
-            _fnAppendSupervisionFlags, dictCtx, sContainerId,
-            dictWorkflow, listUnattributed, bChainBroken,
-        )
+        try:
+            await asyncio.to_thread(
+                _fnAppendSupervisionFlags, dictCtx, sContainerId,
+                dictWorkflow, listUnattributed, bChainBroken,
+            )
+        except Exception:
+            _fnRestoreJudgmentState(dictWorkflow, tPriorJudgment)
+            raise
         dictCtx["save"](sContainerId, dictWorkflow)
     except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "Supervision watchdog failed for %s: %s",
             sContainerId, errorCaught,
         )
+
+
+_T_JUDGMENT_STATE_KEYS = ("fLastJudgedMtime", "bEventChainBroken")
+
+
+def _ftCaptureJudgmentState(dictWorkflow):
+    """Return the watermark and latch values as they stood before judging."""
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    return tuple(
+        dictSupervision.get(sKey) for sKey in _T_JUDGMENT_STATE_KEYS
+    )
+
+
+def _fnRestoreJudgmentState(dictWorkflow, tPriorJudgment):
+    """Undo the judged-once advance after a flag write failed.
+
+    A change counts as judged only once its flag is durable; restoring
+    the watermark and the chain-broken latch lets the next tick judge
+    the same change again instead of losing it.
+    """
+    dictSupervision = dictWorkflow["dictAiProvenance"]["dictSupervision"]
+    for sKey, jsonPriorValue in zip(_T_JUDGMENT_STATE_KEYS, tPriorJudgment):
+        if jsonPriorValue is None:
+            dictSupervision.pop(sKey, None)
+        else:
+            dictSupervision[sKey] = jsonPriorValue
 
 
 def _fbRatchetSupervisedDigest(dictWorkflow, filesPoll):
@@ -1909,13 +1942,21 @@ def _fbEventChainNewlyBroken(dictWorkflow, filesPoll):
 def _fnAppendSupervisionFlags(
     dictCtx, sContainerId, dictWorkflow, listUnattributed, bChainBroken,
 ):
-    """Append the permanent flags this tick discovered."""
+    """Append the permanent flags this tick discovered.
+
+    A flag written before a later write in the same tick failed is
+    remembered by kind and detail, so the retry writes it only once.
+    """
     from vaibify.gui import attributionLog
     from ..routeContext import ffilesForWorkflow
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    listWritten = dictSupervision.setdefault("listFlagsWrittenForInterval", [])
     if bChainBroken:
-        attributionLog.fnAppendFlag(
-            filesRepo, "attribution-log-tampered",
+        _fnAppendFlagOnce(
+            filesRepo, listWritten, "attribution-log-tampered",
             "the recorded-event chain no longer verifies",
         )
         logger.warning(
@@ -1926,19 +1967,27 @@ def _fnAppendSupervisionFlags(
         sDetail = ", ".join(
             _flistRepoRelativePaths(dictWorkflow, listUnattributed),
         )
-        attributionLog.fnAppendFlag(
-            filesRepo, "unattributed-modification", sDetail,
+        _fnAppendFlagOnce(
+            filesRepo, listWritten, "unattributed-modification", sDetail,
         )
         logger.warning(
             "SUPERVISION unattributed modification in %s: %s",
             sContainerId, sDetail,
         )
-    dictSupervision = dictWorkflow.setdefault(
-        "dictAiProvenance", {},
-    ).setdefault("dictSupervision", {})
+    dictSupervision.pop("listFlagsWrittenForInterval", None)
     dictSupervision["iUnattributedFlagCount"] = len(
         attributionLog.flistLoadFlags(filesRepo),
     )
+
+
+def _fnAppendFlagOnce(filesRepo, listWritten, sFlagKind, sDetail):
+    """Append one flag unless this interval already wrote it."""
+    from vaibify.gui import attributionLog
+    sFlagIdentity = sFlagKind + "|" + sDetail
+    if sFlagIdentity in listWritten:
+        return
+    attributionLog.fdictAppendFlag(filesRepo, sFlagKind, sDetail)
+    listWritten.append(sFlagIdentity)
 
 
 def _flistRepoRelativePaths(dictWorkflow, listAbsolutePaths):
@@ -2133,11 +2182,11 @@ def _ffilesFetchPollSnapshot(
 ):
     """Fetch the one-exec container snapshot every poll gate reads.
 
-    Returns the raw repo path string (host dual-accept) when there is
-    no project repo or the context predates the ``files`` callable, so
-    legacy callers and tests keep host-clone semantics. The manifest
-    body is no longer carried inline on every poll; it is fetched once
-    per manifest sha by the lazy cache below.
+    Returns the raw repo path string (host dual-accept; a misnaming tracked in
+    LIST_REVIEW_TRACKED_MISNAMINGS) when there is no project repo or the
+    context predates the ``files`` callable, so legacy callers and tests keep
+    host-clone semantics. The manifest body is no longer carried inline on
+    every poll; it is fetched once per manifest sha by the lazy cache below.
     """
     from vaibify.reproducibility.levelGates import (
         _flistAllStepScriptPaths, flistWorkflowBinaryPaths,
@@ -2523,9 +2572,9 @@ def _fdictBuildWorkflowEnvelopeDetail(
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
-    Built entirely from sources this poll already fetched (the
-    one-exec container snapshot plus the workflow dict) — NO
-    additional container execs. Wire shape::
+    Built entirely from sources this poll already fetched (the one-exec
+    container snapshot plus the workflow dict) — NO additional container execs.
+    Wire shape (partial; scriptWorkflowRequirements.js reads the full dict)::
 
         {"listBinaries": [...per-binary capture status...],
          "dictArtifacts": {sName: {"bPresent", "bSatisfied"}}
@@ -2597,12 +2646,6 @@ def _fdictBuildWorkflowEnvelopeDetail(
                 dictImageCurrency,
             ) if bHasRepo else {}
         ),
-        # The one blocked requirement that must be fixed BEFORE the
-        # others, or None when order does not matter -- which is the
-        # usual answer and is information, not a gap. Computed on this
-        # side so the dashboard renders a verdict it never re-derives;
-        # a mirrored ordering in JavaScript would be a second
-        # authority on a question that has one.
         # WHY the last verification established nothing. It was
         # recorded all along and rendered only on the PROOF tab, so a
         # researcher working in the Project block watched the marker
@@ -2617,6 +2660,12 @@ def _fdictBuildWorkflowEnvelopeDetail(
         "dictLockSatisfaction": (
             dictLockSatisfaction if bHasRepo else None
         ),
+        # The one blocked requirement that must be fixed BEFORE the
+        # others, or None when order does not matter -- which is the
+        # usual answer and is information, not a gap. Computed on this
+        # side so the dashboard renders a verdict it never re-derives;
+        # a mirrored ordering in JavaScript would be a second
+        # authority on a question that has one.
         "dictNextOrderedStep": dictOrderedEndgame["dictNextStep"],
         # Every endgame row that is premature RIGHT NOW, with the
         # edge's reason -- the arrow's superset. The arrow goes
@@ -3382,7 +3431,7 @@ async def _fnRefreshConftestsAndMigrateMarkers(
 
     Replaces the older missing-only backfill: when the template's
     version stamp bumps, every previously-written conftest gets
-    rewritten on the next connect tick so test-framework behaviour
+    rewritten on the next poll so test-framework behaviour
     can't drift between fresh and old workspaces. The flat-marker
     migration moves markers from the legacy
     ``.vaibify/test_markers/<step>.json`` layout into the per-slug

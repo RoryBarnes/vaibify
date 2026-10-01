@@ -46,7 +46,11 @@ def _fnRefreshOrGenerateForStepDir(sStepDir, fRtol):
     sStandardsPath = os.path.join(sStepDir, "tests", "quantitative_standards.json")
     if os.path.isfile(sStandardsPath):
         click.echo(f"Refreshing fValue entries in {sStandardsPath}")
-        fnRegenerateStandardsFile(sStandardsPath, sStepDir)
+        try:
+            fnRegenerateStandardsFile(sStandardsPath, sStepDir)
+        except (OSError, KeyError, ValueError) as error:
+            click.echo(f"Error: cannot refresh {sStandardsPath}: {error}", err=True)
+            sys.exit(2)
         return
     click.echo(
         f"No standards file at {sStandardsPath}; "
@@ -91,11 +95,11 @@ def _fiResolveStepIndexFromLabel(sWorkflowPath, sStepLabel):
     """Return the 0-based listSteps index for an A##/I## label."""
     import json
     from vaibify.gui.pipelineUtils import fiStepIndexFromLabel
-    with open(sWorkflowPath) as fileHandle:
-        dictWorkflow = json.load(fileHandle)
     try:
+        with open(sWorkflowPath) as fileHandle:
+            dictWorkflow = json.load(fileHandle)
         return fiStepIndexFromLabel(dictWorkflow, sStepLabel)
-    except (KeyError, ValueError) as error:
+    except (OSError, KeyError, ValueError) as error:
         click.echo(f"Error: {error}", err=True)
         sys.exit(2)
 
