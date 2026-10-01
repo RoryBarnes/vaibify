@@ -52,6 +52,7 @@ from .l3Attestation import (
     fsCurrentManifestDigest,
 )
 from .manifestWriter import (
+    fbWorkflowArchivesTests,
     flistDeclaredButMissingFromManifest,
     flistParseManifestLines,
 )
@@ -3317,6 +3318,7 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
         # declared outputs exactly as the manifest writer wrote them.
         # Computed once per poll rather than per step.
         "dictTemplateValues": fdictWorkflowTemplateValues(dictWorkflow),
+        "bArchiveTests": fbWorkflowArchivesTests(dictWorkflow or {}),
         "setNondeterministicSteps": _fsetNondeterministicSteps(
             dictWorkflow,
         ),
@@ -3535,8 +3537,15 @@ def _fdictBuildL3StepEntry(
     }
 
 
-def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
-    """Return repo-relative outputs + scripts + standards for a step."""
+def _flistStepDeclaredPaths(
+    dictStep, dictTemplateValues, bArchiveTests=True,
+):
+    """Return repo-relative outputs + scripts + standards for a step.
+
+    Standards follow the workflow's ``bArchiveTests`` opt-out exactly
+    as the manifest writer does: a row must never demand what Regenerate
+    will not write, or it can never clear.
+    """
     from .manifestPaths import (
         flistStepDeclarationRepoPaths,
         flistStepScriptRepoPaths,
@@ -3544,7 +3553,8 @@ def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
     )
     listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     listPaths.extend(flistStepScriptRepoPaths(dictStep))
-    listPaths.extend(flistStepStandardsRepoPaths(dictStep))
+    if bArchiveTests:
+        listPaths.extend(flistStepStandardsRepoPaths(dictStep))
     listPaths.extend(flistStepDeclarationRepoPaths(dictStep))
     return [sPath for sPath in listPaths if sPath]
 
@@ -3555,6 +3565,7 @@ def _flistStepPathsMissingFromManifest(dictStep, dictContext):
     listMissing = []
     for sPath in _flistStepDeclaredPaths(
         dictStep, dictContext["dictTemplateValues"],
+        dictContext.get("bArchiveTests", True),
     ):
         if sPath not in setManifest:
             listMissing.append(sPath)
@@ -3925,6 +3936,9 @@ def _fdictStepProjectionContext(
     dictContext["dictTemplateValues"] = fdictWorkflowTemplateValues(
         dictWorkflow,
     )
+    dictContext["bArchiveTests"] = fbWorkflowArchivesTests(
+        dictWorkflow or {},
+    )
     return dictContext
 
 
@@ -4278,6 +4292,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
     setApplicable = _fsetStepApplicableLevel3Criteria(
         dictStep, dictContext["listDeclaredBinaries"],
         dictContext["dictTemplateValues"],
+        dictContext.get("bArchiveTests", True),
     )
     setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
     return [
@@ -4300,6 +4315,7 @@ def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
 
 def _fsetStepApplicableLevel3Criteria(
     dictStep, listDeclaredBinaries, dictTemplateValues,
+    bArchiveTests=True,
 ):
     """Return the L3 criteria with a non-empty domain on this step.
 
@@ -4316,7 +4332,9 @@ def _fsetStepApplicableLevel3Criteria(
     if not isinstance(dictStep, dict):
         return set()
     setApplicable = set()
-    if _flistStepDeclaredPaths(dictStep, dictTemplateValues):
+    if _flistStepDeclaredPaths(
+        dictStep, dictTemplateValues, bArchiveTests,
+    ):
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")

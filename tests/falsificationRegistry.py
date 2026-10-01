@@ -24591,4 +24591,20 @@ def _fdictEntry(sRel):
         old='    if sService == "zenodo" and not dictConfig.get("sService"):\n        # The record names no instance: the project\'s own declaration\n        # decides, exactly as the Level 2 endpoint check reads it.\n        from vaibify.reproducibility.syncBookkeeping import (\n            fsResolveRecordedZenodoService,\n        )\n        dictConfig["sService"] = fsResolveRecordedZenodoService(dictWorkflow)\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveTestsOptOutLeavesNoUnclearableRows.py::testTheDeclarationIsPinnedWhateverTheTestsOptOutSays'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        old='        # A publication artefact a human wrote, not a test: the\n        # tests opt-out must not take it out of the manifest.\n        setPaths.update(flistStepDeclarationRepoPaths(dictStep))\n        if bArchiveTests:\n            setPaths.update(flistStepStandardsRepoPaths(dictStep))\n',
+        new='        if bArchiveTests:\n            setPaths.update(flistStepDeclarationRepoPaths(dictStep))\n            setPaths.update(flistStepStandardsRepoPaths(dictStep))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveTestsOptOutLeavesNoUnclearableRows.py::testNoRowDemandsWhatTheWriterWillNotWriteWhenTestsAreNotArchived'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if bArchiveTests:\n        listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
+        new='    listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
+    ),
 ]
