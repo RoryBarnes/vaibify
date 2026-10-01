@@ -613,13 +613,24 @@ def testExternalDiffDoesNotRunForAnyVaibifyCall(worldProbe):
         assert fsetRunCall(worldProbe, sCall, "externalDiff") == set()
 
 
-def testFailingProcessFilterMakesTheManifestQuestionUndetermined(worldProbe):
+def testFailingProcessFilterNeverMakesTheManifestQuestionLie(worldProbe):
+    """The manifest is unchanged, so the only honest answers are 'no' or 'unknown'.
+
+    Git 2.50 and older fail the command (exit 128), which vaibify turns
+    into an undetermined refusal; git 2.55 skips the broken filter and
+    reports no difference. Either is truthful here; a 'yes' would not be.
+    """
     from vaibify.cli.commandReproduce import _ffnBuildHostGitRunner
     from vaibify.reproducibility import gitEvidence
     sRepo = worldProbe.fsFreshCell("filterProcess")
     harness.fnMakeWorktreeStatDirty(sRepo)
-    with pytest.raises(gitEvidence.RecordKindUndeterminedError):
-        gitEvidence.fbManifestDiffersFromHead(_ffnBuildHostGitRunner(sRepo))
+    try:
+        bDiffers = gitEvidence.fbManifestDiffersFromHead(
+            _ffnBuildHostGitRunner(sRepo)
+        )
+    except gitEvidence.RecordKindUndeterminedError:
+        return
+    assert bDiffers is False
 
 
 @pytest.mark.parametrize(
