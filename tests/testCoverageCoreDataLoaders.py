@@ -200,9 +200,18 @@ def testVotableMalformedXmlIsALoadFailure(tmp_path):
         ffLoadValue("broken.vot", "", str(tmp_path))
 
 
-def testIpacMalformedHeaderIsALoadFailure(tmp_path):
-    """A header row astropy cannot parse is reported as an ipac failure."""
-    pytest.importorskip("astropy")
+def testIpacMalformedHeaderIsALoadFailure(tmp_path, monkeypatch):
+    """Whatever astropy raises while reading is reported as an ipac failure.
+
+    Which headers astropy rejects differs between its releases, so the
+    reader is made to reject this one; the wrapping is what is pinned.
+    """
+    astropyAscii = pytest.importorskip("astropy.io.ascii")
+
+    def fnReadThatRejectsTheHeader(*listArguments, **dictKeywords):
+        raise ValueError("header row could not be parsed")
+
+    monkeypatch.setattr(astropyAscii, "read", fnReadThatRejectsTheHeader)
     (tmp_path / "broken.ipac").write_text("|||\n garbage")
     with pytest.raises(ValueError, match="broken.ipac as ipac"):
         ffLoadValue("broken.ipac", "", str(tmp_path))
