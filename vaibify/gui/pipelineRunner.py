@@ -30,12 +30,20 @@ __all__ = [
     "ffBuildLoggingCallback",
     "fnWriteLogToContainer",
     "SET_VALID_RUN_MODES",
+    "S_RUN_MODE_RERUN",
     "S_RUN_ID_VARIABLE",
     "VAR_RUN_ID",
     "fsRunMarkerPrefix",
 ]
 
 SET_VALID_RUN_MODES = {"full", "dataOnly", "plotsOnly"}
+
+# The L3 attestation rerun's mode. It is a ``full`` run that also runs
+# the data commands of a ``bPlotOnly`` step: that flag is a convenience
+# for ordinary dashboard runs, and a rerun that skipped data commands
+# would grade outputs it never regenerated. Deliberately NOT in
+# SET_VALID_RUN_MODES, which is what a browser or an agent may request.
+S_RUN_MODE_RERUN = "rerun"
 
 # ---------------------------------------------------------------------------
 # Re-exports from pipelineUtils (true leaf — breaks circular imports).
@@ -704,6 +712,7 @@ async def ftRunStepCommands(
         iExitCode, fCpuTime = await _ftRunSetupIfNeeded(
             connectionDocker, sContainerId, dictStep,
             sStepDirectory, dictVariables, fnStatusCallback,
+            bIgnorePlotOnly=(sRunMode == S_RUN_MODE_RERUN),
         )
         if iExitCode != 0:
             return (iExitCode, fCpuTime)
@@ -748,9 +757,13 @@ def _ffTotalCpuTime(fFirst, fSecond):
 async def _ftRunSetupIfNeeded(
     connectionDocker, sContainerId, dictStep,
     sStepDirectory, dictVariables, fnStatusCallback,
+    bIgnorePlotOnly=False,
 ):
-    """Run data analysis commands unless bPlotOnly is True."""
-    if dictStep.get("bPlotOnly", False):
+    """Run data analysis commands unless bPlotOnly is True.
+
+    ``bIgnorePlotOnly`` is set only by the attestation rerun.
+    """
+    if dictStep.get("bPlotOnly", False) and not bIgnorePlotOnly:
         return (0, 0.0)
     return await _ftRunCommandList(
         connectionDocker, sContainerId,
@@ -966,8 +979,13 @@ async def _fbVerifyStepList(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback,
 ):
-    """Verify outputs for every step, returning True if all present."""
-    dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    """Verify outputs for every step, returning True if all present.
+
+    The variables are the RUN's, not a lighter set of its own: a
+    templated plot path must be looked for where the run wrote it (the
+    plot directory under the repo root, the figure type lowercased).
+    """
+    dictVars = _fdictBuildVariables(dictWorkflow, sWorkdir)
     bAllPresent = True
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         bStepOk = await _fbVerifyStepOutputs(
@@ -1706,9 +1724,12 @@ async def fiRunAllSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback,
     bForceRun=False, dictInteractive=None, iSourceDateEpochOverride=0,
-    fdictCommitProvenance=None,
+    fdictCommitProvenance=None, sRunMode="full",
 ):
     """Run all enabled steps with logging.
+
+    ``sRunMode`` is ``full`` except for the attestation rerun, which
+    passes :data:`S_RUN_MODE_RERUN`.
 
     ``iSourceDateEpochOverride`` pins ``SOURCE_DATE_EPOCH`` and the
     figure salt to a recorded value instead of the HEAD derivation;
@@ -1726,6 +1747,7 @@ async def fiRunAllSteps(
         dictInteractive=dictInteractive,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
         fdictCommitProvenance=fdictCommitProvenance,
+        sRunMode=sRunMode,
     )
 
 

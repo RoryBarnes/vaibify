@@ -1110,10 +1110,11 @@ def fdictBootstrapStateFromMarkers(
     is always empty — verification by-eye is per-machine.
     """
     from .fileStatusManager import fsWorkflowSlugFromPath
+    from .workflowManager import fsWorkflowLoadedFromPath
     if not sProjectRepoPath:
         return fdictBuildEmptyState()
     sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
+        fsWorkflowLoadedFromPath(dictWorkflow),
     )
     if not sWorkflowSlug:
         return fdictBuildEmptyState()

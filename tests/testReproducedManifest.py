@@ -255,7 +255,7 @@ def test_the_manifest_never_pins_what_a_rerun_writes():
 # ---------------------------------------------------------------------
 
 
-def test_a_v4_attestation_reads_with_the_three_new_fields_none(tmp_path):
+def test_a_v4_attestation_reads_with_the_new_fields_none(tmp_path):
     pathRepo = tmp_path / "repo"
     (pathRepo / ".vaibify").mkdir(parents=True)
     (pathRepo / ".vaibify" / "l3_attestation.json").write_text(json.dumps({
@@ -264,10 +264,13 @@ def test_a_v4_attestation_reads_with_the_three_new_fields_none(tmp_path):
         "listCarriedPaths": [], "dictRerunFailure": {},
     }))
     dictRead = fdictReadAttestation(str(pathRepo))
-    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION == 5
+    assert dictRead["iSchemaVersion"] == I_SCHEMA_VERSION == 6
     assert dictRead["listFileOutcomes"] is None
     assert dictRead["dictReproductionProvenance"] is None
     assert dictRead["sReproducedManifestPath"] is None
+    assert dictRead["iPinnedInputsUnchanged"] is None
+    assert dictRead["iPinnedInputsTotal"] is None
+    assert dictRead["dictPreRerunClearing"] is None
 
 
 def test_a_fresh_attestation_carries_the_outcomes_the_provenance_and_the_path():

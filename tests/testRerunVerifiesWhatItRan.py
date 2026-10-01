@@ -51,8 +51,10 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import tarfile
+import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -81,6 +83,38 @@ class _ExecResult:
         self.sStderr = sStderr
 
 
+def _fsDirectoryWithTimeoutShim():
+    """Return a directory holding a ``timeout`` for hosts that lack one.
+
+    A real container is Linux and has coreutils' ``timeout``, which the
+    container adapter prefixes onto the commands it runs; macOS has none.
+    The shim only runs the command, which is all this stand-in needs.
+    """
+    if shutil.which("timeout"):
+        return ""
+    sDirectory = tempfile.mkdtemp(prefix="timeoutShim")
+    sShim = os.path.join(sDirectory, "timeout")
+    with open(sShim, "w") as fileShim:
+        fileShim.write('#!/bin/sh\nshift\nexec "$@"\n')
+    os.chmod(sShim, 0o755)
+    return sDirectory
+
+
+S_TIMEOUT_SHIM_DIRECTORY = _fsDirectoryWithTimeoutShim()
+
+
+def _fcompletedRunShell(sCommand):
+    """Run one command for real in bash, as a Linux container would."""
+    dictEnvironment = dict(os.environ)
+    if S_TIMEOUT_SHIM_DIRECTORY:
+        dictEnvironment["PATH"] = (
+            S_TIMEOUT_SHIM_DIRECTORY + os.pathsep + dictEnvironment["PATH"])
+    return subprocess.run(
+        ["bash", "-c", sCommand], capture_output=True, text=True,
+        env=dictEnvironment,
+    )
+
+
 class LocalShellContainer:
     """Runs container commands for real, on a directory that is not the clone.
 
@@ -98,17 +132,13 @@ class LocalShellContainer:
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         """Return ``(iExitCode, sStdout)`` from a real shell run."""
         self.listCommands.append(sCommand)
-        completed = subprocess.run(
-            ["bash", "-c", sCommand], capture_output=True, text=True,
-        )
+        completed = _fcompletedRunShell(sCommand)
         return completed.returncode, completed.stdout
 
     def ftRunInContainerStreamed(self, sContainerId, sCommand, **kwargs):
         """Return the streamed-exec result shape from a real shell run."""
         self.listCommands.append(sCommand)
-        completed = subprocess.run(
-            ["bash", "-c", sCommand], capture_output=True, text=True,
-        )
+        completed = _fcompletedRunShell(sCommand)
         return _ExecResult(
             completed.returncode, completed.stdout, completed.stderr,
         )
@@ -289,6 +319,7 @@ def _fnSeedEnvelope(pathRepo):
             "sName": "GenerateSamples",
             "bRunEnabled": True,
             "saCommands": ["true"],
+            "saOutputDataFiles": [S_OUTPUT_FILENAME],
         }],
         "dictDeterminism": {
             # All three questions answered (2026-08-30 ruling).
@@ -389,6 +420,11 @@ def fnRepointShadowRoot(tmp_path, monkeypatch):
     """
     from vaibify.reproducibility import shadowRerun
 
+    # The shadow lane holds a per-project flock under ``~/.vaibify``.
+    # Tests that share a container name and run in parallel workers
+    # would otherwise refuse each other ("another shadow rerun is
+    # live"), so each test gets its own home.
+    monkeypatch.setenv("HOME", str(tmp_path / "isolatedHome"))
     pathShadowRoot = tmp_path / "shadowRoot"
     pathShadowRoot.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
@@ -449,6 +485,7 @@ def _fdictWorkflowFor(pathRepo, sName):
             "sName": "GenerateSamples",
             "bRunEnabled": True,
             "saCommands": ["true"],
+            "saOutputDataFiles": [S_OUTPUT_FILENAME],
         }],
         "dictDeterminism": {
             # All three questions answered (2026-08-30 ruling).
@@ -683,11 +720,16 @@ def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):
 
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
-    # Five since 2026-09-14: the three artifacts plus the dependency
-    # lock and the environment snapshot, which the manifest now pins
-    # so a reproducer verifies what PRODUCED the results too.
-    assert dictAttestation["iOutputHashesMatched"] == 5
-    assert dictAttestation["iOutputHashesTotal"] == 5
+    # One declared output was regenerated; the other four pinned files
+    # (the reproduce script, Dockerfile, dependency lock and environment
+    # snapshot, which pin what PRODUCED the results) are checked
+    # unchanged and counted apart.
+    assert dictAttestation["iOutputHashesMatched"] == 1
+    assert dictAttestation["iOutputHashesTotal"] == 1
+    assert dictAttestation["iPinnedInputsUnchanged"] == 4
+    assert dictAttestation["iPinnedInputsTotal"] == 4
+    assert dictAttestation["dictPreRerunClearing"][
+        "listDeletedOutputs"] == [S_OUTPUT_FILENAME]
 
 
 def test_attestation_names_the_manifest_it_actually_compared_against(

@@ -53,6 +53,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "flistContainerDirectoriesExist",
     "fdictHashContainerRepoPaths",
     "fdictReadFilesystemUsage",
+    "fsReadClockUtc",
     "fdictStatPathMtimes",
     "flistReadGitRepoStatuses",
     "fsHashContainerFileSha256",
@@ -197,6 +198,12 @@ class ConnectionRouter:
         ).fdictHashContainerRepoPaths(
             sResourceId, *tArguments, **dictKeywords
         )
+
+    def fsReadClockUtc(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fsReadClockUtc(sResourceId, *tArguments, **dictKeywords)
 
     def fdictReadFilesystemUsage(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""

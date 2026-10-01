@@ -231,10 +231,11 @@ async def _fnInjectDeterminismEnvPrefix(
     boolean, never sniff the carrier.
     """
     from .fileStatusManager import fsWorkflowSlugFromPath
+    from .workflowManager import fsWorkflowLoadedFromPath
     from vaibify.config.registryManager import fbIsHostProject
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
+        fsWorkflowLoadedFromPath(dictWorkflow),
     )
     if fbIsHostProject(sContainerId):
         dictOverlay = await _fdictBuildHostDeterminismOverlay(

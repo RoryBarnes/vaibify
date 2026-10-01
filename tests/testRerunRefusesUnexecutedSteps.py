@@ -49,12 +49,29 @@ S_RUNNER_PATCH_TARGET = (
 )
 
 
-def _fdictAutomatedStep(sName, bRunEnabled=True):
-    return {
+def _fdictAutomatedStep(sName, bRunEnabled=True, saOutputs=None):
+    dictStep = {
         "sName": sName,
         "bRunEnabled": bRunEnabled,
         "saCommands": ["true"],
     }
+    if saOutputs:
+        dictStep["saOutputDataFiles"] = list(saOutputs)
+    return dictStep
+
+
+def _ffbRunThatRegenerates(pathRepo, dictRelativePathToText):
+    """Return a runner stand-in that rewrites the given files, then succeeds.
+
+    The rerun deletes every declared output before it runs, so a runner
+    that writes nothing cannot reproduce anything; this is the
+    deterministic step.
+    """
+    def fbRegenerate(*taArguments, **dictArguments):
+        for sRelative, sText in dictRelativePathToText.items():
+            (pathRepo / sRelative).write_text(sText)
+        return True
+    return fbRegenerate
 
 
 def _fdictInteractiveStep(sName):
@@ -155,7 +172,9 @@ def test_a_given_steps_output_is_carried_out_of_the_comparison(
     the human's changed file is compared as though the rerun had
     produced it, and the attestation reports 1 of 2 with a divergence.
     """
-    with patch(S_RUNNER_PATCH_TARGET, return_value=True):
+    with patch(S_RUNNER_PATCH_TARGET, side_effect=_ffbRunThatRegenerates(
+        fixtureRepoWithAGivenFile, {"Figures/plot.txt": "computed\n"},
+    )):
         dictOutcome = fdictRerunAndVerifyWorkflow(
             None, "container", _fdictWorkflowWithAGivenStep(),
             _fsWorkflowPathIn(fixtureRepoWithAGivenFile), str(fixtureRepoWithAGivenFile),
@@ -213,10 +232,12 @@ def test_a_workflow_of_only_given_steps_is_not_a_pass(tmp_path):
 
 
 def test_an_executed_step_keeps_a_path_a_given_step_also_declares():
-    """Where both claim a path, the one backed by execution wins.
+    """The carried list never includes a path an executed step declares.
 
     Otherwise a stray declaration on a human step could quietly lift
-    a genuinely computed artefact out of the comparison.
+    a genuinely computed artefact out of the comparison. (The overlap
+    itself is refused before the rerun starts; see
+    ``testRerunRegeneratesWhatItGrades``.)
     """
     listCarried = flistCarriedOutputRepoPaths({"listSteps": [
         {
@@ -302,10 +323,12 @@ def test_fully_executable_workflow_still_attempts_and_passes(
 ):
     """The refusal is not a veto: enabled automated steps rerun and pass."""
     dictWorkflow = {"listSteps": [
-        _fdictAutomatedStep("GenerateSamples"),
+        _fdictAutomatedStep("GenerateSamples", saOutputs=["result.txt"]),
         _fdictAutomatedStep("PlotHistogram"),
     ]}
-    with patch(S_RUNNER_PATCH_TARGET, return_value=True):
+    with patch(S_RUNNER_PATCH_TARGET, side_effect=_ffbRunThatRegenerates(
+        fixturePinnedRepo, {"result.txt": "answer = 42\n"},
+    )):
         dictOutcome = fdictRerunAndVerifyWorkflow(
             None, "container", dictWorkflow, _fsWorkflowPathIn(fixturePinnedRepo),
             str(fixturePinnedRepo),

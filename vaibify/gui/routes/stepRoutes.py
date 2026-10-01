@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import posixpath
+import re
 
 from fastapi import HTTPException, Request
 
@@ -18,6 +19,7 @@ from ..routeContext import (
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
 )
+from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
@@ -44,6 +46,22 @@ from ..pipelineUtils import (
 
 
 _I_STEP_COUNT_WARNING = 100
+_RE_CONTAINER_CLOCK = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$")
+# The step-definition fields the in-container agent lane may write
+# through update-step. Everything else in StepUpdateRequest -- above
+# all dictVerification, the researcher's sign-off -- is refused to
+# agents, so a field added to the request later stays researcher-only
+# until someone lists it here deliberately.
+SET_AGENT_WRITABLE_STEP_FIELDS = frozenset({
+    "sName", "sDirectory", "sDescription", "bPlotOnly",
+    "saDataCommands", "saOutputDataFiles", "saTestCommands",
+    "saPlotCommands", "saPlotFiles", "saInputDataFiles",
+    "bNoInputData", "saDependencies", "fWallClockBudgetSeconds",
+    # The test categories an agent declares and writes (the agent
+    # guide's documented workflow). Definitions only: the RESULT of
+    # running them lives in dictVerification, which stays user-only.
+    "dictTests",
+})
 _I_STEP_COUNT_MAX = 500
 
 
@@ -237,6 +255,8 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
         dictUpdates = _fdictExtractStepUpdates(request)
+        if fbRequestRidesAgentLane(requestHttp):
+            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)
         _fnRejectContractBreakingUpdates(
             dictWorkflow, iStepIndex, dictUpdates,
         )
@@ -293,6 +313,10 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             bHostProject=fbIsHostProject(sContainerId),
         )
+        _fnStampServerSideUserUpdate(
+            dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,
+            dictUpdates,
+        )
         try:
             workflowManager.fnUpdateStep(
                 dictWorkflow, iStepIndex, dictUpdates,
@@ -325,6 +349,75 @@ def _fdictExtractStepUpdates(request):
     dictRaw.pop("bConfirmDestructive", None)
     dictRaw.pop("sBaseFingerprint", None)
     return fdictFilterNonNone(dictRaw)
+
+
+def _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates):
+    """Refuse (403, naming the field) any agent write off the allowlist."""
+    listRefused = sorted(
+        sField for sField in dictUpdates
+        if sField not in SET_AGENT_WRITABLE_STEP_FIELDS
+    )
+    if listRefused:
+        raise HTTPException(
+            403, "The agent lane may not write step field(s) "
+            + ", ".join(listRefused) + ": the researcher's "
+            "verification and run records are user-only. Allowed "
+            "fields: " + ", ".join(
+                sorted(SET_AGENT_WRITABLE_STEP_FIELDS)) + ".")
+
+
+def _fsReadContainerClockUtc(connectionDocker, sContainerId):
+    """Return the container's own clock as ``YYYY-MM-DD HH:MM:SS UTC``.
+
+    Every mtime the freshness checks compare against the sign-off was
+    produced by the container's filesystem, so the sign-off is dated by
+    the same clock. The hub's wall clock is a different clock: when it
+    runs ahead, a plot edited after the sign-off carries an mtime BEFORE
+    the stamp and the changed plot's new hash is adopted as verified.
+    Refused (409, before anything is written) when the clock cannot be
+    read, rather than falling back to the host's.
+    """
+    try:
+        sClock = connectionDocker.fsReadClockUtc(sContainerId)
+    except (OSError, ValueError):
+        sClock = ""
+    if not _RE_CONTAINER_CLOCK.match(sClock):
+        raise HTTPException(
+            409, "The sign-off was not recorded: the container's clock "
+            "could not be read, and the hub's own clock is not the one "
+            "that dates its files.")
+    return sClock
+
+
+def _fnStampServerSideUserUpdate(
+    connectionDocker, sContainerId, dictWorkflow, iStepIndex, dictUpdates,
+):
+    """Make ``sLastUserUpdate`` the container clock's reading, never a client's.
+
+    The timestamp dates the researcher's attestation, and everything
+    that decides whether a later change supersedes it compares file
+    mtimes against it, so a client-supplied value (a far-future one
+    makes the attestation immune to every later change) is discarded.
+    It is stamped, from the container's clock, only when ``sUser``
+    actually changes; otherwise the stored value is kept.
+    """
+    dictClientVerification = dictUpdates.get("dictVerification")
+    if not isinstance(dictClientVerification, dict):
+        return
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictStoredVerification = {}
+    if 0 <= iStepIndex < len(listSteps):
+        dictStoredVerification = listSteps[iStepIndex].get(
+            "dictVerification") or {}
+    dictStamped = dict(dictClientVerification)
+    dictStamped.pop("sLastUserUpdate", None)
+    if dictStoredVerification.get("sLastUserUpdate") is not None:
+        dictStamped["sLastUserUpdate"] = dictStoredVerification[
+            "sLastUserUpdate"]
+    if dictStamped.get("sUser") != dictStoredVerification.get("sUser"):
+        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(
+            connectionDocker, sContainerId)
+    dictUpdates["dictVerification"] = dictStamped
 
 
 def _fnRejectContractBreakingUpdates(

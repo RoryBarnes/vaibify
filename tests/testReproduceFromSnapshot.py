@@ -149,8 +149,14 @@ def _fdictRunFromSnapshot(sSourceRepo, dictAcquired, fnRunSideEffect):
     }
 
 
-def _fnLeaveTheShadowAlone(dictWorkflow, sWorkflowPath):
-    del dictWorkflow, sWorkflowPath
+def _fnRegenerateTheShadowOutputFaithfully(dictWorkflow, sWorkflowPath):
+    """Write the pinned bytes back, as a deterministic step would.
+
+    The rerun deletes every declared output before it runs, so a run
+    that writes nothing leaves the output missing and cannot reproduce.
+    """
+    del sWorkflowPath
+    _ffnRewriteTheShadowOutput("1\n")(dictWorkflow, "")
 
 
 def _ffnRewriteTheShadowOutput(sBody):
@@ -192,14 +198,15 @@ def test_the_comparison_is_rooted_on_the_shadow_never_on_the_staged_clone(
         assert fileHandle.read() == "1\n"
 
 
-def test_an_untouched_shadow_reproduces(sSourceRepo):
+def test_a_faithful_rerun_reproduces(sSourceRepo):
     dictRun = _fdictRunFromSnapshot(
-        sSourceRepo, _fdictAcquired(), _fnLeaveTheShadowAlone,
+        sSourceRepo, _fdictAcquired(), _fnRegenerateTheShadowOutputFaithfully,
     )
     assert dictRun["dictOutcome"]["bPassed"] is True
-    # Three since 2026-09-14: the manifest pins the environment
-    # snapshot alongside the results.
-    assert dictRun["dictOutcome"]["iOutputHashesTotal"] == 3
+    # One regenerated output; the script and the environment snapshot
+    # the manifest also pins are checked unchanged and counted apart.
+    assert dictRun["dictOutcome"]["iOutputHashesTotal"] == 1
+    assert dictRun["dictOutcome"]["iPinnedInputsTotal"] == 2
     assert dictRun["dictOutcome"]["sShadowTeardown"] == "destroyed"
     assert dictRun["dictOutcome"]["sImageDigest"] == _fdictAcquired()["sImageReference"]
 
@@ -208,7 +215,7 @@ def test_an_untouched_shadow_reproduces(sSourceRepo):
 def test_the_create_requests_the_required_platform(sSourceRepo):
     """Kills: composing the create without the platform."""
     dictRun = _fdictRunFromSnapshot(
-        sSourceRepo, _fdictAcquired(), _fnLeaveTheShadowAlone,
+        sSourceRepo, _fdictAcquired(), _fnRegenerateTheShadowOutputFaithfully,
     )
     sImage, dictKeywords = dictRun["daemon"].listCreated[0]
     assert sImage == _fdictAcquired()["sImageReference"]
@@ -240,7 +247,7 @@ def test_no_credential_port_gpu_or_mount_reaches_the_shadow(
         lambda *args, **kwargs: True, raising=False,
     )
     dictRun = _fdictRunFromSnapshot(
-        sSourceRepo, _fdictAcquired(), _fnLeaveTheShadowAlone,
+        sSourceRepo, _fdictAcquired(), _fnRegenerateTheShadowOutputFaithfully,
     )
     _sImage, dictKeywords = dictRun["daemon"].listCreated[0]
     assert dictKeywords["network_mode"] == "none"
@@ -261,6 +268,7 @@ def test_an_archive_loaded_image_marks_the_shadow_before_any_step(
         listSeen.append(os.path.isfile(os.path.join(
             dictWorkflow["sProjectRepoPath"], S_LOADED_FROM_ARCHIVE_MARKER,
         )))
+        _fnRegenerateTheShadowOutputFaithfully(dictWorkflow, sWorkflowPath)
     dictRun = _fdictRunFromSnapshot(
         sSourceRepo, _fdictAcquired("archive"), fnObserveTheMarker,
     )
@@ -338,7 +346,7 @@ def test_a_rerun_writes_a_report_and_never_an_attestation(sSourceRepo):
     """
     dictBefore = _fdictHashTree(sSourceRepo)
     assert fbL3AttestationCurrent(sSourceRepo) is False
-    dictRun = _fdictInvokeRerun(sSourceRepo, _fnLeaveTheShadowAlone)
+    dictRun = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     result = dictRun["result"]
     assert result.exit_code == 0, result.output
     assert "Verdict: reproduced" in result.output
@@ -371,7 +379,7 @@ def test_staging_is_deleted_and_the_report_survives_on_every_outcome(
 
     Kills: keeping the staging directory after the run.
     """
-    dictSuccess = _fdictInvokeRerun(sSourceRepo, _fnLeaveTheShadowAlone)
+    dictSuccess = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     assert dictSuccess["result"].exit_code == 0, dictSuccess["result"].output
     dictDiverged = _fdictInvokeRerun(
         sSourceRepo, _ffnRewriteTheShadowOutput("changed\n"),
@@ -382,7 +390,7 @@ def test_staging_is_deleted_and_the_report_survives_on_every_outcome(
         commandReproduce, "fdictRerunAndVerifyFromSnapshot",
         side_effect=ShadowRerunRefusedError("the image vanished"),
     ):
-        dictRefused = _fdictInvokeRerun(sSourceRepo, _fnLeaveTheShadowAlone)
+        dictRefused = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     assert dictRefused["result"].exit_code == 1
     assert "no verdict" in dictRefused["result"].output
     assert _flistStagingTokens() == []
@@ -397,7 +405,7 @@ def test_an_emulated_run_is_reported_as_reproduced_under_emulation(
     sSourceRepo,
 ):
     dictRun = _fdictInvokeRerun(
-        sSourceRepo, _fnLeaveTheShadowAlone,
+        sSourceRepo, _fnRegenerateTheShadowOutputFaithfully,
         dictAcquired=_fdictAcquired(bEmulated=True),
         listExtraArguments=["--allow-emulation"],
     )
@@ -421,7 +429,7 @@ def test_from_never_spawns_pip_on_the_host(sSourceRepo, monkeypatch):
         commandReproduce, "_ftRunPipInstall",
         side_effect=AssertionError("pip must never run for --from"),
     ):
-        dictRun = _fdictInvokeRerun(sSourceRepo, _fnLeaveTheShadowAlone)
+        dictRun = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     assert dictRun["result"].exit_code == 0, dictRun["result"].output
     listPipLaunches = [
         listArguments for listArguments in listLaunches
@@ -469,7 +477,7 @@ def test_an_acquisition_refusal_is_printed_and_leaves_no_staging(sSourceRepo):
 
 
 def test_the_described_source_feeds_the_report(sSourceRepo):
-    dictRun = _fdictInvokeRerun(sSourceRepo, _fnLeaveTheShadowAlone)
+    dictRun = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     assert dictRun["result"].exit_code == 0
     dictReport = reproductionReport.fdictReadReproductionReport(
         _flistReports()[0][:-5],

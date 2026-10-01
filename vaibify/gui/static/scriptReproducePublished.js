@@ -366,8 +366,12 @@ var VaibifyReproducePublished = (function () {
         var listCarried = dictReport.listCarriedPaths || [];
         elBody.innerHTML =
             '<table class="reproduce-facts">' +
-            _fsFactRow("Outputs matching", dictReport.iOutputHashesMatched +
-                " of " + dictReport.iOutputHashesTotal + " re-derived" +
+            _fsFactRow("Outputs regenerated identically",
+                dictReport.iOutputHashesMatched +
+                " of " + dictReport.iOutputHashesTotal +
+                "; " + (dictReport.iPinnedInputsUnchanged || 0) + " of " +
+                (dictReport.iPinnedInputsTotal || 0) +
+                " pinned inputs unchanged" +
                 (listCarried.length
                     ? "; " + listCarried.length + " carried in unchanged " +
                         "(produced by a step a human runs)"

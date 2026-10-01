@@ -36,7 +36,6 @@ def _fnTouchMtime(sAbsPath, fMtime):
 def _fdictBuildOneStepWorkflow(sProjectRepoPath, sUnitTestState):
     """Return a one-step workflow rooted at sProjectRepoPath."""
     return {
-        "sPath": "/workspace/repo/.vaibify/workflows/main.json",
         "sProjectRepoPath": sProjectRepoPath,
         "listSteps": [{
             "sLabel": "A01",

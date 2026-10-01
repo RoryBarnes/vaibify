@@ -584,20 +584,21 @@ def testAnUnwritableDockerfileIsA500NamingTheWrite(
         "Could not write Dockerfile",
     )
 
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: _fdictWriteDockerfileThenRepin passes the route's Docker "
-        "container ID to fsBuildImageDockerfileText, which looks the "
-        "registry up by sContainerName, so a project whose name differs "
-        "from its id gets a base-only Dockerfile with no overlays."
-    ),
-)
+@pytest.mark.falsification
 def testTheCopiedDockerfileComposesTheProjectsOverlays(
     tmp_path, sProjectRepo, fixtureCarrierStoodDown,
 ):
+    """The route resolves the container NAME before it composes overlays.
+
+    The URL carries the Docker id; the project registry is keyed by
+    name. The two are distinct here, so a route that handed the id to
+    the composer finds no project and writes a base-only Dockerfile.
+
+    Kills: reproducibilityRoutes._fdictWriteDockerfileThenRepin: the
+    resolved `fsContainerNameForId(dictCtx["docker"], sContainerId)`
+    replaced by the raw `sContainerId`.
+    """
+    assert S_CONTAINER_NAME != S_CONTAINER_ID
     sConfigPath = fsWriteConfig(
         tmp_path,
         f"projectName: {S_PROJECT_NAME}\nfeatures:\n  jupyter: true\n",
@@ -764,22 +765,27 @@ def testCopyingTheDockerfileRepinsTheManifestOrSaysItCouldNot(
             assert "Dockerfile" in fileHandle.read()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=RecordKindUndeterminedError,
-    reason=(
-        "BUG: gitEvidence._ftAskGit catches every exception, including a "
-        "ControlPlaneRefusalError, and re-raises it as "
-        "RecordKindUndeterminedError, so _fsRecordKindForProject's "
-        "documented re-raise of a carrier refusal is unreachable and a "
-        "refusal reads as an undetermined git answer."
-    ),
-)
+@pytest.mark.falsification
 def testACarrierRefusalAskingWhoseRecordItIsSurfacesAsItself():
+    """A refused exec is a refusal, never "the repository could not say".
+
+    Kills: the evidence module's question helper: the first statement
+    of its handler, `fnReRaiseControlPlaneRefusal(error)`, removed.
+    """
     connectionDocker = RecordingConnection(
         [MutationNotAdmittedError("no admission for this exec")],
     )
     with pytest.raises(MutationNotAdmittedError):
+        reproducibilityRoutes._fsRecordKindForProject(
+            connectionDocker, S_CONTAINER_ID,
+            {"sProjectRepoPath": "/workspace/projectAlpha"},
+        )
+
+
+def testAGitThatGenuinelyCannotAnswerIsStillUndetermined():
+    """The three-state ownership answer survives: only refusals pass through."""
+    connectionDocker = RecordingConnection([OSError("exec failed")])
+    with pytest.raises(RecordKindUndeterminedError):
         reproducibilityRoutes._fsRecordKindForProject(
             connectionDocker, S_CONTAINER_ID,
             {"sProjectRepoPath": "/workspace/projectAlpha"},

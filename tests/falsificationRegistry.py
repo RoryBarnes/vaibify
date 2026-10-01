@@ -1892,8 +1892,9 @@ LIST_FALSIFICATIONS = [
         # RE-ANCHORED 2026-08-31: the count is now over the COMPARED
         # entries rather than every manifest entry, because a given
         # step's outputs are carried out of the comparison.
-        old='''        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),''',
-        new='''        "iOutputHashesMatched": len(listCompared),''',
+        # RE-ANCHORED 2026-09-30: over the regenerated outputs only.
+        old='''        "iOutputHashesMatched": _fiCountMatched(listOutputOutcomes),''',
+        new='''        "iOutputHashesMatched": len(listOutputOutcomes),''',
     ),
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
@@ -19385,9 +19386,9 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/rerunVerification.py',
         # the matched count ignores the outcomes
         old=(
-            '        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),\n'
+            '        "iOutputHashesMatched": _fiCountMatched(listOutputOutcomes),\n'
         ),
-        new='        "iOutputHashesMatched": len(listCompared),\n',
+        new='        "iOutputHashesMatched": len(listOutputOutcomes),\n',
     ),
     Falsification(
         nodeid=(
@@ -24421,5 +24422,245 @@ def _fdictEntry(sRel):
         source='vaibify/gui/agentCouncilCredentialTest.py',
         old='            if sOutcome == agentCouncilCredentialStore.S_OUTCOME_PASSED:\n                sOutcome, sCheckId = (\n',
         new='            if False:\n                sOutcome, sCheckId = (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentUpdateStepAllowlist.py::testAnAgentCannotWriteTheResearchersAttestation'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        if fbRequestRidesAgentLane(requestHttp):\n            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)\n',
+        new='        if False:\n            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentUpdateStepAllowlist.py::testAClientSuppliedFutureTimestampIsNotStored'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        _fnStampServerSideUserUpdate(\n            dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,\n            dictUpdates,\n        )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testAStepThatExitsZeroAndWritesNothingIsMissing'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='        dictPreRerunClearing = fdictClearShadowBeforeRerun(\n            dictWorkflow, filesRepo, dictClassification,\n        )\n',
+        new='        dictPreRerunClearing = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testARerunRunsTheDataCommandsOfAPlotOnlyStep'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='            bIgnorePlotOnly=(sRunMode == S_RUN_MODE_RERUN),\n',
+        new='            bIgnorePlotOnly=False,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testTheRerunLaneAsksTheRunnerForTheRerunMode'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='        iSourceDateEpochOverride=iSourceDateEpochOverride,\n        sRunMode=S_RUN_MODE_RERUN,\n',
+        new='        iSourceDateEpochOverride=iSourceDateEpochOverride,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testACacheInAScratchDirectoryCannotShortcutRegeneration'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='        "listScratch": flistResolveScratchRepoPaths(dictWorkflow, sRepoRoot),\n',
+        new='        "listScratch": [],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testAScratchDirectoryHoldingAProtectedScriptIsRefusedAndNothingDeleted'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='        if fbIsWithin(sProtected, sLocated):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testACarriedOutputAnExecutedStepAlsoDeclaresIsRefusedByName'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='    if setAmbiguous:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheMarkerNamespaceReachesPytestForALoadedWorkflow'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old='        sFullCmd, fsWorkflowSlugFromPath(\n            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),\n',
+        new='        sFullCmd, fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheRunnerExportsTheNamespaceForALoadedWorkflow'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n    if fbIsHostProject(sContainerId):\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n    if fbIsHostProject(sContainerId):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testAFreshCloneBootstrapsFromMarkersOfItsOwnWorkflow'
+        ),
+        source='vaibify/gui/stateManager.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testThePollReadsTheMarkersOfTheWorkflowItDescribes'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testADriftedBinaryDeniesTheScalarLevelThreeAsItsRowDoes'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistStepScopeBlockers(\n        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),\n    ):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testADeletedPinnedStepScriptDeniesTheScalarLevelThree'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistStepScopeBlockers(\n        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),\n    ):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testAHostProjectNeverReadsLevelThreeAttainedInAnyCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        bHasRepo and not bHostMode,\n',
+        new='        bHasRepo,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testTheRatchetStampsNoLevelThreeForAHostProject'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not dictContext["bHasRepo"] or dictContext.get("bHostMode"):\n',
+        new='    if not dictContext["bHasRepo"]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRowAndGateAgreeOnManifestFreshness.py::testAChangedInputMakesTheRowAndTheGateAgreeTheStepIsStale'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return hashStaleness.fbStepHashesMatchManifest(\n        dictStep, fsRepoRootOf(filesRepo), filesRepo,\n    )\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAnOutputAbsentFromTheManifestIsNeverVouchedFor.py::testAnOutputTheManifestOmitsIsNeverFreshWhateverElseMatches'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    return any(sRelPath not in dictEntries for sRelPath in listRelPaths)\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::testTheCopiedDockerfileComposesTheProjectsOverlays'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='        fsContainerNameForId(dictCtx["docker"], sContainerId),\n        _fsRecordedImageDigest(filesRepo),\n',
+        new='        sContainerId,\n        _fsRecordedImageDigest(filesRepo),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::testACarrierRefusalAskingWhoseRecordItIsSurfacesAsItself'
+        ),
+        source='vaibify/reproducibility/gitEvidence.py',
+        old='        fnReRaiseControlPlaneRefusal(error)\n        raise RecordKindUndeterminedError(\n',
+        new='        raise RecordKindUndeterminedError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoVerifyUsesTheRecordedService.py::testAWorkflowDeclaredForTheProductionInstanceIsVerifiedAgainstIt'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if sService == "zenodo" and not dictConfig.get("sService"):\n        # The record names no instance: the project\'s own declaration\n        # decides, exactly as the Level 2 endpoint check reads it.\n        from vaibify.reproducibility.syncBookkeeping import (\n            fsResolveRecordedZenodoService,\n        )\n        dictConfig["sService"] = fsResolveRecordedZenodoService(dictWorkflow)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveTestsOptOutLeavesNoUnclearableRows.py::testTheDeclarationIsPinnedWhateverTheTestsOptOutSays'
+        ),
+        source='vaibify/reproducibility/manifestWriter.py',
+        old='        # A publication artefact a human wrote, not a test: the\n        # tests opt-out must not take it out of the manifest.\n        setPaths.update(flistStepDeclarationRepoPaths(dictStep))\n        if bArchiveTests:\n            setPaths.update(flistStepStandardsRepoPaths(dictStep))\n',
+        new='        if bArchiveTests:\n            setPaths.update(flistStepDeclarationRepoPaths(dictStep))\n            setPaths.update(flistStepStandardsRepoPaths(dictStep))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveTestsOptOutLeavesNoUnclearableRows.py::testNoRowDemandsWhatTheWriterWillNotWriteWhenTestsAreNotArchived'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if bArchiveTests:\n        listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
+        new='    listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVerifyResolvesPlotPathsWhereTheRunWritesThem.py::testATemplatedPlotIsLookedForWhereTheRunWroteIt'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    dictVars = _fdictBuildVariables(dictWorkflow, sWorkdir)\n    bAllPresent = True\n',
+        new='    dictVars = _fdictBuildWorkflowVars(dictWorkflow)\n    bAllPresent = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRefuseUnexecutedCommandFields.py::testAStepCarryingACommandListNoRunExecutesIsRefusedByName'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        old='        sUnexecuted = _fsDescribeUnexecutedCommandField(sLabel, dictStep)\n        if sUnexecuted:\n            return sUnexecuted\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryLevelTwoSyncRefusalIsNamedByABlocker.py::testACommitPushedSinceTheVerifyIsNamed'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return [_fdictGithubVerifyStaleBlocker()]\n\n\ndef _flistZenodoLevel2Blockers(',
+        new='    return listBlockers\n\n\ndef _flistZenodoLevel2Blockers(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryLevelTwoSyncRefusalIsNamedByABlocker.py::testAnUnrecordedZenodoDoiIsNamed'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]\n',
+        new='    return listBlockers\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoRechecksLocalBytes.py::testAPublishedFileEditedAfterTheVerifyDeniesTheGatesAndTheCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbLevel2UnchangedSinceVerify(\n        dictWorkflow, filesRepo, dictStatus,\n    ):\n        return False\n    return _fbGithubHeadMatchesVerifiedSha(\n',
+        new='    return _fbGithubHeadMatchesVerifiedSha(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoRechecksLocalBytes.py::testAnOutputDeclaredAfterTheVerifyDeniesTheGatesAndTheCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbLevel2UnchangedSinceVerify(\n        dictWorkflow, filesRepo, dictStatus,\n    ):\n        return [_fdictChangedSinceVerifyBlocker(\n            _fdictGithubVerifyStaleBlocker(), "GitHub")]\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffIsDatedByTheContainerClock.py::testTheSignOffIsStampedFromTheContainerClockNotTheHubs'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(\n            connectionDocker, sContainerId)\n',
+        new='        dictStamped["sLastUserUpdate"] = __import__("time").strftime(\n            "%Y-%m-%d %H:%M:%S UTC", __import__("time").gmtime())\n',
     ),
 ]

@@ -2741,7 +2741,6 @@ def _fnSeedHashStaleStep(tmp_path, sUnitTestState):
     os.utime(str(sLivePath), (fSharedMtime, fSharedMtime))
     os.utime(str(sBaselinePath), (fSharedMtime, fSharedMtime))
     dictWorkflow = {
-        "sPath": "/workspace/repo/.vaibify/workflows/main.json",
         "sProjectRepoPath": str(tmp_path),
         "listSteps": [{
             "sLabel": "A01",
@@ -5127,7 +5126,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +49 (2026-09-30): the supervision watchdog records a flag before
     # the judged-once watermark moves, restores the watermark when the
     # write fails, and skips a flag a retry already wrote.
-    "routes/pipelineRoutes.py": 4054,
+    # 4054 -> 4057 (2026-09-30): the poll's attestation summary carries
+    # the pinned-input counts.
+    # 4057 -> 4066 (2026-09-30): the poll maps markers by the step dict
+    # the fetch returns, and names its namespace from the loaded file.
+    "routes/pipelineRoutes.py": 4066,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5186,7 +5189,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-15): Level 3 is denied to a host project BY
     # CONSTRUCTION, so fiProofLevel takes the fact and every caller
     # has to answer it. Two lines, one of them the import.
-    "routes/testRoutes.py": 995,
+    # 995 -> 998 (2026-09-30): namespace from the loaded-from helper.
+    "routes/testRoutes.py": 998,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5528,7 +5532,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +23 (2026-09-24): a loaded workflow records the file it came
     # from, and the save strips it -- the load/save authority owns
     # the one transient field that says which file a workflow is.
-    "workflowManager.py": 2878,
+    # 2878 -> 2909 (2026-09-30): fsWorkflowLoadedFromPath, the one
+    # reader of the loaded-from key; the loader's refusal of command
+    # lists no run executes.
+    "workflowManager.py": 2909,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5593,7 +5600,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # list, which is where the blocked verifications were.
     # +7 (2026-09-23): the project gitignore covers the run state and
     # logs, which moved into the project from the container root.
-    "stateManager.py": 1247,
+    # 1247 -> 1248 (2026-09-30): namespace from the loaded-from helper.
+    "stateManager.py": 1248,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with
@@ -6488,7 +6496,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +25 (2026-09-24): every container command a run starts exports
     # that run's marker, so a Stop can find its processes among other
     # projects' runs. The runner's command assembly is its job.
-    "pipelineRunner.py": 1796,
+    # 1796 -> 1818 (2026-09-30): the attestation rerun's run mode, and
+    # Verify using the run's own variables.
+    "pipelineRunner.py": 1818,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6926,7 +6936,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # routes join the human-only exclusions, with the reason.
     # 1409 -> 1413 (2026-09-29): the snapshot-scope choice joins the human-only
     # exclusions beside the credential consent routes.
-    "actionCatalog.py": 1413,
+    # 1413 -> 1419 (2026-09-30): update-step's description names the
+    # fields the agent lane may write.
+    "actionCatalog.py": 1419,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7064,7 +7076,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fiProofLevel call.
     # +2 (2026-09-24): rename and align refuse only while THIS
     # project runs; another project's run does not touch its steps.
-    "routes/stepRoutes.py": 866,
+    # 866 -> 959 (2026-09-30): the update-step agent allowlist and the
+    # server-side sign-off timestamp, dated by the container's clock.
+    "routes/stepRoutes.py": 959,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -7295,7 +7309,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-09-24): verification records and the lock verdict are
     # read and written for the project they describe, and a refusal
     # names the project whose verification holds the container.
-    "routes/reproducibilityRoutes.py": 2344,
+    # 2344 -> 2350 (2026-09-30): the attestation carries the pinned-input
+    # split and the pre-run deletions; the copied Dockerfile composes
+    # overlays for the resolved container name.
+    "routes/reproducibilityRoutes.py": 2350,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

@@ -59,9 +59,21 @@ var VaibifyFileOutcomes = (function () {
             "</code></td>";
     }
 
+    function _fsOutcomeWord(dictOutcome) {
+        /* A pinned input (script, input data, environment file) was
+           never regenerated, only checked unchanged, so it must not
+           wear the word an output earns by being re-derived. */
+        var sStatus = dictOutcome.sStatus || "";
+        if (dictOutcome.sRole === "pinned-input") {
+            if (sStatus === "matched") return "pinned input, unchanged";
+            if (sStatus === "missing") return "pinned input, missing";
+        }
+        return _DICT_STATUS_WORDS[sStatus] || sStatus;
+    }
+
     function _fsRenderOutcomeRow(dictOutcome) {
         var sStatus = dictOutcome.sStatus || "";
-        var sWord = _DICT_STATUS_WORDS[sStatus] || sStatus;
+        var sWord = _fsOutcomeWord(dictOutcome);
         return '<tr class="file-outcome-' + fnEscapeHtml(sStatus) + '">' +
             "<td>" + fnEscapeHtml(dictOutcome.sPath || "") + "</td>" +
             _fsRenderHashCell(dictOutcome.sExpected) +

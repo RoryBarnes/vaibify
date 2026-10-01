@@ -165,11 +165,13 @@ def fnInstallPipelineRunner(monkeypatch, iExitCode, listCalls):
     async def fiFakeRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         sWorkdir, fnStatusCallback, iSourceDateEpochOverride=None,
+        sRunMode="full",
     ):
         await fnStatusCallback({"sType": "stepStarted"})
         listCalls.append({
             "sContainerId": sContainerId, "sWorkdir": sWorkdir,
             "iSourceDateEpochOverride": iSourceDateEpochOverride,
+            "sRunMode": sRunMode,
         })
         return iExitCode
 
@@ -177,7 +179,11 @@ def fnInstallPipelineRunner(monkeypatch, iExitCode, listCalls):
 
 
 def testAZeroExitRunIsARunAndCarriesTheRecordedEpoch(monkeypatch):
-    """Exit 0 is True, and the envelope's epoch reaches the runner."""
+    """Exit 0 is True, and the envelope's epoch reaches the runner.
+
+    The run is the rerun mode: every executed step runs its data
+    commands whatever its ``bPlotOnly`` says.
+    """
     listCalls = []
     fnInstallPipelineRunner(monkeypatch, 0, listCalls)
     assert rerunVerification.fbRunWorkflowInContainer(
@@ -188,6 +194,7 @@ def testAZeroExitRunIsARunAndCarriesTheRecordedEpoch(monkeypatch):
         "sContainerId": "containerIdAlpha",
         "sWorkdir": "/workspace/repo/.vaibify",
         "iSourceDateEpochOverride": 1700000000,
+        "sRunMode": "rerun",
     }]
 
 

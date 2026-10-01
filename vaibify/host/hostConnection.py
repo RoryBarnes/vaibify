@@ -319,6 +319,15 @@ class HostConnection:
             return ""
         return hashlib.sha256(baContent).hexdigest()
 
+    def fsReadClockUtc(self, sContainerId):
+        """Return the host's wall clock as ``YYYY-MM-DD HH:MM:SS UTC``.
+
+        A host project's files live on the machine the hub runs on, so
+        the hub's clock IS the clock that stamps them.
+        """
+        del sContainerId
+        return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path."""
         sRealPath = self._fsValidateHostPath(sContainerId, sPath)

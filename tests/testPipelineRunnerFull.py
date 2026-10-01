@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
 
+from vaibify.gui import workflowManager
 from vaibify.gui.pipelineRunner import (
     ftRunStepCommands,
     _ftRunSetupIfNeeded,
@@ -935,7 +936,8 @@ def test_fnInjectDeterminismEnvPrefix_includes_workflow_slug():
     mockDocker = _fMockDocker(0, "1745798400\n")
     dictWorkflow = {
         "sProjectRepoPath": "/workspace/repo",
-        "sPath": "/workspace/repo/.vaibify/workflows/wfa.json",
+        workflowManager.S_LOADED_FROM_KEY: (
+            "/workspace/repo/.vaibify/workflows/wfa.json"),
     }
     dictVariables = {}
     _fnRunAsync(_fnInjectDeterminismEnvPrefix(

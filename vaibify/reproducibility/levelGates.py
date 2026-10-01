@@ -52,6 +52,8 @@ from .l3Attestation import (
     fsCurrentManifestDigest,
 )
 from .manifestWriter import (
+    fbWorkflowArchivesTests,
+    flistCollectCanonicalRepoPaths,
     flistDeclaredButMissingFromManifest,
     flistParseManifestLines,
 )
@@ -747,7 +749,8 @@ def _flistMarkerDriftFiles(dictStep, filesRepo, listDeclared):
     hash comparison while ``listOffendingFiles`` carries the raw
     declared paths, so each declared path is mapped to its
     repo-relative form (same resolution as
-    ``_flistStepOutputsRepoRelative``) before matching. Falls back to
+    ``fileStatusManager._flistStepOutputsRepoRelative``) before
+    matching. Falls back to
     the full declared list when nothing matches, so the blocker never
     under-reports.
     """
@@ -913,70 +916,16 @@ def _fbStepScriptStale(
 
 
 def _fbStepHashesMatchManifest(dictStep, filesRepo):
-    """Return True iff every declared output's hash matches MANIFEST.sha256.
+    """Return True iff the step's pinned files still match MANIFEST.sha256.
 
-    Delegates to ``hashStaleness`` for the manifest read and the
-    per-output content comparison so the suppression rule has the
-    same authority the file-status manager uses. Conservative on every
-    error path: missing repo, missing manifest, no declared outputs,
-    or any drifted entry returns False so the script-stale criterion
-    remains visible.
+    Delegates to ``hashStaleness.fbStepHashesMatchManifest``, the same
+    function the step row asks, so the suppression rule has one
+    authority and the row and this gate fail on the same set.
     """
-    if not fsRepoRootOf(filesRepo):
-        return False
-    listRelPaths = _flistStepOutputsRepoRelative(
-        dictStep, filesRepo,
-    )
-    if not listRelPaths:
-        return False
     from vaibify.gui import hashStaleness
-    if not hashStaleness.fbManifestExists(filesRepo):
-        return False
-    dictEntries = hashStaleness._fdictReadManifestEntries(filesRepo)
-    if not dictEntries:
-        return False
-    if _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
-        return False
-    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
-        filesRepo, listRelPaths, {},
+    return hashStaleness.fbStepHashesMatchManifest(
+        dictStep, fsRepoRootOf(filesRepo), filesRepo,
     )
-    return len(setStale) == 0
-
-
-def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
-    """Return True iff any declared output is absent from the manifest."""
-    for sRelPath in listRelPaths:
-        if sRelPath not in dictEntries:
-            return True
-    return False
-
-
-def _flistStepOutputsRepoRelative(dictStep, filesRepo):
-    """Return repo-relative output paths declared on a step.
-
-    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
-    step directory the same way ``_fsResolveStepFilePath`` does, then
-    strips the repo root so the result lines up with manifest keys.
-    Lazily imports the GUI helper so the reproducibility leaf stays
-    importable without GUI side effects at module load.
-    """
-    from vaibify.gui.fileStatusManager import _fsResolveStepFilePath
-    from vaibify.gui.pathContract import fsAbsToRepoRelative
-    sRepoRoot = fsRepoRootOf(filesRepo)
-    sStepDir = dictStep.get("sDirectory", "") or ""
-    listRelative = []
-    for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
-        dictStep.get("saPlotFiles", []) or []
-    ):
-        if not sFile:
-            continue
-        sAbs = _fsResolveStepFilePath(
-            sFile, sStepDir, {"sRepoRoot": sRepoRoot},
-        )
-        listRelative.append(
-            fsAbsToRepoRelative(sAbs, sRepoRoot),
-        )
-    return listRelative
 
 
 def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):
@@ -1311,9 +1260,29 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo, bHostProject):
         return False
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
+    if _flistStepScopeBlockers(
+        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),
+    ):
+        return False
     return all(
         _fdictL3WorkflowChecks(dictWorkflow, filesRepo).values()
     )
+
+
+def _flistStepScopeBlockers(listBlockers):
+    """Return the per-step entries of a blocker list.
+
+    The scalar Level 3 gate consults these, so a step row that lists
+    ``binary-drifted`` or ``script-not-pinned`` can never sit beneath a
+    project the chip calls Level 3. They were blockers only: the
+    workflow-scope conjuncts and readiness do not cover the per-step
+    binary criteria, and the scalar read Level 3 over a red row.
+    """
+    return [
+        dictEntry for dictEntry in listBlockers or []
+        if isinstance(dictEntry.get("iStepIndex"), int)
+        and dictEntry["iStepIndex"] >= 0
+    ]
 
 
 def fbL3ReadinessOK(dictWorkflow, filesRepo):
@@ -1822,6 +1791,76 @@ def _fsetDivergedPathsOf(dictStatus):
     }
 
 
+def _flistLevel2CanonicalPaths(dictWorkflow):
+    """Return the declared Level 2 files a verify compares, workflow-only.
+
+    Derived from the workflow alone (no directory listing), so it is
+    answerable against the poll's read-only snapshot as well as a live
+    adapter. The project-definition file is not in it: the snapshot
+    cannot list directories, and a changed definition is re-checked by
+    the next verify.
+    """
+    from . import publicationScope
+    listCanonical = [
+        sPath for sPath in flistCollectCanonicalRepoPaths(dictWorkflow)
+        if publicationScope.fbPathIsCompared(sPath)
+    ]
+    return sorted(publicationScope.fsetSelectLevel2Paths(listCanonical))
+
+
+def _fdictLevel2LiveHashes(dictWorkflow, filesRepo):
+    """Return ``{sPath: sSha256}`` for the Level 2 files hashable NOW.
+
+    A file the adapter cannot hash -- absent, or not sampled by the
+    poll snapshot -- is omitted: the caller makes no claim about it.
+    ``None`` means the hashing itself failed, which the caller reads as
+    "cannot prove unchanged".
+    """
+    listPaths = _flistLevel2CanonicalPaths(dictWorkflow)
+    if not listPaths:
+        return {}
+    try:
+        dictHashed = ffilesEnsureRepoFiles(filesRepo).fdictHashFiles(
+            listPaths,
+        )
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return None
+    return {
+        sPath: (dictHashed.get(sPath) or {}).get("sSha256")
+        for sPath in listPaths
+        if (dictHashed.get(sPath) or {}).get("sSha256")
+    }
+
+
+def _fbLevel2UnchangedSinceVerify(dictWorkflow, filesRepo, dictStatus):
+    """Return True iff each Level 2 file still IS the bytes the verify graded.
+
+    The cache's divergence list says whether the copies agreed at verify
+    time; it says nothing about the file on disk now. A published file
+    edited after the verify, or an output declared after it, passed
+    Level 2 until the next verify -- the Level 3 envelope gate was fixed
+    for exactly this and Level 2 was not. Neither is proven divergent
+    (nobody compared it), so the answer is the stale cache's: verify
+    again.
+
+    A cache without ``dictComparedHashes`` predates the field and
+    leaves nothing to compare, so it keeps its verified row (no project
+    loses one by upgrading; the Level 3 gate is the one that blocks on
+    such a cache). Files the adapter cannot hash are not claimed about.
+    """
+    dictRecorded = (dictStatus or {}).get("dictComparedHashes")
+    if not isinstance(dictRecorded, dict):
+        return True
+    dictLive = _fdictLevel2LiveHashes(dictWorkflow, filesRepo)
+    if dictLive is None:
+        return False
+    return all(
+        dictRecorded.get(sPath) == sLiveSha
+        for sPath, sLiveSha in dictLive.items()
+    )
+
+
 def fbWorkflowFullySyncedWithGithub(
     dictWorkflow, filesRepo,
 ):
@@ -1840,6 +1879,10 @@ def fbWorkflowFullySyncedWithGithub(
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
     if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
         return False
     return _fbGithubHeadMatchesVerifiedSha(
         dictWorkflow, dictStatus,
@@ -1884,6 +1927,10 @@ def fbWorkflowFullySyncedWithZenodo(
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
     if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
         return False
     if not (dictStatus.get("sZenodoDoi") or ""):
         return False
@@ -2207,6 +2254,9 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         # this component the cached list keeps quoting the old answer
         # -- the masked-transition class the L3 key already guards.
         _fsEnvelopeStateFingerprint(filesRepo),
+        # And the published files themselves: an edit after the verify
+        # must be able to raise the changed-since-verify blocker.
+        _fsLevel2ContentFingerprint(dictWorkflow, filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2254,7 +2304,12 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictGithubVerifyStaleBlocker()]
-    return _flistPerStepSyncBlockers(
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
+        return [_fdictChangedSinceVerifyBlocker(
+            _fdictGithubVerifyStaleBlocker(), "GitHub")]
+    listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-github-mirror",
         sRemediationHint=(
@@ -2262,6 +2317,15 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
             "clear blocker"
         ),
     )
+    if listBlockers or fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, filesRepo,
+    ):
+        return listBlockers
+    # The gate refuses for a reason no divergence names -- a commit
+    # pushed since the verify, or a cache whose counts contradict its
+    # own divergence list. Whatever the gate can refuse for, the
+    # blockers must be able to name, or the header cell outranks it.
+    return [_fdictGithubVerifyStaleBlocker()]
 
 
 def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
@@ -2271,7 +2335,12 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictZenodoVerifyStaleBlocker()]
-    return _flistPerStepSyncBlockers(
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
+        return [_fdictChangedSinceVerifyBlocker(
+            _fdictZenodoVerifyStaleBlocker(), "Zenodo")]
+    listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-zenodo-deposit",
         sRemediationHint=(
@@ -2279,6 +2348,11 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
             "to clear blocker"
         ),
     )
+    if listBlockers or fbWorkflowFullySyncedWithZenodo(
+        dictWorkflow, filesRepo,
+    ):
+        return listBlockers
+    return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
 
 
 def _flistAiDeclarationLevel2Blockers(dictWorkflow):
@@ -2532,6 +2606,42 @@ def _fdictGithubVerifyStaleBlocker():
         "sRemediationHint":
             "GitHub sync check is stale — re-verify to refresh status",
     }
+
+
+def _fdictChangedSinceVerifyBlocker(dictStaleBlocker, sServiceName):
+    """Say a published file changed since the last check, via the stale criterion."""
+    dictStaleBlocker["sRemediationHint"] = (
+        "Published files changed (or were declared) after the last "
+        f"{sServiceName} check — re-verify to compare them"
+    )
+    return dictStaleBlocker
+
+
+def _fdictZenodoUnexplainedRefusalBlocker(dictStatus):
+    """Name why the Zenodo gate refuses when no divergence does.
+
+    Two causes remain once divergence is excluded. No DOI on the
+    verified record means nothing has been deposited to publish to
+    (``not-in-zenodo-deposit``); anything else -- the verify ran against
+    the other Zenodo instance than the project is configured for, or
+    the cache contradicts itself -- is evidence that no longer answers
+    the question, which the stale criterion already says.
+    """
+    if not (dictStatus or {}).get("sZenodoDoi"):
+        dictBlocker = _fdictZenodoVerifyStaleBlocker()
+        dictBlocker["sCriterion"] = "not-in-zenodo-deposit"
+        dictBlocker["sRemediationHint"] = (
+            "No Zenodo DOI is recorded for this project — archive to "
+            "a deposit, then re-verify"
+        )
+        return dictBlocker
+    dictBlocker = _fdictZenodoVerifyStaleBlocker()
+    dictBlocker["sRemediationHint"] = (
+        "The last Zenodo check ran against a different instance than "
+        "this project is configured for, or contradicts itself — "
+        "re-verify to refresh status"
+    )
+    return dictBlocker
 
 
 def _fdictZenodoVerifyStaleBlocker():
@@ -2810,6 +2920,15 @@ def _fsEnvelopeStateFingerprint(filesRepo):
         for sPath in listOnDisk
     ]
     sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fsLevel2ContentFingerprint(dictWorkflow, filesRepo):
+    """SHA over each Level 2 file's live content hash (or ``"none"``)."""
+    dictLive = _fdictLevel2LiveHashes(dictWorkflow, filesRepo)
+    if not dictLive:
+        return "none"
+    sCanonical = json.dumps(sorted(dictLive.items()))
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
@@ -3350,6 +3469,7 @@ def _fdictL3PerStepContext(dictWorkflow, filesRepo):
         # declared outputs exactly as the manifest writer wrote them.
         # Computed once per poll rather than per step.
         "dictTemplateValues": fdictWorkflowTemplateValues(dictWorkflow),
+        "bArchiveTests": fbWorkflowArchivesTests(dictWorkflow or {}),
         "setNondeterministicSteps": _fsetNondeterministicSteps(
             dictWorkflow,
         ),
@@ -3568,8 +3688,15 @@ def _fdictBuildL3StepEntry(
     }
 
 
-def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
-    """Return repo-relative outputs + scripts + standards for a step."""
+def _flistStepDeclaredPaths(
+    dictStep, dictTemplateValues, bArchiveTests=True,
+):
+    """Return repo-relative outputs + scripts + standards for a step.
+
+    Standards follow the workflow's ``bArchiveTests`` opt-out exactly
+    as the manifest writer does: a row must never demand what Regenerate
+    will not write, or it can never clear.
+    """
     from .manifestPaths import (
         flistStepDeclarationRepoPaths,
         flistStepScriptRepoPaths,
@@ -3577,7 +3704,8 @@ def _flistStepDeclaredPaths(dictStep, dictTemplateValues):
     )
     listPaths = list(_flistStepOutputFiles(dictStep, dictTemplateValues))
     listPaths.extend(flistStepScriptRepoPaths(dictStep))
-    listPaths.extend(flistStepStandardsRepoPaths(dictStep))
+    if bArchiveTests:
+        listPaths.extend(flistStepStandardsRepoPaths(dictStep))
     listPaths.extend(flistStepDeclarationRepoPaths(dictStep))
     return [sPath for sPath in listPaths if sPath]
 
@@ -3588,6 +3716,7 @@ def _flistStepPathsMissingFromManifest(dictStep, dictContext):
     listMissing = []
     for sPath in _flistStepDeclaredPaths(
         dictStep, dictContext["dictTemplateValues"],
+        dictContext.get("bArchiveTests", True),
     ):
         if sPath not in setManifest:
             listMissing.append(sPath)
@@ -3939,6 +4068,9 @@ def _fdictStepProjectionContext(
     dictContext["bZenodoCacheStale"] = _fbAnyWorkflowCriterion(
         listLevel2Blockers, "zenodo-verify-stale",
     )
+    dictContext["bHostMode"] = _fbAnyWorkflowCriterion(
+        listLevel3Blockers, S_L3_HOST_MODE_CRITERION,
+    )
     dictContext["bOverleafBound"] = fbWorkflowHasOverleafBinding(
         dictWorkflow,
     )
@@ -3954,6 +4086,9 @@ def _fdictStepProjectionContext(
     # spelled them no matter which context the reader was handed.
     dictContext["dictTemplateValues"] = fdictWorkflowTemplateValues(
         dictWorkflow,
+    )
+    dictContext["bArchiveTests"] = fbWorkflowArchivesTests(
+        dictWorkflow or {},
     )
     return dictContext
 
@@ -4300,7 +4435,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
     Entries follow the canonical tuple order so the Step Viewer's
     rows are stable across polls.
     """
-    if not dictContext["bHasRepo"]:
+    if not dictContext["bHasRepo"] or dictContext.get("bHostMode"):
         return [
             (sCriterion, False)
             for sCriterion in _T_STEP_LEVEL3_CRITERIA
@@ -4308,6 +4443,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
     setApplicable = _fsetStepApplicableLevel3Criteria(
         dictStep, dictContext["listDeclaredBinaries"],
         dictContext["dictTemplateValues"],
+        dictContext.get("bArchiveTests", True),
     )
     setApplicable |= set(setFailing) & set(_T_STEP_LEVEL3_CRITERIA)
     return [
@@ -4330,6 +4466,7 @@ def _ftStepLevel3Counts(dictStep, setFailing, dictContext):
 
 def _fsetStepApplicableLevel3Criteria(
     dictStep, listDeclaredBinaries, dictTemplateValues,
+    bArchiveTests=True,
 ):
     """Return the L3 criteria with a non-empty domain on this step.
 
@@ -4346,7 +4483,9 @@ def _fsetStepApplicableLevel3Criteria(
     if not isinstance(dictStep, dict):
         return set()
     setApplicable = set()
-    if _flistStepDeclaredPaths(dictStep, dictTemplateValues):
+    if _flistStepDeclaredPaths(
+        dictStep, dictTemplateValues, bArchiveTests,
+    ):
         setApplicable.add("missing-from-manifest")
     if flistStepScriptRepoPaths(dictStep):
         setApplicable.add("script-not-pinned")
@@ -4739,9 +4878,19 @@ def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
 
 
 def _ftWorkflowLevel3Counts(listLevel3Blockers, bHasRepo):
-    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L3 cell."""
+    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L3 cell.
+
+    A host project reports one ``host-mode`` blocker that sits in no
+    criteria tuple, so it used to read ``attained 12/12``. Level 3 is
+    defined by a pinned container image a host project cannot have, so
+    its cell zeroes exactly as a missing repository's does.
+    """
+    bHostMode = S_L3_HOST_MODE_CRITERION in _fsetWorkflowScopeCriteria(
+        listLevel3Blockers,
+    )
     return _ftCountWorkflowCriteria(
-        listLevel3Blockers, _T_WORKFLOW_LEVEL3_CRITERIA, bHasRepo,
+        listLevel3Blockers, _T_WORKFLOW_LEVEL3_CRITERIA,
+        bHasRepo and not bHostMode,
     )
 
 

@@ -510,16 +510,24 @@ def _fnRejectDelimiterForgery(sScript):
 
 
 def flistRenderStepCommands(dictWorkflow):
-    """Return the shell lines that execute every workflow step in order.
+    """Return the shell lines that execute the workflow's steps in order.
 
-    Each step contributes its ``saDataCommands`` then
-    ``saPlotCommands``; ``cd`` into the step directory keeps relative
-    paths inside the step's working tree the way the live runner does.
-    Steps with no commands (e.g., ai-declaration) are skipped.
+    Exactly the steps the attested rerun executes
+    (:func:`~vaibify.reproducibility.rerunPreparation.flistSelectStepsTheRerunExecutes`):
+    an interactive step needs a researcher, so its outputs are given
+    and its commands are not run, and a stranger's script and the
+    attestation must agree on what "reproduced" means. Each step
+    contributes its ``saDataCommands`` then ``saPlotCommands``;
+    ``cd`` into the step directory keeps relative paths inside the
+    step's working tree the way the live runner does. Steps with no
+    commands are skipped.
     """
+    from vaibify.reproducibility.rerunPreparation import (
+        flistSelectStepsTheRerunExecutes,
+    )
     dictVariables = _fdictBuildReproductionVariables(dictWorkflow)
     listLines = []
-    for dictStep in (dictWorkflow or {}).get("listSteps", []) or []:
+    for dictStep in flistSelectStepsTheRerunExecutes(dictWorkflow):
         listLines.extend(_flistRenderOneStep(dictStep, dictVariables))
     return listLines
 

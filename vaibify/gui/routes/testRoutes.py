@@ -696,7 +696,8 @@ def _ftRunSaveAndRunTest(
     )
     sTestCmd = _fsPrefixWithWorkflowEnv(
         sTestCmd,
-        fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+        fsWorkflowSlugFromPath(
+            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),
     )
     return connectionDocker.ftRunInContainerStreamed(
         sContainerId, sTestCmd,
@@ -775,7 +776,8 @@ def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
     )
     sFullCmd = " && ".join([f"cd {fsShellQuote(sDir)}"] + listCmds)
     return _fsPrefixWithWorkflowEnv(
-        sFullCmd, fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),
+        sFullCmd, fsWorkflowSlugFromPath(
+            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),
     )
 
 
@@ -907,7 +909,8 @@ def _fnRegisterTestRun(app, dictCtx):
                 dictCtx, sContainerId, dictStep,
                 sRepoRoot=dictWorkflow.get("sProjectRepoPath", ""),
                 sWorkflowSlug=fsWorkflowSlugFromPath(
-                    dictWorkflow.get("sPath", "")),
+                    workflowManager.fsWorkflowLoadedFromPath(
+                        dictWorkflow)),
             )
 
         (iLevelBefore, dictCategoryResults) = (

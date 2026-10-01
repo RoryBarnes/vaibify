@@ -616,9 +616,11 @@ def _flistCollectManifestPaths(dictWorkflow):
         ))
         setPaths.update(flistStepInputRepoPaths(dictStep))
         setPaths.update(flistStepScriptRepoPaths(dictStep))
+        # A publication artefact a human wrote, not a test: the
+        # tests opt-out must not take it out of the manifest.
+        setPaths.update(flistStepDeclarationRepoPaths(dictStep))
         if bArchiveTests:
             setPaths.update(flistStepStandardsRepoPaths(dictStep))
-            setPaths.update(flistStepDeclarationRepoPaths(dictStep))
             setPaths.update(flistStepTestFileRepoPaths(dictStep))
     # What a rerun WRITES is never what the manifest PINS: a reproduced
     # manifest inside the manifest would grade itself.

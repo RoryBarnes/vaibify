@@ -25,6 +25,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from vaibify.gui import workflowManager
 from vaibify.gui.pipelineRunner import (
     S_DETERMINISM_APPLIED_KEY,
     S_ENV_PREFIX_KEY,
@@ -99,7 +100,8 @@ def test_inject_marks_skipped_even_when_slug_export_is_present():
         _fMockDocker(128, ""), "cid",
         {
             "sProjectRepoPath": "/workspace/repo",
-            "sPath": "/workspace/repo/.vaibify/workflows/wfa.json",
+            workflowManager.S_LOADED_FROM_KEY: (
+                "/workspace/repo/.vaibify/workflows/wfa.json"),
         },
         dictVariables,
     ))

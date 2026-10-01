@@ -5600,9 +5600,14 @@ const VaibifyApp = (function () {
             fnRow("Manifest digest",
                 dictCurrent.sManifestDigestAtAttestation || "?") +
             fnRow("Image", dictCurrent.sImageDigest || "?") +
-            fnRow("Re-derived files matched",
+            fnRow("Outputs regenerated identically",
                 (dictCurrent.iOutputHashesMatched || 0) + " of " +
                 (dictCurrent.iOutputHashesTotal || 0)) +
+            fnRow("Pinned inputs unchanged",
+                typeof dictCurrent.iPinnedInputsTotal === "number"
+                    ? (dictCurrent.iPinnedInputsUnchanged || 0) + " of " +
+                        dictCurrent.iPinnedInputsTotal
+                    : "not recorded (predates the regeneration check)") +
             fnRow("Duration",
                 (dictCurrent.fDurationSeconds || 0).toFixed(1) +
                 " s") +
@@ -5908,6 +5913,12 @@ const VaibifyApp = (function () {
             iStep, {dictVerification: dictNext});
         if (!dictResult) return;
         dictStep.dictVerification = dictNext;
+        /* The server dates the sign-off from the container's clock and
+           discards the client's stamp, so the saved record is what the
+           screen must show. */
+        if (dictResult.dictVerification) {
+            dictStep.dictVerification = dictResult.dictVerification;
+        }
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
         fnRenderStepList();
         fnUpdateHighlightState();

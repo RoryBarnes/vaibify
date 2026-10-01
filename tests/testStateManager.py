@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
+from vaibify.gui import workflowManager
 from vaibify.gui import stateManager
 
 
@@ -314,7 +315,7 @@ def _fnBuildBootstrapMock(
 def _fdictBuildWorkflowWith(listSteps):
     return {
         "sPlotDirectory": "Plot",
-        "sPath": (
+        workflowManager.S_LOADED_FROM_KEY: (
             "/workspace/Project/.vaibify/workflows/demo.json"
         ),
         "listSteps": [

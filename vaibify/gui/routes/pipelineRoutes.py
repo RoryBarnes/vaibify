@@ -1548,8 +1548,9 @@ def _fdictLoadMarkersForPoll(dictCtx, sContainerId, dictWorkflow):
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     if not sProjectRepoPath:
         return {}
+    from ..workflowManager import fsWorkflowLoadedFromPath
     sWorkflowSlug = fsWorkflowSlugFromPath(
-        dictWorkflow.get("sPath", ""),
+        fsWorkflowLoadedFromPath(dictWorkflow),
     )
     if not sWorkflowSlug:
         return {}
@@ -1562,9 +1563,17 @@ def _fdictLoadMarkersForPoll(dictCtx, sContainerId, dictWorkflow):
 
 
 def _fdictMarkersByStepIndex(listMarkers, listSteps):
-    """Map ``[(sDirectory, dictMarker)]`` onto live step indices."""
+    """Map ``[(dictStep, dictMarker)]`` onto live step indices.
+
+    The shape is the one :func:`stateManager._flistFetchMarkers`
+    produces: the step dict rides with its marker. The loader never set
+    the key this poll once derived its marker namespace from, so the
+    marker lane never ran and the mismatch between the two shapes was
+    never reached.
+    """
     dictByDirectory = {
-        sDirectory: dictMarker for sDirectory, dictMarker in listMarkers
+        dictMarkedStep.get("sDirectory", ""): dictMarker
+        for dictMarkedStep, dictMarker in listMarkers
     }
     dictResult = {}
     for iIndex, dictStep in enumerate(listSteps):
@@ -2558,6 +2567,9 @@ def _fdictSummarizeAttestation(filesRepo):
             "iOutputHashesMatched") or 0,
         "iOutputHashesTotal": dictAttestation.get(
             "iOutputHashesTotal") or 0,
+        "iPinnedInputsUnchanged": dictAttestation.get(
+            "iPinnedInputsUnchanged"),
+        "iPinnedInputsTotal": dictAttestation.get("iPinnedInputsTotal"),
         "listCarriedPaths": dictAttestation.get("listCarriedPaths"),
         "listDivergedHashes": dictAttestation.get(
             "listDivergedHashes") or [],

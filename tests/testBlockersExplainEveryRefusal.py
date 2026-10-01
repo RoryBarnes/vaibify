@@ -58,6 +58,9 @@ def _fdictSyncStatus(listDivergedPaths, sNowIso="2099-01-01T00:00:00Z"):
         ],
         "sLastVerified": sNowIso,
         "sEndpointVerified": "sandbox",
+        # A recorded DOI: without one the Zenodo gate refuses, and a
+        # "clean" cache that the gate refuses is not clean.
+        "sZenodoDoi": "10.5281/zenodo.1",
     }
 
 

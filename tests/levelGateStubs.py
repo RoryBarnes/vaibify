@@ -45,8 +45,17 @@ T_LEVEL3_CONJUNCT_GATES = (
 )
 
 
-def fnMakeEveryLevel3ConjunctPass(monkeypatch, **dictOverrides):
+def fnMakeEveryLevel3ConjunctPass(
+    monkeypatch, bStepScopeBlockersClear=False, **dictOverrides,
+):
     """Stub every L3 conjunct True, then apply the named overrides.
+
+    ``bStepScopeBlockersClear`` also silences the per-step blockers the
+    scalar gate consults (the last conjunct). Off by default, because a
+    test that builds real files wants them real; a test whose workflow
+    declares steps it never populated needs them silenced, or the
+    refusal it asserts is caused by the unpopulated steps and the
+    criterion under test could be deleted without the test noticing.
 
     ``dictOverrides`` maps a gate name to the boolean it should answer,
     so a test states only the criterion it is about. ``None`` means
@@ -68,6 +77,10 @@ def fnMakeEveryLevel3ConjunctPass(monkeypatch, **dictOverrides):
         monkeypatch.setattr(
             levelGates, sName,
             lambda *args, bValue=bValue, **kwargs: bValue,
+        )
+    if bStepScopeBlockersClear:
+        monkeypatch.setattr(
+            levelGates, "_flistStepScopeBlockers", lambda listBlockers: [],
         )
     listUnknown = sorted(
         set(dictOverrides) - set(T_LEVEL3_CONJUNCT_GATES)

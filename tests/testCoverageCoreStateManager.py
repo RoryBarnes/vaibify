@@ -12,6 +12,7 @@ import os
 
 import pytest
 
+from vaibify.gui import workflowManager
 from vaibify.config import containerLock, operationJournal
 from vaibify.gui import stateManager
 from vaibify.gui.fileStatusManager import (
@@ -312,7 +313,7 @@ def testBootstrapSkipsUnusableStepsAndMarkers(tRepoAndConnection):
     sWorkflowPath = sRepoPath + "/.vaibify/projects/alpha.json"
     fnWriteMarker(sRepoPath, sWorkflowPath, "stepBroken", "{ not json")
     dictWorkflow = {
-        "sPath": sWorkflowPath,
+        workflowManager.S_LOADED_FROM_KEY: sWorkflowPath,
         "listSteps": [
             {"sStepId": "idNoDirectory", "sDirectory": ""},
             {"sStepId": "idBroken", "sDirectory": "stepBroken"},
@@ -345,7 +346,7 @@ def testBootstrapHashesSharedOutputsOnceAndKeysByStepId(
         stateManager, "_fdictHashOnDiskOutputs", fdictRecordHashes,
     )
     dictWorkflow = {
-        "sPath": sWorkflowPath,
+        workflowManager.S_LOADED_FROM_KEY: sWorkflowPath,
         "listSteps": [
             {"sStepId": "idAlpha", "sDirectory": "stepAlpha"},
             {"sStepId": "idBeta", "sDirectory": "stepBeta"},

@@ -507,7 +507,8 @@ def testAKilledCountThatIsNotANumberReadsAsZero():
 
 def testMarkersMapOntoLiveStepIndicesByDirectory():
     dictResult = pipelineRoutes._fdictMarkersByStepIndex(
-        [("stepB", {"iPassed": 1}), ("stepGone", {"iPassed": 9})],
+        [({"sDirectory": "stepB"}, {"iPassed": 1}),
+         ({"sDirectory": "stepGone"}, {"iPassed": 9})],
         [{"sDirectory": "stepA"}, {"sDirectory": "stepB"},
          {"sDirectory": ""}],
     )

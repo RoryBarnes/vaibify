@@ -120,7 +120,11 @@ def dictLiveProbe(tmp_path, monkeypatch):
     sRepoPath = os.path.join(sRoot, "liveProject")
     fsBuildPublishedProject(sRepoPath, dictEnvelope=dictEnvelope)
     dictWorkflow = fdictBuildWorkflow()
-    dictWorkflow["listSteps"][0]["saDataCommands"] = ["cp numbers.txt numbers.txt.tmp && mv numbers.txt.tmp numbers.txt"]
+    # The rerun deletes a declared output before the step runs, so a step
+    # that "rewrites" the file by copying it onto itself has nothing to
+    # copy. This one REGENERATES the pinned bytes from nothing.
+    dictWorkflow["listSteps"][0]["saDataCommands"] = [
+        "printf '1\\n' > numbers.txt"]
     fnWriteJson(sRepoPath, ".vaibify/projects/project.json", dictWorkflow)
     fnWriteText(sRepoPath, "MakeNumbers/generate.py", "print(1)\n")
     fnWriteManifest(
@@ -158,7 +162,7 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
 
     The report must say the image came from the archive and that the
     re-check is vacuous, and the verdict must be reproduced: the
-    step rewrites its output byte-for-byte, so the comparison inside
+    step regenerates its output byte-for-byte, so the comparison inside
     the real shadow has something to grade.
     """
     with LoopbackDeposit(dictLiveProbe["pathZenodo"]) as server:
@@ -186,7 +190,8 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     )
     listManifestLines = open(sManifestPath).read().splitlines()
     assert listManifestLines[0].startswith("# ")
-    assert len(listManifestLines) == 1 + dictReport["iOutputHashesTotal"]
+    assert len(listManifestLines) == 1 + (
+        dictReport["iOutputHashesTotal"] + dictReport["iPinnedInputsTotal"])
     assert all(
         len(sLine.split("  ", 1)[0]) == 64 for sLine in listManifestLines[1:]
     )
@@ -201,9 +206,10 @@ def test_a_deposit_loaded_image_runs_the_staged_snapshot_end_to_end(
     )
     assert dictReport["dictPlatform"]["bEmulated"] is False
     assert dictReport["sShadowTeardown"] == "destroyed"
-    # Three since 2026-09-14: the manifest pins the environment
-    # snapshot alongside the two results.
-    assert dictReport["iOutputHashesTotal"] == 3
+    # One regenerated output; the script and the environment snapshot
+    # the manifest also pins are checked unchanged and counted apart.
+    assert dictReport["iOutputHashesTotal"] == 1
+    assert dictReport["iPinnedInputsTotal"] == 2
     assert not os.path.isdir(reproductionSource._fsStagingRoot()) or (
         os.listdir(reproductionSource._fsStagingRoot()) == []
     )

@@ -80,12 +80,22 @@ def _fnWriteBothServices(sProjectRepo, listDivergedPaths, fHoursAgo=0.0):
     """Write a syncStatus cache for GitHub and Zenodo alike."""
     sIso = _fsBuildIsoTimestamp(fHoursAgo)
     dictAll = {}
+    dictIdentity = {
+        "github": {},
+        # A recorded DOI and the endpoint the project is configured
+        # for: without them the Zenodo gate refuses, and a "clean"
+        # cache that the gate refuses is not clean.
+        "zenodo": {
+            "sZenodoDoi": "10.5281/zenodo.1", "sEndpointVerified": "sandbox",
+        },
+    }
     for sService in ("github", "zenodo"):
         dictAll[sService] = fdictBuildCachedVerify(
             sService=sService,
             listComparedPaths=_LIST_COMPARED,
             listDivergedPaths=listDivergedPaths,
             sLastVerified=sIso,
+            **dictIdentity[sService],
         )
     sDir = os.path.join(sProjectRepo, ".vaibify")
     os.makedirs(sDir, exist_ok=True)

@@ -54,13 +54,17 @@ from vaibify.reproducibility.rerunDiagnostics import (
 )
 from vaibify.reproducibility.manifestPaths import (
     fdictWorkflowTemplateValues,
-    flistStepDeclarationRepoPaths,
-    flistStepOutputRepoPaths,
 )
 from vaibify.reproducibility.manifestWriter import (
     fdictHashManifestEntries,
     fiCountManifestEntries,
     flistParseManifestLines,
+)
+from vaibify.reproducibility.rerunPreparation import (
+    RerunPreparationRefusedError,
+    fdictClassifyRerunPaths,
+    fdictClearShadowBeforeRerun,
+    fsetDeclaredOutputRepoPaths,
 )
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
@@ -75,11 +79,15 @@ __all__ = [
     "S_DIVERGENCE_MANIFEST_EMPTY",
     "S_DIVERGENCE_MANIFEST_MUTATED",
     "S_DIVERGENCE_MANIFEST_UNREADABLE",
+    "S_DIVERGENCE_NO_OUTPUT_REGENERABLE",
     "S_DIVERGENCE_PIPELINE_FAILED",
     "S_FILE_CARRIED",
     "S_FILE_DIVERGED",
     "S_FILE_MATCHED",
     "S_FILE_MISSING",
+    "S_ROLE_CARRIED",
+    "S_ROLE_OUTPUT",
+    "S_ROLE_PINNED_INPUT",
     "fbRunWorkflowInContainer",
     "fdictRerunAndVerifyWorkflow",
     "fdictSnapshotExpectedManifest",
@@ -117,6 +125,11 @@ S_DIVERGENCE_EVERY_ENTRY_GIVEN = (
 S_DIVERGENCE_LOCK_UNSATISFIED = (
     "the pinned image does not satisfy requirements.lock"
 )
+S_DIVERGENCE_NO_OUTPUT_REGENERABLE = (
+    "no declared output of a step the rerun executes is pinned in "
+    "MANIFEST.sha256, so the rerun has nothing it could have "
+    "regenerated and compared"
+)
 
 
 # The per-file verdicts in ``listFileOutcomes``. One record per frozen
@@ -128,6 +141,14 @@ S_FILE_MATCHED = "matched"
 S_FILE_DIVERGED = "diverged"
 S_FILE_MISSING = "missing"
 S_FILE_CARRIED = "carried"
+
+# The ROLE of a manifest entry in the comparison. A declared output of
+# an executed step was deleted before the run, so its hash proves the
+# run regenerated it; every other pinned file (scripts, input data,
+# standards, the environment files) is only checked UNCHANGED.
+S_ROLE_OUTPUT = "output"
+S_ROLE_PINNED_INPUT = "pinned-input"
+S_ROLE_CARRIED = "carried"
 
 
 def fdictRerunAndVerifyWorkflow(
@@ -182,6 +203,9 @@ def fdictRerunAndVerifyWorkflow(
             "bRerunAttempted": False,
             "iOutputHashesMatched": 0,
             "iOutputHashesTotal": 0,
+            "iPinnedInputsUnchanged": 0,
+            "iPinnedInputsTotal": 0,
+            "dictPreRerunClearing": {},
             "listCarriedPaths": [],
             "listFileOutcomes": [],
             "dictRerunFailure": {},
@@ -192,6 +216,13 @@ def fdictRerunAndVerifyWorkflow(
     )
     if sRootRefusal:
         return fdictStampRunFacts(fdictUnrunOutcome(sRootRefusal))
+    dictClassification = fdictClassifyRerunPaths(dictWorkflow)
+    try:
+        dictPreRerunClearing = fdictClearShadowBeforeRerun(
+            dictWorkflow, filesRepo, dictClassification,
+        )
+    except RerunPreparationRefusedError as errorRefused:
+        return fdictStampRunFacts(fdictUnrunOutcome(str(errorRefused)))
     listCarriedPaths = flistCarriedOutputRepoPaths(dictWorkflow)
     fnCollect, dictDiagnostics = ftBuildRerunDiagnosticsCollector(
         dictWorkflow, fnStatusCallback,
@@ -210,7 +241,8 @@ def fdictRerunAndVerifyWorkflow(
         fnStatusCallback({"sType": "comparingOutputs"})
     return fdictStampRunFacts(fdictVerifyRerunOutputs(
         filesRepo, bRerunSucceeded, dictExpectedManifest, listCarriedPaths,
-        dictDiagnostics,
+        dictDiagnostics, setProducedPaths=dictClassification["setProduced"],
+        dictPreRerunClearing=dictPreRerunClearing,
     ))
 
 
@@ -325,17 +357,18 @@ def flistCarriedOutputRepoPaths(dictWorkflow):
     every given file is silently graded as reproduced — which is the
     false pass this whole lane exists to prevent.
 
-    A path an EXECUTED step also declares stays in the comparison. The
-    rerun genuinely re-derives it, and where the two claims disagree
-    the one backed by execution is the stronger.
+    A path an EXECUTED step also declares is an ambiguous overlap, and
+    :func:`~vaibify.reproducibility.rerunPreparation.fdictClearShadowBeforeRerun`
+    refuses the rerun before any step runs; it is never silently kept
+    and then counted as regenerated.
     """
     listSteps = dictWorkflow.get("listSteps", []) or []
     dictTemplateValues = fdictWorkflowTemplateValues(dictWorkflow)
-    setGiven = _fsetDeclaredOutputPaths(
+    setGiven = fsetDeclaredOutputRepoPaths(
         flistSelectStepsWhoseOutputsAreGiven(dictWorkflow),
         dictTemplateValues,
     )
-    setExecuted = _fsetDeclaredOutputPaths(
+    setExecuted = fsetDeclaredOutputRepoPaths(
         [
             dictStep for dictStep in listSteps
             if not fbStepIsInteractive(dictStep)
@@ -345,27 +378,17 @@ def flistCarriedOutputRepoPaths(dictWorkflow):
     return sorted(setGiven - setExecuted)
 
 
-def _fsetDeclaredOutputPaths(listSteps, dictTemplateValues):
-    """Return every declared output path of these steps, repo-relative.
-
-    An ai-declaration step's declaration file joins its outputs: the
-    manifest pins it as a publication artefact, and a human wrote it,
-    so it is given for exactly the reason its step is.
-    """
-    setPaths = set()
-    for dictStep in listSteps:
-        setPaths.update(
-            flistStepOutputRepoPaths(dictStep, dictTemplateValues),
-        )
-        setPaths.update(flistStepDeclarationRepoPaths(dictStep))
-    return {sPath for sPath in setPaths if sPath}
-
-
 def fbRunWorkflowInContainer(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     sWorkdir, fnStatusCallback=None, iSourceDateEpochOverride=0,
 ):
     """Run every enabled step of one workflow; True iff the pipeline exits 0.
+
+    Every executed step runs its data commands, whatever its
+    ``bPlotOnly`` says: that flag is a convenience for ordinary
+    dashboard runs, and a rerun that skipped a step's data commands
+    would grade the outputs it left untouched. This matches
+    ``reproduce.sh``.
 
     This answers "did the workflow run again", nothing more. Whether it
     *reproduced* is a separate question that only the post-rerun re-hash
@@ -376,11 +399,12 @@ def fbRunWorkflowInContainer(
     importing this module does not pull the GUI pipeline machinery into
     the CLI's import graph.
     """
-    from vaibify.gui.pipelineRunner import fiRunAllSteps
+    from vaibify.gui.pipelineRunner import S_RUN_MODE_RERUN, fiRunAllSteps
     iExitCode = asyncio.run(fiRunAllSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         sWorkdir, fnStatusCallback or _fnDiscardStatusEvent,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
+        sRunMode=S_RUN_MODE_RERUN,
     ))
     return iExitCode == 0
 
@@ -414,6 +438,7 @@ def fdictSnapshotExpectedManifest(filesRepo):
 def fdictVerifyRerunOutputs(
     filesRepo, bRerunSucceeded, dictExpectedManifest=None,
     listCarriedPaths=(), dictRerunFailure=None,
+    setProducedPaths=None, dictPreRerunClearing=None,
 ):
     """Re-hash the pinned artefacts and return the attestation's hash fields.
 
@@ -428,6 +453,17 @@ def fdictVerifyRerunOutputs(
     unreadable manifest fails closed with zero entries counted, because
     a comparison that could not be performed must never be recorded as
     one that passed.
+
+    ``setProducedPaths`` names the declared outputs of the steps the
+    rerun executed -- files deleted from the shadow BEFORE the run, so
+    a hash that matches proves the run regenerated them. They are
+    counted as ``iOutputHashesMatched`` of ``iOutputHashesTotal``; every
+    other pinned file (scripts, input data, standards, the environment
+    files) is only checked UNCHANGED and counted as
+    ``iPinnedInputsUnchanged`` of ``iPinnedInputsTotal``. ``None`` means
+    no role split was made and every compared entry counts as an
+    output -- correct only for a read-only re-check of a quiescent tree.
+    ``dictPreRerunClearing`` is the evidence of what was deleted first.
 
     Omitting ``dictExpectedManifest`` snapshots at call time, which is
     correct only when nothing has run since — a read-only re-check of a
@@ -463,8 +499,21 @@ def fdictVerifyRerunOutputs(
             S_DIVERGENCE_MANIFEST_UNREADABLE, bRerunSucceeded, listCarried,
         )
     listFileOutcomes = _flistBuildFileOutcomes(
-        listEntries, dictObserved, set(listCarried),
+        listEntries, dictObserved, set(listCarried), setProducedPaths,
     )
+    listOutputOutcomes = [
+        dictFile for dictFile in listFileOutcomes
+        if dictFile["sRole"] == S_ROLE_OUTPUT
+    ]
+    if not listOutputOutcomes:
+        return _fdictNoComparisonOutcome(
+            S_DIVERGENCE_NO_OUTPUT_REGENERABLE, bRerunSucceeded,
+            listCarried,
+        )
+    listInputOutcomes = [
+        dictFile for dictFile in listFileOutcomes
+        if dictFile["sRole"] == S_ROLE_PINNED_INPUT
+    ]
     bManifestMoved = _fbManifestMovedDuringRerun(
         filesRepo, dictExpectedManifest,
     )
@@ -478,8 +527,11 @@ def fdictVerifyRerunOutputs(
             and not listMismatchedPaths
             and not bManifestMoved
         ),
-        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),
-        "iOutputHashesTotal": len(listCompared),
+        "iOutputHashesMatched": _fiCountMatched(listOutputOutcomes),
+        "iOutputHashesTotal": len(listOutputOutcomes),
+        "iPinnedInputsUnchanged": _fiCountMatched(listInputOutcomes),
+        "iPinnedInputsTotal": len(listInputOutcomes),
+        "dictPreRerunClearing": dict(dictPreRerunClearing or {}),
         # The paths that MATCHED, named rather than counted. A ratio
         # is a claim about a set the reader cannot see; a reproduction
         # report is read by somebody deciding whether to trust a
@@ -500,27 +552,54 @@ def fdictVerifyRerunOutputs(
     }
 
 
-def _flistBuildFileOutcomes(listEntries, dictObserved, setCarried):
-    """Return one ``{sPath, sExpected, sObserved, sStatus}`` per entry, in order."""
+def _fiCountMatched(listOutcomes):
+    """Return how many per-file outcomes matched their pinned hash."""
+    return sum(
+        1 for dictFile in listOutcomes
+        if dictFile["sStatus"] == S_FILE_MATCHED
+    )
+
+
+def _flistBuildFileOutcomes(
+    listEntries, dictObserved, setCarried, setProducedPaths=None,
+):
+    """Return one ``{sPath, sExpected, sObserved, sStatus, sRole}`` per entry.
+
+    In manifest order. ``sRole`` says why the entry is graded: a
+    declared output of an executed step (regenerated), a pinned input
+    (checked unchanged), or carried (given, not graded).
+    """
     listFileOutcomes = []
     for dictEntry in listEntries:
         sPath = dictEntry["sPath"]
         sObserved = dictObserved.get(sPath)
         if sPath in setCarried:
-            sStatus = S_FILE_CARRIED
-        elif sObserved is None:
-            sStatus = S_FILE_MISSING
-        elif sObserved == dictEntry["sExpected"]:
-            sStatus = S_FILE_MATCHED
+            sStatus, sRole = S_FILE_CARRIED, S_ROLE_CARRIED
         else:
-            sStatus = S_FILE_DIVERGED
+            sStatus = _fsGradeAgainstExpected(
+                sObserved, dictEntry["sExpected"])
+            sRole = (
+                S_ROLE_OUTPUT
+                if setProducedPaths is None or sPath in setProducedPaths
+                else S_ROLE_PINNED_INPUT
+            )
         listFileOutcomes.append({
             "sPath": sPath,
             "sExpected": dictEntry["sExpected"],
             "sObserved": sObserved,
             "sStatus": sStatus,
+            "sRole": sRole,
         })
     return listFileOutcomes
+
+
+def _fsGradeAgainstExpected(sObserved, sExpected):
+    """Return matched, diverged or missing; an absent file never matches."""
+    if sObserved is None:
+        return S_FILE_MISSING
+    if sObserved == sExpected:
+        return S_FILE_MATCHED
+    return S_FILE_DIVERGED
 
 
 def _ftPartitionManifestEntries(listEntries, listCarriedPaths):
@@ -641,6 +720,9 @@ def fdictUnrunOutcome(sReason):
         "bRerunAttempted": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
+        "iPinnedInputsUnchanged": 0,
+        "iPinnedInputsTotal": 0,
+        "dictPreRerunClearing": {},
         "listCarriedPaths": [],
         "listFileOutcomes": [],
         "dictRerunFailure": {},
@@ -665,6 +747,9 @@ def _fdictNoComparisonOutcome(
         "bPassed": False,
         "iOutputHashesMatched": 0,
         "iOutputHashesTotal": 0,
+        "iPinnedInputsUnchanged": 0,
+        "iPinnedInputsTotal": 0,
+        "dictPreRerunClearing": {},
         "listCarriedPaths": list(listCarriedPaths or []),
         "listFileOutcomes": [],
         "dictRerunFailure": {},

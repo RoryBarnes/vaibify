@@ -1192,48 +1192,24 @@ def _fdictBuildStepStatusEntry(
 def _fbStepHashesMatchManifest(
     dictStep, dictResolvedVars, dictManifestCache, filesRepo=None,
 ):
-    """Return True iff every output's content matches MANIFEST.sha256.
+    """Return True iff the step's pinned files match MANIFEST.sha256.
 
-    Conservative: returns False when there is no project repo, no
-    manifest, no declared outputs, any declared output is absent from
-    the manifest (cannot prove freshness without an entry), or any
-    tracked output drifted from its expected hash. Only when every
-    declared output is both manifest-tracked and bit-identical to its
-    expected hash does the short-circuit fire. ``filesRepo`` (the
-    poll's container snapshot) supersedes the host-path fallback so
-    the manifest is read where it actually lives.
+    The comparison lives in ``hashStaleness.fbStepHashesMatchManifest``,
+    which the Level 1 ``script-stale`` gate calls too, so the row and
+    the gate cannot disagree. This wrapper only supplies what the poll
+    knows: no manifest cache means no proof, and ``filesRepo`` (the
+    poll's container snapshot) supersedes the host-path fallback so the
+    manifest is read where it actually lives.
     """
     if dictManifestCache is None:
         return False
     sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
-    if filesRepo is None:
-        filesRepo = sRepoRoot
-    if not sRepoRoot:
-        return False
     from . import hashStaleness
-    if not hashStaleness.fbManifestExists(filesRepo):
-        return False
-    listRelPaths = _flistStepOutputsRepoRelative(dictStep, sRepoRoot)
-    if not listRelPaths:
-        return False
-    if not _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
-        return False
-    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
-        filesRepo, listRelPaths, dictManifestCache,
+    return hashStaleness.fbStepHashesMatchManifest(
+        dictStep, sRepoRoot,
+        sRepoRoot if filesRepo is None else filesRepo,
+        dictManifestCache,
     )
-    return len(setStale) == 0
-
-
-def _fbAllPathsTrackedByManifest(filesRepo, listRelPaths):
-    """Return True iff every path appears as a manifest entry."""
-    from . import hashStaleness
-    dictEntries = hashStaleness._fdictReadManifestEntries(filesRepo)
-    if not dictEntries:
-        return False
-    for sRelPath in listRelPaths:
-        if sRelPath not in dictEntries:
-            return False
-    return True
 
 
 def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
