@@ -538,7 +538,7 @@ def _fnApplySnapshotFeasibility(dictCtx, requestHttp, sContainerId,
     try:
         dictFeasibility = agentCouncilContext.fdictAssessSnapshotFeasibility(
             dictCtx["docker"], sContainerId, sProjectRepoPath)
-    except (OSError, ValueError, KeyError):
+    except agentCouncilSnapshotScope.T_UNREADABLE_PROBE_ERRORS:
         return
     dictCapabilities["dictSnapshotFeasibility"] = dictFeasibility
     # A repository whose ONLY problem is named oversized files is not

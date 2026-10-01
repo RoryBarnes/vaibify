@@ -24875,4 +24875,17 @@ def _fdictEntry(sRel):
         old='        """Refuse a model id that is not a plain id."""\n        return agentCouncilProviderRegistry.fsValidateModelId(sModel)\n',
         new='        """Refuse a model id that is not a plain id."""\n        return sModel\n',
     ),
+    # --- The capabilities poll survives a malformed typed-read answer ---
+    Falsification(
+        nodeid='tests/testCapabilitiesSurviveMalformedTypedReads.py::testAMalformedTrackedScopeAnswerWithdrawsTheOfferInsteadOfFailing',
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    except T_UNREADABLE_PROBE_ERRORS as error:\n',
+        new='    except OSError as error:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCapabilitiesSurviveMalformedTypedReads.py::testAMalformedWeightAnswerLeavesTheCapabilityAsItWas',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='    except agentCouncilSnapshotScope.T_UNREADABLE_PROBE_ERRORS:\n        return\n',
+        new='    except (OSError, ValueError, KeyError):\n        return\n',
+    ),
 ]

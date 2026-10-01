@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 from vaibify.docker.pathContainment import fbIsPlainRelativePath
 
 __all__ = [
+    "T_UNREADABLE_PROBE_ERRORS",
     "S_SCOPE_WHOLE_DIRECTORY",
     "S_SCOPE_GIT_TRACKED",
     "I_SCOPE_VERSION",
@@ -638,6 +639,16 @@ def fdictRecordCaptureOmissions(connectionDocker, sContainerId, sRepoRoot,
                 dictIdentityBefore["listSkipWorktreePaths"])}
 
 
+# What a probe of the repository can raise when the container answered
+# with the wrong shape. The answers are JSON the container wrote, so a
+# list where a mapping belongs or a string where a size belongs is the
+# ordinary form of a hostile repository, and a pre-flight that cannot
+# read its answer withdraws its offer rather than failing the route.
+T_UNREADABLE_PROBE_ERRORS = (
+    OSError, ValueError, KeyError, TypeError, AttributeError,
+)
+
+
 def fnApplyTrackedScopeOffer(connectionDocker, sContainerId, sResourceName,
                              sRepoRoot, dictCapabilities):
     """Add the scope default and, when it matters, the tracked offer.
@@ -669,7 +680,7 @@ def fnApplyTrackedScopeOffer(connectionDocker, sContainerId, sResourceName,
             connectionDocker, sContainerId, sRepoRoot,
             _fdictBoundsFromFeasibility(dictFeasibility),
             agentCouncilContext.ftFindExcludedComponent)
-    except OSError as error:
+    except T_UNREADABLE_PROBE_ERRORS as error:
         dictOffer = {"bOffered": False, "sReason":
                      f"the git-tracked files could not be weighed "
                      f"({type(error).__name__})"}
