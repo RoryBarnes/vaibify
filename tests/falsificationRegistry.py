@@ -24855,4 +24855,17 @@ def _fdictEntry(sRel):
         old='    if sSealedPlan.strip() and sSealedPlan.strip() != (\n            agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER):\n        return sSealedPlan\n',
         new='    if sSealedPlan:\n        return sSealedPlan\n',
     ),
+    # --- A credential test's error text carries no staged path or secret ---
+    Falsification(
+        nodeid='tests/testCredentialTestErrorsStayClean.py::testAFaultThatQuotesTheStagedPathOrTheTokenIsNotPublished',
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='            f"{type(error).__name__}: a fault in vaibify\'s own machinery; "\n            "its details are withheld from this record and are in the "\n            "hub log")',
+        new='            f"{type(error).__name__}: {error}")',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialTestErrorsStayClean.py::testADesignedCheckFailureIsScrubbedOfPathsAndSecretShapes',
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    sDetail = fsSanitizeJobDetail(sDetail)\n    dictDetails = {',
+        new='    dictDetails = {',
+    ),
 ]
