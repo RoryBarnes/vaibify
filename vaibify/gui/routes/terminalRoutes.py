@@ -249,7 +249,9 @@ def _fsBannerForThisShell(dictCtx, websocket, bHostProject):
     sBrowserSessionId = fsBrowserSessionIdForCredential(
         websocket, dictCtx.get("dictBrowserSessions"),
     )
-    if _pipelineServer.fbConnectionIsRemote(dictCtx, sBrowserSessionId):
+    if _pipelineServer.fbConnectionIsRemote(
+        dictCtx.get("dictBrowserSessions"), sBrowserSessionId,
+    ):
         return fsRemoteTerminalBanner(
             _pipelineServer.fsExecutionHostname(),
         )
