@@ -371,6 +371,23 @@ DICT_NAMED_AUTHORITIES = {
             "the exception-type class now has one member, inside the "
             "gateway that owns the docker capability.",
         ),
+    "docker/dockerConnection.py|_ftExchangeWithExecSocket|docker-client|"
+    "docker.utils.socket.STDERR|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "The multiplexed-stream marker the confined file write uses to "
+            "split its program's output. Frame decoding only, inside the "
+            "gateway, on a socket the gateway's own exec created behind "
+            "the write admission.",
+        ),
+    "docker/dockerConnection.py|_ftExchangeWithExecSocket|docker-client|"
+    "docker.utils.socket.frames_iter|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "Reads the frames of the confined file write's exec output. "
+            "It opens nothing and starts nothing; the socket it reads was "
+            "created inside the gateway behind the write admission.",
+        ),
     "docker/dockerContext.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http", "websocket", "background"],
@@ -472,13 +489,6 @@ DICT_NAMED_AUTHORITIES = {
             "`git config user.name` on the HOST, to prefill the sync "
             "panel's author field. Host-side read.",
         ),
-    "gui/setupServer.py|<module>|process-launch|subprocess|import|0":
-        _fdictAuthority(
-            ["http"],
-            "The first-run setup wizard's build lane: runs the image "
-            "build before any container exists, so there is nothing yet "
-            "for a carrier to be admitted against.",
-        ),
     "gui/syncDispatcher.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["http", "background"],
@@ -555,7 +565,8 @@ DICT_NAMED_AUTHORITIES = {
 # exception-type acquisitions left the GUI tree for the gateway's
 # fbErrorMeansContainerUnreachable predicate, leaving zero Docker-client
 # acquisitions under vaibify/gui/.
-I_GUI_RAW_CAPABILITY_BUDGET = 12
+# 12 -> 11 (2026-10-01): the removed second setup wizard.
+I_GUI_RAW_CAPABILITY_BUDGET = 11
 
 
 def _fmoduleGenerator():

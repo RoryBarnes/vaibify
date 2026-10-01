@@ -365,6 +365,7 @@ class HostConnection:
     def fnWriteFile(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         """Write bytes atomically; the write is the real primitive here.
 
@@ -378,8 +379,13 @@ class HostConnection:
         keeps its executable bit) and a new file lands 0644. The mode
         is applied to the temp file BEFORE the rename, so no reader
         ever sees the target with interim permissions.
+
+        ``sAuthorizedRoot``/``tForbiddenNames`` are accepted for the
+        duck type the container leg confines paths with; a host write is
+        confined by :meth:`_fsValidateHostPath` and by the route's own
+        lexical denylist, so they are not consulted here.
         """
-        del iUid, iGid
+        del iUid, iGid, sAuthorizedRoot, tForbiddenNames
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteFile",
         )
@@ -413,11 +419,14 @@ class HostConnection:
     def fnWriteFileViaTar(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         """Duck-type alias for :meth:`fnWriteFile`; no tar is involved."""
         self.fnWriteFile(
             sContainerId, sFilePath, baContent,
             iMode=iMode, iUid=iUid, iGid=iGid,
+            sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
         )
 
     def fnWriteTreeViaTar(
@@ -679,6 +688,23 @@ class HostConnection:
             f"typed-read:{sOperationName}",
         )
 
+    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """Run a program on the host with ``baStdin`` as its standard input.
+
+        The way to hand a program a secret: the argument vector carries
+        no credential, so no other user's ``ps`` can read one. The words
+        are quoted into the one gated launch every host subprocess goes
+        through, and the bytes follow the launch gate on the same pipe.
+        """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "ftRunProgramWithStdin",
+        )
+        return self._ftLaunchGatedAndStream(
+            sContainerId, shlex.join(listCommand), None, None, None,
+            F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS, "exec",
+            baStdin=baStdin,
+        )
+
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None, sUser=None,
     ):
@@ -694,7 +720,7 @@ class HostConnection:
     def _ftLaunchGatedAndStream(
         self, sResourceId, sCommand, sWorkdir, sUser, fnEmitChunk,
         fTimeoutSeconds, sOperationLabel, fnPhaseCallback=None,
-        dictEnvironmentOverlay=None,
+        dictEnvironmentOverlay=None, baStdin=b"",
     ):
         """The single gated launch every host subprocess goes through.
 
@@ -729,7 +755,7 @@ class HostConnection:
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "promoted")
         processChild.stdin.write(b"GO\n")
         processChild.stdin.flush()
-        processChild.stdin.close()
+        _fnFeedStdinThenClose(processChild, baStdin)
         _fnInvokeLaunchPhaseCallback(fnPhaseCallback, "released")
         tStreams = _ftDrainProcessStreams(processChild, fnEmitChunk)
         bCompleted, fCpuSeconds = _ftAwaitProcessWithinBound(
@@ -764,6 +790,33 @@ class HostConnection:
                 self._fnResolveProjectRoot(sResourceId),
             )
         return self._fsValidateHostPath(sResourceId, sWorkdir)
+
+
+def _fnFeedStdinThenClose(processChild, baStdin):
+    """Send the program's input after the gate line, then close stdin.
+
+    The gate stub reads exactly one line, so whatever follows it is the
+    exec'd program's standard input. A payload is written from a thread:
+    the child's output is not being drained yet, and a write larger than
+    the pipe would otherwise wait on a reader that has not started.
+    """
+    if not baStdin:
+        processChild.stdin.close()
+        return
+
+    def fnFeedThenClose():
+        try:
+            processChild.stdin.write(baStdin)
+            processChild.stdin.flush()
+        except (BrokenPipeError, ValueError):
+            pass
+        finally:
+            try:
+                processChild.stdin.close()
+            except (BrokenPipeError, ValueError):
+                pass
+
+    threading.Thread(target=fnFeedThenClose, daemon=True).start()
 
 
 def _fnInvokeLaunchPhaseCallback(fnPhaseCallback, sPhase):

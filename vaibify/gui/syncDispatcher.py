@@ -3,6 +3,7 @@
 import json
 import posixpath
 import re
+import shlex
 import subprocess
 import uuid
 
@@ -290,30 +291,47 @@ def _flistOverleafProgramWords(sResourceId):
     also means the import machinery finds its dependencies instead of
     a ``sys.path`` entry having to.
     """
-    sInterpreter = fsResolveHelperInterpreter(sResourceId)
+    listInterpreter = shlex.split(fsResolveHelperInterpreter(sResourceId))
     if fbIsHostProject(sResourceId):
-        return [sInterpreter, "-m", _S_OVERLEAF_MODULE]
-    return [sInterpreter, _S_OVERLEAF_SCRIPT]
+        return listInterpreter + ["-m", _S_OVERLEAF_MODULE]
+    return listInterpreter + [_S_OVERLEAF_SCRIPT]
 
 
-def _fsOverleafCliBase(
+def _flistOverleafCliWords(
     sSubcommand, sProjectId, sResourceId,
     sTargetDirectory=None, sMirrorSha="",
 ):
-    """Build the invocation prefix for an overleafSync CLI call."""
+    """Build the argument vector of an overleafSync CLI call.
+
+    A list, never shell text: the call is made with the credential on
+    its standard input, and an exact vector means no quoting layer can
+    turn a project id or a path into syntax.
+    """
     listParts = _flistOverleafProgramWords(sResourceId) + [
-        sSubcommand, "--project", fsShellQuote(sProjectId),
+        sSubcommand, "--project", sProjectId,
     ]
     if sTargetDirectory is not None:
-        listParts += ["--target", fsShellQuote(sTargetDirectory)]
+        listParts += ["--target", sTargetDirectory]
     if sMirrorSha:
-        listParts += ["--mirror-sha", fsShellQuote(sMirrorSha)]
-    return " ".join(listParts)
+        listParts += ["--mirror-sha", sMirrorSha]
+    return listParts
 
 
-def _fsPipeStdinCommand(sStdinData, sCommand):
-    """Compose a ``printf ... | command`` string with safe quoting."""
-    return f"printf '%s' {fsShellQuote(sStdinData)} | {sCommand}"
+def _ftRunOverleafCli(
+    connectionDocker, sContainerId, listCliWords, sStdinText,
+):
+    """Run the Overleaf CLI with ``sStdinText`` on its standard input.
+
+    The token is the first stdin line. It crosses to the program on the
+    exec's stdin only, so it is in neither the command line, ``docker
+    inspect`` nor a process listing. Returns ``(iExitCode, sOutput)``.
+    """
+    tExecResult = connectionDocker.ftRunProgramWithStdin(
+        sContainerId, listCliWords, sStdinText.encode("utf-8"),
+    )
+    return (
+        tExecResult.iExitCode, tExecResult.sStdout + tExecResult.sStderr,
+    )
 
 
 def _fsFetchOverleafToken():
@@ -334,11 +352,11 @@ def _ftResultPlainPush(
     """Push figures without TeX annotation."""
     sStdin = _fsPrependToken(
         _fsFetchOverleafToken(), "\n".join(listFilePaths))
-    sCli = _fsOverleafCliBase(
-        "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha,
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
+    return _ftRunOverleafCli(
+        connectionDocker, sContainerId,
+        _flistOverleafCliWords(
+            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),
+        sStdin,
     )
 
 
@@ -353,16 +371,16 @@ def _ftResultAnnotatedPush(
         "dictWorkflow": dictWorkflow,
     })
     sStdin = _fsPrependToken(_fsFetchOverleafToken(), sPayload)
-    sCli = (
-        _fsOverleafCliBase(
-            "push-annotated", sProjectId, sContainerId,
-            sTargetDirectory, sMirrorSha)
-        + f" --github-base-url {fsShellQuote(sGithubBaseUrl)}"
-        + f" --doi {fsShellQuote(sDoi)}"
-        + f" --tex-filename {fsShellQuote(sTexFilename)}"
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
+    listCliWords = _flistOverleafCliWords(
+        "push-annotated", sProjectId, sContainerId,
+        sTargetDirectory, sMirrorSha,
+    ) + [
+        "--github-base-url", sGithubBaseUrl,
+        "--doi", sDoi,
+        "--tex-filename", sTexFilename,
+    ]
+    return _ftRunOverleafCli(
+        connectionDocker, sContainerId, listCliWords, sStdin,
     )
 
 
@@ -374,11 +392,11 @@ def ftResultPullFromOverleaf(
     fnValidateOverleafProjectId(sProjectId)
     sStdin = _fsPrependToken(
         _fsFetchOverleafToken(), "\n".join(listPullPaths))
-    sCli = _fsOverleafCliBase(
-        "pull", sProjectId, sContainerId, sTargetDirectory,
-    )
-    return connectionDocker.ftResultExecuteCommand(
-        sContainerId, _fsPipeStdinCommand(sStdin, sCli),
+    return _ftRunOverleafCli(
+        connectionDocker, sContainerId,
+        _flistOverleafCliWords(
+            "pull", sProjectId, sContainerId, sTargetDirectory),
+        sStdin,
     )
 
 
@@ -735,7 +753,7 @@ def ftResultPushToGithub(
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git {sHardening} add {sQuotedPaths} && "
+        f"git {sHardening} add -- {sQuotedPaths} && "
         + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
@@ -838,7 +856,7 @@ def ftResultAddFileToGithub(
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git {sHardening} add {fsShellQuote(sFilePath)} && "
+        f"git {sHardening} add -- {fsShellQuote(sFilePath)} && "
         + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(

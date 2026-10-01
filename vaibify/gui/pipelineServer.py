@@ -39,6 +39,7 @@ __all__ = [
     "fnPipelineMessageLoop",
     "fnRejectNotConnected",
     "fnRejectTerminalStart",
+    "fdictConfinedWriteKeywords",
     "fnRejectWriteDenylistedPath",
     "fnRunTerminalSession",
     "fnSignalTerminalAbnormalExit",
@@ -87,6 +88,7 @@ from .executionTopology import (
     fsExecutionHostname,
 )
 from . import workflowManager
+from ..docker.confinedWrite import T_WRITE_DENYLISTED_NAMES
 from ..docker.dockerErrorDiagnosis import fdictDiagnoseDockerError
 from .figureServer import fsMimeTypeForFile
 from .pipelineRunner import (
@@ -411,6 +413,21 @@ def fnRejectWriteDenylistedPath(sNormalized, sProjectRepoPath):
     if posixpath.basename(sNormalized) == "project.json":
         raise HTTPException(
             403, "Direct writes to project.json are not permitted")
+
+
+def fdictConfinedWriteKeywords(sProjectRepoPath):
+    """Return the keywords that make a container write enforce the denylist.
+
+    The lexical checks above run on the host before the request reaches
+    the container. These keywords hand the same boundary to the write
+    itself, which walks the path without following symlinks and refuses
+    the denylisted names, so a symlink swapped in between the check and
+    the write cannot redirect it.
+    """
+    return {
+        "sAuthorizedRoot": posixpath.normpath(sProjectRepoPath),
+        "tForbiddenNames": T_WRITE_DENYLISTED_NAMES,
+    }
 
 
 def fdictExtractSettings(dictWorkflow):

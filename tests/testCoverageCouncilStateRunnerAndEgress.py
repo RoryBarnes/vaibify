@@ -250,12 +250,6 @@ def testRepackRefusesALinkTargetingOutsideTheRoot(sKind, sTarget):
     assert "outside the extraction root" in str(excInfo.value)
 
 
-@pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason=(
-    "_fnValidateSnapshotMember resolves a HARD link's target against the "
-    "member's own directory, but a tar hard-link target is relative to "
-    "the archive root, so a nested member hard-linked to "
-    "'../outsideFile.txt' is admitted although it names a path above "
-    "the extraction root"))
 def testRepackRefusesANestedHardLinkWhoseArchiveTargetEscapes():
     baSource = fbaBuildTarball([
         ("stepAlpha/link", "hardlink", "../outsideFile.txt")])

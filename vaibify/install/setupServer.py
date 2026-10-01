@@ -3,13 +3,20 @@
 Presents a web UI that walks the user through template selection,
 project naming, feature toggles, and package lists.  Writes the
 result to a vaibify.yml configuration file.
+
+The wizard writes a file the next ``vaibify build`` trusts (base image,
+repositories, packages), so it carries the same request guards as the
+dashboard: the loopback ``Host:`` check, a per-browser credential
+redeemed from a one-time launch capability, and the security headers.
+It is the ONE setup wizard; an earlier second module with these guards
+had no caller and was removed rather than kept beside it.
 """
 
 import os
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -23,6 +30,7 @@ from vaibify.config.projectConfig import (
     fconfigLoadFromFile,
     fdictLoadDefaults,
 )
+from vaibify.gui import browserSession, serverMiddleware
 
 
 _STATIC_DIR = os.path.join(
@@ -58,12 +66,51 @@ class ValidateResponse(BaseModel):
     listErrors: List[str] = []
 
 
-def fappCreateSetupWizard(sOutputDirectory="."):
-    """Build and return the setup wizard FastAPI application."""
+def fappCreateSetupWizard(sOutputDirectory=".", iExpectedPort=0):
+    """Build and return the setup wizard FastAPI application.
+
+    ``iExpectedPort`` follows ``appFactory.fappCreateApplication``: a
+    real bind port enables the strict loopback Host check, and 0 (the
+    in-process test default) skips it.
+    """
     app = FastAPI(title="Vaibify Setup Wizard")
+    app.state.iExpectedPort = iExpectedPort
+    app.state.dictBrowserSessions = (
+        browserSession.fdictCreateBrowserSessionStore()
+    )
+    serverMiddleware.fnRegisterMiddleware(app)
     _fnRegisterRoutes(app, sOutputDirectory)
+    _fnRegisterBootstrapRoute(app)
     _fnRegisterStaticFiles(app)
     return app
+
+
+def _fnRegisterBootstrapRoute(app):
+    """Register the one unauthenticated route: the capability exchange.
+
+    The launch URL carries a one-time capability in its fragment; the
+    page posts it here once for the per-browser credential every other
+    ``/api`` route requires. There is no agent lane on this server, so
+    unlike the dashboard's twin of this route it has no agent refusal
+    to make.
+    """
+
+    @app.post("/api/bootstrap")
+    async def fdictBootstrapSession(request: Request):
+        try:
+            dictBody = await request.json()
+        except Exception:  # noqa: BLE001 -- a malformed body is just invalid
+            dictBody = {}
+        sSessionId, sCredential = browserSession.ftRedeemCapability(
+            app.state.dictBrowserSessions,
+            (dictBody or {}).get("sCapability", ""),
+        )
+        if not sCredential:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or expired bootstrap capability.",
+            )
+        return {"sSessionId": sSessionId, "sCredential": sCredential}
 
 
 def _fnRegisterRoutes(app, sOutputDirectory):

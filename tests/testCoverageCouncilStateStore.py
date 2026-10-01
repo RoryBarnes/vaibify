@@ -233,8 +233,13 @@ def testAcceptedPatchIsWrittenPrivatelyAndRedacted(tmp_path):
         dictStore["sDurableStoreRoot"], S_CAMPAIGN_ALPHA)
     assert stat.S_IMODE(os.stat(sPatchPath).st_mode) == 0o600
     with open(sPatchPath, encoding="utf-8") as filePatch:
-        assert filePatch.read() == (
-            agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER)
+        sWritten = filePatch.read()
+    assert "ghp_" not in sWritten
+    assert sWritten == (
+        "--- a/stepAlpha.py\n+++ b/stepAlpha.py\n"
+        "+sToken = '" + agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER
+        + "'\n"
+    ), "only the credential's span is replaced; the diff survives"
 
 
 def testAcceptedPlanTextRoundTripsThroughTheStore(tmp_path):

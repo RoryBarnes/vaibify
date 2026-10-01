@@ -53,6 +53,7 @@ from vaibify.docker.dockerConnection import (
     _I_CONTAINER_DEFAULT_UID,
     _I_CONTAINER_DEFAULT_GID,
 )
+from vaibify.docker.pathContainment import fsDescribeMemberEscape
 from vaibify.gui import agentCouncilCapacity
 
 __all__ = [
@@ -267,32 +268,18 @@ def fdictComposeRunnerCreateSpecification(
 
 def _fnValidateSnapshotMember(infoMember):
     """Refuse a tar member that could land outside the snapshot root."""
-    sNormalized = posixpath.normpath(infoMember.name)
-    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):
-        raise ValueError(
-            "Snapshot tarball refused: member "
-            f"{infoMember.name!r} escapes the extraction root."
-        )
-    if infoMember.issym() or infoMember.islnk():
-        sLinkNormalized = posixpath.normpath(
-            posixpath.join(posixpath.dirname(sNormalized),
-                           infoMember.linkname)
-        )
-        if posixpath.isabs(infoMember.linkname) or \
-                sLinkNormalized.startswith(".."):
-            raise ValueError(
-                "Snapshot tarball refused: link member "
-                f"{infoMember.name!r} targets {infoMember.linkname!r} "
-                "outside the extraction root."
-            )
+    sEscape = fsDescribeMemberEscape(infoMember)
+    if sEscape:
+        raise ValueError("Snapshot tarball refused: " + sEscape)
 
 
 def _finfoStampCouncilOwnership(infoMember):
     """Stamp one tar member to the unprivileged council user.
 
-    The same discipline as ``DockerConnection._finfoBuildTarEntry``,
-    against the same constants: never let ``tarfile.TarInfo``'s native
-    uid/gid default of 0 through, and clear the symbolic names so a
+    The same ownership discipline as the backend's single-file write
+    (which now execs as the container user), against the same constants:
+    never let ``tarfile.TarInfo``'s native uid/gid default of 0
+    through, and clear the symbolic names so a
     numeric-id extractor cannot resolve ``root`` by name. The live
     extraction is performed by the unprivileged user (a non-root tar
     cannot chown), so these stamps are defense in depth — the record of

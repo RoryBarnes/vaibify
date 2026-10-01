@@ -10,6 +10,14 @@ without discussion:
 
 - `introspectionScript.py` duplicates format-handling logic from
   `dataLoaders.py`. Container scripts cannot import from the host.
+- `DockerConnection.fnWriteFileViaTar` no longer builds a tarball. It
+  execs a fixed program as the container user and streams the bytes on
+  stdin (`vaibify/docker/confinedWrite.py`), because a `put_archive`
+  extracts as root and follows symlinks the in-container agent planted.
+  The name is kept because the mutation ledger, the falsification
+  registry and sixty-odd call sites key on it; renaming it is a
+  mechanical follow-up, not a behavior change. `fnWriteTreeViaTar`
+  still uses `put_archive` and still trusts its destination directory.
 - `scriptFigureViewer.js` was not part of the 2026-01 frontend
   refactor. Kept as a single cohesive module.
 - Re-export blocks exist across `pipelineRunner`, `pipelineServer`,

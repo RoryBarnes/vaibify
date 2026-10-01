@@ -25,7 +25,10 @@ The git-tracked set (plan contract B1), per path, from the declared
 * tracked but deleted in the worktree — omitted, "deleted in worktree";
 * skip-worktree and absent — omitted, "not checked out (skip-worktree)";
 * under a mandatory component exclusion — omitted with that reason;
-* a merge conflict (any stage other than 0), a gitlink/submodule, a
+* a name that is absolute or carries an empty, ``.``, ``..`` or NUL
+  component (an index key the container wrote, which would be joined
+  onto the project root and handed to the daemon), a merge conflict
+  (any stage other than 0), a gitlink/submodule, a
   tracked path that is now a directory or special file, or a tracked
   path that lies BEYOND a symbolic link (a parent directory replaced by
   a link, which would otherwise read files from wherever it points) —
@@ -47,7 +50,10 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+from vaibify.docker.pathContainment import fbIsPlainRelativePath
+
 __all__ = [
+    "T_UNREADABLE_PROBE_ERRORS",
     "S_SCOPE_WHOLE_DIRECTORY",
     "S_SCOPE_GIT_TRACKED",
     "I_SCOPE_VERSION",
@@ -172,7 +178,7 @@ def fdictInterpretTrackedIndex(dictRead, ftFindExcludedComponent):
     dictAnswer = {"dictEligible": {}, "dictTrackedOmissions": {},
                   "listConflicts": [], "listSubmodules": [],
                   "listBeyondSymlink": [], "listUnrepresentable": [],
-                  "listSkipWorktreePaths": []}
+                  "listEscapingNames": [], "listSkipWorktreePaths": []}
     for sPath, dictEntry in sorted(dictRead.get("dictEntries", {}).items()):
         _fnClassifyTrackedPath(dictAnswer, sPath, dictEntry,
                                ftFindExcludedComponent)
@@ -182,6 +188,9 @@ def fdictInterpretTrackedIndex(dictRead, ftFindExcludedComponent):
 def _fnClassifyTrackedPath(dictAnswer, sPath, dictEntry,
                            ftFindExcludedComponent):
     """Place one tracked path into exactly one bucket of the answer."""
+    if not fbIsPlainRelativePath(sPath):
+        dictAnswer["listEscapingNames"].append(sPath)
+        return
     if any(iStage != 0 for iStage in dictEntry.get("listStages", [0])):
         dictAnswer["listConflicts"].append(sPath)
         return
@@ -221,7 +230,10 @@ def _fnRefuseUnrepresentableIndex(dictInterpreted, fnRefuse):
              "tracked directory was replaced by a link, so its files "
              "would be read from wherever the link points)"),
             ("listUnrepresentable",
-             "tracked paths that are now directories or special files")):
+             "tracked paths that are now directories or special files"),
+            ("listEscapingNames",
+             "tracked names that are absolute or contain an empty, '.' "
+             "or '..' component, so they point outside the project")):
         listPaths = dictInterpreted[sKey]
         if listPaths:
             fnRefuse(
@@ -627,6 +639,16 @@ def fdictRecordCaptureOmissions(connectionDocker, sContainerId, sRepoRoot,
                 dictIdentityBefore["listSkipWorktreePaths"])}
 
 
+# What a probe of the repository can raise when the container answered
+# with the wrong shape. The answers are JSON the container wrote, so a
+# list where a mapping belongs or a string where a size belongs is the
+# ordinary form of a hostile repository, and a pre-flight that cannot
+# read its answer withdraws its offer rather than failing the route.
+T_UNREADABLE_PROBE_ERRORS = (
+    OSError, ValueError, KeyError, TypeError, AttributeError,
+)
+
+
 def fnApplyTrackedScopeOffer(connectionDocker, sContainerId, sResourceName,
                              sRepoRoot, dictCapabilities):
     """Add the scope default and, when it matters, the tracked offer.
@@ -658,7 +680,7 @@ def fnApplyTrackedScopeOffer(connectionDocker, sContainerId, sResourceName,
             connectionDocker, sContainerId, sRepoRoot,
             _fdictBoundsFromFeasibility(dictFeasibility),
             agentCouncilContext.ftFindExcludedComponent)
-    except OSError as error:
+    except T_UNREADABLE_PROBE_ERRORS as error:
         dictOffer = {"bOffered": False, "sReason":
                      f"the git-tracked files could not be weighed "
                      f"({type(error).__name__})"}

@@ -33,6 +33,7 @@ from vaibify.docker.dockerConnection import DockerConnection
 from vaibify.gui import commitCarrier, pipelineServer, serverLifespan
 from vaibify.gui import sessionLifecycle
 from vaibify.gui.containerOwnership import OwnerRecord
+from tests.confinedWriteHarness import ExecProgramDaemon
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 
 S_CONTAINER_NAME = "carrierproj"
@@ -62,21 +63,29 @@ def fnLeaveUsableEventLoopSlotBehind():
 class _StubContainer:
     def __init__(self, sContainerId):
         self.id = sContainerId
-        self.listPutArchiveCalls = []
-
-    def put_archive(self, sDirectory, bufferTar):
-        self.listPutArchiveCalls.append(sDirectory)
 
 
-class _StubApiClient:
+class _StubApiClient(ExecProgramDaemon):
+    """A daemon that records execs and answers the confined write.
+
+    The write funnel is a stdin exec now, so "a write reached the
+    daemon" means ``exec_create`` was called with a program; an
+    unadmitted write must leave ``listExecCreateKeywords`` empty.
+    """
+
     def __init__(self):
+        super().__init__(bExecute=False)
         self.listExecCreateCalls = []
 
     def exec_create(self, sContainerId, **dictKwargs):
         self.listExecCreateCalls.append(sContainerId)
-        return {"Id": "stub-exec-id"}
+        return super().exec_create(sContainerId, **dictKwargs)
 
-    def exec_start(self, sExecId, stream=True, demux=True):
+    def exec_start(
+        self, sExecId, stream=True, demux=True, socket=False, tty=False,
+    ):
+        if socket:
+            return super().exec_start(sExecId, socket=True)
         return iter([])
 
     def exec_inspect(self, sExecId):
@@ -196,15 +205,15 @@ def test_route_write_without_carrier_admission_is_refused_mode_a(
     Case 16, mode (a) half: the request lane is marked by
     ``ContainerAwareRoute``, the dummy route holds no carrier-minted
     admission, so the REAL ``fnWriteFileViaTar`` refuses before any
-    byte reaches ``put_archive``.
+    byte reaches the daemon.
 
     Kills: removing the ``fnAssertContainerWriteAdmitted`` gate from
     ``dockerConnection.fnWriteFileViaTar``.
     """
-    clientHttp, stubContainer, _ = clientWithProbeRoutes
+    clientHttp, _, connectionDocker = clientWithProbeRoutes
     responseHttp = clientHttp.post("/api/carrier-probe/raw-write")
     assert responseHttp.status_code == 500
-    assert stubContainer.listPutArchiveCalls == []
+    assert connectionDocker._clientDocker.api.listExecCreateCalls == []
 
 
 @pytest.mark.falsification
@@ -220,18 +229,21 @@ def test_route_write_without_carrier_admission_is_refused_mode_b(
     Kills: making ``fnAssertContainerWriteAdmitted`` a no-op inside an
     enforced lane (the ``fbLaneEnforced`` early-return inverted).
     """
-    clientHttp, stubContainer, _ = clientWithProbeRoutes
+    clientHttp, _, connectionDocker = clientWithProbeRoutes
     responseHttp = clientHttp.post("/api/carrier-probe/threaded-write")
     assert responseHttp.status_code == 500
-    assert stubContainer.listPutArchiveCalls == []
+    assert connectionDocker._clientDocker.api.listExecCreateCalls == []
 
 
 def test_carrier_admitted_write_passes_the_funnel(clientWithProbeRoutes):
     """Positive control: a carrier admission lets the same write land."""
-    clientHttp, stubContainer, _ = clientWithProbeRoutes
+    clientHttp, _, connectionDocker = clientWithProbeRoutes
     responseHttp = clientHttp.post("/api/carrier-probe/admitted-write")
     assert responseHttp.status_code == 200
-    assert stubContainer.listPutArchiveCalls == ["/tmp"]
+    assert connectionDocker._clientDocker.api.listExecCreateCalls == [
+        S_CONTAINER_ID,
+    ]
+    assert connectionDocker._clientDocker.api.listReceivedStdin == [b"x"]
 
 
 # ---------------------------------------------------------------------
@@ -828,7 +840,7 @@ def test_mode_a_commits_journals_and_settles():
     )
     assert dictCommit["bCommitted"] is True
     assert dictCommit["bJournalSettled"] is True
-    assert stubContainer.listPutArchiveCalls == ["/workspace"]
+    assert connectionDocker._clientDocker.api.listReceivedStdin == [b"{}"]
     assert operationJournal.fdictReadJournalOutcome(
         S_CONTAINER_NAME,
     )["sReadState"] == "absent"

@@ -253,7 +253,8 @@ var VaibifyModals = (function () {
         var fSuggestion = dictOptions.fLastSuccessfulWallClock
             ? Math.ceil(dictOptions.fLastSuccessfulWallClock * 2)
             : 0;
-        var fPrefill = dictOptions.fCurrentBudget || fSuggestion || "";
+        var sPrefill = VaibifyUtilities.fsFiniteNumberText(
+            dictOptions.fCurrentBudget || fSuggestion, "");
         var elModal = document.createElement("div");
         elModal.id = "modalRuntimeLimit";
         elModal.className = "modal-overlay";
@@ -268,7 +269,7 @@ var VaibifyModals = (function () {
             '<label class="plot-only-toggle">Runtime limit (s) ' +
             '<input type="number" min="0" step="1" ' +
             'class="step-budget-input" id="runtimeLimitInput" ' +
-            'value="' + fPrefill + '"></label>' +
+            'value="' + fnEscapeHtml(sPrefill) + '"></label>' +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnRuntimeCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +

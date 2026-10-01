@@ -527,6 +527,51 @@ def serverHub():
 
 
 @pytest.fixture(scope="module")
+def serverSetupWizard():
+    """Serve the real setup wizard on an ephemeral port, Host check armed.
+
+    The wizard writes ``vaibify.yml`` into a throwaway directory beneath
+    the lane's scratch root, so a journey can assert on the file the
+    page actually caused to be written.
+    """
+    _fnRequirePlaywright()
+    import uvicorn
+    from vaibify.gui import browserSession
+    from vaibify.install.setupServer import fappCreateSetupWizard
+
+    PATH_BROWSER_LANE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        dir=str(PATH_BROWSER_LANE_TMP_ROOT),
+    ) as sOutputDirectory:
+        iPort = _fiFreePort()
+        app = fappCreateSetupWizard(
+            sOutputDirectory=sOutputDirectory, iExpectedPort=iPort,
+        )
+        server = uvicorn.Server(uvicorn.Config(
+            app, host="127.0.0.1", port=iPort, log_level="warning",
+        ))
+        threadServer = threading.Thread(target=server.run, daemon=True)
+        threadServer.start()
+        sBaseUrl = f"http://127.0.0.1:{iPort}"
+
+        def fsBootstrapUrl():
+            sCapability = browserSession.fsMintBootstrapCapability(
+                app.state.dictBrowserSessions,
+            )
+            return f"{sBaseUrl}/#bootstrap={sCapability}"
+
+        try:
+            _fnWaitUntilServing(iPort)
+            yield SimpleNamespace(
+                sBaseUrl=sBaseUrl, fsBootstrapUrl=fsBootstrapUrl,
+                sOutputDirectory=sOutputDirectory,
+            )
+        finally:
+            server.should_exit = True
+            threadServer.join(timeout=10)
+
+
+@pytest.fixture(scope="module")
 def browserEngine():
     """A single headless browser of the selected engine for the lane."""
     _fnRequirePlaywright()

@@ -95,6 +95,7 @@ class _MockDocker:
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         self.dictFiles[sPath] = baContent
         # Simulate a slightly-later mtime on every write; bump the
@@ -108,6 +109,7 @@ class _MockDocker:
     def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         self._sLastPathFile = (
             baContent.decode("utf-8")

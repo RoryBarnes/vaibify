@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from vaibify.config import mutationAdmission
+from vaibify.docker import confinedWrite
 from vaibify.docker.execArgumentBudget import (
     I_EXEC_ARGUMENT_BUDGET_BYTES,
     flistBatchPathsForOneExec,
@@ -2442,94 +2443,106 @@ class DockerConnection:
     def fnWriteFile(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
-        """Write bytes to a file inside the container via tar archive.
+        """Write bytes to a file inside the container, as the container user.
 
-        ``iMode``/``iUid``/``iGid`` are forwarded so callers writing
-        secret-bearing files can bake mode 0600 and the target uid/gid
-        into the tarball entry itself, closing the readable window
-        between landing and a subsequent ``chmod``.
+        ``iMode`` is the requested permission mask (default 0644); a
+        secret-bearing file passes 0600 and is never readable by anyone
+        else, not even for the instant before a follow-up ``chmod``.
+        ``sAuthorizedRoot`` and ``tForbiddenNames`` confine a
+        caller-supplied path to a project: the path must lie below the
+        root and may not pass through any forbidden name. ``iUid`` and
+        ``iGid`` are accepted for the duck type shared with the host
+        connection and are ignored: the file is created by the container
+        user, so that user owns it.
         """
         self.fnWriteFileViaTar(
             sContainerId, sFilePath, baContent,
             iMode=iMode, iUid=iUid, iGid=iGid,
+            sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
         )
 
     def fnWriteFileViaTar(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
-        """Write bytes to a file using put_archive (no exec size limit).
+        """Write one file through the symlink-safe, unprivileged primitive.
 
-        Sets ``infoTar.mtime`` to the current epoch so the file lands
-        in the container with a real modification time. tarfile's
-        ``TarInfo`` defaults ``mtime`` to ``0``, which downstream
-        lineage checks treat as "ancient" and surface as "1970-01-01".
-
-        Optional ``iMode``/``iUid``/``iGid`` are stamped onto the
-        TarInfo so the file appears in the container with the
-        requested permissions and ownership atomically — there is no
-        post-write ``chmod`` window during which a secret-bearing
-        file is world-readable (audit finding M1).
+        The name is historical: this no longer builds a tarball. Handing
+        the daemon an archive made the write run as root and follow every
+        symlink the in-container agent had planted, so the funnel now
+        execs a fixed program (see :mod:`vaibify.docker.confinedWrite`)
+        as the container user and streams the bytes on its stdin. The
+        program opens each path component with ``O_NOFOLLOW`` against the
+        descriptor it already holds, so a swapped component is refused
+        and cannot redirect the write.
 
         This is the workspace-file-write funnel the commit-guard
         carrier guards (design §8): in an enforced lane (an HTTP
         request or a carrier-launched durable task) the write refuses
         to proceed without a live, still-current carrier admission for
-        this container — before any byte reaches the daemon.
+        this container — before any byte reaches the daemon. The exec
+        beneath it is private to this method and carries no command
+        text a caller chose, so it needs no second admission.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteFileViaTar",
         )
-        import posixpath
-        import time
-
-        bufferTar = self._fbufferBuildTar(
-            sFilePath, baContent, iMode, iUid, iGid, int(time.time()),
+        del iUid, iGid
+        sProgram = confinedWrite.fsRenderConfinedWriteProgram(
+            sFilePath, iMode=iMode, sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
         )
-        sDirectory = posixpath.dirname(sFilePath)
-        container = self.fcontainerGetById(sContainerId)
-        container.put_archive(sDirectory, bufferTar)
+        tExecResult = self._ftRunProgramWithStdin(
+            sContainerId, ["python3", "-c", sProgram], baContent,
+        )
+        confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
 
-    @staticmethod
-    def _fbufferBuildTar(
-        sFilePath, baContent, iMode, iUid, iGid, iMtime,
-    ):
-        """Return a BytesIO holding the tarball for put_archive."""
-        import io
-        import posixpath
-        import tarfile
-        sFilename = posixpath.basename(sFilePath)
-        bufferTar = io.BytesIO()
-        with tarfile.open(fileobj=bufferTar, mode="w") as tar:
-            infoTar = DockerConnection._finfoBuildTarEntry(
-                sFilename, len(baContent), iMode, iUid, iGid,
-            )
-            infoTar.mtime = iMtime
-            tar.addfile(infoTar, io.BytesIO(baContent))
-        bufferTar.seek(0)
-        return bufferTar
+    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """Run a program as the container user with ``baStdin`` as its input.
 
-    @staticmethod
-    def _finfoBuildTarEntry(sFilename, iSize, iMode, iUid, iGid):
-        """Return a TarInfo with the requested mode/owner stamps.
-
-        Defaults ``iUid``/``iGid`` to the container's unprivileged user
-        (``_I_CONTAINER_DEFAULT_UID`` / ``_I_CONTAINER_DEFAULT_GID``)
-        rather than letting ``tarfile.TarInfo``'s native default of 0
-        through to ``put_archive``. Without this, every backend write
-        materialises root-owned inside the container and silently locks
-        the file against any later in-container edit — the in-container
-        agent has no sudo by design (commit 426f6b7).
+        The way to hand a program a secret: the argument vector is exact
+        (no shell composes it) and the bytes travel on the exec's stdin,
+        so a credential appears in neither the exec's command line nor
+        ``docker inspect``. It is arbitrary command execution and is
+        gated as such: in an enforced lane it refuses without a live
+        carrier admission. Returns the :class:`ExecResult`.
         """
-        import tarfile
-        infoTar = tarfile.TarInfo(name=sFilename)
-        infoTar.size = iSize
-        if iMode is not None:
-            infoTar.mode = iMode
-        infoTar.uid = iUid if iUid is not None else _I_CONTAINER_DEFAULT_UID
-        infoTar.gid = iGid if iGid is not None else _I_CONTAINER_DEFAULT_GID
-        return infoTar
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "ftRunProgramWithStdin",
+        )
+        return self._ftRunProgramWithStdin(
+            sContainerId, listCommand, baStdin,
+        )
+
+    def _ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """Exec ``listCommand`` as the container user, feeding it stdin.
+
+        No shell sits between the daemon and the program: the argument
+        vector is exact. The write half of the hijacked connection is
+        shut down once the payload is sent so the program sees EOF; a
+        program that exits before reading everything (a refusal) is not
+        an error here, its exit code is the answer.
+        """
+        sExecId = self.fsExecCreate(
+            sContainerId, listCommand=listCommand, bTty=False,
+        )
+        socketExec = self.fsocketExecStart(sExecId, bTty=False)
+        try:
+            baStdout, baStderr = _ftExchangeWithExecSocket(
+                socketExec, baStdin,
+            )
+        finally:
+            socketExec.close()
+        dictInspect = self.fdictInspectExec(sExecId)
+        return ExecResult(
+            iExitCode=int(dictInspect.get("ExitCode") or 0),
+            sStdout=baStdout.decode("utf-8", errors="replace"),
+            sStderr=baStderr.decode("utf-8", errors="replace"),
+        )
 
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
@@ -2555,8 +2568,8 @@ class DockerConnection:
         the HOST's uid/gid onto every entry, which lands the files
         foreign-owned inside the container and silently unwritable by
         the in-container agent, which has no sudo by design -- the
-        same defect ``_finfoBuildTarEntry`` exists to prevent for
-        single writes.
+        same ownership defect the single-file writer avoids by running
+        as the container user.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
@@ -2661,7 +2674,7 @@ class DockerConnection:
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
-        listCommand=None,
+        listCommand=None, bTty=True,
     ):
         """Create an interactive exec instance, return exec id.
 
@@ -2670,14 +2683,16 @@ class DockerConnection:
         land as root. ``listCommand`` bypasses docker-py's shlex split
         of a string command for callers that need an exact argv (the
         terminal containment wrapper's ``/bin/sh -c`` script would be
-        destroyed by tokenization).
+        destroyed by tokenization). ``bTty`` False asks for the plain
+        multiplexed stream, which the stdin-fed program write needs so
+        its standard error stays separate from its standard output.
         """
         container = self.fcontainerGetById(sContainerId)
         if sUser is None:
             sUser = _fsResolveContainerUser(container)
         dictKwargs = {
             "cmd": listCommand if listCommand is not None else sCommand,
-            "tty": True,
+            "tty": bTty,
             "stdin": True,
             "stdout": True,
             "stderr": True,
@@ -2688,10 +2703,10 @@ class DockerConnection:
         )["Id"]
         return sExecId
 
-    def fsocketExecStart(self, sExecId):
+    def fsocketExecStart(self, sExecId, bTty=True):
         """Start exec and return the raw socket."""
         return self._clientDocker.api.exec_start(
-            sExecId, socket=True, tty=True
+            sExecId, socket=True, tty=bTty
         )
 
     def fnExecResize(self, sExecId, iRows, iColumns):
@@ -2938,6 +2953,30 @@ def _fbaCollectBoundedTarStream(iterTarStream, iMaxBytes, sDirectoryPath):
             )
         listChunks.append(baChunk)
     return b"".join(listChunks)
+
+
+def _ftExchangeWithExecSocket(socketExec, baStdin):
+    """Send ``baStdin`` on a hijacked exec socket; return its output.
+
+    Half-closes the write side after the payload so the program sees
+    EOF, then reads the multiplexed stream to the end and splits it into
+    ``(baStdout, baStderr)``. A peer that closed early (a program that
+    refused before reading) raises on the send; its exit code, read by
+    the caller, is the answer, so that is swallowed here.
+    """
+    import socket
+    from docker.utils.socket import STDERR, frames_iter
+    socketRaw = getattr(socketExec, "_sock", socketExec)
+    try:
+        socketRaw.sendall(baStdin)
+        socketRaw.shutdown(socket.SHUT_WR)
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    baStdout = bytearray()
+    baStderr = bytearray()
+    for iStream, baChunk in frames_iter(socketExec, tty=False):
+        (baStderr if iStream == STDERR else baStdout).extend(baChunk)
+    return bytes(baStdout), bytes(baStderr)
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):

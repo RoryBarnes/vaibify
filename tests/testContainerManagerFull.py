@@ -7,6 +7,21 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
+from vaibify.docker import containerManager
+
+
+@pytest.fixture(autouse=True)
+def fixtureImageBuiltByVaibify(monkeypatch):
+    """These tests assemble arguments; the image-trust guard has its own."""
+    monkeypatch.setattr(
+        containerManager, "fdictResolveLaunchPosture",
+        lambda sProjectName, sImageReference="": {
+            "sMode": "built", "bWithCredentials": True,
+            "sImageDigest": "sha256:built",
+        },
+    )
+
+
 from vaibify.docker.containerManager import (
     fnStartContainer,
     fnStopContainer,
@@ -410,7 +425,8 @@ def test_fsStartContainerDetached_does_not_delete_secret_files(tmp_path):
     with open(sTempPath, "w") as fh:
         fh.write("secret-value")
 
-    def _fnRecordMount(fnConfigCommand, saRunArgs, listCleanupFiles):
+    def _fnRecordMount(fnConfigCommand, saRunArgs, listCleanupFiles,
+                       dictPosture=None):
         listCleanupFiles.append(sTempPath)
         saRunArgs.extend(["-v", f"{sTempPath}:/run/secrets/probe:ro"])
 

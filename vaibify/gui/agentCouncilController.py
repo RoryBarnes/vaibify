@@ -1862,8 +1862,11 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
                 dictStore, sCampaignId, sPatchText)
     # The artifact's content identity, sealed into the event stream at
     # acceptance: a later reader can prove the plan.md they hold is the
-    # one the researcher accepted, byte for byte.
-    sPlanSha256 = hashlib.sha256(sPlanMarkdown.encode("utf-8")).hexdigest()
+    # one the researcher accepted, byte for byte. Hashed from the file
+    # as WRITTEN: the store redacts credential spans on the way to disk,
+    # so a digest of the composed text would name bytes that never
+    # existed.
+    sPlanSha256 = _fsHashFileBytes(sLocalPlanPath)
     agentCouncilStore.fdictAppendCampaignEvent(
         dictStore, sCampaignId,
         {"sEventKind": "planArtifactSealed", "sTurnId": "",
@@ -1873,6 +1876,12 @@ async def fdictAcceptCampaignPlan(dictControllerState, dictStore,
             "sPlanSha256": sPlanSha256,
             "dictCampaign": agentCouncilStore.fjsonGetCampaignRecord(
                 dictStore, sCampaignId)}
+
+
+def _fsHashFileBytes(sPath):
+    """Return the SHA-256 of a file's bytes, read back from disk."""
+    with open(sPath, "rb") as fileArtifact:
+        return hashlib.sha256(fileArtifact.read()).hexdigest()
 
 
 def fiClassifyInterruptedCampaignsOnStartup(dictStore):

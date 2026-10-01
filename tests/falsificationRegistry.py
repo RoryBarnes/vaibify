@@ -4051,7 +4051,7 @@ def _fdictEntry(sRel):
 
     # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
     # Case 16, mode (a): with the write-funnel gate removed, a dummy
-    # route's direct container write reaches put_archive unadmitted.
+    # route's direct container write reaches the daemon unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
         source='vaibify/docker/dockerConnection.py',
@@ -6437,18 +6437,19 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/fileRoutes.py',
         old=(
+            '    iWritten = 0\n'
             '    with open(sTargetPath, "wb") as fileTarget:\n'
             '        for baChunk in connectionDocker.fiterStreamFile(\n'
             '            sContainerId, sContainerPath,\n'
             '        ):\n'
-            '            fileTarget.write(baChunk)\n'
         ),
         new=(
+            '    iWritten = 0\n'
             '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
             '        sContainerId, "cat " + sContainerPath,\n'
             '    )\n'
             '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        fileTarget.write(sOut.encode("utf-8"))\n'
+            '        for baChunk in (sOut.encode("utf-8"),):\n'
         ),
     ),
 
@@ -8671,14 +8672,14 @@ def _fdictEntry(sRel):
             '"promoted")\n'
             '        processChild.stdin.write(b"GO\\n")\n'
             '        processChild.stdin.flush()\n'
-            '        processChild.stdin.close()\n'
+            '        _fnFeedStdinThenClose(processChild, baStdin)\n'
         ),
         new=(
             '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
             '"spawned")\n'
             '        processChild.stdin.write(b"GO\\n")\n'
             '        processChild.stdin.flush()\n'
-            '        processChild.stdin.close()\n'
+            '        _fnFeedStdinThenClose(processChild, baStdin)\n'
             '        mutationAdmission.fnPromoteJournaledHostExec(\n'
             '            dictHostExecHandle, processChild.pid, '
             'processChild.pid,\n'
@@ -13662,14 +13663,14 @@ def _fdictEntry(sRel):
             'test_only_the_launcher_runs_uvicorn'
         ),
         # Bind a server without going through the launcher. The setup
-        # wizard's line is the anchor because it carries a literal
-        # port and is therefore unique; the two `(app, iPort)` calls
-        # are spelled identically to each other.
+        # wizard's line is the anchor because it is the only call that
+        # names the loopback-only flag and is therefore unique; the two
+        # `(app, iPort)` calls are spelled identically to each other.
         source='vaibify/cli/main.py',
-        old='    fnRunServer(app, 8051)\n',
+        old='    fnRunServer(app, iPort, bServeContainerAgents=False)\n',
         new=(
             '    import uvicorn\n'
-            '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
+            '    uvicorn.run(app, host="127.0.0.1", port=iPort)\n'
         ),
     ),
 
@@ -24662,5 +24663,373 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/stepRoutes.py',
         old='        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(\n            connectionDocker, sContainerId)\n',
         new='        dictStamped["sLastUserUpdate"] = __import__("time").strftime(\n            "%Y-%m-%d %H:%M:%S UTC", __import__("time").gmtime())\n',
+    ),
+    # --- The confined container write (container -> host edges) ---
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testASymlinkedParentIsRefusedAndNothingLandsOutside',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testForbiddenNamesAreRefusedByNameBeforeAnythingIsOpened',
+        source='vaibify/docker/confinedWrite.py',
+        old='    if sName in listForbiddenNames:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testDefaultModeIsReadableAndIndependentOfTheUmask',
+        source='vaibify/docker/confinedWrite.py',
+        old='    os.fchmod(iFile, iMode)\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testAComponentSwappedForASymlinkAfterItWasOpenedCannotRedirect',
+        source='vaibify/docker/confinedWrite.py',
+        old='sFinal = listParts[-1]\n',
+        new='sFinal = listParts[-1]\nos.close(iDirectory)\niDirectory = os.open("/" + "/".join(listParts[:-1]), os.O_RDONLY | os.O_DIRECTORY)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testTheBackendWriteExecsAsTheContainerUserNeverRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='            sContainerId, listCommand=listCommand, bTty=False,\n        )',
+        new='            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )',
+    ),
+    # --- The setup wizard carries the dashboard's request guards ---
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',
+        source='vaibify/install/setupServer.py',
+        old='    serverMiddleware.fnRegisterMiddleware(app)\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAForeignHostHeaderIsRefusedEvenWithACredential',
+        source='vaibify/install/setupServer.py',
+        old='    app.state.iExpectedPort = iExpectedPort\n',
+        new='    app.state.iExpectedPort = 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAServerWithNoContainerAgentsNeverBindsTheDockerBridge',
+        source='vaibify/cli/serverLaunch.py',
+        old='    if not bServeContainerAgents or platform.system() != "Linux":\n',
+        new='    if platform.system() != "Linux":\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testVaibifySetupBindsTheHostCheckAndLaunchesWithACapability',
+        source='vaibify/cli/main.py',
+        old='    app = fappCreateSetupWizard(iExpectedPort=iPort)\n',
+        new='    app = fappCreateSetupWizard()\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardSignsItselfIn.py::testALaunchedWizardLoadsTemplatesAndSavesThroughItsCredential',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='            { "X-Session-Token": sSessionCredential });\n',
+        new='            {});\n',
+    ),
+    # --- The Overleaf token reaches its program on stdin only ---
+    Falsification(
+        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testAPlainPushKeepsTheTokenOffTheCommandLine',
+        source='vaibify/gui/syncDispatcher.py',
+        old='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),\n        sStdin,\n',
+        new='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha)\n        + ["--token", _fsFetchOverleafToken()],\n        sStdin,\n',
+    ),
+    # --- The bind-mount deny list reads the filesystem, not the spelling ---
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testADifferentlyCasedSpellingOfAProtectedDirectoryIsRefused',
+        source='vaibify/config/bindMountValidator.py',
+        old='            or _fbPathsOverlapOnDisk(sResolved, sDenied)\n',
+        new='            or False\n',
+    ),
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testTheEphemeralSecretStoreIsDeniedInEveryDirection',
+        source='vaibify/config/bindMountValidator.py',
+        old='    ".vaibify/tmp",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testASourceDockerWouldNotReadAsValidatedIsRefused',
+        source='vaibify/config/bindMountValidator.py',
+        old='    if os.path.isabs(sRaw):\n        return\n',
+        new='    if True:\n        return\n',
+    ),
+    # --- One quote-safe escaper in the frontend ---
+    Falsification(
+        nodeid='tests/browser/testCouncilGroupNameCannotInjectMarkup.py::testAHostileDirectoryNameStaysTextInTheOmissionList',
+        source='vaibify/gui/static/scriptCouncilSnapshotScope.js',
+        old='        return VaibifyUtilities.fnEscapeHtml(sText);\n',
+        new=(
+            '        var elDiv = document.createElement("div");\n'
+            '        elDiv.textContent = sText === undefined || sText === null\n'
+            '            ? "" : String(sText);\n'
+            '        return elDiv.innerHTML;\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testNoQuoteBlindEscaperInTheFrontend.py::testNoModuleEscapesWithTheTextContentInnerHtmlIdiom',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='        return VaibifyUtilities.fnEscapeHtml(sText);\n',
+        new=(
+            '        var el = document.createElement("span");\n'
+            '        el.textContent = sText;\n'
+            '        return el.innerHTML;\n'
+        ),
+    ),
+    # --- Container-writable project data reaches the page as data ---
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testAHostileVerificationStateNeverBecomesAnAttribute',
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old='        return SET_VERIFICATION_STATE_CLASSES.has(sState)\n            ? sState : "untested";\n',
+        new='        return sState || "untested";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testAHostileRuntimeLimitCannotLeaveTheValueAttribute',
+        source='vaibify/gui/static/scriptModals.js',
+        old='        var sPrefill = VaibifyUtilities.fsFiniteNumberText(\n            dictOptions.fCurrentBudget || fSuggestion, "");\n',
+        new='        var sPrefill = dictOptions.fCurrentBudget || fSuggestion || "";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testWorkflowFieldsCannotInjectMarkup.py::testTheContainerProducedDiagramIsAnImageNotInlineMarkup',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        var elDag = _felBuildDagImage(sSvgText, dScale);\n        if (elDag) elContainer.appendChild(elDag);\n',
+        new='        elContainer.innerHTML = sSvgText;\n',
+    ),
+    Falsification(
+        nodeid='tests/testWorkflowFieldTypesAreValidatedAtLoad.py::testAHostileNumericFieldIsRefusedByNameAtLoad',
+        source='vaibify/gui/workflowManager.py',
+        old='    sUntyped = fsDescribeUntypedField(dictWorkflow)\n    if sUntyped:\n        return sUntyped\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testWorkflowFieldTypesAreValidatedAtLoad.py::testAHostileStateMergedFromStateJsonIsRefusedAfterTheMerge',
+        source='vaibify/gui/workflowManager.py',
+        old='    sUntypedState = fsDescribeUntypedField(dictWorkflow)\n    if sUntypedState:\n        raise ValueError(\n            f"Invalid state for {sWorkflowPath}: {sUntypedState}"\n        )\n',
+        new='',
+    ),
+    # --- Names the container writes cannot point a snapshot elsewhere ---
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testAnEscapingIndexKeyRefusesTheScopeBeforeAnythingIsRead',
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if not fbIsPlainRelativePath(sPath):\n        dictAnswer["listEscapingNames"].append(sPath)\n        return\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testASidecarEntryThatIsNotAPlainNameIsDroppedAtTheRead',
+        source='vaibify/gui/trackedReposManager.py',
+        old='        return _fdictDropUnsafeNames(json.loads(baContent.decode("utf-8")))\n',
+        new='        return json.loads(baContent.decode("utf-8"))\n',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testATrackedNameThatEscapesTheRootIsRefusedWhenJoined',
+        source='vaibify/gui/councilRouteGuards.py',
+        old='    return fsValidatePathWithinRoot(\n        posixpath.join(sRoot, sTrackedName), sRoot)\n',
+        new='    return posixpath.join(sRoot, sTrackedName)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testARunnerMemberIsJudgedByComponentsNotByPrefix',
+        source='vaibify/gui/agentCouncilRunner.py',
+        old='    sEscape = fsDescribeMemberEscape(infoMember)\n    if sEscape:\n        raise ValueError("Snapshot tarball refused: " + sEscape)\n',
+        new='    sNormalized = posixpath.normpath(infoMember.name)\n    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):\n        raise ValueError("Snapshot tarball refused: member escapes the extraction root.")\n',
+    ),
+    # --- One tar-member escape judgement for both repackers ---
+    Falsification(
+        nodeid='tests/testArchiveMemberValidatorIsShared.py::testTheSharedJudgementReadsEachLinkKindTheWayTheArchiveDoes',
+        source='vaibify/docker/pathContainment.py',
+        old='    if infoMember.islnk():\n        sTarget = infoMember.linkname\n',
+        new='    if False:\n        sTarget = infoMember.linkname\n',
+    ),
+    # --- Credential redaction removes the span and seals the bytes written ---
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testOnlyTheSpanOfAMentionedCredentialIsRemoved',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    for sPattern in LIST_CREDENTIAL_PATTERNS:\n        sText = re.sub(sPattern, S_CREDENTIAL_REDACTION_MARKER, sText)\n    return sText\n',
+        new='    if fbDetectCredentialText(sText):\n        return S_CREDENTIAL_REDACTION_MARKER\n    return sText\n',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testTheAcceptedPlanKeepsItsWordsAndTheSealNamesTheBytesWritten',
+        source='vaibify/gui/agentCouncilController.py',
+        old='    sPlanSha256 = _fsHashFileBytes(sLocalPlanPath)\n',
+        new='    sPlanSha256 = hashlib.sha256(sPlanMarkdown.encode("utf-8")).hexdigest()\n',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testASealedPlanThatIsOnlyTheMarkerIsNeverTheSeed',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='    if sSealedPlan.strip() and sSealedPlan.strip() != (\n            agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER):\n        return sSealedPlan\n',
+        new='    if sSealedPlan:\n        return sSealedPlan\n',
+    ),
+    # --- A credential test's error text carries no staged path or secret ---
+    Falsification(
+        nodeid='tests/testCredentialTestErrorsStayClean.py::testAFaultThatQuotesTheStagedPathOrTheTokenIsNotPublished',
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='            dictJob.get("sCurrentCheck", ""), _fsDescribeFault(error))',
+        new='            dictJob.get("sCurrentCheck", ""), f"{type(error).__name__}: {error}")',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialTestErrorsStayClean.py::testADesignedCheckFailureIsScrubbedOfPathsAndSecretShapes',
+        source='vaibify/gui/agentCouncilCredentialTest.py',
+        old='    sDetail = fsSanitizeJobDetail(sDetail)\n    dictDetails = {',
+        new='    dictDetails = {',
+    ),
+    # --- A requested model id is a plain id on both request models ---
+    Falsification(
+        nodeid='tests/testModelIdsAreHeldToPlainShapes.py::testBothRequestModelsRefuseAHostileModelId',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='        """Refuse a model id that is not a plain id."""\n        return agentCouncilProviderRegistry.fsValidateModelId(sModel)\n',
+        new='        """Refuse a model id that is not a plain id."""\n        return sModel\n',
+    ),
+    # --- The capabilities poll survives a malformed typed-read answer ---
+    Falsification(
+        nodeid='tests/testCapabilitiesSurviveMalformedTypedReads.py::testAMalformedTrackedScopeAnswerWithdrawsTheOfferInsteadOfFailing',
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    except T_UNREADABLE_PROBE_ERRORS as error:\n',
+        new='    except OSError as error:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCapabilitiesSurviveMalformedTypedReads.py::testAMalformedWeightAnswerLeavesTheCapabilityAsItWas',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='    except agentCouncilSnapshotScope.T_UNREADABLE_PROBE_ERRORS:\n        return\n',
+        new='    except (OSError, ValueError, KeyError):\n        return\n',
+    ),
+    # --- A GitHub verify is bound to the remote the project pushed to ---
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testAnOriginTheContainerRewroteIsNotQueriedWithTheResearchersToken',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if sService == "github":\n        _fnRequireGithubConfigBoundToThePush(dictWorkflow, dictConfig)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testAProjectThatNeverPushedIsNotVerifiedAgainstGithub',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if not dictBound.get("sOwner"):\n        raise ReverifyConfigError(S_GITHUB_NOT_BOUND)\n',
+        new='    if not dictBound.get("sOwner"):\n        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testThePushRouteRecordsTheRemoteItReachedOnlyOnSuccess',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
+        new='',
+    ),
+    # --- Removing a project from the list needs the container's lease ---
+    Falsification(
+        nodeid='tests/testRegistryRemovalIsLeaseEnforced.py::testASessionWithoutTheLeaseCannotRemoveAnOwnedProject',
+        source='vaibify/gui/routeScope.py',
+        old='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_CONTAINER_LIFECYCLE,\n',
+        new='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,\n',
+    ),
+    # --- Container-chosen strings at the host edge ---
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAFileNamedLikeAnOptionIsStagedAsAPath',
+        source='vaibify/gui/syncDispatcher.py',
+        old='f"git {sHardening} add -- {fsShellQuote(sFilePath)} && "',
+        new='f"git {sHardening} add {fsShellQuote(sFilePath)} && "',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAFailedPullDoesNotNameTheHostPath',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        except OSError as error:\n            raise HTTPException(\n                status_code=500,\n                detail=f"The file could not be written ({type(error).__name__}).")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testACappedPullStopsAndLeavesNoPartialFile',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='            if iMaxBytes is not None and iWritten > iMaxBytes:',
+        new='            if False:',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='            "Content-Disposition": fsBuildContentDisposition(sFilename),',
+        new='            "Content-Disposition": f\'attachment; filename="{sFilename}"\',',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAQuoteInAFilenameCannotEndTheQuotedString',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=".replace('\"', '\\\\\"')",
+        new="",
+    ),
+    # --- An image vaibify did not build runs only as the researcher chose ---
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testAnUnlabelledImageCountsAsNotBuiltByVaibify',
+        source='vaibify/config/imageTrust.py',
+        old='    return bool((dictImage.get("dictLabels") or {}).get(S_RECIPE_IMAGE_LABEL))',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testAnObtainedImageIsNotBuiltEvenWhenItCarriesTheLabel',
+        source='vaibify/config/imageTrust.py',
+        old='    if dictImage is None or fbProjectImageIsObtained(dictProject):\n        return False\n',
+        new='    if dictImage is None:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testANewDigestAsksAgain',
+        source='vaibify/config/imageTrust.py',
+        old='    if dictRecord.get("sImageDigest") != dictImage["sId"]:',
+        new='    if not dictRecord:',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testRestrictedDropsRootCapabilitiesAndTheImageEntrypoint',
+        source='vaibify/docker/containerManager.py',
+        old='    if bRestricted:\n        from vaibify.docker.disposableSpecification import (',
+        new='    if False:\n        from vaibify.docker.disposableSpecification import (',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testCredentialsAreAttachedOnlyWhenTheAnswerIncludesThem',
+        source='vaibify/docker/containerManager.py',
+        old='    if bCredentials:\n        _fnAddCredentialsVolume(config, saRunArgs)',
+        new='    if True:\n        _fnAddCredentialsVolume(config, saRunArgs)',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testWithheldCredentialsMountNoSecrets',
+        source='vaibify/docker/containerManager.py',
+        old='    if dictPosture and not dictPosture["bWithCredentials"]:\n        return []\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnansweredDigest',
+        source='vaibify/docker/containerManager.py',
+        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testTheStartRouteAsksBeforeCreatingAnything',
+        source='vaibify/gui/startReservation.py',
+        old='    if dictTrustRefusal:\n        return (409, dictTrustRefusal)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustCommandLine.py::testWithoutATerminalAnUnansweredImageStopsAndNamesTheFlags',
+        source='vaibify/cli/imageTrustPrompt.py',
+        old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):',
+        new='    if False:',
+    ),
+    # --- The image-trust modal (browser lane) ---
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheModalAppearsForAnUnbuiltImageWithNothingPreselected',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (dictDetail.sAction !== "confirm-image-trust") return false;\n',
+        new='        if (true) return false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheWordsOnScreenAreTheBackendsWords',
+        source='vaibify/gui/static/scriptImageTrust.js',
+        old='            _fsEscape(dictOption.sLabel) + "</strong> " +',
+        new='            _fsEscape("Run it") + "</strong> " +',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testAHostileImageDescriptionRendersAsText',
+        source='vaibify/gui/static/scriptImageTrust.js',
+        old='            "<td>" + _fsEscape(sValue) + "</td></tr>";',
+        new='            "<td>" + sValue + "</td></tr>";',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheBadgeAndTheSettingsReflectTheStoredChoice',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";',
+        new='                VaibifyImageTrust.fsBadgeText(null)) + "</span>";',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustLive.py::testARestrictedLaunchOfAnImageThatNeedsRootFailsToStartAndIsNeverRunning',
+        source='vaibify/docker/containerManager.py',
+        old='            "--user", S_DISPOSABLE_CONTAINER_USER,\n',
+        new='            "--user", "0",\n',
     ),
 ]

@@ -73,6 +73,11 @@ _LIST_HOME_RELATIVE_DENY_PREFIXES = (
     # delete a quarantine marker and un-quarantine a container whose
     # past operations were never proven settled.
     ".vaibify/journal",
+    # The ephemeral secret store (``ephemeralStore``): credentials the
+    # hub writes for a single operation live here at mode 0600, and a
+    # mount would hand them to a container that was never meant to
+    # hold them.
+    ".vaibify/tmp",
     # The host-control Unix sockets (design §6b/§14): the control plane
     # is host-only by construction — a container that could mount this
     # directory would reach the same-UID peer-authenticated socket and
@@ -126,6 +131,7 @@ def fnValidateBindMount(dictMount, sProjectRepoPath=None):
         raise BindMountValidationError(
             f"bindMounts host path '{sRaw}' contains '..'"
         )
+    _fnRequireAbsoluteHostPath(sRaw)
     _fnRejectUnexpressablePath(sRaw, "host")
     _fnRejectUnexpressablePath(dictMount.get("container") or "", "container")
     sResolved = _fsResolveSymlinks(sRaw)
@@ -133,6 +139,28 @@ def fnValidateBindMount(dictMount, sProjectRepoPath=None):
     _fnRejectDaemonSocket(sResolved)
     _fnRequireWithinAllowedRoot(sResolved, sProjectRepoPath)
     _fnValidateContainerTarget(dictMount.get("container"))
+
+
+def _fnRequireAbsoluteHostPath(sRaw):
+    """Refuse a host path Docker would not read the way it was validated.
+
+    The value reaches ``docker run`` exactly as written. Validation
+    expands ``~`` and resolves relative paths against the working
+    directory, so a ``~/data`` or ``data`` source was approved as one
+    place and handed to Docker as another (which has no tilde to
+    expand, and reads a relative source as a volume name). Writing the
+    full path is the only spelling both sides read the same way.
+    """
+    if os.path.isabs(sRaw):
+        return
+    sHint = (
+        " Write the full path instead of '~'."
+        if sRaw.startswith("~") else ""
+    )
+    raise BindMountValidationError(
+        f"bindMounts host path '{sRaw}' must be an absolute path; "
+        f"it is given to Docker exactly as written.{sHint}"
+    )
 
 
 def _fnRejectUnexpressablePath(sPath, sSide):
@@ -483,6 +511,48 @@ def _fbPathsOverlap(sFirst, sSecond):
     )
 
 
+def _fbPathsOverlapOnDisk(sFirst, sSecond):
+    """True when the two paths overlap as FILESYSTEM OBJECTS, however spelled.
+
+    A string comparison is case-sensitive and sees only the spelling,
+    so on a case-insensitive volume (APFS by default) ``~/.SSH`` named
+    the protected directory and passed, and on macOS ``/etc`` is a link
+    to ``/private/etc`` so a resolved ``/private/etc/x`` was never under
+    the denied string. Identity is what the filesystem itself answers:
+    this walks each path's ancestors and asks whether any is the same
+    object as the other path. A DENIED location that does not exist
+    exposes nothing, so it overlaps nothing.
+    """
+    infoFirst = _finfoStatOrNone(sFirst)
+    infoSecond = _finfoStatOrNone(sSecond)
+    return (
+        (infoSecond is not None
+         and _fbSomeAncestorIsTheObject(sFirst, infoSecond))
+        or (infoFirst is not None
+            and _fbSomeAncestorIsTheObject(sSecond, infoFirst))
+    )
+
+
+def _finfoStatOrNone(sPath):
+    """Return the stat of a path, or None when it cannot be read."""
+    try:
+        return os.stat(sPath)
+    except OSError:
+        return None
+
+
+def _fbSomeAncestorIsTheObject(sPath, infoObject):
+    """True when the path, or any directory above it, is ``infoObject``."""
+    while True:
+        infoHere = _finfoStatOrNone(sPath)
+        if infoHere is not None and os.path.samestat(infoHere, infoObject):
+            return True
+        sParent = os.path.dirname(sPath)
+        if sParent == sPath:
+            return False
+        sPath = sParent
+
+
 def _fnRejectDeniedPrefix(sResolved):
     """Reject a mount that overlaps any denied location in either direction.
 
@@ -499,7 +569,10 @@ def _fnRejectDeniedPrefix(sResolved):
         for sRelDenied in _LIST_HOME_RELATIVE_DENY_PREFIXES
     ]
     for sDenied in listDenied:
-        if _fbPathsOverlap(sResolved, sDenied):
+        if (
+            _fbPathsOverlap(sResolved, sDenied)
+            or _fbPathsOverlapOnDisk(sResolved, sDenied)
+        ):
             raise BindMountValidationError(
                 f"bindMounts host path '{sResolved}' overlaps the denied "
                 f"location '{sDenied}'"

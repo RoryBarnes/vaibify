@@ -1525,14 +1525,20 @@ const VaibifyApp = (function () {
             "{sFigureType} token") +
             fsSettingsRowHtml("Cores",
             '<input class="gs-input" id="gsNumberOfCores" type="number" value="' +
-            (_dictWorkflowState.dictWorkflow.iNumberOfCores || -1) + '">',
+            VaibifyUtilities.fsFiniteNumberText(
+                _dictWorkflowState.dictWorkflow.iNumberOfCores || -1,
+                "-1") + '">',
             "CPU cores available to parallel work inside the " +
             "container; -1 means all cores minus one") +
             fsSettingsRowHtml("Tolerance",
             '<input class="gs-input" id="gsTolerance" type="range"' +
-            ' min="-16" max="0" step="1" value="' + iToleranceExp +
-            '" title="10^' + iToleranceExp +
-            ' = ' + (_dictWorkflowState.dictWorkflow.fTolerance || 1e-6) + '">',
+            ' min="-16" max="0" step="1" value="' +
+            VaibifyUtilities.fsFiniteNumberText(iToleranceExp, "-6") +
+            '" title="10^' +
+            VaibifyUtilities.fsFiniteNumberText(iToleranceExp, "-6") +
+            ' = ' + VaibifyUtilities.fsFiniteNumberText(
+                _dictWorkflowState.dictWorkflow.fTolerance || 1e-6,
+                "1e-6") + '">',
             "How closely a quantitative test result must match its " +
             "standard to pass; the slider sets a power of ten — " +
             "hover the slider for the current value") +
@@ -1577,8 +1583,9 @@ const VaibifyApp = (function () {
             fsSettingsRowHtml("Runtime limit (s)",
             '<input class="gs-input" id="gsDefaultWallClockBudget"' +
             ' type="number" min="0" step="1" value="' +
-            (_dictWorkflowState.dictWorkflow
-                .fDefaultWallClockBudgetSeconds || 0) + '"' +
+            VaibifyUtilities.fsFiniteNumberText(
+                _dictWorkflowState.dictWorkflow
+                    .fDefaultWallClockBudgetSeconds || 0, "0") + '"' +
             ' title="Default expected runtime in seconds applied to' +
             ' every step without its own value. A step that runs longer' +
             ' turns its run light red as a possibly-hung warning; the' +
@@ -5977,9 +5984,11 @@ const VaibifyApp = (function () {
     }
 
     function fnRecolorVisibleDagEdges() {
-        document.querySelectorAll(".dag-container svg").forEach(
-            function (elSvg) { fnRecolorDagEdges(elSvg); }
-        );
+        /* The diagram is an <img>, so its edges cannot be recolored in
+           place; the viewer repaints from the text it was given. */
+        if (!_sDagSvgText || !_elDagViewport ||
+                !document.body.contains(_elDagViewport)) return;
+        _fnPaintDagInViewport(_elDagViewport, _sDagSvgText, _dDagScale);
     }
 
     function fnTriggerLevelTransitionAnimation(iNewLevel, iOldLevel) {
@@ -6314,6 +6323,8 @@ const VaibifyApp = (function () {
     }
 
     var _elDagViewport = null;
+    var _sDagSvgText = "";
+    var _dDagScale = 1.0;
 
     function _fnRenderDagWithZoom(sSvgText, dScale) {
         if (_elDagViewport &&
@@ -6337,6 +6348,8 @@ const VaibifyApp = (function () {
         if (dScale === "fit") {
             dScale = 1.0;
         }
+        _sDagSvgText = sSvgText;
+        _dDagScale = dScale;
         var elToolbar = VaibifyFigureViewer.fnCreateZoomToolbar(
             dScale, function (dNewScale) {
                 _fnRenderDagWithZoom(sSvgText, dNewScale);
@@ -6356,14 +6369,41 @@ const VaibifyApp = (function () {
         elContainer.style.display = "flex";
         elContainer.style.justifyContent = "center";
         elContainer.style.padding = "16px";
-        elContainer.innerHTML = sSvgText;
-        var elSvg = elContainer.querySelector("svg");
-        if (elSvg) {
-            elSvg.style.transform = "scale(" + dScale + ")";
-            elSvg.style.transformOrigin = "top center";
-            fnRecolorDagEdges(elSvg);
-        }
+        var elDag = _felBuildDagImage(sSvgText, dScale);
+        if (elDag) elContainer.appendChild(elDag);
         elViewport.appendChild(elContainer);
+    }
+
+    function _felBuildDagImage(sSvgText, dScale) {
+        /* The diagram is produced by `dot` inside the container, so it
+           is untrusted markup. It is parsed into a detached, inert
+           document (to recolor the edges), serialized, and shown as an
+           <img> from a blob: an image never runs script, loads
+           resources or exposes its elements to the page, which inline
+           markup would. */
+        var docSvg = new DOMParser().parseFromString(
+            sSvgText, "image/svg+xml");
+        if (!docSvg.documentElement ||
+                docSvg.querySelector("parsererror")) {
+            fnShowToast(
+                "The dependency graph could not be read.", "error");
+            return null;
+        }
+        fnRecolorDagEdges(docSvg.documentElement);
+        var sBlobUrl = URL.createObjectURL(new Blob(
+            [new XMLSerializer().serializeToString(
+                docSvg.documentElement)],
+            {type: "image/svg+xml"}));
+        var elImage = document.createElement("img");
+        elImage.className = "dag-image";
+        elImage.alt = "Dependency graph of the workflow";
+        elImage.style.transform = "scale(" + dScale + ")";
+        elImage.style.transformOrigin = "top center";
+        elImage.addEventListener("load", function () {
+            URL.revokeObjectURL(sBlobUrl);
+        });
+        elImage.src = sBlobUrl;
+        return elImage;
     }
 
     function fnRecolorDagEdges(elSvg) {

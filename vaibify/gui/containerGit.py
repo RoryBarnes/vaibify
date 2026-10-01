@@ -30,6 +30,7 @@ from . import gitStatus
 from ..docker.execArgumentBudget import flistBatchPathsForOneExec
 
 __all__ = [
+    "fsCurrentBranchInContainer",
     "S_MERGE_PREVIEW_CLEAN",
     "S_MERGE_PREVIEW_CONFLICTS",
     "S_MERGE_PREVIEW_UNKNOWN",
@@ -457,6 +458,28 @@ def ftResultGitFetchInContainer(
     return connectionDocker.ftResultExecuteCommand(
         sContainerId, sCommand,
     )
+
+
+def fsCurrentBranchInContainer(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Return the branch the project repo has checked out, or "".
+
+    Read as a FILE (``.git/HEAD``) through the typed read, not by
+    running git: nothing is executed in the container. ``""`` for a
+    detached HEAD, a worktree whose ``.git`` is a pointer file, or any
+    failure: the caller records no branch rather than guess one.
+    """
+    if not sProjectRepoPath:
+        return ""
+    try:
+        baHead = connectionDocker.fbaFetchFile(
+            sContainerId, posixpath.join(sProjectRepoPath, ".git", "HEAD"))
+    except (OSError, ValueError):
+        return ""
+    sHead = baHead.decode("utf-8", errors="replace").strip()
+    sPrefix = "ref: refs/heads/"
+    return sHead[len(sPrefix):] if sHead.startswith(sPrefix) else ""
 
 
 def fsRemoteUrlInContainer(

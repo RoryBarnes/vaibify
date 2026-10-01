@@ -65,6 +65,7 @@ from vaibify.docker.dockerConnection import (
     _I_CONTAINER_DEFAULT_GID,
 )
 from vaibify.docker import daemonCapacity
+from vaibify.docker.pathContainment import fsDescribeMemberEscape
 
 
 __all__ = [
@@ -238,32 +239,18 @@ def fdictComposeCreateSpecification(
 
 def _fnValidateArchiveMember(infoMember):
     """Refuse a tar member that could land outside the extraction root."""
-    sNormalized = posixpath.normpath(infoMember.name)
-    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):
-        raise ValueError(
-            "Archive refused: member "
-            f"{infoMember.name!r} escapes the extraction root."
-        )
-    if infoMember.issym() or infoMember.islnk():
-        sLinkNormalized = posixpath.normpath(
-            posixpath.join(posixpath.dirname(sNormalized),
-                           infoMember.linkname)
-        )
-        if posixpath.isabs(infoMember.linkname) or \
-                sLinkNormalized.startswith(".."):
-            raise ValueError(
-                "Archive refused: link member "
-                f"{infoMember.name!r} targets {infoMember.linkname!r} "
-                "outside the extraction root."
-            )
+    sEscape = fsDescribeMemberEscape(infoMember)
+    if sEscape:
+        raise ValueError("Archive refused: " + sEscape)
 
 
 def _finfoStampContainerOwnership(infoMember):
     """Stamp one tar member to the unprivileged container user.
 
-    The same discipline as ``DockerConnection._finfoBuildTarEntry``,
-    against the same constants: never let ``tarfile.TarInfo``'s native
-    uid/gid default of 0 through, and clear the symbolic names so a
+    The same ownership discipline as the backend's single-file write
+    (which now execs as the container user), against the same constants:
+    never let ``tarfile.TarInfo``'s native uid/gid default of 0
+    through, and clear the symbolic names so a
     numeric-id extractor cannot resolve ``root`` by name. Without this
     the copy lands root-owned and the unprivileged user the job runs as
     cannot write its own workspace -- the file-ownership trap this

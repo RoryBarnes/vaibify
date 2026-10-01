@@ -39,6 +39,7 @@ from vaibify.config.registryManager import fbIsHostProject
 
 TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "ftResultExecuteCommand",
+    "ftRunProgramWithStdin",
     "ftRunInContainerStreamed",
     "ftRunInContainerStreamedWithChunks",
     "fnWriteFile",
@@ -100,6 +101,12 @@ class ConnectionRouter:
         return self.fconnectionForResource(
             sResourceId,
         ).ftResultExecuteCommand(sResourceId, *tArguments, **dictKeywords)
+
+    def ftRunProgramWithStdin(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).ftRunProgramWithStdin(sResourceId, *tArguments, **dictKeywords)
 
     def ftRunInContainerStreamed(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""

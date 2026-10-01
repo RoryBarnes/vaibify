@@ -53,10 +53,17 @@ def test_fbValidateConfig_missing_name():
     assert fbValidateConfig(dictConfig) is False
 
 
+# Absolute, because the validator refuses a host source Docker would
+# read as written (a leading ``~`` is not expanded), and a refused
+# mount would make every "is rejected" assertion pass for that reason
+# instead of the overlap it is about.
+S_TEST_DATA_HOST = os.path.join(os.path.expanduser("~"), "vaibifyTestData")
+
+
 def _fdictConfigWithRepos(listRepos, listMounts=None):
     """Return a minimal valid config carrying the given repos/mounts.
 
-    Mount hosts here are deliberately a neutral ``~/vaibifyTestData``.
+    Mount hosts here are deliberately a neutral ``vaibifyTestData`` under home.
     These tests are about repo destinations colliding with mount
     targets, and the host path is incidental -- but it stopped being
     incidental once the validator began scanning a mounted directory
@@ -112,7 +119,7 @@ def test_repo_destination_colliding_with_bind_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
+        [{"host": S_TEST_DATA_HOST, "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -135,7 +142,7 @@ def test_repo_destination_under_a_workspace_root_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "data"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace"}],
+        [{"host": S_TEST_DATA_HOST, "container": "/workspace"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -144,7 +151,7 @@ def test_repo_destination_under_ancestor_of_custom_workspace_is_rejected():
     """A mount that is an ancestor of a customized workspace still collides."""
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "out"}],
-        [{"host": "~/vaibifyTestData", "container": "/data"}],
+        [{"host": S_TEST_DATA_HOST, "container": "/data"}],
     )
     dictConfig["workspaceRoot"] = "/data/workspace"
     # rm -rf /data/workspace/out lives under the /data mount.
@@ -156,7 +163,7 @@ def test_repo_destination_nested_under_bind_mount_is_rejected():
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git",
           "destination": "data/repo"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
+        [{"host": S_TEST_DATA_HOST, "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 
@@ -165,7 +172,8 @@ def test_repo_destination_beside_bind_mount_is_allowed():
     """A sibling destination that does not touch the mount is fine."""
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "code"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
+        [{"host": os.path.join(os.path.expanduser("~"), "vaibifyTestData"),
+          "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is True
 
@@ -202,7 +210,7 @@ def test_repo_name_colliding_with_bind_mount_is_rejected():
     """
     dictConfig = _fdictConfigWithRepos(
         [{"name": "data", "url": "https://x/r.git"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
+        [{"host": S_TEST_DATA_HOST, "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is False
 

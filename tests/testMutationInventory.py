@@ -155,7 +155,12 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # removal went with the tag-derivation that made it wrong;
 # imageBuilder answers which images a project owns, for both
 # callers.
-I_UNCLASSIFIED_ROW_BUDGET = 281
+# 280 -> 279 (2026-10-01): the unused second setup wizard, and its one
+# unclassified build-subprocess row, was removed.
+# 279 -> 277 (2026-10-01): the Overleaf CLI runs through one stdin-fed
+# call site instead of three shell-text ones, and its router delegate is
+# classified.
+I_UNCLASSIFIED_ROW_BUDGET = 277
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -378,7 +383,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 281
 # CLI asking for a container write, and something has to ask.
 # 226 (2026-09-24): the Stop route's sweeps -- two by command name,
 # two by run marker -- now share ONE exec site, _fsRunProcessSweep.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
+# 226 -> 225 (2026-10-01): the removed second setup wizard's build call.
+# 225 -> 224 (2026-10-01): three Overleaf call sites became one.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -413,7 +420,8 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 226
 # `import docker` went with the function. hostResidue, its
 # replacement's neighbour, acquires nothing -- it touches only
 # two known host directories and never the daemon.
-I_UNDISPOSED_ACQUISITION_BUDGET = 58
+# 58 -> 57 (2026-10-01): the removed second setup wizard's subprocess import.
+I_UNDISPOSED_ACQUISITION_BUDGET = 57
 
 
 def _fmoduleGenerator():
@@ -672,7 +680,8 @@ def testClassifiedRowsUseTheDeclaredVocabulary(moduleGenerator):
 # disposable work, which is exactly where the ratchet wants it and
 # exactly what makes it a root the scan cannot read.
 DICT_UNRESOLVED_BUDGET = {
-    "opaque-subprocess-command": 22,
+    # 22 -> 21 (2026-10-01): the removed second setup wizard.
+    "opaque-subprocess-command": 21,
     # 52 since fsImageState (2026-09-18): a gateway image lookup, read
     # through the same SDK root as flistGetRunningContainers beside it.
     # 53 since fdictSweepSurvivorsOfVanishedResources (2026-09-21): the
@@ -2009,6 +2018,12 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "fdictInspectImageTag",
     "fsReadDaemonArchitectureQuietly",
     "fdictLiveImageOriginForProject",
+    # The image-trust verdict for a launch: one image read plus a
+    # host-side registry read, judged by imageTrust. It names no
+    # container and makes no mutation; it is the guard that runs
+    # BEFORE the launch functions create one.
+    "fdictResolveLaunchPosture",
+    "fdictBuildImageTrustPromptForProject",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

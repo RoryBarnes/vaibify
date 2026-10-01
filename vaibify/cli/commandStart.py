@@ -11,6 +11,7 @@ import click
 from .configLoader import (
     fconfigResolveProject, fsDockerDir, fsResolveProjectConfigPath,
 )
+from .imageTrustPrompt import fnConfirmImageTrustOrExit
 from .portAllocator import (
     PortInUseError, fiResolveProjectPort,
 )
@@ -573,14 +574,29 @@ def _fnEnforcePreflightOrExit(listResults):
     "--detach", "-d", "bDetach", is_flag=True, default=False,
     help="Start in the background instead of attaching a terminal.",
 )
+@click.option(
+    "--image-trust", "sImageTrust", default=None,
+    type=click.Choice(["restricted", "as-built", "inspect"]),
+    help="How an image vaibify did not build may run. Required without "
+    "a terminal for such an image; asked interactively otherwise.",
+)
+@click.option(
+    "--with-credentials", "bWithCredentials", is_flag=True, default=False,
+    help="Let the image's code read your stored credentials (needs "
+    "--image-trust; off unless given).",
+)
 @click.argument("command", required=False, default=None)
-def fnStartCommand(bGui, bJupyter, iPort, sProjectName, bDetach, command):
+def fnStartCommand(
+    bGui, bJupyter, iPort, sProjectName, bDetach, sImageTrust,
+    bWithCredentials, command,
+):
     """Start the Vaibify environment."""
     config = fconfigResolveProject(sProjectName)
     sConfigPath = fsResolveProjectConfigPath(sProjectName)
     listPreflight = flistRunStartPreflight(config)
     _fnEnforcePreflightOrExit(listPreflight)
     _fnPrintWarningsIfAny(listPreflight)
+    fnConfirmImageTrustOrExit(config, sImageTrust, bWithCredentials)
     fnClearStoppedContainerBeforeLaunch(config)
     sDockerDir = fsDockerDir()
     click.echo(f"Starting container {config.sProjectName} ...")

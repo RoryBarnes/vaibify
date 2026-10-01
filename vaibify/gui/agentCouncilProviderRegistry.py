@@ -1,5 +1,7 @@
 """Closed registry of reviewed Agent Council provider adapters."""
 
+import re
+
 from . import agentCouncilAntigravityProvider
 from . import agentCouncilCodexProvider
 from . import agentCouncilEgress
@@ -7,6 +9,8 @@ from . import agentCouncilProviders
 
 __all__ = [
     "SET_COUNCIL_PROVIDERS",
+    "REGEX_MODEL_ID",
+    "fsValidateModelId",
     "fdictBuildProviderCapability",
     "fdictComposeProviderRunnerEnvironment",
     "fdictExtractProviderCredential",
@@ -24,6 +28,24 @@ __all__ = [
 ]
 
 SET_COUNCIL_PROVIDERS = frozenset({"claude", "codex", "gemini"})
+
+# A model id becomes an argument of a provider command run in a runner,
+# so it is held to the shapes real ids take: a letter or digit first (it
+# can never read as an option), then letters, digits and the punctuation
+# of ``vendor/model:tag@version``, ``name[1m]`` and dotted versions. No
+# whitespace, quote, ``$``, ``;`` or control character is admitted. It
+# is applied with ``fullmatch``: a bare ``$`` also matches before a
+# trailing newline.
+REGEX_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,199}$")
+
+
+def fsValidateModelId(sModel):
+    """Return the model id, or raise ValueError naming the allowed shape."""
+    if not isinstance(sModel, str) or not REGEX_MODEL_ID.fullmatch(sModel):
+        raise ValueError(
+            "a model id starts with a letter or digit and holds only "
+            "letters, digits and . _ : / @ [ ] -, up to 200 characters")
+    return sModel
 
 
 def _fdictRequireProvider(sProvider):

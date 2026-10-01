@@ -4869,10 +4869,7 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fsEscape(sText) {
-        var elDiv = document.createElement("div");
-        elDiv.textContent = sText === undefined || sText === null
-            ? "" : String(sText);
-        return elDiv.innerHTML;
+        return VaibifyUtilities.fnEscapeHtml(sText);
     }
 
     function fnInitialize() {

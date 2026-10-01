@@ -30,7 +30,7 @@ __all__ = ["fnRegisterAll"]
 import asyncio
 
 from fastapi import HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .. import agentCouncilCredentialGate
 from .. import agentCouncilCredentialStore
@@ -52,6 +52,14 @@ class CredentialTestProviderRequest(BaseModel):
 
     sProvider: str = Field(min_length=1, max_length=64)
     sRequestedModel: str = Field(default="", max_length=I_MAX_MODEL_LENGTH)
+
+    @field_validator("sRequestedModel")
+    @classmethod
+    def fsValidateRequestedModel(cls, sModel):
+        """Admit the empty default (the provider's own), else a plain id."""
+        if sModel == "":
+            return sModel
+        return agentCouncilProviderRegistry.fsValidateModelId(sModel)
 
 
 class CredentialTestRequest(BaseModel):

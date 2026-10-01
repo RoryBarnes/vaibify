@@ -699,6 +699,7 @@ def _fnRegisterRemoveProject(app, dictCtx):
     """Register DELETE /api/registry/{sName}."""
 
     @app.delete("/api/registry/{sName}")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRemoveProject(sName: str):
         from vaibify.config.registryManager import (
             fnRemoveProject,
@@ -929,6 +930,7 @@ def _fnRegisterContainerSettings(app, dictCtx):
 
     @app.get("/api/containers/{sName}/settings")
     async def fdictGetContainerSettings(sName: str):
+        from vaibify.config.registryManager import fbProjectImageIsObtained
         dictProject = _fdictRequireProject(sName)
         configProject = _fconfigLoadForProject(dictProject)
         dictResult = {
@@ -936,6 +938,8 @@ def _fnRegisterContainerSettings(app, dictCtx):
             "iCpuLimit": configProject.iCpuLimit,
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
+            "dictImageTrust": dictProject.get("dictImageTrust"),
+            "bImageObtained": fbProjectImageIsObtained(dictProject),
         }
         for _, sEnabledField, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
             bInstalled = getattr(configProject.features, sEnabledField)

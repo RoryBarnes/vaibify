@@ -31,6 +31,7 @@ __all__ = [
     "councilChatRoutes",
     "councilCredentialRoutes",
     "councilSnapshotRoutes",
+    "imageTrustRoutes",
 ]
 
 from . import (
@@ -64,4 +65,5 @@ from . import (
     councilChatRoutes,
     councilCredentialRoutes,
     councilSnapshotRoutes,
+    imageTrustRoutes,
 )

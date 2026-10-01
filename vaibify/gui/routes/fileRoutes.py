@@ -5,6 +5,7 @@ __all__ = ["fnRegisterAll"]
 import hashlib
 import os
 import posixpath
+from urllib.parse import quote
 
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from typing import List
 
 from ..actionCatalog import ffnAgentAction
+from ...docker.confinedWrite import ContainerWriteRefusedError
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
@@ -37,6 +39,7 @@ from ..pipelineServer import (
     FilePullRequest,
     FileWriteRequest,
     WORKSPACE_ROOT,
+    fdictConfinedWriteKeywords,
     flistQueryDirectory,
     fnRejectWriteDenylistedPath,
     fsValidatePathWithinRoot,
@@ -81,8 +84,20 @@ def _fnValidateHostDestination(sResolvedPath):
             403, "Destination outside home directory")
 
 
+I_AGENT_PULL_MAX_BYTES = 1024 * 1024 * 1024
+
+
+class PullTooLargeError(OSError):
+    """A pulled file grew past the cap the caller allowed."""
+
+
+class PullSourceIsDirectoryError(IsADirectoryError):
+    """The pull named a container directory; the message is authored."""
+
+
 def _fsPullContainerFileToHost(
     connectionDocker, sContainerId, sContainerPath, sHostDestination,
+    iMaxBytes=None,
 ):
     """Stream one container file onto the host; return where it landed.
 
@@ -108,12 +123,33 @@ def _fsPullContainerFileToHost(
         sTargetPath = os.path.join(
             sTargetPath, posixpath.basename(sContainerPath),
         )
+    _fnStreamContainerFileInto(
+        connectionDocker, sContainerId, sContainerPath, sTargetPath,
+        iMaxBytes,
+    )
+    return sTargetPath
+
+
+def _fnStreamContainerFileInto(
+    connectionDocker, sContainerId, sContainerPath, sTargetPath,
+    iMaxBytes,
+):
+    """Write the stream to the target; delete the partial file on overflow."""
+    iWritten = 0
     with open(sTargetPath, "wb") as fileTarget:
         for baChunk in connectionDocker.fiterStreamFile(
             sContainerId, sContainerPath,
         ):
+            iWritten += len(baChunk)
+            if iMaxBytes is not None and iWritten > iMaxBytes:
+                break
             fileTarget.write(baChunk)
-    return sTargetPath
+        else:
+            return
+    os.remove(sTargetPath)
+    raise PullTooLargeError(
+        f"The file is larger than the {iMaxBytes}-byte limit on "
+        "files an agent may pull.")
 
 
 def _fnRefuseDirectorySource(
@@ -133,7 +169,7 @@ def _fnRefuseDirectorySource(
         )
     except FileNotFoundError:
         return
-    raise IsADirectoryError(
+    raise PullSourceIsDirectoryError(
         f"{sContainerPath} is a directory; a pull names one file"
     )
 
@@ -299,12 +335,14 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
             )
         _fnCommitUploadedFile(
             dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+            sProjectRepoPath,
         )
         return {"bSuccess": True, "sPath": sNormalized}
 
 
 def _fnCommitUploadedFile(
     dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+    sProjectRepoPath,
 ):
     """Commit an uploaded file through carrier mode (a) (design §8).
 
@@ -329,7 +367,10 @@ def _fnCommitUploadedFile(
         try:
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent,
+                **fdictConfinedWriteKeywords(sProjectRepoPath),
             )
+        except ContainerWriteRefusedError as error:
+            raise HTTPException(403, str(error))
         except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
@@ -390,6 +431,23 @@ def _fiterReplayThenRest(baFirst, iterChunks):
     yield from iterChunks
 
 
+def fsBuildContentDisposition(sFilename):
+    """Return an attachment header safe for any filename (RFC 6266).
+
+    HTTP header values are Latin-1, so the quoted form carries an ASCII
+    fallback with the quote and backslash escaped, and the exact name
+    travels percent-encoded in the ``filename*`` parameter.
+    """
+    sFallback = "".join(
+        sCharacter if 32 <= ord(sCharacter) < 127 else "_"
+        for sCharacter in sFilename
+    ).replace("\\", "\\\\").replace('"', '\\"')
+    return (
+        f'attachment; filename="{sFallback}"; '
+        f"filename*=UTF-8''{quote(sFilename, safe='')}"
+    )
+
+
 def _fresponseStreamDownload(iterBytes, sAbsPath):
     """Wrap a byte iterator as an attachment StreamingResponse."""
     sFilename = posixpath.basename(sAbsPath)
@@ -397,7 +455,7 @@ def _fresponseStreamDownload(iterBytes, sAbsPath):
         iterBytes,
         media_type="application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="{sFilename}"',
+            "Content-Disposition": fsBuildContentDisposition(sFilename),
         },
     )
 
@@ -498,12 +556,22 @@ def _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot):
         _pipelineServer._fnValidateHostDestination(sHostDest)
         if fbRequestRidesAgentLane(requestHttp):
             _fnValidateAgentPullDestination(sHostDest, sContainerId)
+        iMaxBytes = (I_AGENT_PULL_MAX_BYTES
+                     if fbRequestRidesAgentLane(requestHttp) else None)
         try:
             sLandedPath = await asyncio.to_thread(
                 _pipelineServer._fsPullContainerFileToHost,
                 dictCtx["docker"], sContainerId,
-                request.sContainerPath, sHostDest,
+                request.sContainerPath, sHostDest, iMaxBytes,
             )
+        except PullTooLargeError as error:
+            raise HTTPException(status_code=413, detail=str(error))
+        except PullSourceIsDirectoryError as error:
+            raise HTTPException(status_code=500, detail=str(error))
+        except OSError as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"The file could not be written ({type(error).__name__}).")
         except Exception as error:
             raise HTTPException(
                 status_code=500, detail=str(error))
@@ -766,12 +834,14 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         _fnCommitFileWrite(
             dictCtx, sContainerId, sNormalized,
             request.sContent.encode("utf-8"), requestHttp,
+            sProjectRepoPath,
         )
         return {"bSuccess": True, "sPath": sNormalized}
 
 
 def _fnCommitFileWrite(
     dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+    sProjectRepoPath,
 ):
     """Commit the editor's file save through carrier mode (a) (design §8).
 
@@ -795,8 +865,11 @@ def _fnCommitFileWrite(
     def fnWriteTheFile():
         try:
             dictCtx["docker"].fnWriteFile(
-                sContainerId, sNormalized, baContent
+                sContainerId, sNormalized, baContent,
+                **fdictConfinedWriteKeywords(sProjectRepoPath),
             )
+        except ContainerWriteRefusedError as error:
+            raise HTTPException(403, str(error))
         except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500

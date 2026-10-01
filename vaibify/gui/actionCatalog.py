@@ -1347,6 +1347,12 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # a compromised agent asserting that about its own container is the
     # exact inversion of what the journal exists for.
     ("POST", "/api/registry/{sName}/reconcile"),
+    # Choosing how an image vaibify did not build may run (restricted,
+    # as its author built it, inspect only, and whether it may read the
+    # researcher's stored credentials) is a trust grant. An in-container
+    # agent granting that trust to the very image it runs in is the
+    # exact inversion of the question, so only the researcher answers.
+    ("POST", "/api/registry/{sName}/image-trust"),
     ("POST", "/api/host-directories/create"),
     ("POST", "/api/projects/create"),
     # Host-global browser preference (per-directory host-warning

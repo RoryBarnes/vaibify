@@ -24,6 +24,7 @@ POST .../{sName}/start/cancel  part  marks    ambient    adopted
 POST .../{sName}/settings      none  none     ambient    n/a (host)
 POST .../{sName}/delete-envi.  none  reads    ambient    invisible
 POST .../{sName}/reconcile     part  clears   ambient    refused
+DELETE /api/registry/{sName}   none  none     ambient    n/a (list)
 =============================  ====  =======  =========  ==========
 
 "ambient" is the same for all three and is not a property of the route:
@@ -139,6 +140,24 @@ DICT_LIFECYCLE_AUDIT = {
             "needs, and is the same open question."
         ),
     },
+    ("DELETE", "/api/registry/{sName}"): {
+        "sHandler": "fdictRemoveProject",
+        "bHoldsMutationLock": False,
+        "bWritesJournalRecord": False,
+        "sTransfer": "not-applicable",
+        "sFinding": (
+            "Classified container-lifecycle for AUTHORIZATION, so a "
+            "second browser session cannot take a project out of the "
+            "list while another session holds its container's lease. "
+            "It reaches no container: it rewrites the hub's project "
+            "registry under the registry's own file lock, which is not "
+            "the container mutation lock, and writes no journal "
+            "record. The transfer question does not arise because "
+            "nothing in the container is touched; the lease check is "
+            "the whole protection, and an UNOWNED project stays "
+            "removable."
+        ),
+    },
     ("POST", "/api/registry/{sName}/reconcile"): {
         "sHandler": "fdictReconcileQuarantine",
         "bHoldsMutationLock": True,
@@ -200,7 +219,7 @@ def _fsReachableSource(fnEndpoint, listExtraCallables):
 
 def _flistCallablesBehind(tRoute):
     """Return the functions each audited handler delegates its work to."""
-    from vaibify.config import reconciliation
+    from vaibify.config import reconciliation, registryManager
     from vaibify.gui import (
         environmentDeletion, hostControlChannel, registryRoutes,
         startReservation,
@@ -216,6 +235,9 @@ def _flistCallablesBehind(tRoute):
         ("POST", "/api/containers/{sName}/settings"): [
             registryRoutes._fbApplyAgentAutoUpdate,
             registryRoutes._fnUpdateYamlScalarField,
+        ],
+        ("DELETE", "/api/registry/{sName}"): [
+            registryManager.fnRemoveProject,
         ],
         ("POST", "/api/registry/{sName}/delete-environment"): [
             registryRoutes._fnRefuseBusyProject,

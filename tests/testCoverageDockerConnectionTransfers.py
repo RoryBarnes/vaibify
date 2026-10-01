@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.confinedWriteHarness import ExecProgramDaemon
 from vaibify.config import mutationAdmission
 from vaibify.docker import dockerConnection as dockerConnectionModule
 from vaibify.docker.dockerConnection import DockerConnection
@@ -540,14 +541,16 @@ def testCopyFileIntoAnExistingDirectoryKeepsItsBasename(
     """docker cp semantics: file into a directory lands under its name."""
     pathSource = tmp_path / "dataFile.csv"
     pathSource.write_bytes(b"payload")
-    connection, _, container = ftBuildConnection(monkeypatch)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
     fnAnswerDirectoryProbe(container, True)
     connection.fnCopyHostPathIntoContainer(
         S_CONTAINER_ID, str(pathSource), "/workspace/inputs")
-    sDestination, baArchive = container.listPutArchives[0]
-    assert sDestination == "/workspace/inputs"
-    listMembers = flistReadTarMembers(baArchive)
-    assert [infoMember.name for infoMember in listMembers] == ["dataFile.csv"]
+    assert container.listPutArchives == []
+    assert daemon.listReceivedStdin == [b"payload"]
+    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert repr("/workspace/inputs/dataFile.csv") in sWriteProgram
     sProbeProgram = shlex.split(container.listExecCalls[0]["cmd"][2])[2]
     assert repr("/workspace/inputs") in sProbeProgram
 
@@ -556,15 +559,17 @@ def testCopyFileToANewPathWritesThatExactPath(monkeypatch, tmp_path):
     """A destination that is not a directory IS the file to write."""
     pathSource = tmp_path / "dataFile.csv"
     pathSource.write_bytes(b"payload")
-    connection, _, container = ftBuildConnection(monkeypatch)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
     fnAnswerDirectoryProbe(container, False)
     connection.fnCopyHostPathIntoContainer(
         S_CONTAINER_ID, str(pathSource), "/workspace/inputs/renamed.csv")
-    sDestination, baArchive = container.listPutArchives[0]
-    assert sDestination == "/workspace/inputs"
-    infoMember = flistReadTarMembers(baArchive)[0]
-    assert infoMember.name == "renamed.csv"
-    assert (infoMember.uid, infoMember.gid) == (1000, 1000)
+    assert container.listPutArchives == []
+    assert daemon.listReceivedStdin == [b"payload"]
+    sWriteProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert repr("/workspace/inputs/renamed.csv") in sWriteProgram
+    assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 
 
 def testCopyDirectoryIntoAnExistingDirectoryNestsIt(monkeypatch, tmp_path):

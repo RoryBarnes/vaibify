@@ -20,6 +20,8 @@ only functions in vaibify that stage a council token, and
 ``tests/testCouncilCredentialAdmission.py`` pins that structurally.
 """
 
+import logging
+import re
 import uuid
 
 from . import agentCouncilCredentialGate
@@ -27,6 +29,7 @@ from . import agentCouncilCredentialStore
 from . import agentCouncilProviderRegistry
 from . import agentCouncilRunner
 from . import agentCouncilStagedCopies
+from . import agentCouncilStore
 from .agentCouncilCredentialTestRecords import (
     F_TURN_TIMEOUT_SECONDS,
     SET_CHECK_IDS,
@@ -41,6 +44,7 @@ __all__ = [
     "fbRunnerLabelBelongsToJob",
     "ftAdmitCredentialTestCredential",
     "fsReadRunnerCouncilLabel",
+    "fsSanitizeJobDetail",
     "F_KILL_AFTER_SECONDS",
     "S_INVALID_MODEL_ID",
     "DICT_DEFAULT_TEST_MODELS",
@@ -212,12 +216,30 @@ class CredentialTestIncompleteError(Exception):
         self.sDetail = sDetail
 
 
+S_STAGED_CREDENTIAL_REPLACEMENT = "[staged credential file]"
+REGEX_STAGED_CREDENTIAL_PATH = re.compile(r"\S*vc_secret_\S*")
+
+
+def fsSanitizeJobDetail(sDetail):
+    """Return job text with no staged-credential path and no secret span.
+
+    Every sentence a job publishes passes here: the job record the panel
+    reads and the durable evidence document both carry it. An exception
+    raised while a credential is staged can quote the staged file's
+    path, and a runner's output can quote the credential, so neither is
+    ever written down.
+    """
+    sScrubbed = REGEX_STAGED_CREDENTIAL_PATH.sub(
+        S_STAGED_CREDENTIAL_REPLACEMENT, sDetail or "")
+    return agentCouncilStore.fsRedactCredentialSpans(sScrubbed)
+
+
 def _fnMarkCheck(dictJob, sCheckId, sStatus, sDetail=""):
     """Record one check's status in the job record and persist it."""
     for dictCheck in dictJob["listChecks"]:
         if dictCheck["sCheckId"] == sCheckId:
             dictCheck["sStatus"] = sStatus
-            dictCheck["sDetail"] = sDetail
+            dictCheck["sDetail"] = fsSanitizeJobDetail(sDetail)
     dictJob["sCurrentCheck"] = sCheckId if sStatus == "running" else ""
     fnWriteJobRecord(dictJob)
 
@@ -642,12 +664,36 @@ def fnRunCredentialTestJob(dictJob, dictRuntime):
             agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
             error.sCheckId, error.sDetail)
     except Exception as error:
+        logging.getLogger("vaibify").warning(
+            "credential test %s faulted: %s: %s", dictJob.get("sJobId", ""),
+            type(error).__name__, fsSanitizeJobDetail(str(error)))
         sOutcome, sCheckId, sDetail = (
             agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
-            dictJob.get("sCurrentCheck", ""),
-            f"{type(error).__name__}: {error}")
+            dictJob.get("sCurrentCheck", ""), _fsDescribeFault(error))
     finally:
         _fnFinishJob(dictJob, dictRuntime, sOutcome, sCheckId, sDetail)
+
+
+T_AUTHORED_REFUSAL_ERRORS = (
+    agentCouncilCredentialStore.CredentialStoreError,
+    agentCouncilCredentialStore.CredentialAdmissionRefusedError,
+)
+
+
+def _fsDescribeFault(error):
+    """Return the sentence an unexpected fault is recorded as.
+
+    A refusal vaibify's own store or admitter raised carries text
+    vaibify wrote, so it is kept (scrubbed at publication). Anything
+    else is a fault whose message may quote a staged path or a
+    credential, so only its type is recorded and the rest stays in the
+    hub log.
+    """
+    if isinstance(error, T_AUTHORED_REFUSAL_ERRORS):
+        return f"{type(error).__name__}: {error}"
+    return (
+        f"{type(error).__name__}: a fault in vaibify's own machinery; "
+        "its details are withheld from this record and are in the hub log")
 
 
 def _fnFinishJob(dictJob, dictRuntime, sOutcome, sCheckId, sDetail):
@@ -728,6 +774,7 @@ def flistRemoveTestEgress(dictJob, dictGateway):
 
 def fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail):
     """Publish to the store and persist the job's terminal record."""
+    sDetail = fsSanitizeJobDetail(sDetail)
     dictDetails = {"sFailedCheck": sCheckId if sOutcome != (
         agentCouncilCredentialStore.S_OUTCOME_PASSED) else "",
         "sDetail": sDetail, "sCliVersion": dictJob.get("sCliVersion", ""),
@@ -742,7 +789,8 @@ def fnPublishJobOutcome(dictJob, sOutcome, sCheckId, sDetail):
             dictJob["sJobId"], sOutcome, dictDetails)
     except agentCouncilCredentialStore.CredentialStoreError as error:
         sOutcome, sDetail = (
-            agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE, str(error))
+            agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
+            fsSanitizeJobDetail(str(error)))
     dictJob.update({"sStatus": sOutcome, "sFailedCheck":
                     dictDetails["sFailedCheck"], "sDetail": sDetail,
                     "sCurrentCheck": "",

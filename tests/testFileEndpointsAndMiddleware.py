@@ -101,11 +101,13 @@ class MockDockerTransfer:
             yield baBytes[iOffset:iOffset + iChunkSizeBytes]
 
     def fnWriteFile(self, sContainerId, sPath, baContent,
-                    iMode=None, iUid=None, iGid=None):
+                    iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=()):
         self._dictFiles[sPath] = baContent
 
     def fnWriteFileViaTar(self, sContainerId, sPath, baContent,
-                          iMode=None, iUid=None, iGid=None):
+                          iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=()):
         self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None,
@@ -376,7 +378,7 @@ def test_file_pull_tilde_expansion(clientHttp):
     }
     with patch.object(
         pipelineServer, "_fsPullContainerFileToHost",
-        side_effect=lambda _conn, _cid, _src, sDest: sDest,
+        side_effect=lambda _conn, _cid, _src, sDest, _max=None: sDest,
     ):
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/pull",

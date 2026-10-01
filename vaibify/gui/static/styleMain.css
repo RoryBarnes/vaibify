@@ -9198,3 +9198,61 @@ body.council-workspace-open #mainLayout {
 .council-snapshot-scope-line {
     margin: 8px 0;
 }
+
+/* ---- Image-trust modal (scriptImageTrust.js) ---- */
+
+.containment-chip--imagetrust {
+    background: transparent;
+    border: 1px solid var(--color-orange, var(--color-blue));
+    color: var(--color-orange, var(--color-blue));
+}
+
+.image-trust-modal {
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.image-trust-notice {
+    margin-bottom: 12px;
+}
+
+.image-trust-provenance {
+    width: 100%;
+    margin-bottom: 12px;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.image-trust-provenance th {
+    text-align: left;
+    padding: 2px 8px 2px 0;
+    white-space: nowrap;
+    font-weight: normal;
+    opacity: 0.8;
+}
+
+.image-trust-provenance td {
+    word-break: break-all;
+}
+
+.image-trust-option,
+.image-trust-credentials {
+    margin: 8px 0;
+    padding: 8px;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.4));
+    border-radius: 4px;
+}
+
+.image-trust-summary {
+    opacity: 0.8;
+}
+
+.image-trust-details {
+    margin: 6px 0 0 24px;
+    font-size: 0.9em;
+}
+
+.image-trust-details summary {
+    cursor: pointer;
+}

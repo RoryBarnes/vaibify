@@ -73,17 +73,21 @@ __all__ = [
 ]
 
 
-def flistResolveBindAddresses(sLoopbackHost=S_LOOPBACK_HOST):
+def flistResolveBindAddresses(
+    sLoopbackHost=S_LOOPBACK_HOST, bServeContainerAgents=True,
+):
     """Return the addresses a vaibify server binds, loopback first.
 
     On Linux the Docker bridge gateway follows, when the daemon can name
-    it. Anywhere else the answer is loopback alone: a macOS daemon runs
-    in a VM that forwards ``host.docker.internal`` to the host's
-    loopback, so the second address would be a hole with no traffic
-    behind it.
+    it and the server has in-container agents to serve. Anywhere else,
+    and for a server with none (the setup wizard), the answer is
+    loopback alone: a macOS daemon runs in a VM that forwards
+    ``host.docker.internal`` to the host's loopback, so the second
+    address would be a hole with no traffic behind it, and on Linux it
+    would be reachable from every container on the daemon.
     """
     listAddresses = [sLoopbackHost]
-    if platform.system() != "Linux":
+    if not bServeContainerAgents or platform.system() != "Linux":
         return listAddresses
     sGateway = fsResolveDockerBridgeGateway(I_GATEWAY_LOOKUP_TIMEOUT_SECONDS)
     if sGateway and sGateway != sLoopbackHost:
@@ -200,8 +204,13 @@ class ServerLoggingExitSignals(uvicorn.Server):
         self.handle_exit = fnHandleExitLogged
 
 
-def fnRunServer(app, iPort, sHost=S_LOOPBACK_HOST):
+def fnRunServer(
+    app, iPort, sHost=S_LOOPBACK_HOST, bServeContainerAgents=True,
+):
     """Serve app on loopback (and the Linux bridge gateway) until stopped.
+
+    ``bServeContainerAgents`` False keeps the server on loopback alone,
+    for a server no in-container agent has any business reaching.
 
     ``log_config=None`` keeps uvicorn from calling
     ``logging.config.dictConfig``, whose handler teardown CLOSES every
@@ -217,9 +226,10 @@ def fnRunServer(app, iPort, sHost=S_LOOPBACK_HOST):
     to bind — and are kept truthful for that reason.
     """
     listSockets = flistBindServerSockets(
-        flistResolveBindAddresses(sHost), iPort,
+        flistResolveBindAddresses(sHost, bServeContainerAgents), iPort,
     )
-    _fnAnnounceBridgeBinding(listSockets, iPort)
+    if bServeContainerAgents:
+        _fnAnnounceBridgeBinding(listSockets, iPort)
     configUvicorn = uvicorn.Config(
         app, host=sHost, port=iPort,
         log_level="warning", timeout_graceful_shutdown=3,

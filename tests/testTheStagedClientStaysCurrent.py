@@ -38,7 +38,8 @@ class _StubStagingConnection:
         return self._dictShaByPath.get(sPath, "")
 
     def fnWriteFile(self, sContainerId, sPath, baContent,
-                    iMode=None, iUid=None, iGid=None):
+                    iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=(),):
         self.listCalls.append(("write", sPath, baContent))
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):

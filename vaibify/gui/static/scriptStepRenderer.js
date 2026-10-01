@@ -873,6 +873,20 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
+    var SET_VERIFICATION_STATE_CLASSES = new Set([
+        "untested", "passed", "failed", "error", "stale", "unnecessary",
+        "passed-from-marker", "outputs-changed", "outputs-missing",
+    ]);
+
+    function fsVerificationStateClass(sState) {
+        /* A state word from project data becomes a CSS class only if
+           it is in the vocabulary the label and icon functions know;
+           anything else renders as the "Untested" those functions
+           already show for it, never as raw text in an attribute. */
+        return SET_VERIFICATION_STATE_CLASSES.has(sState)
+            ? sState : "untested";
+    }
+
     function fsRenderSubTestRow(
         sLabel, sState, sCategory, iIndex, dictContext
     ) {
@@ -880,7 +894,7 @@ var VaibifyStepRenderer = (function () {
         var bExpanded = setExp.has(iIndex);
         var sTriangle = '<span class="expand-triangle">' +
             (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
-        var sStateClass = sState || "untested";
+        var sStateClass = fsVerificationStateClass(sState);
         return '<div class="sub-test-row expandable" data-step="' +
             iIndex + '" data-approver="' + sCategory + '">' +
             '<span class="verification-label">' +
@@ -1109,8 +1123,8 @@ var VaibifyStepRenderer = (function () {
     }
 
     function fsRenderDepAxisRow(sLabel, sState, sDetail, dictContext) {
-        var sBadgeState = (sState === "unknown" || !sState)
-            ? "untested" : sState;
+        var sBadgeState = fsVerificationStateClass(
+            sState === "unknown" ? "" : sState);
         var sStateLabel = sState === "unknown" ? "—" :
             dictContext.fsVerificationStateLabel(sState);
         var sIcon = sState === "unknown" ? "" :
@@ -1161,7 +1175,7 @@ var VaibifyStepRenderer = (function () {
             sTriangle = '<span class="expand-triangle">' +
                 (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
         }
-        var sStateClass = sState || "untested";
+        var sStateClass = fsVerificationStateClass(sState);
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
             '" data-approver="' + sApprover + '">' +

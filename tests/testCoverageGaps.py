@@ -17,6 +17,8 @@ from click.testing import CliRunner
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, AsyncMock
 
+from tests.sessionTokenTestHelper import fsBootstrapCredential
+
 
 # -----------------------------------------------------------------------
 # Helpers
@@ -1312,7 +1314,9 @@ def test_build_route(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     dictPayload = {
         "sProjectName": "buildtest",
         "sPackageManager": "pip",
@@ -1336,7 +1340,9 @@ def test_build_route_rejects_invalid(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     dictPayload = {
         "sProjectName": "",
         "sPackageManager": "pip",
@@ -1356,7 +1362,9 @@ def test_get_existing_config_valid(tmp_path):
             {"projectName": "existing"}, fh,
         )
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     responseHttp = clientHttp.get("/api/setup/config")
     assert responseHttp.status_code == 200
 
@@ -1365,7 +1373,9 @@ def test_get_template_config_not_found(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     responseHttp = clientHttp.get(
         "/api/setup/templates/nonexistent_xyz"
     )
@@ -1376,7 +1386,9 @@ def test_validate_bad_package_manager(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     dictPayload = {
         "sProjectName": "test",
         "sPackageManager": "invalid_mgr",
@@ -1393,7 +1405,9 @@ def test_save_with_overleaf_id(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     dictPayload = {
         "sProjectName": "overleaf_test",
         "sPackageManager": "pip",
@@ -1477,7 +1491,9 @@ def test_save_with_repos(tmp_path):
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     dictPayload = {
         "sProjectName": "repoproj",
         "sPackageManager": "pip",
