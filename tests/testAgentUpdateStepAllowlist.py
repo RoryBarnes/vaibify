@@ -114,7 +114,6 @@ def testAnAgentCannotWriteTheResearchersAttestation(tupleLanes):
 @pytest.mark.parametrize("sField,value", [
     ("bInteractive", True),
     ("bRunEnabled", False),
-    ("dictTests", {}),
     ("dictRunStats", {"fWallClock": 1.0}),
     ("listRemoteData", []),
     ("dictPlotFileCategories", {}),
@@ -141,6 +140,24 @@ def testAnAgentStillEditsAStepDefinition(tupleLanes):
         f"/api/steps/{S_CONTAINER_ID}/0").json()
     assert dictStep["sDescription"] == "Fits the model."
     assert dictStep["saDataCommands"] == ["python fit.py"]
+
+
+def testAnAgentStillDeclaresATestCategory(tupleLanes):
+    """The agent guide's documented workflow: declare a test category.
+
+    ``dictTests`` is a definition (commands and file paths); the result
+    of running it is recorded in ``dictVerification``, which the agent
+    still cannot write.
+    """
+    clientBrowser, clientAgent, _appViewer = tupleLanes
+    dictTests = {"dictQualitative": {
+        "saCommands": ["pytest test_q.py"], "sFilePath": "test_q.py"}}
+    responseHttp = clientAgent.put(
+        f"/api/steps/{S_CONTAINER_ID}/0", json={"dictTests": dictTests})
+    assert responseHttp.status_code == 200, responseHttp.text
+    dictStep = clientBrowser.get(f"/api/steps/{S_CONTAINER_ID}/0").json()
+    assert dictStep["dictTests"]["dictQualitative"]["saCommands"] == [
+        "pytest test_q.py"]
 
 
 def testTheBrowserCanStillWriteTheVerification(tupleLanes):

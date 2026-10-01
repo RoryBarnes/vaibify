@@ -27,8 +27,6 @@ import hashlib
 import json
 import os
 
-import pytest
-
 from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
 from vaibify.reproducibility import levelGates
 from vaibify.reproducibility.levelGates import (

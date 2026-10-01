@@ -57,6 +57,10 @@ SET_AGENT_WRITABLE_STEP_FIELDS = frozenset({
     "saDataCommands", "saOutputDataFiles", "saTestCommands",
     "saPlotCommands", "saPlotFiles", "saInputDataFiles",
     "bNoInputData", "saDependencies", "fWallClockBudgetSeconds",
+    # The test categories an agent declares and writes (the agent
+    # guide's documented workflow). Definitions only: the RESULT of
+    # running them lives in dictVerification, which stays user-only.
+    "dictTests",
 })
 _I_STEP_COUNT_MAX = 500
 
