@@ -3,6 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import posixpath
+import time
 
 from fastapi import HTTPException, Request
 
@@ -18,6 +19,7 @@ from ..routeContext import (
     fdictCommitWorkflowSave,
     fgenericRunWorkerUnderTheDrain,
 )
+from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
@@ -44,6 +46,17 @@ from ..pipelineUtils import (
 
 
 _I_STEP_COUNT_WARNING = 100
+# The step-definition fields the in-container agent lane may write
+# through update-step. Everything else in StepUpdateRequest -- above
+# all dictVerification, the researcher's sign-off -- is refused to
+# agents, so a field added to the request later stays researcher-only
+# until someone lists it here deliberately.
+SET_AGENT_WRITABLE_STEP_FIELDS = frozenset({
+    "sName", "sDirectory", "sDescription", "bPlotOnly",
+    "saDataCommands", "saOutputDataFiles", "saTestCommands",
+    "saPlotCommands", "saPlotFiles", "saInputDataFiles",
+    "bNoInputData", "saDependencies", "fWallClockBudgetSeconds",
+})
 _I_STEP_COUNT_MAX = 500
 
 
@@ -237,6 +250,10 @@ def _fnRegisterStepUpdate(app, dictCtx):
             dictCtx["workflows"], sContainerId)
         _fnRequireFingerprintMatch(dictWorkflow, request.sBaseFingerprint)
         dictUpdates = _fdictExtractStepUpdates(request)
+        if fbRequestRidesAgentLane(requestHttp):
+            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)
+        _fnStampServerSideUserUpdate(
+            dictWorkflow, iStepIndex, dictUpdates)
         _fnRejectContractBreakingUpdates(
             dictWorkflow, iStepIndex, dictUpdates,
         )
@@ -325,6 +342,50 @@ def _fdictExtractStepUpdates(request):
     dictRaw.pop("bConfirmDestructive", None)
     dictRaw.pop("sBaseFingerprint", None)
     return fdictFilterNonNone(dictRaw)
+
+
+def _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates):
+    """Refuse (403, naming the field) any agent write off the allowlist."""
+    listRefused = sorted(
+        sField for sField in dictUpdates
+        if sField not in SET_AGENT_WRITABLE_STEP_FIELDS
+    )
+    if listRefused:
+        raise HTTPException(
+            403, "The agent lane may not write step field(s) "
+            + ", ".join(listRefused) + ": the researcher's "
+            "verification and run records are user-only. Allowed "
+            "fields: " + ", ".join(
+                sorted(SET_AGENT_WRITABLE_STEP_FIELDS)) + ".")
+
+
+def _fnStampServerSideUserUpdate(dictWorkflow, iStepIndex, dictUpdates):
+    """Make ``sLastUserUpdate`` the server's clock reading, never the client's.
+
+    The timestamp dates the researcher's attestation, and everything
+    that decides whether a later change supersedes it compares against
+    it, so a client-supplied value (a far-future one makes the
+    attestation immune to every later change) is discarded. It is
+    stamped only when ``sUser`` actually changes; otherwise the stored
+    value is kept.
+    """
+    dictClientVerification = dictUpdates.get("dictVerification")
+    if not isinstance(dictClientVerification, dict):
+        return
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictStoredVerification = {}
+    if 0 <= iStepIndex < len(listSteps):
+        dictStoredVerification = listSteps[iStepIndex].get(
+            "dictVerification") or {}
+    dictStamped = dict(dictClientVerification)
+    dictStamped.pop("sLastUserUpdate", None)
+    if dictStoredVerification.get("sLastUserUpdate") is not None:
+        dictStamped["sLastUserUpdate"] = dictStoredVerification[
+            "sLastUserUpdate"]
+    if dictStamped.get("sUser") != dictStoredVerification.get("sUser"):
+        dictStamped["sLastUserUpdate"] = time.strftime(
+            "%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    dictUpdates["dictVerification"] = dictStamped
 
 
 def _fnRejectContractBreakingUpdates(

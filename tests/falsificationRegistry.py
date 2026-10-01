@@ -24422,4 +24422,20 @@ def _fdictEntry(sRel):
         old='            if sOutcome == agentCouncilCredentialStore.S_OUTCOME_PASSED:\n                sOutcome, sCheckId = (\n',
         new='            if False:\n                sOutcome, sCheckId = (\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentUpdateStepAllowlist.py::testAnAgentCannotWriteTheResearchersAttestation'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        if fbRequestRidesAgentLane(requestHttp):\n            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)\n',
+        new='        if False:\n            _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentUpdateStepAllowlist.py::testAClientSuppliedFutureTimestampIsNotStored'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        _fnStampServerSideUserUpdate(\n            dictWorkflow, iStepIndex, dictUpdates)\n',
+        new='',
+    ),
 ]

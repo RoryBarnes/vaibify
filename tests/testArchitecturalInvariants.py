@@ -6926,7 +6926,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # routes join the human-only exclusions, with the reason.
     # 1409 -> 1413 (2026-09-29): the snapshot-scope choice joins the human-only
     # exclusions beside the credential consent routes.
-    "actionCatalog.py": 1413,
+    # 1413 -> 1418 (2026-09-30): update-step's description names the
+    # fields the agent lane may write.
+    "actionCatalog.py": 1418,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7064,7 +7066,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fiProofLevel call.
     # +2 (2026-09-24): rename and align refuse only while THIS
     # project runs; another project's run does not touch its steps.
-    "routes/stepRoutes.py": 866,
+    # 866 -> 927 (2026-09-30): the update-step agent allowlist and the
+    # server-side sign-off timestamp stamp.
+    "routes/stepRoutes.py": 927,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

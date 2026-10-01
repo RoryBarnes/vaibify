@@ -33,7 +33,10 @@ def fbStepUserApproved(dictStep):
     """Return True iff the step's ``sUser`` verification is ``passed``.
 
     The researcher attestation is the only field that requires a
-    human click; every other gate field is derived. A corrupt step
+    human click; every other gate field is derived. The server holds
+    that line: ``update-step`` refuses ``dictVerification`` from the
+    agent lane, and stamps ``sLastUserUpdate`` from its own clock on
+    the researcher's route. A corrupt step
     (non-dict, missing ``dictVerification``) reads as not-approved
     so callers do not crash with ``AttributeError``. ``stale`` and
     ``untested`` both read as not-approved; the discriminator between
