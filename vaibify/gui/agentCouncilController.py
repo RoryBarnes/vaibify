@@ -284,10 +284,7 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         # The campaign's own budget, not the module default. Without
         # this the setting is a number in a record that governs nothing
         # — the shape of bAgentSafe before it was enforced.
-        fWallClockSeconds=float(
-            (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
-            .get("iTurnWallClockSeconds")
-            or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS),
+        fWallClockSeconds=_ffCampaignTurnWallClockSeconds(dictRuntime),
         # The SAME reason, for the other budget. This argument was
         # missing, so iMaximumOutputBytesPerTurn was exactly the number
         # in a record that governs nothing the comment above warns
@@ -305,6 +302,14 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
                 (dictRuntime.get("dictCampaign") or {})
                 .get("dictSettings", {}).get("iTurnStallSeconds"))),
     )
+
+
+def _ffCampaignTurnWallClockSeconds(dictRuntime):
+    """Return the campaign's own per-turn wall clock, else the default."""
+    return float(
+        (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
+        .get("iTurnWallClockSeconds")
+        or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS)
 
 
 def _fdictProvisionRunnerAccessOnce(dictRuntime, sProvider="claude"):
@@ -491,7 +496,9 @@ def _fdictExecuteBaselineEvidenceLazily(dictRuntime, dictRequest):
                 dictRuntime["sCampaignId"],
                 dictRuntime["sImageReference"],
                 dictRuntime["sSnapshotIdentity"],
-                dictRuntime["baSnapshotTar"]))
+                dictRuntime["baSnapshotTar"],
+                fWallClockSeconds=_ffCampaignTurnWallClockSeconds(
+                    dictRuntime)))
     return dictRuntime["fdictExecuteBaselineEvidence"](dictRequest)
 
 

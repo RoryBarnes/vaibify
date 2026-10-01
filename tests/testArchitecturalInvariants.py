@@ -6323,7 +6323,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2187 -> 2188 (2026-09-29): the launch passes the manifest to the scope
     # note so participants learn what a tracked snapshot left out.
     # 2188 -> 2197 (2026-10-01): the plan seal hashes the file as written.
-    "agentCouncilController.py": 2197,
+    # 2197 -> 2204 (2026-10-01): the baseline executor runs under the
+    # campaign's turn wall clock, named once for both budgets.
+    "agentCouncilController.py": 2204,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

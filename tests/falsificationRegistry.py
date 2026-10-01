@@ -25193,4 +25193,31 @@ def _fdictEntry(sRel):
         old='        return dictPipelineRunningByName.get(sName, True)\n',
         new='        return dictPipelineRunningByName.get(sName, False)\n',
     ),
+    # --- The council's baseline-confirmation command runs on a worker
+    # thread under the campaign's wall clock ---
+    Falsification(
+        nodeid='tests/testCouncilBaselineOffLoop.py::testTheBaselineCommandRunsWhileTheEventLoopKeepsTurning',
+        source='vaibify/gui/agentCouncilEvidence.py',
+        old=(
+            '            dictExecution = await asyncio.to_thread(\n'
+            '                self.fdictExecuteBaselineEvidence,\n'
+            '                {"sCommandText": dictClaim.get("sCommandText", "")})\n'
+        ),
+        new=(
+            '            dictExecution = self.fdictExecuteBaselineEvidence(\n'
+            '                {"sCommandText": dictClaim.get("sCommandText", "")})\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCouncilBaselineOffLoop.py::testTheBaselineExecutorRunsUnderTheCampaignsTurnWallClock',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '                dictRuntime["baSnapshotTar"],\n'
+            '                fWallClockSeconds=_ffCampaignTurnWallClockSeconds(\n'
+            '                    dictRuntime)))\n'
+        ),
+        new=(
+            '                dictRuntime["baSnapshotTar"]))\n'
+        ),
+    ),
 ]
