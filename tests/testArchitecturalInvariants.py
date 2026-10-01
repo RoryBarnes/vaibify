@@ -6767,7 +6767,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # itself is only read.
     # +1 (2026-10-01): the registry removal declares its carrier mode.
     # 2329 -> 2332 (2026-10-01): the settings payload carries the image-trust answer.
-    "registryRoutes.py": 2332,
+    # 2332 -> 2334 (2026-10-01): adding a project names an unreadable registry
+    # (409) instead of a 500.
+    "registryRoutes.py": 2334,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
