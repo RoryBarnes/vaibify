@@ -185,6 +185,12 @@ LIST_SWALLOWING_GATES = [
         ),
     ),
     (
+        "_fdictLevel2LiveHashes",
+        lambda files: levelGates._fdictLevel2LiveHashes(
+            DICT_WORKFLOW, files,
+        ),
+    ),
+    (
         "_fbEnvelopeUnchangedSinceVerify",
         lambda files: levelGates._fbEnvelopeUnchangedSinceVerify(
             files, ["reproduce.sh"], {"dictComparedHashes": {}},

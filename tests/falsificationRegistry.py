@@ -24639,4 +24639,20 @@ def _fdictEntry(sRel):
         old='    return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]\n',
         new='    return listBlockers\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoRechecksLocalBytes.py::testAPublishedFileEditedAfterTheVerifyDeniesTheGatesAndTheCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbLevel2UnchangedSinceVerify(\n        dictWorkflow, filesRepo, dictStatus,\n    ):\n        return False\n    return _fbGithubHeadMatchesVerifiedSha(\n',
+        new='    return _fbGithubHeadMatchesVerifiedSha(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelTwoRechecksLocalBytes.py::testAnOutputDeclaredAfterTheVerifyDeniesTheGatesAndTheCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not _fbLevel2UnchangedSinceVerify(\n        dictWorkflow, filesRepo, dictStatus,\n    ):\n        return [_fdictChangedSinceVerifyBlocker(\n            _fdictGithubVerifyStaleBlocker(), "GitHub")]\n',
+        new='',
+    ),
 ]

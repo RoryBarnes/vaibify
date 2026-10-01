@@ -53,6 +53,7 @@ from .l3Attestation import (
 )
 from .manifestWriter import (
     fbWorkflowArchivesTests,
+    flistCollectCanonicalRepoPaths,
     flistDeclaredButMissingFromManifest,
     flistParseManifestLines,
 )
@@ -1790,6 +1791,76 @@ def _fsetDivergedPathsOf(dictStatus):
     }
 
 
+def _flistLevel2CanonicalPaths(dictWorkflow):
+    """Return the declared Level 2 files a verify compares, workflow-only.
+
+    Derived from the workflow alone (no directory listing), so it is
+    answerable against the poll's read-only snapshot as well as a live
+    adapter. The project-definition file is not in it: the snapshot
+    cannot list directories, and a changed definition is re-checked by
+    the next verify.
+    """
+    from . import publicationScope
+    listCanonical = [
+        sPath for sPath in flistCollectCanonicalRepoPaths(dictWorkflow)
+        if publicationScope.fbPathIsCompared(sPath)
+    ]
+    return sorted(publicationScope.fsetSelectLevel2Paths(listCanonical))
+
+
+def _fdictLevel2LiveHashes(dictWorkflow, filesRepo):
+    """Return ``{sPath: sSha256}`` for the Level 2 files hashable NOW.
+
+    A file the adapter cannot hash -- absent, or not sampled by the
+    poll snapshot -- is omitted: the caller makes no claim about it.
+    ``None`` means the hashing itself failed, which the caller reads as
+    "cannot prove unchanged".
+    """
+    listPaths = _flistLevel2CanonicalPaths(dictWorkflow)
+    if not listPaths:
+        return {}
+    try:
+        dictHashed = ffilesEnsureRepoFiles(filesRepo).fdictHashFiles(
+            listPaths,
+        )
+    except (OSError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return None
+    return {
+        sPath: (dictHashed.get(sPath) or {}).get("sSha256")
+        for sPath in listPaths
+        if (dictHashed.get(sPath) or {}).get("sSha256")
+    }
+
+
+def _fbLevel2UnchangedSinceVerify(dictWorkflow, filesRepo, dictStatus):
+    """Return True iff each Level 2 file still IS the bytes the verify graded.
+
+    The cache's divergence list says whether the copies agreed at verify
+    time; it says nothing about the file on disk now. A published file
+    edited after the verify, or an output declared after it, passed
+    Level 2 until the next verify -- the Level 3 envelope gate was fixed
+    for exactly this and Level 2 was not. Neither is proven divergent
+    (nobody compared it), so the answer is the stale cache's: verify
+    again.
+
+    A cache without ``dictComparedHashes`` predates the field and
+    leaves nothing to compare, so it keeps its verified row (no project
+    loses one by upgrading; the Level 3 gate is the one that blocks on
+    such a cache). Files the adapter cannot hash are not claimed about.
+    """
+    dictRecorded = (dictStatus or {}).get("dictComparedHashes")
+    if not isinstance(dictRecorded, dict):
+        return True
+    dictLive = _fdictLevel2LiveHashes(dictWorkflow, filesRepo)
+    if dictLive is None:
+        return False
+    return all(
+        dictRecorded.get(sPath) == sLiveSha
+        for sPath, sLiveSha in dictLive.items()
+    )
+
+
 def fbWorkflowFullySyncedWithGithub(
     dictWorkflow, filesRepo,
 ):
@@ -1808,6 +1879,10 @@ def fbWorkflowFullySyncedWithGithub(
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
     if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
         return False
     return _fbGithubHeadMatchesVerifiedSha(
         dictWorkflow, dictStatus,
@@ -1852,6 +1927,10 @@ def fbWorkflowFullySyncedWithZenodo(
     if not _fbCachedSyncStatusFullMatch(dictStatus):
         return False
     if not _fbCachedSyncStatusFresh(dictStatus, F_MAX_STALE_HOURS):
+        return False
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
         return False
     if not (dictStatus.get("sZenodoDoi") or ""):
         return False
@@ -2175,6 +2254,9 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         # this component the cached list keeps quoting the old answer
         # -- the masked-transition class the L3 key already guards.
         _fsEnvelopeStateFingerprint(filesRepo),
+        # And the published files themselves: an edit after the verify
+        # must be able to raise the changed-since-verify blocker.
+        _fsLevel2ContentFingerprint(dictWorkflow, filesRepo),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2222,6 +2304,11 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictGithubVerifyStaleBlocker()]
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
+        return [_fdictChangedSinceVerifyBlocker(
+            _fdictGithubVerifyStaleBlocker(), "GitHub")]
     listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-github-mirror",
@@ -2248,6 +2335,11 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictZenodoVerifyStaleBlocker()]
+    if not _fbLevel2UnchangedSinceVerify(
+        dictWorkflow, filesRepo, dictStatus,
+    ):
+        return [_fdictChangedSinceVerifyBlocker(
+            _fdictZenodoVerifyStaleBlocker(), "Zenodo")]
     listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-zenodo-deposit",
@@ -2514,6 +2606,15 @@ def _fdictGithubVerifyStaleBlocker():
         "sRemediationHint":
             "GitHub sync check is stale — re-verify to refresh status",
     }
+
+
+def _fdictChangedSinceVerifyBlocker(dictStaleBlocker, sServiceName):
+    """Say a published file changed since the last check, via the stale criterion."""
+    dictStaleBlocker["sRemediationHint"] = (
+        "Published files changed (or were declared) after the last "
+        f"{sServiceName} check — re-verify to compare them"
+    )
+    return dictStaleBlocker
 
 
 def _fdictZenodoUnexplainedRefusalBlocker(dictStatus):
@@ -2819,6 +2920,15 @@ def _fsEnvelopeStateFingerprint(filesRepo):
         for sPath in listOnDisk
     ]
     sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
+def _fsLevel2ContentFingerprint(dictWorkflow, filesRepo):
+    """SHA over each Level 2 file's live content hash (or ``"none"``)."""
+    dictLive = _fdictLevel2LiveHashes(dictWorkflow, filesRepo)
+    if not dictLive:
+        return "none"
+    sCanonical = json.dumps(sorted(dictLive.items()))
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
