@@ -456,6 +456,13 @@ def testHarnessReportsSilenceWhenTheMechanismIsDisabled(worldProbe):
     assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == []
 
 
+def testProbeRepositoriesDisableBackgroundMaintenance(worldProbe):
+    sTemplate = worldProbe.fsTemplateFor("fsmonitor")
+    with open(os.path.join(sTemplate, ".git", "config")) as fileConfig:
+        sConfig = fileConfig.read()
+    assert "auto = false" in sConfig and "auto = 0" in sConfig
+
+
 def testGitVersionIsRecordedInTheReport(record_property):
     record_property("gitVersion", harness.fsDescribeGitVersion())
     assert TUPLE_GIT_VERSION >= (2, 20)

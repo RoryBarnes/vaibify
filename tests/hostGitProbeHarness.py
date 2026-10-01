@@ -314,6 +314,7 @@ def fsBuildProbeRepository(sRepo, sMechanism, dictPaths, dictEnvironment):
     """
     os.makedirs(sRepo)
     fnRunSetupGit(["init", "-q", "-b", "main"], sRepo, dictEnvironment)
+    fnDisableBackgroundMaintenance(sRepo, dictEnvironment)
     for sName in (S_TRACKED_FILE, S_MANIFEST_FILE):
         with open(os.path.join(sRepo, sName), "w") as fileTracked:
             fileTracked.write("alpha\n")
@@ -327,6 +328,21 @@ def fsBuildProbeRepository(sRepo, sMechanism, dictPaths, dictEnvironment):
     fnInstallMechanism(sRepo, sMechanism, dictPaths)
     fnCommitAttributesLikeADownloadedRepository(sRepo, dictEnvironment)
     return sRepo
+
+
+def fnDisableBackgroundMaintenance(sRepo, dictEnvironment):
+    """Stop git from detaching a maintenance process after a command.
+
+    Newer git starts ``git maintenance`` in the background after commit,
+    fetch and merge, and that process creates and removes lock files under
+    ``.git/objects`` while a template is being copied or deleted. A copy
+    that lists a lock file the process then removes fails with
+    ``shutil.Error``. The probes are about what the commands under test
+    run, so nothing else may run beside them.
+    """
+    fnRunSetupGit(["config", "maintenance.auto", "false"], sRepo,
+                  dictEnvironment)
+    fnRunSetupGit(["config", "gc.auto", "0"], sRepo, dictEnvironment)
 
 
 def fnCommitAttributesLikeADownloadedRepository(sRepo, dictEnvironment):
