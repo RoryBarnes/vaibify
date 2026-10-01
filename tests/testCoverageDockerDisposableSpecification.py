@@ -218,10 +218,6 @@ def testLinkMemberTargetingOutsideTheRootIsRefused(
         disposableSpecification.fbufferRepackArchiveStamped(baArchive)
 
 
-@pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason=(
-    "A tar hard-link target is resolved against the extraction ROOT, but "
-    "_fnValidateArchiveMember resolves it against the member's own "
-    "directory, so a nested hard link naming ../outside is accepted."))
 def testNestedHardLinkEscapingTheRootIsRefused():
     """A hard link's target is root-relative, whatever the member's depth."""
     baArchive = fbaBuildArchive([

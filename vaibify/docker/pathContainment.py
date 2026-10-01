@@ -16,6 +16,7 @@ __all__ = [
     "fbIsPlainRelativePath",
     "fbIsPlainDirectoryName",
     "fbNormalizedPathEscapesTheRoot",
+    "fsDescribeMemberEscape",
 ]
 
 
@@ -51,3 +52,36 @@ def fbNormalizedPathEscapesTheRoot(sPath):
     """
     sNormalized = posixpath.normpath(sPath)
     return posixpath.isabs(sNormalized) or sNormalized.split("/")[0] == ".."
+
+
+def fsDescribeMemberEscape(infoMember):
+    """Return how a tar member escapes the extraction root, or an empty string.
+
+    The ONE judgement both archive repackers make. A member's own name
+    is normalized and must stay inside. A link's target is read the way
+    the archive format reads it, which differs by kind and is the whole
+    reason this is shared: a SYMBOLIC link's target is relative to the
+    directory the link sits in, but a HARD link's target is relative to
+    the archive root, whatever the member's depth. Resolving both from
+    the member's directory accepted a nested hard link naming
+    ``../outside``. An absolute target is refused for either kind.
+    """
+    sNormalized = posixpath.normpath(infoMember.name)
+    if fbNormalizedPathEscapesTheRoot(sNormalized):
+        return (
+            f"member {infoMember.name!r} escapes the extraction root."
+        )
+    if not (infoMember.issym() or infoMember.islnk()):
+        return ""
+    if infoMember.islnk():
+        sTarget = infoMember.linkname
+    else:
+        sTarget = posixpath.join(
+            posixpath.dirname(sNormalized), infoMember.linkname)
+    if posixpath.isabs(infoMember.linkname) or \
+            fbNormalizedPathEscapesTheRoot(sTarget):
+        return (
+            f"link member {infoMember.name!r} targets "
+            f"{infoMember.linkname!r} outside the extraction root."
+        )
+    return ""

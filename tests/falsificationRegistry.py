@@ -24826,7 +24826,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testARunnerMemberIsJudgedByComponentsNotByPrefix',
         source='vaibify/gui/agentCouncilRunner.py',
-        old='    if fbNormalizedPathEscapesTheRoot(sNormalized):\n',
-        new='    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):\n',
+        old='    sEscape = fsDescribeMemberEscape(infoMember)\n    if sEscape:\n        raise ValueError("Snapshot tarball refused: " + sEscape)\n',
+        new='    sNormalized = posixpath.normpath(infoMember.name)\n    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):\n        raise ValueError("Snapshot tarball refused: member escapes the extraction root.")\n',
+    ),
+    # --- One tar-member escape judgement for both repackers ---
+    Falsification(
+        nodeid='tests/testArchiveMemberValidatorIsShared.py::testTheSharedJudgementReadsEachLinkKindTheWayTheArchiveDoes',
+        source='vaibify/docker/pathContainment.py',
+        old='    if infoMember.islnk():\n        sTarget = infoMember.linkname\n',
+        new='    if False:\n        sTarget = infoMember.linkname\n',
     ),
 ]

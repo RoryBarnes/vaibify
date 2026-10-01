@@ -65,6 +65,7 @@ from vaibify.docker.dockerConnection import (
     _I_CONTAINER_DEFAULT_GID,
 )
 from vaibify.docker import daemonCapacity
+from vaibify.docker.pathContainment import fsDescribeMemberEscape
 
 
 __all__ = [
@@ -238,24 +239,9 @@ def fdictComposeCreateSpecification(
 
 def _fnValidateArchiveMember(infoMember):
     """Refuse a tar member that could land outside the extraction root."""
-    sNormalized = posixpath.normpath(infoMember.name)
-    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):
-        raise ValueError(
-            "Archive refused: member "
-            f"{infoMember.name!r} escapes the extraction root."
-        )
-    if infoMember.issym() or infoMember.islnk():
-        sLinkNormalized = posixpath.normpath(
-            posixpath.join(posixpath.dirname(sNormalized),
-                           infoMember.linkname)
-        )
-        if posixpath.isabs(infoMember.linkname) or \
-                sLinkNormalized.startswith(".."):
-            raise ValueError(
-                "Archive refused: link member "
-                f"{infoMember.name!r} targets {infoMember.linkname!r} "
-                "outside the extraction root."
-            )
+    sEscape = fsDescribeMemberEscape(infoMember)
+    if sEscape:
+        raise ValueError("Archive refused: " + sEscape)
 
 
 def _finfoStampContainerOwnership(infoMember):

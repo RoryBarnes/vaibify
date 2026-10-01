@@ -53,7 +53,7 @@ from vaibify.docker.dockerConnection import (
     _I_CONTAINER_DEFAULT_UID,
     _I_CONTAINER_DEFAULT_GID,
 )
-from vaibify.docker.pathContainment import fbNormalizedPathEscapesTheRoot
+from vaibify.docker.pathContainment import fsDescribeMemberEscape
 from vaibify.gui import agentCouncilCapacity
 
 __all__ = [
@@ -268,24 +268,9 @@ def fdictComposeRunnerCreateSpecification(
 
 def _fnValidateSnapshotMember(infoMember):
     """Refuse a tar member that could land outside the snapshot root."""
-    sNormalized = posixpath.normpath(infoMember.name)
-    if fbNormalizedPathEscapesTheRoot(sNormalized):
-        raise ValueError(
-            "Snapshot tarball refused: member "
-            f"{infoMember.name!r} escapes the extraction root."
-        )
-    if infoMember.issym() or infoMember.islnk():
-        sLinkNormalized = posixpath.normpath(
-            posixpath.join(posixpath.dirname(sNormalized),
-                           infoMember.linkname)
-        )
-        if posixpath.isabs(infoMember.linkname) or \
-                fbNormalizedPathEscapesTheRoot(sLinkNormalized):
-            raise ValueError(
-                "Snapshot tarball refused: link member "
-                f"{infoMember.name!r} targets {infoMember.linkname!r} "
-                "outside the extraction root."
-            )
+    sEscape = fsDescribeMemberEscape(infoMember)
+    if sEscape:
+        raise ValueError("Snapshot tarball refused: " + sEscape)
 
 
 def _finfoStampCouncilOwnership(infoMember):
