@@ -271,8 +271,21 @@ def _fiHoldAndReconnect(processTunnel, sDestination, iPort):
         fElapsed = 0.0
 
 
+class DeclaredNameArgument(click.Argument):
+    """A positional argument whose parameter keeps its declared spelling.
+
+    Click lowercases every argument name, so a Hungarian-notation name
+    such as ``sDestination`` would reach the callback as
+    ``sdestination`` and fail the call.
+    """
+
+    def __init__(self, listDeclarations, **dictKeywords):
+        super().__init__(listDeclarations, **dictKeywords)
+        self.name = listDeclarations[0]
+
+
 @click.command("remote")
-@click.argument("sDestination")
+@click.argument("sDestination", cls=DeclaredNameArgument)
 @click.option(
     "--port", "iExplicitPort", default=None, type=int,
     help="Local and remote loopback port to use. Both ends use the "
