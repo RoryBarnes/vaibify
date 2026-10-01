@@ -24519,4 +24519,36 @@ def _fdictEntry(sRel):
         old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n',
         new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testADriftedBinaryDeniesTheScalarLevelThreeAsItsRowDoes'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistStepScopeBlockers(\n        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),\n    ):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testADeletedPinnedStepScriptDeniesTheScalarLevelThree'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if _flistStepScopeBlockers(\n        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),\n    ):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testAHostProjectNeverReadsLevelThreeAttainedInAnyCell'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        bHasRepo and not bHostMode,\n',
+        new='        bHasRepo,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testLevelCellsNeverOverstate.py::testTheRatchetStampsNoLevelThreeForAHostProject'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not dictContext["bHasRepo"] or dictContext.get("bHostMode"):\n',
+        new='    if not dictContext["bHasRepo"]:\n',
+    ),
 ]

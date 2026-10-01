@@ -1311,9 +1311,29 @@ def fbAtLeastLevel3(dictWorkflow, filesRepo, bHostProject):
         return False
     if not fbL3ReadinessOK(dictWorkflow, filesRepo):
         return False
+    if _flistStepScopeBlockers(
+        flistLevel3Blockers(dictWorkflow, filesRepo, bHostProject),
+    ):
+        return False
     return all(
         _fdictL3WorkflowChecks(dictWorkflow, filesRepo).values()
     )
+
+
+def _flistStepScopeBlockers(listBlockers):
+    """Return the per-step entries of a blocker list.
+
+    The scalar Level 3 gate consults these, so a step row that lists
+    ``binary-drifted`` or ``script-not-pinned`` can never sit beneath a
+    project the chip calls Level 3. They were blockers only: the
+    workflow-scope conjuncts and readiness do not cover the per-step
+    binary criteria, and the scalar read Level 3 over a red row.
+    """
+    return [
+        dictEntry for dictEntry in listBlockers or []
+        if isinstance(dictEntry.get("iStepIndex"), int)
+        and dictEntry["iStepIndex"] >= 0
+    ]
 
 
 def fbL3ReadinessOK(dictWorkflow, filesRepo):
@@ -3939,6 +3959,9 @@ def _fdictStepProjectionContext(
     dictContext["bZenodoCacheStale"] = _fbAnyWorkflowCriterion(
         listLevel2Blockers, "zenodo-verify-stale",
     )
+    dictContext["bHostMode"] = _fbAnyWorkflowCriterion(
+        listLevel3Blockers, S_L3_HOST_MODE_CRITERION,
+    )
     dictContext["bOverleafBound"] = fbWorkflowHasOverleafBinding(
         dictWorkflow,
     )
@@ -4300,7 +4323,7 @@ def _flistStepLevel3Requirements(dictStep, setFailing, dictContext):
     Entries follow the canonical tuple order so the Step Viewer's
     rows are stable across polls.
     """
-    if not dictContext["bHasRepo"]:
+    if not dictContext["bHasRepo"] or dictContext.get("bHostMode"):
         return [
             (sCriterion, False)
             for sCriterion in _T_STEP_LEVEL3_CRITERIA
@@ -4739,9 +4762,19 @@ def _ftWorkflowLevel2Counts(dictWorkflow, listLevel2Blockers, bHasRepo):
 
 
 def _ftWorkflowLevel3Counts(listLevel3Blockers, bHasRepo):
-    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L3 cell."""
+    """Return ``(iSatisfied, iTotal)`` for the workflow-scope L3 cell.
+
+    A host project reports one ``host-mode`` blocker that sits in no
+    criteria tuple, so it used to read ``attained 12/12``. Level 3 is
+    defined by a pinned container image a host project cannot have, so
+    its cell zeroes exactly as a missing repository's does.
+    """
+    bHostMode = S_L3_HOST_MODE_CRITERION in _fsetWorkflowScopeCriteria(
+        listLevel3Blockers,
+    )
     return _ftCountWorkflowCriteria(
-        listLevel3Blockers, _T_WORKFLOW_LEVEL3_CRITERIA, bHasRepo,
+        listLevel3Blockers, _T_WORKFLOW_LEVEL3_CRITERIA,
+        bHasRepo and not bHostMode,
     )
 
 
