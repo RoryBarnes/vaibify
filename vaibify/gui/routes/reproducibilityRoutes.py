@@ -1627,7 +1627,8 @@ def _fdictWriteDockerfileThenRepin(
     if sRefusal:
         return {"bWritten": False, "sRefusal": sRefusal}
     sText = imageDockerfileExport.fsBuildImageDockerfileText(
-        sContainerId, _fsRecordedImageDigest(filesRepo),
+        fsContainerNameForId(dictCtx["docker"], sContainerId),
+        _fsRecordedImageDigest(filesRepo),
     )
     # Through the repo adapter, not a direct connection write: the
     # path stays repo-relative (the adapter owns the join and the

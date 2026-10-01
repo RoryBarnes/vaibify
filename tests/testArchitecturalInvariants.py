@@ -7307,9 +7307,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-09-24): verification records and the lock verdict are
     # read and written for the project they describe, and a refusal
     # names the project whose verification holds the container.
-    # 2344 -> 2349 (2026-09-30): the attestation carries the pinned-input
-    # split and the pre-run deletions.
-    "routes/reproducibilityRoutes.py": 2349,
+    # 2344 -> 2350 (2026-09-30): the attestation carries the pinned-input
+    # split and the pre-run deletions; the copied Dockerfile composes
+    # overlays for the resolved container name.
+    "routes/reproducibilityRoutes.py": 2350,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

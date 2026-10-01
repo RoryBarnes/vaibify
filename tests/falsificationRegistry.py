@@ -24567,4 +24567,12 @@ def _fdictEntry(sRel):
         old='    return any(sRelPath not in dictEntries for sRelPath in listRelPaths)\n',
         new='    return False\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::testTheCopiedDockerfileComposesTheProjectsOverlays'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='        fsContainerNameForId(dictCtx["docker"], sContainerId),\n        _fsRecordedImageDigest(filesRepo),\n',
+        new='        sContainerId,\n        _fsRecordedImageDigest(filesRepo),\n',
+    ),
 ]

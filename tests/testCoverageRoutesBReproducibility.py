@@ -584,20 +584,21 @@ def testAnUnwritableDockerfileIsA500NamingTheWrite(
         "Could not write Dockerfile",
     )
 
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: _fdictWriteDockerfileThenRepin passes the route's Docker "
-        "container ID to fsBuildImageDockerfileText, which looks the "
-        "registry up by sContainerName, so a project whose name differs "
-        "from its id gets a base-only Dockerfile with no overlays."
-    ),
-)
+@pytest.mark.falsification
 def testTheCopiedDockerfileComposesTheProjectsOverlays(
     tmp_path, sProjectRepo, fixtureCarrierStoodDown,
 ):
+    """The route resolves the container NAME before it composes overlays.
+
+    The URL carries the Docker id; the project registry is keyed by
+    name. The two are distinct here, so a route that handed the id to
+    the composer finds no project and writes a base-only Dockerfile.
+
+    Kills: reproducibilityRoutes._fdictWriteDockerfileThenRepin: the
+    resolved `fsContainerNameForId(dictCtx["docker"], sContainerId)`
+    replaced by the raw `sContainerId`.
+    """
+    assert S_CONTAINER_NAME != S_CONTAINER_ID
     sConfigPath = fsWriteConfig(
         tmp_path,
         f"projectName: {S_PROJECT_NAME}\nfeatures:\n  jupyter: true\n",
