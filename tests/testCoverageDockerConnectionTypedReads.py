@@ -738,6 +738,32 @@ def testFileSha256RaisesWhenTheReadItselfFails(monkeypatch):
             S_CONTAINER_ID, "/workspace/workflow.json")
 
 
+def testTheContainerClockIsReadThroughTheTypedProgram(monkeypatch):
+    """The program prints the stamp format, from the clock it runs on.
+
+    The program runs on THIS machine, so "the container's clock" is
+    this machine's, and the stamp must agree with it to the second; the
+    point is that the answer comes from the executing side's clock, in
+    the exact format a sign-off is stamped in.
+    """
+    import re
+    import time
+    connection = fconnectionForContainer(monkeypatch, LocalProgramContainer())
+    sBefore = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    sClock = connection.fsReadClockUtc(S_CONTAINER_ID)
+    sAfter = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    assert re.match(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$", sClock)
+    assert sBefore <= sClock <= sAfter
+
+
+def testTheContainerClockOfAFailedReadRaisesOSError(monkeypatch):
+    """An unreadable clock is an error, never an empty stamp."""
+    connection = fconnectionForContainer(
+        monkeypatch, CannedAnswerContainer([(1, "", "python3: not found")]))
+    with pytest.raises(OSError, match="clock.*python3"):
+        connection.fsReadClockUtc(S_CONTAINER_ID)
+
+
 def testFilesystemUsageMatchesStatvfs(monkeypatch, tmp_path):
     """Total and free agree with statvfs computed on the same path."""
     connection = fconnectionForContainer(monkeypatch, LocalProgramContainer())

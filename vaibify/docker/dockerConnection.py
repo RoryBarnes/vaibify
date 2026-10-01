@@ -355,6 +355,7 @@ _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
 S_TYPED_READ_DIRECTORY = "listDirectory"
 S_TYPED_READ_FILESYSTEM_USAGE = "filesystemUsage"
+S_TYPED_READ_CLOCK_UTC = "clockUtc"
 S_TYPED_READ_FILE_EXISTS = "fileExists"
 S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
@@ -598,6 +599,15 @@ _DICT_TYPED_READ_PROGRAMS = {
         "import os,sys; "
         "sys.stdout.write(chr(10).join(sorted(os.listdir("
         + _S_TYPED_READ_PATH_SLOT + "))))"
+    ),
+    # The container's own wall clock, in the format a sign-off is
+    # stamped in. The read takes no argument: the slot is bound to a
+    # throwaway name so every program in this table carries it as one
+    # literal (the table's invariant), and nothing reads it.
+    S_TYPED_READ_CLOCK_UTC: (
+        "_=" + _S_TYPED_READ_PATH_SLOT + "; import sys,time; "
+        "sys.stdout.write(time.strftime("
+        "'%Y-%m-%d %H:%M:%S UTC', time.gmtime()))"
     ),
     # The three figures `df` reports, computed the way `df` computes
     # them. Free is f_bavail -- the space available to an unprivileged
@@ -2274,6 +2284,24 @@ class DockerConnection:
             raise OSError(
                 f"Cannot hash file in container: {sPath} "
                 f"({tExecResult.sStderr.strip()})"
+            )
+        return tExecResult.sStdout.strip()
+
+    def fsReadClockUtc(self, sContainerId):
+        """Return the container's wall clock as ``YYYY-MM-DD HH:MM:SS UTC``.
+
+        The clock that stamps the container's files, which is the one a
+        sign-off must be dated by: every freshness check compares file
+        mtimes against it, and the hub's own clock is a different
+        clock. An AUDITED ADAPTER taking no argument at all.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_CLOCK_UTC, "/",
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read the container's clock: "
+                f"{tExecResult.sStderr.strip()}"
             )
         return tExecResult.sStdout.strip()
 

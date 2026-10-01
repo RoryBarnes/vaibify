@@ -240,6 +240,10 @@ DICT_PRIMITIVE_ACCESS = {
     # module, which the boundary had to read as an arbitrary command
     # because a primitive cannot tell a df from an rm -rf.
     "fdictReadFilesystemUsage": S_ACCESS_TYPED_READ,
+    # The container's own wall clock, a declared typed read taking no
+    # caller value. It dates the researcher's sign-off by the clock that
+    # stamps the files it is later compared against.
+    "fsReadClockUtc": S_ACCESS_TYPED_READ,
     "fdictWeighRepository": S_ACCESS_TYPED_READ,
     # A DAEMON-info query, not a container call: it runs no program
     # anywhere, takes no caller value, and reads only how much memory

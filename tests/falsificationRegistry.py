@@ -24436,7 +24436,7 @@ def _fdictEntry(sRel):
             'tests/testAgentUpdateStepAllowlist.py::testAClientSuppliedFutureTimestampIsNotStored'
         ),
         source='vaibify/gui/routes/stepRoutes.py',
-        old='        _fnStampServerSideUserUpdate(\n            dictWorkflow, iStepIndex, dictUpdates)\n',
+        old='        _fnStampServerSideUserUpdate(\n            dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,\n            dictUpdates,\n        )\n',
         new='',
     ),
     Falsification(
@@ -24654,5 +24654,13 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/levelGates.py',
         old='    if not _fbLevel2UnchangedSinceVerify(\n        dictWorkflow, filesRepo, dictStatus,\n    ):\n        return [_fdictChangedSinceVerifyBlocker(\n            _fdictGithubVerifyStaleBlocker(), "GitHub")]\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffIsDatedByTheContainerClock.py::testTheSignOffIsStampedFromTheContainerClockNotTheHubs'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        old='        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(\n            connectionDocker, sContainerId)\n',
+        new='        dictStamped["sLastUserUpdate"] = __import__("time").strftime(\n            "%Y-%m-%d %H:%M:%S UTC", __import__("time").gmtime())\n',
     ),
 ]

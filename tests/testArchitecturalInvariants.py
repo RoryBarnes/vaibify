@@ -7076,9 +7076,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # fiProofLevel call.
     # +2 (2026-09-24): rename and align refuse only while THIS
     # project runs; another project's run does not touch its steps.
-    # 866 -> 927 (2026-09-30): the update-step agent allowlist and the
-    # server-side sign-off timestamp stamp.
-    "routes/stepRoutes.py": 927,
+    # 866 -> 955 (2026-09-30): the update-step agent allowlist and the
+    # server-side sign-off timestamp, dated by the container's clock.
+    "routes/stepRoutes.py": 955,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

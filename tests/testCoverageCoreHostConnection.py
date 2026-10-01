@@ -93,6 +93,18 @@ def testFileShaIsEmptyForMissingFileAndExactForPresentOne(
     ) == hashlib.sha256(b"payload").hexdigest()
 
 
+def testTheHostClockIsTheClockThatStampsHostFiles(tProjectAndConnection):
+    """A host project's files live on the hub's machine: same clock."""
+    import re
+    import time
+    _, connectionHost = tProjectAndConnection
+    sBefore = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    sClock = connectionHost.fsReadClockUtc(S_RESOURCE_NAME)
+    sAfter = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    assert re.match(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$", sClock)
+    assert sBefore <= sClock <= sAfter
+
+
 def testFilesystemUsageOfMissingPathIsFileNotFound(tProjectAndConnection):
     """A statvfs failure is reported as a missing path, naming it."""
     _, connectionHost = tProjectAndConnection

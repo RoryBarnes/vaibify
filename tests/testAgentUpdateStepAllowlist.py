@@ -24,13 +24,27 @@ S_WORKFLOW_PATH = agentLaneModule.S_WORKFLOW_PATH
 S_FAR_FUTURE = "2099-01-01 00:00:00 UTC"
 
 
-@pytest.fixture
-def tupleLanes():
+class ClockedDockerDouble(agentLaneModule.MockDockerConnection):
+    """The lane-enforcement double, plus a container clock it can report.
+
+    ``sClockReading`` is what the container's clock reads; a class
+    attribute so a test can make it differ from the hub's, and ``None``
+    makes the clock unreadable.
+    """
+
+    sClockReading = "2026-03-04 05:06:07 UTC"
+
+    def fsReadClockUtc(self, sContainerId):
+        if self.sClockReading is None:
+            raise OSError("Cannot read the container's clock")
+        return self.sClockReading
+
+
+def ftBuildLanes(classDocker=ClockedDockerDouble):
     """Return (browser client, agent client, application) on one app."""
     with pytest.MonkeyPatch.context() as monkeyContext:
         monkeyContext.setattr(
-            pipelineServer, "_fconnectionCreateDocker",
-            agentLaneModule.MockDockerConnection,
+            pipelineServer, "_fconnectionCreateDocker", classDocker,
         )
         appViewer = pipelineServer.fappCreateApplication(
             sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
@@ -56,6 +70,11 @@ def tupleLanes():
         },
     )
     return clientBrowser, clientAgent, appViewer
+
+
+@pytest.fixture
+def tupleLanes():
+    return ftBuildLanes()
 
 
 def _fdictStoredVerification(clientBrowser):

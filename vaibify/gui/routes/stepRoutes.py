@@ -3,7 +3,7 @@
 __all__ = ["fnRegisterAll"]
 
 import posixpath
-import time
+import re
 
 from fastapi import HTTPException, Request
 
@@ -46,6 +46,7 @@ from ..pipelineUtils import (
 
 
 _I_STEP_COUNT_WARNING = 100
+_RE_CONTAINER_CLOCK = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC$")
 # The step-definition fields the in-container agent lane may write
 # through update-step. Everything else in StepUpdateRequest -- above
 # all dictVerification, the researcher's sign-off -- is refused to
@@ -252,8 +253,6 @@ def _fnRegisterStepUpdate(app, dictCtx):
         dictUpdates = _fdictExtractStepUpdates(request)
         if fbRequestRidesAgentLane(requestHttp):
             _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates)
-        _fnStampServerSideUserUpdate(
-            dictWorkflow, iStepIndex, dictUpdates)
         _fnRejectContractBreakingUpdates(
             dictWorkflow, iStepIndex, dictUpdates,
         )
@@ -310,6 +309,10 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             bHostProject=fbIsHostProject(sContainerId),
         )
+        _fnStampServerSideUserUpdate(
+            dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,
+            dictUpdates,
+        )
         try:
             workflowManager.fnUpdateStep(
                 dictWorkflow, iStepIndex, dictUpdates,
@@ -359,15 +362,40 @@ def _fnRefuseFieldsOutsideAgentAllowlist(dictUpdates):
                 sorted(SET_AGENT_WRITABLE_STEP_FIELDS)) + ".")
 
 
-def _fnStampServerSideUserUpdate(dictWorkflow, iStepIndex, dictUpdates):
-    """Make ``sLastUserUpdate`` the server's clock reading, never the client's.
+def _fsReadContainerClockUtc(connectionDocker, sContainerId):
+    """Return the container's own clock as ``YYYY-MM-DD HH:MM:SS UTC``.
+
+    Every mtime the freshness checks compare against the sign-off was
+    produced by the container's filesystem, so the sign-off is dated by
+    the same clock. The hub's wall clock is a different clock: when it
+    runs ahead, a plot edited after the sign-off carries an mtime BEFORE
+    the stamp and the changed plot's new hash is adopted as verified.
+    Refused (409, before anything is written) when the clock cannot be
+    read, rather than falling back to the host's.
+    """
+    try:
+        sClock = connectionDocker.fsReadClockUtc(sContainerId)
+    except (OSError, ValueError):
+        sClock = ""
+    if not _RE_CONTAINER_CLOCK.match(sClock):
+        raise HTTPException(
+            409, "The sign-off was not recorded: the container's clock "
+            "could not be read, and the hub's own clock is not the one "
+            "that dates its files.")
+    return sClock
+
+
+def _fnStampServerSideUserUpdate(
+    connectionDocker, sContainerId, dictWorkflow, iStepIndex, dictUpdates,
+):
+    """Make ``sLastUserUpdate`` the container clock's reading, never a client's.
 
     The timestamp dates the researcher's attestation, and everything
-    that decides whether a later change supersedes it compares against
-    it, so a client-supplied value (a far-future one makes the
-    attestation immune to every later change) is discarded. It is
-    stamped only when ``sUser`` actually changes; otherwise the stored
-    value is kept.
+    that decides whether a later change supersedes it compares file
+    mtimes against it, so a client-supplied value (a far-future one
+    makes the attestation immune to every later change) is discarded.
+    It is stamped, from the container's clock, only when ``sUser``
+    actually changes; otherwise the stored value is kept.
     """
     dictClientVerification = dictUpdates.get("dictVerification")
     if not isinstance(dictClientVerification, dict):
@@ -383,8 +411,8 @@ def _fnStampServerSideUserUpdate(dictWorkflow, iStepIndex, dictUpdates):
         dictStamped["sLastUserUpdate"] = dictStoredVerification[
             "sLastUserUpdate"]
     if dictStamped.get("sUser") != dictStoredVerification.get("sUser"):
-        dictStamped["sLastUserUpdate"] = time.strftime(
-            "%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(
+            connectionDocker, sContainerId)
     dictUpdates["dictVerification"] = dictStamped
 
 
