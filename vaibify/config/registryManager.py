@@ -338,6 +338,26 @@ def fnUpdateImageSource(sName, dictUpdate):
     _fnMutateRegistryLocked(fnMergeSource)
 
 
+S_IMAGE_TRUST_KEY = "dictImageTrust"
+
+
+def fnRecordImageTrust(sName, dictTrustRecord):
+    """Write the researcher's answer about one image digest, under the lock.
+
+    The record carries the digest it answers for, so an image that
+    changes under the same tag is a different question; the launch path
+    compares digests and asks again. Host-held: nothing inside a
+    container can reach this file.
+    """
+    def fnWriteRecord(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        dictEntry[S_IMAGE_TRUST_KEY] = dict(dictTrustRecord)
+
+    _fnMutateRegistryLocked(fnWriteRecord)
+
+
 S_PUSHED_GITHUB_REMOTES_KEY = "dictPushedGithubRemotes"
 
 

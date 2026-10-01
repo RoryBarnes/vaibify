@@ -88,6 +88,74 @@ listings. This page previously claimed all three. They are absent from
 the script, so a passing audit has never been evidence about them.
 ```
 
+## Images vaibify did not build
+
+An image vaibify built (its build labels are present and the project did
+not obtain it) never asks anything. An image the project obtained (a
+published environment, a tarball, a registry reference), or one whose
+provenance vaibify cannot establish, carries an entrypoint and a `USER`
+its author chose, so a persistent container is not created from it until
+the researcher has chosen how it may run. The question is asked in the
+dashboard before the start, and by `vaibify start` on the command line
+(`--image-trust {restricted,as-built,inspect}`, plus `--with-credentials`
+when no terminal can ask). Both read one text, in
+`vaibify/config/imageTrust.py`. Nothing is preselected.
+
+The answer is recorded in the host registry against the image **digest**
+with the date, never against a name or tag, so an image that changes
+under the same tag asks again. The launch functions refuse an unanswered
+digest, so skipping the dashboard skips nothing. The answer is set only
+through a route the in-container agent cannot reach, and a badge on the
+project tile and in the project's settings shows it. Changing it asks
+for confirmation because the container is recreated.
+
+| Choice | What runs |
+|---|---|
+| Run it restricted | The idle entrypoint and the unprivileged user described below. |
+| Run it as its author built it | The image's own entrypoint, started the way vaibify starts its own images (as root, with the entrypoint capabilities, so an entrypoint that drops to its own `USER` can). |
+| Inspect only | Nothing persistent. The image runs only in the disposable verification lane: restricted, no credentials, network off. |
+
+Stored credentials are a separate choice, off by default and unavailable
+under Inspect only. "Credentials" means the project's configured secrets
+(mounted read-only under `/run/secrets`), the credentials volume that
+holds the container keyring, and the host bridge an in-container agent
+uses to call back to vaibify. Unchecked, none of them is attached.
+
+### Restricted mode compatibility contract
+
+A restricted launch differs from vaibify's own launch in exactly these
+ways:
+
+| | vaibify's own image | restricted |
+|---|---|---|
+| Entrypoint | the image's (vaibify's root phase, then `gosu`) | `/bin/sh`, the same keep-alive the disposable lane uses |
+| Command | `sleep infinity` | `sh -c "sleep 2147483647"` |
+| User | `--user 0`, dropped by the entrypoint | `--user 1000:1000` from the start, never root |
+| Capabilities | all dropped, five entrypoint capabilities added | all dropped, none added |
+| `no-new-privileges` | set | set |
+| Credentials | per the project's configuration | only if the researcher said so |
+
+An image runs under it only if all of these hold:
+
+- It contains an executable `/bin/sh` that user 1000 can run. A
+  distroless or scratch image, or one whose shell is root-only, fails to
+  start.
+- Whatever the researcher needs inside it works as an unprivileged user
+  with no entrypoint having run. Services the entrypoint would have
+  started are not running; anything the entrypoint would have created,
+  chowned or configured is as the image left it.
+- The workspace volume is owned by user 1000. The image cannot chown it.
+- Commands vaibify runs in the container run as the image's declared
+  `USER`, or as `researcher` when it declares none. That user must exist
+  in the image.
+
+When a restricted container does not start, the dashboard reports the
+failure and offers the other options. vaibify never retries silently,
+and never shows a container that did not start as running. Outputs from
+a restricted run can differ from the author's for reasons unrelated to
+the science (file ownership, `HOME`, paths), so a Level 3 comparison of
+a restricted run against the author's can diverge.
+
 ## Threat Model
 
 Vaibify assumes the code running inside the container may be adversarial.

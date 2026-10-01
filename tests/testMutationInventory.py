@@ -2018,6 +2018,12 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     "fdictInspectImageTag",
     "fsReadDaemonArchitectureQuietly",
     "fdictLiveImageOriginForProject",
+    # The image-trust verdict for a launch: one image read plus a
+    # host-side registry read, judged by imageTrust. It names no
+    # container and makes no mutation; it is the guard that runs
+    # BEFORE the launch functions create one.
+    "fdictResolveLaunchPosture",
+    "fdictBuildImageTrustPromptForProject",
     # A pure predicate over an exception object. It reads a status code
     # that a daemon call already returned; it makes no call of its own.
     "fbErrorMeansContainerGone",

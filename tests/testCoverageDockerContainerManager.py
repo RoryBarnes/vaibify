@@ -31,6 +31,10 @@ S_PROJECT_NAME = "managedProject"
 S_CONTAINER_ID = "4a5b6c7d8e9f"
 S_RESERVATION_ID = "0123456789abcdef0123456789abcdef"
 S_BASE_ID = "sha256:" + "b" * 64
+# What the daemon reports for an image vaibify itself built.
+S_BUILT_IMAGE_FIELDS = (
+    '\t{"vaibify-recipe-sha256":"abc"}\t100\t"researcher"'
+    '\t["/entrypoint.sh"]')
 S_OTHER_ID = "sha256:" + "f" * 64
 
 # conftest answers "no container" for every unit test; the repair tests
@@ -240,6 +244,7 @@ def testARecreateStopsTheOldContainerAndRunsTheImageId(monkeypatch):
         "inspect": (0, "exited\n", ""),
         "stop": None,
         "rm": None,
+        "image": (0, S_BASE_ID + S_BUILT_IMAGE_FIELDS, ""),
         "run": (0, S_CONTAINER_ID + "\n", ""),
     })
     dictOutcome = containerManager.fdictRepairContainerLifecycle(
@@ -248,7 +253,8 @@ def testARecreateStopsTheOldContainerAndRunsTheImageId(monkeypatch):
     assert dictOutcome == {
         "sOperation": "recreate", "sContainerId": S_CONTAINER_ID,
     }
-    assert dockerScripted.flistSubcommands() == ["inspect", "stop", "rm", "run"]
+    assert dockerScripted.flistSubcommands() == [
+        "inspect", "stop", "rm", "image", "run"]
     saRun = dockerScripted.listCalls[-1]
     assert saRun[-3:] == [S_BASE_ID, "sleep", "infinity"]
     assert f"{S_PROJECT_NAME}:latest" not in saRun
@@ -264,12 +270,13 @@ def testARecreateOfAnAbsentContainerDoesNotStopAnything(monkeypatch):
     )
     dockerScripted = fdockerInstallScripted(monkeypatch, {
         "inspect": (1, "", "No such object"),
+        "image": (0, S_BASE_ID + S_BUILT_IMAGE_FIELDS, ""),
         "run": (0, S_CONTAINER_ID, ""),
     })
     containerManager.fdictRepairContainerLifecycle(
         fconfigProject(), S_PROJECT_NAME, "recreate", S_BASE_ID,
     )
-    assert dockerScripted.flistSubcommands() == ["inspect", "run"]
+    assert dockerScripted.flistSubcommands() == ["inspect", "image", "run"]
 
 
 def testAFailedStopRaisesAndNeverRemoves(monkeypatch):
@@ -295,6 +302,7 @@ def testAnImageTagInspectParsesTheIdAndLabels(monkeypatch):
     })
     assert containerManager.fdictInspectImageTag("anyRepo:latest") == {
         "sId": S_BASE_ID, "dictLabels": {"vaibify-overlays": "claude"},
+        "iSizeBytes": 0, "sUser": "", "listEntrypoint": [],
     }
     assert dockerScripted.listCalls[0][-1] == "anyRepo:latest"
 
@@ -309,6 +317,7 @@ def testUnreadableImageLabelsDegradeToNoLabelsButKeepTheId(
     })
     assert containerManager.fdictInspectImageTag("anyRepo:latest") == {
         "sId": S_BASE_ID, "dictLabels": {},
+        "iSizeBytes": 0, "sUser": "", "listEntrypoint": [],
     }
 
 

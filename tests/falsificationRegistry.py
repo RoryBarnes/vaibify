@@ -24946,4 +24946,59 @@ def _fdictEntry(sRel):
         old=".replace('\"', '\\\\\"')",
         new="",
     ),
+    # --- An image vaibify did not build runs only as the researcher chose ---
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testAnUnlabelledImageCountsAsNotBuiltByVaibify',
+        source='vaibify/config/imageTrust.py',
+        old='    return bool((dictImage.get("dictLabels") or {}).get(S_RECIPE_IMAGE_LABEL))',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testAnObtainedImageIsNotBuiltEvenWhenItCarriesTheLabel',
+        source='vaibify/config/imageTrust.py',
+        old='    if dictImage is None or fbProjectImageIsObtained(dictProject):\n        return False\n',
+        new='    if dictImage is None:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testANewDigestAsksAgain',
+        source='vaibify/config/imageTrust.py',
+        old='    if dictRecord.get("sImageDigest") != dictImage["sId"]:',
+        new='    if not dictRecord:',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testRestrictedDropsRootCapabilitiesAndTheImageEntrypoint',
+        source='vaibify/docker/containerManager.py',
+        old='    if bRestricted:\n        from vaibify.docker.disposableSpecification import (',
+        new='    if False:\n        from vaibify.docker.disposableSpecification import (',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testCredentialsAreAttachedOnlyWhenTheAnswerIncludesThem',
+        source='vaibify/docker/containerManager.py',
+        old='    if bCredentials:\n        _fnAddCredentialsVolume(config, saRunArgs)',
+        new='    if True:\n        _fnAddCredentialsVolume(config, saRunArgs)',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testWithheldCredentialsMountNoSecrets',
+        source='vaibify/docker/containerManager.py',
+        old='    if dictPosture and not dictPosture["bWithCredentials"]:\n        return []\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testEveryLaunchFunctionRefusesAnUnansweredDigest',
+        source='vaibify/docker/containerManager.py',
+        old='    dictPosture = fdictResolveLaunchPosture(config.sProjectName)\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+        new='    dictPosture = None\n    saRunArgs = flistBuildRunArgs(\n        config, bDetached=True, dictPosture=dictPosture)\n',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustGuardsTheLaunch.py::testTheStartRouteAsksBeforeCreatingAnything',
+        source='vaibify/gui/startReservation.py',
+        old='    if dictTrustRefusal:\n        return (409, dictTrustRefusal)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustCommandLine.py::testWithoutATerminalAnUnansweredImageStopsAndNamesTheFlags',
+        source='vaibify/cli/imageTrustPrompt.py',
+        old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):',
+        new='    if False:',
+    ),
 ]

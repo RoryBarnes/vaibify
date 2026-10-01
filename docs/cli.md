@@ -303,6 +303,7 @@ what a script or a CI job needs.
 
 ```bash
 vaibify start [--detach/-d] [--gui] [--jupyter] [--project/-p NAME]
+              [--image-trust {restricted,as-built,inspect}] [--with-credentials]
 ```
 
 | Option             | Description                                  |
@@ -311,6 +312,17 @@ vaibify start [--detach/-d] [--gui] [--jupyter] [--project/-p NAME]
 | `--gui`            | Launch the pipeline viewer after starting     |
 | `--jupyter`        | Start JupyterLab inside the container         |
 | `--project`, `-p`  | Target project name (optional if only one exists) |
+| `--image-trust`    | How an image vaibify did not build may run (see below) |
+| `--with-credentials` | Let that image's code read your stored credentials |
+
+An image vaibify did not build (an obtained environment, or one whose
+provenance cannot be established) needs a recorded answer for its exact
+digest before a container is created from it. On a terminal, `vaibify
+start` shows the three options with the same text as the dashboard and
+asks; the credentials question defaults to no. Without a terminal it
+stops unless `--image-trust` is given, and `--with-credentials` is a
+separate flag that is never implied. `inspect` creates no persistent
+container. See {doc}`security` for what each choice does.
 
 A detached container runs idle so you can `vaibify connect` into it; a
 COMMAND argument is refused with `--detach` rather than silently

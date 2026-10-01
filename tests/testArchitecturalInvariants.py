@@ -6360,7 +6360,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    "startReservation.py": 1069,
+    # 1069 -> 1098 (2026-10-01): the start asks how an unbuilt image may run before it reserves.
+    "startReservation.py": 1098,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6764,7 +6765,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
     # +1 (2026-10-01): the registry removal declares its carrier mode.
-    "registryRoutes.py": 2329,
+    # 2329 -> 2332 (2026-10-01): the settings payload carries the image-trust answer.
+    "registryRoutes.py": 2332,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6951,7 +6953,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exclusions beside the credential consent routes.
     # 1413 -> 1419 (2026-09-30): update-step's description names the
     # fields the agent lane may write.
-    "actionCatalog.py": 1419,
+    # 1419 -> 1425 (2026-10-01): the image-trust answer route is user-only, with its reason.
+    "actionCatalog.py": 1425,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7428,7 +7431,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # allowlist.
     # 1064 -> 1067 (2026-10-01): the registry removal moves to the
     # container-lifecycle scope, with the reason.
-    "routeScope.py": 1067,
+    # 1067 -> 1068 (2026-10-01): the image-trust answer route's scope.
+    "routeScope.py": 1068,
 }
 
 

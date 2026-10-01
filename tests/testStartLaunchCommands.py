@@ -49,6 +49,18 @@ def fconfigBuildMinimal(sProjectName="reservationProject"):
 
 
 @pytest.fixture(autouse=True)
+def fixtureImageBuiltByVaibify(monkeypatch):
+    """These tests assemble arguments; the image-trust guard has its own."""
+    monkeypatch.setattr(
+        containerManager, "fdictResolveLaunchPosture",
+        lambda sProjectName, sImageReference="": {
+            "sMode": "built", "bWithCredentials": True,
+            "sImageDigest": "sha256:built",
+        },
+    )
+
+
+@pytest.fixture(autouse=True)
 def fixtureNoX11(monkeypatch):
     """Keep the host's X11 state out of the assembled argument lists."""
     monkeypatch.setattr(

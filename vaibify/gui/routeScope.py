@@ -194,6 +194,7 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/transfer"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/registry/{sName}/image-trust"): S_SCOPE_BROWSER_HUB,
     # Removing a project from the list ends the container's place in the
     # dashboard, so it carries the lease like stop does: lease-enforced
     # whenever the container is owned, answerable when it is not.

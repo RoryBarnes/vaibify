@@ -200,7 +200,7 @@ def fdictRefusalDetail(dictBody):
     that container and retry, which is the remedy the message implies.
     """
     dictDetail = {"sMessage": dictBody.get("sMessage", "")}
-    for sKey in ("sHeldContainerName", "sAction"):
+    for sKey in ("sHeldContainerName", "sAction", "dictImageTrust"):
         if dictBody.get(sKey):
             dictDetail[sKey] = dictBody[sKey]
     return dictDetail
@@ -239,6 +239,10 @@ async def ftBeginStart(
         return (409, {
             "sName": sName, "sMessage": sUnbuiltRefusal, "sAction": "build",
         })
+    dictTrustRefusal = await asyncio.to_thread(
+        _fdictRefusalForUnconfirmedImageTrust, sName)
+    if dictTrustRefusal:
+        return (409, dictTrustRefusal)
     sOutcome, dictBody, recordOwner = (
         await sessionLifecycle.ftReserveContainerForStart(
             appState, sName, sBrowserSessionId, iPort, connectionDocker,
@@ -384,6 +388,31 @@ def _fsRefusalForUnbuiltImage(connectionDocker, sName):
         "nothing to start. Click its tile to build it, or choose Rebuild "
         "from its \u22ee menu."
     )
+
+
+def _fdictRefusalForUnconfirmedImageTrust(sName):
+    """Return the 409 body that asks how an unbuilt image may run, or ``{}``.
+
+    The question is asked here, before any reservation or container, so
+    declining it creates nothing. This is the courtesy half: the launch
+    functions run the same judgement and are the guard. An image the
+    daemon cannot describe is left to that guard, which fails with the
+    cause rather than a prompt about nothing.
+    """
+    from vaibify.config import imageTrust
+    try:
+        containerManager.fdictResolveLaunchPosture(sName)
+    except (imageTrust.ImageTrustRequiredError,
+            imageTrust.ImageTrustInspectOnlyError) as error:
+        return {
+            "sName": sName, "sMessage": str(error),
+            "sAction": "confirm-image-trust",
+            "dictImageTrust":
+                containerManager.fdictBuildImageTrustPromptForProject(sName),
+        }
+    except imageTrust.ImageProvenanceUnavailableError:
+        return {}
+    return {}
 
 
 def _fdictReservationBody(sName, sReservationId, bAlreadyStarting):
