@@ -165,12 +165,14 @@ def test_repo_relative_by_raw_path_empty_without_root():
 
 
 def test_step_outputs_repo_relative_skips_empty_entries(tmp_path):
+    """The shared path resolution (one copy since the row/gate merge)."""
+    from vaibify.gui.fileStatusManager import _flistStepOutputsRepoRelative
     dictStep = {
         "sDirectory": "StepA",
         "saOutputDataFiles": ["", "result.dat"],
         "saPlotFiles": [],
     }
-    listRelative = lg._flistStepOutputsRepoRelative(dictStep, str(tmp_path))
+    listRelative = _flistStepOutputsRepoRelative(dictStep, str(tmp_path))
     assert len(listRelative) == 1
     assert listRelative[0].endswith("result.dat")
 

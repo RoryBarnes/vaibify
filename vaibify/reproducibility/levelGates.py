@@ -747,7 +747,8 @@ def _flistMarkerDriftFiles(dictStep, filesRepo, listDeclared):
     hash comparison while ``listOffendingFiles`` carries the raw
     declared paths, so each declared path is mapped to its
     repo-relative form (same resolution as
-    ``_flistStepOutputsRepoRelative``) before matching. Falls back to
+    ``fileStatusManager._flistStepOutputsRepoRelative``) before
+    matching. Falls back to
     the full declared list when nothing matches, so the blocker never
     under-reports.
     """
@@ -913,70 +914,16 @@ def _fbStepScriptStale(
 
 
 def _fbStepHashesMatchManifest(dictStep, filesRepo):
-    """Return True iff every declared output's hash matches MANIFEST.sha256.
+    """Return True iff the step's pinned files still match MANIFEST.sha256.
 
-    Delegates to ``hashStaleness`` for the manifest read and the
-    per-output content comparison so the suppression rule has the
-    same authority the file-status manager uses. Conservative on every
-    error path: missing repo, missing manifest, no declared outputs,
-    or any drifted entry returns False so the script-stale criterion
-    remains visible.
+    Delegates to ``hashStaleness.fbStepHashesMatchManifest``, the same
+    function the step row asks, so the suppression rule has one
+    authority and the row and this gate fail on the same set.
     """
-    if not fsRepoRootOf(filesRepo):
-        return False
-    listRelPaths = _flistStepOutputsRepoRelative(
-        dictStep, filesRepo,
-    )
-    if not listRelPaths:
-        return False
     from vaibify.gui import hashStaleness
-    if not hashStaleness.fbManifestExists(filesRepo):
-        return False
-    dictEntries = hashStaleness._fdictReadManifestEntries(filesRepo)
-    if not dictEntries:
-        return False
-    if _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
-        return False
-    setStale = hashStaleness.fsetStaleOutputsAgainstManifest(
-        filesRepo, listRelPaths, {},
+    return hashStaleness.fbStepHashesMatchManifest(
+        dictStep, fsRepoRootOf(filesRepo), filesRepo,
     )
-    return len(setStale) == 0
-
-
-def _fbAnyOutputMissingFromManifest(listRelPaths, dictEntries):
-    """Return True iff any declared output is absent from the manifest."""
-    for sRelPath in listRelPaths:
-        if sRelPath not in dictEntries:
-            return True
-    return False
-
-
-def _flistStepOutputsRepoRelative(dictStep, filesRepo):
-    """Return repo-relative output paths declared on a step.
-
-    Resolves each ``saOutputDataFiles``/``saPlotFiles`` entry against the
-    step directory the same way ``_fsResolveStepFilePath`` does, then
-    strips the repo root so the result lines up with manifest keys.
-    Lazily imports the GUI helper so the reproducibility leaf stays
-    importable without GUI side effects at module load.
-    """
-    from vaibify.gui.fileStatusManager import _fsResolveStepFilePath
-    from vaibify.gui.pathContract import fsAbsToRepoRelative
-    sRepoRoot = fsRepoRootOf(filesRepo)
-    sStepDir = dictStep.get("sDirectory", "") or ""
-    listRelative = []
-    for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
-        dictStep.get("saPlotFiles", []) or []
-    ):
-        if not sFile:
-            continue
-        sAbs = _fsResolveStepFilePath(
-            sFile, sStepDir, {"sRepoRoot": sRepoRoot},
-        )
-        listRelative.append(
-            fsAbsToRepoRelative(sAbs, sRepoRoot),
-        )
-    return listRelative
 
 
 def _fdictScriptStaleBlocker(dictWorkflow, iStepIndex, dictStep):

@@ -24551,4 +24551,12 @@ def _fdictEntry(sRel):
         old='    if not dictContext["bHasRepo"] or dictContext.get("bHostMode"):\n',
         new='    if not dictContext["bHasRepo"]:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRowAndGateAgreeOnManifestFreshness.py::testAChangedInputMakesTheRowAndTheGateAgreeTheStepIsStale'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return hashStaleness.fbStepHashesMatchManifest(\n        dictStep, fsRepoRootOf(filesRepo), filesRepo,\n    )\n',
+        new='    return True\n',
+    ),
 ]

@@ -30,6 +30,8 @@ __all__ = [
     "fbMarkerHasHashes",
     "fsetStaleOutputsAgainstManifest",
     "fbManifestExists",
+    "fbAnyPathMissingFromManifest",
+    "fbStepHashesMatchManifest",
 ]
 
 
@@ -81,6 +83,61 @@ def fbManifestExists(filesRepo):
     if not filesRepo.sRootPath:
         return False
     return filesRepo.fbIsFile(_MANIFEST_FILENAME)
+
+
+def fbAnyPathMissingFromManifest(listRelPaths, dictEntries):
+    """Return True iff any path is absent from the parsed manifest.
+
+    A path the manifest does not list is not vouched for by it, so a
+    freshness verdict built on the manifest must refuse rather than
+    skip it: :func:`fsetStaleOutputsAgainstManifest` silently drops
+    untracked paths, and a comparison that ignored them would call a
+    step fresh on the strength of the files that happened to be pinned.
+    """
+    return any(sRelPath not in dictEntries for sRelPath in listRelPaths)
+
+
+def fbStepHashesMatchManifest(
+    dictStep, sRepoRoot, filesRepo, dictManifestCache=None,
+):
+    """Return True iff the step's pinned files still match MANIFEST.sha256.
+
+    THE one freshness question the step row and the Level 1
+    ``script-stale`` gate both ask, because the two kept their own
+    copies and disagreed: the row counted a step's declared INPUTS and
+    the gate counted outputs only, so a step whose tracked input had
+    changed but whose outputs were identical showed ``modified`` while
+    the gate stayed silent.
+
+    Tracked inputs COUNT. An input that drifted since the manifest was
+    pinned means the pinned outputs were produced from other bytes, and
+    a fresh-clone shortcut that ignored it would mark a step clean on
+    the strength of outputs that no longer follow from its inputs.
+
+    Conservative on every uncertain path -- no repo root, no manifest,
+    nothing declared, any declared path absent from the manifest, any
+    hash that differs or cannot be read -- because True here SUPPRESSES
+    a staleness signal.
+    """
+    if not sRepoRoot:
+        return False
+    from .fileStatusManager import _flistStepOutputsRepoRelative
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not fbManifestExists(filesRepo):
+        return False
+    listRelPaths = _flistStepOutputsRepoRelative(dictStep, sRepoRoot)
+    if not listRelPaths:
+        return False
+    dictEntries = _fdictReadManifestEntries(filesRepo)
+    if not dictEntries or fbAnyPathMissingFromManifest(
+        listRelPaths, dictEntries,
+    ):
+        return False
+    setStale = fsetStaleOutputsAgainstManifest(
+        filesRepo, listRelPaths,
+        {} if dictManifestCache is None else dictManifestCache,
+    )
+    return len(setStale) == 0
 
 
 def fsetStaleOutputsAgainstManifest(
