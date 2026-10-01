@@ -24607,4 +24607,12 @@ def _fdictEntry(sRel):
         old='    if bArchiveTests:\n        listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
         new='    listPaths.extend(flistStepStandardsRepoPaths(dictStep))\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testVerifyResolvesPlotPathsWhereTheRunWritesThem.py::testATemplatedPlotIsLookedForWhereTheRunWroteIt'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    dictVars = _fdictBuildVariables(dictWorkflow, sWorkdir)\n    bAllPresent = True\n',
+        new='    dictVars = _fdictBuildWorkflowVars(dictWorkflow)\n    bAllPresent = True\n',
+    ),
 ]

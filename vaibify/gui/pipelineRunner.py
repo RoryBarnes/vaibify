@@ -979,8 +979,13 @@ async def _fbVerifyStepList(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback,
 ):
-    """Verify outputs for every step, returning True if all present."""
-    dictVars = _fdictBuildWorkflowVars(dictWorkflow)
+    """Verify outputs for every step, returning True if all present.
+
+    The variables are the RUN's, not a lighter set of its own: a
+    templated plot path must be looked for where the run wrote it (the
+    plot directory under the repo root, the figure type lowercased).
+    """
+    dictVars = _fdictBuildVariables(dictWorkflow, sWorkdir)
     bAllPresent = True
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         bStepOk = await _fbVerifyStepOutputs(

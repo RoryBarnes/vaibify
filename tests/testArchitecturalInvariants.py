@@ -6495,8 +6495,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +25 (2026-09-24): every container command a run starts exports
     # that run's marker, so a Stop can find its processes among other
     # projects' runs. The runner's command assembly is its job.
-    # 1796 -> 1813 (2026-09-30): the attestation rerun's run mode.
-    "pipelineRunner.py": 1813,
+    # 1796 -> 1818 (2026-09-30): the attestation rerun's run mode, and
+    # Verify using the run's own variables.
+    "pipelineRunner.py": 1818,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
