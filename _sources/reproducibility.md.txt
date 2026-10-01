@@ -705,6 +705,28 @@ Flags:
   produced, and the carried files are named beside them — an
   attestation makes no claim about a file nobody re-computed.
 
+  **The rerun regenerates every output it grades.** The shadow starts
+  as a copy of the whole repository, so before any step runs the
+  rerun deletes each *produced* path (a declared output of a step it
+  executes) and clears each executed step's `saScratchDirs`. An output
+  that exists afterwards was therefore written by the run, and one
+  that does not is `missing`: a step that exits zero and writes
+  nothing can no longer pass. Every executed step runs its data
+  commands whatever its `bPlotOnly` says, exactly as `reproduce.sh`
+  does, and `reproduce.sh` skips the same interactive steps the rerun
+  carries. A *protected* path is never deleted: a declared input or
+  script no executed step produces, a carried output,
+  `MANIFEST.sha256` and the environment files. A path that is both
+  produced and protected, or a scratch directory that contains a
+  protected file, refuses the rerun by name with nothing deleted. The
+  outputs count (`iOutputHashesMatched` of `iOutputHashesTotal`)
+  covers only regenerated outputs; scripts, input data and the
+  environment files are checked unchanged and counted apart
+  (`iPinnedInputsUnchanged` of `iPinnedInputsTotal`), and
+  `dictPreRerunClearing` records what was deleted first. A project
+  whose steps do not regenerate byte-identically no longer attests
+  Level 3.
+
   A workflow the unattended runner cannot honestly execute is still
   **refused before any step runs**: steps disabled in the dashboard,
   or a workflow with no steps at all. A disabled step leaves its

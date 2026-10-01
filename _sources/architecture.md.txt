@@ -391,8 +391,11 @@ paths and `..`-escaping paths are rejected by
 `flistValidateOutputFilePaths` on save. Step directories (`sDirectory`
 on each step) are held to the same rule by `flistValidateStepDirectories`
 — a value like `/workspace/ParameterSweep/PosteriorCorner` is rejected; the
-repo-relative form `PosteriorCorner` is required. Input references
-inside `saCommands` / `saPlotCommands` / `saDataCommands` are
+repo-relative form `PosteriorCorner` is required. A non-empty
+`saSetupCommands` or step-level `saCommands` is refused at load, naming
+the step and the field, because the runner executes only
+`saDataCommands` and `saPlotCommands`. Input references
+inside `saPlotCommands` / `saDataCommands` are
 deliberately *not* validated — a step may legitimately read an
 absolute `/workspace/SurveyCatalog/Plot/foo.pdf` produced by a sibling
 project. Badges are emitted only for the producing project; a

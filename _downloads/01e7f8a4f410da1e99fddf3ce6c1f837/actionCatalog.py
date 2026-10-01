@@ -286,7 +286,13 @@ LIST_AGENT_ACTIONS = [
      "sPath": "/api/steps/{sContainerId}/{iStepIndex}",
      "bAgentSafe": True,
      "sDescription": "Edit properties of an existing step. "
-                     "Args: a partial step object. Edits that would "
+                     "Args: a partial step object limited to "
+                     "definition fields (descriptions, commands, "
+                     "file lists, dependencies, dictTests, bPlotOnly, "
+                     "bNoInputData, wall-clock budget); any other field, "
+                     "including dictVerification, the researcher's "
+                     "sign-off, is "
+                     "refused 403 by name. Edits that would "
                      "empty saTestCommands, saOutputDataFiles, or "
                      "saInputDataFiles on a step that currently has "
                      "them require an explicit bConfirmDestructive="

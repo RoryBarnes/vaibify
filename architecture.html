@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev163 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev185 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a2ebc60f"></script>
+      <script src="_static/documentation_options.js?v=dc57bba0"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -545,8 +545,11 @@ paths and <code class="docutils literal notranslate"><span class="pre">..</span>
 <code class="docutils literal notranslate"><span class="pre">flistValidateOutputFilePaths</span></code> on save. Step directories (<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>
 on each step) are held to the same rule by <code class="docutils literal notranslate"><span class="pre">flistValidateStepDirectories</span></code>
 — a value like <code class="docutils literal notranslate"><span class="pre">/workspace/ParameterSweep/PosteriorCorner</span></code> is rejected; the
-repo-relative form <code class="docutils literal notranslate"><span class="pre">PosteriorCorner</span></code> is required. Input references
-inside <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> are
+repo-relative form <code class="docutils literal notranslate"><span class="pre">PosteriorCorner</span></code> is required. A non-empty
+<code class="docutils literal notranslate"><span class="pre">saSetupCommands</span></code> or step-level <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> is refused at load, naming
+the step and the field, because the runner executes only
+<code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> and <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code>. Input references
+inside <code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code> / <code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code> are
 deliberately <em>not</em> validated — a step may legitimately read an
 absolute <code class="docutils literal notranslate"><span class="pre">/workspace/SurveyCatalog/Plot/foo.pdf</span></code> produced by a sibling
 project. Badges are emitted only for the producing project; a
