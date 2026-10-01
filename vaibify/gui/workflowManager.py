@@ -171,6 +171,10 @@ VAIBIFY_LOGS_DIR = ".vaibify/logs"
 
 T_REQUIRED_WORKFLOW_KEYS = ("sPlotDirectory", "listSteps")
 T_REQUIRED_STEP_KEYS = ("sName", "sDirectory", "saPlotCommands", "saPlotFiles")
+# Command lists the loader refuses when non-empty: the runner executes
+# only saDataCommands and saPlotCommands (tests are a separate action),
+# so a step whose work lived here ran nothing and still passed.
+T_UNEXECUTED_COMMAND_FIELDS = ("saSetupCommands", "saCommands")
 
 # The structured test categories, paired with the dictVerification key
 # each one resolves, in the order both execution lanes run them.
@@ -811,6 +815,9 @@ def fsDescribeValidationFailure(dictWorkflow):
         for sField in T_REQUIRED_STEP_KEYS:
             if sField not in dictStep:
                 return f"{sLabel} is missing required field '{sField}'"
+        sUnexecuted = _fsDescribeUnexecutedCommandField(sLabel, dictStep)
+        if sUnexecuted:
+            return sUnexecuted
     from .pipelineUtils import (
         fsDescribeRemoteDataPathConflict, fsDescribeStepIdConflict,
     )
@@ -826,6 +833,18 @@ def fsDescribeValidationFailure(dictWorkflow):
     listDirWarnings = flistValidateStepDirectories(dictWorkflow)
     if listDirWarnings:
         return listDirWarnings[0]
+    return ""
+
+
+def _fsDescribeUnexecutedCommandField(sLabel, dictStep):
+    """Name a non-empty command list that no run path would execute."""
+    for sField in T_UNEXECUTED_COMMAND_FIELDS:
+        if dictStep.get(sField):
+            return (
+                f"{sLabel} '{dictStep.get('sName', '')}' lists commands "
+                f"in '{sField}', which no run executes; move them into "
+                "'saDataCommands' or 'saPlotCommands'"
+            )
     return ""
 
 

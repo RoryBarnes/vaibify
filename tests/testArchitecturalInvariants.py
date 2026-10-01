@@ -5532,9 +5532,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +23 (2026-09-24): a loaded workflow records the file it came
     # from, and the save strips it -- the load/save authority owns
     # the one transient field that says which file a workflow is.
-    # 2878 -> 2890 (2026-09-30): fsWorkflowLoadedFromPath, the one
-    # reader of the loaded-from key.
-    "workflowManager.py": 2890,
+    # 2878 -> 2909 (2026-09-30): fsWorkflowLoadedFromPath, the one
+    # reader of the loaded-from key; the loader's refusal of command
+    # lists no run executes.
+    "workflowManager.py": 2909,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

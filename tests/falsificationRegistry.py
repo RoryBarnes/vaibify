@@ -24615,4 +24615,12 @@ def _fdictEntry(sRel):
         old='    dictVars = _fdictBuildVariables(dictWorkflow, sWorkdir)\n    bAllPresent = True\n',
         new='    dictVars = _fdictBuildWorkflowVars(dictWorkflow)\n    bAllPresent = True\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testRefuseUnexecutedCommandFields.py::testAStepCarryingACommandListNoRunExecutesIsRefusedByName'
+        ),
+        source='vaibify/gui/workflowManager.py',
+        old='        sUnexecuted = _fsDescribeUnexecutedCommandField(sLabel, dictStep)\n        if sUnexecuted:\n            return sUnexecuted\n',
+        new='',
+    ),
 ]
