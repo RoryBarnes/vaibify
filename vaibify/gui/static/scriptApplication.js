@@ -5912,10 +5912,13 @@ const VaibifyApp = (function () {
         var dictResult = await fnPutStepEdit(
             iStep, {dictVerification: dictNext});
         if (!dictResult) return;
+        dictStep.dictVerification = dictNext;
         /* The server dates the sign-off from the container's clock and
            discards the client's stamp, so the saved record is what the
            screen must show. */
-        dictStep.dictVerification = dictResult.dictVerification || dictNext;
+        if (dictResult.dictVerification) {
+            dictStep.dictVerification = dictResult.dictVerification;
+        }
         _dictWorkflowState.dictUserVerifiedAt[iStep] = Date.now();
         fnRenderStepList();
         fnUpdateHighlightState();
