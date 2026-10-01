@@ -2222,7 +2222,7 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictGithubVerifyStaleBlocker()]
-    return _flistPerStepSyncBlockers(
+    listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-github-mirror",
         sRemediationHint=(
@@ -2230,6 +2230,15 @@ def _flistGithubLevel2Blockers(dictWorkflow, filesRepo):
             "clear blocker"
         ),
     )
+    if listBlockers or fbWorkflowFullySyncedWithGithub(
+        dictWorkflow, filesRepo,
+    ):
+        return listBlockers
+    # The gate refuses for a reason no divergence names -- a commit
+    # pushed since the verify, or a cache whose counts contradict its
+    # own divergence list. Whatever the gate can refuse for, the
+    # blockers must be able to name, or the header cell outranks it.
+    return [_fdictGithubVerifyStaleBlocker()]
 
 
 def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
@@ -2239,7 +2248,7 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     )
     if _fbSyncCacheStale(dictStatus):
         return [_fdictZenodoVerifyStaleBlocker()]
-    return _flistPerStepSyncBlockers(
+    listBlockers = _flistPerStepSyncBlockers(
         dictWorkflow, dictStatus,
         sCriterion="not-in-zenodo-deposit",
         sRemediationHint=(
@@ -2247,6 +2256,11 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
             "to clear blocker"
         ),
     )
+    if listBlockers or fbWorkflowFullySyncedWithZenodo(
+        dictWorkflow, filesRepo,
+    ):
+        return listBlockers
+    return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
 
 
 def _flistAiDeclarationLevel2Blockers(dictWorkflow):
@@ -2500,6 +2514,33 @@ def _fdictGithubVerifyStaleBlocker():
         "sRemediationHint":
             "GitHub sync check is stale — re-verify to refresh status",
     }
+
+
+def _fdictZenodoUnexplainedRefusalBlocker(dictStatus):
+    """Name why the Zenodo gate refuses when no divergence does.
+
+    Two causes remain once divergence is excluded. No DOI on the
+    verified record means nothing has been deposited to publish to
+    (``not-in-zenodo-deposit``); anything else -- the verify ran against
+    the other Zenodo instance than the project is configured for, or
+    the cache contradicts itself -- is evidence that no longer answers
+    the question, which the stale criterion already says.
+    """
+    if not (dictStatus or {}).get("sZenodoDoi"):
+        dictBlocker = _fdictZenodoVerifyStaleBlocker()
+        dictBlocker["sCriterion"] = "not-in-zenodo-deposit"
+        dictBlocker["sRemediationHint"] = (
+            "No Zenodo DOI is recorded for this project — archive to "
+            "a deposit, then re-verify"
+        )
+        return dictBlocker
+    dictBlocker = _fdictZenodoVerifyStaleBlocker()
+    dictBlocker["sRemediationHint"] = (
+        "The last Zenodo check ran against a different instance than "
+        "this project is configured for, or contradicts itself — "
+        "re-verify to refresh status"
+    )
+    return dictBlocker
 
 
 def _fdictZenodoVerifyStaleBlocker():

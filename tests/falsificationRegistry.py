@@ -24623,4 +24623,20 @@ def _fdictEntry(sRel):
         old='        sUnexecuted = _fsDescribeUnexecutedCommandField(sLabel, dictStep)\n        if sUnexecuted:\n            return sUnexecuted\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryLevelTwoSyncRefusalIsNamedByABlocker.py::testACommitPushedSinceTheVerifyIsNamed'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return [_fdictGithubVerifyStaleBlocker()]\n\n\ndef _flistZenodoLevel2Blockers(',
+        new='    return listBlockers\n\n\ndef _flistZenodoLevel2Blockers(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEveryLevelTwoSyncRefusalIsNamedByABlocker.py::testAnUnrecordedZenodoDoiIsNamed'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]\n',
+        new='    return listBlockers\n',
+    ),
 ]
