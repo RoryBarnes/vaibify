@@ -232,6 +232,11 @@ def fdictRepairDirectlyUnderFlock(
         fileHandleLock = containerLock.ffileAcquireContainerLock(
             sContainerName, 0,
         )
+    except (
+        containerLock.ContainerQuarantinedError,
+        containerLock.ContainerBusyOperationError,
+    ) as errorJournalRefusal:
+        raise RepairRefusedError(str(errorJournalRefusal))
     except containerLock.ContainerLockedError as errorLocked:
         raise RepairRefusedError(
             f"container '{sContainerName}' is held by vaibify "
