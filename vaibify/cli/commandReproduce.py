@@ -114,7 +114,7 @@ from vaibify.reproducibility.shadowRerun import (
 
 
 __all__ = [
-    "reproduce",
+    "fnReproduceCommand",
     "fbVerifyTier1",
     "fbVerifyTier2",
     "fbVerifyTier3",
