@@ -5127,7 +5127,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +49 (2026-09-30): the supervision watchdog records a flag before
     # the judged-once watermark moves, restores the watermark when the
     # write fails, and skips a flag a retry already wrote.
-    "routes/pipelineRoutes.py": 4054,
+    # 4054 -> 4057 (2026-09-30): the poll's attestation summary carries
+    # the pinned-input counts.
+    "routes/pipelineRoutes.py": 4057,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6488,7 +6490,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +25 (2026-09-24): every container command a run starts exports
     # that run's marker, so a Stop can find its processes among other
     # projects' runs. The runner's command assembly is its job.
-    "pipelineRunner.py": 1796,
+    # 1796 -> 1813 (2026-09-30): the attestation rerun's run mode.
+    "pipelineRunner.py": 1813,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7299,7 +7302,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +22 (2026-09-24): verification records and the lock verdict are
     # read and written for the project they describe, and a refusal
     # names the project whose verification holds the container.
-    "routes/reproducibilityRoutes.py": 2344,
+    # 2344 -> 2349 (2026-09-30): the attestation carries the pinned-input
+    # split and the pre-run deletions.
+    "routes/reproducibilityRoutes.py": 2349,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

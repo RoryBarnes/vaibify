@@ -2558,6 +2558,9 @@ def _fdictSummarizeAttestation(filesRepo):
             "iOutputHashesMatched") or 0,
         "iOutputHashesTotal": dictAttestation.get(
             "iOutputHashesTotal") or 0,
+        "iPinnedInputsUnchanged": dictAttestation.get(
+            "iPinnedInputsUnchanged"),
+        "iPinnedInputsTotal": dictAttestation.get("iPinnedInputsTotal"),
         "listCarriedPaths": dictAttestation.get("listCarriedPaths"),
         "listDivergedHashes": dictAttestation.get(
             "listDivergedHashes") or [],

@@ -2564,13 +2564,25 @@ var VaibifyWorkflowRequirements = (function () {
             "envelope already proven to reproduce.";
     }
 
+    function _fsSummarizePinnedInputs(dictLast) {
+        // Scripts, input data and environment files are checked
+        // unchanged, never regenerated, so they are counted apart.
+        if (typeof dictLast.iPinnedInputsTotal !== "number") {
+            return "Pinned inputs were not counted separately (this " +
+                "attestation predates the regeneration check).";
+        }
+        return (dictLast.iPinnedInputsUnchanged || 0) + " of " +
+            dictLast.iPinnedInputsTotal + " pinned inputs unchanged.";
+    }
+
     function _fsSummarizeHashCounts(dictLast) {
         // The counts cover only what EXECUTION produced. Carried files
         // were made by a human step and re-derived by nobody, so they
         // are named separately rather than folded into the ratio.
         var sCounts = (dictLast.iOutputHashesMatched || 0) + " of " +
             (dictLast.iOutputHashesTotal || 0) +
-            " re-derived files matched.";
+            " outputs regenerated identically. " +
+            _fsSummarizePinnedInputs(dictLast);
         var listCarried = dictLast.listCarriedPaths || [];
         if (!listCarried.length) return sCounts;
         return sCounts + " " + listCarried.length + " file" +

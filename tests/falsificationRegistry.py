@@ -1892,8 +1892,9 @@ LIST_FALSIFICATIONS = [
         # RE-ANCHORED 2026-08-31: the count is now over the COMPARED
         # entries rather than every manifest entry, because a given
         # step's outputs are carried out of the comparison.
-        old='''        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),''',
-        new='''        "iOutputHashesMatched": len(listCompared),''',
+        # RE-ANCHORED 2026-09-30: over the regenerated outputs only.
+        old='''        "iOutputHashesMatched": _fiCountMatched(listOutputOutcomes),''',
+        new='''        "iOutputHashesMatched": len(listOutputOutcomes),''',
     ),
     Falsification(
         nodeid='tests/testRerunHashCompareMutationCoverage.py::test_zero_exit_rerun_with_changed_bytes_does_not_pass',
@@ -19385,9 +19386,9 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/rerunVerification.py',
         # the matched count ignores the outcomes
         old=(
-            '        "iOutputHashesMatched": len(listCompared) - len(listMismatchedPaths),\n'
+            '        "iOutputHashesMatched": _fiCountMatched(listOutputOutcomes),\n'
         ),
-        new='        "iOutputHashesMatched": len(listCompared),\n',
+        new='        "iOutputHashesMatched": len(listOutputOutcomes),\n',
     ),
     Falsification(
         nodeid=(
@@ -24437,5 +24438,53 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/stepRoutes.py',
         old='        _fnStampServerSideUserUpdate(\n            dictWorkflow, iStepIndex, dictUpdates)\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testAStepThatExitsZeroAndWritesNothingIsMissing'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='        dictPreRerunClearing = fdictClearShadowBeforeRerun(\n            dictWorkflow, filesRepo, dictClassification,\n        )\n',
+        new='        dictPreRerunClearing = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testARerunRunsTheDataCommandsOfAPlotOnlyStep'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='            bIgnorePlotOnly=(sRunMode == S_RUN_MODE_RERUN),\n',
+        new='            bIgnorePlotOnly=False,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testTheRerunLaneAsksTheRunnerForTheRerunMode'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        old='        iSourceDateEpochOverride=iSourceDateEpochOverride,\n        sRunMode=S_RUN_MODE_RERUN,\n',
+        new='        iSourceDateEpochOverride=iSourceDateEpochOverride,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testACacheInAScratchDirectoryCannotShortcutRegeneration'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='        "listScratch": flistResolveScratchRepoPaths(dictWorkflow, sRepoRoot),\n',
+        new='        "listScratch": [],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testAScratchDirectoryHoldingAProtectedScriptIsRefusedAndNothingDeleted'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='        if fbIsWithin(sProtected, sLocated):\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunRegeneratesWhatItGrades.py::testACarriedOutputAnExecutedStepAlsoDeclaresIsRefusedByName'
+        ),
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='    if setAmbiguous:\n',
+        new='    if False:\n',
     ),
 ]

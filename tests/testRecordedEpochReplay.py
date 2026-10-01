@@ -121,12 +121,14 @@ def test_rerun_lane_passes_the_recorded_epoch_to_the_runner(tmp_path):
 
     def fbCaptureRun(*taArguments, **dictArguments):
         dictSeen.update(dictArguments)
+        pathOutput.write_text("answer = 42\n")
         return True
 
     dictWorkflow = {"listSteps": [{
         "sName": "GenerateSamples",
         "bRunEnabled": True,
         "saCommands": ["true"],
+        "saOutputDataFiles": ["result.txt"],
     }]}
     with patch.object(
         rerunVerification, "fbRunWorkflowInContainer",

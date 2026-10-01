@@ -77,7 +77,7 @@ __all__ = [
 ]
 
 
-I_SCHEMA_VERSION = 5
+I_SCHEMA_VERSION = 6
 S_ATTESTATION_FILENAME = "l3_attestation.json"
 S_ATTESTATION_HISTORY_DIR = "l3_attestations"
 S_STATUS_PASSED = "passed"
@@ -192,6 +192,25 @@ def _fdictMigrateAttestationV4ToV5(dictPayload):
     return dictMigrated
 
 
+def _fdictMigrateAttestationV5ToV6(dictPayload):
+    """Bring a v5 record to v6: outputs were not regenerated, only compared.
+
+    A v5 rerun copied every output into the shadow and deleted none, so
+    ``iOutputHashesMatched`` counted pinned files the run may never have
+    touched, beside the scripts and environment files. ``None`` for the
+    three new fields: the pinned-input split and the pre-run deletions
+    were not kept, and an empty value would claim they were checked and
+    found clean. The v5 counts keep their old meaning and a reader must
+    not read them as regeneration evidence.
+    """
+    dictMigrated = dict(dictPayload)
+    dictMigrated["iSchemaVersion"] = 6
+    dictMigrated["iPinnedInputsUnchanged"] = None
+    dictMigrated["iPinnedInputsTotal"] = None
+    dictMigrated["dictPreRerunClearing"] = None
+    return dictMigrated
+
+
 # Forward-migration chain for older attestation records. Each entry is
 # (iFromVersion, fnMigrate) where fnMigrate(dictPayload) transforms a
 # v=iFromVersion record into v=iFromVersion+1 form. Future L4 / L6 work
@@ -201,6 +220,7 @@ _LIST_ATTESTATION_MIGRATORS = [
     (2, _fdictMigrateAttestationV2ToV3),
     (3, _fdictMigrateAttestationV3ToV4),
     (4, _fdictMigrateAttestationV4ToV5),
+    (5, _fdictMigrateAttestationV5ToV6),
 ]
 
 
@@ -294,7 +314,8 @@ def fdictBuildAttestation(
     listCarriedPaths=None, dictRerunFailure=None,
     dictImageArchiveCheck=None, listFileOutcomes=None,
     dictReproductionProvenance=None, sReproducedManifestPath=None,
-    sAttestedAtUtc="",
+    sAttestedAtUtc="", iPinnedInputsUnchanged=None, iPinnedInputsTotal=None,
+    dictPreRerunClearing=None,
 ):
     """Return a fully-populated attestation dict (no file IO).
 
@@ -341,6 +362,14 @@ def fdictBuildAttestation(
     was obtained, the platform, the epoch. ``None`` in any of the
     three means the record predates them.
 
+    ``iOutputHashesMatched`` / ``iOutputHashesTotal`` count only the
+    declared outputs of the steps the rerun executed -- files deleted
+    from the shadow before the run, so a match proves they were
+    regenerated. Every other pinned file is checked unchanged and
+    counted in ``iPinnedInputsUnchanged`` / ``iPinnedInputsTotal``.
+    ``dictPreRerunClearing`` records what was deleted first. ``None``
+    in any of the three means the record predates them.
+
     ``sAttestedAtUtc`` may be supplied so the record shares its
     timestamp with the manifest copy written beside it; empty means
     now.
@@ -354,6 +383,12 @@ def fdictBuildAttestation(
         "fDurationSeconds": float(fDurationSeconds),
         "iOutputHashesMatched": int(iOutputHashesMatched),
         "iOutputHashesTotal": int(iOutputHashesTotal),
+        "iPinnedInputsUnchanged": iPinnedInputsUnchanged,
+        "iPinnedInputsTotal": iPinnedInputsTotal,
+        "dictPreRerunClearing": (
+            None if dictPreRerunClearing is None
+            else dict(dictPreRerunClearing)
+        ),
         "listCarriedPaths": (
             None if listCarriedPaths is None else list(listCarriedPaths)
         ),

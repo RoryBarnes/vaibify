@@ -1086,12 +1086,27 @@ var VaibifyProofTab = (function () {
             fnEscapeHtml(sManifest) + '…</code></div>' +
             '<div>Image: <code>' +
             fnEscapeHtml(sImage) + '…</code></div>' +
-            '<div>Hashes matched: ' + iMatched + ' / ' +
+            '<div>Outputs regenerated identically: ' + iMatched + ' / ' +
             iTotal + '</div>' +
+            _fsRenderPinnedInputCounts(dictCurrent) +
             '<div>Duration: ' + fDuration.toFixed(1) +
             ' s</div>' +
             _fsRenderFileOutcomesOrCarried(dictCurrent) +
             '</div>';
+    }
+
+    function _fsRenderPinnedInputCounts(dictRecord) {
+        /* Scripts, input data and environment files are checked
+           UNCHANGED, never regenerated, so they are counted apart. A
+           record that predates the split carries null here and says
+           so rather than inventing a zero. */
+        if (typeof dictRecord.iPinnedInputsTotal !== "number") {
+            return '<div>Pinned inputs unchanged: not recorded (this ' +
+                'attestation predates the regeneration check)</div>';
+        }
+        return '<div>Pinned inputs unchanged: ' +
+            (dictRecord.iPinnedInputsUnchanged || 0) + ' / ' +
+            dictRecord.iPinnedInputsTotal + '</div>';
     }
 
     function _fsRenderFileOutcomesOrCarried(dictRecord) {
@@ -1143,7 +1158,8 @@ var VaibifyProofTab = (function () {
             '<div>Recorded: <code>' +
             fnEscapeHtml(dictReproduction.sCreatedAtIso || "?") +
             '</code></div>' +
-            '<div>Hashes matched: ' + iMatched + ' / ' + iTotal +
+            '<div>Outputs regenerated identically: ' + iMatched + ' / ' +
+            iTotal +
             (listCarried.length ?
                 '; ' + listCarried.length + ' carried in unchanged' : "") +
             '</div>' +

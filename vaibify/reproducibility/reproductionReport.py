@@ -61,7 +61,9 @@ __all__ = [
 
 # v2 (2026-09-11) added the per-file outcomes, the provenance block
 # and the name of the reproduced manifest written beside the report.
-I_REPORT_SCHEMA_VERSION = 2
+# v3 (2026-09-30): the output counts cover only regenerated outputs;
+# pinned inputs are counted apart and the pre-run deletions are named.
+I_REPORT_SCHEMA_VERSION = 3
 _S_REPRODUCED_MANIFEST_SUFFIX = ".sha256"
 
 S_VERDICT_REPRODUCED = "reproduced"
@@ -133,6 +135,11 @@ def fdictBuildReproductionReport(
         "bRerunAttempted": bRerunAttempted,
         "iOutputHashesMatched": int(dictOutcome.get("iOutputHashesMatched", 0)),
         "iOutputHashesTotal": int(dictOutcome.get("iOutputHashesTotal", 0)),
+        "iPinnedInputsUnchanged": int(
+            dictOutcome.get("iPinnedInputsUnchanged") or 0),
+        "iPinnedInputsTotal": int(dictOutcome.get("iPinnedInputsTotal") or 0),
+        "dictPreRerunClearing": dict(
+            dictOutcome.get("dictPreRerunClearing") or {}),
         "listDivergedHashes": list(dictOutcome.get("listDivergedHashes") or []),
         "listMatchedPaths": list(dictOutcome.get("listMatchedPaths") or []),
         "listCarriedPaths": list(dictOutcome.get("listCarriedPaths") or []),

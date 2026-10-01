@@ -5600,9 +5600,14 @@ const VaibifyApp = (function () {
             fnRow("Manifest digest",
                 dictCurrent.sManifestDigestAtAttestation || "?") +
             fnRow("Image", dictCurrent.sImageDigest || "?") +
-            fnRow("Re-derived files matched",
+            fnRow("Outputs regenerated identically",
                 (dictCurrent.iOutputHashesMatched || 0) + " of " +
                 (dictCurrent.iOutputHashesTotal || 0)) +
+            fnRow("Pinned inputs unchanged",
+                typeof dictCurrent.iPinnedInputsTotal === "number"
+                    ? (dictCurrent.iPinnedInputsUnchanged || 0) + " of " +
+                        dictCurrent.iPinnedInputsTotal
+                    : "not recorded (predates the regeneration check)") +
             fnRow("Duration",
                 (dictCurrent.fDurationSeconds || 0).toFixed(1) +
                 " s") +
