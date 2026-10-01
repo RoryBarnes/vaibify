@@ -81,7 +81,6 @@ __all__ = [
     "fdictResolveContainerJournal",
 ]
 
-import datetime
 import hashlib
 import json
 import logging
@@ -99,6 +98,7 @@ from vaibify.config.pidFileRegistry import (
 from vaibify.config.processLiveness import (
     fbIsProcessAliveSince,
     fbIsUsablePid,
+    fsNowClaimIso,
     ftEnumerateSessionMembers,
 )
 
@@ -203,8 +203,8 @@ def flistJournaledContainerNames():
 
 
 def _fsNowIso():
-    """Return the current local time as an ISO string."""
-    return datetime.datetime.now().isoformat()
+    """Return the current instant as a UTC ISO string."""
+    return fsNowClaimIso()
 
 
 # ---------------------------------------------------------------------

@@ -237,7 +237,9 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # library's object as `secretFound`.
 # 341 -> 340 (2026-10-01): the tar-building single-file write is gone, taking
 # its seeded `tar` binding with it.
-I_LEGACY_VARIABLE_BUDGET = 340
+# 340 -> 335 (2026-10-01): the process-liveness clocks are UTC instants and
+# their bindings carry the registered `datetime` prefix.
+I_LEGACY_VARIABLE_BUDGET = 335
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

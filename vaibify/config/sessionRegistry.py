@@ -21,12 +21,13 @@ a thin wrapper that owns only the slot's divergent payload schema
 ``{iPid, sRole, iPort, sStartedIso}`` and the host-wide session cap.
 """
 
-import datetime
 import fcntl
 import os
 
 from vaibify.config import pidFileRegistry
-from vaibify.config.processLiveness import fbIsProcessAliveSince, fbIsUsablePid
+from vaibify.config.processLiveness import (
+    fbIsProcessAliveSince, fbIsUsablePid, fsNowClaimIso,
+)
 
 
 I_MAX_SESSIONS = 99
@@ -129,7 +130,7 @@ def _fnWriteSlotPayload(fileHandle, sRole, iPort):
         "iPid": os.getpid(),
         "sRole": sRole,
         "iPort": iPort,
-        "sStartedIso": datetime.datetime.now().isoformat(),
+        "sStartedIso": fsNowClaimIso(),
         "sVaibifyVersion": fsRunningVaibifyVersion(),
     }
     pidFileRegistry.fnWritePayload(fileHandle, dictPayload)

@@ -25045,4 +25045,17 @@ def _fdictEntry(sRel):
         old='        _fdictLoadRegistryForUpdate()\n        _fnWriteRegistryAtomic(dictRegistry)',
         new='        _fnWriteRegistryAtomic(dictRegistry)',
     ),
+    # --- A holder's claim and a process start are UTC instants ---
+    Falsification(
+        nodeid='tests/testProcessLiveness.py::testAZoneChangeBetweenClaimAndCheckDoesNotMakeALiveHolderLookRecycled',
+        source='vaibify/config/processLiveness.py',
+        old='    return datetime.datetime.now(datetime.timezone.utc).isoformat()\n',
+        new='    return datetime.datetime.now().isoformat()\n',
+    ),
+    Falsification(
+        nodeid='tests/testProcessLiveness.py::testTheStartClockDoesNotMoveWithTheLocalZone',
+        source='vaibify/config/processLiveness.py',
+        old='    datetimeNow = datetime.datetime.now(datetime.timezone.utc)\n    return datetimeNow - ',
+        new='    datetimeNow = datetime.datetime.now().replace(\n        tzinfo=datetime.timezone.utc)\n    return datetimeNow - ',
+    ),
 ]

@@ -21,12 +21,13 @@ a thin wrapper that owns only the lock's divergent holder schema
 policy.
 """
 
-import datetime
 import fcntl
 import os
 
 from vaibify.config import operationJournal, pidFileRegistry
-from vaibify.config.processLiveness import fbIsProcessAliveSince, fbIsUsablePid
+from vaibify.config.processLiveness import (
+    fbIsProcessAliveSince, fbIsUsablePid, fsNowClaimIso,
+)
 
 
 _S_LOCK_DIRECTORY = os.path.expanduser("~/.vaibify/locks")
@@ -158,7 +159,7 @@ def _fdictBuildHolderPayload(sProjectName, iPort):
     return {
         "iPid": os.getpid(),
         "iPort": iPort,
-        "sStartedIso": datetime.datetime.now().isoformat(),
+        "sStartedIso": fsNowClaimIso(),
         "sProjectName": sProjectName,
     }
 

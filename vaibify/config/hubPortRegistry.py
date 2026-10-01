@@ -21,10 +21,11 @@ __all__ = [
     "fsHubPortPath",
 ]
 
-import datetime
 import json
 import os
 import sys
+
+from vaibify.config.processLiveness import fsNowClaimIso
 
 
 S_HUB_PORT_FILENAME = "hub-port.json"
@@ -86,7 +87,7 @@ def _fnAtomicWriteHubPort(iPort):
     dictPayload = {
         "iPort": iPort,
         "iPid": os.getpid(),
-        "sStartedIso": datetime.datetime.now().isoformat(),
+        "sStartedIso": fsNowClaimIso(),
     }
     with open(sTempPath, "w") as fileHandle:
         json.dump(dictPayload, fileHandle, indent=2)

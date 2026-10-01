@@ -59,11 +59,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/operationJournal.py::_fsValidateRecordFieldTypes.valueField", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/operationJournal.py::fdictReadJournalOutcome.byteContent", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/operationJournal.py::fnAmendInFlightHolderIdentity.valueIdentity", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/processLiveness.py::_fdatetimeNormalizeToNaiveLocal::dtValue", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtClaim", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtStart", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/processLiveness.py::fbIsProcessAliveSince.dtTolerance", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/processLiveness.py::fdatetimeParseClaimIso.dtClaim", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/projectConfig.py::ProjectConfig.reproducibility", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/projectConfig.py::_fbValidateFeatures.value", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/config/projectConfig.py::_fbValidateListFields.value", "sReason": ""},
@@ -359,7 +354,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 340,
+    "legacy-variable": 335,
     "legacy-yield": 0
   }
 }

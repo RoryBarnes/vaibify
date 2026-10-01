@@ -11,7 +11,6 @@ kill (start-clock gated ``SIGTERM``) and the legacy bare-int payload
 support stay here because they are this registry's own divergent schema.
 """
 
-import datetime
 import os
 import signal
 import subprocess
@@ -19,7 +18,9 @@ import sys
 import json
 
 from vaibify.config import pidFileRegistry
-from vaibify.config.processLiveness import fbIsProcessAliveSince
+from vaibify.config.processLiveness import (
+    fbIsProcessAliveSince, fsNowClaimIso,
+)
 
 
 _S_PID_DIRECTORY = os.path.expanduser("~/.vaibify/caffeinate")
@@ -61,7 +62,7 @@ def _fnWritePidFile(sContainerName, iPid):
     sPath = _fsPidFilePath(sContainerName)
     dictPayload = {
         "iPid": iPid,
-        "sStartedIso": datetime.datetime.now().isoformat(),
+        "sStartedIso": fsNowClaimIso(),
     }
     with pidFileRegistry.ffileOpenNoFollow(sPath) as fileHandle:
         pidFileRegistry.fnWritePayload(fileHandle, dictPayload)
