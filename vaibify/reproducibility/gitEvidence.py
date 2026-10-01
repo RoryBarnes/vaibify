@@ -64,10 +64,17 @@ class RecordKindUndeterminedError(Exception):
 
 
 def _ftAskGit(ftRunGit, listArguments, sQuestion):
-    """Run one git question; a runner that cannot run it is undetermined."""
+    """Run one git question; a runner that cannot run it is undetermined.
+
+    A control-plane refusal is not uncertainty about the repository: the
+    carrier declined to run the exec at all, and reading that as "could
+    not say" would hide the refusal behind a guess about whose record
+    it is.
+    """
     try:
         iExitCode, sOutput = ftRunGit(listArguments)
     except Exception as error:  # noqa: BLE001 -- turned into a refusal
+        fnReRaiseControlPlaneRefusal(error)
         raise RecordKindUndeterminedError(
             f"git could not be asked {sQuestion}: {error}"
         ) from error

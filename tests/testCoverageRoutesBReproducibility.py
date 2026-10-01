@@ -765,22 +765,27 @@ def testCopyingTheDockerfileRepinsTheManifestOrSaysItCouldNot(
             assert "Dockerfile" in fileHandle.read()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=RecordKindUndeterminedError,
-    reason=(
-        "BUG: gitEvidence._ftAskGit catches every exception, including a "
-        "ControlPlaneRefusalError, and re-raises it as "
-        "RecordKindUndeterminedError, so _fsRecordKindForProject's "
-        "documented re-raise of a carrier refusal is unreachable and a "
-        "refusal reads as an undetermined git answer."
-    ),
-)
+@pytest.mark.falsification
 def testACarrierRefusalAskingWhoseRecordItIsSurfacesAsItself():
+    """A refused exec is a refusal, never "the repository could not say".
+
+    Kills: the evidence module's question helper: the first statement
+    of its handler, `fnReRaiseControlPlaneRefusal(error)`, removed.
+    """
     connectionDocker = RecordingConnection(
         [MutationNotAdmittedError("no admission for this exec")],
     )
     with pytest.raises(MutationNotAdmittedError):
+        reproducibilityRoutes._fsRecordKindForProject(
+            connectionDocker, S_CONTAINER_ID,
+            {"sProjectRepoPath": "/workspace/projectAlpha"},
+        )
+
+
+def testAGitThatGenuinelyCannotAnswerIsStillUndetermined():
+    """The three-state ownership answer survives: only refusals pass through."""
+    connectionDocker = RecordingConnection([OSError("exec failed")])
+    with pytest.raises(RecordKindUndeterminedError):
         reproducibilityRoutes._fsRecordKindForProject(
             connectionDocker, S_CONTAINER_ID,
             {"sProjectRepoPath": "/workspace/projectAlpha"},

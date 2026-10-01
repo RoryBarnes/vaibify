@@ -24575,4 +24575,12 @@ def _fdictEntry(sRel):
         old='        fsContainerNameForId(dictCtx["docker"], sContainerId),\n        _fsRecordedImageDigest(filesRepo),\n',
         new='        sContainerId,\n        _fsRecordedImageDigest(filesRepo),\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::testACarrierRefusalAskingWhoseRecordItIsSurfacesAsItself'
+        ),
+        source='vaibify/reproducibility/gitEvidence.py',
+        old='        fnReRaiseControlPlaneRefusal(error)\n        raise RecordKindUndeterminedError(\n',
+        new='        raise RecordKindUndeterminedError(\n',
+    ),
 ]
