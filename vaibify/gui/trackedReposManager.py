@@ -77,6 +77,8 @@ import json
 import posixpath
 import threading
 
+from vaibify.docker.pathContainment import fbIsPlainDirectoryName
+
 from .pipelineUtils import fsShellQuote
 
 # The container answers, kept as constants because they are the
@@ -229,6 +231,10 @@ def fdictReadSidecar(connectionDocker, sContainerId):
     ``FileNotFoundError`` is an ``OSError`` and lands in the same net
     as a malformed document: both mean "no usable sidecar", which the
     caller answers by seeding one in memory.
+
+    Names are container-written and become paths, so an entry whose
+    ``sName`` is not one ordinary directory name (an absolute path, a
+    ``..`` component, a slash) is dropped here, once, for every reader.
     """
     try:
         baContent = connectionDocker.fbaFetchFile(
@@ -236,9 +242,24 @@ def fdictReadSidecar(connectionDocker, sContainerId):
         )
         if not baContent.strip():
             return None
-        return json.loads(baContent.decode("utf-8"))
+        return _fdictDropUnsafeNames(json.loads(baContent.decode("utf-8")))
     except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError):
         return None
+
+
+def _fdictDropUnsafeNames(dictSidecar):
+    """Return the sidecar without entries whose name is not a plain name."""
+    if not isinstance(dictSidecar, dict):
+        return dictSidecar
+    for sList in ("listTracked", "listIgnored"):
+        listEntries = dictSidecar.get(sList)
+        if isinstance(listEntries, list):
+            dictSidecar[sList] = [
+                dictEntry for dictEntry in listEntries
+                if not isinstance(dictEntry, dict)
+                or fbIsPlainDirectoryName(dictEntry.get("sName", ""))
+            ]
+    return dictSidecar
 
 
 def fnWriteSidecar(connectionDocker, sContainerId, dictSidecar):

@@ -258,9 +258,9 @@ def fsResolveDominantRepositoryPath(dictCtx, sContainerId,
             raise HTTPException(
                 400, f"{sChosenDirectory!r} is not one of this project's "
                 "tracked directories")
-        return posixpath.join(sRoot, sChosenDirectory)
+        return _fsJoinTrackedDirectoryWithinRoot(sRoot, sChosenDirectory)
     if len(listTracked) == 1:
-        return posixpath.join(sRoot, listTracked[0])
+        return _fsJoinTrackedDirectoryWithinRoot(sRoot, listTracked[0])
     if not listTracked:
         raise HTTPException(
             409, "this project has no tracked directory for a council to "
@@ -271,6 +271,17 @@ def fsResolveDominantRepositoryPath(dictCtx, sContainerId,
         + ", ".join(sorted(listTracked))
         + "), so a council needs to be told which one it is about. "
         "Choose it when you convene, or open the workflow you mean.")
+
+
+def _fsJoinTrackedDirectoryWithinRoot(sRoot, sTrackedName):
+    """Join a tracked name onto the project root and prove it stayed inside.
+
+    A name read out of the sidecar is container-written, and
+    ``posixpath.join`` lets an absolute name replace the root outright,
+    so the join is checked rather than trusted.
+    """
+    return fsValidatePathWithinRoot(
+        posixpath.join(sRoot, sTrackedName), sRoot)
 
 
 def flistTrackedDirectoryNames(dictCtx, sContainerId):

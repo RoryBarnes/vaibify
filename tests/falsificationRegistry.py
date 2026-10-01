@@ -24804,4 +24804,29 @@ def _fdictEntry(sRel):
         old='    sUntypedState = fsDescribeUntypedField(dictWorkflow)\n    if sUntypedState:\n        raise ValueError(\n            f"Invalid state for {sWorkflowPath}: {sUntypedState}"\n        )\n',
         new='',
     ),
+    # --- Names the container writes cannot point a snapshot elsewhere ---
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testAnEscapingIndexKeyRefusesTheScopeBeforeAnythingIsRead',
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if not fbIsPlainRelativePath(sPath):\n        dictAnswer["listEscapingNames"].append(sPath)\n        return\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testASidecarEntryThatIsNotAPlainNameIsDroppedAtTheRead',
+        source='vaibify/gui/trackedReposManager.py',
+        old='        return _fdictDropUnsafeNames(json.loads(baContent.decode("utf-8")))\n',
+        new='        return json.loads(baContent.decode("utf-8"))\n',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testATrackedNameThatEscapesTheRootIsRefusedWhenJoined',
+        source='vaibify/gui/councilRouteGuards.py',
+        old='    return fsValidatePathWithinRoot(\n        posixpath.join(sRoot, sTrackedName), sRoot)\n',
+        new='    return posixpath.join(sRoot, sTrackedName)\n',
+    ),
+    Falsification(
+        nodeid='tests/testSnapshotNamesStayInsideTheRoot.py::testARunnerMemberIsJudgedByComponentsNotByPrefix',
+        source='vaibify/gui/agentCouncilRunner.py',
+        old='    if fbNormalizedPathEscapesTheRoot(sNormalized):\n',
+        new='    if posixpath.isabs(sNormalized) or sNormalized.startswith(".."):\n',
+    ),
 ]
