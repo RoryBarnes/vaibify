@@ -145,3 +145,23 @@ def testNothingEverLandsOutsideWhileADirectoryIsSwappedForASymlink(
     iExit, sListing = _fsRunAsUser(container, f"ls -A {S_OUTSIDE}")
     assert sListing.strip() == "", (dictOutcomes, sListing)
     assert sum(dictOutcomes.values()) == iAttempt
+
+
+def testAStdinFedProgramLeavesNoSecretInTheExecInspection(liveContainer):
+    """The token is the program's input, so the daemon's record of the
+    exec (its command line, as ``docker inspect`` shows it) never holds it.
+    """
+    container, connection = liveContainer
+    sSecret = "live-secret-SENTINEL-4471"
+    tExecResult = connection.ftRunProgramWithStdin(
+        container.id,
+        ["python3", "-c",
+         "import sys; sys.stdout.write(str(len(sys.stdin.read())))"],
+        (sSecret + "\npayload").encode("utf-8"),
+    )
+    assert tExecResult.iExitCode == 0, tExecResult.sStderr
+    assert tExecResult.sStdout == str(len(sSecret) + len("\npayload"))
+    container.reload()
+    for sExecId in container.attrs.get("ExecIDs") or []:
+        dictInspect = connection._clientDocker.api.exec_inspect(sExecId)
+        assert sSecret not in repr(dictInspect)

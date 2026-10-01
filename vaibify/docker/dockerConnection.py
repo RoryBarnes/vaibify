@@ -2501,6 +2501,23 @@ class DockerConnection:
         )
         confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
 
+    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """Run a program as the container user with ``baStdin`` as its input.
+
+        The way to hand a program a secret: the argument vector is exact
+        (no shell composes it) and the bytes travel on the exec's stdin,
+        so a credential appears in neither the exec's command line nor
+        ``docker inspect``. It is arbitrary command execution and is
+        gated as such: in an enforced lane it refuses without a live
+        carrier admission. Returns the :class:`ExecResult`.
+        """
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "ftRunProgramWithStdin",
+        )
+        return self._ftRunProgramWithStdin(
+            sContainerId, listCommand, baStdin,
+        )
+
     def _ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
         """Exec ``listCommand`` as the container user, feeding it stdin.
 

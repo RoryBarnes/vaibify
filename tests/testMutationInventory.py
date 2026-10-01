@@ -157,7 +157,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # callers.
 # 280 -> 279 (2026-10-01): the unused second setup wizard, and its one
 # unclassified build-subprocess row, was removed.
-I_UNCLASSIFIED_ROW_BUDGET = 279
+# 279 -> 277 (2026-10-01): the Overleaf CLI runs through one stdin-fed
+# call site instead of three shell-text ones, and its router delegate is
+# classified.
+I_UNCLASSIFIED_ROW_BUDGET = 277
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -381,7 +384,8 @@ I_UNCLASSIFIED_ROW_BUDGET = 279
 # 226 (2026-09-24): the Stop route's sweeps -- two by command name,
 # two by run marker -- now share ONE exec site, _fsRunProcessSweep.
 # 226 -> 225 (2026-10-01): the removed second setup wizard's build call.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
+# 225 -> 224 (2026-10-01): three Overleaf call sites became one.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
 
 
 # Every acquisition of a declared capability that still has no reviewed

@@ -160,6 +160,10 @@ DICT_PRIMITIVE_ACCESS = {
     "ftRunInContainerStreamed": S_ACCESS_ARBITRARY_COMMAND,
     "ftRunInContainerStreamedWithChunks": S_ACCESS_ARBITRARY_COMMAND,
     "ftResultExecuteCommand": S_ACCESS_ARBITRARY_COMMAND,
+    # The stdin-fed program run: an exact argument vector and the input
+    # on the exec's stdin, so a credential never rides in command text.
+    # Arbitrary command execution all the same, gated as such.
+    "ftRunProgramWithStdin": S_ACCESS_ARBITRARY_COMMAND,
     "fnWriteFile": S_ACCESS_ARCHIVE_WRITE,
     "fnWriteFileViaTar": S_ACCESS_ARCHIVE_WRITE,
     # The bulk sibling: one put_archive carrying a whole host tree into

@@ -6,6 +6,7 @@ import re
 import pytest
 from unittest.mock import MagicMock, patch
 
+from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui.syncDispatcher import (
     fnValidateServiceName,
     ftResultPushToOverleaf,
@@ -46,6 +47,8 @@ def _fMockDocker(iExitCode=0, sOutput=""):
     mockDocker.ftResultExecuteCommand.return_value = (
         iExitCode, sOutput
     )
+    mockDocker.ftRunProgramWithStdin.return_value = ExecResult(
+        iExitCode=iExitCode, sStdout=sOutput, sStderr="")
     mockDocker.fnWriteFile = MagicMock()
     mockDocker.fbaFetchFile.return_value = b"content"
     return mockDocker

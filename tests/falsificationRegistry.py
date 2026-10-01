@@ -8671,14 +8671,14 @@ def _fdictEntry(sRel):
             '"promoted")\n'
             '        processChild.stdin.write(b"GO\\n")\n'
             '        processChild.stdin.flush()\n'
-            '        processChild.stdin.close()\n'
+            '        _fnFeedStdinThenClose(processChild, baStdin)\n'
         ),
         new=(
             '        _fnInvokeLaunchPhaseCallback(fnPhaseCallback, '
             '"spawned")\n'
             '        processChild.stdin.write(b"GO\\n")\n'
             '        processChild.stdin.flush()\n'
-            '        processChild.stdin.close()\n'
+            '        _fnFeedStdinThenClose(processChild, baStdin)\n'
             '        mutationAdmission.fnPromoteJournaledHostExec(\n'
             '            dictHostExecHandle, processChild.pid, '
             'processChild.pid,\n'
@@ -24724,5 +24724,12 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptSetupWizard.js',
         old='            { "X-Session-Token": sSessionCredential });\n',
         new='            {});\n',
+    ),
+    # --- The Overleaf token reaches its program on stdin only ---
+    Falsification(
+        nodeid='tests/testOverleafTokenStaysOffTheCommandLine.py::testAPlainPushKeepsTheTokenOffTheCommandLine',
+        source='vaibify/gui/syncDispatcher.py',
+        old='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),\n        sStdin,\n',
+        new='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha)\n        + ["--token", _fsFetchOverleafToken()],\n        sStdin,\n',
     ),
 ]

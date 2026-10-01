@@ -63,8 +63,12 @@ These modules and patterns are **ready to generalize** as-is:
 ### Token + auth plumbing
 - `vaibify/reproducibility/overleafAuth.py` — `fsWriteAskpassScript`
   writes a mode-700 temp file that the git subprocess consults for
-  credentials; the token never touches argv or environment. Reuse for
-  GitHub directly. For Zenodo (REST API, not git) the askpass pattern
+  credentials; the token never touches argv or environment. The
+  container-side Overleaf programs hold the same line: the host hands
+  `overleafSync` the token as the first line of its standard input
+  (`ftRunProgramWithStdin`, an exact argument vector with no shell), so
+  it is in no exec command line, `docker inspect` output or process
+  list. Reuse for GitHub directly. For Zenodo (REST API, not git) the askpass pattern
   doesn't apply, but the mode-600 temp-file discipline does.
 - `vaibify/config/secretManager.py::fnStoreSecret / fsRetrieveSecret /
   fbSecretExists / fnDeleteSecret` — host OS keyring backend.

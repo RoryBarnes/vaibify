@@ -8,6 +8,7 @@ Covers:
 import pytest
 from unittest.mock import MagicMock, patch
 
+from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui.syncDispatcher import (
     DICT_DAG_MEDIA_TYPES,
     _flistBuildDagEdges,
@@ -25,6 +26,8 @@ def _fmockDocker(iExitCode=0, sOutput="", baContent=b"<svg/>"):
     mockDocker = MagicMock()
     mockDocker.ftResultExecuteCommand.return_value = (
         iExitCode, sOutput)
+    mockDocker.ftRunProgramWithStdin.return_value = ExecResult(
+        iExitCode=iExitCode, sStdout=sOutput, sStderr="")
     mockDocker.fbaFetchFile.return_value = baContent
     mockDocker.fnWriteFile.return_value = None
     return mockDocker
@@ -399,11 +402,15 @@ _S_OVERLEAF_PATH = "/usr/share/vaibify/overleafSync.py"
 
 
 def _fsCapturedCommand(mockDocker):
-    """Return the first command string passed to ftResultExecuteCommand."""
-    listCall = mockDocker.ftResultExecuteCommand.call_args_list
+    """Return the first Overleaf program's words, joined, as one string.
+
+    The program is run with an exact argument vector and its input on
+    stdin, so the words are asserted joined and the token separately.
+    """
+    listCall = mockDocker.ftRunProgramWithStdin.call_args_list
     assert listCall, "Expected at least one docker exec call"
-    _, sCommand = listCall[0][0]
-    return sCommand
+    _, listCommand, _ = listCall[0][0]
+    return " ".join(listCommand)
 
 
 class TestOverleafPushCliShape:
@@ -425,10 +432,12 @@ class TestOverleafPushCliShape:
         assert " push " in sCommand
         assert "projid123" in sCommand
         assert "figures" in sCommand
-        assert "/a/fig.pdf" in sCommand
-        assert "printf" in sCommand
+        assert "/a/fig.pdf" in (
+            mockDocker.ftRunProgramWithStdin.call_args[0][2].decode("utf-8"))
         assert "from vaibify" not in sCommand
-        assert "test-tok" in sCommand
+        assert "test-tok" not in sCommand
+        baStdin = mockDocker.ftRunProgramWithStdin.call_args[0][2]
+        assert baStdin.decode("utf-8").startswith("test-tok\n")
 
     def test_annotated_push_calls_cli(self):
         from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
@@ -469,7 +478,8 @@ class TestOverleafPushCliShape:
         sCommand = _fsCapturedCommand(mockDocker)
         assert _S_OVERLEAF_PATH in sCommand
         assert " pull " in sCommand
-        assert "main.tex" in sCommand
+        assert "main.tex" in (
+            mockDocker.ftRunProgramWithStdin.call_args[0][2].decode("utf-8"))
         assert "from vaibify" not in sCommand
 
     def test_validate_credentials_returns_tuple(self):
@@ -674,8 +684,9 @@ class TestPushToOverleafMirrorSha:
     def test_mirror_sha_included_in_cli(self):
         from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
         mockDocker = MagicMock()
-        mockDocker.ftResultExecuteCommand.return_value = (
-            0, "HEAD_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\nok\n",
+        mockDocker.ftRunProgramWithStdin.return_value = ExecResult(
+            iExitCode=0, sStderr="",
+            sStdout="HEAD_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\nok\n",
         )
         with patch(
             "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
@@ -685,14 +696,16 @@ class TestPushToOverleafMirrorSha:
                 mockDocker, "cid", ["/a/fig.pdf"],
                 "projid123", "figures", sMirrorSha="abc12345",
             )
-        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        sCommand = " ".join(
+            mockDocker.ftRunProgramWithStdin.call_args[0][1])
         assert "--mirror-sha" in sCommand
         assert "abc12345" in sCommand
 
     def test_no_mirror_sha_omits_flag(self):
         from vaibify.gui.syncDispatcher import ftResultPushToOverleaf
         mockDocker = MagicMock()
-        mockDocker.ftResultExecuteCommand.return_value = (0, "ok\n")
+        mockDocker.ftRunProgramWithStdin.return_value = ExecResult(
+            iExitCode=0, sStdout="ok\n", sStderr="")
         with patch(
             "vaibify.gui.syncDispatcher._fsFetchOverleafToken",
             return_value="tok",
@@ -701,7 +714,8 @@ class TestPushToOverleafMirrorSha:
                 mockDocker, "cid", ["/a/fig.pdf"],
                 "projid123", "figures",
             )
-        sCommand = mockDocker.ftResultExecuteCommand.call_args[0][1]
+        sCommand = " ".join(
+            mockDocker.ftRunProgramWithStdin.call_args[0][1])
         assert "--mirror-sha" not in sCommand
 
 

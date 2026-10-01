@@ -6426,7 +6426,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2112 after the same day's triage: staging tolerates a router
     # leg without the surface (AttributeError is "cannot stage",
     # not a crash).
-    "syncDispatcher.py": 2112,
+    # 2112 -> 2132 (2026-10-01): the Overleaf CLI is run with an exact
+    # argument vector and the token on stdin instead of composed shell text.
+    "syncDispatcher.py": 2132,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
