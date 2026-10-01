@@ -17,11 +17,11 @@ import pytest
 from vaibify.gui import agentCouncilStore
 
 
-def _dictCampaign(sCampaignId, sQuestion="a question"):
+def _dictCampaign(sCampaignId, sQuestion="a question", sState="planning"):
     """Return a minimal engine-shaped campaign record for the store."""
     return {
         "sCampaignId": sCampaignId,
-        "sState": "planning",
+        "sState": sState,
         "sQuestion": sQuestion,
         "listParticipants": [{"sParticipantId": "p1"}, {"sParticipantId": "p2"}],
         "listRounds": [],
@@ -115,7 +115,7 @@ def test_retention_evicts_the_oldest_from_memory_and_disk(tmp_path):
     dictStore = _dictStore(tmp_path, dictBounds={"iRetainedCampaignCount": 2})
     for iIndex in range(3):
         agentCouncilStore.fdictRegisterStartedCampaign(
-            dictStore, _dictCampaign(f"campaign-{iIndex}"))
+            dictStore, _dictCampaign(f"campaign-{iIndex}", sState="failed"))
     assert agentCouncilStore.fjsonGetCampaignRecord(
         dictStore, "campaign-0") is None
     assert not os.path.isdir(

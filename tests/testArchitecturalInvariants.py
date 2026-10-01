@@ -4567,7 +4567,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module already composes — same responsibility, more of it.
     # 999 -> 1017 (2026-10-01): credential redaction by span
     # (fsRedactCredentialSpans) instead of replacing the whole text.
-    "agentCouncilStore.py": 1017,
+    # 1017 -> 1071 (2026-10-01): retention deletes only settled campaigns,
+    # oldest checkpoint first, instead of the first one alphabetically.
+    "agentCouncilStore.py": 1071,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the

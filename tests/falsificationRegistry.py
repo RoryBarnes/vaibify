@@ -25245,4 +25245,18 @@ def _fdictEntry(sRel):
         old='        dictLimits, dictEgress["sNetworkName"], False,',
         new='        None, dictEgress["sNetworkName"], False,',
     ),
+    # --- Retention deletes the oldest settled campaign: ordered by
+    # last checkpoint after a reload, and never a live or accepted one ---
+    Falsification(
+        nodeid='tests/testCouncilStoreRetention.py::testAfterARestartTheOldestCheckpointIsEvictedNotTheFirstAlphabetically',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    for sCampaignId in _flistCampaignIdsOldestFirst(dictStore):\n',
+        new='    for sCampaignId in sorted(os.listdir(sRoot)):\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilStoreRetention.py::testRetentionNeverDeletesALiveOrAcceptedCampaign',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='        if _fbCampaignMayBeEvicted(dictStore, sCampaignId):\n',
+        new='        if True:\n',
+    ),
 ]
