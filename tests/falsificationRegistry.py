@@ -24559,4 +24559,12 @@ def _fdictEntry(sRel):
         old='    return hashStaleness.fbStepHashesMatchManifest(\n        dictStep, fsRepoRootOf(filesRepo), filesRepo,\n    )\n',
         new='    return True\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testAnOutputAbsentFromTheManifestIsNeverVouchedFor.py::testAnOutputTheManifestOmitsIsNeverFreshWhateverElseMatches'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    return any(sRelPath not in dictEntries for sRelPath in listRelPaths)\n',
+        new='    return False\n',
+    ),
 ]
