@@ -165,7 +165,8 @@ def test_repo_destination_beside_bind_mount_is_allowed():
     """A sibling destination that does not touch the mount is fine."""
     dictConfig = _fdictConfigWithRepos(
         [{"name": "r", "url": "https://x/r.git", "destination": "code"}],
-        [{"host": "~/vaibifyTestData", "container": "/workspace/data"}],
+        [{"host": os.path.join(os.path.expanduser("~"), "vaibifyTestData"),
+          "container": "/workspace/data"}],
     )
     assert fbValidateConfig(dictConfig) is True
 

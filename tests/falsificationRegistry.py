@@ -24732,4 +24732,23 @@ def _fdictEntry(sRel):
         old='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha),\n        sStdin,\n',
         new='            "push", sProjectId, sContainerId, sTargetDirectory, sMirrorSha)\n        + ["--token", _fsFetchOverleafToken()],\n        sStdin,\n',
     ),
+    # --- The bind-mount deny list reads the filesystem, not the spelling ---
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testADifferentlyCasedSpellingOfAProtectedDirectoryIsRefused',
+        source='vaibify/config/bindMountValidator.py',
+        old='            or _fbPathsOverlapOnDisk(sResolved, sDenied)\n',
+        new='            or False\n',
+    ),
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testTheEphemeralSecretStoreIsDeniedInEveryDirection',
+        source='vaibify/config/bindMountValidator.py',
+        old='    ".vaibify/tmp",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testBindMountDenyListReadsTheFilesystem.py::testASourceDockerWouldNotReadAsValidatedIsRefused',
+        source='vaibify/config/bindMountValidator.py',
+        old='    if os.path.isabs(sRaw):\n        return\n',
+        new='    if True:\n        return\n',
+    ),
 ]

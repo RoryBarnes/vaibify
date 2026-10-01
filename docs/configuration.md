@@ -41,6 +41,16 @@ file; the Python dataclass uses Hungarian notation internally.
 | `secrets`         | dict        | Secret references (see Security below) |
 
 ```{note}
+**A `bindMounts` host path must be absolute.** It is handed to Docker
+exactly as written, and Docker does not expand `~`, so `~/data` is
+refused with a request for the full path. Vaibify compares each host
+path with its protected locations (credential directories, the Docker
+endpoint and `~/.vaibify/tmp`) as filesystem objects, so a different
+spelling of a protected directory, such as `~/.SSH` on a case-insensitive
+volume, is refused as well.
+```
+
+```{note}
 **A user-supplied `systemPackages` list replaces the default set — it
 does not extend it.** The defaults are `gcc`, `make`, `git`, `curl`,
 `ca-certificates`, `gnupg`, `gosu`, and `time`. If you set
