@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>External-service integrations: Overleaf, GitHub, Zenodo, arXiv &mdash; Vaibify 0.0.14.dev193 documentation</title>
+  <title>External-service integrations: Overleaf, GitHub, Zenodo, arXiv &mdash; Vaibify 0.0.14.dev220 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d7697f30"></script>
+      <script src="_static/documentation_options.js?v=4f22d5df"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -67,6 +67,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#token-auth-plumbing">Token + auth plumbing</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#error-classification">Error classification</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#git-hardening-github">Git hardening (GitHub)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#verification-follows-the-push-github">Verification follows the push (GitHub)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#credential-helper-scoping">Credential helper scoping</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#path-validation-defense-in-depth">Path validation (defense in depth)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#host-container-digest-computation">Host/container digest computation</a></li>
@@ -199,8 +200,12 @@ and <code class="docutils literal notranslate"><span class="pre">overleafMirror.
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/overleafAuth.py</span></code> — <code class="docutils literal notranslate"><span class="pre">fsWriteAskpassScript</span></code>
 writes a mode-700 temp file that the git subprocess consults for
-credentials; the token never touches argv or environment. Reuse for
-GitHub directly. For Zenodo (REST API, not git) the askpass pattern
+credentials; the token never touches argv or environment. The
+container-side Overleaf programs hold the same line: the host hands
+<code class="docutils literal notranslate"><span class="pre">overleafSync</span></code> the token as the first line of its standard input
+(<code class="docutils literal notranslate"><span class="pre">ftRunProgramWithStdin</span></code>, an exact argument vector with no shell), so
+it is in no exec command line, <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code> output or process
+list. Reuse for GitHub directly. For Zenodo (REST API, not git) the askpass pattern
 doesn’t apply, but the mode-600 temp-file discipline does.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">vaibify/config/secretManager.py::fnStoreSecret</span> <span class="pre">/</span> <span class="pre">fsRetrieveSecret</span> <span class="pre">/</span> <span class="pre">fbSecretExists</span> <span class="pre">/</span> <span class="pre">fnDeleteSecret</span></code> — host OS keyring backend.
 <strong>Change one thing</strong>: the current Overleaf integration uses a single
@@ -241,6 +246,20 @@ and is imported by <code class="docutils literal notranslate"><span class="pre">
 and <code class="docutils literal notranslate"><span class="pre">gui.syncDispatcher</span></code>. <code class="docutils literal notranslate"><span class="pre">reproducibility.overleafSync</span></code> keeps a
 local copy because it ships into the container as a standalone
 script — keep the two lists in lockstep.</p>
+</section>
+<section id="verification-follows-the-push-github">
+<h3>Verification follows the push (GitHub)<a class="headerlink" href="#verification-follows-the-push-github" title="Link to this heading"></a></h3>
+<p>A GitHub verify is bound to the remote the project last pushed to. The
+push records, in the hub’s own registry
+(<code class="docutils literal notranslate"><span class="pre">registryManager.fnRecordPushedGithubRemote</span></code>), the owner, repository
+and branch it reached; a verify compares against that record and
+refuses an <code class="docutils literal notranslate"><span class="pre">origin</span></code> or a declared <code class="docutils literal notranslate"><span class="pre">dictRemotes.github</span></code> that names
+anything else. The checkout’s <code class="docutils literal notranslate"><span class="pre">origin</span></code> and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> are writable
+from inside the container, and the verify uses the researcher’s own
+token and writes the remote files’ digests where the container can read
+them, so neither may choose which repository the token is used on. A
+project that has not pushed from this hub is told to push once; it is
+not verified against a remote nobody recorded.</p>
 </section>
 <section id="credential-helper-scoping">
 <h3>Credential helper scoping<a class="headerlink" href="#credential-helper-scoping" title="Link to this heading"></a></h3>

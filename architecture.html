@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev193 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev220 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d7697f30"></script>
+      <script src="_static/documentation_options.js?v=4f22d5df"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1655,7 +1655,11 @@ gate (see <code class="docutils literal notranslate"><span class="pre">AGENTS.md
 the quiescence claim”).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">resourceMonitor.py</span></code> — container CPU and memory stats.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">figureServer.py</span></code> — small utility; see source.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">setupServer.py</span></code> — setup wizard host-side server.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">setupServer.py</span></code> — removed. The setup wizard is the single module
+<code class="docutils literal notranslate"><span class="pre">vaibify/install/setupServer.py</span></code>, which carries the same request
+guards as the dashboard (the loopback Host check, a per-browser
+credential redeemed from a one-time launch capability, and the
+security headers) and is bound to loopback alone.</p></li>
 </ul>
 </section>
 </section>

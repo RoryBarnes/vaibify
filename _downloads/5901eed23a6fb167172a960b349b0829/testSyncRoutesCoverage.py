@@ -17,6 +17,7 @@ from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 
+from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui import pipelineServer
 from tests.sessionTokenTestHelper import fsBootstrapCredential
 
@@ -89,7 +90,8 @@ class MockDockerSync:
         return ""
 
     def fnWriteFile(self, sContainerId, sPath, baContent,
-                    iMode=None, iUid=None, iGid=None):
+                    iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=(),):
         self._dictFiles[sPath] = baContent
 
     def flistGetRunningContainers(self):
@@ -101,6 +103,13 @@ class MockDockerSync:
                 "sImage": "ubuntu:24.04",
             },
         ]
+
+    def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+        """Answer a stdin-fed program through this double's command path."""
+        iExitCode, sOutput = self.ftResultExecuteCommand(
+            sContainerId, " ".join(listCommand),
+        )
+        return ExecResult(iExitCode=iExitCode, sStdout=sOutput, sStderr="")
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         if "test -d" in sCommand and ".vaibify" in sCommand:
@@ -139,12 +148,14 @@ class MockDockerSync:
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         self._dictFiles[sPath] = baContent
 
     def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         self._dictFiles[sPath] = baContent
 

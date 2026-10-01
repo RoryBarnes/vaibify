@@ -16,6 +16,7 @@ unachievable as written.
 import json
 import os
 import re
+import shlex
 import subprocess
 import time
 
@@ -54,12 +55,15 @@ def fnStartContainer(config, sDockerDir, saCommand=None):
     operations).
     """
     listCleanupFiles = []
-    saRunArgs = flistBuildRunArgs(config)
+    dictPosture = fdictResolveLaunchPosture(config.sProjectName)
+    saRunArgs = flistBuildRunArgs(config, dictPosture=dictPosture)
     listUnresolvable = flistMountSecrets(
-        config, saRunArgs, listCleanupFiles,
+        config, saRunArgs, listCleanupFiles, dictPosture,
     )
     fnAnnounceUnresolvableSecrets(config, listUnresolvable)
-    saFullCommand = _flistAssembleRunCommand(config, saRunArgs, saCommand)
+    saFullCommand = _flistAssembleRunCommand(
+        config, saRunArgs, saCommand, dictPosture=dictPosture,
+    )
     _fnRunDockerCommand(saFullCommand)
 
 
@@ -90,13 +94,15 @@ def fsStartContainerDetached(config, sDockerDir):
     start).
     """
     listCleanupFiles = []
-    saRunArgs = flistBuildRunArgs(config, bDetached=True)
+    dictPosture = fdictResolveLaunchPosture(config.sProjectName)
+    saRunArgs = flistBuildRunArgs(
+        config, bDetached=True, dictPosture=dictPosture)
     listUnresolvable = flistMountSecrets(
-        config, saRunArgs, listCleanupFiles,
+        config, saRunArgs, listCleanupFiles, dictPosture,
     )
     fnAnnounceUnresolvableSecrets(config, listUnresolvable)
     saFullCommand = _flistAssembleRunCommand(
-        config, saRunArgs, ["sleep", "infinity"],
+        config, saRunArgs, ["sleep", "infinity"], dictPosture=dictPosture,
     )
     return _fsRunDetachedCommand(saFullCommand)
 
@@ -113,15 +119,18 @@ def fsCreateContainerForReservation(
     reservation's cancel path can signal it (design §10b).
     """
     fnValidateReservationIdOrRaise(sReservationId)
-    saRunArgs = flistBuildRunArgs(config, bCreateOnly=True)
+    dictPosture = fdictResolveLaunchPosture(config.sProjectName)
+    saRunArgs = flistBuildRunArgs(
+        config, bCreateOnly=True, dictPosture=dictPosture)
     fnAnnounceUnresolvableSecrets(
-        config, flistMountSecrets(config, saRunArgs, []),
+        config, flistMountSecrets(config, saRunArgs, [], dictPosture),
     )
     saRunArgs.extend([
         "--label", f"{S_RESERVATION_LABEL_KEY}={sReservationId}",
     ])
     saFullCommand = _flistAssembleDockerCommand(
         "create", config, saRunArgs, ["sleep", "infinity"],
+        dictPosture=dictPosture,
     )
     return _fsRunKillableDockerCommand(saFullCommand, fnRegisterProcess)
 
@@ -318,16 +327,49 @@ def _fsRunDetachedCommand(saCommand):
 
 
 def _flistAssembleRunCommand(
-    config, saRunArgs, saCommand, sImageReference="",
+    config, saRunArgs, saCommand, sImageReference="", dictPosture=None,
 ):
     """Combine docker run prefix, args, image reference, and user command."""
     return _flistAssembleDockerCommand(
-        "run", config, saRunArgs, saCommand, sImageReference,
+        "run", config, saRunArgs, saCommand, sImageReference, dictPosture,
     )
+
+
+def fdictResolveLaunchPosture(sProjectName, sImageReference=""):
+    """Judge, before any container exists, how this image may run.
+
+    The guard behind the image-trust prompt: it asks the daemon what the
+    launch would run NOW (the tag may have moved) and raises
+    :mod:`vaibify.config.imageTrust`'s errors for an unanswered digest,
+    an inspect-only answer, or an image the daemon could not describe.
+    """
+    from vaibify.config import imageTrust
+    from vaibify.config.registryManager import fdictGetProject
+    sReference = sImageReference or f"{sProjectName}:latest"
+    return imageTrust.fdictResolveLaunchPosture(
+        fdictGetProject(sProjectName),
+        fdictInspectImageTag(sReference), sProjectName,
+    )
+
+
+def _flistCommandForPosture(saCommand, dictPosture):
+    """Return the command to append, as the idle entrypoint takes it.
+
+    A restricted launch replaces the image's entrypoint with a shell, so
+    the keep-alive command becomes the disposable lane's idle command and
+    any other command is handed to that shell as a single ``-c`` string.
+    """
+    if not dictPosture or dictPosture["sMode"] != "restricted":
+        return saCommand
+    from vaibify.docker.disposableSpecification import LIST_IDLE_COMMAND
+    if saCommand is None or list(saCommand) == ["sleep", "infinity"]:
+        return list(LIST_IDLE_COMMAND)
+    return ["-c", " ".join(shlex.quote(sWord) for sWord in saCommand)]
 
 
 def _flistAssembleDockerCommand(
     sSubcommand, config, saRunArgs, saCommand, sImageReference="",
+    dictPosture=None,
 ):
     """Combine a docker subcommand, its args, an image, and a command.
 
@@ -340,6 +382,7 @@ def _flistAssembleDockerCommand(
     """
     sImage = sImageReference or f"{config.sProjectName}:latest"
     saFullCommand = ["docker", sSubcommand] + saRunArgs + [sImage]
+    saCommand = _flistCommandForPosture(saCommand, dictPosture)
     if saCommand is not None:
         saFullCommand.extend(saCommand)
     return saFullCommand
@@ -354,24 +397,38 @@ def fsRecreateContainerDetachedFromImage(config, sImageReference):
     difference is the whole point.
     """
     listCleanupFiles = []
-    saRunArgs = flistBuildRunArgs(config, bDetached=True)
+    dictPosture = fdictResolveLaunchPosture(
+        config.sProjectName, sImageReference)
+    saRunArgs = flistBuildRunArgs(
+        config, bDetached=True, dictPosture=dictPosture)
     listUnresolvable = flistMountSecrets(
-        config, saRunArgs, listCleanupFiles,
+        config, saRunArgs, listCleanupFiles, dictPosture,
     )
     fnAnnounceUnresolvableSecrets(config, listUnresolvable)
     return _fsRunDetachedCommand(_flistAssembleRunCommand(
         config, saRunArgs, ["sleep", "infinity"], sImageReference,
+        dictPosture,
     ))
 
 
-def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
+def flistBuildRunArgs(
+    config, bDetached=False, bCreateOnly=False, dictPosture=None,
+):
     """Build list of docker run arguments from project config.
 
     ``bCreateOnly`` builds the argument list for ``docker create``,
     which accepts no ``-d`` (there is nothing to detach from yet) and
     must not carry ``--rm``: a created-but-unstarted container that
     removed itself would defeat the whole point of recording its id.
+
+    ``dictPosture`` is the image-trust verdict
+    (:func:`fdictResolveLaunchPosture`); ``None`` means an image vaibify
+    built. A restricted posture drops the root user and the entrypoint
+    capabilities and replaces the image's entrypoint; a posture without
+    credentials leaves the credentials volume and the agent bridge off.
     """
+    bRestricted = bool(dictPosture) and dictPosture["sMode"] == "restricted"
+    bCredentials = not dictPosture or dictPosture["bWithCredentials"]
     saRunArgs = _flistBuildProcessModeArgs(bDetached, bCreateOnly)
     # --init puts Docker's tini in front of the sleep-infinity
     # keepalive as a reaping PID 1. Without it every orphaned child
@@ -383,17 +440,19 @@ def flistBuildRunArgs(config, bDetached=False, bCreateOnly=False):
     saRunArgs.append("--init")
     saRunArgs.extend(["--name", config.sProjectName])
     saRunArgs.extend(["--hostname", config.sProjectName])
-    _fnAddEntrypointUser(saRunArgs)
-    _fnAddCapabilityDrops(saRunArgs)
+    _fnAddEntrypointUser(saRunArgs, bRestricted)
+    _fnAddCapabilityDrops(saRunArgs, bRestricted)
     _fnAddCpuAllocation(config, saRunArgs)
     _fnAddMemoryAllocation(config, saRunArgs)
     _fnAddVolumeMount(config, saRunArgs)
-    _fnAddCredentialsVolume(config, saRunArgs)
+    if bCredentials:
+        _fnAddCredentialsVolume(config, saRunArgs)
     _fnAddPortForwarding(config, saRunArgs)
     _fnAddBindMounts(config, saRunArgs)
     _fnAddGpuPassthrough(config, saRunArgs)
     _fnAddAgentUpdateEnvs(config, saRunArgs)
-    _fnAddAgentHostBridge(config, saRunArgs)
+    if bCredentials:
+        _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
     saRunArgs.extend(flistConfigureX11Args())
     _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
@@ -489,8 +548,29 @@ def fdictLiveImageOriginForProject(sProjectName):
     )
 
 
+def fdictBuildImageTrustPromptForProject(sProjectName):
+    """Return the image-trust prompt for the project's image, or ``None``.
+
+    ``None`` when the daemon cannot describe ``<project>:latest``. The
+    prompt states what the daemon and the origin record say about the
+    image; see :func:`vaibify.config.imageTrust.fdictBuildTrustPrompt`.
+    """
+    from vaibify.config import imageTrust
+    from vaibify.config.registryManager import fdictGetProject
+    dictImage = fdictInspectImageTag(f"{sProjectName}:latest")
+    if dictImage is None:
+        return None
+    return imageTrust.fdictBuildTrustPrompt(
+        fdictGetProject(sProjectName), dictImage,
+        fdictLiveImageOriginForProject(sProjectName),
+    )
+
+
 def fdictInspectImageTag(sImageReference):
-    """Return ``{sId, dictLabels}`` for an image reference, or ``None``.
+    """Return the image's identity and declared startup, or ``None``.
+
+    The dict holds ``sId``, ``dictLabels``, ``iSizeBytes``, ``sUser`` and
+    ``listEntrypoint`` -- the facts the image-trust prompt shows.
 
     Asked of the daemon through the lifecycle gateway's own probe, so
     the launch guard judges the tag the daemon holds NOW rather than
@@ -500,19 +580,31 @@ def fdictInspectImageTag(sImageReference):
     """
     bAnswered, sOutput = _ftRunProbeCommand([
         "docker", "image", "inspect", "--format",
-        "{{.Id}}\t{{json .Config.Labels}}", sImageReference,
+        "{{.Id}}\t{{json .Config.Labels}}\t{{.Size}}\t"
+        "{{json .Config.User}}\t{{json .Config.Entrypoint}}",
+        sImageReference,
     ])
     if not bAnswered or not sOutput.strip():
         return None
-    sId, _sTab, sLabelsJson = sOutput.strip().partition("\t")
-    try:
-        dictLabels = json.loads(sLabelsJson) if sLabelsJson else {}
-    except ValueError:
-        dictLabels = {}
+    listFields = sOutput.strip().split("\t") + [""] * 4
+    dictLabels = _fjsonParseOrDefault(listFields[1], {})
+    listEntrypoint = _fjsonParseOrDefault(listFields[4], [])
     return {
-        "sId": sId.strip(),
+        "sId": listFields[0].strip(),
         "dictLabels": dict(dictLabels) if isinstance(dictLabels, dict) else {},
+        "iSizeBytes": int(listFields[2]) if listFields[2].isdigit() else 0,
+        "sUser": str(_fjsonParseOrDefault(listFields[3], "") or ""),
+        "listEntrypoint": (
+            list(listEntrypoint) if isinstance(listEntrypoint, list) else []),
     }
+
+
+def _fjsonParseOrDefault(sJsonText, jsonDefault):
+    """Decode one inspect field; text that is not JSON reads as the default."""
+    try:
+        return json.loads(sJsonText) if sJsonText else jsonDefault
+    except ValueError:
+        return jsonDefault
 
 
 def fsReadDaemonArchitectureQuietly():
@@ -541,7 +633,7 @@ _T_ENTRYPOINT_CAPABILITIES = (
 )
 
 
-def _fnAddCapabilityDrops(saRunArgs):
+def _fnAddCapabilityDrops(saRunArgs, bRestricted=False):
     """Drop Linux capabilities to the minimum the entrypoint requires.
 
     The entrypoint's root phase writes to system paths (``/etc/gitconfig``,
@@ -559,19 +651,35 @@ def _fnAddCapabilityDrops(saRunArgs):
     feature's own ``--cap-add`` argument.
     """
     saRunArgs.extend(["--cap-drop", "ALL"])
-    for sCapability in _T_ENTRYPOINT_CAPABILITIES:
-        saRunArgs.extend(["--cap-add", sCapability])
+    if not bRestricted:
+        for sCapability in _T_ENTRYPOINT_CAPABILITIES:
+            saRunArgs.extend(["--cap-add", sCapability])
     saRunArgs.extend(["--security-opt", "no-new-privileges"])
 
 
-def _fnAddEntrypointUser(saRunArgs):
+def _fnAddEntrypointUser(saRunArgs, bRestricted=False):
     """Force the entrypoint root phase to run as root.
+
+    A restricted launch (see :mod:`vaibify.config.imageTrust`) is the
+    opposite: no root phase at all. It runs as the unprivileged user the
+    disposable lane uses and swaps the image's entrypoint for the idle
+    shell, because a third-party image does not contain vaibify's.
 
     The Dockerfile pins ``USER ${CONTAINER_USER}`` so every ``docker exec``
     issued by the GUI/CLI lands unprivileged. The entrypoint's root phase
     writes to system paths and then re-invokes itself as the container user
     via ``exec gosu``; ``--user 0`` restores root for that initial phase.
     """
+    if bRestricted:
+        from vaibify.docker.disposableSpecification import (
+            LIST_IDLE_ENTRYPOINT,
+            S_DISPOSABLE_CONTAINER_USER,
+        )
+        saRunArgs.extend([
+            "--user", S_DISPOSABLE_CONTAINER_USER,
+            "--entrypoint", LIST_IDLE_ENTRYPOINT[0],
+        ])
+        return
     saRunArgs.extend(["--user", "0"])
 
 
@@ -765,8 +873,12 @@ def _fbAgentBridgeRequired(config):
     )
 
 
-def flistMountSecrets(config, saRunArgs, listCleanupFiles):
+def flistMountSecrets(config, saRunArgs, listCleanupFiles, dictPosture=None):
     """Mount every RESOLVABLE secret; return records for the rest.
+
+    A posture that withholds credentials mounts nothing and reports
+    nothing unresolvable: the researcher declined them for this image,
+    which is not a fault to announce.
 
     A secret this host cannot answer for no longer stops the container
     (ruled 2026-09-05). The Features page has always promised that a
@@ -785,6 +897,8 @@ def flistMountSecrets(config, saRunArgs, listCleanupFiles):
     The probe materializes nothing, so a secret is never written to
     disk merely to discover that it exists.
     """
+    if dictPosture and not dictPosture["bWithCredentials"]:
+        return []
     from vaibify.config.secretAvailability import (
         flistFindUnresolvableSecrets,
     )

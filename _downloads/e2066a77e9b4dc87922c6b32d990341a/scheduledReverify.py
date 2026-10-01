@@ -173,6 +173,64 @@ def _fdictDeriveGithubConfig(filesRepo):
     return {"sOwner": sOwner, "sRepo": sRepo}
 
 
+# The transient key under which the hub attaches, to a workflow it just
+# loaded, the GitHub remotes the project's pushes reached, by repository
+# path. The record is host-held (``registryManager``); the key is never
+# persisted. A
+# workflow carrying the key is VERIFIED AGAINST that record; one built
+# without it (a library caller, a unit fixture) has no hub to ask and is
+# compared as declared.
+S_HOST_GITHUB_BINDING_KEY = "_dictHostGithubBinding"
+
+S_GITHUB_NOT_BOUND = (
+    "This project has not pushed to GitHub from this hub, so there is no "
+    "recorded remote to verify against. Push once from the Repos or Sync "
+    "panel; verification then compares your files to that remote."
+)
+
+
+def _fnRequireGithubConfigBoundToThePush(dictWorkflow, dictConfig):
+    """Refuse a GitHub verify whose remote is not the one last pushed to.
+
+    The owner, repository and branch a verify would query come from
+    files the container can write (the checkout's ``origin``, a declared
+    ``dictRemotes.github``), and the query is made with the
+    researcher's own token. Binding it to the remote the push reached,
+    recorded by the hub where the container cannot write, stops those
+    files from steering the token at any repository the researcher can
+    read.
+    """
+    if S_HOST_GITHUB_BINDING_KEY not in dictWorkflow:
+        return
+    dictBound = (dictWorkflow[S_HOST_GITHUB_BINDING_KEY] or {}).get(
+        dictWorkflow.get("sProjectRepoPath") or "") or {}
+    if not dictBound.get("sOwner"):
+        raise ReverifyConfigError(S_GITHUB_NOT_BOUND)
+    for sField in ("sOwner", "sRepo"):
+        if (dictConfig.get(sField) or "").lower() != (
+                dictBound.get(sField) or "").lower():
+            raise ReverifyConfigError(_fsDescribeBindingMismatch(dictBound))
+    sBranch = dictBound.get("sBranch") or ""
+    if dictConfig.get("sBranch") and sBranch and (
+            dictConfig["sBranch"] != sBranch):
+        raise ReverifyConfigError(_fsDescribeBindingMismatch(dictBound))
+    if sBranch:
+        dictConfig["sBranch"] = sBranch
+
+
+def _fsDescribeBindingMismatch(dictBound):
+    """Name the remote the project is bound to and how to move it."""
+    return (
+        "The GitHub remote this project would verify against is not the "
+        f"one it last pushed to ({dictBound.get('sOwner')}/"
+        f"{dictBound.get('sRepo')}"
+        + (f", branch {dictBound['sBranch']}" if dictBound.get("sBranch")
+           else "")
+        + "). Push to the remote you intend; verification then follows "
+        "that push."
+    )
+
+
 S_GITHUB_NOT_CONFIGURED = (
     "This project has no GitHub remote to verify against. Open the "
     "Repos panel, connect the project repository to GitHub, and push "
@@ -220,6 +278,8 @@ def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
         dictConfig.update(_fdictDeriveGithubConfig(filesRepo))
     if not dictConfig:
         raise ReverifyConfigError(_fsDescribeMissingRemote(sService))
+    if sService == "github":
+        _fnRequireGithubConfigBoundToThePush(dictWorkflow, dictConfig)
     if sService == "zenodo" and not dictConfig.get("sService"):
         # The record names no instance: the project's own declaration
         # decides, exactly as the Level 2 endpoint check reads it.

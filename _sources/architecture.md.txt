@@ -1504,7 +1504,11 @@ following files control test generation:
   the quiescence claim").
 - `resourceMonitor.py` — container CPU and memory stats.
 - `figureServer.py` — small utility; see source.
-- `setupServer.py` — setup wizard host-side server.
+- `setupServer.py` — removed. The setup wizard is the single module
+  `vaibify/install/setupServer.py`, which carries the same request
+  guards as the dashboard (the loopback Host check, a per-browser
+  credential redeemed from a one-time launch capability, and the
+  security headers) and is bound to loopback alone.
 
 ## Dependency graph
 

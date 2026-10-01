@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.14.dev193 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.14.dev220 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d7697f30"></script>
+      <script src="_static/documentation_options.js?v=4f22d5df"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -314,6 +314,10 @@ can be targeted with <code class="docutils literal notranslate"><span class="pre
 <h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup</span></code><a class="headerlink" href="#vaibify-setup" title="Link to this heading"></a></h3>
 <p>Launch the interactive setup wizard in a browser (port 8051). The wizard
 walks through configuration fields and writes the result to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
+<p>The wizard listens on loopback only and signs the browser in with a
+one-time link, exactly as the dashboard does, so the printed address
+alone cannot save a configuration. If no window opens, run the command
+again.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>setup
 </pre></div>
 </div>
@@ -547,6 +551,7 @@ and cannot tell you whether that helped.</p>
 shell; <code class="docutils literal notranslate"><span class="pre">--detach</span></code> leaves it running in the background instead, which is
 what a script or a CI job needs.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--detach/-d<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<span class="w">              </span><span class="o">[</span>--image-trust<span class="w"> </span><span class="o">{</span>restricted,as-built,inspect<span class="o">}]</span><span class="w"> </span><span class="o">[</span>--with-credentials<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
@@ -568,8 +573,21 @@ what a script or a CI job needs.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
 <td><p>Target project name (optional if only one exists)</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--image-trust</span></code></p></td>
+<td><p>How an image vaibify did not build may run (see below)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code></p></td>
+<td><p>Let that image’s code read your stored credentials</p></td>
+</tr>
 </tbody>
 </table>
+<p>An image vaibify did not build (an obtained environment, or one whose
+provenance cannot be established) needs a recorded answer for its exact
+digest before a container is created from it. On a terminal, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code> shows the three options with the same text as the dashboard and
+asks; the credentials question defaults to no. Without a terminal it
+stops unless <code class="docutils literal notranslate"><span class="pre">--image-trust</span></code> is given, and <code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code> is a
+separate flag that is never implied. <code class="docutils literal notranslate"><span class="pre">inspect</span></code> creates no persistent
+container. See <a class="reference internal" href="security.html"><span class="doc">Security Model</span></a> for what each choice does.</p>
 <p>A detached container runs idle so you can <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code> into it; a
 COMMAND argument is refused with <code class="docutils literal notranslate"><span class="pre">--detach</span></code> rather than silently
 dropped.</p>

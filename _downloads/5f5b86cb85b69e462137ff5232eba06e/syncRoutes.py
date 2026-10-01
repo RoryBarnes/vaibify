@@ -54,6 +54,7 @@ from ..pipelineServer import (
     fdictCachedSourceCodeDeps,
     fdictRequireWorkflow,
     fnBumpSyncEpoch,
+    fsContainerNameForId,
     fsValidatePathWithinRoot,
 )
 from ..projectRoots import fsResolveProjectRoot
@@ -1529,6 +1530,33 @@ def _fnAssertGithubTokenBoundToRemote(
         raise HTTPException(status_code=409, detail=str(errorBinding))
 
 
+def _fdictReadReachedRemote(connectionDocker, sContainerId, sProjectRepoPath):
+    """Return the ``{sOwner, sRepo, sBranch}`` a push from this repo reaches.
+
+    Read inside the push's own worker, where the exec is admitted.
+    Empty when the remote cannot be read or parsed: nothing is recorded
+    then, and a later verify says it is not bound rather than guessing.
+    """
+    from vaibify.reproducibility.githubAuth import (
+        ftParseOwnerRepoFromRemoteUrl,
+    )
+    try:
+        sOwner, sRepo = ftParseOwnerRepoFromRemoteUrl(
+            containerGit.fsRemoteUrlInContainer(
+                connectionDocker, sContainerId, sProjectRepoPath))
+        if not sOwner or not sRepo:
+            return {}
+        return {
+            "sOwner": sOwner, "sRepo": sRepo,
+            "sBranch": containerGit.fsCurrentBranchInContainer(
+                connectionDocker, sContainerId, sProjectRepoPath),
+        }
+    except Exception as errorRead:  # noqa: BLE001 -- unbound, not failed
+        fnReRaiseControlPlaneRefusal(errorRead)
+        logger.warning("Could not read the pushed remote: %s", errorRead)
+        return {}
+
+
 _S_INDETERMINATE_PUSH_MESSAGE = (
     "The push was interrupted before its outcome could be "
     "confirmed; it may still have completed on GitHub. Use "
@@ -1676,6 +1704,24 @@ def _fdictAttachCommitStateToResult(
     if dictRemoteState is not None:
         dictResult["dictRemoteState"] = dictRemoteState
     return dictResult
+
+
+def _fnRecordPushedRemoteHostSide(
+    dictCtx, sContainerId, sWorkdir, dictReachedRemote,
+):
+    """Remember, in the hub's own registry, where this push landed.
+
+    The record a later verify is bound to. It is held outside every
+    file the container can write, because the container writes the
+    origin URL the verify would otherwise trust.
+    """
+    if not dictReachedRemote.get("sOwner"):
+        return
+    from vaibify.config import registryManager
+    registryManager.fnRecordPushedGithubRemote(
+        fsContainerNameForId(dictCtx.get("docker"), sContainerId),
+        sWorkdir, dictReachedRemote["sOwner"], dictReachedRemote["sRepo"],
+        dictReachedRemote.get("sBranch", ""))
 
 
 def _fsApplyPushBookkeeping(
@@ -1827,6 +1873,8 @@ def _fdictPushToGithubBlocking(
     return {
         "tDedupeKey": tDedupeKey,
         "bDeduped": False,
+        "dictReachedRemote": _fdictReadReachedRemote(
+            dictCtx["docker"], sContainerId, sWorkdir),
         "dictResult": _fdictRunGithubPushBlocking(
             dictCtx, sContainerId, sWorkdir, request,
         ),
@@ -1909,6 +1957,9 @@ def _fnRegisterGithubPush(app, dictCtx):
         if dictPushed["bDeduped"]:
             return dictResult
         if dictResult.get("bSuccess"):
+            _fnRecordPushedRemoteHostSide(
+                dictCtx, sContainerId, sWorkdir,
+                dictPushed["dictReachedRemote"])
             sBookkeepingWarning = _fsApplyPushBookkeeping(
                 dictCtx, sContainerId, dictWorkflow,
                 request.listFilePaths,

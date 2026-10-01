@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev193 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev220 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=d7697f30"></script>
+      <script src="_static/documentation_options.js?v=4f22d5df"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -250,6 +250,16 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 </tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>A <code class="docutils literal notranslate"><span class="pre">bindMounts</span></code> host path must be absolute.</strong> It is handed to Docker
+exactly as written, and Docker does not expand <code class="docutils literal notranslate"><span class="pre">~</span></code>, so <code class="docutils literal notranslate"><span class="pre">~/data</span></code> is
+refused with a request for the full path. Vaibify compares each host
+path with its protected locations (credential directories, the Docker
+endpoint and <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp</span></code>) as filesystem objects, so a different
+spelling of a protected directory, such as <code class="docutils literal notranslate"><span class="pre">~/.SSH</span></code> on a case-insensitive
+volume, is refused as well.</p>
+</div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><strong>A user-supplied <code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> list replaces the default set — it

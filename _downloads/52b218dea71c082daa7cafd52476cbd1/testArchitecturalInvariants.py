@@ -1288,38 +1288,46 @@ def testNoRootUserInDispatcherCalls():
 
 
 def testFnWriteFileDefaultsToContainerUserOwnership():
-    """Backend tar writes must default to the unprivileged container user.
+    """Backend file writes are made by the unprivileged container user.
 
-    ``_finfoBuildTarEntry`` builds the ``TarInfo`` that
-    ``container.put_archive`` materialises inside the container.
-    ``tarfile.TarInfo`` natively defaults ``uid``/``gid`` to 0; if that
-    default leaks through, every file written by the host backend lands
-    root-owned and the in-container agent (no sudo by design — commit
-    426f6b7) cannot edit it. Locks the safe default in place so a
-    future refactor cannot silently regress to the tarfile default.
+    The single-file write used to hand the daemon a tarball whose entry
+    uid/gid became the file's owner; ``tarfile.TarInfo`` natively
+    defaults both to 0, so a leaked default landed every backend-written
+    file root-owned and the in-container agent (no sudo by design --
+    commit 426f6b7) could not edit it. The write now execs a fixed
+    program AS the container user, so ownership is that user's by
+    construction and no tar entry is stamped at all.
 
-    Pair with ``testContainerUserUidIsOneThousand``: that test pins the
-    Dockerfile's user UID to 1000; this test pins the dispatcher's
-    default to the same value.
+    Pair with ``testContainerUserUidIsOneThousand``, which pins the
+    Dockerfile's user UID: the tree writer and the disposable repack
+    still stamp tar entries and still default to it.
 
-    SCOPE: the DOCKER leg only, and the scope is pinned rather than
-    assumed. The uid-1000 contract exists because a tarball entry's
-    uid/gid IS the file's owner inside a container; a host-mode
-    connection (``vaibify/host/``) writes host files as the invoking
-    user, never builds tar entries, and carries its own guardrails
+    SCOPE: the DOCKER leg only. A host-mode connection (``vaibify/host/``)
+    writes host files as the invoking user and carries its own guardrails
     (``tests/testHostSubprocessConfinement.py``). The scan below pins
-    that scope structurally: every ``tarfile.TarInfo`` construction in
-    the package lives in ``vaibify/docker/dockerConnection.py``, so a
-    second tar-building write path cannot appear outside this
-    invariant's reach, and moving the builder out of the Docker leg
-    fails here instead of silently orphaning the test.
+    that no tar-building write path can appear unnoticed: every
+    ``tarfile.TarInfo`` construction in the package is listed.
     """
+    import inspect
+
     from vaibify.docker.dockerConnection import DockerConnection
-    assert DockerConnection._finfoBuildTarEntry.__module__ == (
-        "vaibify.docker.dockerConnection"
-    ), (
-        "the tar-entry builder left the Docker gateway; this invariant "
-        "is scoped to the Docker leg and must move (or split) with it"
+    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
+    assert "put_archive" not in sFunnelSource, (
+        "the single-file write went back to handing the daemon an "
+        "archive, which extracts as root and follows in-container "
+        "symlinks"
+    )
+    assert "confinedWrite.fsRenderConfinedWriteProgram" in sFunnelSource
+    assert "_ftRunProgramWithStdin" in sFunnelSource
+    sTransportSource = inspect.getsource(
+        DockerConnection._ftRunProgramWithStdin
+    )
+    assert "sUser" not in sTransportSource, (
+        "the confined write must take the exec-creation default, which "
+        "is the resolved unprivileged container user, never a chosen one"
+    )
+    assert "_fsResolveContainerUser" in inspect.getsource(
+        DockerConnection.fsExecCreate
     )
     listTarBuilders = []
     for pathFile in PACKAGE_DIR.rglob("*.py"):
@@ -1352,7 +1360,6 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     # ``_fnAssertDisposableArchiveStampsTheContainerUser`` below.
     assert sorted(listTarBuilders) == [
         "vaibify/docker/disposableSpecification.py",
-        "vaibify/docker/dockerConnection.py",
         "vaibify/gui/agentCouncilContext.py",
         "vaibify/gui/agentCouncilRunner.py",
     ], (
@@ -1364,26 +1371,6 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         f"the write through an existing builder, or extend this list "
         f"AND add the builder's own default assertion."
     )
-    infoTarDefault = DockerConnection._finfoBuildTarEntry(
-        "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
-    )
-    assert infoTarDefault.uid == 1000, (
-        f"default tar uid must be the unprivileged container user "
-        f"(1000); got {infoTarDefault.uid}. A non-1000 default lands "
-        f"backend-written files unreadable/uneditable by the "
-        f"in-container agent."
-    )
-    assert infoTarDefault.gid == 1000, (
-        f"default tar gid must be the unprivileged container group "
-        f"(1000); got {infoTarDefault.gid}."
-    )
-    infoTarOverride = DockerConnection._finfoBuildTarEntry(
-        "secret.env", iSize=0, iMode=0o600, iUid=0, iGid=0,
-    )
-    assert infoTarOverride.uid == 0 and infoTarOverride.gid == 0, (
-        "explicit iUid=0/iGid=0 must still pass through — the secret "
-        "writer relies on the override path."
-    )
     _fnAssertDisposableArchiveStampsTheContainerUser()
 
 
@@ -1393,7 +1380,7 @@ def _fnAssertDisposableArchiveStampsTheContainerUser():
     ``disposableSpecification`` repacks a whole repository archive to
     copy it into a shadow container, and that repack is a host→container
     write with exactly the ownership hazard the dispatcher has. It is a
-    separate builder rather than a caller of ``_finfoBuildTarEntry``
+    separate builder rather than a caller of a shared tar-entry builder
     because it stamps members it did not create — it rewrites the
     ownership of an archive read out of another container — so there is
     no size/mode/content triple to hand the dispatcher's builder.
@@ -3450,6 +3437,7 @@ def testProductionEntryPointsBindHostCheck():
                 node.func, "attr", "")
             if sCallee not in (
                 "fappCreateApplication", "fappCreateHubApplication",
+                "fappCreateSetupWizard",
             ):
                 continue
             listKeywords = [kw.arg for kw in node.keywords]
@@ -4268,6 +4256,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # different reasons from lifespan plumbing — and splitting THAT is
     # the conversation this entry is deferring, not avoiding.
     "serverLifespan.py": 852,
+    # NEW at 819 (2026-10-01): the credential test publishes only
+    # sanitized sentences (fsSanitizeJobDetail) and records an
+    # unexpected fault by type; one cohesive job module.
+    "agentCouncilCredentialTest.py": 819,
     # NEW at 873 (2026-09-16): the manifest-body hydration helpers
     # moved here from pipelineRoutes when the readiness snapshot seam
     # became their second caller -- an unhydrated readiness snapshot
@@ -4486,7 +4478,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1528 -> 1571 (2026-09-29): the snapshot scope travels from the start
     # request into the campaign, the capture and the staleness poll, and
     # capabilities reports readiness (contract C).
-    "routes/councilRoutes.py": 1571,
+    # 1571 -> 1574 (2026-10-01): a sealed plan that is only the redaction
+    # marker is never the implementation council's seed.
+    # 1574 -> 1580 (2026-10-01): the participant model id is validated
+    # against the shared plain-id pattern.
+    "routes/councilRoutes.py": 1580,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4567,7 +4563,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the listing can say where a plan landed instead of a researcher
     # having to catch a five-second toast. Both belong to the summary
     # this module already composes — same responsibility, more of it.
-    "agentCouncilStore.py": 999,
+    # 999 -> 1017 (2026-10-01): credential redaction by span
+    # (fsRedactCredentialSpans) instead of replacing the whole text.
+    "agentCouncilStore.py": 1017,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -5190,7 +5188,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # CONSTRUCTION, so fiProofLevel takes the fact and every caller
     # has to answer it. Two lines, one of them the import.
     # 995 -> 998 (2026-09-30): namespace from the loaded-from helper.
-    "routes/testRoutes.py": 998,
+    # 998 -> 1011 (2026-10-01): the saved test file is written through the
+    # confined write, so the route hands it its root and the denylist.
+    "routes/testRoutes.py": 1011,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5334,7 +5334,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +14 (2026-09-24): the push dedupe key carries the project and is
     # skipped when HEAD is unreadable; the DAG reads its own workflow's
     # dependency scan.
-    "routes/syncRoutes.py": 3645,
+    # 3645 -> 3696 (2026-10-01): the push reads and records, in the
+    # hub's registry, the remote it reached, which is what a later
+    # verify is bound to.
+    "routes/syncRoutes.py": 3696,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5535,7 +5538,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2878 -> 2909 (2026-09-30): fsWorkflowLoadedFromPath, the one
     # reader of the loaded-from key; the loader's refusal of command
     # lists no run executes.
-    "workflowManager.py": 2909,
+    # 2909 -> 2918 (2026-10-01): the loader calls the typed-field check
+    # (workflowFieldTypes) before and after the state merge.
+    # 2918 -> 2946 (2026-10-01): the loader attaches the hub-held record
+    # of the GitHub remote a push reached (and the save strips it).
+    "workflowManager.py": 2946,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5924,7 +5931,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-09-25): registers the Prompt Record viewer's route module.
     # 3659 -> 3660 (2026-09-29): one registration line for councilCredentialRoutes.
     # 3660 -> 3661 (2026-09-29): one registration line for councilSnapshotRoutes.
-    "pipelineServer.py": 3661,
+    # 3661 -> 3678 (2026-10-01): fdictConfinedWriteKeywords, the one place
+    # that turns the lexical write denylist into the write's own confinement.
+    "pipelineServer.py": 3678,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6311,7 +6320,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # decision behind a call hop.
     # 2187 -> 2188 (2026-09-29): the launch passes the manifest to the scope
     # note so participants learn what a tracked snapshot left out.
-    "agentCouncilController.py": 2188,
+    # 2188 -> 2197 (2026-10-01): the plan seal hashes the file as written.
+    "agentCouncilController.py": 2197,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
@@ -6350,7 +6360,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    "startReservation.py": 1069,
+    # 1069 -> 1119 (2026-10-01): the start asks how an unbuilt image may
+    # run before it reserves, and a failed restricted launch says so.
+    "startReservation.py": 1119,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6434,7 +6446,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2112 after the same day's triage: staging tolerates a router
     # leg without the surface (AttributeError is "cannot stage",
     # not a crash).
-    "syncDispatcher.py": 2112,
+    # 2112 -> 2132 (2026-10-01): the Overleaf CLI is run with an exact
+    # argument vector and the token on stdin instead of composed shell text.
+    "syncDispatcher.py": 2132,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6751,7 +6765,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2328,
+    # +1 (2026-10-01): the registry removal declares its carrier mode.
+    # 2329 -> 2332 (2026-10-01): the settings payload carries the image-trust answer.
+    "registryRoutes.py": 2332,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -6938,7 +6954,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # exclusions beside the credential consent routes.
     # 1413 -> 1419 (2026-09-30): update-step's description names the
     # fields the agent lane may write.
-    "actionCatalog.py": 1419,
+    # 1419 -> 1425 (2026-10-01): the image-trust answer route is user-only, with its reason.
+    "actionCatalog.py": 1425,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7016,7 +7033,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # from a list that could not have offered it, so the selection
     # alone cannot carry it.
     # +1 (2026-09-30): the refusal re-raise import.
-    "routes/fileRoutes.py": 841,
+    # 841 -> 853 (2026-10-01): upload and save pass the project root and
+    # denylist to the confined write and answer a refusal with 403.
+    # 853 -> 915 (2026-10-01): the capped, path-free pull and the RFC 6266
+    # download header belong beside the routes that use them.
+    "routes/fileRoutes.py": 915,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -7409,7 +7430,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # join the container-read allowlist.
     # 1060 -> 1064 (2026-09-29): the omission page joins the container-read
     # allowlist.
-    "routeScope.py": 1064,
+    # 1064 -> 1067 (2026-10-01): the registry removal moves to the
+    # container-lifecycle scope, with the reason.
+    # 1067 -> 1068 (2026-10-01): the image-trust answer route's scope.
+    "routeScope.py": 1068,
 }
 
 
