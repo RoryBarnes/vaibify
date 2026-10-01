@@ -967,28 +967,44 @@ async def testTheStartTakesTheCardinalityLockNotJustTheIndex():
     lockCardinality = sessionLifecycle.flockSessionCardinalityForAppState(
         stateApp,
     )
+    taskStart = None
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
             startReservation, "_fsExecuteReservedStart", controller.fsExecute,
         )
-        await lockCardinality.acquire()
-        taskStart = asyncio.ensure_future(startReservation.ftBeginStart(
-            stateApp, S_PROJECT_NAME, sSessionId,
-            SimpleNamespace(bNeverSleep=False), iPort=0,
-        ))
-        try:
-            await asyncio.wait_for(asyncio.shield(taskStart), 0.25)
-        except asyncio.TimeoutError:
-            pass
-        else:
-            raise AssertionError(
-                "the start completed while the hub-wide cardinality "
-                "lock was held, so it never acquired it"
-            )
-        assert S_PROJECT_NAME not in stateApp.dictContainerOwners, (
-            "the start arbitrated ownership without the cardinality lock"
+        # The image-trust question reads the daemon through a thread; it
+        # has nothing to do with the lock, and its latency would decide
+        # whether the start finishes inside the window below.
+        monkeypatch.setattr(
+            startReservation, "_fdictRefusalForUnconfirmedImageTrust",
+            lambda sName: {},
         )
-        lockCardinality.release()
-        iCode, _dictBody = await taskStart
-        assert iCode == 202
-        await _fnAwaitDurableTask(stateApp)
+        await lockCardinality.acquire()
+        try:
+            taskStart = asyncio.ensure_future(startReservation.ftBeginStart(
+                stateApp, S_PROJECT_NAME, sSessionId,
+                SimpleNamespace(bNeverSleep=False), iPort=0,
+            ))
+            try:
+                await asyncio.wait_for(asyncio.shield(taskStart), 0.25)
+            except asyncio.TimeoutError:
+                pass
+            else:
+                raise AssertionError(
+                    "the start completed while the hub-wide cardinality "
+                    "lock was held, so it never acquired it"
+                )
+            assert S_PROJECT_NAME not in stateApp.dictContainerOwners, (
+                "the start arbitrated ownership without the cardinality "
+                "lock"
+            )
+            lockCardinality.release()
+            iCode, _dictBody = await taskStart
+            assert iCode == 202
+            await _fnAwaitDurableTask(stateApp)
+        finally:
+            if lockCardinality.locked():
+                lockCardinality.release()
+            if taskStart is not None and not taskStart.done():
+                taskStart.cancel()
+                await asyncio.gather(taskStart, return_exceptions=True)
