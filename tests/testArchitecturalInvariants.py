@@ -7423,7 +7423,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # join the container-read allowlist.
     # 1060 -> 1064 (2026-09-29): the omission page joins the container-read
     # allowlist.
-    "routeScope.py": 1064,
+    # 1064 -> 1067 (2026-10-01): the registry removal moves to the
+    # container-lifecycle scope, with the reason.
+    "routeScope.py": 1067,
 }
 
 
