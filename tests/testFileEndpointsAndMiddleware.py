@@ -378,7 +378,7 @@ def test_file_pull_tilde_expansion(clientHttp):
     }
     with patch.object(
         pipelineServer, "_fsPullContainerFileToHost",
-        side_effect=lambda _conn, _cid, _src, sDest: sDest,
+        side_effect=lambda _conn, _cid, _src, sDest, _max=None: sDest,
     ):
         responseHttp = clientHttp.post(
             f"/api/files/{S_CONTAINER_ID}/pull",

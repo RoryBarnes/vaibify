@@ -753,7 +753,7 @@ def ftResultPushToGithub(
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git {sHardening} add {sQuotedPaths} && "
+        f"git {sHardening} add -- {sQuotedPaths} && "
         + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(
@@ -856,7 +856,7 @@ def ftResultAddFileToGithub(
     sHardening = _fsGithubHardeningFlags()
     sCommand = (
         f"cd {fsShellQuote(sWorkdir)} && "
-        f"git {sHardening} add {fsShellQuote(sFilePath)} && "
+        f"git {sHardening} add -- {fsShellQuote(sFilePath)} && "
         + _fsComposePublishSuffix(sHardening, sCommitMessage)
     )
     return connectionDocker.ftResultExecuteCommand(

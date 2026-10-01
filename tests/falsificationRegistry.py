@@ -6437,18 +6437,19 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/routes/fileRoutes.py',
         old=(
+            '    iWritten = 0\n'
             '    with open(sTargetPath, "wb") as fileTarget:\n'
             '        for baChunk in connectionDocker.fiterStreamFile(\n'
             '            sContainerId, sContainerPath,\n'
             '        ):\n'
-            '            fileTarget.write(baChunk)\n'
         ),
         new=(
+            '    iWritten = 0\n'
             '    iExit, sOut = connectionDocker.ftResultExecuteCommand(\n'
             '        sContainerId, "cat " + sContainerPath,\n'
             '    )\n'
             '    with open(sTargetPath, "wb") as fileTarget:\n'
-            '        fileTarget.write(sOut.encode("utf-8"))\n'
+            '        for baChunk in (sOut.encode("utf-8"),):\n'
         ),
     ),
 
@@ -24913,5 +24914,36 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routeScope.py',
         old='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_CONTAINER_LIFECYCLE,\n',
         new='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,\n',
+    ),
+    # --- Container-chosen strings at the host edge ---
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAFileNamedLikeAnOptionIsStagedAsAPath',
+        source='vaibify/gui/syncDispatcher.py',
+        old='f"git {sHardening} add -- {fsShellQuote(sFilePath)} && "',
+        new='f"git {sHardening} add {fsShellQuote(sFilePath)} && "',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAFailedPullDoesNotNameTheHostPath',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        except OSError as error:\n            raise HTTPException(\n                status_code=500,\n                detail=f"The file could not be written ({type(error).__name__}).")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testACappedPullStopsAndLeavesNoPartialFile',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='            if iMaxBytes is not None and iWritten > iMaxBytes:',
+        new='            if False:',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='            "Content-Disposition": fsBuildContentDisposition(sFilename),',
+        new='            "Content-Disposition": f\'attachment; filename="{sFilename}"\',',
+    ),
+    Falsification(
+        nodeid='tests/testFileEdgesAreSafe.py::testAQuoteInAFilenameCannotEndTheQuotedString',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old=".replace('\"', '\\\\\"')",
+        new="",
     ),
 ]

@@ -386,7 +386,8 @@ def testADownloadStreamsEveryChunkAsAnAttachment(tclientFiles):
     assert responseHttp.status_code == 200
     assert responseHttp.content == b"column,value\n1,2\n"
     assert responseHttp.headers["content-disposition"] == (
-        'attachment; filename="result.csv"'
+        'attachment; filename="result.csv"; '
+        "filename*=UTF-8''result.csv"
     )
 
 

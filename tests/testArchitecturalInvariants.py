@@ -6763,7 +6763,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal it exists to prevent. It stays in this module because
     # the busy refusal is this module's responsibility; the journal
     # itself is only read.
-    "registryRoutes.py": 2328,
+    # +1 (2026-10-01): the registry removal declares its carrier mode.
+    "registryRoutes.py": 2329,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7030,7 +7031,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-09-30): the refusal re-raise import.
     # 841 -> 853 (2026-10-01): upload and save pass the project root and
     # denylist to the confined write and answer a refusal with 403.
-    "routes/fileRoutes.py": 853,
+    # 853 -> 915 (2026-10-01): the capped, path-free pull and the RFC 6266
+    # download header belong beside the routes that use them.
+    "routes/fileRoutes.py": 915,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
