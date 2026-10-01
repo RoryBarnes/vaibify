@@ -24487,4 +24487,36 @@ def _fdictEntry(sRel):
         old='    if setAmbiguous:\n',
         new='    if False:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheMarkerNamespaceReachesPytestForALoadedWorkflow'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old='        sFullCmd, fsWorkflowSlugFromPath(\n            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),\n',
+        new='        sFullCmd, fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheRunnerExportsTheNamespaceForALoadedWorkflow'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n    if fbIsHostProject(sContainerId):\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n    if fbIsHostProject(sContainerId):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testAFreshCloneBootstrapsFromMarkersOfItsOwnWorkflow'
+        ),
+        source='vaibify/gui/stateManager.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerNamespaceFromLoadedWorkflow.py::testThePollReadsTheMarkersOfTheWorkflowItDescribes'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n',
+    ),
 ]

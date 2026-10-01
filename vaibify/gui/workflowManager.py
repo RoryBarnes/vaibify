@@ -51,6 +51,7 @@ def fdictStepIdToIndex(dictWorkflow):
 __all__ = [
     "S_LOADED_FROM_KEY",
     "fbWorkflowWasLoadedFrom",
+    "fsWorkflowLoadedFromPath",
     "fbDeclareZenodoRecord",
     "fbDeriveUnnecessaryVerification",
     "fbRemoveZenodoRecord",
@@ -133,6 +134,17 @@ __all__ = [
 # Transient: the file a cached workflow was loaded from. Stripped on
 # save; it only ever REFUSES a save, never chooses where one lands.
 S_LOADED_FROM_KEY = "_sLoadedFromPath"
+
+
+def fsWorkflowLoadedFromPath(dictWorkflow):
+    """Return the file this workflow was loaded from, or "" when unknown.
+
+    The one reader of ``S_LOADED_FROM_KEY``. Anything that needs the
+    workflow's own file -- the marker namespace its tests write under,
+    above all -- asks here; the loader never set a ``"sPath"`` key, and
+    six readers once computed an empty namespace from it.
+    """
+    return str((dictWorkflow or {}).get(S_LOADED_FROM_KEY) or "")
 
 
 def fbWorkflowWasLoadedFrom(dictWorkflow, sWorkflowPath):

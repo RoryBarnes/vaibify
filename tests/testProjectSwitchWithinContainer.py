@@ -570,8 +570,12 @@ async def testThePollNamesItsProjectAndTheOtherRun():
     """
     import contextlib
     from tests.testRunStateWireCarriesStepResults import _T_EMPTY_POLL_HELPERS
+    # The loaded workflow names its marker namespace, so the poll reads
+    # markers for real; a project with none answers FileNotFoundError.
+    mockDocker = MagicMock()
+    mockDocker.fbaFetchFile.side_effect = FileNotFoundError
     dictCtx = {
-        "docker": MagicMock(),
+        "docker": mockDocker,
         "save": MagicMock(),
         "paths": {S_RESOURCE_ID: S_WORKFLOW_OPENED},
         "pipelineTasks": _fdictTasksRunning(_fdictOpenedWorkflow()),

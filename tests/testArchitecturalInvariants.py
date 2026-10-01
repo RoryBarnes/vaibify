@@ -2741,7 +2741,6 @@ def _fnSeedHashStaleStep(tmp_path, sUnitTestState):
     os.utime(str(sLivePath), (fSharedMtime, fSharedMtime))
     os.utime(str(sBaselinePath), (fSharedMtime, fSharedMtime))
     dictWorkflow = {
-        "sPath": "/workspace/repo/.vaibify/workflows/main.json",
         "sProjectRepoPath": str(tmp_path),
         "listSteps": [{
             "sLabel": "A01",
@@ -5129,7 +5128,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # write fails, and skips a flag a retry already wrote.
     # 4054 -> 4057 (2026-09-30): the poll's attestation summary carries
     # the pinned-input counts.
-    "routes/pipelineRoutes.py": 4057,
+    # 4057 -> 4066 (2026-09-30): the poll maps markers by the step dict
+    # the fetch returns, and names its namespace from the loaded file.
+    "routes/pipelineRoutes.py": 4066,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5188,7 +5189,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-15): Level 3 is denied to a host project BY
     # CONSTRUCTION, so fiProofLevel takes the fact and every caller
     # has to answer it. Two lines, one of them the import.
-    "routes/testRoutes.py": 995,
+    # 995 -> 998 (2026-09-30): namespace from the loaded-from helper.
+    "routes/testRoutes.py": 998,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5530,7 +5532,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +23 (2026-09-24): a loaded workflow records the file it came
     # from, and the save strips it -- the load/save authority owns
     # the one transient field that says which file a workflow is.
-    "workflowManager.py": 2878,
+    # 2878 -> 2890 (2026-09-30): fsWorkflowLoadedFromPath, the one
+    # reader of the loaded-from key.
+    "workflowManager.py": 2890,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5595,7 +5599,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # list, which is where the blocked verifications were.
     # +7 (2026-09-23): the project gitignore covers the run state and
     # logs, which moved into the project from the container root.
-    "stateManager.py": 1247,
+    # 1247 -> 1248 (2026-09-30): namespace from the loaded-from helper.
+    "stateManager.py": 1248,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with

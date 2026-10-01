@@ -19,6 +19,7 @@ import subprocess
 import pytest
 from unittest.mock import MagicMock
 
+from vaibify.gui import workflowManager
 from vaibify.config import containerLock, operationJournal, registryManager
 from vaibify.docker.dockerConnection import ExecResult
 from vaibify.gui.determinismEnvironment import (
@@ -83,7 +84,8 @@ def _fdictBuildWorkflow(sProjectRepoPath):
     """Return a minimal workflow document for the injection seam."""
     return {
         "sProjectRepoPath": sProjectRepoPath,
-        "sPath": ".vaibify/projects/hostDeterminism.json",
+        workflowManager.S_LOADED_FROM_KEY: (
+            ".vaibify/projects/hostDeterminism.json"),
     }
 
 
