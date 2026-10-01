@@ -669,12 +669,31 @@ def fnRunCredentialTestJob(dictJob, dictRuntime):
             type(error).__name__, fsSanitizeJobDetail(str(error)))
         sOutcome, sCheckId, sDetail = (
             agentCouncilCredentialStore.S_OUTCOME_INCOMPLETE,
-            dictJob.get("sCurrentCheck", ""),
-            f"{type(error).__name__}: a fault in vaibify's own machinery; "
-            "its details are withheld from this record and are in the "
-            "hub log")
+            dictJob.get("sCurrentCheck", ""), _fsDescribeFault(error))
     finally:
         _fnFinishJob(dictJob, dictRuntime, sOutcome, sCheckId, sDetail)
+
+
+T_AUTHORED_REFUSAL_ERRORS = (
+    agentCouncilCredentialStore.CredentialStoreError,
+    agentCouncilCredentialStore.CredentialAdmissionRefusedError,
+)
+
+
+def _fsDescribeFault(error):
+    """Return the sentence an unexpected fault is recorded as.
+
+    A refusal vaibify's own store or admitter raised carries text
+    vaibify wrote, so it is kept (scrubbed at publication). Anything
+    else is a fault whose message may quote a staged path or a
+    credential, so only its type is recorded and the rest stays in the
+    hub log.
+    """
+    if isinstance(error, T_AUTHORED_REFUSAL_ERRORS):
+        return f"{type(error).__name__}: {error}"
+    return (
+        f"{type(error).__name__}: a fault in vaibify's own machinery; "
+        "its details are withheld from this record and are in the hub log")
 
 
 def _fnFinishJob(dictJob, dictRuntime, sOutcome, sCheckId, sDetail):

@@ -122,3 +122,23 @@ def testOrdinaryDetailTextPassesThroughUnchanged():
     assert agentCouncilCredentialTest.fsSanitizeJobDetail(sPlain) == sPlain
     assert agentCouncilCredentialTest.fsSanitizeJobDetail("") == ""
     assert agentCouncilCredentialTest.fsSanitizeJobDetail(None) == ""
+
+
+def testARefusalVaibifyAuthoredKeepsItsText(
+        sEvidencePath, pathStagingRoot, monkeypatch):
+    """The store's and the admitter's own sentences are the explanation."""
+    dictJob = fdictBeginRecordedJob(sEvidencePath)
+
+    async def fnRefuseTheTurn(dictJobArgument, dictRuntime):
+        raise agentCouncilCredentialStore.CredentialAdmissionRefusedError(
+            "claude: the credential test's turn was not admitted — "
+            "consent for this key is no longer active.")
+
+    monkeypatch.setattr(
+        agentCouncilCredentialTest, "_fnExecuteChecks", fnRefuseTheTurn)
+    agentCouncilCredentialTest.fnRunCredentialTestJob(
+        dictJob, _fdictRuntime())
+    dictRecord = agentCouncilCredentialTestRecords.fdictReadJobRecord(
+        dictJob["sJobId"])
+    assert "not admitted" in dictRecord["sDetail"]
+    assert "consent for this key is no longer active" in dictRecord["sDetail"]
