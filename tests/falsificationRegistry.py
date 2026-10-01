@@ -24868,4 +24868,11 @@ def _fdictEntry(sRel):
         old='    sDetail = fsSanitizeJobDetail(sDetail)\n    dictDetails = {',
         new='    dictDetails = {',
     ),
+    # --- A requested model id is a plain id on both request models ---
+    Falsification(
+        nodeid='tests/testModelIdsAreHeldToPlainShapes.py::testBothRequestModelsRefuseAHostileModelId',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='        """Refuse a model id that is not a plain id."""\n        return agentCouncilProviderRegistry.fsValidateModelId(sModel)\n',
+        new='        """Refuse a model id that is not a plain id."""\n        return sModel\n',
+    ),
 ]

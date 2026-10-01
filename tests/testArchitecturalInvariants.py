@@ -4476,7 +4476,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # capabilities reports readiness (contract C).
     # 1571 -> 1574 (2026-10-01): a sealed plan that is only the redaction
     # marker is never the implementation council's seed.
-    "routes/councilRoutes.py": 1574,
+    # 1574 -> 1580 (2026-10-01): the participant model id is validated
+    # against the shared plain-id pattern.
+    "routes/councilRoutes.py": 1580,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

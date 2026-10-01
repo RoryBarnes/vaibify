@@ -120,6 +120,12 @@ class CouncilParticipantRequest(BaseModel):
                 f"provider '{sProvider}' has no reviewed council adapter")
         return sProvider
 
+    @field_validator("sRequestedModel")
+    @classmethod
+    def fsValidateRequestedModel(cls, sModel):
+        """Refuse a model id that is not a plain id."""
+        return agentCouncilProviderRegistry.fsValidateModelId(sModel)
+
 
 class CouncilStartRequest(BaseModel):
     """Body for convening a planning council (section 6.3).
