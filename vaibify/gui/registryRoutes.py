@@ -663,12 +663,14 @@ def _fnRegisterAddProject(app, dictCtx):
     @app.post("/api/registry")
     async def fdictAddProject(request: AddProjectRequest):
         from vaibify.config.registryManager import (
-            fnAddProject, fdictGetProject,
+            fnAddProject, fdictGetProject, RegistryUnreadableError,
         )
         try:
             fnAddProject(request.sDirectory, sMode=request.sMode)
         except FileNotFoundError as error:
             raise HTTPException(404, str(error))
+        except RegistryUnreadableError as error:
+            raise HTTPException(409, detail={"sMessage": str(error)})
         except ValueError as error:
             # Also the unknown-mode refusal: fnAddProject validates the
             # vocabulary, so a typo in sMode is a 409 naming it rather

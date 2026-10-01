@@ -10,7 +10,9 @@ from .configLoader import fsConfigPath
 
 import os
 
-from vaibify.config.registryManager import fdictGetProject, fnAddProject
+from vaibify.config.registryManager import (
+    RegistryUnreadableError, fdictGetProject, fnAddProject,
+)
 from vaibify.gui.workflowManager import VAIBIFY_PROJECTS_DIR
 from vaibify.resources import S_TEMPLATES_TREE, fpathPackagedTree
 
@@ -252,7 +254,14 @@ def fnInitCommand(sTemplateName, sProjectName, bMinimal, bForce):
     if sTemplateName is not None:
         fnCopyTemplate(sTemplateName)
     fnWriteDefaultConfig(sName, bMinimal)
-    sOutcome = fsRegisterProject(sName)
+    try:
+        sOutcome = fsRegisterProject(sName)
+    except RegistryUnreadableError as error:
+        click.echo(
+            f"Error: '{sName}' was scaffolded here but NOT registered. "
+            f"{error}"
+        )
+        sys.exit(1)
     if sOutcome == "name-conflict":
         click.echo(
             f"Error: '{sName}' was scaffolded here, but that name is "

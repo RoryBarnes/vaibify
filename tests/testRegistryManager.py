@@ -767,3 +767,80 @@ def testContainerEntryStatusStillConsultsDocker(tmp_path, monkeypatch):
     assert listResult[0]["sStatus"] == "running"
     assert listResult[0]["bRunning"] is True
     assert listResult[0]["bImageExists"] is True
+
+
+# --- an unreadable registry is never replaced ---
+
+S_UNREADABLE_REGISTRY_TEXT = '{"listProjects": [{"sName": "kept", '
+
+
+def _fsWriteUnreadableRegistry(sText=S_UNREADABLE_REGISTRY_TEXT):
+    os.makedirs(registryManager._S_REGISTRY_DIRECTORY, exist_ok=True)
+    with open(registryManager._S_REGISTRY_PATH, "w") as fileHandle:
+        fileHandle.write(sText)
+    return registryManager._S_REGISTRY_PATH
+
+
+def _flistBackupsOf(sRegistryPath):
+    sDirectory = os.path.dirname(sRegistryPath)
+    return [
+        os.path.join(sDirectory, sName)
+        for sName in os.listdir(sDirectory)
+        if sName.startswith("registry.json.unreadable-")
+    ]
+
+
+@pytest.mark.falsification
+def testRegistrationRefusesToReplaceAnUnparseableRegistry(tmp_path):
+    """Kills: a registration over an unparseable file replacing every entry."""
+    sRegistryPath = _fsWriteUnreadableRegistry()
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "newcomer")
+    with pytest.raises(registryManager.RegistryUnreadableError) as errorRaised:
+        registryManager.fnAddProject(sProjectDir)
+    assert sRegistryPath in str(errorRaised.value)
+    with open(sRegistryPath) as fileHandle:
+        assert fileHandle.read() == S_UNREADABLE_REGISTRY_TEXT
+    listBackups = _flistBackupsOf(sRegistryPath)
+    assert len(listBackups) == 1
+    with open(listBackups[0]) as fileHandle:
+        assert fileHandle.read() == S_UNREADABLE_REGISTRY_TEXT
+
+
+@pytest.mark.falsification
+def testSavingRefusesToReplaceAnUnparseableRegistry():
+    """Kills: fnSaveRegistry overwriting a file it could not read."""
+    sRegistryPath = _fsWriteUnreadableRegistry()
+    with pytest.raises(registryManager.RegistryUnreadableError):
+        registryManager.fnSaveRegistry({"listProjects": []})
+    with open(sRegistryPath) as fileHandle:
+        assert fileHandle.read() == S_UNREADABLE_REGISTRY_TEXT
+
+
+def testRemovalRefusesToReplaceARegistryThatIsNotAnObject():
+    sRegistryPath = _fsWriteUnreadableRegistry("[1, 2, 3]")
+    with pytest.raises(registryManager.RegistryUnreadableError):
+        registryManager.fnRemoveProject("anything")
+    with open(sRegistryPath) as fileHandle:
+        assert fileHandle.read() == "[1, 2, 3]"
+
+
+def testRegistryWhoseProjectListIsNotAListIsRefused():
+    _fsWriteUnreadableRegistry('{"listProjects": "oops"}')
+    with pytest.raises(registryManager.RegistryUnreadableError):
+        registryManager.fnRemoveProject("anything")
+
+
+def testReadingAnUnparseableRegistryWritesNothing():
+    sRegistryPath = _fsWriteUnreadableRegistry()
+    assert registryManager.fdictLoadRegistry() == {"listProjects": []}
+    assert _flistBackupsOf(sRegistryPath) == []
+    with open(sRegistryPath) as fileHandle:
+        assert fileHandle.read() == S_UNREADABLE_REGISTRY_TEXT
+
+
+def testRepairedRegistryAcceptsRegistrationAgain(tmp_path):
+    _fsWriteUnreadableRegistry()
+    os.unlink(registryManager._S_REGISTRY_PATH)
+    sProjectDir = _fnWriteMinimalConfig(tmp_path, "after-repair")
+    registryManager.fnAddProject(sProjectDir)
+    assert len(registryManager.flistGetAllProjects()) == 1

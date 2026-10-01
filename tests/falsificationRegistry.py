@@ -8506,12 +8506,12 @@ def _fdictEntry(sRel):
         old=(
             '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
             '    with _ffileOpenRegistryLock():\n'
-            '        dictRegistry = fdictLoadRegistry()\n'
+            '        dictRegistry = _fdictLoadRegistryForUpdate()\n'
             '        fnMutateRegistry(dictRegistry)\n'
         ),
         new=(
             '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
-            '    dictRegistry = fdictLoadRegistry()\n'
+            '    dictRegistry = _fdictLoadRegistryForUpdate()\n'
             '    with _ffileOpenRegistryLock():\n'
             '        fnMutateRegistry(dictRegistry)\n'
         ),
@@ -25031,5 +25031,18 @@ def _fdictEntry(sRel):
         source='vaibify/docker/containerManager.py',
         old='            "--user", S_DISPOSABLE_CONTAINER_USER,\n',
         new='            "--user", "0",\n',
+    ),
+    # --- An unreadable project registry is refused, never replaced ---
+    Falsification(
+        nodeid='tests/testRegistryManager.py::testRegistrationRefusesToReplaceAnUnparseableRegistry',
+        source='vaibify/config/registryManager.py',
+        old='        dictRegistry = _fdictLoadRegistryForUpdate()\n        fnMutateRegistry(dictRegistry)',
+        new='        dictRegistry = fdictLoadRegistry()\n        fnMutateRegistry(dictRegistry)',
+    ),
+    Falsification(
+        nodeid='tests/testRegistryManager.py::testSavingRefusesToReplaceAnUnparseableRegistry',
+        source='vaibify/config/registryManager.py',
+        old='        _fdictLoadRegistryForUpdate()\n        _fnWriteRegistryAtomic(dictRegistry)',
+        new='        _fnWriteRegistryAtomic(dictRegistry)',
     ),
 ]
