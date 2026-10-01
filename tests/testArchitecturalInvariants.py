@@ -5124,7 +5124,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # be counted twice) and carries the index's chain check and
     # left-out count, so the Project block never re-derives either;
     # the supervision summary carries fbSupervisionClean's own verdict.
-    "routes/pipelineRoutes.py": 4005,
+    # +49 (2026-09-30): the supervision watchdog records a flag before
+    # the judged-once watermark moves, restores the watermark when the
+    # write fails, and skips a flag a retry already wrote.
+    "routes/pipelineRoutes.py": 4054,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7000,7 +7003,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # .vaibify DURING the conversion, i.e. after the researcher chose
     # from a list that could not have offered it, so the selection
     # alone cannot carry it.
-    "routes/fileRoutes.py": 840,
+    # +1 (2026-09-30): the refusal re-raise import.
+    "routes/fileRoutes.py": 841,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
