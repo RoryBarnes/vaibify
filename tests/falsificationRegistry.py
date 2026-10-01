@@ -24836,4 +24836,23 @@ def _fdictEntry(sRel):
         old='    if infoMember.islnk():\n        sTarget = infoMember.linkname\n',
         new='    if False:\n        sTarget = infoMember.linkname\n',
     ),
+    # --- Credential redaction removes the span and seals the bytes written ---
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testOnlyTheSpanOfAMentionedCredentialIsRemoved',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    for sPattern in LIST_CREDENTIAL_PATTERNS:\n        sText = re.sub(sPattern, S_CREDENTIAL_REDACTION_MARKER, sText)\n    return sText\n',
+        new='    if fbDetectCredentialText(sText):\n        return S_CREDENTIAL_REDACTION_MARKER\n    return sText\n',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testTheAcceptedPlanKeepsItsWordsAndTheSealNamesTheBytesWritten',
+        source='vaibify/gui/agentCouncilController.py',
+        old='    sPlanSha256 = _fsHashFileBytes(sLocalPlanPath)\n',
+        new='    sPlanSha256 = hashlib.sha256(sPlanMarkdown.encode("utf-8")).hexdigest()\n',
+    ),
+    Falsification(
+        nodeid='tests/testCredentialRedactionIsBySpan.py::testASealedPlanThatIsOnlyTheMarkerIsNeverTheSeed',
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='    if sSealedPlan.strip() and sSealedPlan.strip() != (\n            agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER):\n        return sSealedPlan\n',
+        new='    if sSealedPlan:\n        return sSealedPlan\n',
+    ),
 ]

@@ -44,6 +44,7 @@ __all__ = [
     "S_CAMPAIGN_RECORD_BASENAME",
     "S_ACCEPTED_PLAN_BASENAME",
     "S_CREDENTIAL_REDACTION_MARKER",
+    "fsRedactCredentialSpans",
     "S_REFUSAL_CREDENTIAL_REDACTION",
     "S_REFUSAL_ENTRY_EXCEEDS_BOUND",
     "S_REFUSAL_INCOMPLETE_CHANGE_MANIFEST",
@@ -88,16 +89,20 @@ LIST_CHANGE_MANIFEST_KEYS = [
 # Conservative default shapes for the injectable credential detector.
 # Phase 3 substitutes the repository's capture-time sanitizer; the
 # default errs toward refusal, which only costs a claim its confirmed
-# label — never a leaked secret.
+# label — never a leaked secret. The SAME patterns are the spans
+# redaction removes, so each one matches the whole secret rather than
+# only the text that identifies it: a private key through its END line,
+# an authorization header through the end of its line.
 LIST_CREDENTIAL_PATTERNS = [
-    r"-----BEGIN [A-Z ]*PRIVATE KEY",
+    r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY(?:-----)?"
+    r".*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)",
     r"\bAKIA[0-9A-Z]{16}\b",
     r"\bghp_[A-Za-z0-9]{20,}\b",
     r"\bgithub_pat_[A-Za-z0-9_]{20,}\b",
     r"\bsk-[A-Za-z0-9_-]{20,}\b",
     r"\bxox[a-z]-[A-Za-z0-9-]{10,}\b",
     r"\bBearer\s+[A-Za-z0-9._~+/-]{16,}",
-    r"(?i)\bAuthorization:\s*\S+",
+    r"(?i)\bAuthorization:[ \t]*\S[^\n]*",
 ]
 
 
@@ -394,11 +399,24 @@ def fsResolveDurableStoreRoot():
     return os.path.join(os.path.expanduser("~"), S_DURABLE_STORE_SUBPATH)
 
 
+def fsRedactCredentialSpans(sText):
+    """Replace each credential-shaped span of the text with the marker.
+
+    The SPAN, not the document: a plan that quotes an
+    ``Authorization:`` header keeps every other word of its reasoning.
+    Replacing the whole text on one match made a plan, a patch or a
+    field silently vanish into the marker.
+    """
+    for sPattern in LIST_CREDENTIAL_PATTERNS:
+        sText = re.sub(sPattern, S_CREDENTIAL_REDACTION_MARKER, sText)
+    return sText
+
+
 def fjsonRedactCredentialsInRecord(jsonValue):
     """Return a deep copy of the record with credential-shaped text redacted.
 
     Redaction takes precedence over provenance (design section 7.4-7.5):
-    a durable record is sanitized before it is written, so a value that
+    a durable record is sanitized before it is written, so a span that
     trips credential detection is replaced by a fixed marker rather than
     persisted. Walks mappings, sequences and strings; leaves other
     scalars untouched.
@@ -409,8 +427,8 @@ def fjsonRedactCredentialsInRecord(jsonValue):
     if isinstance(jsonValue, (list, tuple)):
         return [fjsonRedactCredentialsInRecord(jsonChild)
                 for jsonChild in jsonValue]
-    if isinstance(jsonValue, str) and fbDetectCredentialText(jsonValue):
-        return S_CREDENTIAL_REDACTION_MARKER
+    if isinstance(jsonValue, str):
+        return fsRedactCredentialSpans(jsonValue)
     return jsonValue
 
 

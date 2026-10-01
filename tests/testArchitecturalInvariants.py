@@ -4474,7 +4474,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1528 -> 1571 (2026-09-29): the snapshot scope travels from the start
     # request into the campaign, the capture and the staleness poll, and
     # capabilities reports readiness (contract C).
-    "routes/councilRoutes.py": 1571,
+    # 1571 -> 1574 (2026-10-01): a sealed plan that is only the redaction
+    # marker is never the implementation council's seed.
+    "routes/councilRoutes.py": 1574,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member
@@ -4555,7 +4557,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the listing can say where a plan landed instead of a researcher
     # having to catch a five-second toast. Both belong to the summary
     # this module already composes — same responsibility, more of it.
-    "agentCouncilStore.py": 999,
+    # 999 -> 1017 (2026-10-01): credential redaction by span
+    # (fsRedactCredentialSpans) instead of replacing the whole text.
+    "agentCouncilStore.py": 1017,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -6305,7 +6309,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # decision behind a call hop.
     # 2187 -> 2188 (2026-09-29): the launch passes the manifest to the scope
     # note so participants learn what a tracked snapshot left out.
-    "agentCouncilController.py": 2188,
+    # 2188 -> 2197 (2026-10-01): the plan seal hashes the file as written.
+    "agentCouncilController.py": 2197,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

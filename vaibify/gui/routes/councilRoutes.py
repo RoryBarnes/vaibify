@@ -910,11 +910,14 @@ def _fsLoadAcceptedPlanSeed(dictStore, sSourceCampaignId, sName,
             "accept the plan first")
     sSealedPlan = agentCouncilStore.fsReadAcceptedPlanText(
         dictStore, sSourceCampaignId)
-    if sSealedPlan:
+    if sSealedPlan.strip() and sSealedPlan.strip() != (
+            agentCouncilStore.S_CREDENTIAL_REDACTION_MARKER):
         return sSealedPlan
     # An accepted campaign whose artifact file is gone (host app-data
-    # cleaned by hand): recompose from the record — the same composer
-    # acceptance used, over the same durable record.
+    # cleaned by hand), or holds nothing but the redaction marker (an
+    # artifact written before redaction worked by span): recompose from
+    # the record — the same composer acceptance used, over the same
+    # durable record. A council is never seeded with the marker alone.
     return agentCouncilController.fsComposePlanMarkdown(
         jsonSource, jsonSource.get("dictCandidatePlan") or {})
 
