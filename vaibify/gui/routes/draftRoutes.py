@@ -21,6 +21,7 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import ffnAgentAction
 from .. import draftManager
 from ..routeContext import (
@@ -177,12 +178,11 @@ def _fnCommitDraftWrite(
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sDraftPath, baPayload,
             )
-        except PermissionError:
+        except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
             # would hide exactly what this boundary exists to surface.
-            raise
-        except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(
                 500,
                 f"Draft write failed: "

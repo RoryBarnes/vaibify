@@ -20,7 +20,10 @@ from ..routeContext import (
     fnRejectAgentTokenLane,
     fsHashContainerFileOrEmpty,
 )
-from vaibify.config.mutationAdmission import ControlPlaneRefusalError
+from vaibify.config.mutationAdmission import (
+    ControlPlaneRefusalError,
+    fnReRaiseControlPlaneRefusal,
+)
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_SEPARATE_AUTHORITY,
@@ -327,12 +330,11 @@ def _fnCommitUploadedFile(
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent,
             )
-        except PermissionError:
+        except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
             # would hide exactly what this boundary exists to surface.
-            raise
-        except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(500, str(error))
 
     commitCarrier.fdictCommitSynchronousMutation(
@@ -795,12 +797,11 @@ def _fnCommitFileWrite(
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent
             )
-        except PermissionError:
+        except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
             # would hide exactly what this boundary exists to surface.
-            raise
-        except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
             raise HTTPException(
                 500,
                 f"Write failed: "
