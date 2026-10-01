@@ -1745,6 +1745,7 @@ async def _fnRunSupervisionWatchdog(
     if bPipelineRunning:
         return
     try:
+        tPriorJudgment = _ftCaptureJudgmentState(dictWorkflow)
         bDigestRatcheted = _fbRatchetSupervisedDigest(
             dictWorkflow, filesPoll,
         )
@@ -1756,16 +1757,48 @@ async def _fnRunSupervisionWatchdog(
             if bDigestRatcheted:
                 dictCtx["save"](sContainerId, dictWorkflow)
             return
-        await asyncio.to_thread(
-            _fnAppendSupervisionFlags, dictCtx, sContainerId,
-            dictWorkflow, listUnattributed, bChainBroken,
-        )
+        try:
+            await asyncio.to_thread(
+                _fnAppendSupervisionFlags, dictCtx, sContainerId,
+                dictWorkflow, listUnattributed, bChainBroken,
+            )
+        except Exception:
+            _fnRestoreJudgmentState(dictWorkflow, tPriorJudgment)
+            raise
         dictCtx["save"](sContainerId, dictWorkflow)
     except Exception as errorCaught:  # noqa: BLE001 — poll must survive
         logger.warning(
             "Supervision watchdog failed for %s: %s",
             sContainerId, errorCaught,
         )
+
+
+_T_JUDGMENT_STATE_KEYS = ("fLastJudgedMtime", "bEventChainBroken")
+
+
+def _ftCaptureJudgmentState(dictWorkflow):
+    """Return the watermark and latch values as they stood before judging."""
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    return tuple(
+        dictSupervision.get(sKey) for sKey in _T_JUDGMENT_STATE_KEYS
+    )
+
+
+def _fnRestoreJudgmentState(dictWorkflow, tPriorJudgment):
+    """Undo the judged-once advance after a flag write failed.
+
+    A change counts as judged only once its flag is durable; restoring
+    the watermark and the chain-broken latch lets the next tick judge
+    the same change again instead of losing it.
+    """
+    dictSupervision = dictWorkflow["dictAiProvenance"]["dictSupervision"]
+    for sKey, jsonPriorValue in zip(_T_JUDGMENT_STATE_KEYS, tPriorJudgment):
+        if jsonPriorValue is None:
+            dictSupervision.pop(sKey, None)
+        else:
+            dictSupervision[sKey] = jsonPriorValue
 
 
 def _fbRatchetSupervisedDigest(dictWorkflow, filesPoll):
@@ -1909,13 +1942,21 @@ def _fbEventChainNewlyBroken(dictWorkflow, filesPoll):
 def _fnAppendSupervisionFlags(
     dictCtx, sContainerId, dictWorkflow, listUnattributed, bChainBroken,
 ):
-    """Append the permanent flags this tick discovered."""
+    """Append the permanent flags this tick discovered.
+
+    A flag written before a later write in the same tick failed is
+    remembered by kind and detail, so the retry writes it only once.
+    """
     from vaibify.gui import attributionLog
     from ..routeContext import ffilesForWorkflow
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+    dictSupervision = dictWorkflow.setdefault(
+        "dictAiProvenance", {},
+    ).setdefault("dictSupervision", {})
+    listWritten = dictSupervision.setdefault("listFlagsWrittenForInterval", [])
     if bChainBroken:
-        attributionLog.fnAppendFlag(
-            filesRepo, "attribution-log-tampered",
+        _fnAppendFlagOnce(
+            filesRepo, listWritten, "attribution-log-tampered",
             "the recorded-event chain no longer verifies",
         )
         logger.warning(
@@ -1926,19 +1967,27 @@ def _fnAppendSupervisionFlags(
         sDetail = ", ".join(
             _flistRepoRelativePaths(dictWorkflow, listUnattributed),
         )
-        attributionLog.fnAppendFlag(
-            filesRepo, "unattributed-modification", sDetail,
+        _fnAppendFlagOnce(
+            filesRepo, listWritten, "unattributed-modification", sDetail,
         )
         logger.warning(
             "SUPERVISION unattributed modification in %s: %s",
             sContainerId, sDetail,
         )
-    dictSupervision = dictWorkflow.setdefault(
-        "dictAiProvenance", {},
-    ).setdefault("dictSupervision", {})
+    dictSupervision.pop("listFlagsWrittenForInterval", None)
     dictSupervision["iUnattributedFlagCount"] = len(
         attributionLog.flistLoadFlags(filesRepo),
     )
+
+
+def _fnAppendFlagOnce(filesRepo, listWritten, sFlagKind, sDetail):
+    """Append one flag unless this interval already wrote it."""
+    from vaibify.gui import attributionLog
+    sFlagIdentity = sFlagKind + "|" + sDetail
+    if sFlagIdentity in listWritten:
+        return
+    attributionLog.fdictAppendFlag(filesRepo, sFlagKind, sDetail)
+    listWritten.append(sFlagIdentity)
 
 
 def _flistRepoRelativePaths(dictWorkflow, listAbsolutePaths):
