@@ -119,6 +119,16 @@ def fjsonCoerceFieldValue(sValue):
     return sValue
 
 
+def _fdictParseJsonFieldArgument(sArgument):
+    """Return the object a ``{...}`` argument spells, or refuse by name."""
+    try:
+        return json.loads(sArgument)
+    except ValueError as errorParse:
+        raise click.UsageError(
+            f"The argument {sArgument!r} is not valid JSON: {errorParse}"
+        )
+
+
 def ftSplitFieldArguments(tFields):
     """Split trailing CLI words into positionals and a body dict.
 
@@ -129,7 +139,7 @@ def ftSplitFieldArguments(tFields):
     dictFields = {}
     for sArgument in tFields:
         if sArgument.startswith("{"):
-            dictFields.update(json.loads(sArgument))
+            dictFields.update(_fdictParseJsonFieldArgument(sArgument))
         elif "=" in sArgument:
             sKey, sValue = sArgument.split("=", 1)
             dictFields[sKey.lstrip("-")] = fjsonCoerceFieldValue(sValue)
@@ -144,6 +154,17 @@ def fbLooksLikeStepLabel(sValue):
     return bool(re.match(r"^[AIai]\d{1,3}$", sValue or ""))
 
 
+def _fiParseStartStepNumber(sValue):
+    """Return a step number, or refuse a word that is neither number nor label."""
+    try:
+        return int(sValue)
+    except ValueError:
+        raise click.UsageError(
+            f"run-from-step takes a step label such as A09 or a step "
+            f"number, not {sValue!r}."
+        )
+
+
 def _fnPopulateStepSelectors(dictPayload, sActionName, listPositional):
     """Place bare positionals into the run action's step selectors."""
     if not listPositional:
@@ -153,7 +174,7 @@ def _fnPopulateStepSelectors(dictPayload, sActionName, listPositional):
         if fbLooksLikeStepLabel(sFirst):
             dictPayload["sStartStepLabel"] = sFirst
         else:
-            dictPayload["iStartStep"] = int(sFirst)
+            dictPayload["iStartStep"] = _fiParseStartStepNumber(sFirst)
         return
     listLabels = [s for s in listPositional if not s.lstrip("-").isdigit()]
     listIndices = [int(s) for s in listPositional if s.lstrip("-").isdigit()]

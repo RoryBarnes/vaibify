@@ -1449,8 +1449,8 @@ def _fdictHashStaleAbsPathsByStep(
 ):
     """Translate hash-stale repo-rel paths to absolute container paths.
 
-    Marker hashes are keyed by *repo-relative* paths (the conftest
-    plugin writes them via :func:`_fsRepoRelFromFile`), so we join
+    Marker hashes are keyed by *repo-relative* paths (the conftestManager
+    template's ``_fsRepoRelFromFile`` writes them), so we join
     each entry directly against the project repo root rather than
     re-joining the step directory.
     """
@@ -2046,11 +2046,11 @@ def _fdictAutoArchiveZenodoDigests(
 def _ffilesForWorkflowRepo(dictWorkflow, connectionDocker, sContainerId):
     """Return the repo-file adapter for the workflow's project repo.
 
-    ``sProjectRepoPath`` is a *container* path, so the honest adapter
-    is a ``ContainerRepoFiles`` whenever a docker connection is in
-    hand. Without one (legacy callers, unit tests on host clones) the
-    raw path string is returned and the reproducibility entry points'
-    dual-accept wraps it in a host adapter.
+    ``sProjectRepoPath`` is a *container* path, so the honest adapter is a
+    ``ContainerRepoFiles`` whenever a docker connection is in hand. Without one
+    (legacy callers, unit tests on host clones) the raw path string is returned
+    (a misnaming tracked in LIST_REVIEW_TRACKED_MISNAMINGS) and the
+    reproducibility entry points' dual-accept wraps it in a host adapter.
     """
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     from vaibify.config.connectionAvailability import (

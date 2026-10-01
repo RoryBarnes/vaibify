@@ -60,7 +60,7 @@ __all__ = [
 
 
 # The top-level project.json keys a push or archive writes. The four
-# sZenodo* keys are the publish record `_fnPersistZenodoPublishRecord`
+# sZenodo* keys are the publish record `fnRecordZenodoPublish`
 # stamps after every successful archive; dictSyncStatus carries the
 # per-file last-pushed digests, endpoints, timestamps, and tracking
 # flags (the flags ride along on purpose: they live inside the same
@@ -83,7 +83,7 @@ T_BOOKKEEPING_TOP_KEYS = (
 # service. Everything else in a dictRemotes entry is a researcher
 # declaration and stays in the definition — most importantly
 # ``zenodo.listRecords``, the declared additional records. The zenodo
-# identity trio is produced: `_fnPersistZenodoPublishRecord` advances
+# identity trio is produced: `fnRecordZenodoPublish` advances
 # all three on every publish ("a publish is new ground truth").
 DICT_REMOTE_PRODUCED_FIELDS = {
     "github": ("sCommittedSha",),
