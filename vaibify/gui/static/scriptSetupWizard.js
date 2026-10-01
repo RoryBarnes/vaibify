@@ -466,9 +466,7 @@ var VaibifySetup = (function () {
     /* --- Utilities --- */
 
     function fnEscapeHtml(sText) {
-        var el = document.createElement("span");
-        el.textContent = sText;
-        return el.innerHTML;
+        return VaibifyUtilities.fnEscapeHtml(sText);
     }
 
     return {

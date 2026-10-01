@@ -24751,4 +24751,26 @@ def _fdictEntry(sRel):
         old='    if os.path.isabs(sRaw):\n        return\n',
         new='    if True:\n        return\n',
     ),
+    # --- One quote-safe escaper in the frontend ---
+    Falsification(
+        nodeid='tests/browser/testCouncilGroupNameCannotInjectMarkup.py::testAHostileDirectoryNameStaysTextInTheOmissionList',
+        source='vaibify/gui/static/scriptCouncilSnapshotScope.js',
+        old='        return VaibifyUtilities.fnEscapeHtml(sText);\n',
+        new=(
+            '        var elDiv = document.createElement("div");\n'
+            '        elDiv.textContent = sText === undefined || sText === null\n'
+            '            ? "" : String(sText);\n'
+            '        return elDiv.innerHTML;\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testNoQuoteBlindEscaperInTheFrontend.py::testNoModuleEscapesWithTheTextContentInnerHtmlIdiom',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='        return VaibifyUtilities.fnEscapeHtml(sText);\n',
+        new=(
+            '        var el = document.createElement("span");\n'
+            '        el.textContent = sText;\n'
+            '        return el.innerHTML;\n'
+        ),
+    ),
 ]
