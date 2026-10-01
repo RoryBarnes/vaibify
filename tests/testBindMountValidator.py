@@ -6,6 +6,8 @@ import socket
 
 import pytest
 
+from vaibify.config import bindMountValidator
+
 from vaibify.config.bindMountValidator import (
     BindMountValidationError,
     flistConfiguredDockerEndpoints,
@@ -177,6 +179,12 @@ def test_mounting_home_itself_is_rejected(monkeypatch, tmp_path):
     """
     sHome = _ftConfigureHome(monkeypatch, tmp_path)
     (sHome / ".ssh").mkdir()
+    # The string predicate is asserted directly: the on-disk identity
+    # check rejects this mount too, so the validator's answer alone
+    # cannot show that the ancestor direction of the string check works.
+    sSsh = str(sHome / ".ssh")
+    assert bindMountValidator._fbPathsOverlap(str(sHome), sSsh) is True
+    assert bindMountValidator._fbPathsOverlap(sSsh, str(sHome)) is True
     with pytest.raises(BindMountValidationError):
         fnValidateBindMount({"host": str(sHome), "container": "/host"})
 
