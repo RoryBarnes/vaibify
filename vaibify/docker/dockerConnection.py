@@ -2348,14 +2348,7 @@ class DockerConnection:
         and refusing work because ``docker info`` hiccuped would be a
         worse answer than using the conservative bound.
         """
-        try:
-            dictInfo = self._clientDocker.info()
-        except Exception:
-            return {"iMemoryBytes": 0, "iCpuCount": 0}
-        return {
-            "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
-            "iCpuCount": int(dictInfo.get("NCPU") or 0),
-        }
+        return fdictReadDaemonCapacityFromClient(self._clientDocker)
 
     def fbaFetchDirectoryArchive(
         self, sContainerId, sDirectoryPath, iMaxBytes,
@@ -2887,6 +2880,23 @@ def _fiParseMemberCount(sOutput):
             except ValueError:
                 return -1
     return -1
+
+
+def fdictReadDaemonCapacityFromClient(dockerClient):
+    """Return ``{iMemoryBytes, iCpuCount}`` a docker-py client's daemon has.
+
+    The one reading of ``docker info``, shared by this connection and by
+    the council, whose gateway holds a bare client. Zeroes when the
+    daemon will not answer.
+    """
+    try:
+        dictInfo = dockerClient.info()
+    except Exception:
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
+    return {
+        "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
+        "iCpuCount": int(dictInfo.get("NCPU") or 0),
+    }
 
 
 def fbErrorMeansContainerGone(error):

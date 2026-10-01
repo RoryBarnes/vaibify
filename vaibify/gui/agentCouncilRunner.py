@@ -69,6 +69,7 @@ __all__ = [
     "S_OUTCOME_DESTROYED",
     "S_OUTCOME_QUARANTINED",
     "fdictBuildDefaultRunnerLimits",
+    "fdictBuildRunnerLimitsForDaemon",
     "fdictComposeRunnerCreateSpecification",
     "fbufferRepackSnapshotStamped",
     "fnSendAllBounded",
@@ -158,6 +159,18 @@ def fdictBuildDefaultRunnerLimits(dictCapacity=None):
         "iWorkingTreeBytes": dictResolved["iRunnerWorkingTreeBytes"],
         "iScratchBytes": dictResolved["iRunnerScratchBytes"],
     }
+
+
+def fdictBuildRunnerLimitsForDaemon(dockerClient):
+    """Build the runner limits THIS daemon allows, for a bare client.
+
+    A snapshot admitted against the daemon-scaled bounds must be copied
+    into a runner created against the same bounds: the floor limits
+    (a 512 MiB runner) are smaller than a snapshot a large daemon admits.
+    """
+    return fdictBuildDefaultRunnerLimits(
+        agentCouncilCapacity.fdictResolveCouncilCapacityFromClient(
+            dockerClient))
 
 
 def _fnValidateRunnerLimits(dictLimits):

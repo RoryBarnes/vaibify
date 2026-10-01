@@ -49,6 +49,7 @@ __all__ = [
     "I_CEILING_SNAPSHOT_MEMBER_BYTES",
     "I_ASSUMED_CONCURRENT_RUNNERS",
     "fdictResolveCouncilCapacity",
+    "fdictResolveCouncilCapacityFromClient",
     "fdictFloorCouncilCapacity",
     "fiReadHostMemoryBytes",
 ]
@@ -197,12 +198,32 @@ def fdictResolveCouncilCapacity(connectionDocker=None):
     That is the honest answer for a caller that has no daemon to ask,
     and it is never worse than the previous fixed constants.
     """
-    dictCapacity = fdictFloorCouncilCapacity()
-    iHostMemoryBytes = fiReadHostMemoryBytes()
     iDaemonMemoryBytes = 0
     if connectionDocker is not None:
         iDaemonMemoryBytes = connectionDocker.fdictReadDaemonCapacity()[
             "iMemoryBytes"]
+    return _fdictResolveCapacityForDaemonMemory(iDaemonMemoryBytes)
+
+
+def fdictResolveCouncilCapacityFromClient(dockerClient):
+    """Resolve the capacity from a bare docker-py client.
+
+    The council's gateway holds the client, not a ``DockerConnection``,
+    and a runner must be created with the limits its snapshot was
+    admitted against, so the runtime resolves them from the daemon it
+    is about to create the runner on.
+    """
+    from vaibify.docker.dockerConnection import (
+        fdictReadDaemonCapacityFromClient,
+    )
+    return _fdictResolveCapacityForDaemonMemory(
+        fdictReadDaemonCapacityFromClient(dockerClient)["iMemoryBytes"])
+
+
+def _fdictResolveCapacityForDaemonMemory(iDaemonMemoryBytes):
+    """Scale every bound to this host's memory and the daemon's."""
+    dictCapacity = fdictFloorCouncilCapacity()
+    iHostMemoryBytes = fiReadHostMemoryBytes()
     dictCapacity["iHostMemoryBytes"] = iHostMemoryBytes
     dictCapacity["iDaemonMemoryBytes"] = iDaemonMemoryBytes
     dictCapacity["bMeasured"] = bool(iHostMemoryBytes or iDaemonMemoryBytes)

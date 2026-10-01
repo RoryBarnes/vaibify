@@ -54,7 +54,7 @@ def _fdictBuildAndCapture(monkeypatch, dictSettings):
         lambda dictRuntime: {"dictEgress": {}})
     monkeypatch.setattr(
         agentCouncilController, "_fdictEnsureRuntimeGateway",
-        lambda dictRuntime: object())
+        lambda dictRuntime: {})
     dictRuntime = _fdictRuntimeWithSettings(dictSettings)
     dictRuntime.update({"sCampaignId": "campaign-x",
                         "sImageReference": "sha256:abc",

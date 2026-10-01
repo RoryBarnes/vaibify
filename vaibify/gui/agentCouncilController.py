@@ -285,6 +285,10 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         # this the setting is a number in a record that governs nothing
         # — the shape of bAgentSafe before it was enforced.
         fWallClockSeconds=_ffCampaignTurnWallClockSeconds(dictRuntime),
+        # The limits THIS daemon allows, because the snapshot was
+        # admitted against them: the floor limits are a 512 MiB runner,
+        # smaller than the snapshot a large daemon admits.
+        dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),
         # The SAME reason, for the other budget. This argument was
         # missing, so iMaximumOutputBytesPerTurn was exactly the number
         # in a record that governs nothing the comment above warns
@@ -310,6 +314,15 @@ def _ffCampaignTurnWallClockSeconds(dictRuntime):
         (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
         .get("iTurnWallClockSeconds")
         or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS)
+
+
+def _fdictResolveRuntimeRunnerLimits(dictRuntime):
+    """Return (resolving once) the runner limits this campaign's daemon allows."""
+    if dictRuntime.get("dictRunnerLimits") is None:
+        dictRuntime["dictRunnerLimits"] = (
+            agentCouncilRunner.fdictBuildRunnerLimitsForDaemon(
+                _fdictEnsureRuntimeGateway(dictRuntime).get("dockerCouncil")))
+    return dictRuntime["dictRunnerLimits"]
 
 
 def _fdictProvisionRunnerAccessOnce(dictRuntime, sProvider="claude"):
@@ -497,6 +510,7 @@ def _fdictExecuteBaselineEvidenceLazily(dictRuntime, dictRequest):
                 dictRuntime["sImageReference"],
                 dictRuntime["sSnapshotIdentity"],
                 dictRuntime["baSnapshotTar"],
+                dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),
                 fWallClockSeconds=_ffCampaignTurnWallClockSeconds(
                     dictRuntime)))
     return dictRuntime["fdictExecuteBaselineEvidence"](dictRequest)
@@ -532,6 +546,7 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
         "fdictExecuteBaselineEvidence": None,
         "ftStageRunnerCredential": ftStageRunnerCredential,
         "dictStageRunnerCredentials": dictStageRunnerCredentials,
+        "dictRunnerLimits": None,
         "dictRunnerAccess": None,
         "dictRunnerAccessByProvider": {},
         # True from registration until the first drive task is spawned:

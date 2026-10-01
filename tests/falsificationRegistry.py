@@ -25212,12 +25212,37 @@ def _fdictEntry(sRel):
         nodeid='tests/testCouncilBaselineOffLoop.py::testTheBaselineExecutorRunsUnderTheCampaignsTurnWallClock',
         source='vaibify/gui/agentCouncilController.py',
         old=(
-            '                dictRuntime["baSnapshotTar"],\n'
             '                fWallClockSeconds=_ffCampaignTurnWallClockSeconds(\n'
             '                    dictRuntime)))\n'
         ),
         new=(
-            '                dictRuntime["baSnapshotTar"]))\n'
+            '                ))\n'
         ),
+    ),
+    # --- A council runner is created with the limits its snapshot was
+    # admitted against, not the floor ---
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testAParticipantRunnerIsCreatedWithTheDaemonsLimits',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        # smaller than the snapshot a large daemon admits.\n'
+            '        dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),\n'
+        ),
+        new='        # smaller than the snapshot a large daemon admits.\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testTheBaselineSandboxIsCreatedWithTheDaemonsLimits',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '                dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),\n'
+            '                fWallClockSeconds='
+        ),
+        new='                fWallClockSeconds=',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testTheChairbotChatRunnerIsCreatedWithTheDaemonsLimitsAndCost',
+        source='vaibify/gui/agentCouncilChat.py',
+        old='        dictLimits, dictEgress["sNetworkName"], False,',
+        new='        None, dictEgress["sNetworkName"], False,',
     ),
 ]

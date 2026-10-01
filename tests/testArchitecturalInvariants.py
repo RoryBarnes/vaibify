@@ -6325,14 +6325,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2188 -> 2197 (2026-10-01): the plan seal hashes the file as written.
     # 2197 -> 2204 (2026-10-01): the baseline executor runs under the
     # campaign's turn wall clock, named once for both budgets.
-    "agentCouncilController.py": 2204,
+    # 2204 -> 2219 (2026-10-01): runners are created with the limits the
+    # daemon allows, resolved once per campaign runtime.
+    "agentCouncilController.py": 2219,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
     # are the same lifecycle the module already owned; the clocks
     # changed from bounding the conversation to bounding only the
     # runner's credential residency.
-    "agentCouncilChat.py": 868,
+    # 868 -> 870 (2026-10-01): the chat runner is created with the limits
+    # the daemon allows.
+    "agentCouncilChat.py": 870,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
