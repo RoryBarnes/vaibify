@@ -795,3 +795,10 @@ def test_a_stale_scope_emits_a_blocker_rather_than_a_silent_refusal(
         "Level 2 is refused on scope with nothing in the blocker list "
         f"naming GitHub, so the researcher gets no reason: {listCriteria}"
     )
+    # The predicate itself, asserted directly. The blocker list alone no
+    # longer distinguishes it: a gate that refuses with no divergence to
+    # name now gets the same stale blocker from the unexplained-refusal
+    # fallback, so a predicate that forgot the scope would go unseen.
+    dictStatus = levelGates.scheduledReverify.fdictReadCachedSyncStatus(
+        sRepo, "github")
+    assert levelGates._fbSyncCacheStale(dictStatus) is True

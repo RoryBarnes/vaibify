@@ -158,7 +158,8 @@ def test_a_stale_script_blocks_the_scalar_gate(sProjectRepo, monkeypatch):
     # the mutation that deletes this criterion SURVIVES unseen.
     from tests.levelGateStubs import fnMakeEveryLevel3ConjunctPass
     fnMakeEveryLevel3ConjunctPass(
-        monkeypatch, fbVerifyReproduceScriptCurrent=None,
+        monkeypatch, bStepScopeBlockersClear=True,
+        fbVerifyReproduceScriptCurrent=None,
     )
     assert levelGates.fbAtLeastLevel3(
         _fdictBuildWorkflow(), sProjectRepo, False,
