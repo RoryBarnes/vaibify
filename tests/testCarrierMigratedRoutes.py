@@ -52,7 +52,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from unittest.mock import patch
 
-from vaibify.gui import commitCarrier
+from vaibify.gui import commitCarrier, workflowManager
 from vaibify.reproducibility import repoFiles
 from vaibify.reproducibility.aiDeclarationStep import (
     S_AI_DECLARATION_STEP_KIND,
@@ -7966,20 +7966,25 @@ def _tclientAsgiOverAWorkflowWithRemotes():
     indistinguishable from the defect this test exists to catch.
     """
     connectionDocker = DockerDoubleServingAWorkflowWithRemotes()
+    dictPushed = {S_PROJECT_REPO: {
+        "sOwner": "someone", "sRepo": "something", "sBranch": ""}}
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda: connectionDocker,
+    ), patch.object(
+        workflowManager, "_fdictHostPushedGithubRemotes",
+        lambda connectionDocker, sContainerId: dictPushed,
     ):
         app = pipelineServer.fappCreateApplication(
             sWorkspaceRoot="/workspace", sTerminalUserArg="testuser",
         )
-    yield app, httpx.AsyncClient(
-        transport=httpx.ASGITransport(
-            app=app, raise_app_exceptions=False,
-        ),
-        base_url="http://hub",
-        headers={"X-Session-Token": fsBootstrapCredential(app)},
-    )
+        yield app, httpx.AsyncClient(
+            transport=httpx.ASGITransport(
+                app=app, raise_app_exceptions=False,
+            ),
+            base_url="http://hub",
+            headers={"X-Session-Token": fsBootstrapCredential(app)},
+        )
 
 
 @pytest.mark.falsification

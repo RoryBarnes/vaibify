@@ -24859,8 +24859,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testCredentialTestErrorsStayClean.py::testAFaultThatQuotesTheStagedPathOrTheTokenIsNotPublished',
         source='vaibify/gui/agentCouncilCredentialTest.py',
-        old='            f"{type(error).__name__}: a fault in vaibify\'s own machinery; "\n            "its details are withheld from this record and are in the "\n            "hub log")',
-        new='            f"{type(error).__name__}: {error}")',
+        old='            dictJob.get("sCurrentCheck", ""), _fsDescribeFault(error))',
+        new='            dictJob.get("sCurrentCheck", ""), f"{type(error).__name__}: {error}")',
     ),
     Falsification(
         nodeid='tests/testCredentialTestErrorsStayClean.py::testADesignedCheckFailureIsScrubbedOfPathsAndSecretShapes',
@@ -24887,5 +24887,24 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/councilRoutes.py',
         old='    except agentCouncilSnapshotScope.T_UNREADABLE_PROBE_ERRORS:\n        return\n',
         new='    except (OSError, ValueError, KeyError):\n        return\n',
+    ),
+    # --- A GitHub verify is bound to the remote the project pushed to ---
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testAnOriginTheContainerRewroteIsNotQueriedWithTheResearchersToken',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if sService == "github":\n        _fnRequireGithubConfigBoundToThePush(dictWorkflow, dictConfig)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testAProjectThatNeverPushedIsNotVerifiedAgainstGithub',
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if not dictBound.get("sOwner"):\n        raise ReverifyConfigError(S_GITHUB_NOT_BOUND)\n',
+        new='    if not dictBound.get("sOwner"):\n        return\n',
+    ),
+    Falsification(
+        nodeid='tests/testVerifyRemoteIsBoundToThePush.py::testThePushRouteRecordsTheRemoteItReachedOnlyOnSuccess',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
+        new='',
     ),
 ]

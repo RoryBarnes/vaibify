@@ -106,6 +106,19 @@ and `gui.syncDispatcher`. `reproducibility.overleafSync` keeps a
 local copy because it ships into the container as a standalone
 script — keep the two lists in lockstep.
 
+### Verification follows the push (GitHub)
+A GitHub verify is bound to the remote the project last pushed to. The
+push records, in the hub's own registry
+(`registryManager.fnRecordPushedGithubRemote`), the owner, repository
+and branch it reached; a verify compares against that record and
+refuses an `origin` or a declared `dictRemotes.github` that names
+anything else. The checkout's `origin` and `project.json` are writable
+from inside the container, and the verify uses the researcher's own
+token and writes the remote files' digests where the container can read
+them, so neither may choose which repository the token is used on. A
+project that has not pushed from this hub is told to push once; it is
+not verified against a remote nobody recorded.
+
 ### Credential helper scoping
 Never mutate the container's or host's **global** git config. Always
 use `-c credential.https://<host>/.helper=...` inline on the single

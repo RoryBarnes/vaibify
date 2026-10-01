@@ -135,6 +135,8 @@ __all__ = [
 # Transient: the file a cached workflow was loaded from. Stripped on
 # save; it only ever REFUSES a save, never chooses where one lands.
 S_LOADED_FROM_KEY = "_sLoadedFromPath"
+# Transient, never persisted: see scheduledReverify.S_HOST_GITHUB_BINDING_KEY.
+S_HOST_GITHUB_BINDING_KEY = "_dictHostGithubBinding"
 
 
 def fsWorkflowLoadedFromPath(dictWorkflow):
@@ -472,7 +474,32 @@ def fdictLoadWorkflowFromContainer(
     # from: a save still in flight when the dashboard switches projects
     # must not land in the project that is open by then.
     dictWorkflow[S_LOADED_FROM_KEY] = sWorkflowPath
+    dictWorkflow[S_HOST_GITHUB_BINDING_KEY] = _fdictHostPushedGithubRemotes(
+        connectionDocker, sContainerId)
     return dictWorkflow
+
+
+def _fdictHostPushedGithubRemotes(connectionDocker, sContainerId):
+    """Return the GitHub remotes the hub recorded for this project's pushes.
+
+    ``{repoPath: {sOwner, sRepo, sBranch}}``; empty when none was
+    recorded or the project's registry name cannot be resolved: an
+    unbound project verifies nothing against GitHub until it pushes.
+    The repository path is not final at load time (the project repo is
+    resolved after), so the whole map is attached and the verify picks
+    its repository's entry. Host projects are named by their resource
+    id; a container's registry name is the container's own.
+    """
+    from vaibify.config import registryManager
+    sName = sContainerId
+    if not fbIsHostProject(sContainerId):
+        try:
+            sName = connectionDocker.fcontainerGetById(sContainerId).name
+        except Exception:  # noqa: BLE001 -- an unresolvable name is unbound
+            return {}
+    if not isinstance(sName, str) or not sName:
+        return {}
+    return registryManager.fdictGetPushedGithubRemotes(sName)
 
 
 def fnMigrateLegacyRemotes(dictWorkflow):
@@ -1561,6 +1588,7 @@ def _fdictStripComputedFields(dictWorkflow):
     dictClean.pop("dictStateLoadNotice", None)
     dictClean.pop("_sSourceFingerprint", None)
     dictClean.pop(S_LOADED_FROM_KEY, None)
+    dictClean.pop(S_HOST_GITHUB_BINDING_KEY, None)
     dictClean.pop("listUnresolvedRemoteDataMarkers", None)
     dictClean["listSteps"] = [
         _fdictStripStepTransientKeys(dictStep)

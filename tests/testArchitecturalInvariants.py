@@ -4256,6 +4256,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # different reasons from lifespan plumbing — and splitting THAT is
     # the conversation this entry is deferring, not avoiding.
     "serverLifespan.py": 852,
+    # NEW at 819 (2026-10-01): the credential test publishes only
+    # sanitized sentences (fsSanitizeJobDetail) and records an
+    # unexpected fault by type; one cohesive job module.
+    "agentCouncilCredentialTest.py": 819,
     # NEW at 873 (2026-09-16): the manifest-body hydration helpers
     # moved here from pipelineRoutes when the readiness snapshot seam
     # became their second caller -- an unhydrated readiness snapshot
@@ -5330,7 +5334,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +14 (2026-09-24): the push dedupe key carries the project and is
     # skipped when HEAD is unreadable; the DAG reads its own workflow's
     # dependency scan.
-    "routes/syncRoutes.py": 3645,
+    # 3645 -> 3696 (2026-10-01): the push reads and records, in the
+    # hub's registry, the remote it reached, which is what a later
+    # verify is bound to.
+    "routes/syncRoutes.py": 3696,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5533,7 +5540,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # lists no run executes.
     # 2909 -> 2918 (2026-10-01): the loader calls the typed-field check
     # (workflowFieldTypes) before and after the state merge.
-    "workflowManager.py": 2918,
+    # 2918 -> 2946 (2026-10-01): the loader attaches the hub-held record
+    # of the GitHub remote a push reached (and the save strips it).
+    "workflowManager.py": 2946,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one

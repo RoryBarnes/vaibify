@@ -338,6 +338,44 @@ def fnUpdateImageSource(sName, dictUpdate):
     _fnMutateRegistryLocked(fnMergeSource)
 
 
+S_PUSHED_GITHUB_REMOTES_KEY = "dictPushedGithubRemotes"
+
+
+def fnRecordPushedGithubRemote(
+    sName, sProjectRepoPath, sOwner, sRepo, sBranch,
+):
+    """Record, HOST-side, the GitHub remote a project's push just reached.
+
+    Held in the registry the hub owns rather than in any file the
+    container can write: it is what a later verify is bound to, so a
+    remote the container names afterwards cannot widen what the
+    researcher's token is used to read. Keyed by the project repository
+    because one container can hold several.
+    """
+    def fnWriteRemote(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            return
+        dictRemotes = dict(dictEntry.get(S_PUSHED_GITHUB_REMOTES_KEY) or {})
+        dictRemotes[sProjectRepoPath] = {
+            "sOwner": sOwner, "sRepo": sRepo, "sBranch": sBranch}
+        dictEntry[S_PUSHED_GITHUB_REMOTES_KEY] = dictRemotes
+
+    _fnMutateRegistryLocked(fnWriteRemote)
+
+
+def fdictGetPushedGithubRemotes(sName):
+    """Return ``{repoPath: {sOwner, sRepo, sBranch}}`` recorded for a project.
+
+    Empty when nothing was pushed from this hub (or the project is not
+    registered). The whole map, not one repository's entry, so a caller
+    that learns its repository path later still finds its record.
+    """
+    dictEntry = fdictGetProject(sName) or {}
+    dictRemotes = dictEntry.get(S_PUSHED_GITHUB_REMOTES_KEY) or {}
+    return dict(dictRemotes) if isinstance(dictRemotes, dict) else {}
+
+
 def fnSwitchProjectToBuilding(sName):
     """Clear the image source AND the origin record in one locked mutation.
 
