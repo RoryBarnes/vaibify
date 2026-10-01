@@ -220,6 +220,13 @@ def _fdictRequireServiceConfig(dictWorkflow, sService, filesRepo=None):
         dictConfig.update(_fdictDeriveGithubConfig(filesRepo))
     if not dictConfig:
         raise ReverifyConfigError(_fsDescribeMissingRemote(sService))
+    if sService == "zenodo" and not dictConfig.get("sService"):
+        # The record names no instance: the project's own declaration
+        # decides, exactly as the Level 2 endpoint check reads it.
+        from vaibify.reproducibility.syncBookkeeping import (
+            fsResolveRecordedZenodoService,
+        )
+        dictConfig["sService"] = fsResolveRecordedZenodoService(dictWorkflow)
     return dictConfig
 
 

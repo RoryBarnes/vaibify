@@ -24583,4 +24583,12 @@ def _fdictEntry(sRel):
         old='        fnReRaiseControlPlaneRefusal(error)\n        raise RecordKindUndeterminedError(\n',
         new='        raise RecordKindUndeterminedError(\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoVerifyUsesTheRecordedService.py::testAWorkflowDeclaredForTheProductionInstanceIsVerifiedAgainstIt'
+        ),
+        source='vaibify/reproducibility/scheduledReverify.py',
+        old='    if sService == "zenodo" and not dictConfig.get("sService"):\n        # The record names no instance: the project\'s own declaration\n        # decides, exactly as the Level 2 endpoint check reads it.\n        from vaibify.reproducibility.syncBookkeeping import (\n            fsResolveRecordedZenodoService,\n        )\n        dictConfig["sService"] = fsResolveRecordedZenodoService(dictWorkflow)\n',
+        new='',
+    ),
 ]
