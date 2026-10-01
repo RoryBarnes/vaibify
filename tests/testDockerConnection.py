@@ -161,19 +161,35 @@ def test_fbaFetchFile_returns_bytes(mockGetDocker):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFile_uses_exec(mockGetDocker):
+def _fconnectionWithRecordingDaemon():
+    """A DockerConnection whose daemon records the programs it is asked to run.
+
+    Returns ``(connection, daemon)``; the daemon answers the stdin exec
+    without executing anything, so these tests inspect the REQUEST the
+    write composes. ``tests/testConfinedContainerWrite.py`` runs the
+    program for real.
+    """
+    from tests.confinedWriteHarness import ExecProgramDaemon
     mockDocker, mockClient = _fMockDockerModule()
-    mockGetDocker.return_value = mockDocker
     mockContainer = _fMockContainer()
     mockClient.containers.get.return_value = mockContainer
-    mockContainer.put_archive = MagicMock(return_value=True)
-    conn = DockerConnection()
-    conn.fnWriteFile(
-        "abc123", "/tmp/output.txt", b"data")
-    mockContainer.put_archive.assert_called_once()
-    sDirectory = mockContainer.put_archive.call_args[0][0]
-    assert sDirectory == "/tmp"
+    daemon = ExecProgramDaemon(bExecute=False)
+    mockClient.api = daemon
+    with patch(
+        "vaibify.docker.dockerConnection._fmoduleGetDocker",
+        return_value=mockDocker,
+    ):
+        return DockerConnection(), daemon, mockContainer
+
+
+def test_fnWriteFile_uses_exec():
+    conn, daemon, mockContainer = _fconnectionWithRecordingDaemon()
+    conn.fnWriteFile("abc123", "/tmp/output.txt", b"data")
+    assert len(daemon.listExecCreateKeywords) == 1
+    assert daemon.listExecCreateKeywords[0]["cmd"][:2] == ["python3", "-c"]
+    assert repr("/tmp/output.txt") in daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert daemon.listReceivedStdin == [b"data"]
+    mockContainer.put_archive.assert_not_called()
 
 
 # -----------------------------------------------------------------------
@@ -285,126 +301,82 @@ def test_resolve_user_ignores_run_user_zero_override(mockGetDocker):
 
 
 # -----------------------------------------------------------------------
-# Secret-bearing writes (audit M1: TOCTOU window between put_archive and chmod)
+# Secret-bearing writes: private from the first byte, owned by the user
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFileViaTar_stamps_mode_uid_gid(mockGetDocker):
-    """Secret-bearing writes can stamp mode/uid/gid into the tarball entry."""
-    mockDocker, mockClient = _fMockDockerModule()
-    mockGetDocker.return_value = mockDocker
-    mockContainer = _fMockContainer()
-    mockClient.containers.get.return_value = mockContainer
-    mockContainer.put_archive = MagicMock(return_value=True)
-    conn = DockerConnection()
+def test_fnWriteFileViaTar_requests_the_secret_mode():
+    """A secret-bearing write names its mode in the program it runs.
+
+    The program creates the file private, writes it, and only then
+    applies the requested mode, so there is no readable window.
+    """
+    conn, daemon, _ = _fconnectionWithRecordingDaemon()
     conn.fnWriteFileViaTar(
         "abc123", "/tmp/secret.env", b"token=abc",
         iMode=0o600, iUid=1000, iGid=1000,
     )
-    bufferTar = mockContainer.put_archive.call_args[0][1]
-    bufferTar.seek(0)
-    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
-        listMembers = tar.getmembers()
-    assert len(listMembers) == 1
-    assert listMembers[0].mode == 0o600
-    assert listMembers[0].uid == 1000
-    assert listMembers[0].gid == 1000
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert "iMode = " + repr(0o600) in sProgram
+    assert "0o600, dir_fd" in sProgram
 
 
-@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFile_default_ownership_is_container_user(mockGetDocker):
-    """Backend writes land owned by the unprivileged container user.
+def test_fnWriteFile_default_ownership_is_container_user():
+    """Backend writes are made BY the unprivileged container user.
 
-    Regression guard for the systemic root-ownership bug: when
-    ``fnWriteFile`` is called without explicit ``iUid``/``iGid``,
-    ``tarfile.TarInfo`` natively stamps uid/gid 0 and ``put_archive``
-    materialises a root-owned file inside the container. Every
-    backend-authored file (``workflow.json``, ``state.json``,
-    ``.vaibify/.gitignore``, generated tests, log files, credential
-    scratch, draft files, ...) hit this path, locking the file against
-    later in-container edits because the unprivileged user has no
-    sudo. The dispatcher now defaults the stamps to the container
-    user's UID/GID; this test pins that behaviour.
+    Regression guard for the systemic root-ownership bug: a file the
+    daemon extracts from a tarball lands root-owned unless the entry is
+    stamped, and the in-container agent (no sudo by design) cannot edit
+    it. The write now execs as the container user, so ownership is that
+    user's by construction; this pins that the exec never names root.
     """
-    mockDocker, mockClient = _fMockDockerModule()
-    mockGetDocker.return_value = mockDocker
-    mockContainer = _fMockContainer()
-    mockClient.containers.get.return_value = mockContainer
-    mockContainer.put_archive = MagicMock(return_value=True)
-    conn = DockerConnection()
+    conn, daemon, _ = _fconnectionWithRecordingDaemon()
     conn.fnWriteFile(
         "abc123",
         "/workspace/Repo/.vaibify/workflows/example.json",
         b'{"sName": "example"}',
     )
-    bufferTar = mockContainer.put_archive.call_args[0][1]
-    bufferTar.seek(0)
-    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
-        listMembers = tar.getmembers()
-    assert len(listMembers) == 1
-    assert listMembers[0].uid == 1000, (
-        f"backend write must default to uid=1000 (container user); "
-        f"got {listMembers[0].uid}. A uid=0 default leaves the file "
-        f"root-owned inside the container and the in-container agent "
-        f"cannot edit it."
-    )
-    assert listMembers[0].gid == 1000, (
-        f"backend write must default to gid=1000; got {listMembers[0].gid}."
-    )
+    sUser = daemon.listExecCreateKeywords[0]["user"]
+    assert sUser == "researcher"
+    assert sUser not in ("root", "0")
 
 
-@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFile_forwards_mode_uid_gid(mockGetDocker):
-    """``fnWriteFile`` forwards mode/uid/gid to the underlying tar write."""
-    mockDocker, mockClient = _fMockDockerModule()
-    mockGetDocker.return_value = mockDocker
-    mockContainer = _fMockContainer()
-    mockClient.containers.get.return_value = mockContainer
-    mockContainer.put_archive = MagicMock(return_value=True)
-    conn = DockerConnection()
+def test_fnWriteFile_forwards_mode_and_ignores_the_ownership_stamps():
+    """``fnWriteFile`` forwards the mode; uid/gid cannot be chosen."""
+    conn, daemon, _ = _fconnectionWithRecordingDaemon()
     conn.fnWriteFile(
         "abc123", "/tmp/x", b"data",
-        iMode=0o600, iUid=1000, iGid=1000,
+        iMode=0o600, iUid=0, iGid=0,
     )
-    bufferTar = mockContainer.put_archive.call_args[0][1]
-    bufferTar.seek(0)
-    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
-        listMembers = tar.getmembers()
-    assert listMembers[0].mode == 0o600
-    assert listMembers[0].uid == 1000
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    assert "iMode = " + repr(0o600) in sProgram
+    assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 
 
-@patch("vaibify.docker.dockerConnection._fmoduleGetDocker")
-def test_fnWriteFileViaTar_sets_mtime_to_current_time(mockGetDocker):
-    """Files written via put_archive must carry a real mtime.
+def test_fnWriteFileViaTar_gives_the_file_a_current_mtime(tmp_path):
+    """A written file carries the time it was written, not epoch zero.
 
-    tarfile.TarInfo defaults mtime to 0; callers of fnWriteFileViaTar
-    do not normally set it. Without an explicit assignment, every
-    file vaibify writes lands in the container with epoch-0 mtime,
-    which corrupts test-source-mtime lineage checks and surfaces as
-    "1970-01-01" in the dashboard.
+    tarfile's ``TarInfo`` defaulted ``mtime`` to 0 and corrupted
+    test-source-mtime lineage checks; a file created by the container
+    user is stamped by the kernel when it is written. Driven for real
+    through the program, since a mock cannot have an mtime.
     """
-    import io
-    import tarfile
+    import os
     import time
-
+    from tests.confinedWriteHarness import ExecProgramDaemon
     mockDocker, mockClient = _fMockDockerModule()
-    mockGetDocker.return_value = mockDocker
-    mockContainer = _fMockContainer()
-    mockClient.containers.get.return_value = mockContainer
-    mockContainer.put_archive = MagicMock(return_value=True)
+    mockClient.containers.get.return_value = _fMockContainer()
+    mockClient.api = ExecProgramDaemon()
+    with patch(
+        "vaibify.docker.dockerConnection._fmoduleGetDocker",
+        return_value=mockDocker,
+    ):
+        conn = DockerConnection()
+    sTarget = os.path.join(os.path.realpath(str(tmp_path)), "output.txt")
     iBefore = int(time.time())
-    conn = DockerConnection()
-    conn.fnWriteFileViaTar(
-        "abc123", "/tmp/output.txt", b"contents")
+    conn.fnWriteFileViaTar("abc123", sTarget, b"contents")
     iAfter = int(time.time())
-    bufferTar = mockContainer.put_archive.call_args[0][1]
-    bufferTar.seek(0)
-    with tarfile.open(fileobj=bufferTar, mode="r") as tar:
-        listMembers = tar.getmembers()
-    assert len(listMembers) == 1
-    assert iBefore <= listMembers[0].mtime <= iAfter
+    assert iBefore <= int(os.stat(sTarget).st_mtime) <= iAfter + 1
 
 
 # -----------------------------------------------------------------------

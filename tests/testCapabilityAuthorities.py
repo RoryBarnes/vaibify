@@ -371,6 +371,23 @@ DICT_NAMED_AUTHORITIES = {
             "the exception-type class now has one member, inside the "
             "gateway that owns the docker capability.",
         ),
+    "docker/dockerConnection.py|_ftExchangeWithExecSocket|docker-client|"
+    "docker.utils.socket.STDERR|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "The multiplexed-stream marker the confined file write uses to "
+            "split its program's output. Frame decoding only, inside the "
+            "gateway, on a socket the gateway's own exec created behind "
+            "the write admission.",
+        ),
+    "docker/dockerConnection.py|_ftExchangeWithExecSocket|docker-client|"
+    "docker.utils.socket.frames_iter|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "Reads the frames of the confined file write's exec output. "
+            "It opens nothing and starts nothing; the socket it reads was "
+            "created inside the gateway behind the write admission.",
+        ),
     "docker/dockerContext.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http", "websocket", "background"],

@@ -365,6 +365,7 @@ class HostConnection:
     def fnWriteFile(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         """Write bytes atomically; the write is the real primitive here.
 
@@ -378,8 +379,13 @@ class HostConnection:
         keeps its executable bit) and a new file lands 0644. The mode
         is applied to the temp file BEFORE the rename, so no reader
         ever sees the target with interim permissions.
+
+        ``sAuthorizedRoot``/``tForbiddenNames`` are accepted for the
+        duck type the container leg confines paths with; a host write is
+        confined by :meth:`_fsValidateHostPath` and by the route's own
+        lexical denylist, so they are not consulted here.
         """
-        del iUid, iGid
+        del iUid, iGid, sAuthorizedRoot, tForbiddenNames
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteFile",
         )
@@ -413,11 +419,14 @@ class HostConnection:
     def fnWriteFileViaTar(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         """Duck-type alias for :meth:`fnWriteFile`; no tar is involved."""
         self.fnWriteFile(
             sContainerId, sFilePath, baContent,
             iMode=iMode, iUid=iUid, iGid=iGid,
+            sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
         )
 
     def fnWriteTreeViaTar(

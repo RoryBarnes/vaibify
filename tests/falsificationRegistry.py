@@ -4051,7 +4051,7 @@ def _fdictEntry(sRel):
 
     # ORPHANED_SESSION slice 3b — the commit-guard carrier (design §8).
     # Case 16, mode (a): with the write-funnel gate removed, a dummy
-    # route's direct container write reaches put_archive unadmitted.
+    # route's direct container write reaches the daemon unadmitted.
     Falsification(
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
         source='vaibify/docker/dockerConnection.py',
@@ -24662,5 +24662,36 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/stepRoutes.py',
         old='        dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(\n            connectionDocker, sContainerId)\n',
         new='        dictStamped["sLastUserUpdate"] = __import__("time").strftime(\n            "%Y-%m-%d %H:%M:%S UTC", __import__("time").gmtime())\n',
+    ),
+    # --- The confined container write (container -> host edges) ---
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testASymlinkedParentIsRefusedAndNothingLandsOutside',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testForbiddenNamesAreRefusedByNameBeforeAnythingIsOpened',
+        source='vaibify/docker/confinedWrite.py',
+        old='    if sName in listForbiddenNames:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testDefaultModeIsReadableAndIndependentOfTheUmask',
+        source='vaibify/docker/confinedWrite.py',
+        old='    os.fchmod(iFile, iMode)\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testAComponentSwappedForASymlinkAfterItWasOpenedCannotRedirect',
+        source='vaibify/docker/confinedWrite.py',
+        old='sFinal = listParts[-1]\n',
+        new='sFinal = listParts[-1]\nos.close(iDirectory)\niDirectory = os.open("/" + "/".join(listParts[:-1]), os.O_RDONLY | os.O_DIRECTORY)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedContainerWrite.py::testTheBackendWriteExecsAsTheContainerUserNeverRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='            sContainerId, listCommand=listCommand, bTty=False,\n        )',
+        new='            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )',
     ),
 ]

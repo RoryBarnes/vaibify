@@ -101,11 +101,13 @@ class MockDockerTransfer:
             yield baBytes[iOffset:iOffset + iChunkSizeBytes]
 
     def fnWriteFile(self, sContainerId, sPath, baContent,
-                    iMode=None, iUid=None, iGid=None):
+                    iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=()):
         self._dictFiles[sPath] = baContent
 
     def fnWriteFileViaTar(self, sContainerId, sPath, baContent,
-                          iMode=None, iUid=None, iGid=None):
+                          iMode=None, iUid=None, iGid=None,
+                    sAuthorizedRoot=None, tForbiddenNames=()):
         self._dictFiles[sPath] = baContent
 
     def fsExecCreate(self, sContainerId, sCommand=None,

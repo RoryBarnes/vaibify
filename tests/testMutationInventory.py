@@ -155,7 +155,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # removal went with the tag-derivation that made it wrong;
 # imageBuilder answers which images a project owns, for both
 # callers.
-I_UNCLASSIFIED_ROW_BUDGET = 281
+I_UNCLASSIFIED_ROW_BUDGET = 280
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

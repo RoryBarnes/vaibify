@@ -235,7 +235,9 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # 342 -> 341 (2026-09-25): the sanitizer's detect-secrets loop now
 # unpacks each finding into sCategory/sValue instead of binding the
 # library's object as `secretFound`.
-I_LEGACY_VARIABLE_BUDGET = 341
+# 341 -> 340 (2026-10-01): the tar-building single-file write is gone, taking
+# its seeded `tar` binding with it.
+I_LEGACY_VARIABLE_BUDGET = 340
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

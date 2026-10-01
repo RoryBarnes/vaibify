@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 
 from vaibify.config.registryManager import fbIsHostProject
 from ..actionCatalog import ffnAgentAction
+from ...docker.confinedWrite import ContainerWriteRefusedError
 from ..fileStatusManager import (
     fbMaybeAutoArchive,
     fsWorkflowSlugFromPath,
@@ -44,6 +45,7 @@ from ..pipelineServer import (
     TestGenerateRequest,
     WORKSPACE_ROOT,
     fdictRequireWorkflow,
+    fdictConfinedWriteKeywords,
     fnRejectWriteDenylistedPath,
     fsValidatePathWithinRoot,
     _fsSanitizeServerError,
@@ -670,11 +672,21 @@ def _fsResolveTestFilePath(sFilePath, sProjectRepoPath, sProjectRoot):
     return sNormalized
 
 
-def _fnPersistTestEdit(connectionDocker, sContainerId, sFilePath, sContent):
-    """Write the edited test file back to the container filesystem."""
-    connectionDocker.fnWriteFile(
-        sContainerId, sFilePath, sContent.encode("utf-8"),
-    )
+def _fnPersistTestEdit(
+    connectionDocker, sContainerId, sFilePath, sContent, sAuthorizedRoot,
+):
+    """Write the edited test file back to the container filesystem.
+
+    The write itself enforces the root and the denylist, so a symlink
+    swapped in after the lexical check cannot redirect it.
+    """
+    try:
+        connectionDocker.fnWriteFile(
+            sContainerId, sFilePath, sContent.encode("utf-8"),
+            **fdictConfinedWriteKeywords(sAuthorizedRoot),
+        )
+    except ContainerWriteRefusedError as error:
+        raise HTTPException(403, str(error))
 
 
 def _ftRunSaveAndRunTest(
@@ -845,18 +857,19 @@ def _fnRegisterTestSaveAndRun(app, dictCtx):
         dictWorkflow = fdictRequireWorkflow(
             dictCtx["workflows"], sContainerId)
         dictStep = dictWorkflow["listSteps"][iStepIndex]
+        sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+        sProjectRoot = projectRoots.fsResolveProjectRoot(
+            sContainerId, WORKSPACE_ROOT,
+        )
         sFilePath = _fsResolveTestFilePath(
-            request.sFilePath,
-            dictWorkflow.get("sProjectRepoPath", ""),
-            projectRoots.fsResolveProjectRoot(
-                sContainerId, WORKSPACE_ROOT,
-            ),
+            request.sFilePath, sProjectRepoPath, sProjectRoot,
         )
 
         def ftWriteThenRunTheTest():
             _fnPersistTestEdit(
                 dictCtx["docker"], sContainerId,
                 sFilePath, request.sContent,
+                sProjectRepoPath or sProjectRoot,
             )
             return _ftRunSaveAndRunTest(
                 dictCtx["docker"], sContainerId, dictStep,

@@ -180,6 +180,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, S_PRIMITIVE_WRITE,
@@ -195,6 +196,7 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
     def fnWriteFileViaTar(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         return self.fnWriteFile(
             sContainerId, sPath, baContent,
@@ -1932,6 +1934,7 @@ class DockerDoubleProbingTheGateMidSynchronousWrite(
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         if self.dictDurableContext is not None:
             self.listGateAnswersDuringWrite.append((

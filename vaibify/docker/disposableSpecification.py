@@ -261,8 +261,8 @@ def _fnValidateArchiveMember(infoMember):
 def _finfoStampContainerOwnership(infoMember):
     """Stamp one tar member to the unprivileged container user.
 
-    The same discipline as ``DockerConnection._finfoBuildTarEntry``,
-    against the same constants: never let ``tarfile.TarInfo``'s native
+    The same ownership discipline as the backend's single-file write
+    (which now execs as the container user), against the same constants: never let ``tarfile.TarInfo``'s native
     uid/gid default of 0 through, and clear the symbolic names so a
     numeric-id extractor cannot resolve ``root`` by name. Without this
     the copy lands root-owned and the unprivileged user the job runs as

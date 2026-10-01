@@ -92,7 +92,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::fnWebsocketHandshake.dataResponse", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataHeader", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/containerImage/vaibifyDo.py::ftRecvWsFrame.dataPayload", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._fbufferBuildTar.tar", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._ftRunTypedRead::objPaths", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/docker/dockerConnection.py::DockerConnection._ftStreamExecLines.generator", "sReason": ""},
     {"sDebtClass": "interface-method", "sIdentity": "vaibify/docker/dockerConnection.py::_BytesGeneratorPipe.read", "sReason": "file-like protocol method consumed by tarfile"},
@@ -360,7 +359,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 341,
+    "legacy-variable": 340,
     "legacy-yield": 0
   }
 }

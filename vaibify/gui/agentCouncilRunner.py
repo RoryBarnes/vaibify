@@ -290,8 +290,8 @@ def _fnValidateSnapshotMember(infoMember):
 def _finfoStampCouncilOwnership(infoMember):
     """Stamp one tar member to the unprivileged council user.
 
-    The same discipline as ``DockerConnection._finfoBuildTarEntry``,
-    against the same constants: never let ``tarfile.TarInfo``'s native
+    The same ownership discipline as the backend's single-file write
+    (which now execs as the container user), against the same constants: never let ``tarfile.TarInfo``'s native
     uid/gid default of 0 through, and clear the symbolic names so a
     numeric-id extractor cannot resolve ``root`` by name. The live
     extraction is performed by the unprivileged user (a non-root tar

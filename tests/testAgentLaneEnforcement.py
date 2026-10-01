@@ -89,6 +89,7 @@ class MockDockerConnection:
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
     ):
         self._dictFiles[sPath] = baContent
 

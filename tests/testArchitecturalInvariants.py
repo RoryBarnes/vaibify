@@ -1288,38 +1288,46 @@ def testNoRootUserInDispatcherCalls():
 
 
 def testFnWriteFileDefaultsToContainerUserOwnership():
-    """Backend tar writes must default to the unprivileged container user.
+    """Backend file writes are made by the unprivileged container user.
 
-    ``_finfoBuildTarEntry`` builds the ``TarInfo`` that
-    ``container.put_archive`` materialises inside the container.
-    ``tarfile.TarInfo`` natively defaults ``uid``/``gid`` to 0; if that
-    default leaks through, every file written by the host backend lands
-    root-owned and the in-container agent (no sudo by design — commit
-    426f6b7) cannot edit it. Locks the safe default in place so a
-    future refactor cannot silently regress to the tarfile default.
+    The single-file write used to hand the daemon a tarball whose entry
+    uid/gid became the file's owner; ``tarfile.TarInfo`` natively
+    defaults both to 0, so a leaked default landed every backend-written
+    file root-owned and the in-container agent (no sudo by design --
+    commit 426f6b7) could not edit it. The write now execs a fixed
+    program AS the container user, so ownership is that user's by
+    construction and no tar entry is stamped at all.
 
-    Pair with ``testContainerUserUidIsOneThousand``: that test pins the
-    Dockerfile's user UID to 1000; this test pins the dispatcher's
-    default to the same value.
+    Pair with ``testContainerUserUidIsOneThousand``, which pins the
+    Dockerfile's user UID: the tree writer and the disposable repack
+    still stamp tar entries and still default to it.
 
-    SCOPE: the DOCKER leg only, and the scope is pinned rather than
-    assumed. The uid-1000 contract exists because a tarball entry's
-    uid/gid IS the file's owner inside a container; a host-mode
-    connection (``vaibify/host/``) writes host files as the invoking
-    user, never builds tar entries, and carries its own guardrails
+    SCOPE: the DOCKER leg only. A host-mode connection (``vaibify/host/``)
+    writes host files as the invoking user and carries its own guardrails
     (``tests/testHostSubprocessConfinement.py``). The scan below pins
-    that scope structurally: every ``tarfile.TarInfo`` construction in
-    the package lives in ``vaibify/docker/dockerConnection.py``, so a
-    second tar-building write path cannot appear outside this
-    invariant's reach, and moving the builder out of the Docker leg
-    fails here instead of silently orphaning the test.
+    that no tar-building write path can appear unnoticed: every
+    ``tarfile.TarInfo`` construction in the package is listed.
     """
+    import inspect
+
     from vaibify.docker.dockerConnection import DockerConnection
-    assert DockerConnection._finfoBuildTarEntry.__module__ == (
-        "vaibify.docker.dockerConnection"
-    ), (
-        "the tar-entry builder left the Docker gateway; this invariant "
-        "is scoped to the Docker leg and must move (or split) with it"
+    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
+    assert "put_archive" not in sFunnelSource, (
+        "the single-file write went back to handing the daemon an "
+        "archive, which extracts as root and follows in-container "
+        "symlinks"
+    )
+    assert "confinedWrite.fsRenderConfinedWriteProgram" in sFunnelSource
+    assert "_ftRunProgramWithStdin" in sFunnelSource
+    sTransportSource = inspect.getsource(
+        DockerConnection._ftRunProgramWithStdin
+    )
+    assert "sUser" not in sTransportSource, (
+        "the confined write must take the exec-creation default, which "
+        "is the resolved unprivileged container user, never a chosen one"
+    )
+    assert "_fsResolveContainerUser" in inspect.getsource(
+        DockerConnection.fsExecCreate
     )
     listTarBuilders = []
     for pathFile in PACKAGE_DIR.rglob("*.py"):
@@ -1352,7 +1360,6 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     # ``_fnAssertDisposableArchiveStampsTheContainerUser`` below.
     assert sorted(listTarBuilders) == [
         "vaibify/docker/disposableSpecification.py",
-        "vaibify/docker/dockerConnection.py",
         "vaibify/gui/agentCouncilContext.py",
         "vaibify/gui/agentCouncilRunner.py",
     ], (
@@ -1364,26 +1371,6 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         f"the write through an existing builder, or extend this list "
         f"AND add the builder's own default assertion."
     )
-    infoTarDefault = DockerConnection._finfoBuildTarEntry(
-        "test.json", iSize=0, iMode=None, iUid=None, iGid=None,
-    )
-    assert infoTarDefault.uid == 1000, (
-        f"default tar uid must be the unprivileged container user "
-        f"(1000); got {infoTarDefault.uid}. A non-1000 default lands "
-        f"backend-written files unreadable/uneditable by the "
-        f"in-container agent."
-    )
-    assert infoTarDefault.gid == 1000, (
-        f"default tar gid must be the unprivileged container group "
-        f"(1000); got {infoTarDefault.gid}."
-    )
-    infoTarOverride = DockerConnection._finfoBuildTarEntry(
-        "secret.env", iSize=0, iMode=0o600, iUid=0, iGid=0,
-    )
-    assert infoTarOverride.uid == 0 and infoTarOverride.gid == 0, (
-        "explicit iUid=0/iGid=0 must still pass through — the secret "
-        "writer relies on the override path."
-    )
     _fnAssertDisposableArchiveStampsTheContainerUser()
 
 
@@ -1393,7 +1380,7 @@ def _fnAssertDisposableArchiveStampsTheContainerUser():
     ``disposableSpecification`` repacks a whole repository archive to
     copy it into a shadow container, and that repack is a host→container
     write with exactly the ownership hazard the dispatcher has. It is a
-    separate builder rather than a caller of ``_finfoBuildTarEntry``
+    separate builder rather than a caller of a shared tar-entry builder
     because it stamps members it did not create — it rewrites the
     ownership of an archive read out of another container — so there is
     no size/mode/content triple to hand the dispatcher's builder.
@@ -5190,7 +5177,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # CONSTRUCTION, so fiProofLevel takes the fact and every caller
     # has to answer it. Two lines, one of them the import.
     # 995 -> 998 (2026-09-30): namespace from the loaded-from helper.
-    "routes/testRoutes.py": 998,
+    # 998 -> 1011 (2026-10-01): the saved test file is written through the
+    # confined write, so the route hands it its root and the denylist.
+    "routes/testRoutes.py": 1011,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5924,7 +5913,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +1 (2026-09-25): registers the Prompt Record viewer's route module.
     # 3659 -> 3660 (2026-09-29): one registration line for councilCredentialRoutes.
     # 3660 -> 3661 (2026-09-29): one registration line for councilSnapshotRoutes.
-    "pipelineServer.py": 3661,
+    # 3661 -> 3678 (2026-10-01): fdictConfinedWriteKeywords, the one place
+    # that turns the lexical write denylist into the write's own confinement.
+    "pipelineServer.py": 3678,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7016,7 +7007,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # from a list that could not have offered it, so the selection
     # alone cannot carry it.
     # +1 (2026-09-30): the refusal re-raise import.
-    "routes/fileRoutes.py": 841,
+    # 841 -> 853 (2026-10-01): upload and save pass the project root and
+    # denylist to the confined write and answer a refusal with 403.
+    "routes/fileRoutes.py": 853,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one

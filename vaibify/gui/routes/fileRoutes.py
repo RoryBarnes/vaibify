@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from typing import List
 
 from ..actionCatalog import ffnAgentAction
+from ...docker.confinedWrite import ContainerWriteRefusedError
 from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
@@ -37,6 +38,7 @@ from ..pipelineServer import (
     FilePullRequest,
     FileWriteRequest,
     WORKSPACE_ROOT,
+    fdictConfinedWriteKeywords,
     flistQueryDirectory,
     fnRejectWriteDenylistedPath,
     fsValidatePathWithinRoot,
@@ -299,12 +301,14 @@ def _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot):
             )
         _fnCommitUploadedFile(
             dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+            sProjectRepoPath,
         )
         return {"bSuccess": True, "sPath": sNormalized}
 
 
 def _fnCommitUploadedFile(
     dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+    sProjectRepoPath,
 ):
     """Commit an uploaded file through carrier mode (a) (design §8).
 
@@ -329,7 +333,10 @@ def _fnCommitUploadedFile(
         try:
             dictCtx["docker"].fnWriteFile(
                 sContainerId, sNormalized, baContent,
+                **fdictConfinedWriteKeywords(sProjectRepoPath),
             )
+        except ContainerWriteRefusedError as error:
+            raise HTTPException(403, str(error))
         except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
@@ -766,12 +773,14 @@ def _fnRegisterFileWrite(app, dictCtx, sWorkspaceRoot):
         _fnCommitFileWrite(
             dictCtx, sContainerId, sNormalized,
             request.sContent.encode("utf-8"), requestHttp,
+            sProjectRepoPath,
         )
         return {"bSuccess": True, "sPath": sNormalized}
 
 
 def _fnCommitFileWrite(
     dictCtx, sContainerId, sNormalized, baContent, requestHttp,
+    sProjectRepoPath,
 ):
     """Commit the editor's file save through carrier mode (a) (design §8).
 
@@ -795,8 +804,11 @@ def _fnCommitFileWrite(
     def fnWriteTheFile():
         try:
             dictCtx["docker"].fnWriteFile(
-                sContainerId, sNormalized, baContent
+                sContainerId, sNormalized, baContent,
+                **fdictConfinedWriteKeywords(sProjectRepoPath),
             )
+        except ContainerWriteRefusedError as error:
+            raise HTTPException(403, str(error))
         except Exception as error:
             # A carrier refusal is the migration's only proof that a
             # mutation was carried; flattening it into a generic 500
