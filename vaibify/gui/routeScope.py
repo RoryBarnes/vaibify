@@ -194,7 +194,10 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/bootstrap"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/transfer"): S_SCOPE_BOOTSTRAP_CAPABILITY,
     ("POST", "/api/registry"): S_SCOPE_BROWSER_HUB,
-    ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,
+    # Removing a project from the list ends the container's place in the
+    # dashboard, so it carries the lease like stop does: lease-enforced
+    # whenever the container is owned, answerable when it is not.
+    ("DELETE", "/api/registry/{sName}"): S_SCOPE_CONTAINER_LIFECYCLE,
     ("POST", "/api/containers/{sName}/build"): S_SCOPE_BROWSER_HUB,
     # Obtaining the author's pinned image, and switching back to
     # building, are pre-container hub operations exactly like build.

@@ -24907,4 +24907,11 @@ def _fdictEntry(sRel):
         old='            _fnRecordPushedRemoteHostSide(\n                dictCtx, sContainerId, sWorkdir,\n                dictPushed["dictReachedRemote"])\n',
         new='',
     ),
+    # --- Removing a project from the list needs the container's lease ---
+    Falsification(
+        nodeid='tests/testRegistryRemovalIsLeaseEnforced.py::testASessionWithoutTheLeaseCannotRemoveAnOwnedProject',
+        source='vaibify/gui/routeScope.py',
+        old='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_CONTAINER_LIFECYCLE,\n',
+        new='    ("DELETE", "/api/registry/{sName}"): S_SCOPE_BROWSER_HUB,\n',
+    ),
 ]
