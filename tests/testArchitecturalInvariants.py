@@ -6360,8 +6360,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # refusal names the live work instead of saying "a durable task
     # is already live" -- which a researcher could not tell from
     # "something is stuck". Every launch site passes its own name.
-    # 1069 -> 1098 (2026-10-01): the start asks how an unbuilt image may run before it reserves.
-    "startReservation.py": 1098,
+    # 1069 -> 1119 (2026-10-01): the start asks how an unbuilt image may
+    # run before it reserves, and a failed restricted launch says so.
+    "startReservation.py": 1119,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

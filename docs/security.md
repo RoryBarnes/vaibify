@@ -137,9 +137,10 @@ ways:
 
 An image runs under it only if all of these hold:
 
-- It contains an executable `/bin/sh` that user 1000 can run. A
-  distroless or scratch image, or one whose shell is root-only, fails to
-  start.
+- It contains an executable `/bin/sh` and a `sleep` that user 1000 can
+  run (the idle command is `sh -c "sleep 2147483647"`). A distroless or
+  scratch image, or one whose utilities only root can run, does not stay
+  running, and the dashboard says so.
 - Whatever the researcher needs inside it works as an unprivileged user
   with no entrypoint having run. Services the entrypoint would have
   started are not running; anything the entrypoint would have created,

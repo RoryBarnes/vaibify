@@ -274,6 +274,7 @@ var VaibifyContainerManager = (function () {
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
             _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
+            _fsRenderImageTrustChip(dictContainer, bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -328,6 +329,24 @@ var VaibifyContainerManager = (function () {
             'title="This browser tab holds this container. Open it, or ' +
             'release it from the \u22ee menu to open another.">' +
             "held by this tab</span>";
+    }
+
+    function _fsRenderImageTrustChip(dictContainer, bHost) {
+        /* An image the project obtained, or one the researcher has
+           answered for, wears the answer. "Not confirmed" is shown
+           rather than hidden: the start will ask. */
+        var dictAnswer = dictContainer.dictImageTrust;
+        if (bHost || !(dictAnswer || _fbImageObtained(dictContainer))) {
+            return "";
+        }
+        return '<span class="containment-chip containment-chip--imagetrust" ' +
+            'data-image-trust="' +
+            VaibifyUtilities.fnEscapeHtml(
+                (dictAnswer && dictAnswer.sChoice) || "") + '" title="' +
+            VaibifyUtilities.fnEscapeHtml(
+                (dictAnswer && dictAnswer.sImageDigest) || "") + '">' +
+            VaibifyUtilities.fnEscapeHtml(
+                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";
     }
 
     function _fsRenderReleaseMenuItem(dictContainer) {
@@ -1213,6 +1232,7 @@ var VaibifyContainerManager = (function () {
             'Has no effect on Linux.</p>' +
             '</div>' +
             _fsRenderResourceLimitSettings(dictSettings) +
+            _fsRenderImageTrustSetting(dictSettings) +
             '<div class="modal-actions">' +
             '<button class="btn" id="btnSettingsCancel">Cancel</button>' +
             '<button class="btn btn-primary" ' +
@@ -1221,6 +1241,7 @@ var VaibifyContainerManager = (function () {
         document.body.appendChild(elModal);
         document.getElementById("btnSettingsCancel").addEventListener(
             "click", function () { elModal.remove(); });
+        _fnBindImageTrustSetting(sName, elModal);
         document.getElementById("btnSettingsSave").addEventListener(
             "click", async function () {
                 var bNeverSleep = document.getElementById(
@@ -1236,6 +1257,59 @@ var VaibifyContainerManager = (function () {
                     fMemoryLimitGigabytes: fMemoryLimitGigabytes,
                 });
             });
+    }
+
+    function _fsRenderImageTrustSetting(dictSettings) {
+        if (!dictSettings.bImageObtained && !dictSettings.dictImageTrust) {
+            return "";
+        }
+        return '<div class="settings-option">' +
+            '<div class="settings-option-row">' +
+            '<span class="settings-option-label" id="settingImageTrust">' +
+            VaibifyUtilities.fnEscapeHtml(
+                VaibifyImageTrust.fsBadgeText(dictSettings.dictImageTrust)) +
+            '</span> <button class="btn" id="btnSettingsImageTrust">' +
+            'Change\u2026</button></div>' +
+            '<p class="settings-option-help">How this image, which vaibify ' +
+            'did not build, may run. A change takes effect when the ' +
+            'container is recreated, which asks first.</p></div>';
+    }
+
+    function _fnBindImageTrustSetting(sName, elModal) {
+        var elButton = document.getElementById("btnSettingsImageTrust");
+        if (!elButton) return;
+        elButton.addEventListener("click", async function () {
+            try {
+                var dictPrompt = await VaibifyApi.fdictGet(
+                    "/api/registry/" + encodeURIComponent(sName) +
+                    "/image-trust");
+                elModal.remove();
+                VaibifyImageTrust.fnPromptForImageTrust(sName, dictPrompt, {
+                    fnOnConfirmed: function () {
+                        _fnApplyImageTrustChange(sName);
+                    },
+                });
+            } catch (error) {
+                VaibifyDiagnosis.fnReportFailureFromError(error);
+            }
+        });
+    }
+
+    function _fnApplyImageTrustChange(sName) {
+        /* The answer governs how the container is CREATED, so a running
+           container keeps its old posture until it is recreated; that
+           asks first. A stopped one simply uses the answer next time. */
+        var elDot = document.querySelector(
+            '.container-tile[data-name="' + CSS.escape(sName) +
+            '"] .status-dot');
+        if (elDot && elDot.classList.contains("status-running")) {
+            fnRestartContainer(sName);
+            return;
+        }
+        VaibifyApp.fnShowToast(
+            "Saved. It applies the next time '" + sName +
+            "' is created.", "success");
+        fnLoadContainers();
     }
 
     function _fsRenderResourceLimitSettings(dictSettings) {
@@ -1786,9 +1860,62 @@ var VaibifyContainerManager = (function () {
                 return;
             }
             if (_fbOfferBuildOfUnbuiltImage(error, sName)) return;
+            if (_fbOfferImageTrust(error, sName)) return;
             VaibifyDiagnosis.fnReportFailureFromError(error);
         } finally {
             fnLoadContainers();
+        }
+    }
+
+    function _fbOfferImageTrust(error, sName) {
+        /* The start route refuses an image vaibify did not build until
+           the researcher has chosen how it may run, and sends the
+           question with the refusal. Nothing was reserved or created,
+           so declining leaves nothing behind. */
+        var dictDetail = (error && error.dictDetail) || {};
+        if (dictDetail.sAction !== "confirm-image-trust") return false;
+        VaibifyImageTrust.fnPromptForImageTrust(
+            sName, dictDetail.dictImageTrust, {
+                sNotice: dictDetail.sMessage || "",
+                fnOnConfirmed: function (dictRecord) {
+                    _fnContinueAfterImageTrust(sName, dictRecord);
+                },
+            });
+        return true;
+    }
+
+    function _fnContinueAfterImageTrust(sName, dictRecord) {
+        if (dictRecord.sChoice === "inspect") {
+            VaibifyApp.fnShowToast(
+                "No persistent container was created for '" + sName +
+                "'; you chose not to run this image here.", "info");
+            fnLoadContainers();
+            return;
+        }
+        fnStartContainer(sName);
+    }
+
+    async function _fnOfferOtherChoicesWhenRestrictedFailed(sName) {
+        /* A restricted launch can fail for reasons only the image
+           knows (no shell, a root-only shell). The failure is already on
+           screen; this adds the way out, and only when the stored answer
+           was the restricted one. */
+        try {
+            var dictPrompt = await VaibifyApi.fdictGet(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/image-trust");
+            if ((dictPrompt.dictCurrentAnswer || {}).sChoice !==
+                "restricted") return;
+            VaibifyImageTrust.fnPromptForImageTrust(sName, dictPrompt, {
+                sNotice: "The container did not start restricted. " +
+                    "Choose another option, or cancel to leave it " +
+                    "stopped.",
+                fnOnConfirmed: function (dictRecord) {
+                    _fnContinueAfterImageTrust(sName, dictRecord);
+                },
+            });
+        } catch (error) {
+            /* The start failure itself was already reported. */
         }
     }
 
@@ -1892,6 +2019,7 @@ var VaibifyContainerManager = (function () {
                 dictStatus.sError
                 || ("Start of '" + sName + "' failed, and the hub " +
                     "recorded no reason.")));
+        _fnOfferOtherChoicesWhenRestrictedFailed(sName);
     }
 
     function _fnWarnOnStalledStart(sName, dictStatus, iAttempt) {

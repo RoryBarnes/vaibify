@@ -587,9 +587,30 @@ def _fnConfirmIncarnationIsRunning(sName, sContainerId):
         return
     raise RuntimeError(
         f"Container '{sName}' was created and started, but it is not "
-        "running -- its entrypoint exited immediately. Check the image's "
-        "command, then start it again."
+        "running -- its entrypoint exited immediately. "
+        + _fsRestrictedLaunchHint(sName)
     )
+
+
+def _fsRestrictedLaunchHint(sName):
+    """Say what to try next, knowing whether the launch was restricted.
+
+    A restricted launch replaces the image's entrypoint and drops root,
+    so "check the image's command" would point at the wrong thing: the
+    image may simply need root or its own entrypoint, and the
+    researcher's other options are in the project's settings.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    dictAnswer = (fdictGetProject(sName) or {}).get("dictImageTrust") or {}
+    if dictAnswer.get("sChoice") == "restricted":
+        return (
+            "It was started restricted (no root, no capabilities, and "
+            "its own entrypoint replaced by an idle shell), and this "
+            "image may need root or its own entrypoint to run. Choose "
+            "another option for this image, or check that it contains "
+            "a shell the unprivileged user can run."
+        )
+    return "Check the image's command, then start it again."
 
 
 def _fnRefuseIfCancelled(recordTask):

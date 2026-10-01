@@ -25001,4 +25001,35 @@ def _fdictEntry(sRel):
         old='    if not (sys.stdin.isatty() and sys.stdout.isatty()):',
         new='    if False:',
     ),
+    # --- The image-trust modal (browser lane) ---
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheModalAppearsForAnUnbuiltImageWithNothingPreselected',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (dictDetail.sAction !== "confirm-image-trust") return false;\n',
+        new='        if (true) return false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheWordsOnScreenAreTheBackendsWords',
+        source='vaibify/gui/static/scriptImageTrust.js',
+        old='            _fsEscape(dictOption.sLabel) + "</strong> " +',
+        new='            _fsEscape("Run it") + "</strong> " +',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testAHostileImageDescriptionRendersAsText',
+        source='vaibify/gui/static/scriptImageTrust.js',
+        old='            "<td>" + _fsEscape(sValue) + "</td></tr>";',
+        new='            "<td>" + sValue + "</td></tr>";',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheBadgeAndTheSettingsReflectTheStoredChoice',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";',
+        new='                VaibifyImageTrust.fsBadgeText(null)) + "</span>";',
+    ),
+    Falsification(
+        nodeid='tests/testImageTrustLive.py::testARestrictedLaunchOfAnImageThatNeedsRootFailsToStartAndIsNeverRunning',
+        source='vaibify/docker/containerManager.py',
+        old='            "--user", S_DISPOSABLE_CONTAINER_USER,\n',
+        new='            "--user", "0",\n',
+    ),
 ]
