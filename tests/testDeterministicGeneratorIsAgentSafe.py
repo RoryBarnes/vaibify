@@ -29,6 +29,10 @@ one rewrites the others.
 
 import pytest
 
+from tests.testCarrierMigratedRoutes import (  # noqa: F401 — fixture
+    tclientGatedForGeneration,
+)
+from tests.testDraftRoutes import S_CONTAINER_ID
 from vaibify.gui.pipelineServer import TestGenerateCategoryRequest
 from vaibify.gui.routes.testRoutes import (
     _DeterministicGenerateRequest,
@@ -150,3 +154,22 @@ def test_requesting_nothing_specific_still_writes_all_three():
     assert set(dictWritten) == set(T_GENERATED_TEST_CATEGORIES)
     assert set(dictResult) == {
         "dictIntegrity", "dictQualitative", "dictQuantitative"}
+
+
+def testTheDeterministicRouteGeneratesThroughTheRealHandler(
+    tclientGatedForGeneration,
+):
+    """POST .../generate-test-deterministic answers a generation, not a 500.
+
+    The handler once called the shared runner with one argument fewer
+    than it requires, so every request failed before the generator
+    ran; only the helpers beneath the route were tested.
+    """
+    client, _connectionDocker = tclientGatedForGeneration
+    responseHttp = client.post(
+        f"/api/steps/{S_CONTAINER_ID}/0/generate-test-deterministic",
+        json={"sCategory": "integrity"},
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    dictResult = responseHttp.json()
+    assert dictResult.get("bNeedsOverwriteConfirm") is not True
