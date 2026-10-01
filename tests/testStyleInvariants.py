@@ -521,12 +521,6 @@ legacy-fn-return	vaibify/gui/routes/workflowRoutes.py::_fnRegisterConnect.fnConn
 legacy-fn-return	vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowCreate.fnCreateWorkflow
 legacy-fn-return	vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowCreationRequest.fnRequestProjectCreation
 legacy-fn-return	vaibify/gui/routes/workflowRoutes.py::_fnRegisterWorkflowSearch.fnFindWorkflows
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterIndexRoute.fnServeSetupIndex
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterReadRoutes.fnListTemplates
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterReadRoutes.fnValidate
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterSessionTokenRoute.fnGetSessionToken
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterWriteRoutes.fnBuild
-legacy-fn-return	vaibify/gui/setupServer.py::_fnRegisterWriteRoutes.fnSave
 legacy-fn-return	vaibify/gui/stepRename.py::_fnMoveStepDirectory
 legacy-fn-return	vaibify/gui/terminalContainment.py::fnDrainSessionRecord
 legacy-fn-return	vaibify/gui/workflowManager.py::_fnRmRfDirectory

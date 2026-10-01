@@ -4,6 +4,7 @@ import yaml
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.sessionTokenTestHelper import fsBootstrapCredential
 from vaibify.install.setupServer import fappCreateSetupWizard
 
 
@@ -11,7 +12,9 @@ from vaibify.install.setupServer import fappCreateSetupWizard
 def clientHttp(tmp_path):
     """Create a TestClient for the setup wizard app."""
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    return TestClient(app)
+    return TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
 
 @pytest.fixture
@@ -98,7 +101,10 @@ def test_validate_still_rejects_uv_if_posted_directly():
     """Belt: even a hand-crafted uv POST is refused, not silently saved."""
     from vaibify.install.setupServer import fappCreateSetupWizard
     from fastapi.testclient import TestClient
-    client = TestClient(fappCreateSetupWizard(sOutputDirectory="/tmp"))
+    app = fappCreateSetupWizard(sOutputDirectory="/tmp")
+    client = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     responseHttp = client.post("/api/setup/validate", json={
         "sProjectName": "p", "sPackageManager": "uv",
     })
@@ -132,7 +138,9 @@ def test_wizard_no_longer_collects_a_discarded_zenodo_id():
 
 def test_save_writes_yaml_file(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "saved_project",
@@ -168,7 +176,9 @@ def test_save_writes_yaml_file(tmp_path):
 
 def test_save_rejects_invalid_config(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "",
@@ -201,7 +211,9 @@ def test_get_existing_config_empty(clientHttp):
 
 def test_save_includes_all_features_as_bools(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "feature_test",
@@ -226,7 +238,9 @@ def test_save_includes_all_features_as_bools(tmp_path):
 
 def test_save_claude_auto_update_default_true(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "claude_default",
@@ -245,7 +259,9 @@ def test_save_claude_auto_update_default_true(tmp_path):
 
 def test_save_claude_auto_update_explicit_false(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "claude_off",
@@ -265,7 +281,9 @@ def test_save_claude_auto_update_explicit_false(tmp_path):
 
 def test_existing_config_returns_auto_update_flag(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
 
     dictPayload = {
         "sProjectName": "existing_claude",
@@ -283,7 +301,9 @@ def test_existing_config_returns_auto_update_flag(tmp_path):
 
 def test_setup_wizard_persists_each_new_agent_auto_update_flag(tmp_path):
     app = fappCreateSetupWizard(sOutputDirectory=str(tmp_path))
-    clientHttp = TestClient(app)
+    clientHttp = TestClient(
+        app, headers={"X-Session-Token": fsBootstrapCredential(app)},
+    )
     responseHttp = clientHttp.post(
         "/api/setup/save", json={
             "sProjectName": "multi-agent",

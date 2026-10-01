@@ -5,12 +5,76 @@ var VaibifySetup = (function () {
 
     var listRepositories = [];
     var sSelectedTemplate = null;
+    var sSessionCredential = "";
+    var S_CREDENTIAL_STORAGE_KEY = "vaibifySetupCredential";
+
+    /* --- Authentication ---
+     * The launch URL carries a one-time capability in its fragment (never
+     * in a log). It is exchanged once for the per-browser credential every
+     * /api route requires, then cleared from the address bar and kept for
+     * this tab only, so a reload keeps working. With neither, the page is
+     * correctly denied. */
+
+    function fsReadCapabilityFromFragment() {
+        var oMatch = (window.location.hash || "").match(
+            /[#&]bootstrap=([^&]+)/);
+        return oMatch ? decodeURIComponent(oMatch[1]) : "";
+    }
+
+    function fsRestoreStoredCredential() {
+        try {
+            return window.sessionStorage.getItem(
+                S_CREDENTIAL_STORAGE_KEY) || "";
+        } catch (error) { return ""; }
+    }
+
+    function fnRememberCredential(sCredential) {
+        try {
+            window.sessionStorage.setItem(
+                S_CREDENTIAL_STORAGE_KEY, sCredential);
+            window.history.replaceState(
+                null, "", window.location.pathname + window.location.search);
+        } catch (error) { /* storage or history unavailable; memory only */ }
+    }
+
+    async function fsExchangeCapability(sCapability) {
+        try {
+            var response = await fetch("/api/bootstrap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sCapability: sCapability }),
+            });
+            if (!response.ok) return "";
+            var dictAnswer = await response.json();
+            return dictAnswer.sCredential || "";
+        } catch (error) { return ""; }
+    }
+
+    async function fnAuthenticate() {
+        var sCapability = fsReadCapabilityFromFragment();
+        if (sCapability) {
+            sSessionCredential = await fsExchangeCapability(sCapability);
+            if (sSessionCredential) fnRememberCredential(sSessionCredential);
+        }
+        if (!sSessionCredential) {
+            sSessionCredential = fsRestoreStoredCredential();
+        }
+    }
+
+    function fresponseFetchAuthenticated(sUrl, dictOptions) {
+        var dictMerged = Object.assign({}, dictOptions || {});
+        dictMerged.headers = Object.assign(
+            {}, dictMerged.headers || {},
+            { "X-Session-Token": sSessionCredential });
+        return fetch(sUrl, dictMerged);
+    }
 
     /* --- Initialization --- */
 
-    function fnInitialize() {
-        fnLoadTemplates();
+    async function fnInitialize() {
         fnBindFormEvents();
+        await fnAuthenticate();
+        fnLoadTemplates();
         fnLoadExistingConfig();
     }
 
@@ -19,7 +83,8 @@ var VaibifySetup = (function () {
     async function fnLoadTemplates() {
         var elGrid = document.getElementById("templateGrid");
         try {
-            var response = await fetch("/api/setup/templates");
+            var response = await fresponseFetchAuthenticated(
+                "/api/setup/templates");
             if (!response.ok) {
                 throw new Error("Failed to load templates");
             }
@@ -343,7 +408,7 @@ var VaibifySetup = (function () {
 
         var dictConfig = fdictBuildConfigFromForm();
         try {
-            var response = await fetch("/api/setup/save", {
+            var response = await fresponseFetchAuthenticated("/api/setup/save", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(dictConfig),
@@ -375,7 +440,8 @@ var VaibifySetup = (function () {
 
     async function fnLoadExistingConfig() {
         try {
-            var response = await fetch("/api/setup/config");
+            var response = await fresponseFetchAuthenticated(
+                "/api/setup/config");
             if (response.ok) {
                 var dictConfig = await response.json();
                 if (dictConfig && dictConfig.sProjectName) {

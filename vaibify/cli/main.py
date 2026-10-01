@@ -213,8 +213,8 @@ def _fsLaunchUrlWithCapability(sBaseUrl, app):
     The capability authorises the launched browser to exchange it once for
     a per-browser session credential. It goes in the URL FRAGMENT so it
     never reaches the server's access log, and it is never echoed to the
-    terminal. Apps without a browser-session store (e.g. the setup wizard)
-    fall back to the bare URL.
+    terminal. An app without a browser-session store falls back to the
+    bare URL.
     """
     from vaibify.gui import browserSession
     dictStore = getattr(app.state, "dictBrowserSessions", None)
@@ -380,11 +380,10 @@ def fnSetupCommand():
     """Launch the setup wizard to create or edit configuration."""
     from vaibify.install.setupServer import fappCreateSetupWizard
     from .serverLaunch import fnRunServer
-    sUrl = "http://127.0.0.1:8051"
-    click.echo(f"Starting setup wizard at {sUrl}")
-    app = fappCreateSetupWizard()
-    _fnOpenBrowserUnlessSuppressed(sUrl)
-    fnRunServer(app, 8051)
+    iPort = 8051
+    app = fappCreateSetupWizard(iExpectedPort=iPort)
+    _fnAnnounceAndOpen(f"http://127.0.0.1:{iPort}", app, "setup wizard")
+    fnRunServer(app, iPort, bServeContainerAgents=False)
 
 
 @main.command("gui")

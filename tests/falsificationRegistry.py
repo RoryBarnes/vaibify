@@ -13662,14 +13662,14 @@ def _fdictEntry(sRel):
             'test_only_the_launcher_runs_uvicorn'
         ),
         # Bind a server without going through the launcher. The setup
-        # wizard's line is the anchor because it carries a literal
-        # port and is therefore unique; the two `(app, iPort)` calls
-        # are spelled identically to each other.
+        # wizard's line is the anchor because it is the only call that
+        # names the loopback-only flag and is therefore unique; the two
+        # `(app, iPort)` calls are spelled identically to each other.
         source='vaibify/cli/main.py',
-        old='    fnRunServer(app, 8051)\n',
+        old='    fnRunServer(app, iPort, bServeContainerAgents=False)\n',
         new=(
             '    import uvicorn\n'
-            '    uvicorn.run(app, host="127.0.0.1", port=8051)\n'
+            '    uvicorn.run(app, host="127.0.0.1", port=iPort)\n'
         ),
     ),
 
@@ -24693,5 +24693,36 @@ def _fdictEntry(sRel):
         source='vaibify/docker/dockerConnection.py',
         old='            sContainerId, listCommand=listCommand, bTty=False,\n        )',
         new='            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )',
+    ),
+    # --- The setup wizard carries the dashboard's request guards ---
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',
+        source='vaibify/install/setupServer.py',
+        old='    serverMiddleware.fnRegisterMiddleware(app)\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAForeignHostHeaderIsRefusedEvenWithACredential',
+        source='vaibify/install/setupServer.py',
+        old='    app.state.iExpectedPort = iExpectedPort\n',
+        new='    app.state.iExpectedPort = 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testAServerWithNoContainerAgentsNeverBindsTheDockerBridge',
+        source='vaibify/cli/serverLaunch.py',
+        old='    if not bServeContainerAgents or platform.system() != "Linux":\n',
+        new='    if platform.system() != "Linux":\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardIsGuarded.py::testVaibifySetupBindsTheHostCheckAndLaunchesWithACapability',
+        source='vaibify/cli/main.py',
+        old='    app = fappCreateSetupWizard(iExpectedPort=iPort)\n',
+        new='    app = fappCreateSetupWizard()\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardSignsItselfIn.py::testALaunchedWizardLoadsTemplatesAndSavesThroughItsCredential',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='            { "X-Session-Token": sSessionCredential });\n',
+        new='            {});\n',
     ),
 ]

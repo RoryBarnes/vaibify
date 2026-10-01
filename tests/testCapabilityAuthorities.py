@@ -489,13 +489,6 @@ DICT_NAMED_AUTHORITIES = {
             "`git config user.name` on the HOST, to prefill the sync "
             "panel's author field. Host-side read.",
         ),
-    "gui/setupServer.py|<module>|process-launch|subprocess|import|0":
-        _fdictAuthority(
-            ["http"],
-            "The first-run setup wizard's build lane: runs the image "
-            "build before any container exists, so there is nothing yet "
-            "for a carrier to be admitted against.",
-        ),
     "gui/syncDispatcher.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["http", "background"],
@@ -572,7 +565,8 @@ DICT_NAMED_AUTHORITIES = {
 # exception-type acquisitions left the GUI tree for the gateway's
 # fbErrorMeansContainerUnreachable predicate, leaving zero Docker-client
 # acquisitions under vaibify/gui/.
-I_GUI_RAW_CAPABILITY_BUDGET = 12
+# 12 -> 11 (2026-10-01): the removed second setup wizard.
+I_GUI_RAW_CAPABILITY_BUDGET = 11
 
 
 def _fmoduleGenerator():

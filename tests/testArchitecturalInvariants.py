@@ -3437,6 +3437,7 @@ def testProductionEntryPointsBindHostCheck():
                 node.func, "attr", "")
             if sCallee not in (
                 "fappCreateApplication", "fappCreateHubApplication",
+                "fappCreateSetupWizard",
             ):
                 continue
             listKeywords = [kw.arg for kw in node.keywords]

@@ -291,19 +291,6 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
             "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers",
         ],
     },
-    "gui/setupServer.py|ftResultRunBuild|opaque-subprocess-command|0": {
-        "sDisposition": S_DISPOSITION_DETERMINED_IN_SOURCE,
-        "sRationale": (
-            "`python -m vaibify build` in the project directory, every "
-            "element of it a literal but the interpreter path. The "
-            "first-run wizard's build lane: it runs before any container "
-            "for the project exists, so there is nothing yet for a "
-            "carrier to be admitted against."
-        ),
-        "listSupportingSymbols": [
-            "gui/setupServer.py::ftResultRunBuild",
-        ],
-    },
     "gui/syncDispatcher.py|_ftRunHostLsRemote|opaque-subprocess-command|0": {
         "sDisposition": S_DISPOSITION_DETERMINED_IN_SOURCE,
         "sRationale": (
@@ -397,7 +384,6 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
         "e02a6840322d9b13",
     "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers":
         "7c0e85b8e21ddc5e",
-    "gui/setupServer.py::ftResultRunBuild": "4820c8f27ce656a2",
     "gui/syncDispatcher.py::_S_OVERLEAF_HOST": "65054ecdea58cd8f",
     "gui/syncDispatcher.py::_ftRunHostLsRemote": "1416c2b66127daa3",
     "reproducibility/gitHardening.py::LIST_GIT_CREDENTIAL_ISOLATION_CONFIG":

@@ -129,6 +129,11 @@ The directory must contain a `vaibify.yml` file.
 Launch the interactive setup wizard in a browser (port 8051). The wizard
 walks through configuration fields and writes the result to `vaibify.yml`.
 
+The wizard listens on loopback only and signs the browser in with a
+one-time link, exactly as the dashboard does, so the printed address
+alone cannot save a configuration. If no window opens, run the command
+again.
+
 ```bash
 vaibify setup
 ```
