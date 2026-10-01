@@ -283,9 +283,6 @@ def test_pipeline_message_loop_unpublishes_on_exit():
         with patch(
             "vaibify.gui.pipelineServer._fnSafeDispatch",
             new_callable=AsyncMock,
-        ), patch(
-            "vaibify.gui.pipelineRunner.fdictCreateInteractiveContext",
-            return_value={"id": "stub"},
         ):
             try:
                 await pipelineServer.fnPipelineMessageLoop(
@@ -294,21 +291,22 @@ def test_pipeline_message_loop_unpublishes_on_exit():
                 )
             except RuntimeError:
                 pass
+            for _ in range(3):
+                await asyncio.sleep(0)
     asyncio.run(fnRun())
     assert "ctr-finally" not in dictContexts
 
 
-def test_unpublish_interactive_context_respects_identity():
-    """A stale loop's finally must not pop a fresh loop's registration."""
+def test_unpublish_interactive_context_leaves_other_runs_alone():
+    """A run's end must not drop another live run's registration."""
     dictContexts = pipelineServer.DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER
-    dictOriginal = {"version": 1}
-    dictReplacement = {"version": 2}
-    dictContexts["ctr-id"] = dictReplacement
+    dictEnded = {"sRunId": "run-ended"}
+    dictLive = {"sRunId": "run-live"}
+    dictContexts["ctr-id"] = {"run-ended": dictEnded, "run-live": dictLive}
     try:
-        pipelineServer._fnUnpublishInteractiveContext(
-            "ctr-id", dictOriginal,
-        )
-        # The replacement is untouched because the identity check failed.
-        assert dictContexts["ctr-id"] is dictReplacement
+        pipelineServer._fnUnpublishInteractiveContext("ctr-id", dictEnded)
+        assert dictContexts["ctr-id"] == {"run-live": dictLive}
+        pipelineServer._fnUnpublishInteractiveContext("ctr-id", dictLive)
+        assert "ctr-id" not in dictContexts
     finally:
         dictContexts.pop("ctr-id", None)

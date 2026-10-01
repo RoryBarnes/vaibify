@@ -5937,7 +5937,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3660 -> 3661 (2026-09-29): one registration line for councilSnapshotRoutes.
     # 3661 -> 3678 (2026-10-01): fdictConfinedWriteKeywords, the one place
     # that turns the lexical write denylist into the write's own confinement.
-    "pipelineServer.py": 3678,
+    # 3678 -> 3719 (2026-10-01): an interactive pause belongs to its run:
+    # the per-run registry, the replay to a reconnecting socket, and the
+    # frame routing that finds the waiting run.
+    "pipelineServer.py": 3719,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

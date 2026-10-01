@@ -4832,14 +4832,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testPipelineFrameFromARevokedSessionIsRefusedNotDispatched',
         source='vaibify/gui/pipelineServer.py',
-        old='''            if fbFrameCredentialStillActive is not None and (
-                not fbFrameCredentialStillActive()
-            ):
-                await websocket.close(code=4401)
-                return''',
-        new='''            if False:
-                await websocket.close(code=4401)
-                return''',
+        old='''        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
+            return''',
+        new='''        if False:
+            await websocket.close(code=4401)
+            return''',
     ),
     # The §5 per-frame backstop, terminal lane (a revoked session's
     # keystroke never reaches the container):
@@ -6061,18 +6061,18 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '                await fnCallback(\n'
-            '                    _fdictBusyRefusalEvent(\n'
-            '                        sAction, dictRequest, sBusyWork,\n'
-            '                    ),\n'
-            '                )\n'
+            '            await fnCallback(\n'
+            '                _fdictBusyRefusalEvent(\n'
+            '                    sAction, dictRequest, sBusyWork,\n'
+            '                ),\n'
+            '            )\n'
         ),
         new=(
-            '                await fnCallback(\n'
-            '                    _fdictBusyRefusalEvent(\n'
-            '                        sAction, dictRequest,\n'
-            '                    ),\n'
-            '                )\n'
+            '            await fnCallback(\n'
+            '                _fdictBusyRefusalEvent(\n'
+            '                    sAction, dictRequest,\n'
+            '                ),\n'
+            '            )\n'
         ),
     ),
 
@@ -10847,9 +10847,9 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '            if dictMisdirectedRefusal is not None:\n'
-            '                await fnCallback(dictMisdirectedRefusal)\n'
-            '                continue\n'
+            '        if dictMisdirectedRefusal is not None:\n'
+            '            await fnCallback(dictMisdirectedRefusal)\n'
+            '            continue\n'
         ),
         new='',
     ),
@@ -12229,14 +12229,14 @@ def _fdictEntry(sRel):
         # object captured at socket accept, so every dispatch after a
         # reload-detector rebind runs superseded commands.
         old=(
-            '            dictWorkflowBound = dictWorkflow\n'
-            '            if fdictGetLiveWorkflow is not None:\n'
-            '                dictWorkflowBound = (\n'
-            '                    fdictGetLiveWorkflow() or dictWorkflow\n'
-            '                )\n'
+            '        dictWorkflowBound = dictWorkflow\n'
+            '        if fdictGetLiveWorkflow is not None:\n'
+            '            dictWorkflowBound = (\n'
+            '                fdictGetLiveWorkflow() or dictWorkflow\n'
+            '            )\n'
         ),
         new=(
-            '            dictWorkflowBound = dictWorkflow\n'
+            '        dictWorkflowBound = dictWorkflow\n'
         ),
     ),
     Falsification(
@@ -23407,8 +23407,8 @@ def _fdictEntry(sRel):
             'testAnotherProjectsRunIsAnnouncedBeforeAnythingStarts'
         ),
         source='vaibify/gui/pipelineServer.py',
-        old='            if dictConcurrentNotice and not dictRequest.get(\n',
-        new='            if False and dictConcurrentNotice and not dictRequest.get(\n',
+        old='        if dictConcurrentNotice and not dictRequest.get(\n',
+        new='        if False and dictConcurrentNotice and not dictRequest.get(\n',
     ),
     Falsification(
         nodeid=(
@@ -25258,5 +25258,79 @@ def _fdictEntry(sRel):
         source='vaibify/gui/agentCouncilStore.py',
         old='        if _fbCampaignMayBeEvicted(dictStore, sCampaignId):\n',
         new='        if True:\n',
+    ),
+    # --- An interactive pause belongs to its run and survives a reconnect ---
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAResumeOnAReconnectedSocketReachesThePausedRun',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    dictInteractive = fdictInteractiveContextForContainer(\n'
+            '        sContainerId, dictRequest.get("sRunId", ""),\n'
+            '    )\n'
+            '    if dictInteractive is None:\n'
+        ),
+        new=(
+            '    dictInteractive = None\n'
+            '    if dictInteractive is None:\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAReconnectedSocketIsToldWhatTheRunIsWaitingFor',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    if dictWaiting is not None:\n'
+            '        await fnCallback(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        await fnCallback(\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAPausedRunStaysReachableAfterEverySocketHasClosed',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            taskRun.add_done_callback(\n'
+            '                lambda taskDone: _fnUnpublishInteractiveContext(\n'
+            '                    sContainerId, dictRunInteractive,\n'
+            '                )\n'
+            '            )\n'
+        ),
+        new=(
+            '            _fnUnpublishInteractiveContext(\n'
+            '                sContainerId, dictRunInteractive,\n'
+            '            )\n'
+            '            taskRun.add_done_callback(lambda taskDone: None)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testARunsContextIsDroppedWhenItsRunEnds',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            taskRun.add_done_callback(\n'
+            '                lambda taskDone: _fnUnpublishInteractiveContext(\n'
+            '                    sContainerId, dictRunInteractive,\n'
+            '                )\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testTwoPausedRunsInOneContainerAreAnsweredByRunId',
+        source='vaibify/gui/pipelineServer.py',
+        old='    )[dictInteractive["sRunId"]] = dictInteractive\n',
+        new='    )[""] = dictInteractive\n',
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAContextWaitsOnlyWhileItsPauseIsUnanswered',
+        source='vaibify/gui/interactiveSteps.py',
+        old=(
+            '    if dictInteractive is not None:\n'
+            '        dictInteractive["dictPendingEvent"] = None\n'
+        ),
+        new=(
+            '    if dictInteractive is not None:\n'
+            '        pass\n'
+        ),
     ),
 ]
