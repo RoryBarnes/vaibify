@@ -44,6 +44,23 @@ rule are intact:
 pytest tests/testArchitecturalInvariants.py -v
 ```
 
+Run the static-analysis check, which is also the `lint` lane in CI.
+It runs `pyflakes` (every message except "imported but unused", because
+the package re-exports names through facade modules on purpose) and
+`pylint --errors-only` against `vaibify/`, and compares the findings to
+two exact seeds in the test file:
+
+```bash
+pytest tests/testStaticAnalysisClean.py -v
+```
+
+A new finding fails the test. A seeded finding that has since been fixed
+also fails it, so the seed can only shrink: lower the entry in the same
+commit as the fix. Add a seed entry only with a reason, never to silence
+a real defect. Checks that pylint gets wrong for this codebase are
+disabled in `pyproject.toml` under `[tool.pylint]`, each with its reason.
+Run `pylint --errors-only vaibify/` to see the raw report.
+
 The suite has three kinds of test — unit/behavior tests, architectural
 invariants, and **falsification tests** (kill-confirmed tests, proven to
 fail when the guard they defend is broken) — plus a standing re-kill
