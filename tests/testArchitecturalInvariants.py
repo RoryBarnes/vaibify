@@ -4325,7 +4325,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # itself in the log. A live hub lost a session's lease with zero
     # operator-visible trace; the lines live at the commit points they
     # describe (tests/testLifecycleLogging.py pins them).
-    "containerOwnership.py": 952,
+    # 952 -> 956 (2026-10-01): type-only imports name the annotations.
+    "containerOwnership.py": 956,
     # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
     # default cap when the three exhausted-round exit routes and the
     # credential-gate refusal joined it. One cohesive responsibility —
@@ -6003,7 +6004,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the reaper keep reading as the container's one unit of live work.
     # The join, its member bookkeeping and the join-aware busy question
     # are durable-launch semantics; they belong beside the launch.
-    "commitCarrier.py": 1317,
+    # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
+    "commitCarrier.py": 1321,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6384,7 +6386,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "something is stuck". Every launch site passes its own name.
     # 1069 -> 1119 (2026-10-01): the start asks how an unbuilt image may
     # run before it reserves, and a failed restricted launch says so.
-    "startReservation.py": 1119,
+    # 1119 -> 1122 (2026-10-01): type-only imports name the annotations.
+    "startReservation.py": 1122,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient

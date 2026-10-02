@@ -84,7 +84,7 @@ import inspect
 import logging
 import os
 import secrets
-from typing import Optional
+from typing import TYPE_CHECKING, Callable, Optional
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -109,6 +109,10 @@ from vaibify.config.mutationAdmission import (
 from . import browserSession
 from . import containerOwnership
 from . import sessionLifecycle
+
+if TYPE_CHECKING:
+    from asyncio import Task
+    from vaibify.config.mutationAdmission import MutationAdmission
 
 logger = logging.getLogger("vaibify")
 
