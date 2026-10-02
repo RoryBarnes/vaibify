@@ -17,6 +17,17 @@ DICT_FORMAT_MAP : dict
 
 fsReadLoaderSource() -> str
     Return the embeddable loader source code between the markers.
+
+Where these loaders run. Only in a process that is ABOUT to read data
+files and nothing else: the pytest process of a generated quantitative
+test (in a container, or the hub's pytest subprocess for a host
+project) and the ``vaibify generate-standards`` command. Never in the
+hub itself, which only embeds this file's source text. That is what
+makes the VTK loader safe to leave as it is: reading or writing a VTK
+file resets the process locale to ``C``, a process-wide change that no
+other thread of a multithreaded server could be protected from, and no
+such server ever calls it. ``tests/testDataLoadersStayOutOfTheHub.py``
+pins the property.
 """
 
 __all__ = [

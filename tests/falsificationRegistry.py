@@ -25514,4 +25514,11 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- The data loaders run in a test or CLI process, never in the hub ---
+    Falsification(
+        nodeid='tests/testDataLoadersStayOutOfTheHub.py::testNoHubModuleCallsADataLoader',
+        source='vaibify/gui/templateManager.py',
+        old='    from .dataLoaders import fsReadLoaderSource\n',
+        new='    from .dataLoaders import fsReadLoaderSource, ffLoadValue\n',
+    ),
 ]
