@@ -6838,13 +6838,26 @@ const VaibifyApp = (function () {
         }
     }
 
-    function fnOpenVsCode() {
-        var sHexId = _dictSessionState.sContainerId.replace(/-/g, "");
-        var sUri =
-            "vscode://ms-vscode-remote.remote-containers/attach?containerId=" +
-            sHexId;
-        window.open(sUri, "_blank");
-        fnShowToast("Opening VS Code...", "success");
+    async function fnOpenVsCode() {
+        /* The host builds the link: it alone knows which Docker daemon
+           the container lives on, and the extension cannot find a
+           container on a daemon it is not told about. */
+        try {
+            var dictLink = await VaibifyApi.fdictGet(
+                "/api/containers/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/vscode-link");
+            var elLink = document.createElement("a");
+            elLink.href = dictLink.sUri;
+            document.body.appendChild(elLink);
+            elLink.click();
+            elLink.remove();
+            fnShowToast(
+                "Asked VS Code to open this container. It needs the " +
+                "Dev Containers extension.", "success");
+        } catch (error) {
+            fnShowToast(fsSanitizeErrorForUser(error.message), "error");
+        }
     }
 
     function fnShowContextMenu(iX, iY, iIndex) {

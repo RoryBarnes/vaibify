@@ -7475,7 +7475,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1064 -> 1067 (2026-10-01): the registry removal moves to the
     # container-lifecycle scope, with the reason.
     # 1067 -> 1068 (2026-10-01): the image-trust answer route's scope.
-    "routeScope.py": 1068,
+    # 1068 -> 1073 (2026-10-02): the Open in VS Code link route joins the container-read allowlist.
+    "routeScope.py": 1073,
 }
 
 

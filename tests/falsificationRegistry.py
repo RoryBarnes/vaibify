@@ -26375,4 +26375,29 @@ def _fdictEntry(sRel):
         old='    if bNewValue and configProject.bNetworkIsolation:\n',
         new='    if False:\n',
     ),
+    # --- 2026-10-02: Open in VS Code builds a link the Dev Containers extension parses ---
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::testTheLinkIsTheAttachedContainerFormTheExtensionParses',
+        source='vaibify/gui/vscodeAttachLink.py',
+        old='    return "vscode://vscode-remote/attached-container+" + sHex + quote(\n',
+        new='    return "vscode://ms-vscode-remote.remote-containers/attach?containerId=" + sHex + quote(\n',
+    ),
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::testTheRouteLinksTheIdNotTheNameAndUsesTheProjectsWorkspace',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        sContainerId, sWorkspaceRoot, fsReadEffectiveDockerHost(),\n',
+        new='        sContainerId, sWorkspaceRoot, "",\n',
+    ),
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::test_the_in_container_agent_lane_is_refused_the_hosts_docker_endpoint',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        fnRejectAgentTokenLane(request)\n        dictCtx["require"](sContainerId)\n        return await asyncio.to_thread(\n            _fdictBuildVsCodeLink,',
+        new='        dictCtx["require"](sContainerId)\n        return await asyncio.to_thread(\n            _fdictBuildVsCodeLink,',
+    ),
+    Falsification(
+        nodeid='tests/browser/testOpenInVsCodeAsksTheHostForTheLink.py::testTheButtonFollowsTheLinkTheHostBuilt',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n            elLink.click();\n',
+        new='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n',
+    ),
 ]

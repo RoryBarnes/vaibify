@@ -426,22 +426,37 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
     the project wants a display this host cannot serve. Like the drift
     lines, every failure to establish a fact answers with NO lines.
     """
-    from vaibify.config.registryManager import fdictGetProject
     from vaibify.docker.containerManager import fjsonInspectContainer
     from vaibify.docker.x11Forwarding import ftDescribeX11Findings
-    from ..pipelineServer import fsContainerNameForId
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return [], []
     try:
-        sName = fsContainerNameForId(connectionDocker, sContainerId)
-        dictProject = fdictGetProject(sName) if sName else None
-        if not dictProject:
-            return [], []
-        from vaibify.cli.configLoader import fconfigLoadFromPath
-        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
         return ftDescribeX11Findings(
             configProject.bX11Forwarding, fjsonInspectContainer(sContainerId),
         )
     except Exception:
         return [], []
+
+
+def _fconfigForContainerOrNone(connectionDocker, sContainerId):
+    """Return the registered project's config for a container id, or None.
+
+    The registry is keyed by NAME and the route is handed an ID, so the
+    id is resolved to a name first. Every failure to establish the
+    project answers None: callers render "nothing determined".
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from ..pipelineServer import fsContainerNameForId
+    try:
+        sName = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(sName) if sName else None
+        if not dictProject:
+            return None
+        from vaibify.cli.configLoader import fconfigLoadFromPath
+        return fconfigLoadFromPath(dictProject["sConfigPath"])
+    except Exception:
+        return None
 
 
 def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
@@ -529,6 +544,43 @@ def _fnRegisterContainerIsolation(app, dictCtx):
         dictCtx["require"](sContainerId)
         return await asyncio.to_thread(
             _fdictReadIsolationFlag, sContainerId,
+        )
+
+
+def _fdictBuildVsCodeLink(connectionDocker, sContainerId):
+    """Return the link that attaches VS Code to this container.
+
+    The workspace root comes from the project's config when the
+    registry knows the container, and falls back to the default root
+    otherwise; the daemon endpoint is whatever vaibify itself talks to.
+    """
+    from vaibify.docker.dockerContext import fsReadEffectiveDockerHost
+    from ..vscodeAttachLink import fsBuildAttachUri
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    sWorkspaceRoot = (
+        configProject.sWorkspaceRoot if configProject else "/workspace"
+    )
+    return {"sUri": fsBuildAttachUri(
+        sContainerId, sWorkspaceRoot, fsReadEffectiveDockerHost(),
+    )}
+
+
+def _fnRegisterVsCodeLink(app, dictCtx):
+    """Register GET /api/containers/{id}/vscode-link.
+
+    The page used to build this link itself, with a path the Dev
+    Containers extension does not handle and without the daemon
+    endpoint only the host knows. It names the host's Docker socket,
+    so the in-container agent lane is refused.
+    """
+
+    @app.get("/api/containers/{sContainerId}/vscode-link")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictContainerVsCodeLink(sContainerId: str, request: Request):
+        fnRejectAgentTokenLane(request)
+        dictCtx["require"](sContainerId)
+        return await asyncio.to_thread(
+            _fdictBuildVsCodeLink, dictCtx["docker"], sContainerId,
         )
 
 
@@ -659,5 +711,6 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterUserInfo(app)
     _fnRegisterContainerReady(app, dictCtx)
     _fnRegisterContainerIsolation(app, dictCtx)
+    _fnRegisterVsCodeLink(app, dictCtx)
     _fnRegisterDockerStatus(app, dictCtx)
     _fnRegisterDoctor(app, dictCtx)

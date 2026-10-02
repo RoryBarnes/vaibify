@@ -310,6 +310,11 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # writes nothing, and is on demand rather than on the poll path,
     # which is built with no extra container execs.
     ("GET", "/api/system/environment-info/{sContainerId}"),
+    # View > Open in VS Code. Builds a link from the registry's config
+    # and the host's Docker endpoint; it reaches no container and
+    # writes nothing, and only the session that owns the container is
+    # shown the host's socket path.
+    ("GET", "/api/containers/{sContainerId}/vscode-link"),
     ("GET", "/api/agent-councils/{sContainerId}"),
     ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
     ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),
