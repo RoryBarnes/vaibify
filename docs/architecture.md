@@ -708,13 +708,20 @@ consults every project the hub knows is in the container: answering
 from the open project alone would hand over or abandon a container in
 the middle of another project's run.
 
-The in-process records that describe one project's state are keyed by
-PROJECT as well: the Level 3 verification's status and no-verdict
-reason, the environment deposit, falsification runs, the dependency
-scan, the output checksum cache, the lock verdict, the remote checks,
-the git-fetch throttle and the push dedupe. Keyed by container alone,
-each showed one project's state on another's page or erased another
-project's record.
+Most in-process records that describe one project's state are keyed by
+PROJECT as well as container: the Level 3 verification's no-verdict
+reason, the environment deposit (keyed by container and project; the
+progress calls name only the container and act on its one live
+deposit), falsification runs, the dependency scan, the output checksum
+cache, the lock verdict, the remote checks, the fetch throttle and the
+push dedupe. Keyed by container alone, each showed one project's state
+on another's page or erased another project's record.
+
+The Level 3 verification registry (`verificationProgress.DICT_VERIFY_TASKS`)
+is keyed by CONTAINER, deliberately: it holds only live work, because a
+finished task evicts its own entry at once, and one verification holds a
+container at a time. The status it carries names its project, and
+readers compare that name before showing it.
 
 ### Starting a container is a server-owned reservation
 
@@ -1400,10 +1407,11 @@ summaries.
 
 ### Application layer
 
-- `pipelineServer.py` — FastAPI app factory, Pydantic models, shared
-  utilities, WebSocket dispatch. Creates the app via
-  `fappCreateApplication()`. Routes are delegated to the `routes/`
-  package.
+- `appFactory.py` — the FastAPI app factory: `fappCreateApplication()`
+  builds the app, wires the lifespan hooks and registers the routes.
+- `pipelineServer.py` — Pydantic models, shared utilities and WebSocket
+  dispatch, and the re-exports the route modules import. Routes are
+  delegated to the `routes/` package.
 - `routeContext.py` — typed `RouteContext` wrapper for the `dictCtx`
   dict. Provides both attribute access (`dictCtx.docker`) and dict
   access (`dictCtx["docker"]`).
@@ -1535,10 +1543,19 @@ pipelineServer           <-- app entry point, imports everything
 routes/*                 <-- imported by pipelineServer via routes/__init__.py
 ```
 
-All imports are acyclic at module load time. One deferred import
-remains: `pipelineTestRunner` defers importing `_ftRunCommandList`
-from `pipelineRunner` to avoid a cycle (`pipelineRunner` eagerly
-re-exports `pipelineTestRunner`).
+The `vaibify/gui/` graph above is acyclic at module load time. One
+deferred import remains in it: `pipelineTestRunner` defers importing
+`_ftRunCommandList` from `pipelineRunner` to avoid a cycle
+(`pipelineRunner` eagerly re-exports `pipelineTestRunner`).
+
+It is not true of the whole package. `vaibify/docker/__init__.py`
+and `vaibify/docker/imageBuilder.py` import each other at load time:
+`imageBuilder` takes `fnRunDockerCommand` from the package, so the
+package imports `fbImageExists` from `imageBuilder` only after
+defining that function. The late re-export at the foot of
+`__init__.py` is what makes the cycle work; do not move it above the
+definition. Function-local imports add many more edges than this
+diagram shows.
 
 ## Re-export pattern
 
@@ -2086,7 +2103,12 @@ than consulted.
 container gateway so the two lanes share one lifecycle rather than
 maintaining two that drift. The council brings the policy layer this one
 deliberately omits — admission quotas, per-provider accounting, the
-idle-watchdog veto — and wraps these rather than replacing them. The
+idle-watchdog veto. What the council gateway actually shares today is
+narrower than that sentence once promised: it imports
+`disposableSpecification` (the out-of-memory judgment) and does NOT
+wrap `disposableContainer` or `daemonCapacity`, so it still runs its own
+create-and-destroy lifecycle. Folding it onto `disposableContainer` is
+unfinished work, not a description of the code. The
 ledger here records reservations and their outcomes and nothing else,
 because those policies belong to whoever is spending the resource, not
 to the daemon lane.
