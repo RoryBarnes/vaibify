@@ -85,6 +85,7 @@ __all__ = [
     "fiClassifyInterruptedCampaignsOnStartup",
     "flistReadCampaignCommandLog",
     "fnAwaitControllerSettleOnShutdown",
+    "fnReleaseRunnerAccessOnShutdown",
     "fdictDrainControllerForResource",
     "fnDrainControllerOnShutdown",
 ]
@@ -2197,8 +2198,14 @@ def fnDrainControllerOnShutdown(dictControllerState):
 
 
 async def fnAwaitControllerSettleOnShutdown(dictControllerState,
-                                            fDeadlineSeconds=2.0):
+                                            fDeadlineSeconds=2.0,
+                                            bReleaseRunnerAccess=True):
     """Await live drives briefly at shutdown, then release runner access.
+
+    ``bReleaseRunnerAccess`` False leaves the egress boundary standing
+    for the caller to release with ``fnReleaseRunnerAccessOnShutdown``:
+    the hub's shutdown drains the runners first, because a network that
+    still has a runner attached cannot be proven removed.
 
     The stop requests ``fnDrainControllerOnShutdown`` sends are
     cooperative, and a turn mid-CLI can outlive any reasonable shutdown
@@ -2233,6 +2240,12 @@ async def fnAwaitControllerSettleOnShutdown(dictControllerState,
         for taskDrive in listLiveDriveTasks:
             if not taskDrive.done():
                 taskDrive.cancel()
+    if bReleaseRunnerAccess:
+        await fnReleaseRunnerAccessOnShutdown(dictControllerState)
+
+
+async def fnReleaseRunnerAccessOnShutdown(dictControllerState):
+    """Release every campaign's egress boundary and staged credential."""
     for dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].values()):
         await asyncio.to_thread(_fbReleaseRunnerAccessResources, dictRuntime)

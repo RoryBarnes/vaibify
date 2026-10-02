@@ -15011,10 +15011,10 @@ def _fdictEntry(sRel):
         # busy for the whole network round-trip and the researcher's
         # own Level 3 verification is refused -- which is what shipped.
         source='vaibify/gui/routes/remoteRefreshRoutes.py',
-        old='    asyncio.create_task(_fnRunRefreshWorker(\n',
+        old='    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n',
         new=(
             '    _ = commitCarrier.fdictLaunchDurableTask\n'
-            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+            '    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n'
         ),
     ),
     Falsification(
@@ -22623,7 +22623,7 @@ def _fdictEntry(sRel):
         ),
         # a reproduction job's stamp is treated as a vanished container
         source='vaibify/docker/disposableContainer.py',
-        old='    if len(sStamp) < 12:\n        return False\n',
+        old='    if len(sStamp) != I_DOCKER_CONTAINER_ID_LENGTH:\n        return False\n',
         new='    if not sStamp:\n        return False\n    return True\n',
     ),
     Falsification(
@@ -25378,5 +25378,69 @@ def _fdictEntry(sRel):
             '        _fnReapSpawnedChild(listChildren, processChild)\n'
         ),
         new='    if not sCapability:\n',
+    ),
+    # --- A task nobody awaits is held until it ends ---
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testTheDependencyScanTaskIsKept',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        fnKeepTaskReferenced(loop.create_task(\n'
+            '            _fnScanDependenciesBackground(\n'
+            '                dictCtx, sContainerId, dictWorkflow,\n'
+            '            )\n'
+            '        ))\n'
+        ),
+        new=(
+            '        loop.create_task(\n'
+            '            _fnScanDependenciesBackground(\n'
+            '                dictCtx, sContainerId, dictWorkflow,\n'
+            '            )\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testTheRemoteRefreshTaskIsKept',
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n'
+            '        dictCtx, dictCarrier, dictWorkflow, filesRepo, listServices,\n'
+            '    )))\n'
+        ),
+        new=(
+            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+            '        dictCtx, dictCarrier, dictWorkflow, filesRepo, listServices,\n'
+            '    ))\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testAFencedSocketsCloseTaskIsKept',
+        source='vaibify/gui/sessionLifecycle.py',
+        old=(
+            '    fnKeepTaskReferenced(\n'
+            '        loopRunning.create_task(_fnCloseDetachedConnections(listConnections)))\n'
+        ),
+        new=(
+            '    loopRunning.create_task(_fnCloseDetachedConnections(listConnections))\n'
+        ),
+    ),
+    # --- The council's egress network is released after its runners drain ---
+    Falsification(
+        nodeid='tests/testCouncilShutdownOrder.py::testTheEgressBoundaryIsReleasedAfterTheRunnersDrain',
+        source='vaibify/gui/appFactory.py',
+        old='                dictControllerState, bReleaseRunnerAccess=False)\n',
+        new='                dictControllerState)\n',
+    ),
+    # --- The disposable reclaim adjudicates ids, never names ---
+    Falsification(
+        nodeid='tests/testReclaimNeverTreatsANameAsAnId.py::testAHexNameIsNotAContainerId',
+        source='vaibify/docker/disposableContainer.py',
+        old=(
+            '    if len(sStamp) != I_DOCKER_CONTAINER_ID_LENGTH:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if len(sStamp) < 12:\n'
+            '        return False\n'
+        ),
     ),
 ]

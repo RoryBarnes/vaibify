@@ -5940,7 +5940,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3678 -> 3719 (2026-10-01): an interactive pause belongs to its run:
     # the per-run registry, the replay to a reconnecting socket, and the
     # frame routing that finds the waiting run.
-    "pipelineServer.py": 3719,
+    # 3719 -> 3720 (2026-10-01): the dependency scan's task is kept referenced.
+    "pipelineServer.py": 3720,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6194,7 +6195,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # loudly to announce it, are both decided here for that reason.
     # +2 (2026-09-24): a transfer retags every project's run and adopts
     # every command the shared durable record has in flight.
-    "sessionLifecycle.py": 1837,
+    # 1837 -> 1839 (2026-10-01): a fenced socket's close task is kept referenced.
+    "sessionLifecycle.py": 1839,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6334,7 +6336,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # daemon allows, resolved once per campaign runtime.
     # 2219 -> 2238 (2026-10-01): a campaign a dead hub interrupted gets its
     # running attempt settled as an interruption, so Retry can admit it.
-    "agentCouncilController.py": 2238,
+    # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
+    "agentCouncilController.py": 2251,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate

@@ -77,6 +77,7 @@ from . import actionCatalog
 from . import agentProjectScope
 from . import agentSessionBridge
 from . import browserSession
+from .backgroundTasks import fnKeepTaskReferenced
 from . import conftestManager
 from . import containerOwnership
 from . import pipelineRunSlots
@@ -3065,11 +3066,11 @@ def _fnLaunchDependencyScan(
     """Schedule background source-code dependency scan."""
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(
+        fnKeepTaskReferenced(loop.create_task(
             _fnScanDependenciesBackground(
                 dictCtx, sContainerId, dictWorkflow,
             )
-        )
+        ))
     except RuntimeError:
         logger.debug("No event loop for dependency scan")
 

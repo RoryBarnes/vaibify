@@ -21,8 +21,8 @@ import pytest
 from vaibify.docker import disposableContainer, disposableSpecification
 
 
-S_LIVE_CONTAINER_ID = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6"
-S_VANISHED_CONTAINER_ID = "ffffffffffffffffffffffffffffffffffffffffffffffff"
+S_LIVE_CONTAINER_ID = "a1b2c3d4e5f6" * 5 + "a1b2"
+S_VANISHED_CONTAINER_ID = "f" * 64
 
 
 class _FakeContainer:
