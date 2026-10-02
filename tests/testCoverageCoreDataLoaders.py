@@ -329,17 +329,54 @@ def testTfrecordWithoutKeyCountsRecordBytes(tmp_path):
     assert fValue == int(fValue)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason=(
-        "BUG: _ffLoadTfrecordValue indexes the raw serialized record "
-        "returned by tfrecord_iterator (a memoryview) with the feature "
-        "name, so every key: access raises 'invalid slice key'."
-    ),
-)
 def testTfrecordFeatureIsReadByKey(tmp_path):
-    """A float feature addressed by key returns the stored value."""
+    """A float feature addressed by key returns the stored value.
+
+    The key names a FEATURE, which only a decoded example has: indexing
+    the raw serialized record by name raised on every access.
+    """
     pytest.importorskip("tfrecord")
     fnWriteTfrecord(tmp_path / "records.tfrecord", {"x": (1.5, "float")})
     assert ffLoadValue("records.tfrecord", "key:x,index:0", str(tmp_path)) == 1.5
+
+
+def fnWriteTwoTfrecords(pathFile):
+    from tfrecord.writer import TFRecordWriter
+    writerRecord = TFRecordWriter(str(pathFile))
+    writerRecord.write({"x": (1.5, "float"), "n": (7, "int"),
+                        "v": ([1.0, 2.0, 3.0], "float")})
+    writerRecord.write({"x": (2.5, "float"), "n": (9, "int"),
+                        "v": ([4.0, 5.0, 6.0], "float")})
+    writerRecord.close()
+
+
+def testTfrecordScalarFeaturesAcrossRecordsAreAggregated(tmp_path):
+    pytest.importorskip("tfrecord")
+    fnWriteTwoTfrecords(tmp_path / "records.tfrecord")
+    assert ffLoadValue(
+        "records.tfrecord", "key:x,index:1", str(tmp_path)) == 2.5
+    assert ffLoadValue(
+        "records.tfrecord", "key:n,index:max", str(tmp_path)) == 9.0
+
+
+def testTfrecordVectorFeaturesAreFlattenedAcrossRecords(tmp_path):
+    pytest.importorskip("tfrecord")
+    fnWriteTwoTfrecords(tmp_path / "records.tfrecord")
+    assert ffLoadValue(
+        "records.tfrecord", "key:v,index:4", str(tmp_path)) == 5.0
+    assert ffLoadValue(
+        "records.tfrecord", "key:v,index:max", str(tmp_path)) == 6.0
+
+
+def testTfrecordMissingFeatureIsANamedError(tmp_path):
+    pytest.importorskip("tfrecord")
+    fnWriteTwoTfrecords(tmp_path / "records.tfrecord")
+    with pytest.raises(ValueError, match="Failed to access tfrecord key"):
+        ffLoadValue("records.tfrecord", "key:absent,index:0", str(tmp_path))
+
+
+def testTfrecordByteFeatureIsNotANumber(tmp_path):
+    pytest.importorskip("tfrecord")
+    fnWriteTfrecord(tmp_path / "records.tfrecord", {"b": (b"abc", "byte")})
+    with pytest.raises(ValueError, match="Failed to access tfrecord key"):
+        ffLoadValue("records.tfrecord", "key:b,index:0", str(tmp_path))

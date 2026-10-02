@@ -6564,13 +6564,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # slots instead of a single per-container task.
     # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
     "pipelineState.py": 1068,
-    "dataLoaders.py": 1222,
+    # 1222 -> 1229 (2026-10-01): a TFRecord feature is read from the decoded example.
+    "dataLoaders.py": 1229,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
     # because a host scratch path descends from the researcher's home.
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
-    "introspectionScript.py": 1214,
+    # 1214 -> 1215 (2026-10-01): the container twin reads TFRecord features from the decoded example.
+    "introspectionScript.py": 1215,
     # +30 (2026-08-24): per-category deterministic generation. A
     # researcher or agent asking for one tier must not have the other
     # two silently rewritten underneath them, so each write is gated

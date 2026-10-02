@@ -1085,26 +1085,33 @@ def _ffLoadSafetensorsValue(sFullPath, dictAccess):
 def _ffLoadTfrecordValue(sFullPath, dictAccess):
     """Load a value from a TFRecord file."""
     try:
-        from tfrecord.reader import tfrecord_iterator
+        from tfrecord.reader import example_loader, tfrecord_iterator
     except ImportError:
         raise ImportError(
             "tfrecord is required to load TFRecord files",
         )
+    sKey = dictAccess.get("key", "")
     try:
-        listRecords = list(tfrecord_iterator(sFullPath))
+        # A key names a FEATURE, which only a decoded example has: the
+        # raw iterator yields each record's serialized bytes, and
+        # indexing those by a name always failed.
+        listRecords = list(
+            example_loader(sFullPath, None) if sKey
+            else tfrecord_iterator(sFullPath)
+        )
     except Exception as errorCaught:
         raise ValueError(
             f"Failed to load {sFullPath} as tfrecord: {errorCaught}",
         ) from errorCaught
-    sKey = dictAccess.get("key", "")
     try:
         if sKey and listRecords:
-            daValues = np.array(
-                [float(r[sKey]) for r in listRecords], dtype=float,
-            )
+            daValues = np.concatenate([
+                np.asarray(r[sKey], dtype=float).ravel()
+                for r in listRecords
+            ])
         else:
             daValues = np.array([float(len(r)) for r in listRecords])
-    except (KeyError, TypeError) as errorCaught:
+    except (KeyError, TypeError, ValueError) as errorCaught:
         raise ValueError(
             f"Failed to access tfrecord key in {sFullPath}: {errorCaught}",
         ) from errorCaught
