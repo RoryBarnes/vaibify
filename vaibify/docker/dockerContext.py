@@ -17,6 +17,8 @@ import sys
 
 
 __all__ = [
+    "fnRecordDockerHostExportedByVaibify",
+    "fbDockerHostIsExportedByVaibify",
     "fsActiveDockerContext", "fbColimaActive", "ftColimaVersion",
     "fsResolveDockerEndpoint", "fsReadActiveContextEndpoint",
     "fsColimaProfileName", "fdictClassifyDockerRuntime",
@@ -24,6 +26,41 @@ __all__ = [
     "S_RUNTIME_LINUX_ROOTFUL", "S_RUNTIME_LINUX_ROOTLESS",
     "S_RUNTIME_UNKNOWN", "fdictReadDaemonFacts",
 ]
+
+
+_sDockerHostExportedByVaibify = None
+
+
+def fnRecordDockerHostExportedByVaibify(sHost):
+    """Remember the ``DOCKER_HOST`` value vaibify itself put in the environment."""
+    global _sDockerHostExportedByVaibify
+    _sDockerHostExportedByVaibify = sHost
+
+
+def fbDockerHostIsExportedByVaibify():
+    """Return True when ``DOCKER_HOST`` is vaibify's own export, not the researcher's."""
+    sHost = os.environ.get("DOCKER_HOST")
+    return bool(sHost) and sHost == _sDockerHostExportedByVaibify
+
+
+def _fdictBuildContextProbeEnvironment():
+    """Return the environment to ask the docker CLI which context is ACTIVE.
+
+    A set ``DOCKER_HOST`` overrides the context: the CLI then reports a
+    synthetic context named ``default`` whose endpoint IS that variable.
+    When the value is one vaibify exported from the active context, the
+    variable is vaibify's answer rather than the researcher's setting,
+    and feeding it back as the question made every re-read return the
+    value it had just written: Retry after ``docker context use`` kept
+    the dead socket, and the context's own name (the evidence the
+    Colima and Desktop diagnostics read) was flattened to ``default``.
+    A researcher's own export is left in place, because it IS the
+    configuration vaibify must honour.
+    """
+    dictEnvironment = dict(os.environ)
+    if fbDockerHostIsExportedByVaibify():
+        dictEnvironment.pop("DOCKER_HOST")
+    return dictEnvironment
 
 
 def fsActiveDockerContext():
@@ -34,6 +71,7 @@ def fsActiveDockerContext():
             capture_output=True,
             text=True,
             timeout=5,
+            env=_fdictBuildContextProbeEnvironment(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -58,6 +96,7 @@ def fsReadActiveContextEndpoint():
             capture_output=True,
             text=True,
             timeout=5,
+            env=_fdictBuildContextProbeEnvironment(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -88,11 +127,13 @@ def fsResolveDockerEndpoint():
     module would be a second, eventually-wrong authority on.
     """
     sHost = os.environ.get("DOCKER_HOST")
-    if sHost:
+    if sHost and not fbDockerHostIsExportedByVaibify():
         return sHost + " (from DOCKER_HOST)"
     sContextHost = fsReadActiveContextEndpoint()
     if sContextHost:
         return sContextHost + " (from the active Docker context)"
+    if sHost:
+        return sHost + " (resolved from the Docker context by vaibify)"
     return "DOCKER_HOST unset and no context endpoint (docker-py default)"
 
 

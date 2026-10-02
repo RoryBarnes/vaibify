@@ -20046,13 +20046,12 @@ def _fdictEntry(sRel):
         # the bare guard returns: this function's own write satisfies it,
         # so the first resolution wins for the life of the hub process
         old=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '    if os.environ.get("DOCKER_HOST") and not'
+            ' fbDockerHostIsExportedByVaibify():\n'
             '        return\n'
         ),
         new=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting:\n'
+            '    if os.environ.get("DOCKER_HOST"):\n'
             '        return\n'
         ),
     ),
@@ -20065,13 +20064,12 @@ def _fdictEntry(sRel):
         # the other direction: re-reading becomes re-resolving always,
         # silently redirecting a researcher's deliberate DOCKER_HOST
         old=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '    if os.environ.get("DOCKER_HOST") and not'
+            ' fbDockerHostIsExportedByVaibify():\n'
             '        return\n'
         ),
         new=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    del sExisting\n'
+            '    pass\n'
         ),
     ),
     Falsification(
@@ -25342,5 +25340,27 @@ def _fdictEntry(sRel):
             '        agentCouncilCampaign.fnTransitionCampaignState(\n'
         ),
         new='        agentCouncilCampaign.fnTransitionCampaignState(\n',
+    ),
+    # --- vaibify's own DOCKER_HOST export is never fed back to the CLI ---
+    Falsification(
+        nodeid='tests/testDockerHostContextRoundTrip.py::testARetryAfterAContextSwitchSeesTheNewEndpoint',
+        source='vaibify/docker/dockerContext.py',
+        old=(
+            '    if fbDockerHostIsExportedByVaibify():\n'
+            '        dictEnvironment.pop("DOCKER_HOST")\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testDockerHostContextRoundTrip.py::testTheReportedEndpointNamesItsRealSource',
+        source='vaibify/docker/dockerContext.py',
+        old=(
+            '    if sHost and not fbDockerHostIsExportedByVaibify():\n'
+            '        return sHost + " (from DOCKER_HOST)"\n'
+        ),
+        new=(
+            '    if sHost:\n'
+            '        return sHost + " (from DOCKER_HOST)"\n'
+        ),
     ),
 ]

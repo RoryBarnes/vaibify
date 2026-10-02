@@ -1109,9 +1109,10 @@ def _fnResolveWithContextEndpoint(monkeypatch, sEndpoint):
 
 @pytest.fixture
 def fnForgetResolvedDockerHost(monkeypatch):
-    """Isolate the module's memory of the value it last wrote."""
+    """Isolate the memory of the value vaibify last exported."""
+    from vaibify.docker import dockerContext
     monkeypatch.setattr(
-        dockerConnectionModule, "_sDockerHostWrittenByVaibify", None,
+        dockerContext, "_sDockerHostExportedByVaibify", None,
     )
     monkeypatch.delenv("DOCKER_HOST", raising=False)
 

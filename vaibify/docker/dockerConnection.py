@@ -239,9 +239,6 @@ def _fmoduleGetDocker():
         )
 
 
-_sDockerHostWrittenByVaibify = None
-
-
 def _fnEnsureDockerHost():
     """Set DOCKER_HOST from the active Docker context.
 
@@ -263,16 +260,17 @@ def _fnEnsureDockerHost():
     identical failure naming the identical dead socket; restarting
     vaibify was the only way out, and nothing said so.
     """
-    global _sDockerHostWrittenByVaibify
     import os
-    from .dockerContext import fsReadActiveContextEndpoint
-    sExisting = os.environ.get("DOCKER_HOST")
-    if sExisting and sExisting != _sDockerHostWrittenByVaibify:
+    from .dockerContext import (
+        fbDockerHostIsExportedByVaibify, fnRecordDockerHostExportedByVaibify,
+        fsReadActiveContextEndpoint,
+    )
+    if os.environ.get("DOCKER_HOST") and not fbDockerHostIsExportedByVaibify():
         return
     sHost = fsReadActiveContextEndpoint()
     if sHost:
         os.environ["DOCKER_HOST"] = sHost
-        _sDockerHostWrittenByVaibify = sHost
+        fnRecordDockerHostExportedByVaibify(sHost)
 
 
 # The complete set of programs the audited-read exemption will run,
