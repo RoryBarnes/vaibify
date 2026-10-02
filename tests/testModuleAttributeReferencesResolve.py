@@ -45,11 +45,6 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 PATH_PACKAGE = PATH_REPOSITORY / "vaibify"
 
 DICT_KNOWN_UNRESOLVED_REFERENCES = {
-    "vaibify/gui/routes/syncRoutes.py::syncDispatcher.ftResultDownloadDataset": (
-        "Known absent: the dataset-download route is deliberately left "
-        "unmigrated until the dispatcher exists (see the comment in "
-        "syncRoutes._fnRegisterDatasetDownload)."
-    ),
 }
 
 

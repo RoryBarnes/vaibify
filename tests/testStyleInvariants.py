@@ -504,7 +504,6 @@ legacy-fn-return	vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnValida
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterArxivConfigure.fnConfigureArxiv
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fnGetDag
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fnExportDag
-legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDatasetDownload.fnDownloadDataset
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubAddFile.fnGithubAddFile
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubIdentity.fnGithubIdentity
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubPush.fnGithubPush

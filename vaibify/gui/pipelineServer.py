@@ -349,12 +349,6 @@ class SaveAndRunTestRequest(BaseModel):
     sFilePath: str
 
 
-class DatasetDownloadRequest(BaseModel):
-    iRecordId: int
-    sFileName: str
-    sDestination: str
-
-
 # ---------------------------------------------------------------
 # Shared utility functions
 # ---------------------------------------------------------------

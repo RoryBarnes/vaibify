@@ -41,7 +41,6 @@ from ..routeScope import (
 )
 from ..pipelineServer import (
     ArxivConfigureRequest,
-    DatasetDownloadRequest,
     GitAddFileRequest,
     GitIdentityRequest,
     OverleafDiffRequest,
@@ -2916,67 +2915,6 @@ def _fnRegisterDagExport(app, dictCtx):
         )
 
 
-def _fnRegisterDatasetDownload(app, dictCtx):
-    """Register Zenodo dataset download endpoint."""
-    from .. import syncDispatcher
-
-    # NOT MIGRATED, and deliberately so (2026-08-06). This route calls
-    # ``syncDispatcher.ftResultDownloadDataset``, which exists NOWHERE
-    # in the repository: every call raises ``AttributeError`` and
-    # answers 500. Its two tests patch the name into being with
-    # ``create=True``, so the suite exercises a function the product
-    # does not have. The route is advertised to the in-container agent
-    # as ``download-zenodo-dataset`` with ``bAgentSafe: True``.
-    #
-    # Migrating it would make that WORSE rather than better: inside a
-    # carrier the AttributeError settles through the failure path,
-    # poisons the journal record and QUARANTINES the container until
-    # the researcher runs ``vaibify reconcile`` -- so a broken button
-    # would take a working container out of service. It keeps the
-    # legacy ambient mint until the dispatcher exists and the route can
-    # be migrated against behaviour somebody has actually run.
-    @ffnAgentAction("download-zenodo-dataset")
-    @app.post("/api/zenodo/{sContainerId}/download")
-    async def fdictDownloadDataset(
-        sContainerId: str, request: DatasetDownloadRequest,
-    ):
-        dictCtx["require"](sContainerId)
-        _fnRequireNetworkAccess(sContainerId)
-        dictWorkflow = fdictRequireWorkflow(
-            dictCtx["workflows"], sContainerId,
-        )
-        _fnValidateZenodoDestination(
-            request.sDestination, dictWorkflow,
-        )
-        iExit, sOut = await asyncio.to_thread(
-            syncDispatcher.ftResultDownloadDataset,
-            dictCtx["docker"], sContainerId,
-            "zenodo", request.iRecordId,
-            request.sFileName, request.sDestination,
-        )
-        if iExit != 0:
-            raise HTTPException(
-                500, f"Download failed: {sOut}")
-        return {"bSuccess": True}
-
-
-def _fnValidateZenodoDestination(sDestination, dictWorkflow):
-    """Refuse absolute or ..-escaping destinations; scope to project repo."""
-    if "\x00" in (sDestination or ""):
-        raise HTTPException(400, "sDestination contains null byte")
-    if posixpath.isabs(sDestination):
-        raise HTTPException(
-            400, "sDestination must be repo-relative, not absolute")
-    sNorm = posixpath.normpath(sDestination)
-    if sNorm == ".." or sNorm.startswith("../"):
-        raise HTTPException(
-            400, "sDestination must not escape the project repo")
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if sProjectRepoPath:
-        sCandidate = posixpath.join(sProjectRepoPath, sNorm)
-        fsValidatePathWithinRoot(sCandidate, sProjectRepoPath)
-
-
 def _fnRegisterOverleafMirrorRefresh(app, dictCtx):
     """Register POST /api/overleaf/{id}/mirror/refresh endpoint."""
     from .. import syncDispatcher
@@ -3625,7 +3563,6 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterSyncRoutes(app, dictCtx)
     _fnRegisterDag(app, dictCtx)
     _fnRegisterDagExport(app, dictCtx)
-    _fnRegisterDatasetDownload(app, dictCtx)
     _fnRegisterRemoteVerify(app, dictCtx)
     _fnRegisterRemoteVerifyStatus(app, dictCtx)
     _fnRegisterReverifySchedule(app, dictCtx)

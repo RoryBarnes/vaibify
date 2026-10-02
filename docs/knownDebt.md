@@ -46,21 +46,6 @@ without discussion:
   accepting the field produced a container without the requested
   packages and said nothing. Wiring it is the honest fix; refusing is
   the honest interim.
-- **`POST /api/zenodo/{id}/download` cannot work, and its two tests
-  pass anyway.** It calls `syncDispatcher.ftResultDownloadDataset`,
-  which exists nowhere — verified at runtime, `hasattr` is `False`, so
-  every real call raises `AttributeError` and answers 500. The tests in
-  `testSyncRoutesCoverage.py` patch the name into existence with
-  `create=True`, which is why the suite has been exercising a function
-  the product does not have. It is advertised to the in-container agent
-  as `download-zenodo-dataset` with `bAgentSafe: True`, so an agent
-  asked to fetch a dataset calls it and fails. **Do not "fix" this by
-  deleting or loosening the tests** — the missing function is the
-  defect. It is also the one mutating route left undeclared by the
-  carrier migration, deliberately: inside a carrier that
-  `AttributeError` would poison the journal and quarantine a working
-  container over a broken button. Writing the function is a feature
-  decision.
 - `terminalContainment.py` and the `terminal` journal kind also
   reconcile records written by EARLIER hub versions — release, the
   safe reaper and shutdown all settle terminal records through

@@ -26371,4 +26371,16 @@ def _fdictEntry(sRel):
         old='    parserSubcommands = parser.add_subparsers(',
         new='    subparsers = parser.add_subparsers(',
     ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnActionIsAbsentFromTheAgentCatalog',
+        source='vaibify/gui/actionCatalog.py',
+        old='    {"sName": "verify-remote", "sCategory": "sync",',
+        new='    {"sName": "download-zenodo-dataset", "sCategory": "sync",\n     "sMethod": "POST",\n     "sPath": "/api/zenodo/{sContainerId}/download",\n     "bAgentSafe": True,\n     "sDescription": "restored"},\n    {"sName": "verify-remote", "sCategory": "sync",',
+    ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnRouteIsNotRegisteredOnTheHubApplication',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n',
+        new='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n    app.post("/api/zenodo/{sContainerId}/download")(lambda: None)\n',
+    ),
 ]
