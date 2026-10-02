@@ -26269,4 +26269,35 @@ def _fdictEntry(sRel):
         old='            if (!response.ok) {\n                fnMarkReadingsStale();\n                return;\n            }\n',
         new='            if (!response.ok) {\n                return;\n            }\n',
     ),
+    # --- 2026-10-02: X11 forwarding detects, starts and explains every Mac X server ---
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_findServer_recognizes_the_macports_application',
+        source='vaibify/docker/x11Forwarding.py',
+        old='        "saAppPaths": ("/Applications/MacPorts/X11.app",),\n',
+        new='        "saAppPaths": (),\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_startServer_opens_the_found_application_path',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort(["open", "-a", dictServer["sAppPath"]])\n',
+        new='    _fnRunBestEffort(["open", "-a", "XQuartz"])\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_assess_blocked_names_the_servers_own_preference_domain',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    sDomain = dictServer["sPreferenceDomain"]\n    if fsReadNetworkClientPreference(sDomain) == "blocked":\n',
+        new='    sDomain = "org.xquartz.X11"\n    if fsReadNetworkClientPreference(sDomain) == "blocked":\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_display_number_three_selects_tcp_port_6003',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    return int(matchDisplay.group(1)) if matchDisplay else 0\n',
+        new='    return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_macGrant_admits_the_local_user_and_the_tcp_loopback',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort([_fsFindXhost(), "+localhost"])\n',
+        new='',
+    ),
 ]
