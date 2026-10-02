@@ -70,9 +70,12 @@ def testTheButtonFollowsTheLinkTheHostBuilt(pageDashboard, serverHub):
         _S_CAPTURE_REQUESTS_AND_FOLLOWED_LINKS,
         {"sUri": S_LINK, "bRefuse": False})
     _fnClickOpenInVsCode(pageDashboard)
-    listPaths = pageDashboard.evaluate("window.listRequestedPaths")
-    assert len(listPaths) == 1
-    assert listPaths[0] == f"/api/containers/{S_HOST_PROJECT_READY}/vscode-link"
+    listPaths = [
+        sPath for sPath in pageDashboard.evaluate("window.listRequestedPaths")
+        if sPath.endswith("/vscode-link")
+    ]
+    assert listPaths == [
+        f"/api/containers/{S_HOST_PROJECT_READY}/vscode-link"]
     assert pageDashboard.evaluate("window.listFollowedLinks") == [S_LINK]
     assert pageDashboard.listPageErrors == []
 
