@@ -25396,14 +25396,14 @@ def _fdictEntry(sRel):
         nodeid='tests/testBackgroundTasksAreReferenced.py::testTheDependencyScanTaskIsKept',
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '        fnKeepTaskReferenced(loop.create_task(\n'
+            '        fnKeepTaskReferenced(loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
             '        ))\n'
         ),
         new=(
-            '        loop.create_task(\n'
+            '        loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
@@ -26352,5 +26352,23 @@ def _fdictEntry(sRel):
         source='vaibify/containerImage/entrypoint.sh',
         old='- Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count',
         new='- Functions should be under 20 lines',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testTheEventLoopAndElementPrefixesAreRegistered',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop", "BaseEventLoop"},\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testASubparsersActionBindingIsStillDebtButParserSubcommandsIsNot',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop"',
+        new='    "subparsers": {"X"},\n    "loop": {"AbstractEventLoop"',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testOverleafSyncKeepsNoSubparsersBinding',
+        source='vaibify/reproducibility/overleafSync.py',
+        old='    parserSubcommands = parser.add_subparsers(',
+        new='    subparsers = parser.add_subparsers(',
     ),
 ]

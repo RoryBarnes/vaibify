@@ -10,6 +10,16 @@ without discussion:
 
 - `introspectionScript.py` duplicates format-handling logic from
   `dataLoaders.py`. Container scripts cannot import from the host.
+- `dictCtx` abbreviates "context" although the style guide forbids
+  abbreviating words shorter than eight characters. It is the per-hub
+  context dictionary every route module receives, and its spelling is
+  part of a registration signature used throughout the backend
+  (`fnRegisterAll(app, dictCtx)`). Ruled an accepted, documented
+  exception (ruling R4, 2026-10-02): neither style scanner flags it and
+  it is not to be renamed in passing. `tests/testStyleInvariants.py`
+  pins this entry. `el` in the frontend is NOT such an exception; it
+  waits for a JavaScript naming lane and must not be mass-renamed
+  piecemeal.
 - `DockerConnection.fnWriteFileViaTar` no longer builds a tarball. It
   execs a fixed program as the container user and streams the bytes on
   stdin (`vaibify/docker/confinedWrite.py`), because a `put_archive`
