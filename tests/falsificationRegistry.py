@@ -25443,4 +25443,22 @@ def _fdictEntry(sRel):
             '        return False\n'
         ),
     ),
+    # --- An empty read on a readable PTY master is the shell's EOF ---
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testAReadableEmptyReadIsTheShellsEof',
+        source='vaibify/gui/terminalSession.py',
+        old=(
+            '        except OSError:\n'
+            '            baOutput = b""\n'
+            '        if not baOutput:\n'
+            '            self._bRunning = False\n'
+            '        return baOutput\n'
+        ),
+        new=(
+            '        except OSError:\n'
+            '            self._bRunning = False\n'
+            '            return b""\n'
+            '        return baOutput\n'
+        ),
+    ),
 ]
