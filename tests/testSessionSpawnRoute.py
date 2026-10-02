@@ -19,12 +19,16 @@ def _fmockAlivePopen():
 
 @pytest.fixture(autouse=True)
 def fixtureSkipChildReadyWait(monkeypatch):
-    """Short-circuit the port-ready poll so tests don't block real sockets."""
-    async def _fnReadyNoOp(iPort, fTimeoutSeconds):
+    """Short-circuit the readiness poll and the child's capability mint."""
+    async def _fnReadyNoOp(iPort, fTimeoutSeconds, child=None):
         return True
     monkeypatch.setattr(
         "vaibify.gui.routes.sessionRoutes._fbAwaitChildReady",
         _fnReadyNoOp,
+    )
+    monkeypatch.setattr(
+        "vaibify.cli.hubSession.fsRequestBootstrapCapability",
+        lambda iPort, bRemoteSession=False: f"capability-{iPort}",
     )
 
 
@@ -55,7 +59,8 @@ def testSpawnRouteReturnsUrlAndPort(fixtureClient):
     assert response.status_code == 200
     dictResult = response.json()
     assert dictResult["iPort"] == 8055
-    assert dictResult["sUrl"] == "http://127.0.0.1:8055"
+    assert dictResult["sUrl"] == (
+        "http://127.0.0.1:8055/#bootstrap=capability-8055")
     mockLaunch.assert_called_once_with(8055)
 
 
@@ -177,9 +182,17 @@ def _fbRunCoroutine(coroutine):
         loop.close()
 
 
-def test_fnAwaitChildReady_returns_true_when_port_opens(monkeypatch):
-    """_fbAwaitChildReady returns True on the first successful probe."""
+def test_fnAwaitChildReady_returns_true_when_port_opens(
+    monkeypatch, tmp_path,
+):
+    """_fbAwaitChildReady returns True once port AND control socket are up."""
     from vaibify.gui.routes import sessionRoutes as sessionRoutesModule
+    pathControlSocket = tmp_path / "control.sock"
+    pathControlSocket.write_text("")
+    monkeypatch.setattr(
+        "vaibify.gui.hostControlChannel.fsControlSocketPathForPort",
+        lambda iPort: str(pathControlSocket),
+    )
     listProbeResults = [False, False, True]
 
     def _fbFakeProbe(iPort):
@@ -252,7 +265,7 @@ def testSpawnRouteAwaitsChildReadyBeforeReturning(fixtureClient, monkeypatch):
     """The spawn handler must await _fbAwaitChildReady before returning."""
     dictProbeCalls = {"iCount": 0}
 
-    async def _fnTrackedAwait(iPort, fTimeoutSeconds):
+    async def _fnTrackedAwait(iPort, fTimeoutSeconds, child=None):
         dictProbeCalls["iCount"] += 1
         return True
 

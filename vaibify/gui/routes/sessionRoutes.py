@@ -4,7 +4,12 @@
 allocator, launches a detached child running ``python -m vaibify
 --port <free>``, and returns the URL the frontend should open in a new
 browser tab. No user-controlled arguments are ever appended to the
-child command line.
+child command line. The URL carries a one-time sign-in capability that
+the child mints over its host control socket, because the child is told
+not to open a browser and so arms none of its own: a bare address would
+reach a dashboard that answers 401 to every call. A child that never
+becomes ready, or will not mint one, is stopped rather than left
+running with nobody able to sign in to it.
 
 ``GET /api/session/lifetime`` reports how long the PRESENTING browser
 session has before its absolute cap — the backend truth the dashboard's
@@ -35,7 +40,7 @@ from fastapi import HTTPException, Request
 _I_MAX_LIVE_SPAWNS = 5
 _S_AGENT_SESSION_HEADER_NAME = "x-vaibify-session"
 _S_BROWSER_CREDENTIAL_HEADER_NAME = "x-session-token"
-_F_READY_TIMEOUT_SECONDS = 5.0
+_F_READY_TIMEOUT_SECONDS = 30.0
 _F_READY_POLL_INTERVAL_SECONDS = 0.05
 S_SUPPRESS_BROWSER_ENV = "VAIBIFY_SUPPRESS_BROWSER"
 
@@ -89,18 +94,63 @@ def _fbIsPortAcceptingConnections(iPort):
         sock.close()
 
 
-async def _fbAwaitChildReady(iPort, fTimeoutSeconds):
-    """Poll until the child's port accepts connections or timeout elapses.
+async def _fbAwaitChildReady(iPort, fTimeoutSeconds, processChild=None):
+    """Poll until the child answers on its port AND its control socket.
 
-    Returning early avoids the browser hitting a transient "unable to
-    connect" page while the spawned hub binds its socket.
+    Both, because the listener appears before the application is
+    assembled and the sign-in capability comes from the control socket.
+    A child that has already exited is not waited for.
     """
+    from vaibify.gui.hostControlChannel import fsControlSocketPathForPort
     fDeadline = time.monotonic() + fTimeoutSeconds
     while time.monotonic() < fDeadline:
-        if _fbIsPortAcceptingConnections(iPort):
+        if processChild is not None and processChild.poll() is not None:
+            return False
+        if _fbIsPortAcceptingConnections(iPort) and os.path.exists(
+            fsControlSocketPathForPort(iPort),
+        ):
             return True
         await asyncio.sleep(_F_READY_POLL_INTERVAL_SECONDS)
     return False
+
+
+def _fnReapSpawnedChild(listChildren, processChild):
+    """Stop a spawned hub nobody can sign in to, and forget it."""
+    if processChild in listChildren:
+        listChildren.remove(processChild)
+    try:
+        processChild.terminate()
+    except OSError:
+        pass
+
+
+async def _fsSignInUrlForSpawnedChild(listChildren, processChild, iPort):
+    """Return the URL that signs a browser in to the spawned hub.
+
+    The capability is one-time and rides the URL fragment, which never
+    reaches an access log. A child that cannot supply one is stopped
+    and the request refused, so a failed click leaves no hub behind.
+    """
+    from vaibify.cli.hubSession import (
+        HubSessionError, fsRequestBootstrapCapability,
+    )
+    sCapability = ""
+    if await _fbAwaitChildReady(
+        iPort, _F_READY_TIMEOUT_SECONDS, processChild,
+    ):
+        try:
+            sCapability = await asyncio.to_thread(
+                fsRequestBootstrapCapability, iPort)
+        except HubSessionError:
+            sCapability = ""
+    if not sCapability:
+        _fnReapSpawnedChild(listChildren, processChild)
+        raise HTTPException(
+            status_code=502,
+            detail="The new vaibify window did not start. Run "
+            "'vaibify' in a terminal to see why.",
+        )
+    return f"http://127.0.0.1:{iPort}/#bootstrap={sCapability}"
 
 
 def _fnRegisterSpawn(app):
@@ -123,9 +173,9 @@ def _fnRegisterSpawn(app):
         iPort = fiPickFreePort(iPreferred=8050)
         child = _fprocessLaunchDetachedHub(iPort)
         listChildren.append(child)
-        await _fbAwaitChildReady(iPort, _F_READY_TIMEOUT_SECONDS)
         return {
-            "sUrl": f"http://127.0.0.1:{iPort}",
+            "sUrl": await _fsSignInUrlForSpawnedChild(
+                listChildren, child, iPort),
             "iPort": iPort,
         }
 

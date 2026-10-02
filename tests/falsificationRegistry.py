@@ -25363,4 +25363,20 @@ def _fdictEntry(sRel):
             '        return sHost + " (from DOCKER_HOST)"\n'
         ),
     ),
+    # --- A spawned vaibify window signs in; a failed one leaves no hub ---
+    Falsification(
+        nodeid='tests/testSpawnedWindowSignsIn.py::testTheSpawnedWindowsUrlSignsInToTheRealChildHub',
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old='    return f"http://127.0.0.1:{iPort}/#bootstrap={sCapability}"\n',
+        new='    return f"http://127.0.0.1:{iPort}"\n',
+    ),
+    Falsification(
+        nodeid='tests/testSpawnedWindowSignsIn.py::testAChildThatNeverBecomesReadyIsStoppedAndRefused',
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old=(
+            '    if not sCapability:\n'
+            '        _fnReapSpawnedChild(listChildren, processChild)\n'
+        ),
+        new='    if not sCapability:\n',
+    ),
 ]
