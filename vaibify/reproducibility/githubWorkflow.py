@@ -124,7 +124,7 @@ def fsGetWorkflowTemplate():
     """
     pathTemplate = _fpathLocateTemplateFile()
     if pathTemplate is not None:
-        return pathTemplate.read_text()
+        return pathTemplate.read_text(encoding="utf-8")
     return _TEMPLATE_STRING
 
 
@@ -168,5 +168,5 @@ def _fnWriteFile(sOutputPath, sContent):
     """Write string content to a file, creating parents as needed."""
     pathOutput = Path(sOutputPath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         fileHandle.write(sContent)

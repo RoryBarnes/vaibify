@@ -39,7 +39,7 @@ def fdictLoadProvenance(sFilePath):
         raise FileNotFoundError(
             f"Provenance file not found: '{sFilePath}'"
         )
-    with open(pathFile, "r") as fileHandle:
+    with open(pathFile, "r", encoding="utf-8") as fileHandle:
         return json.load(fileHandle)
 
 
@@ -55,7 +55,7 @@ def fnSaveProvenance(dictProvenance, sFilePath):
     """
     pathFile = Path(sFilePath)
     pathFile.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathFile, "w") as fileHandle:
+    with open(pathFile, "w", encoding="utf-8") as fileHandle:
         json.dump(dictProvenance, fileHandle, indent=2)
 
 
@@ -258,7 +258,7 @@ def fnGenerateDotFile(dictProvenance, sOutputPath):
     listLines = _flistBuildDotLines(dictProvenance)
     pathOutput = Path(sOutputPath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         fileHandle.write("\n".join(listLines) + "\n")
 
 

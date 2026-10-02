@@ -88,6 +88,7 @@ def fcontextHoldStateWriteLock(sResourceId, sDocumentPath):
     os.makedirs(S_STATE_LOCK_DIRECTORY, exist_ok=True)
     with open(
         fsResolveLockFilePath(sResourceId, sDocumentPath), "w",
+        encoding="utf-8",
     ) as fileLock:
         fcntl.flock(fileLock, fcntl.LOCK_EX)
         try:

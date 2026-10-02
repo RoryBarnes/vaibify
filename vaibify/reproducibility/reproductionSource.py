@@ -464,7 +464,7 @@ def _ffnHoldLiveLock(sStagingDirectory):
     lock, so the returned function is the file's own ``close``.
     """
     sLockPath = os.path.join(sStagingDirectory, _S_LIVE_LOCK_NAME)
-    fileLock = open(sLockPath, "a+")
+    fileLock = open(sLockPath, "a+", encoding="utf-8")
     try:
         fcntl.flock(fileLock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as error:
@@ -602,7 +602,7 @@ def _fprocessRunGit(listArguments, sCwd=None):
              *LIST_GIT_HARDENING_CONFIG, *listArguments],
             cwd=sCwd, env=_fdictGitEnvironment(),
             capture_output=True, text=True,
-            timeout=_F_GIT_QUERY_TIMEOUT_SECONDS,
+            timeout=_F_GIT_QUERY_TIMEOUT_SECONDS, encoding="utf-8",
         )
     except FileNotFoundError as error:
         return _fprocessSyntheticFailure(listArguments, 127, str(error))

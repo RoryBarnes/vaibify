@@ -289,11 +289,11 @@ def _fsComputeChainFingerprint(sDockerDir, listOverlays):
         fsComputeRecipeFingerprint,
     )
     try:
-        sBaseText = (Path(sDockerDir) / "Dockerfile").read_text()
+        sBaseText = (Path(sDockerDir) / "Dockerfile").read_text(encoding="utf-8")
         listTOverlays = [
             (sOverlayName,
              Path(_fsResolveOverlayDockerfile(
-                 sOverlayName, sDockerDir)).read_text())
+                 sOverlayName, sDockerDir)).read_text(encoding="utf-8"))
             for sOverlayName in listOverlays
         ]
     except OSError:
@@ -343,7 +343,7 @@ def _fnPruneDanglingImages():
     try:
         subprocess.run(
             ["docker", "image", "prune", "-f"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, encoding="utf-8",
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
@@ -569,7 +569,7 @@ def flistProjectImageReferences(sProjectName):
     processResult = subprocess.run(
         ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}",
          sProjectName],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if processResult.returncode != 0:
         raise RuntimeError(
@@ -593,7 +593,7 @@ def fbRemoveImage(sImageReference):
     """
     processResult = subprocess.run(
         ["docker", "rmi", "-f", sImageReference],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if processResult.returncode == 0:
         return True
@@ -611,7 +611,7 @@ def _fnRunDockerBuildCapturing(saCommand):
         saCommand,
         stderr=subprocess.PIPE,
         text=True,
-        bufsize=1,
+        bufsize=1, encoding="utf-8",
     )
     sStderrTail = _fsStreamAndCaptureStderr(procBuild)
     iReturnCode = procBuild.wait()

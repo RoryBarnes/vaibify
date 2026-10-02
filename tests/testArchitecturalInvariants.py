@@ -6795,7 +6795,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2329 -> 2332 (2026-10-01): the settings payload carries the image-trust answer.
     # 2332 -> 2334 (2026-10-01): adding a project names an unreadable registry
     # (409) instead of a 500.
-    "registryRoutes.py": 2334,
+    # 2334 -> 2335 (2026-10-01): one text open names its encoding.
+    "registryRoutes.py": 2335,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

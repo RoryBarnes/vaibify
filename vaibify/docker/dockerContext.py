@@ -71,7 +71,7 @@ def fsActiveDockerContext():
             capture_output=True,
             text=True,
             timeout=5,
-            env=_fdictBuildContextProbeEnvironment(),
+            env=_fdictBuildContextProbeEnvironment(), encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -96,7 +96,7 @@ def fsReadActiveContextEndpoint():
             capture_output=True,
             text=True,
             timeout=5,
-            env=_fdictBuildContextProbeEnvironment(),
+            env=_fdictBuildContextProbeEnvironment(), encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -223,7 +223,7 @@ def _fdictReadDockerInfoJson():
     try:
         processResult = subprocess.run(
             ["docker", "info", "--format", "{{json .}}"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return {}
@@ -321,7 +321,7 @@ def _fsRunColimaVersion():
     try:
         processResult = subprocess.run(
             ["colima", "version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""

@@ -165,7 +165,7 @@ def _fsRunKillableDockerCommand(saCommand, fnRegisterProcess=None):
     """
     processDocker = subprocess.Popen(
         saCommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True,
+        text=True, encoding="utf-8",
     )
     if fnRegisterProcess is not None:
         fnRegisterProcess(processDocker)
@@ -232,7 +232,7 @@ def _ftRunProbeCommand(saCommand):
     try:
         processResult = subprocess.run(
             saCommand, capture_output=True, text=True,
-            timeout=_F_DOCKER_PROBE_TIMEOUT_SECONDS,
+            timeout=_F_DOCKER_PROBE_TIMEOUT_SECONDS, encoding="utf-8",
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         return (False, "")
@@ -318,7 +318,7 @@ def _fdictSettlement(bConclusive, listRemovedIds, sDetail):
 def _fsRunDetachedCommand(saCommand):
     """Run a docker command and return stdout (container ID)."""
     processResult = subprocess.run(
-        saCommand, capture_output=True, text=True,
+        saCommand, capture_output=True, text=True, encoding="utf-8",
     )
     if processResult.returncode != 0:
         sError = processResult.stderr.strip()
@@ -972,7 +972,7 @@ def fnStopContainer(sProjectName):
     """
     processResult = subprocess.run(
         ["docker", "stop", sProjectName],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if processResult.returncode != 0:
         raise RuntimeError(
@@ -1064,7 +1064,7 @@ def _fnRestartContainerInPlace(sProjectName):
     """Run ``docker restart``, raising on a non-zero exit."""
     processResult = subprocess.run(
         ["docker", "restart", sProjectName],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     if processResult.returncode != 0:
         raise RuntimeError(
@@ -1078,6 +1078,7 @@ def fnRemoveStopped(sProjectName):
     try:
         subprocess.run(
             saCommand, capture_output=True, text=True, check=False,
+            encoding="utf-8",
         )
     except Exception:
         pass
@@ -1099,7 +1100,7 @@ def fbContainerIsRunning(sProjectName):
     processResult = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Running}}", sProjectName],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
     )
     return processResult.stdout.strip() == "true"
 
@@ -1115,7 +1116,7 @@ def _fsInspectContainerState(sProjectName):
     processResult = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Status}}", sProjectName],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
     )
     if processResult.returncode != 0:
         return ""
@@ -1143,7 +1144,7 @@ def fjsonInspectContainer(sContainerIdentifier):
     try:
         processResult = subprocess.run(
             ["docker", "inspect", sContainerIdentifier],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return {}
@@ -1176,7 +1177,7 @@ def ftProbeNetworkIsolation(sContainerIdentifier):
                 "docker", "inspect", "-f",
                 "{{.HostConfig.NetworkMode}}", sContainerIdentifier,
             ],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (False, False)

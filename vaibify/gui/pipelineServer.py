@@ -3206,7 +3206,7 @@ def _fnRegisterStaticFiles(app, dictCtx):
     @app.get("/")
     async def fresponseServeIndex():
         sIndexPath = os.path.join(STATIC_DIRECTORY, "index.html")
-        with open(sIndexPath, "r") as fileIndex:
+        with open(sIndexPath, "r", encoding="utf-8") as fileIndex:
             sContent = fileIndex.read()
         sVersion = fsComputeStaticCacheVersion()
         sContent = sContent.replace("__CACHE_VERSION__", sVersion)

@@ -210,7 +210,7 @@ def _ffileOpenLockFile(sDirectory, sBasename):
     iDescriptor = os.open(
         os.path.join(sDirectory, sBasename),
         os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    return os.fdopen(iDescriptor, "r+")
+    return os.fdopen(iDescriptor, "r+", encoding="utf-8")
 
 
 @contextmanager

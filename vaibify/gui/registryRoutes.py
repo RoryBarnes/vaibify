@@ -1022,11 +1022,11 @@ def _fbApplyAgentAutoUpdate(sConfigPath, sAgent, bNewValue):
 def _fnUpdateFeaturesBoolField(sConfigPath, sKey, bValue):
     """Update a nested features.<key> bool in a YAML file."""
     import yaml
-    with open(sConfigPath, "r") as fileHandle:
+    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
         dictConfig = yaml.safe_load(fileHandle) or {}
     dictConfig.setdefault("features", {})
     dictConfig["features"][sKey] = bValue
-    with open(sConfigPath, "w") as fileHandle:
+    with open(sConfigPath, "w", encoding="utf-8") as fileHandle:
         yaml.safe_dump(
             dictConfig, fileHandle,
             default_flow_style=False, sort_keys=False,
@@ -1051,7 +1051,7 @@ def _fnUpdateYamlScalarField(sConfigPath, sKey, sRenderedValue):
     Line-based on purpose: a YAML round-trip would drop the comments
     and ordering of a hand-edited vaibify.yml.
     """
-    with open(sConfigPath, "r") as fileHandle:
+    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
         listLines = fileHandle.readlines()
     bFound = False
     for iIndex, sLine in enumerate(listLines):
@@ -1065,7 +1065,7 @@ def _fnUpdateYamlScalarField(sConfigPath, sKey, sRenderedValue):
         if listLines and not listLines[-1].endswith("\n"):
             listLines[-1] += "\n"
         listLines.append(f"{sKey}: {sRenderedValue}\n")
-    with open(sConfigPath, "w") as fileHandle:
+    with open(sConfigPath, "w", encoding="utf-8") as fileHandle:
         fileHandle.writelines(listLines)
 
 
@@ -2036,7 +2036,7 @@ def _fnRewriteConfigForPromotion(sConfigPath, sNewName):
         fconfigFromYamlDict,
         fnSaveToFile,
     )
-    with open(sConfigPath, "r") as fileHandle:
+    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
         dictExisting = yaml.safe_load(fileHandle) or {}
     dictMerged = dict(dictExisting)
     dictMerged["projectName"] = sNewName
@@ -2080,6 +2080,7 @@ def _fnScaffoldWorkflowIfAbsent(sDirectory, sProjectName):
         os.makedirs(sProjectsDirectory, exist_ok=True)
         with open(
             os.path.join(sProjectsDirectory, "project.json"), "w",
+            encoding="utf-8",
         ) as fileWorkflow:
             json.dump({
                 "sWorkflowName": sProjectName,
@@ -2196,7 +2197,7 @@ def _fbDockerContainerExists(sContainerName):
         processResult = subprocess.run(
             ["docker", "ps", "-a", "--format", "{{.Names}}",
              "--filter", f"name=^{sContainerName}$"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
         return sContainerName in processResult.stdout.split()
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -2287,7 +2288,7 @@ def _fdictOverlayContainerFieldsOntoHostConfig(sConfigPath, request):
     ``fconfigFromYamlDict`` / ``fbValidateConfig``.
     """
     import yaml
-    with open(sConfigPath, "r") as fileHandle:
+    with open(sConfigPath, "r", encoding="utf-8") as fileHandle:
         dictExisting = yaml.safe_load(fileHandle) or {}
     dictMerged = dict(dictExisting)
     dictMerged.update(_fdictBuildYamlFromRequest(request))

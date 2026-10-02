@@ -69,7 +69,7 @@ def _ftRunDockerStats(sContainerId):
     try:
         processResult = subprocess.run(
             listCommand,
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except FileNotFoundError:
         return (False, _S_REASON_DAEMON, "")

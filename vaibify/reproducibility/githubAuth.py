@@ -276,7 +276,7 @@ def _ftRevokeGitHubUpstream():
     try:
         processResult = subprocess.run(
             ["gh", "auth", "logout", "--hostname", "github.com"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return (False, "gh CLI unavailable; upstream not revoked.")

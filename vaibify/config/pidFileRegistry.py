@@ -75,7 +75,7 @@ def ffileOpenNoFollow(sPath):
         os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
         0o600,
     )
-    return os.fdopen(iFileDescriptor, "r+")
+    return os.fdopen(iFileDescriptor, "r+", encoding="utf-8")
 
 
 def fnWritePayload(fileHandle, dictPayload):
