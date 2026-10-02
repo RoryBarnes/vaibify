@@ -192,7 +192,7 @@ def ftEnumerateSessionMembers(iSessionLeader):
             ["ps", "-axo", "pid=,pgid=,stat="],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, encoding="utf-8",
         )
     except (OSError, subprocess.SubprocessError):
         return (False, [])

@@ -74,7 +74,7 @@ def fiCountActiveSessions():
 def _fbSlotIsHeldByLiveProcess(sPath):
     """Return True when the slot file's flock is currently held."""
     try:
-        fileHandle = open(sPath, "r+")
+        fileHandle = open(sPath, "r+", encoding="utf-8")
     except OSError:
         return False
     try:

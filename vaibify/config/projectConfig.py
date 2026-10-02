@@ -217,7 +217,7 @@ def fnSaveToFile(config, sFilePath):
     dictYaml = _fdictConfigToYamlDict(config)
     pathOutput = Path(sFilePath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         yaml.safe_dump(
             dictYaml, fileHandle,
             default_flow_style=False, sort_keys=False,
@@ -514,7 +514,7 @@ def _fdictReadYaml(sFilePath):
         raise FileNotFoundError(
             f"Configuration file not found: '{sFilePath}'"
         )
-    with open(pathFile, "r") as fileHandle:
+    with open(pathFile, "r", encoding="utf-8") as fileHandle:
         dictContents = yaml.safe_load(fileHandle)
     if dictContents is None:
         return {}

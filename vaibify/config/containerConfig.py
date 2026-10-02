@@ -46,7 +46,7 @@ def flistParseContainerConf(sFilePath):
             f"Container config not found: '{sFilePath}'"
         )
     return flistParseContainerConfText(
-        pathFile.read_text(), sFilePath
+        pathFile.read_text(encoding="utf-8"), sFilePath
     )
 
 
@@ -126,7 +126,7 @@ def fnWriteContainerConf(listRepos, sFilePath):
     pathOutput = Path(sFilePath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
     listLines = _flistFormatRepoLines(listRepos)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         fileHandle.write(_CONTAINER_CONF_HEADER)
         for sLine in listLines:
             fileHandle.write(sLine + "\n")

@@ -89,7 +89,7 @@ def fnWritePayload(fileHandle, dictPayload):
 def fdictReadPayload(sPath):
     """Best-effort read of a registry file's JSON payload, or ``{}``."""
     try:
-        with open(sPath, "r") as fileHandle:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
             dictPayload = json.load(fileHandle)
     except (OSError, json.JSONDecodeError):
         return {}

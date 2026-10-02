@@ -372,7 +372,7 @@ def _fnWriteYamlConfig(dictConfig, sFilePath):
     """Write a configuration dict to YAML."""
     pathOutput = Path(sFilePath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         yaml.safe_dump(
             dictConfig, fileHandle,
             default_flow_style=False, sort_keys=False,

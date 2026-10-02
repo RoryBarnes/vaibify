@@ -137,7 +137,7 @@ def _fdictReadPidPayload(sPath):
     recycled-PID guard applies uniformly. Returns {} on any error.
     """
     try:
-        with open(sPath, "r") as fileHandle:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
             sContent = fileHandle.read().strip()
     except OSError:
         return {}

@@ -108,7 +108,7 @@ def fnSaveRegistry(dictRegistry):
 
 def _ffileOpenRegistryLock():
     """Open and acquire an exclusive lock for registry writes."""
-    fileHandle = open(_S_LOCK_PATH, "w")
+    fileHandle = open(_S_LOCK_PATH, "w", encoding="utf-8")
     fcntl.flock(fileHandle, fcntl.LOCK_EX)
     return fileHandle
 

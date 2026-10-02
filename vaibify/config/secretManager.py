@@ -81,7 +81,7 @@ def _fsRetrieveViaGhAuth():
     try:
         processResult = subprocess.run(
             ["gh", "auth", "token"],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, encoding="utf-8",
         )
     except FileNotFoundError:
         raise RuntimeError(
@@ -115,7 +115,7 @@ def _fsRetrieveViaDockerSecret(sName):
         raise FileNotFoundError(
             f"Docker secret not found: '{pathSecret}'"
         )
-    return pathSecret.read_text().strip()
+    return pathSecret.read_text(encoding="utf-8").strip()
 
 
 def fnStoreSecret(sName, sValue, sMethod):
