@@ -4531,7 +4531,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # here: testGetArchiveKeepsExactlyItsTwoHomes pins get_archive to this
     # module; the scope's definition, observation and inventory live in
     # agentCouncilSnapshotScope.
-    "agentCouncilContext.py": 1358,
+    # 1358 -> 1404 (2026-10-02): the credential-exclusion policy grew
+    # nine entries plus prefix and component-sequence matching; it is
+    # the same responsibility (what a snapshot contains and why).
+    "agentCouncilContext.py": 1404,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
