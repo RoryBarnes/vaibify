@@ -118,6 +118,15 @@ delimiters silently. The format-handling duplication with
 `dataLoaders.py` is also deliberate — container scripts cannot import
 from the host environment.
 
+**The entrypoint's root phase runs with a fixed system `PATH`.**
+`entrypoint.sh` calls `fnUseFixedSystemPath` before it runs anything as
+root, so a binary planted in the researcher-writable `~/.local/bin` (or
+in a directory named by `/etc/vaibify/binaries.env`) can never be the
+command a root-phase `chown` or sub-script resolves to. The
+`binaries.env` directories are prepended only in the user phase and the
+`profile.d` file. In-container agents are taught the
+`{step:<sStepId>.<stem>}` token form, never the deprecated `{StepNN.x}`.
+
 ## A container may host Claude, Codex, or Gemini
 
 Container agents are overlays selected by feature flags
