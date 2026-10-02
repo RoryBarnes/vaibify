@@ -192,7 +192,13 @@ def test_file_upload_path_traversal_sanitized(clientHttp):
     assert responseHttp.json()["sPath"] == "/workspace/passwd"
 
 
+@pytest.mark.falsification
 def test_file_upload_outside_workspace_rejected(clientHttp):
+    """An upload aimed outside the workspace is refused.
+
+    Kills: fileRoutes.fdictUploadFile: `sNormalized = fsValidatePathWithinRoot(
+    sDestPath, sProjectRepoPath)` replaced by `sNormalized = sDestPath`.
+    """
     _fnConnectToContainer(clientHttp)
     sContent = base64.b64encode(b"data").decode("ascii")
     dictPayload = {
@@ -207,8 +213,13 @@ def test_file_upload_outside_workspace_rejected(clientHttp):
     assert responseHttp.status_code == 403
 
 
+@pytest.mark.falsification
 def test_file_upload_rejects_dotgit_destination(clientHttp):
-    """Audit C4 follow-up: upload must refuse writes under .git/."""
+    """Audit C4 follow-up: upload must refuse writes under .git/.
+
+    Kills: pipelineServer.fnRejectWriteDenylistedPath: the `.git` branch
+    `if ".git" in listSegments:` replaced by `if False:`.
+    """
     _fnConnectToContainer(clientHttp)
     sContent = base64.b64encode(b"payload").decode("ascii")
     dictPayload = {
@@ -239,8 +250,14 @@ def test_file_upload_rejects_dotvaibify_destination(clientHttp):
     assert responseHttp.status_code == 403
 
 
+@pytest.mark.falsification
 def test_file_upload_rejects_project_json_basename(clientHttp):
-    """Audit C4 follow-up: upload must refuse a project.json overwrite."""
+    """Audit C4 follow-up: upload must refuse a project.json overwrite.
+
+    Kills: pipelineServer.fnRejectWriteDenylistedPath: the project.json
+    branch `if posixpath.basename(sNormalized) == "project.json":`
+    replaced by `if False:`.
+    """
     _fnConnectToContainer(clientHttp)
     sContent = base64.b64encode(b"payload").decode("ascii")
     dictPayload = {
@@ -293,7 +310,13 @@ def test_file_download_success(clientHttp):
         "content-disposition", "")
 
 
+@pytest.mark.falsification
 def test_file_download_path_traversal_rejected(clientHttp):
+    """A listing request that climbs out of the workspace is refused.
+
+    Kills: fileRoutes.flistListDirectory: the call
+    `fsValidatePathWithinRoot(sAbsPath, <project root>)` deleted.
+    """
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/files/{S_CONTAINER_ID}/download/"
@@ -517,7 +540,14 @@ def test_session_token_query_param_rejected_non_download(clientHttp):
     assert responseHttp.status_code == 401
 
 
+@pytest.mark.falsification
 def test_session_token_missing_rejected():
+    """A request carrying no credential is refused with 401.
+
+    Kills: serverMiddleware._fbBrowserTokenRejected: the early return
+    `if not bNeedsToken: return False` replaced by `return False`, so
+    no request is ever refused for a missing credential.
+    """
     with patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         _fmockCreateDocker,
@@ -681,8 +711,14 @@ def test_files_exist_rejects_oversized_batch(clientHttp):
     assert responseHttp.status_code == 400
 
 
+@pytest.mark.falsification
 def test_files_exist_rejects_path_traversal(clientHttp):
-    """Inputs that escape the workspace must be rejected with 403."""
+    """Inputs that escape the workspace must be rejected with 403.
+
+    Kills: fileRoutes._fsResolveExistencePath (the shared resolver): the
+    final `return fsValidatePathWithinRoot(sAbs, sProjectRoot)`
+    replaced by `return sAbs`.
+    """
     responseHttp = _fnConnectAndPostExistence(
         clientHttp, {"saRelativePaths": ["../../etc/passwd"]},
     )

@@ -526,6 +526,7 @@ def _fnAssertEveryMutatingRouteResolvesToItsDeclaredScope(listRoutes):
             )
 
 
+@pytest.mark.falsification
 def testUnscopedMutatingRouteFailsAppConstruction():
     """A mutating route with no declared scope must fail construction.
 
@@ -534,6 +535,9 @@ def testUnscopedMutatingRouteFailsAppConstruction():
     named control-plane entry has no authorization scope, so it would ship
     unauthorized. :func:`routeScope.fnValidateRouteScopesOrRaise` refuses to
     build such an app. A properly scoped route passes the same check.
+
+    Kills: routeScope.fnValidateRouteScopesOrRaise: the refusal
+    `if listUnscoped: raise RuntimeError(...)` replaced by `if False:`.
     """
     appUnscoped = FastAPI()
     appUnscoped.router.route_class = routeScope.ContainerAwareRoute

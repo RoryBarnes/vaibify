@@ -920,7 +920,13 @@ def test_write_file(clientHttp):
     assert responseHttp.json()["bSuccess"] is True
 
 
+@pytest.mark.falsification
 def test_write_file_path_traversal_blocked(clientHttp):
+    """A write whose path climbs out of the repo is refused.
+
+    Kills: fileRoutes.fdictWriteFile: `sNormalized = fsValidatePathWithinRoot(
+    sAbsPath, sProjectRepoPath)` replaced by `sNormalized = sAbsPath`.
+    """
     _fnConnectToContainer(clientHttp)
     dictPayload = {"sContent": "evil"}
     responseHttp = clientHttp.put(
@@ -1013,7 +1019,13 @@ def test_figure_not_found(clientHttp):
     assert responseHttp.status_code == 404
 
 
+@pytest.mark.falsification
 def test_figure_fallback_rejects_escape_workdir(clientHttp):
+    """A workdir that leaves the project root is refused.
+
+    Kills: pipelineServer._fbaFetchFallback: the call
+    `fsValidatePathWithinRoot(sFallback, sProjectRoot)` replaced by `pass`.
+    """
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.get(
         f"/api/figure/{S_CONTAINER_ID}/something.png",

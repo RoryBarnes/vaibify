@@ -5,6 +5,8 @@ carried in the URL fragment, exchanged once for a per-browser credential,
 and supports bounded replay so a lost bootstrap response is recoverable.
 """
 
+import pytest
+
 from vaibify.gui import browserSession
 
 
@@ -51,8 +53,13 @@ def test_unknown_capability_yields_nothing():
     ) == (None, None)
 
 
+@pytest.mark.falsification
 def test_expired_capability_yields_nothing():
-    """Past the TTL a capability is EXPIRED and mints no session."""
+    """Past the TTL a capability is EXPIRED and mints no session.
+
+    Kills: ftRedeemCapability drops the capability-age check against
+    I_CAPABILITY_TTL_SECONDS, so a stale capability still mints a session.
+    """
     dictStore = _fdictStore()
     sCapability = browserSession.fsMintBootstrapCapability(dictStore)
     # Age it past the replay window by rewinding its mint time.
@@ -145,8 +152,13 @@ def test_the_sweep_removes_only_records_that_authorize_nothing():
     assert browserSession.fbValidateCredential(dictStore, sCredentialActive)
 
 
+@pytest.mark.falsification
 def test_a_recently_revoked_session_is_kept_as_its_own_audit_trail():
-    """Revocation is not deletion; the record says a session was cut."""
+    """Revocation is not deletion; the record says a session was cut.
+
+    Kills: fbValidateCredential drops the ACTIVE-state check, so a revoked
+    session credential still validates.
+    """
     dictStore = browserSession.fdictCreateBrowserSessionStore()
     sSessionId, sCredential = browserSession.ftRedeemCapability(
         dictStore, browserSession.fsMintBootstrapCapability(dictStore),

@@ -531,8 +531,14 @@ def testSaveAndRunTestRefusesDenylistedPaths(clientBrowser):
         assert responseHttp.status_code == 403, sFilePath
 
 
+@pytest.mark.falsification
 def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
-    """A traversing test path is refused rather than written."""
+    """A traversing test path is refused rather than written.
+
+    Kills: testRoutes._fsResolveTestFilePath: `sNormalized =
+    fsValidatePathWithinRoot(sCandidate, sRoot)` replaced by
+    `sNormalized = sCandidate`.
+    """
     _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "../../etc/cron.d/payload")

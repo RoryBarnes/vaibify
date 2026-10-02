@@ -477,7 +477,12 @@ def testHostDirectoriesReportsCurrentDirConfig(
     assert response.json()["bHasConfig"] is True
 
 
+@pytest.mark.falsification
 def testHostDirectoriesRejectsOutsideHome(fixtureClient):
+    """The directory browser never lists outside the home directory.
+
+    Kills: the browse route skipping its home-containment check.
+    """
     response = fixtureClient.get(
         "/api/host-directories",
         params={"sPath": "/etc"},

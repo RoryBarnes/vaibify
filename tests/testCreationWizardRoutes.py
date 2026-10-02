@@ -667,7 +667,12 @@ def testCreateProjectRelativePathRejected(fixtureClient):
     assert response.status_code == 400
 
 
+@pytest.mark.falsification
 def testCreateProjectOutsideHomeRejected(fixtureClient):
+    """Project creation never scaffolds outside the home directory.
+
+    Kills: the create route skipping its home-containment check.
+    """
     response = fixtureClient.post(
         "/api/projects/create",
         json={

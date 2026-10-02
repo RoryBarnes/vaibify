@@ -35,7 +35,12 @@ def test_valid_path_under_home_is_accepted(monkeypatch, tmp_path):
     fnValidateBindMount({"host": sHostPath, "container": "/data"})
 
 
+@pytest.mark.falsification
 def test_path_outside_home_is_rejected(monkeypatch, tmp_path):
+    """A path outside both $HOME and the project repo is never mountable.
+
+    Kills: the allowed-root check admitting every resolved path.
+    """
     _ftConfigureHome(monkeypatch, tmp_path)
     with pytest.raises(BindMountValidationError):
         fnValidateBindMount({"host": "/data", "container": "/data"})
@@ -61,7 +66,12 @@ def test_root_home_is_rejected(monkeypatch, tmp_path):
         fnValidateBindMount({"host": "/root", "container": "/r"})
 
 
+@pytest.mark.falsification
 def test_ssh_directory_is_rejected(monkeypatch, tmp_path):
+    """A credential directory inside $HOME is refused by the denylist alone.
+
+    Kills: the denied-location overlap check never raising.
+    """
     sHome = _ftConfigureHome(monkeypatch, tmp_path)
     sSshDir = str(sHome / ".ssh")
     os.makedirs(sSshDir)

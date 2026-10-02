@@ -414,7 +414,13 @@ def testADownloadThatCannotOpenFailsBeforeTheStatusIsSent(
     assert "No such container" in responseHttp.json()["detail"]
 
 
+@pytest.mark.falsification
 def testADownloadOutsideTheWorkspaceIsRefused(tclientFiles):
+    """A download of a path outside the workspace is refused.
+
+    Kills: fileRoutes download route (the streaming handler): the call
+    `fsValidatePathWithinRoot(sAbsPath, sProjectRoot)` deleted.
+    """
     client, _connectionDocker = tclientFiles
     responseHttp = client.get(
         f"/api/files/{S_CONTAINER_ID}/download//etc/passwd",
@@ -566,9 +572,15 @@ def testAPullOutsideTheResearchersHomeIsRefused(
     assert not os.path.exists(sOutside)
 
 
+@pytest.mark.falsification
 def testAPullOfAPathOutsideTheWorkspaceIsRefused(
     tclientFiles, fixtureIsolatedRegistryAndHome,
 ):
+    """A pull of a path outside the workspace is refused.
+
+    Kills: fileRoutes.fdictHandlePullFile: the call
+    `fsValidatePathWithinRoot(request.sContainerPath, <root>)` deleted.
+    """
     client, _connectionDocker = tclientFiles
     responseHttp = client.post(
         f"/api/files/{S_CONTAINER_ID}/pull",

@@ -8,6 +8,7 @@ re-pointed at 127.0.0.1) from driving state-changing API calls.
 
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from vaibify.gui import pipelineServer
@@ -25,12 +26,24 @@ def test_fbIsAllowedHostHeader_accepts_host_without_port():
     assert fbIsAllowedHostHeader("localhost", 8050) is True
 
 
+@pytest.mark.falsification
 def test_fbIsAllowedHostHeader_rejects_wrong_port():
+    """A loopback name on a port other than the expected one is refused.
+
+    Kills: fbIsAllowedHostHeader returns True without comparing the Host
+    port to iExpectedPort.
+    """
     assert fbIsAllowedHostHeader("127.0.0.1:9999", 8050) is False
     assert fbIsAllowedHostHeader("localhost:9999", 8050) is False
 
 
+@pytest.mark.falsification
 def test_fbIsAllowedHostHeader_rejects_remote_host():
+    """A non-loopback Host name is refused (DNS rebinding defence).
+
+    Kills: fbIsAllowedHostHeader drops the loopback host-name set check, so
+    any name on the expected port is accepted.
+    """
     assert fbIsAllowedHostHeader("evil.com:8050", 8050) is False
     assert fbIsAllowedHostHeader("attacker.example:8050", 8050) is False
     assert fbIsAllowedHostHeader("127.0.0.1.evil.com", 8050) is False

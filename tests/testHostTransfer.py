@@ -760,8 +760,13 @@ async def testTransferFromOrphanedRecordReactivates():
     assert recordOwner.fOrphanedSinceMonotonic == 0.0
 
 
+@pytest.mark.falsification
 def testBootstrapRedemptionRefusesATransferCapability():
-    """The plain bootstrap lane may never redeem a transfer capability."""
+    """The plain bootstrap lane may never redeem a transfer capability.
+
+    Kills: ftRedeemCapability drops the BOOTSTRAP-only operation check, so a
+    transfer capability is redeemed into a bare credential.
+    """
     dictStore = browserSession.fdictCreateBrowserSessionStore()
     sCapability = browserSession.fsMintTransferCapability(
         dictStore, S_PROJECT_NAME, 1,

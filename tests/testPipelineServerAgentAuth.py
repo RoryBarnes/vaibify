@@ -207,7 +207,13 @@ def test_fbHasAgentToken_no_tokens_anywhere_is_false():
     assert pipelineServer.fbHasAgentToken(ws, "expected") is False
 
 
+@pytest.mark.falsification
 def test_fbHasAgentToken_wrong_header_and_wrong_query_is_false():
+    """A wrong token is refused on both the header and the query channel.
+
+    Kills: pipelineServer.fbHasAgentToken: both token equality
+    comparisons (header and query) dropped, so any non-empty token passes.
+    """
     ws = _MockWebSocket(
         {"x-vaibify-session": "bad"},
         {"sToken": "also-bad"},

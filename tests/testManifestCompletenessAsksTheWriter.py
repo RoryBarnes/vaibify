@@ -112,8 +112,12 @@ def test_a_project_with_no_script_yet_is_not_incomplete(sProjectRepo):
     ) == []
 
 
+@pytest.mark.falsification
 def test_the_level_gate_follows_the_shared_definition(sProjectRepo):
-    """fbVerifyManifestComplete must move with the one rule."""
+    """fbVerifyManifestComplete must move with the one rule.
+
+    Kills: the gate ignoring the declared-but-missing list.
+    """
     from vaibify.reproducibility import levelGates
     dictWorkflow = _fdictBuildWorkflow()
     manifestWriter.fnWriteManifest(sProjectRepo, dictWorkflow)

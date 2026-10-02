@@ -212,7 +212,12 @@ def test_fbWorkflowFullySyncedWithGithub_diverged_returns_false(tmp_path):
     ) is False
 
 
+@pytest.mark.falsification
 def test_fbWorkflowFullySyncedWithGithub_sha_mismatch_returns_false(tmp_path):
+    """A verify captured at an older commit cannot light the GitHub gate.
+
+    Kills: the verified-SHA comparison always passing.
+    """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "github": fdictBuildCachedVerify(
@@ -256,7 +261,12 @@ def test_fbWorkflowFullySyncedWithZenodo_fresh_full_match_returns_true(tmp_path)
     ) is True
 
 
+@pytest.mark.falsification
 def test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false(tmp_path):
+    """A verified deposit with no DOI cannot light the Zenodo gate.
+
+    Kills: the empty-DOI refusal being removed.
+    """
     sProjectRepo = str(tmp_path)
     _fnWriteSyncStatusFile(sProjectRepo, {
         "zenodo": fdictBuildCachedVerify(

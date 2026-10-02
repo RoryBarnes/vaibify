@@ -13,6 +13,8 @@ produced by this backend, so a regression that drops the binding
 fails the suite without requiring a browser.
 """
 
+import pytest
+
 from vaibify.gui.fileStatusManager import (
     _fnResetUserAttestationIfStale,
     fbReconcileUserVerificationTimestamps,
@@ -116,7 +118,12 @@ def test_flistLevel1Blockers_axis_not_green_handles_empty_files():
 # ------------------------------------------------------------------------
 
 
+@pytest.mark.falsification
 def test_flistLevel1Blockers_upstream_modified_marks_files_and_edges():
+    """An upstream output newer than its consumer is named as the cause.
+
+    Kills: the mtime comparison inverted so newer upstream is not offending.
+    """
     dictA = _fdictAllGreenStep(sName="A")
     dictB = _fdictAllGreenStep(sName="B")
     dictB["saDataCommands"] = ["python s.py {Step01.data}"]
