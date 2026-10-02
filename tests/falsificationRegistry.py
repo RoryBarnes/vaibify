@@ -25720,4 +25720,17 @@ def _fdictEntry(sRel):
         old='    return ["--mount", fileSpecification.getvalue()]',
         new='    return ["-v", f"{sHostPath}:/run/secrets/{sName}:ro"]',
     ),
+    # --- A session secret split by a line break is still redacted ---
+    Falsification(
+        nodeid='tests/testTranscriptSanitizerSplitSecrets.py::testASecretSplitByALineBreakIsRedacted',
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    return sBreak.join(re.escape(sCharacter) for sCharacter in sSecret)\n',
+        new='    return re.escape(sSecret)\n',
+    ),
+    Falsification(
+        nodeid='tests/testTranscriptSanitizerSplitSecrets.py::testASecretSplitInsideAJsonRecordIsRedactedAndStaysValidJson',
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    sBreak = r"(?:\\r?\\n|\\\\r\\\\n|\\\\n)?"\n',
+        new='    sBreak = r"(?:\\r?\\n)?"\n',
+    ),
 ]

@@ -83,17 +83,29 @@ def _fsMarker(sCategory):
     return "[REDACTED: " + sCategory + "]"
 
 
+def _fsBuildLineBreakTolerantPattern(sSecret):
+    """Return a regex matching the secret even when a line break splits it.
+
+    A terminal wraps a long token at the screen width, so a captured
+    transcript can hold a secret with a newline, or a JSON-escaped
+    newline, in the middle of it.
+    """
+    sBreak = r"(?:\r?\n|\\r\\n|\\n)?"
+    return sBreak.join(re.escape(sCharacter) for sCharacter in sSecret)
+
+
 def _ftRedactExactSecrets(sText, listExactSecrets, dictCounts):
     """Replace every occurrence of each known session secret."""
     for sSecret in listExactSecrets or []:
         if not sSecret or len(sSecret) < 4:
             continue
-        iOccurrences = sText.count(sSecret)
+        sText, iOccurrences = re.subn(
+            _fsBuildLineBreakTolerantPattern(sSecret),
+            lambda matchSecret: _fsMarker(S_SESSION_SECRET_CATEGORY),
+            sText,
+        )
         if iOccurrences == 0:
             continue
-        sText = sText.replace(
-            sSecret, _fsMarker(S_SESSION_SECRET_CATEGORY),
-        )
         dictCounts[S_SESSION_SECRET_CATEGORY] = (
             dictCounts.get(S_SESSION_SECRET_CATEGORY, 0) + iOccurrences
         )
