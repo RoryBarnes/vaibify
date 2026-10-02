@@ -641,11 +641,7 @@ class FakeConnectionWithNoDaemonLeg(FakeConnectionRunningContainers):
         return False
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "BUG: registryRoutes._fbNameHasRunningPipeline documents that a "
-    "Docker outage fails safe to busy, but returns False when no daemon "
-    "is reachable, so a take-over proceeds over a run it cannot see."
-))
+@pytest.mark.falsification
 @pytest.mark.parametrize("dictCtx", [
     {"docker": None},
     {"docker": FakeConnectionWithNoDaemonLeg()},
@@ -653,6 +649,7 @@ class FakeConnectionWithNoDaemonLeg(FakeConnectionRunningContainers):
 def testRunningPipelineCheckIsBusyWhenNoDaemonCanBeAsked(
     tupleHostClient, dictCtx,
 ):
+    """Kills: answering "not busy" about a run that cannot be seen."""
     assert registryRoutes._fbNameHasRunningPipeline(
         dictCtx, object(), S_CONTAINER_PROJECT,
     ) is True

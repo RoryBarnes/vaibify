@@ -25740,4 +25740,11 @@ def _fdictEntry(sRel):
         old='    with _LOCK_APPEND:\n        listFlags = flistLoadFlags(filesRepo)\n',
         new='    if True:\n        listFlags = flistLoadFlags(filesRepo)\n',
     ),
+    # --- A pipeline check that cannot ask the daemon answers busy ---
+    Falsification(
+        nodeid='tests/testCoverageRoutesBRegistry.py::testRunningPipelineCheckIsBusyWhenNoDaemonCanBeAsked',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not fbDockerReachable(connectionDocker):\n        return True\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
+        new='    if not fbDockerReachable(connectionDocker):\n        return False\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
+    ),
 ]
