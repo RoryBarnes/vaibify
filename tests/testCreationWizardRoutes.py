@@ -622,6 +622,37 @@ def testCreateProjectPersistsPackagesAndToggles(
     assert config.bNetworkIsolation is True
 
 
+def testCreateProjectPersistsTheX11OptIn(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    _fnPrepSandboxTemplate(tmp_path, monkeypatch)
+    sProjectDir = str(tmp_path / "x11-project")
+    response = fixtureClient.post("/api/projects/create", json={
+        "sDirectory": sProjectDir, "sProjectName": "x11-project",
+        "sTemplateName": "sandbox", "bX11Forwarding": True,
+    })
+    assert response.status_code == 200
+    assert fconfigLoadFromFile(
+        os.path.join(sProjectDir, "vaibify.yml")).bX11Forwarding is True
+
+
+@pytest.mark.falsification
+def testCreateProjectRefusesX11BesideNetworkIsolation(
+    fixtureClient, tmp_path, monkeypatch,
+):
+    """Kills: the wizard saving a config the launch will refuse."""
+    _fnPrepSandboxTemplate(tmp_path, monkeypatch)
+    response = fixtureClient.post("/api/projects/create", json={
+        "sDirectory": str(tmp_path / "both"), "sProjectName": "both",
+        "sTemplateName": "sandbox", "bX11Forwarding": True,
+        "bNetworkIsolation": True,
+    })
+    assert response.status_code in (400, 422)
+    assert "x11Forwarding" in response.text
+    assert not os.path.exists(str(tmp_path / "both" / "vaibify.yml"))
+
+
 @pytest.mark.falsification
 def testCreateProjectRejectsCondaPackages(fixtureClient, tmp_path,
                                           monkeypatch):

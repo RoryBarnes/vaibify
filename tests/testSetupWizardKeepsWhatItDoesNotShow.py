@@ -117,8 +117,10 @@ def _fdictSavedByThePage(dictLoaded):
 
 
 # The validator refuses conda packages (nothing installs them), so no
-# loadable configuration can hold a non-default value there.
-SET_FIELDS_NO_VALID_CONFIG_CAN_MOVE = {"listCondaPackages"}
+# loadable configuration can hold a non-default value there. X11
+# forwarding is refused beside network isolation, which this fixture
+# turns on; its own round trip is the test below.
+SET_FIELDS_NO_VALID_CONFIG_CAN_MOVE = {"listCondaPackages", "bX11Forwarding"}
 
 
 def _fnAssertEveryFieldIsNonDefault(config):
@@ -151,6 +153,29 @@ def testSavingThroughTheWizardKeepsEveryKeyItDoesNotShow(
     responseSave = clientHttp.post(
         "/api/setup/save", json=_fdictSavedByThePage(dictLoaded))
     assert responseSave.status_code == 200, responseSave.text
+    configAfter = projectConfig.fconfigLoadFromFile(
+        str(tmp_path / "vaibify.yml"))
+    assert dataclasses.asdict(configAfter) == dataclasses.asdict(
+        configBefore)
+
+
+@pytest.mark.falsification
+def testSavingThroughTheWizardKeepsTheX11ForwardingOptIn(
+    tmp_path, monkeypatch,
+):
+    """Kills: dropping x11Forwarding when the form regenerates the file."""
+    dictYaml = _fdictEveryKeyConfigured(tmp_path, monkeypatch)
+    dictYaml["networkIsolation"] = False
+    dictYaml["x11Forwarding"] = True
+    configBefore = _fnWriteConfig(tmp_path, dictYaml)
+    assert configBefore.bX11Forwarding is True
+    clientHttp = _fclientFor(tmp_path)
+    dictLoaded = clientHttp.get("/api/setup/config").json()
+    assert clientHttp.post(
+        "/api/setup/save", json=_fdictSavedByThePage(dictLoaded),
+    ).status_code == 200
+    with open(tmp_path / "vaibify.yml", encoding="utf-8") as fileHandle:
+        assert yaml.safe_load(fileHandle)["x11Forwarding"] is True
     configAfter = projectConfig.fconfigLoadFromFile(
         str(tmp_path / "vaibify.yml"))
     assert dataclasses.asdict(configAfter) == dataclasses.asdict(

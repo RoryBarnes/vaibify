@@ -26300,4 +26300,29 @@ def _fdictEntry(sRel):
         old='    _fnRunBestEffort([_fsFindXhost(), "+localhost"])\n',
         new='',
     ),
+    # --- 2026-10-02: X11 forwarding is opt-in per project and refused beside network isolation ---
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoXhost',
+        source='vaibify/docker/containerManager.py',
+        old='    if not getattr(config, "bX11Forwarding", False):\n        return\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testForwardingBesideNetworkIsolationIsRefusedNamingBothKeys',
+        source='vaibify/docker/containerManager.py',
+        old='    if getattr(config, "bNetworkIsolation", False):\n        raise RuntimeError(\n',
+        new='    if False:\n        raise RuntimeError(\n',
+    ),
+    Falsification(
+        nodeid='tests/testCreationWizardRoutes.py::testCreateProjectRefusesX11BesideNetworkIsolation',
+        source='vaibify/cli/configFieldPreflight.py',
+        old='    if sX11Complaint:\n        listComplaints.append(sX11Complaint)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingThroughTheWizardKeepsTheX11ForwardingOptIn',
+        source='vaibify/config/projectConfig.py',
+        old='        "x11Forwarding": config.bX11Forwarding,\n',
+        new='',
+    ),
 ]

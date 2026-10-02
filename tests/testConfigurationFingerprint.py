@@ -98,6 +98,7 @@ def testRuntimeOnlyFieldsNeverDemandARebuild():
         ("listBindMounts", [{"sSource": "/tmp/x", "sTarget": "/x"}]),
         ("listSecrets", [{"sName": "token", "sMethod": "gh"}]),
         ("bNetworkIsolation", True),
+        ("bX11Forwarding", True),
         ("iCpuLimit", 4),
         ("fMemoryLimitGigabytes", 8.0),
     ):

@@ -98,6 +98,7 @@ class CreateProjectRequest(BaseModel):
     bUseGithubAuth: bool = True
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
+    bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
@@ -138,6 +139,7 @@ class ConvertToContainerRequest(BaseModel):
     bUseGithubAuth: bool = True
     bNeverSleep: bool = False
     bNetworkIsolation: bool = False
+    bX11Forwarding: bool = False
     bClaudeAutoUpdate: bool = True
     bCodexAutoUpdate: bool = True
     bGeminiAutoUpdate: bool = True
@@ -2249,6 +2251,7 @@ def _fdictBuildYamlFromRequest(request):
         "secrets": _flistSecretsFromAuthFlag(request.bUseGithubAuth),
         "neverSleep": request.bNeverSleep,
         "networkIsolation": request.bNetworkIsolation,
+        "x11Forwarding": request.bX11Forwarding,
     }
     _fnAttachOptionalPackages(dictYaml, request)
     _fnAttachResourceLimits(dictYaml, request)

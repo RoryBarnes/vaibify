@@ -21,6 +21,7 @@ file; the Python dataclass uses Hungarian notation internally.
 | `workspaceRoot`   | string  | `/workspace`      | Mount point for the workspace volume |
 | `packageManager`  | string  | `pip`             | Package manager: `pip`, `conda`, or `mamba` |
 | `networkIsolation`| boolean | `false`           | Disable outbound network access      |
+| `x11Forwarding`   | boolean | `false`           | Forward the host X display so graphical programs in the container can open windows. Opt-in because a connected client can read the screen and inject input (see [Security](security.md)). Refused together with `networkIsolation: true`. Takes effect when the container is created, so stop and start it after changing this |
 | `pipInstallFlags` | string  | `--prefer-binary` | Extra flags passed to `pip install` during the image build |
 | `neverSleep`      | boolean | `false`           | Keep the host awake (`caffeinate`) while the container runs; macOS only, ignored elsewhere |
 | `dashboardPort`   | integer | `0`               | The project's dashboard port. `0` means "not yet assigned": the first launch picks a free port and writes it back here so the same port is reused on every restart. A non-zero value must be 1024–65535 |

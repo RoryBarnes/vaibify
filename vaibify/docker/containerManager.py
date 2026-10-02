@@ -454,7 +454,7 @@ def flistBuildRunArgs(
     if bCredentials:
         _fnAddAgentHostBridge(config, saRunArgs)
     _fnAddNetworkIsolation(config, saRunArgs)
-    saRunArgs.extend(flistConfigureX11Args())
+    _fnAddX11Forwarding(config, saRunArgs)
     _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
     return saRunArgs
 
@@ -838,6 +838,26 @@ def _fnAddNetworkIsolation(config, saRunArgs):
             "--network", "none",
             "-e", "VAIBIFY_NETWORK_ISOLATED=true",
         ])
+
+
+def _fnAddX11Forwarding(config, saRunArgs):
+    """Forward the host's X display only for a project that opted in.
+
+    Forwarding lets a container program read the screen and inject
+    input, so it is off unless ``x11Forwarding`` is true, and it is
+    refused outright beside ``networkIsolation``: a sealed container
+    cannot reach the host's X server, and opening a display channel
+    into it would defeat the seal.
+    """
+    if not getattr(config, "bX11Forwarding", False):
+        return
+    if getattr(config, "bNetworkIsolation", False):
+        raise RuntimeError(
+            f"'{config.sProjectName}' sets both x11Forwarding and "
+            "networkIsolation. A sealed container cannot use a display "
+            "channel; set one of them to false in vaibify.yml."
+        )
+    saRunArgs.extend(flistConfigureX11Args())
 
 
 def _fnAddAgentHostBridge(config, saRunArgs):

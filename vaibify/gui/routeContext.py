@@ -122,8 +122,10 @@ def fnRefuseUnusableContainerFields(request):
     a branch its remote does not have (2026-09-21). The request carries
     the config's own attribute names, so one function grades both.
     """
-    from vaibify.cli.configFieldPreflight import flistDescribeInvalidFields
-    listComplaints = flistDescribeInvalidFields(request)
+    from vaibify.cli.configFieldPreflight import (
+        flistDescribeUnusableConfiguration,
+    )
+    listComplaints = flistDescribeUnusableConfiguration(request)
     if listComplaints:
         raise HTTPException(400, detail={
             "sMessage": "; ".join(listComplaints) + ".",

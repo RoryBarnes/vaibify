@@ -4278,7 +4278,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # another project since the workflow was read. It sits beside the
     # carried save it guards, which must refuse before its carrier
     # opens a journal record.
-    "routeContext.py": 934,
+    # 934 -> 936 (2026-10-02): the save-time refusal also grades the x11Forwarding conflict.
+    "routeContext.py": 936,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -6805,7 +6806,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (409) instead of a 500.
     # 2334 -> 2335 (2026-10-01): one text open names its encoding.
     # 2335 -> 2336 (2026-10-01): the archive source is resolved before the session is released.
-    "registryRoutes.py": 2336,
+    # 2336 -> 2339 (2026-10-02): the wizard requests carry the x11Forwarding opt-in.
+    "registryRoutes.py": 2339,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
