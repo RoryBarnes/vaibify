@@ -981,6 +981,44 @@ async def _fnRouteInteractiveFrame(sAction, dictRequest, sContainerId):
         _fnHandleInteractiveResponse(dictInteractive, sAction, dictRequest)
 
 
+def _fdictParseRunFrame(sFrameText):
+    """Return the frame as a dict, or None when it is not a JSON object."""
+    try:
+        dictRequest = json.loads(sFrameText)
+    except ValueError:
+        return None
+    return dictRequest if isinstance(dictRequest, dict) else None
+
+
+def _fdictMalformedFrameEvent():
+    """Return the refusal sent for a frame that is not a JSON object."""
+    return {
+        "sType": "runRefused",
+        "sAction": "",
+        "listStepIndices": [],
+        "sMessage": "Refused: the request was not a JSON object.",
+    }
+
+
+def _fdictUnresolvableSelectionRefusal(sAction, dictRequest, dictWorkflow):
+    """Return a runRefused event when the frame names a step that cannot resolve.
+
+    An unknown label or a non-integer index used to raise out of the
+    message loop before dispatch, closing the socket with no event, so
+    a typo in ``vaibify-do`` read as a dropped connection.
+    """
+    try:
+        _flistGateStepIndices(sAction, dictRequest, dictWorkflow or {})
+    except (ValueError, TypeError) as error:
+        return {
+            "sType": "runRefused",
+            "sAction": sAction,
+            "listStepIndices": [],
+            "sMessage": f"Refused '{sAction}': {error}",
+        }
+    return None
+
+
 async def fnPipelineMessageLoop(
     websocket, connectionDocker, sContainerId,
     dictWorkflow, dictWorkflowPathCache, sWorkflowDirectory,
@@ -1019,7 +1057,10 @@ async def fnPipelineMessageLoop(
         ):
             await websocket.close(code=4401)
             return
-        dictRequest = json.loads(sFrameText)
+        dictRequest = _fdictParseRunFrame(sFrameText)
+        if dictRequest is None:
+            await fnCallback(_fdictMalformedFrameEvent())
+            continue
         sAction = dictRequest.get("sAction", "")
         if sAction in (
             "interactiveResume", "interactiveSkip", "interactiveComplete",
@@ -1046,6 +1087,12 @@ async def fnPipelineMessageLoop(
         )
         if dictMisdirectedRefusal is not None:
             await fnCallback(dictMisdirectedRefusal)
+            continue
+        dictSelectionRefusal = _fdictUnresolvableSelectionRefusal(
+            sAction, dictRequest, dictWorkflowBound,
+        )
+        if dictSelectionRefusal is not None:
+            await fnCallback(dictSelectionRefusal)
             continue
         sRunProject = (dictWorkflowBound or {}).get(
             "sProjectRepoPath", "",

@@ -25657,4 +25657,17 @@ def _fdictEntry(sRel):
         old='        dictRelevant["sStepId"] = dictStep.get("sStepId", "")\n',
         new='',
     ),
+    # --- A run frame naming a step that cannot resolve is refused, not fatal ---
+    Falsification(
+        nodeid='tests/testRunFrameWithABadStepIsRefusedNotFatal.py::testAFrameNamingAnUnresolvableStepIsRefusedAndTheSocketSurvives',
+        source='vaibify/gui/pipelineServer.py',
+        old='    except (ValueError, TypeError) as error:\n        return {\n            "sType": "runRefused",\n            "sAction": sAction,',
+        new='    except KeyboardInterrupt as error:\n        return {\n            "sType": "runRefused",\n            "sAction": sAction,',
+    ),
+    Falsification(
+        nodeid='tests/testRunFrameWithABadStepIsRefusedNotFatal.py::testAFrameThatIsNotAJsonObjectIsRefusedAndTheSocketSurvives',
+        source='vaibify/gui/pipelineServer.py',
+        old='    except ValueError:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
+        new='    except KeyboardInterrupt:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
+    ),
 ]

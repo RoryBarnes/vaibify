@@ -5944,7 +5944,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the per-run registry, the replay to a reconnecting socket, and the
     # frame routing that finds the waiting run.
     # 3719 -> 3720 (2026-10-01): the dependency scan's task is kept referenced.
-    "pipelineServer.py": 3720,
+    # 3720 -> 3767 (2026-10-01): a malformed or unresolvable run frame is refused with an event.
+    "pipelineServer.py": 3767,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
