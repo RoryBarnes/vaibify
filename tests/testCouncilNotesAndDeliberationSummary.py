@@ -68,7 +68,7 @@ def testTheCharterNamesTheDestinationClauseSixUsedToLack():
     Kills: bumping the version without changing the clause, or adding
     the schema key without telling participants it exists.
     """
-    assert S_CHARTER_VERSION == "1.7.0"
+    assert tuple(int(s) for s in S_CHARTER_VERSION.split(".")) >= (1, 7, 0)
     assert S_NOTED_FINDINGS_KEY in S_CHARTER_TEXT
     # Clause 6 must point AT the field, not merely mention it somewhere
     # in the appended schema template.

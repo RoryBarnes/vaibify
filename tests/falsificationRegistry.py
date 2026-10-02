@@ -25839,4 +25839,11 @@ def _fdictEntry(sRel):
         old='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, sProjectRepoPath), {},\n        )\n',
         new='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, ""), {},\n        )\n',
     ),
+    # --- The documented charter is the charter the code sends ---
+    Falsification(
+        nodeid='tests/testAgentCouncilCharter.py::testTheDocumentedCharterIsTheCharterTheCodeSends',
+        source='vaibify/gui/agentCouncilCharter.py',
+        old='guessing. Do not escalate what evidence can decide. The question\n',
+        new='guessing. Do not escalate what evidence can settle. The question\n',
+    ),
 ]

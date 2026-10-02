@@ -187,7 +187,13 @@ S_PHASE_VETO = "veto"
 # Second, a council that EXHAUSTS its rounds without converging now
 # ends with a chairbot-written DELIBERATION SUMMARY rather than simply
 # stopping — never called a plan, because no plan was agreed.
-S_CHARTER_VERSION = "1.7.0"
+# 1.8.0 (2026-10-01): records a version bump that was missed. Clause 6
+# was extended to name the notes channel's purpose, and clause 7 now
+# asks for rejected alternatives, the verification a plan requires, and
+# stop conditions for an implementer. Two different charter texts had
+# been shipped under 1.7.0, although a campaign persists "the version
+# and text it ran under".
+S_CHARTER_VERSION = "1.8.0"
 _S_CHARTER_CLAUSES = """\
 COUNCIL CHARTER (version {sVersion})
 
