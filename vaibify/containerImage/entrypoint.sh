@@ -1146,7 +1146,7 @@ It fetches origin, re-runs the GitHub content verify that the Level 2 cells read
 
 **Remote-data overwrite protocol.** If a run action is answered with a `runRefused` event whose `sReason` is `remoteDataOverwrite`, the run would re-pull remote data over the canonical committed copy (the refusal names the steps and files). Do NOT confirm on your own authority: relay the question to the researcher, and only after their explicit yes re-issue the same command with `--confirm-remote-overwrite`. After a confirmed re-pull, the fresh data is NOT auto-committed — the researcher reviews and commits it (or reverts) through the normal canonical flow.
 
-**Declaring input data.** Every step must state its input contract to reach Level 1: raw files the step reads go in its Input Data block (`vaibify-do add-input-data-file <step> sPath=<repo-relative path>`), and a step that reads no raw data is declared with `bNoInputData` (per step via `update-step`, or `vaibify-do declare-no-input-data` to declare every still-undeclared step at once). Files produced by other steps are NOT input data — reference them as `{StepNN.*}` tokens in commands.
+**Declaring input data.** Every step must state its input contract to reach Level 1: raw files the step reads go in its Input Data block (`vaibify-do add-input-data-file <step> sPath=<repo-relative path>`), and a step that reads no raw data is declared with `bNoInputData` (per step via `update-step`, or `vaibify-do declare-no-input-data` to declare every still-undeclared step at once). Files produced by other steps are NOT input data — reference them as `{step:<sStepId>.<stem>}` tokens in commands.
 
 **What the three test tiers check, and what they do not.** All three are built from a step's declared `saOutputDataFiles`. Say which tier you mean and what it would actually establish, because "add some tests" is not a claim and the researcher is entitled to one.
 
@@ -1250,7 +1250,7 @@ project entry, verify).
 
 The one rule that must never be violated: **every file a script reads
 from another step must be a CLI argument named in the project command
-via a `{StepNN.varname}` token.** A hardcoded cross-step path is
+via a `{step:<sStepId>.<stem>}` token.** A hardcoded cross-step path is
 invisible to the dependency parser and silently breaks the L1
 contract. Own-step files may be hardcoded; the boundary is the step.
 

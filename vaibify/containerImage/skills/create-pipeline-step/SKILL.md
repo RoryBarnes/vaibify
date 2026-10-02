@@ -73,13 +73,13 @@ them:
 ## Phase 3: The cross-step token contract (non-negotiable)
 
 Every file the script reads from ANOTHER step must be a CLI argument,
-referenced in the project command via a `{StepNN.varname}` token. A
+referenced in the project command via a `{step:<sStepId>.<stem>}` token. A
 hardcoded cross-step path (`open("../OtherStep/output.json")`) is
 invisible to the dependency parser and silently breaks the L1
 contract. Own-step files may be hardcoded; the boundary is the step.
 
 - Argument names kebab-case (`--flare-samples`); the matching token
-  snake_case (`{Step02.flare_samples}`) — the token's varname is the
+  snake_case (`{step:flare-sampling.flare_samples}`) — the token's stem is the
   extensionless basename of the producer's `saOutputDataFiles` entry.
 - Use argparse, never raw sys.argv, so the contract is explicit.
 - When two producers declare colliding basenames, use the qualified
@@ -89,11 +89,11 @@ contract. Own-step files may be hardcoded; the boundary is the step.
 Worked example — producer declares, consumer tokenizes:
 
 ```json
-{"iIndex": 2, "sName": "PosteriorSamples",
+{"iIndex": 2, "sStepId": "posterior-samples", "sName": "PosteriorSamples",
  "saDataCommands": ["python dataPosteriorSamples.py"],
  "saOutputDataFiles": ["posterior_samples.npy"]}
 {"iIndex": 3, "sName": "PosteriorCorner",
- "saPlotCommands": ["python plotCorner.py --posterior-samples {Step02.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"]}
+ "saPlotCommands": ["python plotCorner.py --posterior-samples {step:posterior-samples.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"]}
 ```
 
 ## Phase 4: Scripts and the project entry
