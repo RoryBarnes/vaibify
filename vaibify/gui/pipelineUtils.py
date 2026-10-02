@@ -329,17 +329,21 @@ def _fsPlainTokenStem(sOutputFile):
     return posixpath.splitext(sBasename)[0]
 
 
-def _fsQualifiedTokenStem(sOutputFile, sStem):
+def _fsQualifiedTokenStem(sOutputFile, sStem, bFullDirectory=False):
     """Return a collision-safe token stem qualified by the path prefix.
 
     Scientific output filenames are public API and must not be renamed
     just to disambiguate tokens; instead the token gains the leading
     path segment: ``EngleBarnes/output/Converged_Param_Dictionary.json``
-    becomes ``EngleBarnes_Converged_Param_Dictionary``.
+    becomes ``EngleBarnes_Converged_Param_Dictionary``. When two paths
+    still collide on their leading segment (``output/run1/x.json`` and
+    ``output/run2/x.json``), the whole directory qualifies the stem.
     """
     sNormalized = sOutputFile.replace("\\", "/")
     sDirectory = posixpath.dirname(sNormalized)
     sQualifier = sDirectory.split("/")[0] if sDirectory else ""
+    if bFullDirectory:
+        sQualifier = sDirectory
     sCandidate = f"{sQualifier}_{sStem}" if sQualifier else sStem
     return re.sub(r"[^0-9A-Za-z_]", "_", sCandidate)
 
@@ -357,14 +361,24 @@ def fdictMapOutputTokenStems(listOutputFiles):
     for sOutputFile in listOutputFiles:
         sStem = _fsPlainTokenStem(sOutputFile)
         dictStemCounts[sStem] = dictStemCounts.get(sStem, 0) + 1
-    dictTokenStems = {}
+    dictQualifiedCounts = {}
     for sOutputFile in listOutputFiles:
         sStem = _fsPlainTokenStem(sOutputFile)
         if dictStemCounts[sStem] > 1:
-            dictTokenStems[
-                _fsQualifiedTokenStem(sOutputFile, sStem)] = sOutputFile
-        else:
+            sQualified = _fsQualifiedTokenStem(sOutputFile, sStem)
+            dictQualifiedCounts[sQualified] = (
+                dictQualifiedCounts.get(sQualified, 0) + 1)
+    dictTokenStems = {}
+    for sOutputFile in listOutputFiles:
+        sStem = _fsPlainTokenStem(sOutputFile)
+        if dictStemCounts[sStem] <= 1:
             dictTokenStems[sStem] = sOutputFile
+            continue
+        sQualified = _fsQualifiedTokenStem(sOutputFile, sStem)
+        if dictQualifiedCounts[sQualified] > 1:
+            sQualified = _fsQualifiedTokenStem(
+                sOutputFile, sStem, bFullDirectory=True)
+        dictTokenStems[sQualified] = sOutputFile
     return dictTokenStems
 
 

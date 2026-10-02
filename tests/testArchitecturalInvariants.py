@@ -5548,7 +5548,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (workflowFieldTypes) before and after the state merge.
     # 2918 -> 2946 (2026-10-01): the loader attaches the hub-held record
     # of the GitHub remote a push reached (and the save strips it).
-    "workflowManager.py": 2946,
+    # 2946 -> 2947 (2026-10-01): the dependency-graph cache key carries sStepId.
+    "workflowManager.py": 2947,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6534,7 +6535,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # Verify using the run's own variables.
     # 1818 -> 1843 (2026-10-01): preflight, the warning probes and the
     # teardown joins run on worker threads, bounded.
-    "pipelineRunner.py": 1843,
+    # 1843 -> 1845 (2026-10-01): the pre-step check also matches symbolic tokens.
+    "pipelineRunner.py": 1845,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

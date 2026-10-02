@@ -1058,7 +1058,9 @@ async def _fsMissingDependencyFile(
     )
     setChecked = set()
     for sCommand in listAllCommands:
-        for sMatch in re.findall(r"\{(Step\d+\.\w+)\}", sCommand):
+        for sMatch in re.findall(
+            r"\{(Step\d+\.\w+|step:[^.}\s]+\.\w+)\}", sCommand,
+        ):
             if sMatch in setChecked:
                 continue
             setChecked.add(sMatch)

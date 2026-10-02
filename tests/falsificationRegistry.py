@@ -25632,4 +25632,29 @@ def _fdictEntry(sRel):
         old='    _fnUndoMarkerMove(filesRepo, dictPlan, sWorkflowPath, dictReport)\n',
         new='',
     ),
+    # --- Symbolic cross-step references get the checks the positional form had ---
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testAMissingSymbolicDependencyStopsTheStepBeforeItRuns',
+        source='vaibify/gui/pipelineRunner.py',
+        old='r"\\{(Step\\d+\\.\\w+|step:[^.}\\s]+\\.\\w+)\\}", sCommand,',
+        new='r"\\{(Step\\d+\\.\\w+)\\}", sCommand,',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testSiblingDirectoriesWithTheSameBasenameKeepSeparateTokens',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if dictQualifiedCounts[sQualified] > 1:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testAnIdOutsideTheKebabAlphabetStillYieldsADependencyEdge',
+        source='vaibify/gui/workflowManager.py',
+        old='r"\\{step:([^.}\\s]+)\\.", sText',
+        new='r"\\{step:([a-z0-9][a-z0-9-]*)\\.", sText',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testRenamingAStepIdInvalidatesTheDependencyGraphCache',
+        source='vaibify/gui/workflowManager.py',
+        old='        dictRelevant["sStepId"] = dictStep.get("sStepId", "")\n',
+        new='',
+    ),
 ]
