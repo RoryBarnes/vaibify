@@ -12,8 +12,12 @@ in ``tests.falsificationRegistry.LIST_FALSIFICATIONS`` it:
   2. applies ``old`` -> ``new`` in the source (``old`` must occur exactly once),
   3. requires the mutated source to still COMPILE (a mutation that breaks
      syntax would make pytest exit nonzero for the wrong reason),
-  4. requires the test to then FAIL with an assertion failure -- pytest
-     exit code 1, NOT a collection/internal error -- which is the kill,
+  4. requires the test to then FAIL IN ITS CALL PHASE, read from the
+     JUnit XML pytest writes -- a collection error, a fixture-setup or
+     teardown error, or a hang is reported as "not a kill", because a
+     mutation that merely stops the test from running has defended
+     nothing. A JavaScript mutant must also pass ``node --check``
+     before it is credited,
   5. restores the source from the in-memory original bytes.
 
 It prints KILLED / SURVIVED / ERROR per entry, lists any
@@ -80,10 +84,12 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
+import xml.etree.ElementTree as ElementTree
 
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -150,35 +156,47 @@ T_DEFERRABLE_FACILITIES = (
 # and reads, in this harness, as a mutant that survived.
 I_EXIT_SKIPPED = 90
 
+# A private exit code for "the run was killed at its wall-clock limit".
+I_EXIT_TIMED_OUT = 91
 
-def _fiRunTest(sNodeId):
+# One replayed entry may take this long before it is killed and named.
+# A mutant can make a test hang (a held lock, an event loop that never
+# tears down); without a limit that single entry consumes the whole CI
+# shard, as one did for 45 minutes.
+F_DEFAULT_ENTRY_TIMEOUT_SECONDS = 600.0
+
+# What the JUnit XML of a mutated run says happened.
+S_VERDICT_CALL_FAILED = "call-failed"
+S_VERDICT_ERRORED_OUTSIDE_CALL = "errored-outside-call"
+S_VERDICT_NO_FAILURE = "no-failure"
+S_VERDICT_UNREADABLE = "unreadable"
+
+
+def _fiRunTest(sNodeId, fTimeoutSeconds=None):
     """Return the pytest exit code for running just this test node.
 
-    Exit 0 = passed; 1 = a test failed (assertion); any other nonzero is a
-    collection/internal error and must NOT be credited as a kill.
+    Exit 0 = passed; 1 = a test failed; any other nonzero is a
+    collection/internal error. Whether exit 1 is a KILL is decided
+    from the JUnit XML by :func:`_fsRunMutatedTestAndJudge`, not here.
 
     A SKIPPED test also exits 0, which is why the runners below refuse
     to read a skip as a pass -- see :func:`_fiRunTests`.
+    """
+    return _fiRunTests([sNodeId], fTimeoutSeconds)
+
+
+def _fdictBuildPytestEnvironment(sPycachePrefix):
+    """Return the environment every replayed pytest run is given.
 
     Each invocation gets a FRESH bytecode cache (PYTHONPYCACHEPREFIX):
     Python validates cached .pyc files by source mtime in integer
     seconds plus file size, so a mutation that preserves the file size
     and lands within the same clock second as the previous write is
-    served the PREVIOUS bytecode — the test passes against code it
+    served the PREVIOUS bytecode -- the test passes against code it
     never ran, and a genuine kill reports SURVIVED. Observed on the
     fastest CI runner (macOS/py3.14, 2026-07-03) for exactly the
     same-size mutations; a cold cache per run removes the timing from
     the equation.
-    """
-    return _fiRunTests([sNodeId])
-
-
-def _fiRunTests(listNodeIds):
-    """Return the pytest exit code for running these test nodes together.
-
-    Same contract and the same cold bytecode cache as
-    :func:`_fiRunTest`; the list form exists so the shared precondition
-    can be answered in one interpreter start instead of one per entry.
     """
     dictEnvironment = dict(os.environ)
     # An editable install resolves ``vaibify`` to the real checkout, so
@@ -195,22 +213,109 @@ def _fiRunTests(listNodeIds):
     # tests skip, a skip exits 0, and this harness would score every
     # frontend mutant as having survived.
     dictEnvironment[S_REQUIRE_BROWSER_ENV] = "1"
-    sPycachePrefix = tempfile.mkdtemp()
     dictEnvironment["PYTHONPYCACHEPREFIX"] = sPycachePrefix
+    return dictEnvironment
+
+
+def _ftRunPytest(listArguments, fTimeoutSeconds=None):
+    """Run pytest in its own process group; return (code, stdout, bTimedOut).
+
+    The group is what makes the limit real: a hung test's hub or
+    browser child would otherwise outlive a kill of pytest alone and
+    keep the pipe open, so the wait would never return.
+    """
+    sPycachePrefix = tempfile.mkdtemp()
+    processPytest = subprocess.Popen(
+        [sys.executable, "-m", "pytest", *listArguments, "-q",
+         "-p", "no:cacheprovider", "-rs"],
+        cwd=PATH_TREE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True,
+        env=_fdictBuildPytestEnvironment(sPycachePrefix),
+    )
+    bTimedOut = False
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", *listNodeIds, "-q",
-             "-p", "no:cacheprovider", "-rs"],
-            cwd=PATH_TREE, capture_output=True, text=True,
-            env=dictEnvironment,
-        )
+        sOutput, _sError = processPytest.communicate(timeout=fTimeoutSeconds)
+    except subprocess.TimeoutExpired:
+        bTimedOut = True
+        sOutput = _fsKillProcessGroup(processPytest)
     finally:
-        _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds)
-    if result.returncode == 0 and _fbOutputReportsASkip(result.stdout):
+        _fnDiscardPycachePrefix(sPycachePrefix, listArguments)
+    return processPytest.returncode, sOutput, bTimedOut
+
+
+def _fsKillProcessGroup(processPytest):
+    """Kill pytest and everything it started; return what it had printed."""
+    try:
+        os.killpg(processPytest.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        return processPytest.communicate(timeout=30)[0] or ""
+    except subprocess.TimeoutExpired:
+        return ""
+
+
+def _fiRunTests(listNodeIds, fTimeoutSeconds=None):
+    """Return the pytest exit code for running these test nodes together.
+
+    The list form exists so the shared precondition can be answered in
+    one interpreter start instead of one per entry.
+    """
+    iCode, sOutput, bTimedOut = _ftRunPytest(listNodeIds, fTimeoutSeconds)
+    if bTimedOut:
+        return I_EXIT_TIMED_OUT
+    if iCode == 0 and _fbOutputReportsASkip(sOutput):
         # Belt and braces for every OTHER reason a test can skip: an
         # unevaluated mutation must never be reported as a survivor.
         return I_EXIT_SKIPPED
-    return result.returncode
+    return iCode
+
+
+def _fsReadJunitVerdict(sJunitPath):
+    """Return what the JUnit XML says: a call-phase failure, or not.
+
+    pytest writes a failure raised while the test body ran as
+    ``<failure>`` and one raised in fixture setup, teardown or
+    collection as ``<error>``. Only the first shows that the test
+    noticed the mutation.
+    """
+    try:
+        elementRoot = ElementTree.parse(sJunitPath).getroot()
+    except (OSError, ElementTree.ParseError):
+        return S_VERDICT_UNREADABLE
+    if any(True for _ in elementRoot.iter("failure")):
+        return S_VERDICT_CALL_FAILED
+    if any(True for _ in elementRoot.iter("error")):
+        return S_VERDICT_ERRORED_OUTSIDE_CALL
+    return S_VERDICT_NO_FAILURE
+
+
+def _fsRunMutatedTestAndJudge(sNodeId, fTimeoutSeconds):
+    """Run one test against the mutated tree; return the harness status."""
+    with tempfile.TemporaryDirectory() as sJunitDirectory:
+        sJunitPath = os.path.join(sJunitDirectory, "junit.xml")
+        iCode, sOutput, bTimedOut = _ftRunPytest(
+            [sNodeId, f"--junitxml={sJunitPath}"], fTimeoutSeconds,
+        )
+        sVerdict = _fsReadJunitVerdict(sJunitPath)
+    if bTimedOut:
+        return (
+            f"ERROR: timed out after {fTimeoutSeconds:g}s, not a kill "
+            f"(the mutated test hung): {sNodeId}"
+        )
+    if iCode == 0 and _fbOutputReportsASkip(sOutput):
+        return (
+            "ERROR: the test SKIPPED, so the mutation was never "
+            "evaluated (a skip is not a surviving mutant)"
+        )
+    if iCode == 0:
+        return "SURVIVED: test did NOT catch the mutation"
+    if iCode == 1 and sVerdict == S_VERDICT_CALL_FAILED:
+        return "KILLED"
+    return (
+        f"ERROR: not a kill: pytest exit {iCode} with JUnit verdict "
+        f"{sVerdict!r}; the test did not fail in its call phase"
+    )
 
 
 def _fnDiscardPycachePrefix(sPycachePrefix, listNodeIds):
@@ -262,19 +367,14 @@ def _fbOutputReportsASkip(sOutput):
 
 
 def _fbMutationCompiles(sMutated, pathSource):
-    """Return True when the mutated source is still syntactically valid.
+    """Return True when the mutated Python source is still syntactically valid.
 
-    The check exists to separate "the test failed because of the
-    mutation" from "the test failed because the file no longer
-    parses". That distinction is only checkable here for Python;
-    a registry entry may legitimately target a non-Python source (the
-    JavaScript slug mirror, a shell hook), and running Python's
-    ``compile`` over those reports a SyntaxError for every mutation,
-    turning a genuine kill into a spurious ERROR.
-
-    Non-Python sources are therefore accepted unparsed. They are not
-    unchecked: the kill still requires pytest to exit 1 on an
-    assertion, and any other exit code is reported as an error.
+    The check separates "the test failed because of the mutation" from
+    "the test failed because the file no longer parses". Other source
+    types are judged by :func:`_fsDescribeSyntaxProblem`, which knows
+    how to ask node about JavaScript; a shell hook or a template is
+    accepted unparsed, and is still only credited on a call-phase
+    failure.
     """
     if pathSource.suffix != ".py":
         return True
@@ -283,6 +383,53 @@ def _fbMutationCompiles(sMutated, pathSource):
         return True
     except SyntaxError:
         return False
+
+
+def _fsFindNodeExecutable():
+    """Return a node binary: the one on PATH, else Playwright's bundled one."""
+    sOnPath = shutil.which("node")
+    if sOnPath:
+        return sOnPath
+    import importlib.util
+    specPlaywright = importlib.util.find_spec("playwright")
+    if specPlaywright is None or not specPlaywright.submodule_search_locations:
+        return ""
+    pathBundled = pathlib.Path(
+        list(specPlaywright.submodule_search_locations)[0], "driver", "node",
+    )
+    return str(pathBundled) if pathBundled.exists() else ""
+
+
+def _fsDescribeJavaScriptSyntaxProblem(sMutated):
+    """Return "" when node parses the JavaScript, else why it does not.
+
+    A typo in a JS mutant makes the page fail to load, so every browser
+    test fails and the entry reads as a kill. 175 entries are credited
+    to browser tests; none of them had ever had its mutant parsed.
+    """
+    sNode = _fsFindNodeExecutable()
+    if not sNode:
+        return (
+            "no node executable on PATH or bundled with Playwright, so "
+            "a JavaScript mutant cannot be syntax-checked"
+        )
+    with tempfile.TemporaryDirectory() as sDirectory:
+        pathScript = pathlib.Path(sDirectory, "mutant.js")
+        pathScript.write_text(sMutated, encoding="utf-8")
+        result = subprocess.run(
+            [sNode, "--check", str(pathScript)],
+            capture_output=True, text=True, timeout=60,
+        )
+    return "" if result.returncode == 0 else result.stderr.strip()[:300]
+
+
+def _fsDescribeSyntaxProblem(sMutated, pathSource):
+    """Return "" when the mutant parses, else a short reason it does not."""
+    if pathSource.suffix == ".js":
+        return _fsDescribeJavaScriptSyntaxProblem(sMutated)
+    if not _fbMutationCompiles(sMutated, pathSource):
+        return "the Python mutation does not compile"
+    return ""
 
 
 def _fbAllPreconditionsPassInOneRun(listEntries):
@@ -301,7 +448,10 @@ def _fbAllPreconditionsPassInOneRun(listEntries):
     return _fiRunTests(listNodeIds) == 0
 
 
-def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
+def _fsReconfirmOne(
+    entry, sOriginal, bPreconditionKnownGood=False,
+    fTimeoutSeconds=F_DEFAULT_ENTRY_TIMEOUT_SECONDS,
+):
     """Apply one mutation, return the kill status, always restore the file."""
     pathSource = PATH_TREE / entry.source
     if entry.old not in sOriginal:
@@ -315,25 +465,18 @@ def _fsReconfirmOne(entry, sOriginal, bPreconditionKnownGood=False):
     sMutated = sOriginal.replace(
         entry.old, entry.new, entry.iExpectedOccurrences,
     )
-    if not _fbMutationCompiles(sMutated, pathSource):
-        return "ERROR: mutation does not compile"
-    if not bPreconditionKnownGood and _fiRunTest(entry.nodeid) != 0:
+    sSyntaxProblem = _fsDescribeSyntaxProblem(sMutated, pathSource)
+    if sSyntaxProblem:
+        return f"ERROR: mutation does not parse, not a kill: {sSyntaxProblem}"
+    if not bPreconditionKnownGood and _fiRunTest(
+        entry.nodeid, fTimeoutSeconds,
+    ) != 0:
         return "ERROR: test does not pass on clean code"
     try:
         pathSource.write_text(sMutated, encoding="utf-8")
-        iCode = _fiRunTest(entry.nodeid)
+        return _fsRunMutatedTestAndJudge(entry.nodeid, fTimeoutSeconds)
     finally:
         pathSource.write_text(sOriginal, encoding="utf-8")
-    if iCode == I_EXIT_SKIPPED:
-        return (
-            "ERROR: the test SKIPPED, so the mutation was never "
-            "evaluated (a skip is not a surviving mutant)"
-        )
-    if iCode == 0:
-        return "SURVIVED: test did NOT catch the mutation"
-    if iCode == 1:
-        return "KILLED"
-    return f"ERROR: pytest exit {iCode} is not an assertion failure"
 
 
 def _flistMarkedTestsWithoutEntry():
@@ -672,8 +815,31 @@ def _tSelectShard(listEvaluable, listDeferred, tShard):
     )
 
 
+def _flistReconfirmEntries(
+    listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
+):
+    """Judge each entry and print its line the moment it is known.
+
+    Flushed per entry, not collected and printed at the end: a CI job
+    that is killed at its ceiling must leave a log that names every
+    entry it finished and the one it was inside.
+    """
+    listResults = []
+    for entry in listEvaluable:
+        print(f"... {entry.nodeid}", flush=True)
+        sStatus = _fsReconfirmOne(
+            entry, dictOriginal[entry.source],
+            bPreconditionKnownGood=bBatchClean,
+            fTimeoutSeconds=fTimeoutSeconds,
+        )
+        listResults.append((entry.nodeid, sStatus))
+        print(f"{sStatus:48}  {entry.nodeid}", flush=True)
+    return listResults
+
+
 def fnReconfirmAll(
     listOnly=(), tShard=None, sSummaryPath="", sClass="",
+    fTimeoutSeconds=F_DEFAULT_ENTRY_TIMEOUT_SECONDS,
 ):
     """Re-confirm entries; exit nonzero on any failure or coverage gap.
 
@@ -713,17 +879,11 @@ def fnReconfirmAll(
             "per-entry check so the offender is named",
         )
     try:
-        listResults = [
-            (entry.nodeid, _fsReconfirmOne(
-                entry, dictOriginal[entry.source],
-                bPreconditionKnownGood=bBatchClean,
-            ))
-            for entry in listEvaluable
-        ]
+        listResults = _flistReconfirmEntries(
+            listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
+        )
     finally:
         _fnRestoreOriginals(dictOriginal)
-    for sNodeId, sStatus in listResults:
-        print(f"{sStatus:48}  {sNodeId}")
     for entry, sPhrase in listDeferred:
         print(f"{'NOT EVALUATED: needs a ' + sPhrase:48}  "
               f"{entry.nodeid}")
@@ -890,26 +1050,38 @@ def _flistBuildWorkerCommand(args, tSubShard, sSummaryPath):
         listCommand += ["--class", args.sClass]
     if args.include_local_diff:
         listCommand.append("--include-local-diff")
+    listCommand += ["--entry-timeout", str(args.fEntryTimeoutSeconds)]
     return listCommand
 
 
 def _tRunOneWorker(iWorker, listCommand):
-    """Run one worker to completion; return ``(returncode, output)``."""
-    del iWorker
-    processWorker = subprocess.run(
-        listCommand, cwd=REPO, capture_output=True, text=True,
+    """Run one worker to completion; return ``(returncode, output)``.
+
+    Its lines are echoed, prefixed and flushed, as they arrive. Capturing
+    them until the worker exits meant a CI job killed at its ceiling left
+    no log at all.
+    """
+    processWorker = subprocess.Popen(
+        listCommand, cwd=REPO, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True,
     )
-    return (processWorker.returncode, processWorker.stdout
-            + processWorker.stderr)
+    listLines = []
+    for sLine in processWorker.stdout:
+        listLines.append(sLine)
+        print(f"[worker {iWorker}] {sLine}", end="", flush=True)
+    processWorker.wait()
+    return processWorker.returncode, "".join(listLines)
 
 
 def _fiReportWorkerResults(listResults, sSummaryDirectory, args, tShard):
-    """Print every worker's output in order, then the combined verdict."""
+    """Print each worker's exit code, then the combined verdict.
+
+    The workers' own lines were already echoed live.
+    """
     import json
     iRan = iKilled = iDeferred = 0
-    for iWorker, (iCode, sOutput) in listResults:
-        print(f"----- worker {iWorker} (exit {iCode}) -----")
-        print(sOutput.rstrip())
+    for iWorker, (iCode, _sOutput) in listResults:
+        print(f"----- worker {iWorker} (exit {iCode}) -----", flush=True)
         pathSummary = pathlib.Path(
             sSummaryDirectory, f"worker{iWorker}.json",
         )
@@ -1035,6 +1207,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--entry-timeout", dest="fEntryTimeoutSeconds", type=float,
+        default=F_DEFAULT_ENTRY_TIMEOUT_SECONDS, metavar="SECONDS",
+        help=(
+            "Wall-clock limit for each replayed entry. An entry whose "
+            "mutated test hangs is killed at the limit, named in the "
+            "output, and reported as not a kill, so one hang can never "
+            "consume a whole CI shard."
+        ),
+    )
+    parser.add_argument(
         "--completeness-only", action="store_true",
         help=(
             "Run ONLY the whole-registry coverage check -- every "
@@ -1052,6 +1234,8 @@ def main():
         ),
     )
     args = parser.parse_args()
+    if args.fEntryTimeoutSeconds <= 0:
+        parser.error("--entry-timeout must be a positive number of seconds")
     tShard = _tParseShardArgument(args.sShard)
     if args.iWorkers > 1 and args.sClass != S_CLASS_SHAREABLE:
         parser.error(
@@ -1100,6 +1284,7 @@ def main():
         PATH_TREE = pathlib.Path(sWorktree)
         fnReconfirmAll(
             args.listOnly, tShard, args.sSummaryPath, args.sClass,
+            args.fEntryTimeoutSeconds,
         )
     finally:
         PATH_TREE = REPO
