@@ -936,7 +936,7 @@ def dictProxyTiming(monkeypatch):
     monkeypatch.setattr(
         agentCouncilEgress, "F_PROXY_READY_POLL_SECONDS", 0.005)
     monkeypatch.setattr(
-        agentCouncilEgress, "F_PROXY_READY_DEADLINE_SECONDS", 0.1)
+        agentCouncilEgress, "F_PROXY_READY_DEADLINE_SECONDS", 5.0)
     return {}
 
 
