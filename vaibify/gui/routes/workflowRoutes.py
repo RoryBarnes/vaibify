@@ -28,6 +28,7 @@ from ..routeScope import (
     ffnRouteScope,
     fsLeaseFromRequest,
 )
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.docker.dockerConnection import fbErrorMeansContainerGone
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import (
@@ -174,6 +175,7 @@ def _fnRegisterWorkflowSearch(app, dictCtx):
                 dictCtx["docker"], sContainerId, sSearchRoot,
             )
         except Exception as error:
+            fnReRaiseControlPlaneRefusal(error)
             if _fbIsContainerStopped(error):
                 raise HTTPException(
                     409, "Container is not running. "

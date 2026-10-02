@@ -25787,4 +25787,35 @@ def _fdictEntry(sRel):
         old='        except SyntaxError as error:\n            raise UnparseableModuleError(\n',
         new='        except SyntaxError as error:\n            continue\n            raise UnparseableModuleError(\n',
     ),
+    # --- A broad handler cannot swallow a control-plane refusal ---
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testNoNewBroadHandlerCanSwallowAControlPlaneRefusal',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='    return (\n        _fbNodesNameARefusal(nodeHandler.body)\n        or _fbHandlerEndsByReRaising(nodeHandler)\n    )',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAnUnguardedBroadHandlerIsFlagged',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='    return (\n        _fbNodesNameARefusal(nodeHandler.body)\n        or _fbHandlerEndsByReRaising(nodeHandler)\n    )',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testTheReRaiseHelperCallPassesAHandler',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='            if sName in SET_REFUSAL_NAMES or sName == S_REFUSAL_HELPER:\n',
+        new='            if sName in SET_REFUSAL_NAMES:\n',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAnEarlierHandlerThatNamesARefusalButSwallowsItDoesNotPass',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='        ) and _fbHandlerEndsByReRaising(nodeEarlier):\n',
+        new='        ):\n',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAProjectSearchRefusedByTheCarrierAnswersWithTheRefusalsOwnText',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old='            fnReRaiseControlPlaneRefusal(error)\n            if _fbIsContainerStopped(error):\n',
+        new='            if _fbIsContainerStopped(error):\n',
+    ),
 ]
