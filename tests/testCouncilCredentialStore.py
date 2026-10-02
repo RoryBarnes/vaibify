@@ -185,8 +185,14 @@ def test_row_a_test_published_after_withdrawal_is_stale_and_enables_nothing(
     assert not _fbAuthorized()
 
 
+@pytest.mark.falsification
 def test_row_consent_again_after_withdrawal_needs_a_fresh_test(
         sEvidencePath):
+    """Consent given again after a withdrawal starts a new generation.
+
+    Kills: agentCouncilCredentialStore.fdictRecordConsent: the generation
+    bump `iConsentGeneration + 1` replaced by the unchanged generation.
+    """
     agentCouncilCredentialStore.fdictRecordConsent(
         sEvidencePath, "claude", S_IMAGE_ONE)
     _fnRunTest(sEvidencePath, "job1", "passed")

@@ -16,6 +16,10 @@ into a blinded prompt, or a proposal that began seeing peer output would
 each flip an assertion here.
 """
 
+import pathlib
+
+import pytest
+
 from vaibify.gui import agentCouncilCharter
 from vaibify.gui.agentCouncilCampaign import (
     fdictCreateCampaign,
@@ -354,3 +358,42 @@ def testASummaryMayReportNeedsHumanWithoutEnumeratingQuestions():
     dictOrdinary.update({sKey: [] for sKey in LIST_TURN_RESULT_ARRAY_KEYS})
     dictOrdinary["sVerdict"] = "needsHuman"
     assert not fdictValidateTurnResult(dictOrdinary)["bValid"]
+
+
+# ----- the documentation reproduces the charter verbatim ---------------
+
+def _fsReadCharterBlockFromTheDocumentation():
+    pathDocument = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "docs" / "agentCouncil.md"
+    )
+    sDocument = pathDocument.read_text(encoding="utf-8")
+    iStart = sDocument.index("```text\nCOUNCIL CHARTER") + len("```text\n")
+    return sDocument[iStart:sDocument.index("\n```", iStart)]
+
+
+@pytest.mark.falsification
+def testTheDocumentedCharterIsTheCharterTheCodeSends():
+    """docs/agentCouncil.md claims to reproduce the charter verbatim.
+
+    The code's clauses were extended twice without the page or the
+    version moving, so two texts shared one version. Compared against
+    ``S_CHARTER_TEXT`` itself, which opens with the clauses and then
+    appends the turn schema.
+
+    Kills: editing a clause in ``agentCouncilCharter`` without
+    regenerating the documentation block.
+    """
+    sDocumented = _fsReadCharterBlockFromTheDocumentation()
+    assert S_CHARTER_TEXT.startswith(sDocumented + "\n"), (
+        "docs/agentCouncil.md no longer matches the charter clauses; "
+        "regenerate the block from S_CHARTER_TEXT and bump "
+        "S_CHARTER_VERSION"
+    )
+
+
+def testTheDocumentationNamesTheCurrentCharterVersion():
+    assert f"charter\nversion {S_CHARTER_VERSION} " in (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "docs" / "agentCouncil.md"
+    ).read_text(encoding="utf-8")

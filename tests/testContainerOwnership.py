@@ -267,7 +267,14 @@ def test_claim_mints_a_distinct_per_container_agent_token(tmp_lock_dir):
         _ftReleaseAll(dictContainerOwners)
 
 
+@pytest.mark.falsification
 def test_fbAgentTokenAuthorizesContainerId_is_per_container(tmp_lock_dir):
+    """One container's agent token never authorizes another container's id.
+
+    Kills: frecordOwnerAuthorizedByAgentToken drops the
+    ``recordOwner.sContainerId == sContainerId`` comparison, so any valid
+    token authorizes every container.
+    """
     dictContainerOwners = containerOwnership.fdictCreateOwnerRegistry()
     containerOwnership.ftClaim(
         dictContainerOwners, "alpha", None, 8050, sContainerId="cid-alpha",

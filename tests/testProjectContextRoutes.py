@@ -160,9 +160,14 @@ def test_import_refuses_overwrite_without_flag(
     assert stubDocker.dictFiles[S_CONTEXT_ABS_PATH] == b"replacement\n"
 
 
+@pytest.mark.falsification
 def test_import_jail_rejects_traversal_and_outside_paths(
     fixtureHarness, tmp_path, monkeypatch,
 ):
+    """A context file is imported only from inside the home directory.
+
+    Kills: the import jail admitting every resolved path.
+    """
     clientTest, _ = fixtureHarness
     monkeypatch.setenv("HOME", str(tmp_path))
     listBadPaths = [

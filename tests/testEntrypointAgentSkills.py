@@ -218,9 +218,9 @@ def test_proof_ladder_codifies_the_known_audit_traps():
 
 
 def test_create_step_makes_the_token_contract_non_negotiable():
-    """The cross-step {StepNN.varname} contract is the load-bearing rule."""
+    """The cross-step {step:<sStepId>.<stem>} contract is the load-bearing rule."""
     sSkill = _fsReadSkill("create-pipeline-step")
-    assert "{StepNN.varname}" in sSkill or "{Step02" in sSkill
+    assert "{step:<sStepId>.<stem>}" in sSkill
     assert "argparse" in sSkill
     assert "append" in sSkill.lower()
 
@@ -269,7 +269,10 @@ def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
     assert "create-pipeline-step** skill" in sBody
     # Safety one-liners survive inline.
     assert "iProofLevel" in sBody
-    assert "{StepNN.varname}" in sBody
+    assert "{step:<sStepId>.<stem>}" in sBody
+    assert "{StepNN.varname}" not in sBody, (
+        "the harness must not teach the deprecated positional token"
+    )
     # The verbose walkthrough is gone (a body this size proves it).
     assert sBody.count("\n") < 220, (
         "CLAUDE.md body did not shrink — the heavy sections are "

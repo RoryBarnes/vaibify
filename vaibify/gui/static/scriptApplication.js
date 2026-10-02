@@ -64,6 +64,10 @@ const VaibifyApp = (function () {
             dictWorkflowScopeLevels: null,
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
+            /* True when the latest poll shipped no envelope although an
+               earlier one had: the rows still on screen are from that
+               earlier poll and must say so. */
+            bEnvelopeDetailStale: false,
             dictRemoteChecks: {},
             /* The Project block renders a lock verdict that costs a
                container exec, and the poll is forbidden to make one.
@@ -1057,6 +1061,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictWorkflowScopeLevels = null;
         _dictWorkflowState.dictWorkflowLevelHighWater = {};
         _dictWorkflowState.dictWorkflowEnvelopeDetail = null;
+        _dictWorkflowState.bEnvelopeDetailStale = false;
         _dictWorkflowState.dictRemoteChecks = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
@@ -2170,6 +2175,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictStepLevelWarnings,
             dictWorkflowEnvelopeDetail:
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
+            bEnvelopeDetailStale:
+                _dictWorkflowState.bEnvelopeDetailStale,
             dictRemoteChecks:
                 _dictWorkflowState.dictRemoteChecks,
             bProjectBlockAwaitsFirstAnswer:
@@ -6625,6 +6632,7 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflowScopeLevels,
             _dictWorkflowState.dictWorkflowLevelHighWater,
             _dictWorkflowState.dictWorkflowEnvelopeDetail,
+            _dictWorkflowState.bEnvelopeDetailStale,
         ]);
     }
 
@@ -6674,6 +6682,11 @@ const VaibifyApp = (function () {
         if (dictStatus.dictWorkflowEnvelopeDetail) {
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
+            _dictWorkflowState.bEnvelopeDetailStale = false;
+        } else if (_dictWorkflowState.dictWorkflowEnvelopeDetail) {
+            /* Keeping the earlier rows is right; keeping them
+               UNMARKED is a claim that nothing changed. */
+            _dictWorkflowState.bEnvelopeDetailStale = true;
         }
         // An empty map is a real answer here — "no check is running"
         // — and `{}` is truthy, so it is adopted. Only a payload from

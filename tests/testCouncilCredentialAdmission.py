@@ -99,8 +99,14 @@ def _fnStageThroughCampaignLane(dockerFake, sImage=S_IMAGE):
 # ----- A6: the per-turn admission --------------------------------------------
 
 
+@pytest.mark.falsification
 def test_an_authorized_turn_stages_the_token_and_records_the_admission(
         sEvidencePath, pathStagingRoot):
+    """An authorized turn records exactly one admission.
+
+    Kills: agentCouncilCredentialStore.fnRecordAdmission: the append
+    `dictDocument["listAdmissions"].append(dictEntry)` replaced by `pass`.
+    """
     _fnAuthorize(sEvidencePath)
     sStagedPath, iExpiresAt = _fnStageThroughCampaignLane(FakeLoginDocker())
     assert os.path.dirname(sStagedPath) == str(pathStagingRoot)

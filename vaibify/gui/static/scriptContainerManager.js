@@ -721,11 +721,14 @@ var VaibifyContainerManager = (function () {
             "#modalInfo .quarantine-copy-button");
         if (!elButton || !sRemedy) return;
         elButton.addEventListener("click", function () {
-            VaibifyFileOps.fnCopyToClipboard(sRemedy);
-            elButton.textContent = "Copied";
-            window.setTimeout(function () {
-                elButton.textContent = "Copy command";
-            }, 1500);
+            VaibifyFileOps.fpromiseCopyText(sRemedy)
+                .then(function (bCopied) {
+                    elButton.textContent = bCopied
+                        ? "Copied" : "Copy failed";
+                    window.setTimeout(function () {
+                        elButton.textContent = "Copy command";
+                    }, 1500);
+                });
         });
     }
 

@@ -209,9 +209,14 @@ layout primitives — the terminal fails to load on older engines:
 Below the Firefox floor the bundled terminal does not load at all
 (xterm.js fails to parse), so the in-container agent strip is
 unavailable; other panels may also render with collapsed spacing or
-misaligned modals. CI exercises the dashboard in Chromium only, so
-Firefox and Safari are covered by these version floors rather than by
-an automated check.
+misaligned modals.
+
+Rendering a PDF figure uses the bundled pdf.js 3.11, which sets higher
+floors than the terminal does: Safari 15.4, Firefox 94 and Chrome / Edge
+98. On an older engine the dashboard still loads, but PDF figures do not
+render. CI runs the browser tests in three engines (Chromium, Firefox
+and WebKit), so the current release of each is checked automatically;
+the versions in between are covered only by the floors above.
 
 ## Installing Docker
 

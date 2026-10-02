@@ -429,7 +429,46 @@ def testHostileArchiveMemberRefusesAndCleansUp(
     _fnAssertStoreIsEmpty(tmp_path)
 
 
+def _fnAssertMemberIsRefusedWithReason(tmp_path, dictMemberSpec, sReason):
+    baArchive = _fbaBuildArchive([
+        {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"ok"},
+        dictMemberSpec,
+    ])
+    with pytest.raises(SnapshotRefusedError) as errorInfo:
+        _fdictCapture(_FakeCouncilConnection(baArchive), tmp_path)
+    assert sReason in str(errorInfo.value)
+    _fnAssertStoreIsEmpty(tmp_path)
+
+
+@pytest.mark.falsification
+def testAParentDirectoryComponentIsRefusedByName(tmp_path):
+    """A '..' member is refused for the '..', not for where it lands.
+
+    Kills: the '..' component check being skipped.
+    """
+    _fnAssertMemberIsRefusedWithReason(
+        tmp_path,
+        {"sName": f"{S_ROOT_COMPONENT}/../escaped.txt", "baContent": b"x"},
+        "'..'")
+
+
+@pytest.mark.falsification
+def testAMemberOutsideTheArchiveRootIsRefused(tmp_path):
+    """A member under another root is never filed into the snapshot.
+
+    Kills: the archive-root containment check being skipped.
+    """
+    _fnAssertMemberIsRefusedWithReason(
+        tmp_path, {"sName": "otherRoot/file.txt", "baContent": b"x"},
+        "outside the archive root")
+
+
+@pytest.mark.falsification
 def testDuplicateMemberRefusesAndCleansUp(tmp_path):
+    """A repeated member would let its second write shadow the first.
+
+    Kills: the duplicate-member check being skipped.
+    """
     baArchive = _fbaBuildArchive([
         {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"one"},
         {"sName": f"{S_ROOT_COMPONENT}/dataFile.txt", "baContent": b"two"},

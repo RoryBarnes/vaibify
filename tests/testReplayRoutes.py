@@ -555,9 +555,14 @@ def test_hash_route_missing_file_echoes_basename_only(
     assert "privateArea" not in sDetail
 
 
+@pytest.mark.falsification
 def test_hash_route_rejects_file_outside_home(
     fixtureHarness, tmp_path, monkeypatch,
 ):
+    """A personal-layer file is hashed only from inside the home directory.
+
+    Kills: the personal-layer host-file jail admitting every resolved path.
+    """
     monkeypatch.setenv("HOME", str(tmp_path / "homeArea"))
     (tmp_path / "homeArea").mkdir()
     pathOutside = tmp_path / "outsideFile.md"

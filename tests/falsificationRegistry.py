@@ -9531,12 +9531,22 @@ def _fdictEntry(sRel):
             'tests/testHostGitAndReposPanel.py::'
             'testAHostProjectCommitsItsCanonicalFiles'
         ),
-        source='vaibify/gui/connectionRouter.py',
-        # The router stops consulting the mode and sends every git verb
-        # to the Docker leg, which for a host project is either absent
-        # or holding a container that does not exist.
-        old='        if fbIsHostProject(sResourceId):\n',
-        new='        if False:\n',
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The canonical commit bypasses the router the connection is
+        # picked through and drives the Docker leg directly, which for
+        # a host project is absent or holds a container that does not
+        # exist. (The earlier mutation, a router that always picks the
+        # Docker leg, broke the test fixture's own connect, so the test
+        # errored in setup and never reached the assertion.)
+        old=(
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"], sContainerId, dictWorkflow, sRepo,\n'
+        ),
+        new=(
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"].connectionDockerLeg,\n'
+            '                sContainerId, dictWorkflow, sRepo,\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -23477,11 +23487,12 @@ def _fdictEntry(sRel):
             'testADepositIsShownAndForgottenOnlyForItsOwnProject'
         ),
         source='vaibify/gui/archiveProgress.py',
-        old=(
-            '        if dictEntry.get("sProjectRepoPath") == sProjectRepoPath:\n'
-            '            DICT_DEPOSITS.pop(sContainerId, None)\n'
+        old='        DICT_DEPOSITS.pop((sContainerId, sProjectRepoPath), None)\n',
+        new=(
+            '        for tKey in [t for t in DICT_DEPOSITS'
+            ' if t[0] == sContainerId]:\n'
+            '            DICT_DEPOSITS.pop(tKey, None)\n'
         ),
-        new='        DICT_DEPOSITS.pop(sContainerId, None)\n',
     ),
     Falsification(
         nodeid=(
@@ -25760,5 +25771,502 @@ def _fdictEntry(sRel):
         source='vaibify/cli/commandReconcile.py',
         old='    if not dictRequest:\n        return 0\n',
         new='    if not dictRequest:\n        return 1\n',
+    ),
+    # --- The style scanner fails on every shape of unparseable input
+    # and unprefixed binding, with no dependence on seeded debt ---
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerFailsClosedOnUnparseableReturnAnnotation',
+        source='tools/generateStyleInventory.py',
+        old='        except UnparseableAnnotationError:\n            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n                          "unparseable return annotation (fails closed)")\n            return\n',
+        new='        except UnparseableAnnotationError:\n            return\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerCatchesUnprefixedExceptHandlerBinding',
+        source='tools/generateStyleInventory.py',
+        old='        if node.name:\n            self._fnCheckBindingName(self.fsIdentity(node.name), node.name)\n',
+        new='        if node.name:\n            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerCatchesUnprefixedParameter',
+        source='tools/generateStyleInventory.py',
+        old='            self._fnCheckBindingName(sIdentity, nodeArgument.arg)\n            if nodeArgument.annotation is None:\n',
+        new='            if nodeArgument.annotation is None:\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerRefusesAnUnparseableModuleInsteadOfSkippingIt',
+        source='tools/generateStyleInventory.py',
+        old='        except SyntaxError as error:\n            raise UnparseableModuleError(\n',
+        new='        except SyntaxError as error:\n            continue\n            raise UnparseableModuleError(\n',
+    ),
+    # --- A broad handler cannot swallow a control-plane refusal ---
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testNoNewBroadHandlerCanSwallowAControlPlaneRefusal',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='    return (\n        _fbNodesNameARefusal(nodeHandler.body)\n        or _fbHandlerEndsByReRaising(nodeHandler)\n    )',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAnUnguardedBroadHandlerIsFlagged',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='    return (\n        _fbNodesNameARefusal(nodeHandler.body)\n        or _fbHandlerEndsByReRaising(nodeHandler)\n    )',
+        new='    return True',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testTheReRaiseHelperCallPassesAHandler',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='            if sName in SET_REFUSAL_NAMES or sName == S_REFUSAL_HELPER:\n',
+        new='            if sName in SET_REFUSAL_NAMES:\n',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAnEarlierHandlerThatNamesARefusalButSwallowsItDoesNotPass',
+        source='tests/testBroadHandlersPassControlPlaneRefusals.py',
+        old='        ) and _fbHandlerEndsByReRaising(nodeEarlier):\n',
+        new='        ):\n',
+    ),
+    Falsification(
+        nodeid='tests/testBroadHandlersPassControlPlaneRefusals.py::testAProjectSearchRefusedByTheCarrierAnswersWithTheRefusalsOwnText',
+        source='vaibify/gui/routes/workflowRoutes.py',
+        old='            fnReRaiseControlPlaneRefusal(error)\n            if _fbIsContainerStopped(error):\n',
+        new='            if _fbIsContainerStopped(error):\n',
+    ),
+    # --- Per-container state is evicted with its container and never
+    # shared between two projects of one container ---
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testEveryCacheWrittenUnderAContainerIdIsInTheSweep',
+        source='vaibify/gui/fileStatusManager.py',
+        old='    "dictLiveImageIdentities",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testTheImageIdentityAndCreationCachesAreEvictedWithTheirContainer',
+        source='vaibify/gui/fileStatusManager.py',
+        old='    "dictPinnedImagePresence",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testASecondProjectsDepositDoesNotEraseTheFirstProjectsFailure',
+        source='vaibify/gui/archiveProgress.py',
+        old='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, sProjectRepoPath), {},\n        )\n',
+        new='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, ""), {},\n        )\n',
+    ),
+    # --- The documented charter is the charter the code sends ---
+    Falsification(
+        nodeid='tests/testAgentCouncilCharter.py::testTheDocumentedCharterIsTheCharterTheCodeSends',
+        source='vaibify/gui/agentCouncilCharter.py',
+        old='guessing. Do not escalate what evidence can decide. The question\n',
+        new='guessing. Do not escalate what evidence can settle. The question\n',
+    ),
+    # --- A token authorizes only the container whose id it was minted for ---
+    Falsification(
+        nodeid='tests/testContainerOwnership.py::test_fbAgentTokenAuthorizesContainerId_is_per_container',
+        source='vaibify/gui/containerOwnership.py',
+        old='            and recordOwner.sAgentToken == sPresentedToken\n            and recordOwner.sContainerId == sContainerId\n',
+        new='            and recordOwner.sAgentToken == sPresentedToken\n',
+    ),
+    # --- A revoked session credential no longer validates ---
+    Falsification(
+        nodeid='tests/testBrowserSession.py::test_a_recently_revoked_session_is_kept_as_its_own_audit_trail',
+        source='vaibify/gui/browserSession.py',
+        old='        if recordSession.sState != S_SESSION_STATE_ACTIVE:\n            return False\n        recordSession.fLastSeenMonotonic = time.monotonic()\n        return True\n',
+        new='        recordSession.fLastSeenMonotonic = time.monotonic()\n        return True\n',
+    ),
+    # --- An expired capability mints nothing ---
+    Falsification(
+        nodeid='tests/testBrowserSession.py::test_expired_capability_yields_nothing',
+        source='vaibify/gui/browserSession.py',
+        old='        if fNow - recordCap.fMintedMonotonic > I_CAPABILITY_TTL_SECONDS:\n            recordCap.sState = "EXPIRED"\n            return (None, None)\n        if recordCap.sState == "REDEEMED":',
+        new='        if recordCap.sState == "REDEEMED":',
+    ),
+    # --- The bootstrap lane never redeems a transfer capability ---
+    Falsification(
+        nodeid='tests/testHostTransfer.py::testBootstrapRedemptionRefusesATransferCapability',
+        source='vaibify/gui/browserSession.py',
+        old='        if recordCap.sOperation != S_CAPABILITY_OPERATION_BOOTSTRAP:\n',
+        new='        if False:\n',
+    ),
+    # --- A non-loopback Host name is refused ---
+    Falsification(
+        nodeid='tests/testHostHeaderCheck.py::test_fbIsAllowedHostHeader_rejects_remote_host',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    if sHost not in _SET_LOCAL_HOST_NAMES:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    # --- A loopback Host on the wrong port is refused ---
+    Falsification(
+        nodeid='tests/testHostHeaderCheck.py::test_fbIsAllowedHostHeader_rejects_wrong_port',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    return iPort == iExpectedPort\n',
+        new='    return True\n',
+    ),
+    # --- A request with no browser credential is refused (middleware gate) ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_session_token_missing_rejected',
+        source='vaibify/gui/serverMiddleware.py',
+        old='    if not bNeedsToken:\n        return False\n',
+        new='    return False\n',
+    ),
+    # --- A wrong websocket agent token is refused (header and query comparisons) ---
+    Falsification(
+        nodeid='tests/testPipelineServerAgentAuth.py::test_fbHasAgentToken_wrong_header_and_wrong_query_is_false',
+        source='vaibify/gui/pipelineServer.py',
+        old='    if sHeaderToken and sHeaderToken == sExpectedToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken) and sQueryToken == sExpectedToken\n',
+        new='    if sHeaderToken:\n        return True\n    sQueryToken = websocket.query_params.get("sToken", "")\n    return bool(sQueryToken)\n',
+    ),
+    # --- Writes under the VCS directory are denylisted ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_file_upload_rejects_dotgit_destination',
+        source='vaibify/gui/pipelineServer.py',
+        old='    if ".git" in listSegments:\n',
+        new='    if False:\n',
+    ),
+    # --- Direct writes to project.json are denylisted ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_file_upload_rejects_project_json_basename',
+        source='vaibify/gui/pipelineServer.py',
+        old='    if posixpath.basename(sNormalized) == "project.json":\n',
+        new='    if False:\n',
+    ),
+    # --- Path jail call sites: figure fallback in pipelineServer ---
+    Falsification(
+        nodeid='tests/testPipelineServerRoutes.py::test_figure_fallback_rejects_escape_workdir',
+        source='vaibify/gui/pipelineServer.py',
+        old='    fsValidatePathWithinRoot(sFallback, sProjectRoot)\n',
+        new='    pass\n',
+    ),
+    # --- Path jail call sites: test-file resolver in testRoutes ---
+    Falsification(
+        nodeid='tests/testAgentLaneEnforcement.py::testSaveAndRunTestRefusesPathsOutsideTheRepo',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='sNormalized = fsValidatePathWithinRoot(sCandidate, sRoot)',
+        new='sNormalized = sCandidate',
+    ),
+    # --- Path jail call sites: figure HEAD probe ---
+    Falsification(
+        nodeid='tests/testRoutesRefuseCallerPathsOutsideTheirRoot.py::testAFigureProbeOutsideTheWorkspaceIsRefused',
+        source='vaibify/gui/routes/figureRoutes.py',
+        old='        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n        listPaths = _flistBuildFigureCheckPaths(',
+        new='        listPaths = _flistBuildFigureCheckPaths(',
+    ),
+    # --- Path jail call sites: figure GET ---
+    Falsification(
+        nodeid='tests/testRoutesRefuseCallerPathsOutsideTheirRoot.py::testAFigureReadOutsideTheWorkspaceIsRefused',
+        source='vaibify/gui/routes/figureRoutes.py',
+        old='        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n        baContent = await asyncio.to_thread(',
+        new='        baContent = await asyncio.to_thread(',
+    ),
+    # --- Path jail call sites: fileRoutes existence resolver ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_files_exist_rejects_path_traversal',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='    return fsValidatePathWithinRoot(sAbs, sProjectRoot)\n',
+        new='    return sAbs\n',
+    ),
+    # --- Path jail call sites: fileRoutes directory listing ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_file_download_path_traversal_rejected',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        fsValidatePathWithinRoot(\n            sAbsPath,\n            projectRoots.fsResolveProjectRoot(\n                sContainerId, sWorkspaceRoot,\n            ),\n        )\n',
+        new='',
+    ),
+    # --- Path jail call sites: fileRoutes upload ---
+    Falsification(
+        nodeid='tests/testFileEndpointsAndMiddleware.py::test_file_upload_outside_workspace_rejected',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='sNormalized = fsValidatePathWithinRoot(\n            sDestPath, sProjectRepoPath)\n',
+        new='sNormalized = sDestPath\n',
+    ),
+    # --- Path jail call sites: fileRoutes download ---
+    Falsification(
+        nodeid='tests/testCoverageRoutesAFileRoutes.py::testADownloadOutsideTheWorkspaceIsRefused',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n        baFirst, iterChunks',
+        new='        baFirst, iterChunks',
+    ),
+    # --- Path jail call sites: fileRoutes pull ---
+    Falsification(
+        nodeid='tests/testCoverageRoutesAFileRoutes.py::testAPullOfAPathOutsideTheWorkspaceIsRefused',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='        fsValidatePathWithinRoot(\n            request.sContainerPath,\n            projectRoots.fsResolveProjectRoot(\n                sContainerId, sWorkspaceRoot,\n            ),\n        )\n',
+        new='',
+    ),
+    # --- Path jail call sites: fileRoutes write ---
+    Falsification(
+        nodeid='tests/testPipelineServerRoutes.py::test_write_file_path_traversal_blocked',
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='sNormalized = fsValidatePathWithinRoot(\n            sAbsPath, sProjectRepoPath)\n',
+        new='sNormalized = sAbsPath\n',
+    ),
+    # --- Path jail call sites: syncRoutes outside-root refusal ---
+    Falsification(
+        nodeid='tests/testSyncRoutesCoverage.py::test_overleaf_push_rejects_dotdot_traversal',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        fsValidatePathWithinRoot(sFilePath, sProjectRoot)\n    except HTTPException as error:',
+        new='        pass\n    except HTTPException as error:',
+    ),
+    # --- Path jail call sites: syncRoutes add-file ---
+    Falsification(
+        nodeid='tests/testRoutesRefuseCallerPathsOutsideTheirRoot.py::testAnAddFileOutsideTheProjectRepoIsRefused',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='        fsValidatePathWithinRoot(\n            posixpath.normpath(\n                posixpath.join(sWorkdir, request.sFilePath)\n            ),\n            fsResolveProjectRoot(sContainerId, WORKSPACE_ROOT),\n        )\n',
+        new='',
+    ),
+    # --- Path jail call sites: settingsRoutes log reader ---
+    Falsification(
+        nodeid='tests/testRoutesRefuseCallerPathsOutsideTheirRoot.py::testALogNamedForTheParentDirectoryIsRefused',
+        source='vaibify/gui/routes/settingsRoutes.py',
+        old='        fsValidatePathWithinRoot(sLogPath, sLogsDir)\n',
+        new='        pass\n',
+    ),
+    # --- A mutating route with no declared scope fails app construction (default-deny) ---
+    Falsification(
+        nodeid='tests/testSecurityBoundaryInvariants.py::testUnscopedMutatingRouteFailsAppConstruction',
+        source='vaibify/gui/routeScope.py',
+        old='    if listUnscoped:\n        raise RuntimeError(',
+        new='    if False:\n        raise RuntimeError(',
+    ),
+    # --- Consent given again after a withdrawal bumps the generation ---
+    Falsification(
+        nodeid='tests/testCouncilCredentialStore.py::test_row_consent_again_after_withdrawal_needs_a_fresh_test',
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='            iGeneration = (dictConsent["iConsentGeneration"] + 1\n                           if dictConsent is not None else 1)\n',
+        new='            iGeneration = (dictConsent["iConsentGeneration"]\n                           if dictConsent is not None else 1)\n',
+    ),
+    # --- An authorized turn appends its admission record ---
+    Falsification(
+        nodeid='tests/testCouncilCredentialAdmission.py::test_an_authorized_turn_stages_the_token_and_records_the_admission',
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    dictDocument["listAdmissions"].append(dictEntry)\n',
+        new='    pass\n',
+    ),
+    # --- The admission audit log is bounded to its newest entries ---
+    Falsification(
+        nodeid='tests/testCouncilAdmissionLogIsBounded.py::testTheAdmissionLogKeepsOnlyTheNewestEntries',
+        source='vaibify/gui/agentCouncilCredentialStore.py',
+        old='    del dictDocument["listAdmissions"][:-I_MAX_RECORDED_ADMISSIONS]\n',
+        new='    pass\n',
+    ),
+    # --- A tracked set the snapshot cannot represent is refused ---
+    Falsification(
+        nodeid=(
+            'tests/testCouncilSnapshotScope.py::'
+            'test_a_tracked_file_turned_into_a_directory_refuses'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='        listPaths = dictInterpreted[sKey]\n        if listPaths:\n',
+        new='        listPaths = dictInterpreted[sKey]\n        if False:\n',
+    ),
+    # --- A submodule (gitlink) is never snapshotted as a file ---
+    Falsification(
+        nodeid='tests/testCouncilSnapshotScope.py::test_a_gitlink_refuses',
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if dictEntry.get("sMode") == "160000":\n',
+        new='    if False:\n',
+    ),
+    # --- A path beyond a symbolic link is named as such, not read through ---
+    Falsification(
+        nodeid=(
+            'tests/testTrackedIndexBeyondSymlinkBucket.py::'
+            'testAPathBeyondASymbolicLinkLandsInItsOwnBucket'
+        ),
+        source='vaibify/gui/agentCouncilSnapshotScope.py',
+        old='    if sType == "beyondSymlink":\n',
+        new='    if False:\n',
+    ),
+    # --- A snapshot member naming '..' is refused ---
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilContext.py::'
+            'testAParentDirectoryComponentIsRefusedByName'
+        ),
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    if ".." in sMemberName.split("/"):\n',
+        new='    if False:\n',
+    ),
+    # --- A snapshot member outside the archive root is refused ---
+    Falsification(
+        nodeid=(
+            'tests/testAgentCouncilContext.py::'
+            'testAMemberOutsideTheArchiveRootIsRefused'
+        ),
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    if not sNormalized.startswith(sRootComponent + "/"):\n',
+        new='    if False:\n',
+    ),
+    # --- A duplicated snapshot member is refused ---
+    Falsification(
+        nodeid='tests/testAgentCouncilContext.py::testDuplicateMemberRefusesAndCleansUp',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    if sRelativePath in setSeenPaths:\n',
+        new='    if False:\n',
+    ),
+    # --- A mount outside $HOME and the project repo is refused ---
+    Falsification(
+        nodeid='tests/testBindMountValidator.py::test_path_outside_home_is_rejected',
+        source='vaibify/config/bindMountValidator.py',
+        old='    """Allow only paths under $HOME or the user\'s project repo."""\n',
+        new='    """Allow only paths under $HOME or the user\'s project repo."""\n    return\n',
+    ),
+    # --- A mount overlapping a denied credential location is refused ---
+    Falsification(
+        nodeid='tests/testBindMountValidator.py::test_ssh_directory_is_rejected',
+        source='vaibify/config/bindMountValidator.py',
+        old='        if (\n            _fbPathsOverlap(sResolved, sDenied)\n            or _fbPathsOverlapOnDisk(sResolved, sDenied)\n        ):\n',
+        new='        if False:\n',
+    ),
+    # --- A step is stale when its upstream output is NEWER than its own ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelBlockers.py::'
+            'test_flistLevel1Blockers_upstream_modified_marks_files_and_edges'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        if iUpstreamMtime > iConsumerMtime:\n',
+        new='        if iUpstreamMtime < iConsumerMtime:\n',
+    ),
+    # --- A GitHub verify at another commit cannot light the L2 gate ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelGates.py::'
+            'test_fbWorkflowFullySyncedWithGithub_sha_mismatch_returns_false'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return sVerifiedSha == sLiveSha\n',
+        new='    return True\n',
+    ),
+    # --- A Zenodo verify with no DOI cannot light the L2 gate ---
+    Falsification(
+        nodeid=(
+            'tests/testLevelGates.py::'
+            'test_fbWorkflowFullySyncedWithZenodo_missing_doi_returns_false'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if not (dictStatus.get("sZenodoDoi") or ""):\n        return False\n',
+        new='',
+    ),
+    # --- A manifest omitting a declared path is not complete ---
+    Falsification(
+        nodeid=(
+            'tests/testManifestCompletenessAsksTheWriter.py::'
+            'test_the_level_gate_follows_the_shared_definition'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        listMissing = flistDeclaredButMissingFromManifest(\n            filesRepo, dictWorkflow,\n        )\n',
+        new='        listMissing = []\n',
+    ),
+    # --- Host home jail: the context-file import ---
+    Falsification(
+        nodeid='tests/testProjectContextRoutes.py::test_import_jail_rejects_traversal_and_outside_paths',
+        source='vaibify/gui/projectContextManager.py',
+        old='    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):\n',
+        new='    if False:\n',
+    ),
+    # --- Host home jail: the personal-layer hash ---
+    Falsification(
+        nodeid='tests/testReplayRoutes.py::test_hash_route_rejects_file_outside_home',
+        source='vaibify/gui/personalLayerManager.py',
+        old='    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):\n',
+        new='    if False:\n',
+    ),
+    # --- Host home jail: the host-directory browser ---
+    Falsification(
+        nodeid='tests/testRegistryRoutes.py::testHostDirectoriesRejectsOutsideHome',
+        source='vaibify/gui/registryRoutes.py',
+        old='        raise HTTPException(400, "Path must be absolute")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sPath)\n    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):\n',
+        new='        raise HTTPException(400, "Path must be absolute")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sPath)\n    if False:\n',
+    ),
+    # --- Host home jail: project creation ---
+    Falsification(
+        nodeid='tests/testCreationWizardRoutes.py::testCreateProjectOutsideHomeRejected',
+        source='vaibify/gui/registryRoutes.py',
+        old='        raise HTTPException(400, "Directory must be an absolute path")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sDirectory)\n    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):\n',
+        new='        raise HTTPException(400, "Directory must be an absolute path")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sDirectory)\n    if False:\n',
+    ),
+    # --- Every guard function is anchored or seeded ---
+    Falsification(
+        nodeid='tests/testDeclaredGuaranteesAreAnchored.py::testEveryGuardFunctionIsAnchoredOrSeeded',
+        source='tests/testDeclaredGuaranteesAreAnchored.py',
+        old='    return tMutationLines[0] <= iLast and tMutationLines[1] >= iFirst\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testDeclaredGuaranteesAreAnchored.py::testEveryDeclaredGuaranteeIsAnchoredWithNoSeed',
+        source='tests/testDeclaredGuaranteesAreAnchored.py',
+        old='    return tMutationLines[0] <= iLast and tMutationLines[1] >= iFirst\n',
+        new='    return False\n',
+    ),
+    # --- Browser: a copy button reports the browser's real answer,
+    # a drag carries a private validated type, the PROOF ledger shows
+    # only the gate's verdict, and a skipped poll is marked stale ---
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheDoiCopyButtonOnTheStatusCardReportsAFailedCopy',
+        source='vaibify/gui/static/scriptZenodoDepositCard.js',
+        old='                    elCopy.textContent = bCopied ? "Copied" : "Copy failed";\n',
+        new='                    elCopy.textContent = "Copied";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheQuarantineRemedyCopyButtonReportsAFailedCopy',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    elButton.textContent = bCopied\n                        ? "Copied" : "Copy failed";\n',
+        new='                    elButton.textContent = "Copied";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheCouncilBriefCopyReportsAFailedCopy',
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        var bCopied = await VaibifyFileOps.fpromiseCopyText(sBrief);\n        if (bCopied) {\n',
+        new='        var bCopied = await VaibifyFileOps.fpromiseCopyText(sBrief);\n        if (true) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testDroppingPlainTextOnAStepDoesNotReorderIt',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        var sCarried = event.dataTransfer.getData(S_STEP_DRAG_TYPE);\n',
+        new='        var sCarried = event.dataTransfer.getData("text/plain");\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testADragCarryingAnIndexOfNoStepDoesNotReorderAnything',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        return iIndex < iCount ? iIndex : -1;\n',
+        new='        return iIndex;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testADropOntoATextNodeStillResolvesItsStep',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        if (nodeTarget && nodeTarget.nodeType !== 1) {\n            nodeTarget = nodeTarget.parentElement;\n        }\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testARealDragOfAStepAsksForTheReorder',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='            event.dataTransfer.setData(\n                S_STEP_DRAG_TYPE, String(parseInt(elStep.dataset.index)));\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testEveryRowShowsTheVerdictTheGateGave',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='            (bMet ? "satisfied" : "unsatisfied") + \'" data-req-key="\' +\n',
+        new='            "satisfied" + \'" data-req-key="\' +\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testAFailedLevelThreeReadinessLeavesNoVerdictOnScreen',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        return !dictL3.dictL3ReadinessGaps;\n',
+        new='        return false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testAFailedLevelTwoReadinessReplacesTheLedgerWithTheFailure',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        if (_dictLastReadiness && _dictLastReadiness.sError) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardSkipsAreMarkedStale.py::testAPollThatOmitsTheEnvelopeMarksTheProjectRowsStale',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            _dictWorkflowState.bEnvelopeDetailStale = true;\n',
+        new='            _dictWorkflowState.bEnvelopeDetailStale = false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardSkipsAreMarkedStale.py::testAFailedMonitorPollMarksTheFiguresStale',
+        source='vaibify/gui/static/scriptResourceMonitor.js',
+        old='            if (!response.ok) {\n                fnMarkReadingsStale();\n                return;\n            }\n',
+        new='            if (!response.ok) {\n                return;\n            }\n',
     ),
 ]

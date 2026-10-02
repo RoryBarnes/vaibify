@@ -14,7 +14,7 @@ restrictions:
 |------------------------|---------------------------------------------|
 | No Docker socket       | The Docker socket is never mounted inside the container. Code in the container cannot create, inspect, or control other containers. |
 | Unprivileged user      | Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then `exec`s itself through `gosu` as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. `sudo` is absent from the image. |
-| No host filesystem     | The host filesystem is not bind-mounted by default. Files enter and leave the container through `vaibify push` and `vaibify pull`. |
+| Few host mounts        | The host filesystem is not bind-mounted wholesale. Files enter and leave the container through `vaibify push` and `vaibify pull`. Three kinds of host path are mounted: resolved secret files (read-only, under `/run/secrets/`), any `listBindMounts` entries you declare (validated against an allowlist, and refused if the source is missing), and, on Linux only, the X11 socket `/tmp/.X11-unix` (read-only), which is mounted into every container including those started with `networkIsolation: true`, after an `xhost +SI:localuser:$USER` grant to your account. On macOS the display is reached over TCP through XQuartz instead, with the same per-user `xhost` grant. |
 | Workspace volume       | A Docker volume provides persistent storage at the configured `workspaceRoot`. Volumes are isolated from the host directory tree. |
 | Network isolation      | Set `networkIsolation: true` in `vaibify.yml` to start the container with `--network none`, blocking all outbound traffic. |
 | Localhost-only GUI     | The pipeline viewer and setup wizard bind to `127.0.0.1`, never `0.0.0.0`. |
@@ -162,7 +162,9 @@ a restricted run against the author's can diverge.
 Vaibify assumes the code running inside the container may be adversarial.
 The defenses are designed to contain:
 
-- **Filesystem escape** -- no host mounts, no Docker socket.
+- **Filesystem escape** -- no wholesale host mount and no Docker socket;
+  the host paths that are mounted (secret files, declared bind mounts,
+  the Linux X11 socket) are listed in the table above.
 - **Network exfiltration** -- optional network isolation blocks all traffic.
 - **Credential theft** -- partially. Secrets resolved from the host's
   credential manager are mode-600 files, but they outlive the container

@@ -322,6 +322,10 @@ RX_VARIABLE_SHAPE = re.compile(r"^(_{0,2})([a-z]+)([A-Z0-9].*)?$")
 RX_DUNDER = re.compile(r"^__\w+__$")
 
 
+class UnparseableModuleError(Exception):
+    """A scanned module is not valid Python, so it cannot be judged."""
+
+
 class UnparseableAnnotationError(Exception):
     """An annotation the scanner cannot resolve; the check fails closed."""
 
@@ -735,8 +739,11 @@ def flistScanPackage(pathPackage=PATH_PACKAGE):
             continue
         try:
             treeModule = ast.parse(pathModule.read_text(errors="replace"))
-        except SyntaxError:
-            continue
+        except SyntaxError as error:
+            raise UnparseableModuleError(
+                f"{sRelativePath} cannot be parsed ({error}), so the "
+                "style gate would silently skip it; fix the syntax"
+            ) from error
         scanner = StyleViolationScanner(sRelativePath)
         scanner.visit(treeModule)
         listViolations.extend(scanner.listViolations)

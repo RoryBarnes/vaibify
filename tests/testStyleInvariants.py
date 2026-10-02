@@ -60,6 +60,10 @@ __all__ = [
     "testScannerAcceptsCorrectContextManagerAnnotation",
     "testScannerRejectsContextManagerAnnotationOnTheGenerator",
     "testScannerFailsClosedOnUnparseableAnnotation",
+    "testScannerFailsClosedOnUnparseableReturnAnnotation",
+    "testScannerCatchesUnprefixedExceptHandlerBinding",
+    "testScannerCatchesUnprefixedParameter",
+    "testScannerRefusesAnUnparseableModuleInsteadOfSkippingIt",
     "testScannerDistinguishesSameNamedMethods",
     "testScannerParsesLongestPrefix",
 ]
@@ -1442,6 +1446,60 @@ def testScannerFailsClosedOnUnparseableAnnotation():
     assert _fbSyntheticCaught(
         'sBroken: "nonsense[" = ""\n', "legacy-annotation-mismatch",
         "sBroken")
+
+
+@pytest.mark.falsification
+def testScannerFailsClosedOnUnparseableReturnAnnotation():
+    """An unparseable return annotation is a record, not a pass.
+
+    The synthetic source does not depend on any seeded debt, so the
+    check stays defended after the budget reaches zero.
+
+    Kills: dropping the UnparseableAnnotationError handler's record in
+    the return-annotation check.
+    """
+    assert _fbSyntheticCaught(
+        'def fsBroken() -> "nonsense[":\n    return ""\n',
+        "legacy-return-annotation", "fsBroken")
+
+
+@pytest.mark.falsification
+def testScannerCatchesUnprefixedExceptHandlerBinding():
+    """``except E as banana`` binds a name outside the vocabulary.
+
+    Kills: removing the binding check from visit_ExceptHandler.
+    """
+    sSource = ("def fnGuard():\n    try:\n        pass\n"
+               "    except ValueError as banana:\n        pass\n")
+    assert _fbSyntheticCaught(sSource, "legacy-variable", "banana")
+
+
+@pytest.mark.falsification
+def testScannerCatchesUnprefixedParameter():
+    """``def fnX(banana)`` binds a parameter outside the vocabulary.
+
+    Kills: removing the binding check from the parameter loop.
+    """
+    assert _fbSyntheticCaught(
+        "def fnX(banana):\n    pass\n", "legacy-variable", "banana")
+
+
+@pytest.mark.falsification
+def testScannerRefusesAnUnparseableModuleInsteadOfSkippingIt(
+    tmp_path, monkeypatch,
+):
+    """A module that does not parse must fail the scan, loudly.
+
+    Skipping it silently dropped the whole module from the gate.
+
+    Kills: ``except SyntaxError: continue`` in flistScanPackage.
+    """
+    pathPackage = tmp_path / "package"
+    pathPackage.mkdir()
+    (pathPackage / "broken.py").write_text("def fnBroken(:\n")
+    monkeypatch.setattr(tool, "PATH_REPOSITORY", tmp_path)
+    with pytest.raises(tool.UnparseableModuleError, match="broken.py"):
+        tool.flistScanPackage(pathPackage)
 
 
 def testScannerDistinguishesSameNamedMethods():

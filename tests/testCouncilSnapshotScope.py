@@ -215,14 +215,24 @@ def test_a_merge_conflict_refuses_naming_the_path(tmp_path):
         _fdictObserve(LocalRepoConnection(pathRepo))
 
 
+@pytest.mark.falsification
 def test_a_gitlink_refuses(pathRepo):
+    """A submodule's bytes are not this repository's, so it cannot be snapshotted.
+
+    Kills: the tracked-path classifier no longer recognizing mode 160000.
+    """
     _fnGit(pathRepo, "update-index", "--add", "--cacheinfo",
            "160000," + "ab" * 20 + ",vendored")
     with pytest.raises(SnapshotRefusedError, match="vendored"):
         _fdictObserve(LocalRepoConnection(pathRepo))
 
 
+@pytest.mark.falsification
 def test_a_tracked_file_turned_into_a_directory_refuses(pathRepo):
+    """The index refusal is what stops an unrepresentable tracked set.
+
+    Kills: _fnRefuseUnrepresentableIndex never calling its refusal.
+    """
     (pathRepo / "kept.txt").unlink()
     _fnWrite(pathRepo, "kept.txt/inner.txt", "now a directory\n")
     with pytest.raises(SnapshotRefusedError, match="kept.txt"):

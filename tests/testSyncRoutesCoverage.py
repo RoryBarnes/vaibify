@@ -1754,8 +1754,13 @@ def test_overleaf_push_rejects_path_outside_workspace(clientHttp):
     assert "project root" in responseHttp.json()["detail"].lower()
 
 
+@pytest.mark.falsification
 def test_overleaf_push_rejects_dotdot_traversal(clientHttp):
-    """Push must 400 for ``..`` traversal in listFilePaths."""
+    """Push must 400 for ``..`` traversal in listFilePaths.
+
+    Kills: syncRoutes._fnRefusePathOutsideRoot: the call
+    `fsValidatePathWithinRoot(sFilePath, sProjectRoot)` replaced by `pass`.
+    """
     _fnConnectToContainer(clientHttp)
     responseHttp = clientHttp.post(
         f"/api/overleaf/{S_CONTAINER_ID}/push",

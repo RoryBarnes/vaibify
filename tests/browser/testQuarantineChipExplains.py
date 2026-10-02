@@ -123,10 +123,15 @@ def testTheRemedyCommandHasAWorkingCopyButton(pageDashboard, serverHub):
     elButton = pageDashboard.wait_for_selector(
         "#modalInfo .quarantine-copy-button", timeout=5000,
     )
+    pageDashboard.evaluate(
+        "() => Object.defineProperty(navigator.clipboard, 'writeText', "
+        "{configurable: true, value: () => Promise.resolve()})"
+    )
     elButton.click()
-    assert elButton.inner_text() == "Copied", (
-        "the copy button gave no feedback, so the researcher cannot "
-        "tell whether the command reached the clipboard"
+    pageDashboard.wait_for_function(
+        "() => document.querySelector("
+        "'#modalInfo .quarantine-copy-button').textContent === 'Copied'",
+        timeout=5000,
     )
     assert pageDashboard.listPageErrors == []
 

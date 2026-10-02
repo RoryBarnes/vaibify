@@ -4701,9 +4701,14 @@ var VaibifyAgentCouncil = (function () {
     async function _fnCopyBrief(dictCampaign) {
         void dictCampaign;
         var sBrief = await _fsFetchPlanMarkdown();
-        if (navigator.clipboard && sBrief) {
-            navigator.clipboard.writeText(sBrief);
+        if (!sBrief) return;
+        var bCopied = await VaibifyFileOps.fpromiseCopyText(sBrief);
+        if (bCopied) {
             VaibifyApp.fnShowToast("Implementation brief copied.", "info");
+        } else {
+            VaibifyApp.fnShowToast(
+                "The browser refused the copy; use Download instead.",
+                "error");
         }
     }
 

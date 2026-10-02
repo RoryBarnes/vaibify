@@ -700,9 +700,29 @@ var VaibifyProofTab = (function () {
         return (dictState && dictState.sState) || "";
     }
 
+    function _fbRequirementAnswerMissing(dictReq) {
+        /* A Level 3 row's verdict comes from the Level 3 readiness
+           answer. When that request failed (its slot holds an error,
+           not an answer) or has not arrived, the row has NO verdict:
+           painting "not met" would be the tab inventing a failure the
+           gate never reported. */
+        var sKey = dictReq.sStateKey;
+        if (sKey === "gitRepo" || sKey === "stepsSelfConsistent") {
+            return false;
+        }
+        if (sKey in ((_dictLastReadiness || {}).dictLevel2Gaps || {})) {
+            return false;
+        }
+        var dictL3 = _dictLastL3Readiness || {};
+        return !dictL3.dictL3ReadinessGaps;
+    }
+
     function _fsRenderRequirementEntry(dictReq) {
         var bMet = _fbRequirementMet(dictReq);
         var sBackendState = _fsRequirementStateOrEmpty(dictReq);
+        if (_fbRequirementAnswerMissing(dictReq)) {
+            return _fsRenderUnansweredRequirementEntry(dictReq);
+        }
         // An unmet optional row shows the neutral dash, never a red
         // light — it is recommended, not a blocker.
         var sLight = sBackendState
@@ -729,7 +749,8 @@ var VaibifyProofTab = (function () {
                 fnEscapeHtml(dictReq.sFixLabel) + '</a>';
         }
         return '<div class="proof-req-entry state-' +
-            (bMet ? "satisfied" : "unsatisfied") + '">' +
+            (bMet ? "satisfied" : "unsatisfied") + '" data-req-key="' +
+            fnEscapeHtml(dictReq.sStateKey) + '">' +
             '<div class="proof-req-row">' + sLight +
             '<span class="proof-req-label">' +
             fnEscapeHtml(dictReq.sLabel) + '</span></div>' +
@@ -737,6 +758,20 @@ var VaibifyProofTab = (function () {
             fnEscapeHtml(dictReq.sWhat) + '</div>' +
             '<div class="proof-req-how">' +
             fnEscapeHtml(dictReq.sHow) + sLink + '</div></div>';
+    }
+
+    function _fsRenderUnansweredRequirementEntry(dictReq) {
+        return '<div class="proof-req-entry state-unknown" ' +
+            'data-req-key="' + fnEscapeHtml(dictReq.sStateKey) + '">' +
+            '<div class="proof-req-row">' +
+            _fsBuildLevelLight("unknown", dictReq.sLabel +
+                ": the readiness check did not answer") +
+            '<span class="proof-req-label">' +
+            fnEscapeHtml(dictReq.sLabel) + '</span></div>' +
+            '<div class="proof-req-what">' +
+            fnEscapeHtml(dictReq.sWhat) + '</div>' +
+            '<div class="proof-req-how">The readiness check did not ' +
+            'answer, so this requirement has no verdict yet.</div></div>';
     }
 
     function _fsRenderLevel3Extras() {

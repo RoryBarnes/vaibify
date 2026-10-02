@@ -714,8 +714,34 @@ var VaibifyEventBindings = (function () {
         }
     }
 
+    /* The private type a step drag carries. Dropping plain text (a
+       selected "3" from anywhere on the page) must not reorder steps,
+       so the drop reads this type and nothing else. */
+    var S_STEP_DRAG_TYPE = "vaibify/step";
+
+    /* A drag event's target can be a Text node, which has no closest()
+       in Firefox and WebKit; start from its element. */
+    function _felClosestToTarget(event, sSelector) {
+        var nodeTarget = event.target;
+        if (nodeTarget && nodeTarget.nodeType !== 1) {
+            nodeTarget = nodeTarget.parentElement;
+        }
+        return nodeTarget ? nodeTarget.closest(sSelector) : null;
+    }
+
+    /* The index a step drag carried, or -1 when it is not an index of
+       a step that exists. */
+    function _fiDraggedStepIndex(event) {
+        var sCarried = event.dataTransfer.getData(S_STEP_DRAG_TYPE);
+        if (!/^\d+$/.test(sCarried)) return -1;
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
+        var iCount = (dictWorkflow.listSteps || []).length;
+        var iIndex = parseInt(sCarried, 10);
+        return iIndex < iCount ? iIndex : -1;
+    }
+
     function fnHandleDelegatedDragStart(event) {
-        if (event.target.closest(".remote-badge")) {
+        if (_felClosestToTarget(event, ".remote-badge")) {
             event.preventDefault();
             event.stopPropagation();
             return;
@@ -723,21 +749,17 @@ var VaibifyEventBindings = (function () {
         /* Drags starting inside the expanded detail area are text
            selections or badge images, never step-reorder intents —
            detail tiles themselves are no longer draggable. */
-        if (event.target.closest(".step-detail")) return;
-        var elStep = event.target.closest(".step-item");
+        if (_felClosestToTarget(event, ".step-detail")) return;
+        var elStep = _felClosestToTarget(event, ".step-item");
         if (elStep) {
-            var iIdx = parseInt(elStep.dataset.index);
             event.dataTransfer.setData(
-                "text/plain", String(iIdx));
-            event.dataTransfer.setData(
-                "vaibify/step", String(iIdx)
-            );
+                S_STEP_DRAG_TYPE, String(parseInt(elStep.dataset.index)));
             elStep.classList.add("dragging");
         }
     }
 
     function fnHandleDelegatedDragEnd(event) {
-        var elStep = event.target.closest(".step-item");
+        var elStep = _felClosestToTarget(event, ".step-item");
         if (elStep) elStep.classList.remove("dragging");
     }
 
@@ -747,11 +769,13 @@ var VaibifyEventBindings = (function () {
            WebKit but not the specification, so reordering did nothing
            at all in a browser that holds to it. Same fix, same
            reason, as the Files panel's drop zone. */
-        if (event.target.closest(".step-item")) event.preventDefault();
+        if (_felClosestToTarget(event, ".step-item")) {
+            event.preventDefault();
+        }
     }
 
     function fnHandleDelegatedDragOver(event) {
-        var elStep = event.target.closest(".step-item");
+        var elStep = _felClosestToTarget(event, ".step-item");
         if (elStep) {
             event.preventDefault();
             elStep.classList.add("drop-target");
@@ -759,24 +783,20 @@ var VaibifyEventBindings = (function () {
     }
 
     function fnHandleDelegatedDragLeave(event) {
-        var elStep = event.target.closest(".step-item");
+        var elStep = _felClosestToTarget(event, ".step-item");
         if (elStep) elStep.classList.remove("drop-target");
     }
 
     function fnHandleDelegatedDrop(event) {
-        var elStep = event.target.closest(".step-item");
+        var elStep = _felClosestToTarget(event, ".step-item");
         if (elStep) elStep.classList.remove("drop-target");
 
         if (elStep) {
             event.preventDefault();
-            var sStepData = event.dataTransfer.getData(
-                "text/plain");
-            if (sStepData !== "") {
-                var iFrom = parseInt(sStepData);
-                var iTo = parseInt(elStep.dataset.index);
-                if (iFrom !== iTo) {
-                    VaibifyApp.fnReorderStep(iFrom, iTo);
-                }
+            var iFrom = _fiDraggedStepIndex(event);
+            var iTo = parseInt(elStep.dataset.index);
+            if (iFrom >= 0 && iFrom !== iTo) {
+                VaibifyApp.fnReorderStep(iFrom, iTo);
             }
         }
     }

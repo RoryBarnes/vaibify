@@ -39,12 +39,47 @@ from tests.browser.conftest import (
 pytestmark = pytest.mark.browser
 
 
+def _fsetTrackBadgeRequests(page):
+    """Return the live set of badge requests that have not finished.
+
+    The dashboard refreshes its own badge map on its own schedule. A
+    refresh sent before this test's canned routes existed goes to the
+    REAL hub, which holds five entries rather than three, and applies
+    them whenever it resolves: Firefox, which answers fastest, applied
+    them between the test's two readings and the count moved from three
+    to five. What is under test is the dashboard's reaction to a
+    failure, so any answer already on its way from before the routes
+    must have landed before the first reading is taken.
+    """
+    setPending = set()
+
+    def fnNote(request):
+        if request.url.split("?")[0].endswith("/badges"):
+            setPending.add(request)
+
+    page.on("request", fnNote)
+    page.on("requestfinished", lambda request: setPending.discard(request))
+    page.on("requestfailed", lambda request: setPending.discard(request))
+    return setPending
+
+
+def _fnDrainRequestsAlreadyInFlight(page, setPending):
+    """Wait until every badge request sent before now has resolved."""
+    for _ in range(300):
+        if not setPending:
+            break
+        page.wait_for_timeout(50)
+    assert not setPending, "a badge request never resolved"
+    # The page applies a response in the task after the network event;
+    # one round trip through the page lets that task run.
+    page.evaluate("() => 0")
 
 
 def test_a_failed_refresh_claims_nothing_and_says_so(
     pageDashboard, serverHub,
 ):
     """One test, both halves — the session holds one browser."""
+    setPendingBadgeRequests = _fsetTrackBadgeRequests(pageDashboard)
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
 
     # Half 1: with no prior map, an unseen file must read unknown.
@@ -91,6 +126,7 @@ def test_a_failed_refresh_claims_nothing_and_says_so(
             body=sSeededBadges,
         ),
     )
+    _fnDrainRequestsAlreadyInFlight(pageDashboard, setPendingBadgeRequests)
     pageDashboard.evaluate(
         """async (sContainerId) => {
             await VaibifyGitBadges.fnRefresh(sContainerId);
