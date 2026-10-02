@@ -76,7 +76,7 @@ def _fsDetectShellRcFile(sShellName):
 def _fbRcFileContainsLine(sRcPath, sNeedle):
     """Return True if *sNeedle* already appears in the RC file."""
     try:
-        with open(sRcPath, "r") as fileHandle:
+        with open(sRcPath, "r", encoding="utf-8") as fileHandle:
             return sNeedle in fileHandle.read()
     except (OSError, IOError):
         return False
@@ -85,7 +85,7 @@ def _fbRcFileContainsLine(sRcPath, sNeedle):
 def _fnAppendToRcFile(sRcPath, sBlock):
     """Append *sBlock* to the RC file, preceded by a blank line."""
     try:
-        with open(sRcPath, "a") as fileHandle:
+        with open(sRcPath, "a", encoding="utf-8") as fileHandle:
             fileHandle.write("\n# Added by Vaibify\n")
             fileHandle.write(sBlock + "\n")
     except (OSError, IOError):
@@ -209,7 +209,7 @@ def _fnLinkColimaSocketInner():
 def _fnWriteMarkerFile():
     """Write the marker file that prevents re-running setup."""
     try:
-        with open(_MARKER_PATH, "w") as fileHandle:
+        with open(_MARKER_PATH, "w", encoding="utf-8") as fileHandle:
             fileHandle.write("setup complete\n")
     except (OSError, IOError):
         logger.debug("Could not write marker file %s", _MARKER_PATH)

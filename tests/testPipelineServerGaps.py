@@ -1,6 +1,7 @@
 """Tests for uncovered lines in vaibify.gui.pipelineServer."""
 
 import asyncio
+import contextlib
 import json
 
 import pytest
@@ -8,8 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import WebSocketDisconnect
 
+from vaibify.gui.interactiveSteps import fdictCreateInteractiveContext
 from vaibify.gui.pipelineServer import (
     _fbExceptionIsWsClosed,
+    _fnPublishInteractiveContext,
+    _fnUnpublishInteractiveContext,
     _fnDispatchRunFrom,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
@@ -392,6 +396,19 @@ class TestSafeDispatch:
 # fnPipelineMessageLoop (lines 444-476)
 # ---------------------------------------------------------------
 
+@contextlib.contextmanager
+def contextWaitingRun(sContainerId):
+    """Publish a run's interactive context that is waiting on a response."""
+    dictWaiting = fdictCreateInteractiveContext("run-waiting")
+    dictWaiting["dictPendingEvent"] = {"sType": "interactivePause"}
+    dictWaiting["iPauseSequence"] = 1
+    _fnPublishInteractiveContext(sContainerId, dictWaiting)
+    try:
+        yield dictWaiting
+    finally:
+        _fnUnpublishInteractiveContext(sContainerId, dictWaiting)
+
+
 class TestPipelineMessageLoop:
     @pytest.mark.asyncio
     async def test_dispatches_action_and_stores_task(self):
@@ -416,9 +433,6 @@ class TestPipelineMessageLoop:
         with patch(
             "vaibify.gui.pipelineServer._fnSafeDispatch",
             new_callable=AsyncMock,
-        ), patch(
-            "vaibify.gui.pipelineRunner.fdictCreateInteractiveContext",
-            return_value={},
         ):
             with pytest.raises(Exception, match="disconnect"):
                 await fnPipelineMessageLoop(
@@ -445,10 +459,7 @@ class TestPipelineMessageLoop:
 
         mockWebsocket.receive_text = fnReceiveText
 
-        with patch(
-            "vaibify.gui.pipelineRunner.fdictCreateInteractiveContext",
-            return_value={},
-        ), patch(
+        with contextWaitingRun("ctr1") as dictWaiting, patch(
             "vaibify.gui.pipelineRunner.fnSetInteractiveResponse",
         ) as mockSet:
             with pytest.raises(Exception, match="disconnect"):
@@ -456,7 +467,7 @@ class TestPipelineMessageLoop:
                     mockWebsocket, MagicMock(), "ctr1",
                     {}, {}, "/workspace",
                 )
-            mockSet.assert_called_once_with({}, "resume")
+            mockSet.assert_called_once_with(dictWaiting, "resume")
 
     @pytest.mark.asyncio
     async def test_interactive_complete_handled(self):
@@ -479,10 +490,7 @@ class TestPipelineMessageLoop:
 
         mockWebsocket.receive_text = fnReceiveText
 
-        with patch(
-            "vaibify.gui.pipelineRunner.fdictCreateInteractiveContext",
-            return_value={},
-        ), patch(
+        with contextWaitingRun("ctr1") as dictWaiting, patch(
             "vaibify.gui.pipelineRunner.fnSetInteractiveResponse",
         ) as mockSet:
             with pytest.raises(Exception, match="disconnect"):
@@ -490,7 +498,7 @@ class TestPipelineMessageLoop:
                     mockWebsocket, MagicMock(), "ctr1",
                     {}, {}, "/workspace",
                 )
-            mockSet.assert_called_once_with({}, "complete:42")
+            mockSet.assert_called_once_with(dictWaiting, "complete:42")
 
     @pytest.mark.asyncio
     async def test_interactive_skip_handled(self):
@@ -510,10 +518,7 @@ class TestPipelineMessageLoop:
 
         mockWebsocket.receive_text = fnReceiveText
 
-        with patch(
-            "vaibify.gui.pipelineRunner.fdictCreateInteractiveContext",
-            return_value={},
-        ), patch(
+        with contextWaitingRun("ctr1") as dictWaiting, patch(
             "vaibify.gui.pipelineRunner.fnSetInteractiveResponse",
         ) as mockSet:
             with pytest.raises(Exception, match="disconnect"):
@@ -521,7 +526,7 @@ class TestPipelineMessageLoop:
                     mockWebsocket, MagicMock(), "ctr1",
                     {}, {}, "/workspace",
                 )
-            mockSet.assert_called_once_with({}, "skip")
+            mockSet.assert_called_once_with(dictWaiting, "skip")
 
 
 # ---------------------------------------------------------------

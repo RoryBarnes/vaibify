@@ -65,7 +65,7 @@ __all__ = [
 import logging
 import re
 import secrets
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 import shlex
 import threading
 import time
@@ -76,6 +76,10 @@ from vaibify.config.mutationAdmission import (
     fnAssertOperationAdmittedByIdentity,
 )
 from .containerOwnership import ffReadSecondsFromEnvironment
+
+if TYPE_CHECKING:
+    from vaibify.docker.dockerConnection import DockerConnection
+    from .terminalSession import TerminalSession
 
 logger = logging.getLogger("vaibify")
 

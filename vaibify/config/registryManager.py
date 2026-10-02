@@ -3,15 +3,43 @@
 import fcntl
 import json
 import os
+import shutil
 import tempfile
+import time
 
 _S_REGISTRY_DIRECTORY = os.path.expanduser("~/.vaibify")
 _S_REGISTRY_PATH = os.path.join(_S_REGISTRY_DIRECTORY, "registry.json")
 _S_LOCK_PATH = os.path.join(_S_REGISTRY_DIRECTORY, "registry.lock")
 
 
+class RegistryUnreadableError(RuntimeError):
+    """The registry file exists but cannot be read as a registry.
+
+    Raised instead of writing: a registration over an unreadable file
+    would replace every project entry and every image-source record
+    with a one-entry registry. Deliberately not a ``ValueError`` (the
+    callers read that as "already registered") and not an ``OSError``.
+    """
+
+
+def _fdictParseRegistryFile():
+    """Return the registry on disk; raise ValueError or OSError if unreadable."""
+    with open(_S_REGISTRY_PATH, "r", encoding="utf-8") as fileHandle:
+        dictRegistry = json.load(fileHandle)
+    if not isinstance(dictRegistry, dict):
+        raise ValueError("the registry is not a JSON object")
+    dictRegistry.setdefault("listProjects", [])
+    if not isinstance(dictRegistry["listProjects"], list):
+        raise ValueError("the registry's listProjects is not a list")
+    return dictRegistry
+
+
 def fdictLoadRegistry():
     """Read the registry file and return its contents.
+
+    A reader that cannot parse the file answers an empty registry and
+    writes nothing, so the file on disk is untouched. Every writer goes
+    through :func:`_fdictLoadRegistryForUpdate` instead.
 
     Returns
     -------
@@ -21,14 +49,44 @@ def fdictLoadRegistry():
     if not os.path.isfile(_S_REGISTRY_PATH):
         return {"listProjects": []}
     try:
-        with open(_S_REGISTRY_PATH, "r") as fileHandle:
-            dictRegistry = json.load(fileHandle)
-    except (json.JSONDecodeError, OSError):
+        return _fdictParseRegistryFile()
+    except (ValueError, OSError):
         return {"listProjects": []}
-    if not isinstance(dictRegistry, dict):
+
+
+def _fdictLoadRegistryForUpdate():
+    """Return the registry a writer will modify, refusing an unreadable file.
+
+    Raises
+    ------
+    RegistryUnreadableError
+        When the file exists but cannot be parsed or read. The file is
+        copied beside itself first and left in place.
+    """
+    if not os.path.isfile(_S_REGISTRY_PATH):
         return {"listProjects": []}
-    dictRegistry.setdefault("listProjects", [])
-    return dictRegistry
+    try:
+        return _fdictParseRegistryFile()
+    except (ValueError, OSError) as error:
+        sBackupSentence = _fsBackUpUnreadableRegistry()
+        raise RegistryUnreadableError(
+            f"The project registry at {_S_REGISTRY_PATH} cannot be read "
+            f"({error}), so nothing was written. {sBackupSentence} "
+            "Repair or move the file, then try again."
+        ) from error
+
+
+def _fsBackUpUnreadableRegistry():
+    """Copy the unreadable registry beside itself; name the copy in a sentence."""
+    sBackupPath = (
+        f"{_S_REGISTRY_PATH}.unreadable-"
+        f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}.bak"
+    )
+    try:
+        shutil.copy2(_S_REGISTRY_PATH, sBackupPath)
+    except OSError as error:
+        return f"A backup copy could not be made ({error})."
+    return f"A copy was kept at {sBackupPath}."
 
 
 def fnSaveRegistry(dictRegistry):
@@ -44,12 +102,13 @@ def fnSaveRegistry(dictRegistry):
     """
     os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)
     with _ffileOpenRegistryLock():
+        _fdictLoadRegistryForUpdate()
         _fnWriteRegistryAtomic(dictRegistry)
 
 
 def _ffileOpenRegistryLock():
     """Open and acquire an exclusive lock for registry writes."""
-    fileHandle = open(_S_LOCK_PATH, "w")
+    fileHandle = open(_S_LOCK_PATH, "w", encoding="utf-8")
     fcntl.flock(fileHandle, fcntl.LOCK_EX)
     return fileHandle
 
@@ -66,7 +125,7 @@ def _fnMutateRegistryLocked(fnMutateRegistry):
     """
     os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)
     with _ffileOpenRegistryLock():
-        dictRegistry = fdictLoadRegistry()
+        dictRegistry = _fdictLoadRegistryForUpdate()
         fnMutateRegistry(dictRegistry)
         _fnWriteRegistryAtomic(dictRegistry)
 

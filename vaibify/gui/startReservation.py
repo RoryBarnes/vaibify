@@ -58,7 +58,7 @@ import asyncio
 import logging
 import os
 import secrets
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 import threading
 import time
 from dataclasses import dataclass, field
@@ -72,6 +72,9 @@ from . import commitCarrier
 from . import containerOwnership
 from . import sessionLifecycle
 from . import startResultStore
+
+if TYPE_CHECKING:
+    from .containerOwnership import OwnershipIdentity
 
 logger = logging.getLogger("vaibify")
 

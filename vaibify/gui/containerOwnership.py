@@ -64,7 +64,7 @@ import logging
 import os
 import secrets
 import time
-from typing import IO, Optional
+from typing import IO, TYPE_CHECKING, Optional
 from dataclasses import dataclass, field
 
 from vaibify.config import pidFileRegistry
@@ -75,6 +75,10 @@ from vaibify.config.containerLock import (
     fnReleaseContainerLock,
 )
 from vaibify.config.keepAliveManager import fnStopKeepAlive
+
+if TYPE_CHECKING:
+    from starlette.websockets import WebSocket
+    from .startReservation import StartReservation
 
 logger = logging.getLogger("vaibify")
 

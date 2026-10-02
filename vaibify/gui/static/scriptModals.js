@@ -741,7 +741,8 @@ var VaibifyModals = (function () {
         _fnRenderPickerBreadcrumb(sPath, sRepoRoot);
         try {
             var listEntries = await VaibifyApi.fdictGet(
-                "/api/files/" + VaibifyApp.fsGetContainerId() + sPath
+                "/api/files/" + VaibifyApp.fsGetContainerId() +
+                VaibifyUtilities.fsEncodeUrlPath(sPath)
             );
             elEntries.innerHTML = _fsRenderPickerEntries(listEntries);
         } catch (error) {

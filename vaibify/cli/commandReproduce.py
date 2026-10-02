@@ -327,7 +327,9 @@ def _ftRunPipInstall(pathLock):
         sys.executable, "-m", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    processCompleted = subprocess.run(
+        saCommand, capture_output=True, text=True, encoding="utf-8",
+    )
     sys.stdout.write(processCompleted.stdout)
     return processCompleted.returncode, processCompleted.stderr
 
@@ -346,7 +348,9 @@ def _fbRunUvFallback(pathLock):
         "uv", "pip", "install",
         "--require-hashes", "-r", str(pathLock),
     ]
-    processCompleted = subprocess.run(saCommand, capture_output=True, text=True)
+    processCompleted = subprocess.run(
+        saCommand, capture_output=True, text=True, encoding="utf-8",
+    )
     sys.stdout.write(processCompleted.stdout)
     if processCompleted.returncode == 0:
         _fnPrintPass("hashes verified (uv)")
@@ -378,7 +382,7 @@ def fbVerifyTier3(sProjectRepo):
     sImageDigest = _fsLoadImageDigest(pathEnvironment, sProjectRepo)
     processCompleted = subprocess.run(
         ["docker", "pull", sImageDigest],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     sys.stdout.write(processCompleted.stdout)
     if processCompleted.returncode == 0:

@@ -2614,7 +2614,7 @@ def fsetExtractUpstreamIndices(sText, dictIdToIndex=None):
         int(s) - 1 for s in re.findall(r"\{Step(\d+)\.", sText)
     )
     if dictIdToIndex:
-        for sId in re.findall(r"\{step:([a-z0-9][a-z0-9-]*)\.", sText):
+        for sId in re.findall(r"\{step:([^.}\s]+)\.", sText):
             if sId in dictIdToIndex:
                 setIndices.add(dictIdToIndex[sId])
     return setIndices
@@ -2665,6 +2665,7 @@ def _fsWorkflowDepCacheKey(dictWorkflow):
             [str(s) for s in listDeps if s is not None],
         )
         dictRelevant["sDirectory"] = dictStep.get("sDirectory", "")
+        dictRelevant["sStepId"] = dictStep.get("sStepId", "")
         listEntries.append(dictRelevant)
     sCanonical = json.dumps(listEntries, sort_keys=True, default=str)
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()

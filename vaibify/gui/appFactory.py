@@ -364,7 +364,10 @@ def _fnRegisterCouncilLifecycle(app):
         # Live drive tasks stop BEFORE the registry drain destroys
         # runners: a drive still launching turns would race the drain's
         # closed admission and report a spurious refusal instead of a
-        # clean stop.
+        # clean stop. The egress boundary is released AFTER the drain:
+        # a council network with a runner still attached cannot be
+        # proven removed, so releasing it first left every shutdown
+        # reporting it indeterminate.
         dictControllerState = getattr(
             app.state,
             agentCouncilController.S_COUNCIL_CONTROLLER_STATE_KEY, None)
@@ -376,8 +379,11 @@ def _fnRegisterCouncilLifecycle(app):
             # provisioned runner access (egress boundary, staged host
             # credential) is released for every campaign either way.
             await agentCouncilController.fnAwaitControllerSettleOnShutdown(
-                dictControllerState)
+                dictControllerState, bReleaseRunnerAccess=False)
         await asyncio.to_thread(_fnDrainCouncilRunners, app)
+        if isinstance(dictControllerState, dict):
+            await agentCouncilController.fnReleaseRunnerAccessOnShutdown(
+                dictControllerState)
 
     app.state.listLifespanStartup.append(fnReconcileCouncilOnStartup)
     app.state.listLifespanShutdown.append(fnDrainCouncilOnShutdown)

@@ -705,6 +705,7 @@ class _ConnectionRecordingWrites:
         self.bDestinationIsDirectory = bDestinationIsDirectory
         self.listFileWrites = []
         self.listTreeWrites = []
+        self.listArchiveNames = []
         self.listCopies = []
 
     def fnCopyHostPathIntoContainer(self, sName, sSource, sDestination):
@@ -716,8 +717,11 @@ class _ConnectionRecordingWrites:
     def fnWriteFileViaTar(self, sName, sPath, baContent):
         self.listFileWrites.append((sName, sPath, baContent))
 
-    def fnWriteTreeViaTar(self, sName, sDirectory, listHostPaths):
+    def fnWriteTreeViaTar(
+        self, sName, sDirectory, listHostPaths, sArchiveName=None,
+    ):
         self.listTreeWrites.append((sName, sDirectory, list(listHostPaths)))
+        self.listArchiveNames.append(sArchiveName)
 
 
 @pytest.mark.falsification

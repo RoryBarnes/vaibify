@@ -7,7 +7,9 @@ import click
 
 from .configLoader import fsConfigPath
 
-from vaibify.config.registryManager import fnAddProject
+from vaibify.config.registryManager import (
+    RegistryUnreadableError, fnAddProject,
+)
 
 
 @click.command("register")
@@ -37,4 +39,7 @@ def fnRegisterCommand(sdirectory):
     except ValueError as error:
         click.echo(f"Already registered: {error}")
         return
+    except RegistryUnreadableError as error:
+        click.echo(f"Error: {error}")
+        sys.exit(1)
     click.echo(f"Registered project at {sAbsDirectory}")

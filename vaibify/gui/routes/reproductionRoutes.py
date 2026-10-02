@@ -38,6 +38,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from ...config.connectionAvailability import fbDockerReachable
+from ..backgroundTasks import fnKeepTaskReferenced
 from ...docker import daemonCapacity
 from ...docker import daemonDescription
 from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
@@ -204,20 +205,11 @@ def _fnRegisterRun(app, dictCtx):
         reproductionProgress.fnRecordPhase(
             sJobId, reproductionProgress.S_PHASE_PULLING,
         )
-        _fnKeepTaskReferenced(taskWorker)
+        fnKeepTaskReferenced(taskWorker)
         return {
             "bAccepted": True,
             "sPhase": reproductionProgress.S_PHASE_PULLING,
         }
-
-
-_SET_LIVE_TASKS = set()
-
-
-def _fnKeepTaskReferenced(taskWorker):
-    """Hold a strong reference until the task ends, as asyncio advises."""
-    _SET_LIVE_TASKS.add(taskWorker)
-    taskWorker.add_done_callback(_SET_LIVE_TASKS.discard)
 
 
 def _fnRequireJob(sJobId):

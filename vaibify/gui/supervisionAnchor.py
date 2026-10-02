@@ -85,7 +85,7 @@ def fdictReadAnchor(sKey):
     treat unknown as clean.
     """
     try:
-        with open(_fsAnchorPath(sKey), "r") as fileAnchor:
+        with open(_fsAnchorPath(sKey), "r", encoding="utf-8") as fileAnchor:
             dictAnchor = json.load(fileAnchor)
     except (OSError, ValueError):
         return {}
@@ -106,7 +106,7 @@ def fnRecordAnchor(sKey, iFlagCount, sHeadSha256):
     os.makedirs(sDirectory, mode=0o700, exist_ok=True)
     sPath = _fsAnchorPath(sKey)
     sTemporary = sPath + ".tmp"
-    with open(sTemporary, "w") as fileAnchor:
+    with open(sTemporary, "w", encoding="utf-8") as fileAnchor:
         json.dump(
             {_S_COUNT_KEY: int(iFlagCount), _S_HEAD_KEY: sHeadSha256},
             fileAnchor,

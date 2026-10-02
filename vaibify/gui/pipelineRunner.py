@@ -141,7 +141,23 @@ async def _flistPreflightValidate(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
     iStartStep=1, setRunStepIndices=None,
 ):
-    """Return preflight errors (hard-blocks). Soft warnings flow separately."""
+    """Return preflight errors (hard-blocks). Soft warnings flow separately.
+
+    Every check is a container exec (two per command, one per step
+    directory), so the whole walk runs on a worker thread: on the
+    event loop it froze every other route for the length of the walk.
+    """
+    return await asyncio.to_thread(
+        _flistValidateStepsBlocking, connectionDocker, sContainerId,
+        dictWorkflow, dictVariables, iStartStep, setRunStepIndices,
+    )
+
+
+def _flistValidateStepsBlocking(
+    connectionDocker, sContainerId, dictWorkflow, dictVariables,
+    iStartStep, setRunStepIndices,
+):
+    """Return the preflight errors; blocks on container I/O."""
     listErrors = []
     sIdConflict = fsDescribeStepIdConflict(
         dictWorkflow, bRequirePresent=True,
@@ -395,6 +411,7 @@ async def _ftRunSingleCommand(
 # hour; batching collapses that into ~36k while still keeping the
 # 100 ms upper bound on perceived latency.
 I_BATCH_MAX_LINES = 50
+F_BACKGROUND_THREAD_JOIN_SECONDS = 120.0
 F_BATCH_MAX_INTERVAL_SECONDS = 0.1
 
 
@@ -1041,7 +1058,9 @@ async def _fsMissingDependencyFile(
     )
     setChecked = set()
     for sCommand in listAllCommands:
-        for sMatch in re.findall(r"\{(Step\d+\.\w+)\}", sCommand):
+        for sMatch in re.findall(
+            r"\{(Step\d+\.\w+|step:[^.}\s]+\.\w+)\}", sCommand,
+        ):
             if sMatch in setChecked:
                 continue
             setChecked.add(sMatch)
@@ -1578,13 +1597,20 @@ async def _fiRunStepsAndLog(
     finally:
         # Ordering: stop heartbeat producer first so it cannot enqueue
         # after the writer is told to drain; then drain + stop writer.
-        # ``join()`` carries no timeout — the writer drains the queue
-        # before returning, so the late-heartbeat-overwrites-completed
-        # race that motivated HIGH #12 cannot fire.
+        # The writer drains its queue (container writes) before it
+        # exits, so the joins run on a worker thread, and each is
+        # bounded so a wedged container cannot hold the run forever.
         eventStopHeartbeat.set()
-        threadHeartbeat.join()
-        stateWriter.fnStop()
+        await asyncio.to_thread(
+            _fnJoinRunBackgroundThreads, threadHeartbeat, stateWriter.fnStop,
+        )
     return iResult
+
+
+def _fnJoinRunBackgroundThreads(threadHeartbeat, fnStopWriter):
+    """Stop the heartbeat, then drain and stop the state writer, bounded."""
+    threadHeartbeat.join(timeout=F_BACKGROUND_THREAD_JOIN_SECONDS)
+    fnStopWriter(fJoinTimeoutSeconds=F_BACKGROUND_THREAD_JOIN_SECONDS)
 
 
 def _fthreadStartHeartbeat(
@@ -1693,7 +1719,8 @@ async def _fiRunWithLogging(
             sContainerId, sLogPath, listLogLines,
             listPreflightErrors, sAction,
         )
-    listPreflightWarnings = _flistCollectPreflightWarnings(
+    listPreflightWarnings = await asyncio.to_thread(
+        _flistCollectPreflightWarnings,
         connectionDocker, sContainerId, dictWorkflow,
     )
     for sWarning in listPreflightWarnings:

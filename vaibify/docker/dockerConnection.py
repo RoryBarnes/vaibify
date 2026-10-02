@@ -239,9 +239,6 @@ def _fmoduleGetDocker():
         )
 
 
-_sDockerHostWrittenByVaibify = None
-
-
 def _fnEnsureDockerHost():
     """Set DOCKER_HOST from the active Docker context.
 
@@ -263,16 +260,17 @@ def _fnEnsureDockerHost():
     identical failure naming the identical dead socket; restarting
     vaibify was the only way out, and nothing said so.
     """
-    global _sDockerHostWrittenByVaibify
     import os
-    from .dockerContext import fsReadActiveContextEndpoint
-    sExisting = os.environ.get("DOCKER_HOST")
-    if sExisting and sExisting != _sDockerHostWrittenByVaibify:
+    from .dockerContext import (
+        fbDockerHostIsExportedByVaibify, fnRecordDockerHostExportedByVaibify,
+        fsReadActiveContextEndpoint,
+    )
+    if os.environ.get("DOCKER_HOST") and not fbDockerHostIsExportedByVaibify():
         return
     sHost = fsReadActiveContextEndpoint()
     if sHost:
         os.environ["DOCKER_HOST"] = sHost
-        _sDockerHostWrittenByVaibify = sHost
+        fnRecordDockerHostExportedByVaibify(sHost)
 
 
 # The complete set of programs the audited-read exemption will run,
@@ -2348,14 +2346,7 @@ class DockerConnection:
         and refusing work because ``docker info`` hiccuped would be a
         worse answer than using the conservative bound.
         """
-        try:
-            dictInfo = self._clientDocker.info()
-        except Exception:
-            return {"iMemoryBytes": 0, "iCpuCount": 0}
-        return {
-            "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
-            "iCpuCount": int(dictInfo.get("NCPU") or 0),
-        }
+        return fdictReadDaemonCapacityFromClient(self._clientDocker)
 
     def fbaFetchDirectoryArchive(
         self, sContainerId, sDirectoryPath, iMaxBytes,
@@ -2546,7 +2537,7 @@ class DockerConnection:
 
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
-        iUid=None, iGid=None,
+        iUid=None, iGid=None, sArchiveName=None,
     ):
         """Copy host files and directories into a container directory.
 
@@ -2570,11 +2561,18 @@ class DockerConnection:
         the in-container agent, which has no sudo by design -- the
         same ownership defect the single-file writer avoids by running
         as the container user.
+
+        Each path lands under its own basename. ``sArchiveName``, for a
+        call that copies exactly one path, is the name that path lands
+        under instead: how a directory is copied to a destination that
+        does not exist yet and is to be created with a different name.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
         )
-        fileTar = self._ffileBuildTreeTar(listHostPaths, iUid, iGid)
+        fileTar = self._ffileBuildTreeTar(
+            listHostPaths, iUid, iGid, sArchiveName,
+        )
         try:
             container = self.fcontainerGetById(sContainerId)
             container.put_archive(sDestinationDirectory, fileTar)
@@ -2599,7 +2597,8 @@ class DockerConnection:
         ``docker cp``'s destination reading is preserved: a
         destination naming an existing directory receives the source
         under its own basename; any other destination IS the path to
-        write.
+        write, so a directory copied to a path that does not exist yet
+        is created AT that path, under that path's own name.
         """
         import os
         import posixpath
@@ -2607,11 +2606,15 @@ class DockerConnection:
             sContainerId, sContainerDestination,
         )
         if os.path.isdir(sHostSource):
+            sDestinationPath = sContainerDestination.rstrip("/") or "/"
             self.fnWriteTreeViaTar(
                 sContainerId,
                 sContainerDestination if bDestinationIsDirectory
-                else posixpath.dirname(sContainerDestination),
+                else posixpath.dirname(sDestinationPath),
                 [sHostSource],
+                sArchiveName=(
+                    None if bDestinationIsDirectory
+                    else posixpath.basename(sDestinationPath)),
             )
             return
         with open(sHostSource, "rb") as fileSource:
@@ -2625,8 +2628,12 @@ class DockerConnection:
         )
 
     @staticmethod
-    def _ffileBuildTreeTar(listHostPaths, iUid, iGid):
+    def _ffileBuildTreeTar(listHostPaths, iUid, iGid, sArchiveName=None):
         """Return a rewound tar of the host paths, owned by the container user.
+
+        ``sArchiveName`` renames the one path being archived; naming it
+        for several paths would put them all at one name, so it is
+        refused.
 
         Spooled rather than held in a ``BytesIO``: a researcher's
         directory is arbitrarily large, and the single-file path's
@@ -2636,6 +2643,11 @@ class DockerConnection:
         import os
         import tarfile
         import tempfile
+        if sArchiveName is not None and len(listHostPaths) != 1:
+            raise ValueError(
+                "an archive name renames exactly one host path, not "
+                f"{len(listHostPaths)}"
+            )
         ffnStampOwnership = DockerConnection._ffnBuildOwnershipFilter(
             iUid, iGid,
         )
@@ -2645,7 +2657,8 @@ class DockerConnection:
         with tarfile.open(fileobj=fileTar, mode="w") as fileArchive:
             for sHostPath in listHostPaths:
                 fileArchive.add(
-                    sHostPath, arcname=os.path.basename(sHostPath),
+                    sHostPath,
+                    arcname=sArchiveName or os.path.basename(sHostPath),
                     filter=ffnStampOwnership,
                 )
         fileTar.seek(0)
@@ -2887,6 +2900,23 @@ def _fiParseMemberCount(sOutput):
             except ValueError:
                 return -1
     return -1
+
+
+def fdictReadDaemonCapacityFromClient(dockerClient):
+    """Return ``{iMemoryBytes, iCpuCount}`` a docker-py client's daemon has.
+
+    The one reading of ``docker info``, shared by this connection and by
+    the council, whose gateway holds a bare client. Zeroes when the
+    daemon will not answer.
+    """
+    try:
+        dictInfo = dockerClient.info()
+    except Exception:
+        return {"iMemoryBytes": 0, "iCpuCount": 0}
+    return {
+        "iMemoryBytes": int(dictInfo.get("MemTotal") or 0),
+        "iCpuCount": int(dictInfo.get("NCPU") or 0),
+    }
 
 
 def fbErrorMeansContainerGone(error):

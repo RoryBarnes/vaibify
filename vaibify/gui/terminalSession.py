@@ -319,10 +319,13 @@ class HostTerminalSession:
     def fbaReadOutput(self):
         """Read available bytes from the PTY master without blocking.
 
-        ``OSError`` here is the PTY's EOF: when the shell exits, the
-        master read raises ``EIO`` (macOS and Linux both), which is
-        this session's honest "the shell is gone" signal — running is
-        cleared so the relay's read loop ends instead of spinning.
+        The PTY's EOF is how this session learns the shell is gone, and
+        the two platforms say it differently: Linux raises ``OSError``
+        (``EIO``) from the master read, while a Darwin master answers a
+        readable-then-empty ``b""`` forever. Either clears running, so
+        the relay's read loop ends instead of spinning. That is the
+        shell's EOF only: it proves nothing about processes the shell
+        left behind, which is the containment record's drain to prove.
         """
         if not self._bRunning:
             return b""
@@ -330,10 +333,12 @@ class HostTerminalSession:
         if not listReadable:
             return b""
         try:
-            return os.read(self._iMasterFd, 4096)
+            baOutput = os.read(self._iMasterFd, 4096)
         except OSError:
+            baOutput = b""
+        if not baOutput:
             self._bRunning = False
-            return b""
+        return baOutput
 
     def fnResize(self, iRows, iColumns):
         """Resize the PTY to match the browser terminal's dimensions."""

@@ -299,7 +299,7 @@ class HostRepoFiles:
         try:
             processResult = subprocess.run(
                 saCommand, capture_output=True, text=True,
-                timeout=fTimeoutSeconds,
+                timeout=fTimeoutSeconds, encoding="utf-8",
             )
         except (OSError, subprocess.SubprocessError):
             return (127, "", "")

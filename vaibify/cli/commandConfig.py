@@ -12,7 +12,7 @@ from .configLoader import fconfigResolveProject, fsConfigPath
 def fnWriteYaml(dictData, sPath):
     """Write a dictionary to a YAML file."""
     try:
-        with open(sPath, "w") as fileHandle:
+        with open(sPath, "w", encoding="utf-8") as fileHandle:
             yaml.dump(dictData, fileHandle, default_flow_style=False)
     except OSError as error:
         click.echo(f"Error writing {sPath}: {error}")
@@ -25,7 +25,7 @@ def fdictLoadYamlFile(sPath):
         click.echo(f"Error: File '{sPath}' not found.")
         sys.exit(1)
     try:
-        with open(sPath, "r") as fileHandle:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
             dictData = yaml.safe_load(fileHandle)
     except yaml.YAMLError as error:
         click.echo(f"Error parsing {sPath}: {error}")

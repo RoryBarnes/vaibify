@@ -936,7 +936,7 @@ def dictProxyTiming(monkeypatch):
     monkeypatch.setattr(
         agentCouncilEgress, "F_PROXY_READY_POLL_SECONDS", 0.005)
     monkeypatch.setattr(
-        agentCouncilEgress, "F_PROXY_READY_DEADLINE_SECONDS", 0.1)
+        agentCouncilEgress, "F_PROXY_READY_DEADLINE_SECONDS", 5.0)
     return {}
 
 
@@ -1633,18 +1633,167 @@ def testAntigravityStartAndCollectFaultsDestroyTheRunner(
     assert dictGatewayState["dictRegistry"]["dictReservationsById"] == {}
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "Suspected defect: flistNormalizeCodexEvents always appends a result "
-    "event with empty text, so a Codex turn the gateway killed at its "
-    "wall clock is collected as {'sRawResultText': ''} with no "
-    "sEmptyResultReason, and the engine validates it as a schema "
-    "failure instead of naming the clock that ran out."))
-def testACodexTurnKilledAtItsWallClockSaysWhichClockRanOut(
+# ----- Codex and Antigravity carry the real reason a turn ended -------------
+#
+# Both adapters append a result event of their own after the stream ends,
+# even when the stream just stopped, so a turn the gateway destroyed at a
+# bound used to be collected as an empty or failed ANSWER and the engine
+# filed it as a schema failure instead of naming the bound that fired.
+
+
+LIST_PROVIDER_BUILDERS = [
+    ("codex", fconnectionBuildCodex),
+    ("antigravity", fconnectionBuildAntigravity),
+]
+
+
+def fdictCollectOneTurn(daemonFake, dictGatewayState, fconnectionBuild,
+                        fnHandleTurn, **dictKeywords):
+    """Drive one turn of one provider and return its collected result."""
+    connectionRunner = fconnectionBuild(dictGatewayState, **dictKeywords)
+    daemonFake.fnHandleTurn = fnHandleTurn
+    return asyncio.run(flistDriveOneTurn(
+        connectionRunner, fdictBuildTurnRequest()))[2]
+
+
+def testATurnKilledAtItsWallClockSaysWhichClockRanOut(
         daemonFake, dictGatewayState):
-    connectionRunner = fconnectionBuildCodex(
-        dictGatewayState, fWallClockSeconds=0.15)
-    daemonFake.fnHandleTurn = lambda dictExec: (None, 0)
-    listOutcome = asyncio.run(flistDriveOneTurn(
-        connectionRunner, fdictBuildTurnRequest()))
-    assert listOutcome[2].get("sEmptyResultReason") == (
-        agentCouncilProviders.S_EMPTY_BECAUSE_WALL_CLOCK)
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (None, 0), fWallClockSeconds=0.15)
+        assert dictResult["sEmptyResultReason"] == (
+            agentCouncilProviders.S_EMPTY_BECAUSE_WALL_CLOCK), sProvider
+        assert dictResult["bWallClockExceeded"] is True, sProvider
+
+
+def testATurnKilledAsAStallSaysItProducedNothing(
+        daemonFake, dictGatewayState):
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (None, 0), fWallClockSeconds=60.0,
+            fStallSeconds=0.1)
+        assert dictResult["sEmptyResultReason"] == (
+            agentCouncilProviders.S_EMPTY_BECAUSE_STALL), sProvider
+        assert dictResult["bStalled"] is True, sProvider
+
+
+def testATurnKilledAtItsOutputCapSaysSo(daemonFake, dictGatewayState):
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (b"x" * 5000, 0), iOutputByteCap=100)
+        assert dictResult["sEmptyResultReason"] == (
+            agentCouncilProviders.S_EMPTY_BECAUSE_OUTPUT_CAP), sProvider
+        assert dictResult["bOutputCapExceeded"] is True, sProvider
+
+
+@pytest.mark.falsification
+def testATurnTheKernelStoppedForMemorySaysSo(daemonFake, dictGatewayState):
+    """Kills: letting the adapter's own failure result hide a gateway kill.
+
+    The kill exits 137, which the Codex normalizer turns into a CLI
+    failure of its own; the bound that fired is the cause.
+    """
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        daemonFake.listOomCounterReadings = [4, 5]
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (b"", 137))
+        assert dictResult["sEmptyResultReason"] == (
+            agentCouncilProviders.S_EMPTY_BECAUSE_OUT_OF_MEMORY), sProvider
+        assert dictResult["bOomKilled"] is True, sProvider
+
+
+def fdictCollectATurnCutShortByTheLogin(daemonFake, dictGatewayState,
+                                        tmp_path, fconnectionBuild):
+    iExpiresAt = int((time.time() + 0.3) * 1000)
+    ftStage, _ = ftupleStagerWritingFile(
+        tmp_path, b'{"token": {"access_token": "t"}}', iExpiresAt=iExpiresAt)
+    return fdictCollectOneTurn(
+        daemonFake, dictGatewayState, fconnectionBuild,
+        lambda dictExec: (None, 0), ftStageRunnerCredential=ftStage,
+        fWallClockSeconds=3600.0)
+
+
+@pytest.mark.falsification
+def testACodexTurnCutShortByTheLoginNamesTheLogin(
+        daemonFake, dictGatewayState, tmp_path):
+    """Kills: Codex never recording that the login shortened its budget."""
+    dictResult = fdictCollectATurnCutShortByTheLogin(
+        daemonFake, dictGatewayState, tmp_path, fconnectionBuildCodex)
+    assert dictResult["sEmptyResultReason"] == (
+        agentCouncilProviders.S_EMPTY_BECAUSE_LOGIN_EXPIRY)
+
+
+@pytest.mark.falsification
+def testAnAntigravityTurnCutShortByTheLoginNamesTheLogin(
+        daemonFake, dictGatewayState, tmp_path):
+    """Kills: Antigravity never recording that the login shortened its budget."""
+    dictResult = fdictCollectATurnCutShortByTheLogin(
+        daemonFake, dictGatewayState, tmp_path, fconnectionBuildAntigravity)
+    assert dictResult["sEmptyResultReason"] == (
+        agentCouncilProviders.S_EMPTY_BECAUSE_LOGIN_EXPIRY)
+
+
+@pytest.mark.falsification
+def testANonzeroExitCarriesItsExitCodeAndAcquitsEveryBound(
+        daemonFake, dictGatewayState):
+    """Kills: reporting a CLI failure without the facts of how it ended.
+
+    Codex's own normalizer reads the exit code and reports the CLI's
+    failure; Antigravity's stream says nothing about it, so its turn is
+    the empty stream it was. Both now carry the exit code beside the
+    reason, which is what the explanation of a kill reads.
+    """
+    dictReasonByProvider = {
+        "codex": agentCouncilProviders.S_FAILURE_CLI_ERROR_RESULT,
+        "antigravity": "noResultEvent",
+    }
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (b"", 3))
+        assert dictResult["sEmptyResultReason"] == (
+            dictReasonByProvider[sProvider]), sProvider
+        assert dictResult["jsonExitCode"] == 3, sProvider
+        assert [
+            dictResult[sFlag] for sFlag in (
+                "bWallClockExceeded", "bOutputCapExceeded", "bOomKilled",
+                "bStalled")
+        ] == [False] * 4, sProvider
+
+
+@pytest.mark.falsification
+def testAGenuinelyEmptyCompletionIsNamedNotFiledAsMissingFields(
+        daemonFake, dictGatewayState):
+    """Kills: returning a bare empty answer for a turn that said nothing."""
+    dictStreamByProvider = {
+        "codex": fsJsonLines([{"type": "thread.started"}]),
+        "antigravity": fsJsonLines([
+            {"event": "init", "init": {"model": "m", "agent": "a"}},
+            {"event": "result", "result": {"status": "SUCCESS"}}]),
+    }
+    for sProvider, fconnectionBuild in LIST_PROVIDER_BUILDERS:
+        baStream = dictStreamByProvider[sProvider].encode("utf-8")
+        dictResult = fdictCollectOneTurn(
+            daemonFake, dictGatewayState, fconnectionBuild,
+            lambda dictExec: (baStream, 0))
+        assert dictResult["sEmptyResultReason"] == (
+            "resultEventCarriedNoText"), sProvider
+        assert dictResult["jsonExitCode"] == 0, sProvider
+
+
+def testAnAnswerThatArrivesIsNeverReplacedByTheBoundDiagnosis(
+        daemonFake, dictGatewayState):
+    """The reason only describes a turn that produced no answer."""
+    baStream = fsJsonLines([
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "text": '{"sVerdict": "revise"}'}},
+        {"type": "turn.completed", "usage": {}},
+    ]).encode("utf-8")
+    dictResult = fdictCollectOneTurn(
+        daemonFake, dictGatewayState, fconnectionBuildCodex,
+        lambda dictExec: (baStream, 0))
+    assert dictResult == {"sVerdict": "revise"}

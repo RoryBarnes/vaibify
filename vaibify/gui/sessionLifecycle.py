@@ -107,6 +107,7 @@ from vaibify.config import operationJournal
 from vaibify.config import preferencesStore
 from . import browserSession
 from . import containerOwnership
+from .backgroundTasks import fnKeepTaskReferenced
 
 logger = logging.getLogger("vaibify")
 
@@ -1831,7 +1832,8 @@ def fnScheduleConnectionFencing(listConnections):
     if not listConnections:
         return
     try:
-        loopRunning = asyncio.get_event_loop()
+        loopRunning = asyncio.get_running_loop()
     except RuntimeError:
         return
-    loopRunning.create_task(_fnCloseDetachedConnections(listConnections))
+    fnKeepTaskReferenced(
+        loopRunning.create_task(_fnCloseDetachedConnections(listConnections)))

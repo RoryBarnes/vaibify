@@ -296,6 +296,8 @@ def _fiRouteToLiveHub(
     )
     if dictRequest is None:
         return 1
+    if not dictRequest:
+        return 0
     try:
         dictResponse = fdictSendHostControlRequest(iHubPort, dictRequest)
     except HostControlError as error:
@@ -320,7 +322,12 @@ def _fiRouteToLiveHub(
 
 
 def _fdictBuildHubRequest(sContainerName, bAssumeYes, dictDestructive):
-    """Build the socket request, showing and confirming the records."""
+    """Build the socket request, showing and confirming the records.
+
+    ``None`` means the request was refused or cancelled; an empty dict
+    means there was nothing to reconcile, which is a success, exactly as
+    the crash-time lane reports it.
+    """
     if dictDestructive["sForceAbandonOperationId"]:
         return {
             "sOperation": "force-abandon",
@@ -358,7 +365,7 @@ def _fdictBuildHubRequest(sContainerName, bAssumeYes, dictDestructive):
             f"Container '{sContainerName}' has no journal marker; "
             "nothing to reconcile."
         )
-        return None
+        return {}
     _fnPrintJournalRecords(sContainerName, listRecords)
     if not bAssumeYes and not click.confirm(
         "Ask the hub to prove these operations settled and clear them?"

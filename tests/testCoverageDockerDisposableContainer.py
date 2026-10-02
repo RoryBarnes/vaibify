@@ -904,7 +904,7 @@ def testReclaimDestroysASurvivorOfAVanishedContainerAndLogsIt(
         monkeypatch, caplog):
     """A survivor stamped with a gone container id is swept and reported."""
     dockerClient = _FakeDockerClient()
-    sVanishedId = "abcdef0123456789abcdef01"
+    sVanishedId = "abcdef01" * 8
     dockerClient.containers.listListed = [
         fcontainerBuildSurvivor("survivorContainerId0", "survivorName",
                                 sVanishedId)]

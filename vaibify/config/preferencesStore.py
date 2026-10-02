@@ -37,7 +37,7 @@ def fdictLoadPreferences():
     if not os.path.isfile(_S_PREFERENCES_PATH):
         return {"dictHostWarningAcknowledged": {}}
     try:
-        with open(_S_PREFERENCES_PATH, "r") as fileHandle:
+        with open(_S_PREFERENCES_PATH, "r", encoding="utf-8") as fileHandle:
             dictPreferences = json.load(fileHandle)
     except (json.JSONDecodeError, OSError):
         return {"dictHostWarningAcknowledged": {}}
@@ -185,7 +185,7 @@ def fnRecordSlidingIdlePreference(sValue):
 
 def _ffileOpenPreferencesLock():
     """Open and acquire an exclusive lock for preferences writes."""
-    fileHandle = open(_S_LOCK_PATH, "w")
+    fileHandle = open(_S_LOCK_PATH, "w", encoding="utf-8")
     fcntl.flock(fileHandle, fcntl.LOCK_EX)
     return fileHandle
 

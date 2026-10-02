@@ -311,6 +311,8 @@ class CodexRunnerConnection(agentCouncilProviders.ClaudeRunnerConnection):
         fEffectiveWallClock = agentCouncilProviders.ffClampTurnBudgetToLoginLife(
             self.fWallClockSeconds,
             self._iLoginExpiresAtEpochMilliseconds)
+        bBudgetCameFromLoginExpiry = self._fbBudgetCameFromLoginExpiry(
+            fEffectiveWallClock)
         try:
             self._dictTurnExecution = await asyncio.to_thread(
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
@@ -318,6 +320,8 @@ class CodexRunnerConnection(agentCouncilProviders.ClaudeRunnerConnection):
                 self.iOutputByteCap, fEffectiveWallClock,
                 agentCouncilRunner.S_RUNNER_SNAPSHOT_ROOT, baStdin,
                 self.fStallSeconds)
+            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (
+                bBudgetCameFromLoginExpiry)
             self._listEvents = flistNormalizeCodexEvents(
                 self._dictTurnExecution["sOutput"],
                 self._dictTurnExecution["iExitCode"])

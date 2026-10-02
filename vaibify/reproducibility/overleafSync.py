@@ -485,7 +485,7 @@ def _fnEmitHeadSha(sRepoDir):
     try:
         processResult = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=sRepoDir, capture_output=True, text=True,
+            cwd=sRepoDir, capture_output=True, text=True, encoding="utf-8",
         )
     except FileNotFoundError:
         return
@@ -500,7 +500,7 @@ def _fbHasUncommittedChanges(sRepoDir):
     """Return True if the repo has staged or unstaged changes."""
     processResult = subprocess.run(
         ["git", "status", "--porcelain"],
-        cwd=sRepoDir, capture_output=True, text=True,
+        cwd=sRepoDir, capture_output=True, text=True, encoding="utf-8",
     )
     return len(processResult.stdout.strip()) > 0
 
@@ -663,7 +663,7 @@ def _fprocessRunSubprocess(listCommand, sErrorMessage, sCwd=None):
     try:
         processResult = subprocess.run(
             listCommand, cwd=sCwd,
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, encoding="utf-8",
         )
     except FileNotFoundError:
         raise OverleafError(
@@ -749,7 +749,7 @@ def _fnRunLsRemote(args):
         listCommand = ["git"] + listCredArgs + _LIST_GIT_HARDENING_CONFIG
         listCommand.extend(["ls-remote", sUrl, "HEAD"])
         processResult = subprocess.run(
-            listCommand, capture_output=True, text=True,
+            listCommand, capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         _fnRemoveTokenFile(sTokenPath)

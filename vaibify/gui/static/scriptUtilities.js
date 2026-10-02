@@ -410,8 +410,16 @@ var VaibifyUtilities = (function () {
         return fbPlatformIsMacintosh() ? "Cmd+C" : "Ctrl+Shift+C";
     }
 
+    function fsEncodeUrlPath(sPath) {
+        /* A file path is data, not URL syntax: a "#" or "?" in a
+           directory name would otherwise end the path early and list
+           a different directory than the one named. */
+        return String(sPath).split("/").map(encodeURIComponent).join("/");
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
+        fsEncodeUrlPath: fsEncodeUrlPath,
         fsFiniteNumberText: fsFiniteNumberText,
         fbPlatformIsMacintosh: fbPlatformIsMacintosh,
         fsNameSelectionModifierKey: fsNameSelectionModifierKey,

@@ -25,6 +25,7 @@ the plan says so. Cross-step ``{StepNN.varname}`` tokens are
 label-based and survive any rename untouched.
 """
 
+import logging
 import posixpath
 
 from .fileStatusManager import (
@@ -429,6 +430,35 @@ def _fbRewriteManifestPaths(filesRepo, dictPlan):
         return False
 
 
+def _fnRewriteTestDeclarationPaths(dictStep, sOldDirectory, sNewDirectory):
+    """Swap the directory prefix on every test file and standards path."""
+    dictTests = dictStep.get("dictTests")
+    if not isinstance(dictTests, dict):
+        return
+    for dictCategory in dictTests.values():
+        if not isinstance(dictCategory, dict):
+            continue
+        for sField in ("sFilePath", "sStandardsPath"):
+            if dictCategory.get(sField):
+                dictCategory[sField] = _fsRewriteDirectoryPrefix(
+                    dictCategory[sField], sOldDirectory, sNewDirectory,
+                )
+
+
+def _fnRewriteSyncStatusKeys(dictWorkflow, sOldDirectory, sNewDirectory):
+    """Re-key the per-file sync records of files under the moved directory."""
+    dictSyncStatus = dictWorkflow.get("dictSyncStatus")
+    if not isinstance(dictSyncStatus, dict):
+        return
+    dictRekeyed = {
+        _fsRewriteDirectoryPrefix(
+            sKey, sOldDirectory, sNewDirectory,
+        ): dictEntry for sKey, dictEntry in dictSyncStatus.items()
+    }
+    dictSyncStatus.clear()
+    dictSyncStatus.update(dictRekeyed)
+
+
 def _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan):
     """Mutate the workflow dict per the plan (name, paths, binaries)."""
     dictStep = dictWorkflow["listSteps"][iStepIndex]
@@ -451,6 +481,12 @@ def _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan):
                 dictStep[sField], dictPlan["sOldDirectory"],
                 dictPlan["sNewDirectory"],
             )
+    _fnRewriteTestDeclarationPaths(
+        dictStep, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],
+    )
+    _fnRewriteSyncStatusKeys(
+        dictWorkflow, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],
+    )
     for dictRemote in dictStep.get("listRemoteData") or []:
         if isinstance(dictRemote, dict) and dictRemote.get("sPath"):
             dictRemote["sPath"] = _fsRewriteDirectoryPrefix(
@@ -466,9 +502,28 @@ def _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan):
             )
 
 
+def _fnUndoMarkerMove(filesRepo, dictPlan, sWorkflowPath, dictReport):
+    """Put a moved verification marker back under the old directory name."""
+    if not dictReport["bMarkerMoved"]:
+        return
+    dictReversedPlan = dict(
+        dictPlan,
+        sOldDirectory=dictPlan["sNewDirectory"],
+        sNewDirectory=dictPlan["sOldDirectory"],
+    )
+    try:
+        _fbMoveMarkerFile(filesRepo, dictReversedPlan, sWorkflowPath)
+    except (ValueError, OSError) as error:
+        logging.getLogger("vaibify").warning(
+            "could not restore the step's verification marker: %s", error,
+        )
+        return
+    dictReport["bMarkerMoved"] = False
+
+
 def _fnUndoOrRecordSplit(
     connectionDocker, sContainerId, sRepo, dictWorkflow, iStepIndex,
-    dictPlan, dictReport, errorCascade,
+    dictPlan, dictReport, errorCascade, filesRepo, sWorkflowPath,
 ):
     """Reverse a completed directory move, or make the split loud.
 
@@ -483,6 +538,7 @@ def _fnUndoOrRecordSplit(
     """
     if not dictReport["bDirectoryMoved"]:
         return
+    _fnUndoMarkerMove(filesRepo, dictPlan, sWorkflowPath, dictReport)
     try:
         _fnUndoStepDirectoryMove(
             connectionDocker, sContainerId, sRepo, dictPlan,
@@ -555,6 +611,7 @@ def fdictApplyStepRename(
             _fnUndoOrRecordSplit(
                 connectionDocker, sContainerId, sRepo, dictWorkflow,
                 iStepIndex, dictPlan, dictReport, errorCascade,
+                filesRepo, sWorkflowPath,
             )
             raise
     _fnApplyWorkflowRewrites(dictWorkflow, iStepIndex, dictPlan)

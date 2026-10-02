@@ -384,11 +384,14 @@ def _fnBuildChatRunner(dictSession):
         dictSession["dictRegistry"], dictSession["sResourceName"])
     dictSession["dictGateway"] = dictGateway
     dictEgress = _fdictProvisionChatEgress(dictSession, dictGateway)
+    dictLimits = agentCouncilRunner.fdictBuildRunnerLimitsForDaemon(
+        dictGateway.get("dockerCouncil"))
     dictCreated = agentCouncilDockerGateway.fdictReserveAndCreateRunner(
         dictGateway, dictSession["sCampaignId"],
         dictSession["sProvider"],
-        _fdictComposeChatRunnerCost(), dictSession["sImageReference"],
-        None, dictEgress["sNetworkName"], False,
+        _fdictComposeChatRunnerCost(dictLimits),
+        dictSession["sImageReference"],
+        dictLimits, dictEgress["sNetworkName"], False,
         agentCouncilProviderRegistry.
         fdictComposeProviderRunnerEnvironment(
             dictSession["sProvider"], dictEgress),
@@ -424,7 +427,7 @@ def _fdictProvisionChatEgress(dictSession, dictGateway):
             "iProxyPort": agentCouncilEgress.I_PROXY_LISTEN_PORT}
 
 
-def _fdictComposeChatRunnerCost():
+def _fdictComposeChatRunnerCost(dictLimits):
     """Declare the admission cost of one conversation's runner.
 
     The same cost a deliberation runner declares, because it is the
@@ -432,7 +435,6 @@ def _fdictComposeChatRunnerCost():
     registry ceilings as a turn, so a hub already at its concurrency
     bound refuses the chat rather than overcommitting the daemon.
     """
-    dictLimits = agentCouncilRunner.fdictBuildDefaultRunnerLimits()
     return {"iMemoryBytes": dictLimits["iMemoryBytes"],
             "fCpuCount": dictLimits["fCpuCount"]}
 

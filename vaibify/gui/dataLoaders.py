@@ -17,6 +17,17 @@ DICT_FORMAT_MAP : dict
 
 fsReadLoaderSource() -> str
     Return the embeddable loader source code between the markers.
+
+Where these loaders run. Only in a process that is ABOUT to read data
+files and nothing else: the pytest process of a generated quantitative
+test (in a container, or the hub's pytest subprocess for a host
+project) and the ``vaibify generate-standards`` command. Never in the
+hub itself, which only embeds this file's source text. That is what
+makes the VTK loader safe to leave as it is: reading or writing a VTK
+file resets the process locale to ``C``, a process-wide change that no
+other thread of a multithreaded server could be protected from, and no
+such server ever calls it. ``tests/testDataLoadersStayOutOfTheHub.py``
+pins the property.
 """
 
 __all__ = [
@@ -1085,26 +1096,33 @@ def _ffLoadSafetensorsValue(sFullPath, dictAccess):
 def _ffLoadTfrecordValue(sFullPath, dictAccess):
     """Load a value from a TFRecord file."""
     try:
-        from tfrecord.reader import tfrecord_iterator
+        from tfrecord.reader import example_loader, tfrecord_iterator
     except ImportError:
         raise ImportError(
             "tfrecord is required to load TFRecord files",
         )
+    sKey = dictAccess.get("key", "")
     try:
-        listRecords = list(tfrecord_iterator(sFullPath))
+        # A key names a FEATURE, which only a decoded example has: the
+        # raw iterator yields each record's serialized bytes, and
+        # indexing those by a name always failed.
+        listRecords = list(
+            example_loader(sFullPath, None) if sKey
+            else tfrecord_iterator(sFullPath)
+        )
     except Exception as errorCaught:
         raise ValueError(
             f"Failed to load {sFullPath} as tfrecord: {errorCaught}",
         ) from errorCaught
-    sKey = dictAccess.get("key", "")
     try:
         if sKey and listRecords:
-            daValues = np.array(
-                [float(r[sKey]) for r in listRecords], dtype=float,
-            )
+            daValues = np.concatenate([
+                np.asarray(r[sKey], dtype=float).ravel()
+                for r in listRecords
+            ])
         else:
             daValues = np.array([float(len(r)) for r in listRecords])
-    except (KeyError, TypeError) as errorCaught:
+    except (KeyError, TypeError, ValueError) as errorCaught:
         raise ValueError(
             f"Failed to access tfrecord key in {sFullPath}: {errorCaught}",
         ) from errorCaught

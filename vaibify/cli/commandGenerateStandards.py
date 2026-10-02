@@ -96,7 +96,7 @@ def _fiResolveStepIndexFromLabel(sWorkflowPath, sStepLabel):
     import json
     from vaibify.gui.pipelineUtils import fiStepIndexFromLabel
     try:
-        with open(sWorkflowPath) as fileHandle:
+        with open(sWorkflowPath, encoding="utf-8") as fileHandle:
             dictWorkflow = json.load(fileHandle)
         return fiStepIndexFromLabel(dictWorkflow, sStepLabel)
     except (OSError, KeyError, ValueError) as error:

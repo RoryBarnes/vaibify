@@ -113,7 +113,7 @@ def _fbBundleFoundByMdfind(sBundleId):
         processResult = subprocess.run(
             ["mdfind", sQuery],
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
     except FileNotFoundError:
         return False

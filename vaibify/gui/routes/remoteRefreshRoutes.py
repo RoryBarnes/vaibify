@@ -43,6 +43,7 @@ import logging
 
 from fastapi import Request
 
+from ..backgroundTasks import fnKeepTaskReferenced
 from ..pipelineServer import fdictRequireWorkflow
 from ..routeContext import (
     fdictRequireLaneTupleForCommit,
@@ -289,9 +290,9 @@ async def _fdictStartTheRefresh(
         "tCheckKey": tCheckKey,
         "dictLaneTuple": dictLaneTuple,
     }
-    asyncio.create_task(_fnRunRefreshWorker(
+    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(
         dictCtx, dictCarrier, dictWorkflow, filesRepo, listServices,
-    ))
+    )))
     return {"listChecking": listServices, "listUncheckable": []}
 
 

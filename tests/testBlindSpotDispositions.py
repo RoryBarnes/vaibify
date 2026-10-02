@@ -377,7 +377,11 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/commitCarrier.py::fdictLaunchGatedHelperProcess":
         "58b0217540f74765",
     "gui/gitStatus.py::_fdictBaseEnv": "944845e8671a1808",
-    "gui/gitStatus.py::fsRunGit": "fde0aaa94089d1cc",
+    # Re-read 2026-10-01 and the ruling SURVIVES: the change names the
+    # text encoding of the captured output (encoding="utf-8"). The
+    # executable is still the literal word in the ruling, the flags the
+    # same module constant, and only the subcommand varies.
+    "gui/gitStatus.py::fsRunGit": "a5c585cc9355af34",
     "gui/routes/sessionRoutes.py::S_SUPPRESS_BROWSER_ENV":
         "b0122d40b40d22c0",
     "gui/routes/sessionRoutes.py::_fprocessLaunchDetachedHub":
@@ -385,7 +389,11 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     "gui/routes/sessionRoutes.py::_fnRejectContainerAgentCallers":
         "7c0e85b8e21ddc5e",
     "gui/syncDispatcher.py::_S_OVERLEAF_HOST": "65054ecdea58cd8f",
-    "gui/syncDispatcher.py::_ftRunHostLsRemote": "1416c2b66127daa3",
+    # Re-read 2026-10-01 and the ruling SURVIVES: the change names the
+    # text encoding of the captured output (encoding="utf-8"); the
+    # executable, the URL's constant host and the redacted stderr are
+    # untouched.
+    "gui/syncDispatcher.py::_ftRunHostLsRemote": "60eb8d1483d811f0",
     "reproducibility/gitHardening.py::LIST_GIT_CREDENTIAL_ISOLATION_CONFIG":
         "f11e8b4053702d61",
     "reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG":

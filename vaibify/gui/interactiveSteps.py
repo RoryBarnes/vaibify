@@ -6,19 +6,49 @@ __all__ = [
 ]
 
 import asyncio
+import itertools
 
+
+_COUNTER_PAUSE_SEQUENCE = itertools.count(1)
 
 F_INTERACTIVE_WAIT_HOURS = 24.0
 I_ABANDONED_EXIT_CODE = 124
 S_ABANDONED_SENTINEL = f"abandoned:{I_ABANDONED_EXIT_CODE}"
 
 
-def fdictCreateInteractiveContext():
-    """Return a context dict for pause/resume at interactive steps."""
+def fdictCreateInteractiveContext(sRunId=""):
+    """Return a context dict for pause/resume at interactive steps.
+
+    One context belongs to one RUN, not to the socket that started it:
+    the run outlives its socket, so a response arriving on a later
+    socket must reach the context the run is waiting on.
+    ``dictPendingEvent`` is the event the run is waiting behind (its
+    pause, or its terminal start) while it waits, else ``None``, so a
+    reconnecting client can be told what the run is waiting for.
+    """
     return {
         "eventResume": asyncio.Event(),
         "sResponse": "",
+        "sRunId": sRunId,
+        "dictPendingEvent": None,
+        "iPauseSequence": 0,
     }
+
+
+def _fnMarkAwaiting(dictInteractive, dictEvent):
+    """Record the event the run is now waiting behind."""
+    if dictInteractive is None:
+        return
+    if dictInteractive["sRunId"]:
+        dictEvent["sRunId"] = dictInteractive["sRunId"]
+    dictInteractive["dictPendingEvent"] = dictEvent
+    dictInteractive["iPauseSequence"] = next(_COUNTER_PAUSE_SEQUENCE)
+
+
+def _fnClearAwaiting(dictInteractive):
+    """Record that the run is no longer waiting."""
+    if dictInteractive is not None:
+        dictInteractive["dictPendingEvent"] = None
 
 
 def fnSetInteractiveResponse(dictContext, sResponse):
@@ -48,16 +78,18 @@ async def _fbWaitWithTimeout(dictInteractive, fHours):
 
 
 async def _fnEmitInteractivePause(
-    fnStatusCallback, iStepNumber, dictStep,
+    fnStatusCallback, iStepNumber, dictStep, dictInteractive=None,
 ):
-    """Emit the pause event for an interactive step."""
+    """Emit the pause event for an interactive step and remember it."""
     sStepName = dictStep.get("sName", f"Step {iStepNumber}")
-    await fnStatusCallback({
+    dictEvent = {
         "sType": "interactivePause",
         "iStepIndex": iStepNumber - 1,
         "iStepNumber": iStepNumber,
         "sStepName": sStepName,
-    })
+    }
+    _fnMarkAwaiting(dictInteractive, dictEvent)
+    await fnStatusCallback(dictEvent)
 
 
 async def _fiDispatchInteractiveResponse(
@@ -83,9 +115,12 @@ async def _fiHandleInteractiveStep(
     if dictInteractive is None:
         return 0
     await _fnEmitInteractivePause(
-        fnStatusCallback, iStepNumber, dictStep,
+        fnStatusCallback, iStepNumber, dictStep, dictInteractive,
     )
-    sResponse = await _fsAwaitInteractiveDecision(dictInteractive)
+    try:
+        sResponse = await _fsAwaitInteractiveDecision(dictInteractive)
+    finally:
+        _fnClearAwaiting(dictInteractive)
     return await _fiDispatchInteractiveResponse(
         sResponse, connectionDocker, sContainerId,
         dictStep, iStepNumber, fnStatusCallback, dictInteractive,
@@ -121,14 +156,18 @@ async def _fnEmitAbandonedEvent(fnStatusCallback, iStepNumber):
     })
 
 
-async def _fnEmitTerminalStart(fnStatusCallback, iStepNumber, dictStep):
-    """Emit the interactiveTerminalStart event."""
-    await fnStatusCallback({
+async def _fnEmitTerminalStart(
+    fnStatusCallback, iStepNumber, dictStep, dictInteractive=None,
+):
+    """Emit the interactiveTerminalStart event and remember it."""
+    dictEvent = {
         "sType": "interactiveTerminalStart",
         "iStepNumber": iStepNumber,
         "sStepName": dictStep.get("sName", ""),
         "dictStep": dictStep,
-    })
+    }
+    _fnMarkAwaiting(dictInteractive, dictEvent)
+    await fnStatusCallback(dictEvent)
 
 
 async def _fiRunInteractiveAndRecord(
@@ -140,8 +179,12 @@ async def _fiRunInteractiveAndRecord(
     from .pipelineUtils import _fnEmitStepResult, _fnRecordRunStats
 
     fStartTime = time.time()
-    await _fnEmitTerminalStart(fnStatusCallback, iStepNumber, dictStep)
-    iExitCode = await _fiAwaitInteractiveComplete(dictInteractive)
+    await _fnEmitTerminalStart(
+        fnStatusCallback, iStepNumber, dictStep, dictInteractive)
+    try:
+        iExitCode = await _fiAwaitInteractiveComplete(dictInteractive)
+    finally:
+        _fnClearAwaiting(dictInteractive)
     if iExitCode == I_ABANDONED_EXIT_CODE:
         await _fnEmitAbandonedEvent(fnStatusCallback, iStepNumber)
     _fnRecordRunStats(dictStep, fStartTime, 0.0, iExitCode=iExitCode)

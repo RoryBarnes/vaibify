@@ -326,10 +326,48 @@ def test_the_result_names_every_file_and_links_its_report(
     for sPath in DICT_REPORT["listMatchedPaths"]:
         assert sPath in sBody, sPath
     assert "re-derived, byte-identical" in sBody
-    sHref = pageDashboard.get_attribute(
-        "#reproduceResultBody a[href*='reproductions/reports']", "href",
+    sPath = pageDashboard.get_attribute(
+        "#reproduceResultBody a.reproduce-open-report", "data-path",
     )
-    assert sHref.endswith("/api/reproductions/reports/report01"), sHref
+    assert sPath == "/api/reproductions/reports/report01", sPath
+
+
+@pytest.mark.falsification
+def test_the_report_link_opens_the_report_with_the_pages_credential(
+    pageDashboard, serverHub,
+):
+    """The credential is a header, which an anchor target cannot carry.
+
+    Kills: rendering the report as a plain new-tab anchor, which the hub
+    answered 401 because nothing in a navigation carries the header.
+    """
+    _fnOpenTheCard(pageDashboard, serverHub)
+    _fdictInterceptTheJob(pageDashboard, iLivePolls=1)
+    listHeaders = []
+
+    def fnAnswerReport(route):
+        listHeaders.append(route.request.headers.get("x-session-token", ""))
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"sReportId": "report01"}')
+
+    pageDashboard.route("**/api/reproductions/reports/report01",
+                        fnAnswerReport)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageConfirm", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnReproduceRun")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageResult", state="visible", timeout=15000,
+    )
+    with pageDashboard.context.expect_page() as infoPopup:
+        pageDashboard.click("#reproduceResultBody a.reproduce-open-report")
+    pagePopup = infoPopup.value
+    pagePopup.wait_for_function("location.protocol === 'blob:'", timeout=10000)
+    assert '"sReportId": "report01"' in pagePopup.inner_text("body")
+    assert listHeaders and listHeaders[0], listHeaders
 
 
 @pytest.mark.falsification

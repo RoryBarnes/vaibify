@@ -165,7 +165,7 @@ def flistReadAbandonments(sContainerName):
     """
     try:
         with open(
-            fsAbandonmentAuditPathFor(sContainerName), "r",
+            fsAbandonmentAuditPathFor(sContainerName), "r", encoding="utf-8",
         ) as fileAudit:
             listLines = fileAudit.readlines()
     except OSError:

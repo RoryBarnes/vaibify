@@ -1026,7 +1026,7 @@ class CouncilEngine(RoundResolutionMixin, EvidenceDisciplineMixin):
                 dictParticipant["sFailureReason"] = (
                     dictTurnRecord["sFailureReason"])
         elif dictTurnRecord["dictResult"] is not None:
-            self._fnProcessEvidenceClaims(dictTurnRecord)
+            await self._fnProcessEvidenceClaims(dictTurnRecord)
         dictRound["dictTurnsByPhase"].setdefault(sPhase, []).append(
             dictTurnRecord)
         self._fnEmitEvent("turnSettled", {

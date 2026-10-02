@@ -204,7 +204,7 @@ def testTheListingMarksARecycledIdentityUnproven(monkeypatch):
     # a process that began after the record named it.
     monkeypatch.setattr(
         processLiveness, "fdatetimeReadProcessStartClock",
-        lambda iPid: datetime.datetime.now(),
+        lambda iPid: datetime.datetime.now(datetime.timezone.utc),
     )
     _fsJournalHostExecRecord(
         S_HOST_PROJECT, os.getpid(), os.getpgrp(),

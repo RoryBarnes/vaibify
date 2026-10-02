@@ -20,6 +20,12 @@ import os
 import time
 import re
 
+from .agentCouncilCampaign import (
+    S_STATE_ARCHIVED,
+    S_STATE_FAILED,
+    S_STATE_INTERRUPTED,
+)
+
 __all__ = [
     "CouncilEventRing",
     "CouncilEvidenceLedger",
@@ -958,12 +964,60 @@ def _fnRemoveCampaignDirectory(dictStore, sCampaignId):
         shutil.rmtree(sDirectory, ignore_errors=True)
 
 
+# The only states retention may delete: a campaign that is running,
+# waiting on the researcher, holding a plan to accept, or carrying an
+# accepted plan is work somebody still needs, and the delete route
+# refuses to drop the live ones for exactly that reason.
+SET_EVICTABLE_CAMPAIGN_STATES = {
+    S_STATE_FAILED, S_STATE_INTERRUPTED, S_STATE_ARCHIVED,
+}
+
+
 def _fnEvictBeyondRetention(dictStore):
-    """Evict oldest campaigns beyond the retained-count bound (FIFO)."""
+    """Evict the oldest evictable campaigns beyond the retained-count bound.
+
+    Oldest first by the order the store holds them in (registration
+    order, or last-checkpoint time after a reload). A live or accepted
+    campaign is skipped, so the store may stay above its bound while
+    every campaign over it is one somebody still needs.
+    """
     iRetained = dictStore["dictBounds"]["iRetainedCampaignCount"]
-    while len(dictStore["listInsertionOrder"]) > iRetained:
-        sOldest = dictStore["listInsertionOrder"][0]
-        fbDeleteStoredCampaign(dictStore, sOldest)
+    for sCampaignId in list(dictStore["listInsertionOrder"]):
+        if len(dictStore["listInsertionOrder"]) <= iRetained:
+            return
+        if _fbCampaignMayBeEvicted(dictStore, sCampaignId):
+            fbDeleteStoredCampaign(dictStore, sCampaignId)
+
+
+def _fbCampaignMayBeEvicted(dictStore, sCampaignId):
+    """Return True when the stored campaign has settled without a plan."""
+    dictEntry = dictStore["dictEntriesById"].get(sCampaignId)
+    if dictEntry is None:
+        return True
+    return dictEntry["dictCampaign"].get("sState") in (
+        SET_EVICTABLE_CAMPAIGN_STATES)
+
+
+def _flistCampaignIdsOldestFirst(dictStore):
+    """Return the durable campaign ids ordered by last checkpoint, oldest first.
+
+    The directory listing is alphabetical, and a campaign id is a random
+    UUID, so reloading in that order made retention delete an effectively
+    random campaign. A record that cannot be statted sorts first: it is
+    the one least likely to be worth keeping.
+    """
+    sRoot = dictStore["sDurableStoreRoot"]
+
+    def ftModifiedThenId(sCampaignId):
+        try:
+            fModified = os.path.getmtime(os.path.join(
+                _fsCampaignDirectory(dictStore, sCampaignId),
+                S_CAMPAIGN_RECORD_BASENAME))
+        except OSError:
+            fModified = 0.0
+        return (fModified, sCampaignId)
+
+    return sorted(os.listdir(sRoot), key=ftModifiedThenId)
 
 
 def fdictReloadDurableCampaigns(dictStore):
@@ -981,7 +1035,7 @@ def fdictReloadDurableCampaigns(dictStore):
     if not os.path.isdir(sRoot):
         return {"iReloaded": 0}
     iReloaded = 0
-    for sCampaignId in sorted(os.listdir(sRoot)):
+    for sCampaignId in _flistCampaignIdsOldestFirst(dictStore):
         if sCampaignId in dictStore["dictEntriesById"]:
             continue
         jsonRecord = _fjsonLoadDurableRecord(dictStore, sCampaignId)

@@ -22,7 +22,10 @@ def _fnFakeRun(dictResponses):
     Any call not in the dict raises so tests don't silently pass on
     unexpected invocations.
     """
-    def _fnImpl(listCmd, cwd=None, env=None, capture_output=False, text=False):
+    def _fnImpl(
+        listCmd, cwd=None, env=None, capture_output=False, text=False,
+        encoding=None,
+    ):
         listUser = _flistStripHardening(listCmd)
         tKey = tuple(listUser)
         if tKey not in dictResponses:

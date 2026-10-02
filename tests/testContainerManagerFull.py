@@ -284,7 +284,7 @@ def test_fnMountSingleSecret_adds_mount():
         dictSecret, saRunArgs, listCleanup, fnMockMount,
     )
     assert "/tmp/mock_secret" in listCleanup
-    assert "-v" in saRunArgs
+    assert "--mount" in saRunArgs
     assert any("/run/secrets/gh_token" in s for s in saRunArgs)
 
 

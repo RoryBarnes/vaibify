@@ -238,9 +238,10 @@ var VaibifyWebSocket = (function () {
     }
 
     function fnSendDirect(dictMessage) {
-        if (_wsPipeline) {
-            _wsPipeline.send(JSON.stringify(dictMessage));
-        }
+        /* A socket still CONNECTING throws on send; the frame (an
+           interactive completion cannot be re-sent by the step) waits
+           in the same queue the open handler flushes. */
+        fnSend(dictMessage);
     }
 
     function _fnFlushPendingActions() {

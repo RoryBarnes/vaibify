@@ -10,8 +10,18 @@ dashboard: the loopback ``Host:`` check, a per-browser credential
 redeemed from a one-time launch capability, and the security headers.
 It is the ONE setup wizard; an earlier second module with these guards
 had no caller and was removed rather than kept beside it.
+
+Save changes only what the page shows. Every other setting already in
+``vaibify.yml`` (resource limits, ports, bind mounts, secrets, network
+isolation, the dashboard port, Zenodo and LaTeX settings, a repository's
+branch, the features the page has no checkbox for) is carried through
+untouched; regenerating the file from the form's fields alone silently
+deleted them. A file that exists but cannot be read is reported as that,
+never as an empty configuration, and is overwritten only when the
+researcher confirms it.
 """
 
+import copy
 import os
 from pathlib import Path
 
@@ -37,6 +47,24 @@ _STATIC_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "gui", "static"
 )
 
+# The features the page has a checkbox for, and the agents whose
+# auto-update choice it shows. Anything else in the file's features block
+# belongs to the file, not to the form.
+T_WIZARD_FEATURES = (
+    "jupyter", "rLanguage", "julia", "database", "dvc", "latex",
+    "claude", "codex", "antigravity", "opencode", "cline", "openhands",
+    "pi", "gpu",
+)
+T_WIZARD_AUTO_UPDATE_FEATURES = (
+    "claude", "codex", "antigravity", "opencode", "cline", "openhands",
+    "pi",
+)
+T_WIZARD_SCALAR_KEYS = (
+    "projectName", "containerUser", "pythonVersion", "baseImage",
+    "workspaceRoot", "packageManager", "systemPackages", "pythonPackages",
+    "neverSleep",
+)
+
 
 class WizardConfigRequest(BaseModel):
     sProjectName: str = ""
@@ -59,6 +87,7 @@ class WizardConfigRequest(BaseModel):
     bClineAutoUpdate: bool = True
     bOpenHandsAutoUpdate: bool = True
     bPiAutoUpdate: bool = True
+    bOverwriteUnreadable: bool = False
 
 
 class ValidateResponse(BaseModel):
@@ -155,9 +184,12 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
             return {}
         try:
             config = fconfigLoadFromFile(sPath)
-            return _fdictConfigToWizardFormat(config)
-        except Exception:
-            return {}
+        except Exception as error:
+            raise HTTPException(422, {"sMessage": (
+                "vaibify.yml exists here but could not be loaded, so the "
+                f"form below is NOT your configuration: {error}"
+            )})
+        return _fdictConfigToWizardFormat(config)
 
     @app.get("/api/setup/defaults")
     async def fdictGetDefaults():
@@ -180,11 +212,11 @@ def _fnRegisterConfigRoutes(app, sOutputDirectory):
             raise HTTPException(
                 400, {"listErrors": listErrors}
             )
-        dictYaml = _fdictWizardToYaml(request)
         sFilePath = str(
             Path(sOutputDirectory) / "vaibify.yml"
         )
-        _fnWriteYamlConfig(dictYaml, sFilePath)
+        dictContent = _fdictBuildFileContent(request, sFilePath)
+        _fnWriteYamlConfig(dictContent, sFilePath)
         return {"sFilePath": sFilePath, "bSuccess": True}
 
 
@@ -198,11 +230,11 @@ def _fnRegisterBuildRoute(app, sOutputDirectory):
             raise HTTPException(
                 400, {"listErrors": listErrors}
             )
-        dictYaml = _fdictWizardToYaml(request)
         sFilePath = str(
             Path(sOutputDirectory) / "vaibify.yml"
         )
-        _fnWriteYamlConfig(dictYaml, sFilePath)
+        dictContent = _fdictBuildFileContent(request, sFilePath)
+        _fnWriteYamlConfig(dictContent, sFilePath)
         return {
             "sMessage": "Configuration saved. "
             "Run 'vaibify build' to build the container.",
@@ -298,7 +330,7 @@ def _flistEnabledFeatures(features):
     return [s for s, b in dictMap.items() if b]
 
 
-def _fdictWizardToYaml(request):
+def _fdictWizardToYaml(request, listExistingRepositories=None):
     """Convert wizard form data to vaibify.yml-compatible dict."""
     dictFeatures = _fdictFeaturesFromList(request.listFeatures)
     dictFeatures["claudeAutoUpdate"] = request.bClaudeAutoUpdate
@@ -309,7 +341,9 @@ def _fdictWizardToYaml(request):
     dictFeatures["clineAutoUpdate"] = request.bClineAutoUpdate
     dictFeatures["openhandsAutoUpdate"] = request.bOpenHandsAutoUpdate
     dictFeatures["piAutoUpdate"] = request.bPiAutoUpdate
-    listRepos = _flistReposFromUrls(request.listRepositories)
+    listRepos = _flistReposFromUrls(
+        request.listRepositories, listExistingRepositories,
+    )
     dictYaml = {
         "projectName": request.sProjectName,
         "containerUser": request.sContainerUser,
@@ -332,6 +366,87 @@ def _fdictWizardToYaml(request):
     return dictYaml
 
 
+def _fdictBuildFileContent(request, sFilePath):
+    """Return what Save writes: the form laid over what the file already holds.
+
+    Raises
+    ------
+    HTTPException
+        409 when the file exists but cannot be read as a mapping and the
+        request has not confirmed overwriting it.
+    """
+    dictExisting = _fdictReadExistingFile(sFilePath)
+    if dictExisting is None and not request.bOverwriteUnreadable:
+        raise HTTPException(409, {
+            "sMessage": (
+                "vaibify.yml exists here but cannot be read, so Save "
+                "would replace it with only what this form shows."
+            ),
+            "bNeedsOverwriteConfirmation": True,
+        })
+    dictWizard = _fdictWizardToYaml(
+        request, (dictExisting or {}).get("repositories"),
+    )
+    if not dictExisting:
+        return dictWizard
+    return _fdictMergeWizardOverExisting(dictExisting, dictWizard)
+
+
+def _fdictReadExistingFile(sFilePath):
+    """Return the file's mapping, ``{}`` when absent, ``None`` when unreadable."""
+    if not Path(sFilePath).is_file():
+        return {}
+    try:
+        with open(sFilePath, "r", encoding="utf-8") as fileHandle:
+            dictRaw = yaml.safe_load(fileHandle)
+    except (OSError, yaml.YAMLError):
+        return None
+    if dictRaw is None:
+        return {}
+    return dictRaw if isinstance(dictRaw, dict) else None
+
+
+def _fdictMergeWizardOverExisting(dictExisting, dictWizard):
+    """Overlay the form's own keys on the file's content, keeping the rest."""
+    dictMerged = copy.deepcopy(dictExisting)
+    for sKey in T_WIZARD_SCALAR_KEYS:
+        dictMerged[sKey] = dictWizard[sKey]
+    dictMerged["repositories"] = dictWizard["repositories"]
+    dictMerged["features"] = _fdictMergeFeatures(
+        dictExisting.get("features"), dictWizard["features"],
+    )
+    _fnMergeOverleafProjectId(dictMerged, dictWizard)
+    return dictMerged
+
+
+def _fdictMergeFeatures(dictExisting, dictWizard):
+    """Set the features the page shows; leave every other feature as it was."""
+    dictMerged = copy.deepcopy(dictExisting) if isinstance(
+        dictExisting, dict) else {}
+    for sName in T_WIZARD_FEATURES:
+        dictMerged[sName] = dictWizard[sName]
+    for sName in T_WIZARD_AUTO_UPDATE_FEATURES:
+        sKey = sName + "AutoUpdate"
+        dictMerged[sKey] = dictWizard[sKey]
+    return dictMerged
+
+
+def _fnMergeOverleafProjectId(dictMerged, dictWizard):
+    """Write the form's Overleaf id into the file's reproducibility block."""
+    dictWizardOverleaf = dictWizard.get("reproducibility", {}).get(
+        "overleaf", {})
+    dictRepro = dictMerged.get("reproducibility")
+    dictOverleaf = (
+        dictRepro.get("overleaf") if isinstance(dictRepro, dict) else None)
+    if not dictWizardOverleaf and not isinstance(dictOverleaf, dict):
+        return
+    if not isinstance(dictRepro, dict):
+        dictRepro = dictMerged["reproducibility"] = {}
+    if not isinstance(dictOverleaf, dict):
+        dictOverleaf = dictRepro["overleaf"] = {}
+    dictOverleaf["projectId"] = dictWizardOverleaf.get("projectId", "")
+
+
 def _fdictFeaturesFromList(listFeatures):
     """Convert a list of feature name strings to a bool dict."""
     listAllFeatures = [
@@ -342,10 +457,25 @@ def _fdictFeaturesFromList(listFeatures):
     return {s: s in listFeatures for s in listAllFeatures}
 
 
-def _flistReposFromUrls(listUrls):
-    """Return vaibify.yml repository entries, through the one authority."""
+def _flistReposFromUrls(listUrls, listExistingRepositories=None):
+    """Return vaibify.yml repository entries, through the one authority.
+
+    A URL the file already lists keeps its entry as written (branch,
+    install method, destination): asking the remote again would replace
+    a branch the researcher chose with the remote's default, and costs a
+    network round trip per repository on every Save.
+    """
     from vaibify.cli.repositoryPreflight import flistRepositoryEntriesFromUrls
-    return flistRepositoryEntriesFromUrls(listUrls)
+    dictExistingByUrl = {
+        dictEntry.get("url"): dictEntry
+        for dictEntry in (listExistingRepositories or [])
+        if isinstance(dictEntry, dict)
+    }
+    return [
+        copy.deepcopy(dictExistingByUrl[sUrl]) if sUrl in dictExistingByUrl
+        else flistRepositoryEntriesFromUrls([sUrl])[0]
+        for sUrl in listUrls
+    ]
 
 
 def _flistCollectErrors(request):
@@ -372,7 +502,7 @@ def _fnWriteYamlConfig(dictConfig, sFilePath):
     """Write a configuration dict to YAML."""
     pathOutput = Path(sFilePath)
     pathOutput.parent.mkdir(parents=True, exist_ok=True)
-    with open(pathOutput, "w") as fileHandle:
+    with open(pathOutput, "w", encoding="utf-8") as fileHandle:
         yaml.safe_dump(
             dictConfig, fileHandle,
             default_flow_style=False, sort_keys=False,

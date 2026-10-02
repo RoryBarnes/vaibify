@@ -75,7 +75,7 @@ def ffileOpenNoFollow(sPath):
         os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
         0o600,
     )
-    return os.fdopen(iFileDescriptor, "r+")
+    return os.fdopen(iFileDescriptor, "r+", encoding="utf-8")
 
 
 def fnWritePayload(fileHandle, dictPayload):
@@ -89,7 +89,7 @@ def fnWritePayload(fileHandle, dictPayload):
 def fdictReadPayload(sPath):
     """Best-effort read of a registry file's JSON payload, or ``{}``."""
     try:
-        with open(sPath, "r") as fileHandle:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
             dictPayload = json.load(fileHandle)
     except (OSError, json.JSONDecodeError):
         return {}

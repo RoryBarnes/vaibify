@@ -77,6 +77,7 @@ from . import actionCatalog
 from . import agentProjectScope
 from . import agentSessionBridge
 from . import browserSession
+from .backgroundTasks import fnKeepTaskReferenced
 from . import conftestManager
 from . import containerOwnership
 from . import pipelineRunSlots
@@ -905,35 +906,117 @@ def ffBuildResilientWsCallback(websocket):
     return fnCallback
 
 
-# Module-level registry the terminal route consults to hand the active
-# runner's interactive context to ``fnTerminalReadLoop`` so an abnormal
-# terminal exit posts the runner-unblock sentinel (audit HIGH #9).
+# Module-level registry of the live runs' interactive contexts, by
+# container and then by run id. The terminal route consults it to hand
+# the waiting run's context to ``fnTerminalReadLoop`` so an abnormal
+# terminal exit posts the runner-unblock sentinel (audit HIGH #9), and
+# the socket loop resolves interactive frames through it. Keyed by RUN:
+# the run outlives the socket that started it, and a second socket (an
+# agent's ``vaibify-do run-*``) must never displace another run's slot.
 DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER = {}
 
 
 def _fnPublishInteractiveContext(sContainerId, dictInteractive):
-    """Publish a runner's interactive context for the terminal route."""
-    DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER[sContainerId] = dictInteractive
+    """Publish a run's interactive context under its container."""
+    DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.setdefault(
+        sContainerId, {},
+    )[dictInteractive["sRunId"]] = dictInteractive
 
 
 def _fnUnpublishInteractiveContext(sContainerId, dictInteractive):
-    """Remove the runner's interactive context if still the published one.
-
-    The identity check guards against a fresh ``fnPipelineMessageLoop``
-    that has already published its own context in the same slot — only
-    drop the entry when it still points at the same dict this loop
-    instance published, so a new loop's registration is never evicted
-    by the prior loop's ``finally`` clean-up.
-    """
-    if DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId) is (
-        dictInteractive
-    ):
+    """Remove a run's interactive context when the run ends."""
+    dictRuns = DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId, {})
+    dictRuns.pop(dictInteractive["sRunId"], None)
+    if not dictRuns:
         DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.pop(sContainerId, None)
 
 
-def fdictInteractiveContextForContainer(sContainerId):
-    """Return the active runner's interactive context, or ``None``."""
-    return DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId)
+def fdictInteractiveContextForContainer(sContainerId, sRunId=""):
+    """Return the interactive context a response should reach, or ``None``.
+
+    With ``sRunId`` the named run's context. Without one, the context of
+    the run that has been waiting for a response most recently: a client
+    that does not name its run answers the pause it was last shown.
+    """
+    dictRuns = DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER.get(sContainerId, {})
+    if sRunId:
+        return dictRuns.get(sRunId)
+    listWaiting = [
+        dictInteractive for dictInteractive in dictRuns.values()
+        if dictInteractive["dictPendingEvent"] is not None
+    ]
+    if not listWaiting:
+        return None
+    return max(listWaiting, key=lambda dictInteractive: (
+        dictInteractive["iPauseSequence"]))
+
+
+async def _fnReplayPendingInteractiveEvent(fnCallback, sContainerId):
+    """Tell a newly connected socket what a paused run is waiting for.
+
+    The pause was sent to the socket that was open when it happened; a
+    dashboard that reconnected would otherwise show a run that holds the
+    project for up to a day with nothing to answer.
+    """
+    dictWaiting = fdictInteractiveContextForContainer(sContainerId)
+    if dictWaiting is not None:
+        await fnCallback(
+            {**dictWaiting["dictPendingEvent"], "bReplayed": True})
+
+
+async def _fnRouteInteractiveFrame(sAction, dictRequest, sContainerId):
+    """Deliver an interactive frame to the run it answers."""
+    dictInteractive = fdictInteractiveContextForContainer(
+        sContainerId, dictRequest.get("sRunId", ""),
+    )
+    if dictInteractive is None:
+        logger.info(
+            "Interactive frame '%s' for container %s answered no "
+            "waiting run", sAction, sContainerId,
+        )
+        return
+    if sAction == "interactiveComplete":
+        _fnHandleInteractiveComplete(dictInteractive, dictRequest)
+    else:
+        _fnHandleInteractiveResponse(dictInteractive, sAction, dictRequest)
+
+
+def _fdictParseRunFrame(sFrameText):
+    """Return the frame as a dict, or None when it is not a JSON object."""
+    try:
+        dictRequest = json.loads(sFrameText)
+    except ValueError:
+        return None
+    return dictRequest if isinstance(dictRequest, dict) else None
+
+
+def _fdictMalformedFrameEvent():
+    """Return the refusal sent for a frame that is not a JSON object."""
+    return {
+        "sType": "runRefused",
+        "sAction": "",
+        "listStepIndices": [],
+        "sMessage": "Refused: the request was not a JSON object.",
+    }
+
+
+def _fdictUnresolvableSelectionRefusal(sAction, dictRequest, dictWorkflow):
+    """Return a runRefused event when the frame names a step that cannot resolve.
+
+    An unknown label or a non-integer index used to raise out of the
+    message loop before dispatch, closing the socket with no event, so
+    a typo in ``vaibify-do`` read as a dropped connection.
+    """
+    try:
+        _flistGateStepIndices(sAction, dictRequest, dictWorkflow or {})
+    except (ValueError, TypeError) as error:
+        return {
+            "sType": "runRefused",
+            "sAction": sAction,
+            "listStepIndices": [],
+            "sMessage": f"Refused '{sAction}': {error}",
+        }
+    return None
 
 
 async def fnPipelineMessageLoop(
@@ -959,162 +1042,168 @@ async def fnPipelineMessageLoop(
       ignore it (frontend filter in ``scriptPipelineRunner.js``,
       ``vaibify-do`` filter in ``_fiStreamWsEvents``).
     """
-    from .pipelineRunner import (
-        fdictCreateInteractiveContext,
-        fnSetInteractiveResponse,
-    )
-    dictInteractive = fdictCreateInteractiveContext()
+    from .pipelineRunner import fdictCreateInteractiveContext
     fnCallback = ffBuildResilientWsCallback(websocket)
-    _fnPublishInteractiveContext(sContainerId, dictInteractive)
+    await _fnReplayPendingInteractiveEvent(fnCallback, sContainerId)
 
-    try:
-        while True:
-            sFrameText = await websocket.receive_text()
-            # Per-frame re-auth backstop (design §5, slice 6): a frame
-            # already in flight when its session was revoked must be
-            # refused, not dispatched — the active close is the
-            # authority, this is the backstop behind it.
-            if fbFrameCredentialStillActive is not None and (
-                not fbFrameCredentialStillActive()
-            ):
-                await websocket.close(code=4401)
-                return
-            dictRequest = json.loads(sFrameText)
-            sAction = dictRequest.get("sAction", "")
-            if sAction in ("interactiveResume", "interactiveSkip"):
-                _fnHandleInteractiveResponse(
-                    dictInteractive, sAction,
-                    dictRequest,
-                )
-                continue
-            if sAction == "interactiveComplete":
-                _fnHandleInteractiveComplete(
-                    dictInteractive, dictRequest,
-                )
-                continue
-            # The LIVE cache object, re-read per frame: the reload
-            # detector REBINDS the cache key, so a workflow captured
-            # at socket accept silently runs superseded commands for
-            # the socket's whole life (spec D1). Commands already in
-            # flight keep the object they started with.
-            dictWorkflowBound = dictWorkflow
-            if fdictGetLiveWorkflow is not None:
-                dictWorkflowBound = (
-                    fdictGetLiveWorkflow() or dictWorkflow
-                )
-            dictMisdirectedRefusal = (
-                agentProjectScope.fdictBuildMisdirectedRunRefusal(
-                    sAction, dictRequest, dictWorkflowBound,
-                    dictWorkflowPathCache.get(sContainerId, ""),
-                )
+    while True:
+        sFrameText = await websocket.receive_text()
+        # Per-frame re-auth backstop (design §5, slice 6): a frame
+        # already in flight when its session was revoked must be
+        # refused, not dispatched — the active close is the
+        # authority, this is the backstop behind it.
+        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
+            return
+        dictRequest = _fdictParseRunFrame(sFrameText)
+        if dictRequest is None:
+            await fnCallback(_fdictMalformedFrameEvent())
+            continue
+        sAction = dictRequest.get("sAction", "")
+        if sAction in (
+            "interactiveResume", "interactiveSkip", "interactiveComplete",
+        ):
+            await _fnRouteInteractiveFrame(
+                sAction, dictRequest, sContainerId,
             )
-            if dictMisdirectedRefusal is not None:
-                await fnCallback(dictMisdirectedRefusal)
-                continue
-            sRunProject = (dictWorkflowBound or {}).get(
-                "sProjectRepoPath", "",
+            continue
+        # The LIVE cache object, re-read per frame: the reload
+        # detector REBINDS the cache key, so a workflow captured
+        # at socket accept silently runs superseded commands for
+        # the socket's whole life (spec D1). Commands already in
+        # flight keep the object they started with.
+        dictWorkflowBound = dictWorkflow
+        if fdictGetLiveWorkflow is not None:
+            dictWorkflowBound = (
+                fdictGetLiveWorkflow() or dictWorkflow
             )
-            if _fbRefuseWhilePipelineTaskLive(
-                dictPipelineTasks, sContainerId, sRunProject,
-            ):
-                await fnCallback(
-                    _fdictBusyRefusalEvent(
-                        sAction, dictRequest,
-                        sHolderProject=_fsNameLivePipelineProject(
-                            dictPipelineTasks, sContainerId, sRunProject,
-                        ),
+        dictMisdirectedRefusal = (
+            agentProjectScope.fdictBuildMisdirectedRunRefusal(
+                sAction, dictRequest, dictWorkflowBound,
+                dictWorkflowPathCache.get(sContainerId, ""),
+            )
+        )
+        if dictMisdirectedRefusal is not None:
+            await fnCallback(dictMisdirectedRefusal)
+            continue
+        dictSelectionRefusal = _fdictUnresolvableSelectionRefusal(
+            sAction, dictRequest, dictWorkflowBound,
+        )
+        if dictSelectionRefusal is not None:
+            await fnCallback(dictSelectionRefusal)
+            continue
+        sRunProject = (dictWorkflowBound or {}).get(
+            "sProjectRepoPath", "",
+        )
+        if _fbRefuseWhilePipelineTaskLive(
+            dictPipelineTasks, sContainerId, sRunProject,
+        ):
+            await fnCallback(
+                _fdictBusyRefusalEvent(
+                    sAction, dictRequest,
+                    sHolderProject=_fsNameLivePipelineProject(
+                        dictPipelineTasks, sContainerId, sRunProject,
                     ),
-                )
-                continue
-            sBusyWork = _fsDescribeBlockingMutationWork(
-                dictDurableContext,
+                ),
             )
-            if sBusyWork:
-                await fnCallback(
-                    _fdictBusyRefusalEvent(
-                        sAction, dictRequest, sBusyWork,
-                    ),
-                )
-                continue
-            dictFreshnessRefusal = await _fdictStaleWorkflowRefusal(
-                dictCtx, sContainerId, sAction, dictRequest,
+            continue
+        sBusyWork = _fsDescribeBlockingMutationWork(
+            dictDurableContext,
+        )
+        if sBusyWork:
+            await fnCallback(
+                _fdictBusyRefusalEvent(
+                    sAction, dictRequest, sBusyWork,
+                ),
+            )
+            continue
+        dictFreshnessRefusal = await _fdictStaleWorkflowRefusal(
+            dictCtx, sContainerId, sAction, dictRequest,
+            dictWorkflowBound, dictWorkflowPathCache,
+            fdictReloadBoundWorkflow,
+        )
+        if dictFreshnessRefusal is not None:
+            await fnCallback(dictFreshnessRefusal)
+            continue
+        dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
+            sAction, dictRequest, connectionDocker,
+            sContainerId, dictWorkflowBound,
+        )
+        if dictOverwriteRefusal is not None:
+            await fnCallback(dictOverwriteRefusal)
+            continue
+        dictConcurrentNotice = _fdictConcurrentRunNotice(
+            connectionDocker, dictPipelineTasks, sContainerId,
+            sRunProject,
+        )
+        if dictConcurrentNotice and not dictRequest.get(
+            pipelineRunSlots.S_ACKNOWLEDGE_CONCURRENT_RUN_FIELD,
+        ):
+            await fnCallback(_fdictConcurrentRunRefusal(
+                sAction, dictRequest, dictConcurrentNotice,
+            ))
+            continue
+        if dictConcurrentNotice:
+            await fnCallback({
+                "sType": "concurrentRunWarning", **dictConcurrentNotice,
+            })
+        sRunId = secrets.token_hex(8)
+        sWorkflowPathFrame, sWorkflowDirectoryFrame = (
+            _ftFrameWorkflowPathAndDirectory(
                 dictWorkflowBound, dictWorkflowPathCache,
-                fdictReloadBoundWorkflow,
+                sContainerId, sWorkflowDirectory,
             )
-            if dictFreshnessRefusal is not None:
-                await fnCallback(dictFreshnessRefusal)
-                continue
-            dictOverwriteRefusal = await _fdictRemoteOverwriteRefusal(
-                sAction, dictRequest, connectionDocker,
-                sContainerId, dictWorkflowBound,
-            )
-            if dictOverwriteRefusal is not None:
-                await fnCallback(dictOverwriteRefusal)
-                continue
-            dictConcurrentNotice = _fdictConcurrentRunNotice(
-                connectionDocker, dictPipelineTasks, sContainerId,
-                sRunProject,
-            )
-            if dictConcurrentNotice and not dictRequest.get(
-                pipelineRunSlots.S_ACKNOWLEDGE_CONCURRENT_RUN_FIELD,
-            ):
-                await fnCallback(_fdictConcurrentRunRefusal(
-                    sAction, dictRequest, dictConcurrentNotice,
-                ))
-                continue
-            if dictConcurrentNotice:
-                await fnCallback({
-                    "sType": "concurrentRunWarning", **dictConcurrentNotice,
-                })
-            sRunId = secrets.token_hex(8)
-            sWorkflowPathFrame, sWorkflowDirectoryFrame = (
-                _ftFrameWorkflowPathAndDirectory(
-                    dictWorkflowBound, dictWorkflowPathCache,
-                    sContainerId, sWorkflowDirectory,
-                )
-            )
+        )
 
-            def ftaskStartDispatch(
-                sActionBound=sAction, dictRequestBound=dictRequest,
-                dictWorkflowFrame=dictWorkflowBound,
-                sWorkflowPathBound=sWorkflowPathFrame,
-                sWorkflowDirectoryBound=sWorkflowDirectoryFrame,
-                sRunIdBound=sRunId,
-            ):
-                return asyncio.create_task(
-                    _fnSafeDispatch(
-                        sActionBound, dictRequestBound, connectionDocker,
-                        sContainerId, dictWorkflowFrame,
-                        {sContainerId: sWorkflowPathBound},
-                        sWorkflowDirectoryBound,
-                        fnCallback, dictInteractive,
-                        fdictCommitProvenance=(
-                            _ffnBuildRunProvenanceCommitter(
-                                dictCtx, sContainerId, sWorkflowPathBound,
-                            )
-                        ),
-                        sRunId=sRunIdBound,
-                    )
+        def ftaskStartDispatch(
+            sActionBound=sAction, dictRequestBound=dictRequest,
+            dictWorkflowFrame=dictWorkflowBound,
+            sWorkflowPathBound=sWorkflowPathFrame,
+            sWorkflowDirectoryBound=sWorkflowDirectoryFrame,
+            sRunIdBound=sRunId,
+        ):
+            dictRunInteractive = fdictCreateInteractiveContext(sRunIdBound)
+            _fnPublishInteractiveContext(sContainerId, dictRunInteractive)
+            taskRun = asyncio.create_task(
+                _fnSafeDispatch(
+                    sActionBound, dictRequestBound, connectionDocker,
+                    sContainerId, dictWorkflowFrame,
+                    {sContainerId: sWorkflowPathBound},
+                    sWorkflowDirectoryBound,
+                    fnCallback, dictRunInteractive,
+                    fdictCommitProvenance=(
+                        _ffnBuildRunProvenanceCommitter(
+                            dictCtx, sContainerId, sWorkflowPathBound,
+                        )
+                    ),
+                    sRunId=sRunIdBound,
                 )
-
-            taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
-                dictDurableContext, sContainerId, ftaskStartDispatch,
-                sRunProject,
             )
-            if taskPipeline is None:
-                await fnCallback(
-                    _fdictBusyRefusalEvent(sAction, dictRequest),
+            taskRun.add_done_callback(
+                lambda taskDone: _fnUnpublishInteractiveContext(
+                    sContainerId, dictRunInteractive,
                 )
-                continue
-            if dictPipelineTasks is not None:
-                pipelineRunSlots.fnRegisterRun(
-                    dictPipelineTasks, sContainerId, taskPipeline,
-                    iOwnerGeneration=iOwnerGeneration,
-                    dictWorkflow=dictWorkflowBound, sRunId=sRunId,
-                    dictLastRuns=(dictCtx or {}).get("dictLastRunByProject"),
-                )
-    finally:
-        _fnUnpublishInteractiveContext(sContainerId, dictInteractive)
+            )
+            return taskRun
+
+        taskPipeline, iOwnerGeneration = await _ftLaunchDispatchTask(
+            dictDurableContext, sContainerId, ftaskStartDispatch,
+            sRunProject,
+        )
+        if taskPipeline is None:
+            await fnCallback(
+                _fdictBusyRefusalEvent(sAction, dictRequest),
+            )
+            continue
+        if dictPipelineTasks is not None:
+            pipelineRunSlots.fnRegisterRun(
+                dictPipelineTasks, sContainerId, taskPipeline,
+                iOwnerGeneration=iOwnerGeneration,
+                dictWorkflow=dictWorkflowBound, sRunId=sRunId,
+                dictLastRuns=(dictCtx or {}).get("dictLastRunByProject"),
+            )
 
 
 def _ftFrameWorkflowPathAndDirectory(
@@ -3024,11 +3113,11 @@ def _fnLaunchDependencyScan(
     """Schedule background source-code dependency scan."""
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(
+        fnKeepTaskReferenced(loop.create_task(
             _fnScanDependenciesBackground(
                 dictCtx, sContainerId, dictWorkflow,
             )
-        )
+        ))
     except RuntimeError:
         logger.debug("No event loop for dependency scan")
 
@@ -3164,7 +3253,7 @@ def _fnRegisterStaticFiles(app, dictCtx):
     @app.get("/")
     async def fresponseServeIndex():
         sIndexPath = os.path.join(STATIC_DIRECTORY, "index.html")
-        with open(sIndexPath, "r") as fileIndex:
+        with open(sIndexPath, "r", encoding="utf-8") as fileIndex:
             sContent = fileIndex.read()
         sVersion = fsComputeStaticCacheVersion()
         sContent = sContent.replace("__CACHE_VERSION__", sVersion)

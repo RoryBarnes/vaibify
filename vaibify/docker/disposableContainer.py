@@ -877,6 +877,9 @@ def fdictReclaimStrandedDisposables():
     return dictSwept
 
 
+I_DOCKER_CONTAINER_ID_LENGTH = 64
+
+
 def _fbStampNamesAContainerId(sResourceName):
     """Return True when a resource stamp is a Docker container id.
 
@@ -884,12 +887,15 @@ def _fbStampNamesAContainerId(sResourceName):
     the rerun was driven from; the published-reproduction lane stamps a
     job token instead. Only the first kind names something the daemon
     can be asked about, and this predicate is what separates them. It
-    is deliberately strict — lowercase hex, at least a short id's worth
-    — because the cost of a false positive is destroying a container on
-    evidence the daemon never gave.
+    is deliberately strict: the full 64 lowercase-hex characters the
+    daemon writes, because a project NAME that happens to be twelve or
+    more hex characters is not an id the daemon will ever list, and
+    reading it as one called a live project's shadow "stranded". The
+    cost of a false positive is destroying a container on evidence the
+    daemon never gave.
     """
     sStamp = str(sResourceName or "")
-    if len(sStamp) < 12:
+    if len(sStamp) != I_DOCKER_CONTAINER_ID_LENGTH:
         return False
     return all(sCharacter in "0123456789abcdef" for sCharacter in sStamp)
 

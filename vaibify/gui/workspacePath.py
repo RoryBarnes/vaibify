@@ -37,7 +37,7 @@ def _fsRunDockerInspect(sContainerId):
     try:
         processResult = subprocess.run(
             ["docker", "inspect", sContainerId],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (subprocess.TimeoutExpired, OSError):
         return ""

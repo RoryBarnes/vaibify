@@ -1112,12 +1112,12 @@ def _fnBenchmarkSafetensors(sFullPath, sFileName, dictReport):
 
 def _fnBenchmarkTfrecord(sFullPath, sFileName, dictReport):
     try:
-        from tfrecord.reader import tfrecord_iterator
+        from tfrecord.reader import example_loader
     except ImportError:
         dictReport["sError"] = "tfrecord not installed"
         return
     listRecords = []
-    for record in tfrecord_iterator(sFullPath):
+    for record in example_loader(sFullPath, None):
         listRecords.append(record)
     dictReport["tShape"] = [len(listRecords)]
     if listRecords and isinstance(listRecords[0], dict):
@@ -1127,9 +1127,10 @@ def _fnBenchmarkTfrecord(sFullPath, sFileName, dictReport):
             if len(dictReport["listBenchmarks"]) >= _I_MAX_BENCHMARKS_PER_FILE:
                 break
             try:
-                daValues = np.array(
-                    [float(r[sKey]) for r in listRecords], dtype=float,
-                )
+                daValues = np.concatenate([
+                    np.asarray(r[sKey], dtype=float).ravel()
+                    for r in listRecords
+                ])
             except (ValueError, KeyError, TypeError):
                 continue
             _fnAddStatsBenchmarks(

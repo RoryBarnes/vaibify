@@ -16,6 +16,11 @@ recorded claim time against the live process's start time read from
 is treated as dead, while any unreadable start time or absent claim
 falls back to the PID-only check (conservative: never reaps a live
 genuine holder).
+
+Both clocks are UTC instants. A claim is written by ``fsNowClaimIso``
+and the start is computed as now minus the elapsed time ``ps`` reports,
+so a change of time zone (travel, daylight-saving fall-back) between
+the claim and the check cannot make a live holder look recycled.
 """
 
 __all__ = [
@@ -26,14 +31,22 @@ __all__ = [
     "fdatetimeReadProcessStartClock",
     "fdatetimeReadProcessStartClockCached",
     "fdatetimeParseClaimIso",
+    "fsNowClaimIso",
+    "fdParseElapsedSeconds",
 ]
 
 import datetime
 import os
+import re
 import subprocess
 
 
 _F_RECYCLE_TOLERANCE_SECONDS = 2.0
+
+
+def fsNowClaimIso():
+    """Return the current instant as a UTC ISO string, for a holder claim."""
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 def fbIsUsablePid(iPid):
@@ -70,12 +83,12 @@ def fbIsProcessAliveSince(iPid, sClaimIso, dictStartClockCache=None):
     """
     if not fbIsProcessAlive(iPid):
         return False
-    dtStart = fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache)
-    dtClaim = fdatetimeParseClaimIso(sClaimIso)
-    if dtStart is None or dtClaim is None:
+    datetimeStart = fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache)
+    datetimeClaim = fdatetimeParseClaimIso(sClaimIso)
+    if datetimeStart is None or datetimeClaim is None:
         return True
-    dtTolerance = datetime.timedelta(seconds=_F_RECYCLE_TOLERANCE_SECONDS)
-    return dtStart <= dtClaim + dtTolerance
+    fSecondsStartedAfterClaim = (datetimeStart - datetimeClaim).total_seconds()
+    return fSecondsStartedAfterClaim <= _F_RECYCLE_TOLERANCE_SECONDS
 
 
 def fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache):
@@ -94,30 +107,44 @@ def fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache):
 
 
 def fdatetimeReadProcessStartClock(iPid):
-    """Return a PID's start time from ``ps``, or None on any failure."""
+    """Return a PID's start instant (UTC) from ``ps``, or None on any failure.
+
+    ``ps -o etime=`` is POSIX and exists on macOS and Linux (``etimes``
+    does not exist on macOS). The start is now minus the elapsed time,
+    so no local time zone enters the answer.
+    """
     if not fbIsUsablePid(iPid):
         return None
-    sStarted = _fsReadStartTimeFromProcessStatus(iPid)
-    if not sStarted:
+    sElapsed = _fsReadElapsedTimeFromProcessStatus(iPid)
+    dElapsedSeconds = fdParseElapsedSeconds(sElapsed)
+    if dElapsedSeconds is None:
         return None
-    try:
-        # ``ps`` emits C-locale names (forced via LC_ALL=C); strptime parses
-        # with the Python process's LC_TIME, which vaibify never changes from
-        # the default C. A locale mismatch only raises ValueError here, which
-        # degrades to conservative-alive below (never a false reap).
-        return datetime.datetime.strptime(sStarted, "%a %b %d %H:%M:%S %Y")
-    except ValueError:
-        return None
+    datetimeNow = datetime.datetime.now(datetime.timezone.utc)
+    return datetimeNow - datetime.timedelta(seconds=dElapsedSeconds)
 
 
-def _fsReadStartTimeFromProcessStatus(iPid):
-    """Return ``ps -o lstart=`` output for a PID, or '' on any failure."""
+def fdParseElapsedSeconds(sElapsed):
+    """Return seconds for a ``ps`` elapsed time ``[[dd-]hh:]mm:ss``, else None."""
+    matchElapsed = re.fullmatch(
+        r"(?:(?:(\d+)-)?(\d+):)?(\d+):(\d{2})", (sElapsed or "").strip(),
+    )
+    if matchElapsed is None:
+        return None
+    iDays, iHours, iMinutes, iSeconds = (
+        int(sPart or 0) for sPart in matchElapsed.groups()
+    )
+    return float(((iDays * 24 + iHours) * 60 + iMinutes) * 60 + iSeconds)
+
+
+def _fsReadElapsedTimeFromProcessStatus(iPid):
+    """Return ``ps -o etime=`` output for a PID, or '' on any failure."""
     try:
         processResult = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", str(iPid)],
+            ["ps", "-o", "etime=", "-p", str(iPid)],
             env={**os.environ, "LC_ALL": "C"},
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=2,
         )
     except (OSError, subprocess.SubprocessError):
@@ -165,7 +192,7 @@ def ftEnumerateSessionMembers(iSessionLeader):
             ["ps", "-axo", "pid=,pgid=,stat="],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, encoding="utf-8",
         )
     except (OSError, subprocess.SubprocessError):
         return (False, [])
@@ -192,18 +219,15 @@ def ftEnumerateSessionMembers(iSessionLeader):
 
 
 def fdatetimeParseClaimIso(sClaimIso):
-    """Return a claim ISO string as a naive-local datetime, or None."""
+    """Return a claim ISO string as an aware UTC datetime, or None.
+
+    A claim without an offset was written by an older vaibify as local
+    wall-clock time; it is read as local time, the only meaning it had.
+    """
     if not isinstance(sClaimIso, str) or not sClaimIso:
         return None
     try:
-        dtClaim = datetime.datetime.fromisoformat(sClaimIso)
+        datetimeClaim = datetime.datetime.fromisoformat(sClaimIso)
     except ValueError:
         return None
-    return _fdatetimeNormalizeToNaiveLocal(dtClaim)
-
-
-def _fdatetimeNormalizeToNaiveLocal(dtValue):
-    """Drop tzinfo, converting an aware datetime to local naive time."""
-    if dtValue.tzinfo is None:
-        return dtValue
-    return dtValue.astimezone().replace(tzinfo=None)
+    return datetimeClaim.astimezone(datetime.timezone.utc)

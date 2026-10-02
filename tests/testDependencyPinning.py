@@ -32,7 +32,10 @@ _S_UNHASHED_LOCK = (
 def _fnFakeRunWriteLock(sLockBody):
     """Build a subprocess.run replacement that writes a lockfile."""
 
-    def fnFake(listCommand, cwd, capture_output, text, timeout=None):
+    def fnFake(
+        listCommand, cwd, capture_output, text, timeout=None,
+        encoding=None,
+    ):
         from pathlib import Path
 
         pathOut = Path(cwd) / "requirements.lock"
@@ -409,7 +412,10 @@ _S_FREEZE = (
 def _ffnFakeRunRecordingStaging(sLockBody, dictSeen):
     """A subprocess.run replacement that records what the staging dir held."""
 
-    def fnFake(listCommand, cwd, capture_output, text, timeout=None):
+    def fnFake(
+        listCommand, cwd, capture_output, text, timeout=None,
+        encoding=None,
+    ):
         from pathlib import Path
 
         dictSeen["listCommand"] = list(listCommand)

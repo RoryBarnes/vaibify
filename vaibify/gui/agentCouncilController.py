@@ -85,6 +85,7 @@ __all__ = [
     "fiClassifyInterruptedCampaignsOnStartup",
     "flistReadCampaignCommandLog",
     "fnAwaitControllerSettleOnShutdown",
+    "fnReleaseRunnerAccessOnShutdown",
     "fdictDrainControllerForResource",
     "fnDrainControllerOnShutdown",
 ]
@@ -284,10 +285,11 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
         # The campaign's own budget, not the module default. Without
         # this the setting is a number in a record that governs nothing
         # — the shape of bAgentSafe before it was enforced.
-        fWallClockSeconds=float(
-            (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
-            .get("iTurnWallClockSeconds")
-            or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS),
+        fWallClockSeconds=_ffCampaignTurnWallClockSeconds(dictRuntime),
+        # The limits THIS daemon allows, because the snapshot was
+        # admitted against them: the floor limits are a 512 MiB runner,
+        # smaller than the snapshot a large daemon admits.
+        dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),
         # The SAME reason, for the other budget. This argument was
         # missing, so iMaximumOutputBytesPerTurn was exactly the number
         # in a record that governs nothing the comment above warns
@@ -305,6 +307,23 @@ def fconnectionBuildParticipantConnection(dictRuntime, dictParticipant):
                 (dictRuntime.get("dictCampaign") or {})
                 .get("dictSettings", {}).get("iTurnStallSeconds"))),
     )
+
+
+def _ffCampaignTurnWallClockSeconds(dictRuntime):
+    """Return the campaign's own per-turn wall clock, else the default."""
+    return float(
+        (dictRuntime.get("dictCampaign") or {}).get("dictSettings", {})
+        .get("iTurnWallClockSeconds")
+        or agentCouncilRunner.F_DEFAULT_TURN_WALL_CLOCK_SECONDS)
+
+
+def _fdictResolveRuntimeRunnerLimits(dictRuntime):
+    """Return (resolving once) the runner limits this campaign's daemon allows."""
+    if dictRuntime.get("dictRunnerLimits") is None:
+        dictRuntime["dictRunnerLimits"] = (
+            agentCouncilRunner.fdictBuildRunnerLimitsForDaemon(
+                _fdictEnsureRuntimeGateway(dictRuntime).get("dockerCouncil")))
+    return dictRuntime["dictRunnerLimits"]
 
 
 def _fdictProvisionRunnerAccessOnce(dictRuntime, sProvider="claude"):
@@ -491,7 +510,10 @@ def _fdictExecuteBaselineEvidenceLazily(dictRuntime, dictRequest):
                 dictRuntime["sCampaignId"],
                 dictRuntime["sImageReference"],
                 dictRuntime["sSnapshotIdentity"],
-                dictRuntime["baSnapshotTar"]))
+                dictRuntime["baSnapshotTar"],
+                dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),
+                fWallClockSeconds=_ffCampaignTurnWallClockSeconds(
+                    dictRuntime)))
     return dictRuntime["fdictExecuteBaselineEvidence"](dictRequest)
 
 
@@ -525,6 +547,7 @@ def _fdictBuildCampaignRuntime(dictControllerState, dictStore, dictRegistry,
         "fdictExecuteBaselineEvidence": None,
         "ftStageRunnerCredential": ftStageRunnerCredential,
         "dictStageRunnerCredentials": dictStageRunnerCredentials,
+        "dictRunnerLimits": None,
         "dictRunnerAccess": None,
         "dictRunnerAccessByProvider": {},
         # True from registration until the first drive task is spawned:
@@ -1925,6 +1948,7 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             continue
         if _fbCampaignStoppedAtAProvenBoundary(dictCampaign):
             continue
+        _fnSettleRunningAttemptAsInterrupted(dictCampaign)
         agentCouncilCampaign.fnTransitionCampaignState(
             dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
             "hubRestartedWhileATurnHadNoTerminalRecord")
@@ -1932,6 +1956,24 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             dictStore, sCampaignId, dictCampaign)
         iClassified += 1
     return iClassified
+
+
+def _fnSettleRunningAttemptAsInterrupted(dictCampaign):
+    """Record the attempt a dead hub left running as an interruption.
+
+    Retry reads the last attempt, and only one that settled as the
+    terminating failure or interruption can be retired and re-run; a
+    campaign interrupted with its attempt still ``running`` could be
+    neither retried nor resumed, whatever the researcher reconciled.
+    The attempt settles before the transition whose checkpoint carries
+    it, the same order the engine keeps.
+    """
+    listRounds = dictCampaign.get("listRounds") or []
+    dictAttempt = (listRounds[-1] if listRounds else {}).get(
+        "dictPhaseAttempt")
+    if dictAttempt and dictAttempt.get("sAttemptState") == "running":
+        dictAttempt["sAttemptState"] = "outcomeSettled"
+        dictAttempt["sOutcome"] = "transitioned:interrupted"
 
 
 def _fbCampaignStoppedAtAProvenBoundary(dictCampaign):
@@ -2156,8 +2198,14 @@ def fnDrainControllerOnShutdown(dictControllerState):
 
 
 async def fnAwaitControllerSettleOnShutdown(dictControllerState,
-                                            fDeadlineSeconds=2.0):
+                                            fDeadlineSeconds=2.0,
+                                            bReleaseRunnerAccess=True):
     """Await live drives briefly at shutdown, then release runner access.
+
+    ``bReleaseRunnerAccess`` False leaves the egress boundary standing
+    for the caller to release with ``fnReleaseRunnerAccessOnShutdown``:
+    the hub's shutdown drains the runners first, because a network that
+    still has a runner attached cannot be proven removed.
 
     The stop requests ``fnDrainControllerOnShutdown`` sends are
     cooperative, and a turn mid-CLI can outlive any reasonable shutdown
@@ -2192,6 +2240,12 @@ async def fnAwaitControllerSettleOnShutdown(dictControllerState,
         for taskDrive in listLiveDriveTasks:
             if not taskDrive.done():
                 taskDrive.cancel()
+    if bReleaseRunnerAccess:
+        await fnReleaseRunnerAccessOnShutdown(dictControllerState)
+
+
+async def fnReleaseRunnerAccessOnShutdown(dictControllerState):
+    """Release every campaign's egress boundary and staged credential."""
     for dictRuntime in list(
             dictControllerState["dictCampaignRuntime"].values()):
         await asyncio.to_thread(_fbReleaseRunnerAccessResources, dictRuntime)

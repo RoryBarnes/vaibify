@@ -232,25 +232,36 @@ def _fsUnwrapSingleJsonFence(sText):
 
 def fdictExtractAntigravityStructuredResult(listNativeEvents,
                                              dictExecution=None):
-    """Extract one result, accepting only identical schema retry outputs."""
+    """Extract one result, accepting only identical schema retry outputs.
+
+    A turn that produced no answer text is explained by the shared
+    extractor over the normalized stream, which reads how the gateway
+    ended the container (its bounds, the exit code), so the reason a
+    turn stopped is the same vocabulary for every provider.
+    """
     dictResult = {}
+    bResultEventPresent = False
     for dictEvent in reversed(listNativeEvents):
         if dictEvent.get("event") == "result":
             dictResult = dictEvent.get("result") or {}
+            bResultEventPresent = True
             break
     jsonStructured = dictResult.get("structured_output")
     if isinstance(jsonStructured, dict):
         return jsonStructured
     sResponse = dictResult.get("response")
-    if isinstance(sResponse, str):
+    if isinstance(sResponse, str) and sResponse.strip():
         listObjects = _flistDecodeConcatenatedObjects(
             _fsUnwrapSingleJsonFence(sResponse))
         if listObjects and all(
                 jsonObject == listObjects[0] for jsonObject in listObjects):
             return listObjects[0]
         return {"sRawResultText": sResponse}
-    return {"sRawResultText": "", "sEmptyResultReason": (
-        "antigravityProducedNoResult")}
+    listEvents = flistNormalizeAntigravityEvents(listNativeEvents)
+    if not bResultEventPresent:
+        listEvents = listEvents[:-1]
+    return agentCouncilProviders.fdictExtractStructuredResult(
+        listEvents, dictExecution)
 
 
 def flistNormalizeAntigravityEvents(listNativeEvents):
@@ -349,6 +360,8 @@ class AntigravityRunnerConnection(
         fEffectiveWallClock = agentCouncilProviders.ffClampTurnBudgetToLoginLife(
             self.fWallClockSeconds,
             self._iLoginExpiresAtEpochMilliseconds)
+        bBudgetCameFromLoginExpiry = self._fbBudgetCameFromLoginExpiry(
+            fEffectiveWallClock)
         try:
             self._dictTurnExecution = await asyncio.to_thread(
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
@@ -358,6 +371,8 @@ class AntigravityRunnerConnection(
                 fbaComposeAntigravityStdin(
                     dictTurnRequest["listQuotedMaterial"]),
                 self.fStallSeconds)
+            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (
+                bBudgetCameFromLoginExpiry)
             listNativeEvents = agentCouncilProviders.flistParseStreamJsonEvents(
                 self._dictTurnExecution["sOutput"])
             self._listEvents = flistNormalizeAntigravityEvents(

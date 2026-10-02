@@ -78,7 +78,7 @@ def fsRunGit(listArgs, sCwd):
         return subprocess.run(
             listFullArgs,
             cwd=sCwd, env=_fdictBaseEnv(),
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
     except FileNotFoundError as error:
         return subprocess.CompletedProcess(

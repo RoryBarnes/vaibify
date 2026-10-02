@@ -2031,4 +2031,10 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # substrate gave no answer" for the poll lanes. Same shape — an
     # isinstance test over an exception object, no daemon call.
     "fbErrorMeansContainerUnreachable",
+    # Reads the DAEMON's memory and CPU count through the client's
+    # ``info`` for sizing council runners; it names no container and
+    # makes no mutation. It is the module-level body that
+    # ``DockerConnection.fdictReadDaemonCapacity`` delegates to, shared
+    # because the council holds a bare client rather than a connection.
+    "fdictReadDaemonCapacityFromClient",
 }

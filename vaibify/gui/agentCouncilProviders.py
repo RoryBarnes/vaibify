@@ -306,6 +306,15 @@ def fdictExtractStructuredResult(listEvents, dictExecution=None):
     jsonParsed = _fjsonParseResultText(sResultText)
     if isinstance(jsonParsed, dict):
         return jsonParsed
+    if _fbExecutionWasKilledAtABound(dictExecution):
+        # The gateway destroyed this turn's container, so whatever
+        # result event the normalizer manufactured afterwards (Codex and
+        # Antigravity emit one even for a stream that just stopped)
+        # describes the stop, not the answer: the bound that fired is
+        # the cause, and a nonzero exit or an empty text is its echo.
+        return _fdictDiagnoseEmptyResult(
+            "resultEventCarriedNoText", listEvents, dictResultEvent,
+            dictExecution)
     if dictResultEvent.get("is_error"):
         # The CLI marked this result a FAILURE: the text is its error
         # message, never a malformed answer. Running the validator over
@@ -323,8 +332,24 @@ def fdictExtractStructuredResult(listEvents, dictExecution=None):
             "sCliErrorText": sResultText[:500],
             "bResultEventReportedError": True,
             "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
+            **_fdictDescribeExecutionFacts(dictExecution),
         }
+    if not sResultText.strip():
+        # A genuinely empty completion: the CLI said it finished and
+        # carried no text. Left bare, the engine filed it as fifteen
+        # missing schema fields for a participant that answered nothing.
+        return _fdictDiagnoseEmptyResult(
+            "resultEventCarriedNoText", listEvents, dictResultEvent,
+            dictExecution)
     return {"sRawResultText": sResultText}
+
+
+def _fbExecutionWasKilledAtABound(dictExecution):
+    """Return True when the gateway destroyed the turn at one of its bounds."""
+    dictRun = dictExecution or {}
+    return any(dictRun.get(sFlag) for sFlag in (
+        "bWallClockExceeded", "bOutputCapExceeded", "bOomKilled",
+        "bStalled"))
 
 
 def fsClassifyErrorResultShape(sErrorText):
@@ -469,6 +494,18 @@ def _fdictDiagnoseEmptyResult(sReason, listEvents, dictResultEvent,
         "dictEventTypeCounts": dictTally,
         "bResultEventReportedError": bool(dictResultEvent.get("is_error")),
         "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),
+        **_fdictDescribeExecutionFacts(dictExecution),
+    }
+
+
+def _fdictDescribeExecutionFacts(dictExecution):
+    """Return what the gateway recorded about how the turn's container ended.
+
+    Metadata only, shared by every empty or failed result so the card
+    that explains one can never be missing a fact another carries.
+    """
+    dictRun = dictExecution or {}
+    return {
         "bWallClockExceeded": bool(dictRun.get("bWallClockExceeded")),
         # The gateway kills on the output cap OR the deadline, and I
         # recorded only the deadline — so a turn killed by the cap
@@ -1149,10 +1186,8 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         # remaining life has moved and the comparison no longer says
         # which clock was in force. A deadline kill is then attributed
         # to the bound that actually caused it.
-        bBudgetCameFromLoginExpiry = (
-            self.fWallClockSeconds is not None
-            and fEffectiveWallClock is not None
-            and fEffectiveWallClock < self.fWallClockSeconds)
+        bBudgetCameFromLoginExpiry = self._fbBudgetCameFromLoginExpiry(
+            fEffectiveWallClock)
         try:
             self._dictTurnExecution = await asyncio.to_thread(
                 agentCouncilDockerGateway.fdictExecuteBoundedTurn,
@@ -1169,6 +1204,18 @@ class ClaudeRunnerConnection(CouncilProviderConnection):
         except BaseException:
             await self._fnDestroyHandleAfterFailure()
             raise
+
+    def _fbBudgetCameFromLoginExpiry(self, fEffectiveWallClock):
+        """Return True when the login's remaining life shortened this turn.
+
+        Read BEFORE the turn runs by every provider, because afterwards
+        the login's remaining life has moved and the comparison no
+        longer says which clock was in force.
+        """
+        return (
+            self.fWallClockSeconds is not None
+            and fEffectiveWallClock is not None
+            and fEffectiveWallClock < self.fWallClockSeconds)
 
     async def fiterStreamNormalizedEvents(self):
         """Yield the normalized events parsed from the CLI stream."""

@@ -25,6 +25,7 @@ The mixin reads ``self.dictCampaign`` and calls the engine's
 concrete engine through the method-resolution order.
 """
 
+import asyncio
 import copy
 
 from .agentCouncilCampaign import (
@@ -39,7 +40,7 @@ __all__ = ["EvidenceDisciplineMixin"]
 class EvidenceDisciplineMixin:
     """Settle a turn's confirmed evidence claims against the ledger."""
 
-    def _fnProcessEvidenceClaims(self, dictTurnRecord):
+    async def _fnProcessEvidenceClaims(self, dictTurnRecord):
         bReadOnly = (self.dictCampaign["dictSettings"][
             "sExecutionPermission"] == S_EXECUTION_READ_ONLY)
         for dictClaim in dictTurnRecord["dictResult"].get(
@@ -51,7 +52,7 @@ class EvidenceDisciplineMixin:
             if bReadOnly:
                 self._fnRevertClaim(dictClaim, "readOnlyCouncil")
             elif dictClaim.get("sStateForm") == "baseline":
-                self._fnRecordBaselineClaim(dictClaim)
+                await self._fnRecordBaselineClaim(dictClaim)
             elif dictClaim.get("sStateForm") == "modifiedState":
                 self._fnRecordModifiedStateClaim(dictClaim)
             else:
@@ -61,12 +62,16 @@ class EvidenceDisciplineMixin:
         self.dictCampaign["iClaimCounter"] += 1
         return f"claim-{self.dictCampaign['iClaimCounter']}"
 
-    def _fnRecordBaselineClaim(self, dictClaim):
+    async def _fnRecordBaselineClaim(self, dictClaim):
         """Baseline confirmation is server-driven (section 9.6): the
         engine runs the supporting command through the baseline-evidence
-        executor seam, never trusting a runner's possibly-mutated copy."""
+        executor seam, never trusting a runner's possibly-mutated copy.
+        The command is model-supplied and runs in a container, so the
+        executor is awaited on a worker thread under the campaign's
+        turn wall clock; on the event loop it froze every route."""
         try:
-            dictExecution = self.fdictExecuteBaselineEvidence(
+            dictExecution = await asyncio.to_thread(
+                self.fdictExecuteBaselineEvidence,
                 {"sCommandText": dictClaim.get("sCommandText", "")})
         except Exception as error:
             self._fnRevertClaim(dictClaim, f"baselineExecutorFailed: {error}")

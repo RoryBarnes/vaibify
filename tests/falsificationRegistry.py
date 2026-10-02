@@ -3095,6 +3095,7 @@ def _fdictEntry(sRel):
         old="""            _fnUndoOrRecordSplit(
                 connectionDocker, sContainerId, sRepo, dictWorkflow,
                 iStepIndex, dictPlan, dictReport, errorCascade,
+                filesRepo, sWorkflowPath,
             )
             raise""",
         new='            raise',
@@ -4123,10 +4124,10 @@ def _fdictEntry(sRel):
         old='''    def fbGuardedWorkLive(sName):
         return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            or fbPipelineRunning(sName)
         )''',
         new='''    def fbGuardedWorkLive(sName):
-        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
+        return fbPipelineRunning(sName)''',
     ),
     # Case 38 (holder half): neutralizing the holder comparison admits
     # any holder under a merely-present record.
@@ -4673,10 +4674,10 @@ def _fdictEntry(sRel):
         old='''    def fbGuardedWorkLive(sName):
         return (
             commitCarrier.fbContainerHasLiveMutationWork(app.state, sName)
-            or _fbOwnedNamePipelineRunning(app, dictCtx, sName)
+            or fbPipelineRunning(sName)
         )''',
         new='''    def fbGuardedWorkLive(sName):
-        return _fbOwnedNamePipelineRunning(app, dictCtx, sName)''',
+        return fbPipelineRunning(sName)''',
     ),
     # Case 20, slice-5 half (an admitted agent request pins the record
     # for its FULL duration through the in-flight bracket):
@@ -4832,14 +4833,14 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testOrphanTransition.py::testPipelineFrameFromARevokedSessionIsRefusedNotDispatched',
         source='vaibify/gui/pipelineServer.py',
-        old='''            if fbFrameCredentialStillActive is not None and (
-                not fbFrameCredentialStillActive()
-            ):
-                await websocket.close(code=4401)
-                return''',
-        new='''            if False:
-                await websocket.close(code=4401)
-                return''',
+        old='''        if fbFrameCredentialStillActive is not None and (
+            not fbFrameCredentialStillActive()
+        ):
+            await websocket.close(code=4401)
+            return''',
+        new='''        if False:
+            await websocket.close(code=4401)
+            return''',
     ),
     # The §5 per-frame backstop, terminal lane (a revoked session's
     # keystroke never reaches the container):
@@ -6061,18 +6062,18 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '                await fnCallback(\n'
-            '                    _fdictBusyRefusalEvent(\n'
-            '                        sAction, dictRequest, sBusyWork,\n'
-            '                    ),\n'
-            '                )\n'
+            '            await fnCallback(\n'
+            '                _fdictBusyRefusalEvent(\n'
+            '                    sAction, dictRequest, sBusyWork,\n'
+            '                ),\n'
+            '            )\n'
         ),
         new=(
-            '                await fnCallback(\n'
-            '                    _fdictBusyRefusalEvent(\n'
-            '                        sAction, dictRequest,\n'
-            '                    ),\n'
-            '                )\n'
+            '            await fnCallback(\n'
+            '                _fdictBusyRefusalEvent(\n'
+            '                    sAction, dictRequest,\n'
+            '                ),\n'
+            '            )\n'
         ),
     ),
 
@@ -8506,12 +8507,12 @@ def _fdictEntry(sRel):
         old=(
             '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
             '    with _ffileOpenRegistryLock():\n'
-            '        dictRegistry = fdictLoadRegistry()\n'
+            '        dictRegistry = _fdictLoadRegistryForUpdate()\n'
             '        fnMutateRegistry(dictRegistry)\n'
         ),
         new=(
             '    os.makedirs(_S_REGISTRY_DIRECTORY, exist_ok=True)\n'
-            '    dictRegistry = fdictLoadRegistry()\n'
+            '    dictRegistry = _fdictLoadRegistryForUpdate()\n'
             '    with _ffileOpenRegistryLock():\n'
             '        fnMutateRegistry(dictRegistry)\n'
         ),
@@ -10847,9 +10848,9 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '            if dictMisdirectedRefusal is not None:\n'
-            '                await fnCallback(dictMisdirectedRefusal)\n'
-            '                continue\n'
+            '        if dictMisdirectedRefusal is not None:\n'
+            '            await fnCallback(dictMisdirectedRefusal)\n'
+            '            continue\n'
         ),
         new='',
     ),
@@ -12039,7 +12040,8 @@ def _fdictEntry(sRel):
         # edit the reload detector accepted mid-run.
         old=(
             '    if sWorkflowPath:\n'
-            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
             '            connectionDocker, sContainerId, dictState,'
             ' dictWorkflow,\n'
             '            sWorkflowPath,\n'
@@ -12053,7 +12055,8 @@ def _fdictEntry(sRel):
             '            _json.dumps(dictWorkflow, indent=2)'
             '.encode("utf-8"),\n'
             '        )\n'
-            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
             '            connectionDocker, sContainerId, dictState,'
             ' dictWorkflow,\n'
             '            sWorkflowPath,\n'
@@ -12227,14 +12230,14 @@ def _fdictEntry(sRel):
         # object captured at socket accept, so every dispatch after a
         # reload-detector rebind runs superseded commands.
         old=(
-            '            dictWorkflowBound = dictWorkflow\n'
-            '            if fdictGetLiveWorkflow is not None:\n'
-            '                dictWorkflowBound = (\n'
-            '                    fdictGetLiveWorkflow() or dictWorkflow\n'
-            '                )\n'
+            '        dictWorkflowBound = dictWorkflow\n'
+            '        if fdictGetLiveWorkflow is not None:\n'
+            '            dictWorkflowBound = (\n'
+            '                fdictGetLiveWorkflow() or dictWorkflow\n'
+            '            )\n'
         ),
         new=(
-            '            dictWorkflowBound = dictWorkflow\n'
+            '        dictWorkflowBound = dictWorkflow\n'
         ),
     ),
     Falsification(
@@ -15009,10 +15012,10 @@ def _fdictEntry(sRel):
         # busy for the whole network round-trip and the researcher's
         # own Level 3 verification is refused -- which is what shipped.
         source='vaibify/gui/routes/remoteRefreshRoutes.py',
-        old='    asyncio.create_task(_fnRunRefreshWorker(\n',
+        old='    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n',
         new=(
             '    _ = commitCarrier.fdictLaunchDurableTask\n'
-            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+            '    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n'
         ),
     ),
     Falsification(
@@ -20044,13 +20047,12 @@ def _fdictEntry(sRel):
         # the bare guard returns: this function's own write satisfies it,
         # so the first resolution wins for the life of the hub process
         old=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '    if os.environ.get("DOCKER_HOST") and not'
+            ' fbDockerHostIsExportedByVaibify():\n'
             '        return\n'
         ),
         new=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting:\n'
+            '    if os.environ.get("DOCKER_HOST"):\n'
             '        return\n'
         ),
     ),
@@ -20063,13 +20065,12 @@ def _fdictEntry(sRel):
         # the other direction: re-reading becomes re-resolving always,
         # silently redirecting a researcher's deliberate DOCKER_HOST
         old=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    if sExisting and sExisting != _sDockerHostWrittenByVaibify:\n'
+            '    if os.environ.get("DOCKER_HOST") and not'
+            ' fbDockerHostIsExportedByVaibify():\n'
             '        return\n'
         ),
         new=(
-            '    sExisting = os.environ.get("DOCKER_HOST")\n'
-            '    del sExisting\n'
+            '    pass\n'
         ),
     ),
     Falsification(
@@ -22623,7 +22624,7 @@ def _fdictEntry(sRel):
         ),
         # a reproduction job's stamp is treated as a vanished container
         source='vaibify/docker/disposableContainer.py',
-        old='    if len(sStamp) < 12:\n        return False\n',
+        old='    if len(sStamp) != I_DOCKER_CONTAINER_ID_LENGTH:\n        return False\n',
         new='    if not sStamp:\n        return False\n    return True\n',
     ),
     Falsification(
@@ -23405,8 +23406,8 @@ def _fdictEntry(sRel):
             'testAnotherProjectsRunIsAnnouncedBeforeAnythingStarts'
         ),
         source='vaibify/gui/pipelineServer.py',
-        old='            if dictConcurrentNotice and not dictRequest.get(\n',
-        new='            if False and dictConcurrentNotice and not dictRequest.get(\n',
+        old='        if dictConcurrentNotice and not dictRequest.get(\n',
+        new='        if False and dictConcurrentNotice and not dictRequest.get(\n',
     ),
     Falsification(
         nodeid=(
@@ -25031,5 +25032,733 @@ def _fdictEntry(sRel):
         source='vaibify/docker/containerManager.py',
         old='            "--user", S_DISPOSABLE_CONTAINER_USER,\n',
         new='            "--user", "0",\n',
+    ),
+    # --- An unreadable project registry is refused, never replaced ---
+    Falsification(
+        nodeid='tests/testRegistryManager.py::testRegistrationRefusesToReplaceAnUnparseableRegistry',
+        source='vaibify/config/registryManager.py',
+        old='        dictRegistry = _fdictLoadRegistryForUpdate()\n        fnMutateRegistry(dictRegistry)',
+        new='        dictRegistry = fdictLoadRegistry()\n        fnMutateRegistry(dictRegistry)',
+    ),
+    Falsification(
+        nodeid='tests/testRegistryManager.py::testSavingRefusesToReplaceAnUnparseableRegistry',
+        source='vaibify/config/registryManager.py',
+        old='        _fdictLoadRegistryForUpdate()\n        _fnWriteRegistryAtomic(dictRegistry)',
+        new='        _fnWriteRegistryAtomic(dictRegistry)',
+    ),
+    # --- A holder's claim and a process start are UTC instants ---
+    Falsification(
+        nodeid='tests/testProcessLiveness.py::testAZoneChangeBetweenClaimAndCheckDoesNotMakeALiveHolderLookRecycled',
+        source='vaibify/config/processLiveness.py',
+        old='    return datetime.datetime.now(datetime.timezone.utc).isoformat()\n',
+        new='    return datetime.datetime.now().isoformat()\n',
+    ),
+    Falsification(
+        nodeid='tests/testProcessLiveness.py::testTheStartClockDoesNotMoveWithTheLocalZone',
+        source='vaibify/config/processLiveness.py',
+        old='    datetimeNow = datetime.datetime.now(datetime.timezone.utc)\n    return datetimeNow - ',
+        new='    datetimeNow = datetime.datetime.now().replace(\n        tzinfo=datetime.timezone.utc)\n    return datetimeNow - ',
+    ),
+    # --- A pipeline run's container I/O and the idle watchdog's daemon
+    # probes run on worker threads, never on the event loop ---
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightChecksRunOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    return await asyncio.to_thread(\n'
+            '        _flistValidateStepsBlocking, connectionDocker, sContainerId,\n'
+            '        dictWorkflow, dictVariables, iStartStep, setRunStepIndices,\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _flistValidateStepsBlocking(\n'
+            '        connectionDocker, sContainerId,\n'
+            '        dictWorkflow, dictVariables, iStartStep, setRunStepIndices,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightWarningsAreCollectedOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    listPreflightWarnings = await asyncio.to_thread(\n'
+            '        _flistCollectPreflightWarnings,\n'
+            '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+        new=(
+            '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
+            '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheRunTeardownJoinsAreOffTheEventLoop',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '        await asyncio.to_thread(\n'
+            '            _fnJoinRunBackgroundThreads, threadHeartbeat, stateWriter.fnStop,\n'
+            '        )\n'
+        ),
+        new=(
+            '        _fnJoinRunBackgroundThreads(threadHeartbeat, stateWriter.fnStop)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheRunTeardownJoinsAreBounded',
+        source='vaibify/gui/pipelineRunner.py',
+        old=(
+            '    fnStopWriter(fJoinTimeoutSeconds=F_BACKGROUND_THREAD_JOIN_SECONDS)\n'
+        ),
+        new=(
+            '    fnStopWriter()\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheCompletionMergeRunsOffTheEventLoop',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '        dictOutcome = await asyncio.to_thread(\n'
+            '            _fdictPersistRunResultsToState,\n'
+            '            connectionDocker, sContainerId, dictState, dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+        new=(
+            '        dictOutcome = _fdictPersistRunResultsToState(\n'
+            '            connectionDocker, sContainerId, dictState, dictWorkflow,\n'
+            '            sWorkflowPath,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testPipelineRunnerOffLoop.py::testTheAcknowledgedTerminalFlushRunsOffTheEventLoop',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '        bTerminalFlushed = await asyncio.to_thread(\n'
+            '            stateWriter.fbFlushTerminalStateAcknowledged, dictCompleted,\n'
+            '        )\n'
+        ),
+        new=(
+            '        bTerminalFlushed = stateWriter.fbFlushTerminalStateAcknowledged(\n'
+            '            dictCompleted,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheOwnedPipelineProbeRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            dictPipelineRunning = await asyncio.to_thread(\n'
+            '                _fdictSnapshotPipelineRunningByOwnedName, app, dictCtx,\n'
+            '            )\n'
+        ),
+        new=(
+            '            dictPipelineRunning = (\n'
+            '                _fdictSnapshotPipelineRunningByOwnedName(app, dictCtx)\n'
+            '            )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheSleepPreventionSweepRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            await asyncio.to_thread(\n'
+            '                _fnSweepSleepPreventionForApp, app, dictCtx,\n'
+            '            )\n'
+        ),
+        new=(
+            '            _fnSweepSleepPreventionForApp(app, dictCtx)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testTheSelfExitDecisionRunsOffTheEventLoop',
+        source='vaibify/gui/serverLifespan.py',
+        old=(
+            '            if await asyncio.to_thread(\n'
+            '                pipelineServer._fbHubShouldSelfExit,\n'
+            '                app, dictCtx, fLiveTimeout,\n'
+            '            ):\n'
+        ),
+        new=(
+            '            if pipelineServer._fbHubShouldSelfExit(\n'
+            '                app, dictCtx, fLiveTimeout,\n'
+            '            ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testIdleWatchdogOffLoop.py::testAnOwnerMissingFromTheSnapshotIsNotReaped',
+        source='vaibify/gui/serverLifespan.py',
+        old='        return dictPipelineRunningByName.get(sName, True)\n',
+        new='        return dictPipelineRunningByName.get(sName, False)\n',
+    ),
+    # --- The council's baseline-confirmation command runs on a worker
+    # thread under the campaign's wall clock ---
+    Falsification(
+        nodeid='tests/testCouncilBaselineOffLoop.py::testTheBaselineCommandRunsWhileTheEventLoopKeepsTurning',
+        source='vaibify/gui/agentCouncilEvidence.py',
+        old=(
+            '            dictExecution = await asyncio.to_thread(\n'
+            '                self.fdictExecuteBaselineEvidence,\n'
+            '                {"sCommandText": dictClaim.get("sCommandText", "")})\n'
+        ),
+        new=(
+            '            dictExecution = self.fdictExecuteBaselineEvidence(\n'
+            '                {"sCommandText": dictClaim.get("sCommandText", "")})\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCouncilBaselineOffLoop.py::testTheBaselineExecutorRunsUnderTheCampaignsTurnWallClock',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '                fWallClockSeconds=_ffCampaignTurnWallClockSeconds(\n'
+            '                    dictRuntime)))\n'
+        ),
+        new=(
+            '                ))\n'
+        ),
+    ),
+    # --- A council runner is created with the limits its snapshot was
+    # admitted against, not the floor ---
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testAParticipantRunnerIsCreatedWithTheDaemonsLimits',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        # smaller than the snapshot a large daemon admits.\n'
+            '        dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),\n'
+        ),
+        new='        # smaller than the snapshot a large daemon admits.\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testTheBaselineSandboxIsCreatedWithTheDaemonsLimits',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '                dictLimits=_fdictResolveRuntimeRunnerLimits(dictRuntime),\n'
+            '                fWallClockSeconds='
+        ),
+        new='                fWallClockSeconds=',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilRunnerLimitsFollowTheDaemon.py::testTheChairbotChatRunnerIsCreatedWithTheDaemonsLimitsAndCost',
+        source='vaibify/gui/agentCouncilChat.py',
+        old='        dictLimits, dictEgress["sNetworkName"], False,',
+        new='        None, dictEgress["sNetworkName"], False,',
+    ),
+    # --- Retention deletes the oldest settled campaign: ordered by
+    # last checkpoint after a reload, and never a live or accepted one ---
+    Falsification(
+        nodeid='tests/testCouncilStoreRetention.py::testAfterARestartTheOldestCheckpointIsEvictedNotTheFirstAlphabetically',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='    for sCampaignId in _flistCampaignIdsOldestFirst(dictStore):\n',
+        new='    for sCampaignId in sorted(os.listdir(sRoot)):\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilStoreRetention.py::testRetentionNeverDeletesALiveOrAcceptedCampaign',
+        source='vaibify/gui/agentCouncilStore.py',
+        old='        if _fbCampaignMayBeEvicted(dictStore, sCampaignId):\n',
+        new='        if True:\n',
+    ),
+    # --- An interactive pause belongs to its run and survives a reconnect ---
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAResumeOnAReconnectedSocketReachesThePausedRun',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    dictInteractive = fdictInteractiveContextForContainer(\n'
+            '        sContainerId, dictRequest.get("sRunId", ""),\n'
+            '    )\n'
+            '    if dictInteractive is None:\n'
+        ),
+        new=(
+            '    dictInteractive = None\n'
+            '    if dictInteractive is None:\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAReconnectedSocketIsToldWhatTheRunIsWaitingFor',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '    if dictWaiting is not None:\n'
+            '        await fnCallback(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        await fnCallback(\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAPausedRunStaysReachableAfterEverySocketHasClosed',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            taskRun.add_done_callback(\n'
+            '                lambda taskDone: _fnUnpublishInteractiveContext(\n'
+            '                    sContainerId, dictRunInteractive,\n'
+            '                )\n'
+            '            )\n'
+        ),
+        new=(
+            '            _fnUnpublishInteractiveContext(\n'
+            '                sContainerId, dictRunInteractive,\n'
+            '            )\n'
+            '            taskRun.add_done_callback(lambda taskDone: None)\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testARunsContextIsDroppedWhenItsRunEnds',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '            taskRun.add_done_callback(\n'
+            '                lambda taskDone: _fnUnpublishInteractiveContext(\n'
+            '                    sContainerId, dictRunInteractive,\n'
+            '                )\n'
+            '            )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testTwoPausedRunsInOneContainerAreAnsweredByRunId',
+        source='vaibify/gui/pipelineServer.py',
+        old='    )[dictInteractive["sRunId"]] = dictInteractive\n',
+        new='    )[""] = dictInteractive\n',
+    ),
+    Falsification(
+        nodeid='tests/testInteractivePauseSurvivesReconnect.py::testAContextWaitsOnlyWhileItsPauseIsUnanswered',
+        source='vaibify/gui/interactiveSteps.py',
+        old=(
+            '    if dictInteractive is not None:\n'
+            '        dictInteractive["dictPendingEvent"] = None\n'
+        ),
+        new=(
+            '    if dictInteractive is not None:\n'
+            '        pass\n'
+        ),
+    ),
+    # --- A hub killed mid-phase leaves the campaign retryable ---
+    Falsification(
+        nodeid='tests/testCouncilCrashRecovery.py::testACampaignKilledMidPhaseIsRetryableAfterTheRestart',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        _fnSettleRunningAttemptAsInterrupted(dictCampaign)\n'
+            '        agentCouncilCampaign.fnTransitionCampaignState(\n'
+        ),
+        new='        agentCouncilCampaign.fnTransitionCampaignState(\n',
+    ),
+    # --- vaibify's own DOCKER_HOST export is never fed back to the CLI ---
+    Falsification(
+        nodeid='tests/testDockerHostContextRoundTrip.py::testARetryAfterAContextSwitchSeesTheNewEndpoint',
+        source='vaibify/docker/dockerContext.py',
+        old=(
+            '    if fbDockerHostIsExportedByVaibify():\n'
+            '        dictEnvironment.pop("DOCKER_HOST")\n'
+        ),
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testDockerHostContextRoundTrip.py::testTheReportedEndpointNamesItsRealSource',
+        source='vaibify/docker/dockerContext.py',
+        old=(
+            '    if sHost and not fbDockerHostIsExportedByVaibify():\n'
+            '        return sHost + " (from DOCKER_HOST)"\n'
+        ),
+        new=(
+            '    if sHost:\n'
+            '        return sHost + " (from DOCKER_HOST)"\n'
+        ),
+    ),
+    # --- A spawned vaibify window signs in; a failed one leaves no hub ---
+    Falsification(
+        nodeid='tests/testSpawnedWindowSignsIn.py::testTheSpawnedWindowsUrlSignsInToTheRealChildHub',
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old='    return f"http://127.0.0.1:{iPort}/#bootstrap={sCapability}"\n',
+        new='    return f"http://127.0.0.1:{iPort}"\n',
+    ),
+    Falsification(
+        nodeid='tests/testSpawnedWindowSignsIn.py::testAChildThatNeverBecomesReadyIsStoppedAndRefused',
+        source='vaibify/gui/routes/sessionRoutes.py',
+        old=(
+            '    if not sCapability:\n'
+            '        _fnReapSpawnedChild(listChildren, processChild)\n'
+        ),
+        new='    if not sCapability:\n',
+    ),
+    # --- A task nobody awaits is held until it ends ---
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testTheDependencyScanTaskIsKept',
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        fnKeepTaskReferenced(loop.create_task(\n'
+            '            _fnScanDependenciesBackground(\n'
+            '                dictCtx, sContainerId, dictWorkflow,\n'
+            '            )\n'
+            '        ))\n'
+        ),
+        new=(
+            '        loop.create_task(\n'
+            '            _fnScanDependenciesBackground(\n'
+            '                dictCtx, sContainerId, dictWorkflow,\n'
+            '            )\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testTheRemoteRefreshTaskIsKept',
+        source='vaibify/gui/routes/remoteRefreshRoutes.py',
+        old=(
+            '    fnKeepTaskReferenced(asyncio.create_task(_fnRunRefreshWorker(\n'
+            '        dictCtx, dictCarrier, dictWorkflow, filesRepo, listServices,\n'
+            '    )))\n'
+        ),
+        new=(
+            '    asyncio.create_task(_fnRunRefreshWorker(\n'
+            '        dictCtx, dictCarrier, dictWorkflow, filesRepo, listServices,\n'
+            '    ))\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testBackgroundTasksAreReferenced.py::testAFencedSocketsCloseTaskIsKept',
+        source='vaibify/gui/sessionLifecycle.py',
+        old=(
+            '    fnKeepTaskReferenced(\n'
+            '        loopRunning.create_task(_fnCloseDetachedConnections(listConnections)))\n'
+        ),
+        new=(
+            '    loopRunning.create_task(_fnCloseDetachedConnections(listConnections))\n'
+        ),
+    ),
+    # --- The council's egress network is released after its runners drain ---
+    Falsification(
+        nodeid='tests/testCouncilShutdownOrder.py::testTheEgressBoundaryIsReleasedAfterTheRunnersDrain',
+        source='vaibify/gui/appFactory.py',
+        old='                dictControllerState, bReleaseRunnerAccess=False)\n',
+        new='                dictControllerState)\n',
+    ),
+    # --- The disposable reclaim adjudicates ids, never names ---
+    Falsification(
+        nodeid='tests/testReclaimNeverTreatsANameAsAnId.py::testAHexNameIsNotAContainerId',
+        source='vaibify/docker/disposableContainer.py',
+        old=(
+            '    if len(sStamp) != I_DOCKER_CONTAINER_ID_LENGTH:\n'
+            '        return False\n'
+        ),
+        new=(
+            '    if len(sStamp) < 12:\n'
+            '        return False\n'
+        ),
+    ),
+    # --- An empty read on a readable PTY master is the shell's EOF ---
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testAReadableEmptyReadIsTheShellsEof',
+        source='vaibify/gui/terminalSession.py',
+        old=(
+            '        except OSError:\n'
+            '            baOutput = b""\n'
+            '        if not baOutput:\n'
+            '            self._bRunning = False\n'
+            '        return baOutput\n'
+        ),
+        new=(
+            '        except OSError:\n'
+            '            self._bRunning = False\n'
+            '            return b""\n'
+            '        return baOutput\n'
+        ),
+    ),
+    # --- Codex and Antigravity carry the real reason a turn ended ---
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testATurnTheKernelStoppedForMemorySaysSo',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='    if _fbExecutionWasKilledAtABound(dictExecution):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testANonzeroExitCarriesItsExitCodeAndAcquitsEveryBound',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old=(
+            '            "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),\n'
+            '            **_fdictDescribeExecutionFacts(dictExecution),\n'
+        ),
+        new=(
+            '            "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testAGenuinelyEmptyCompletionIsNamedNotFiledAsMissingFields',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='    if not sResultText.strip():\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testACodexTurnCutShortByTheLoginNamesTheLogin',
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        old=(
+            '            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (\n'
+            '                bBudgetCameFromLoginExpiry)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testAnAntigravityTurnCutShortByTheLoginNamesTheLogin',
+        source='vaibify/gui/agentCouncilAntigravityProvider.py',
+        old=(
+            '            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (\n'
+            '                bBudgetCameFromLoginExpiry)\n'
+        ),
+        new='',
+    ),
+    # --- A directory copied to a path that does not exist lands at that path ---
+    Falsification(
+        nodeid='tests/testCoverageDockerConnectionTransfers.py::testCopyDirectoryToANewPathLandsAtThatPath',
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '                sArchiveName=(\n'
+            '                    None if bDestinationIsDirectory\n'
+            '                    else posixpath.basename(sDestinationPath)),\n'
+        ),
+        new='',
+    ),
+    # --- The data loaders run in a test or CLI process, never in the hub ---
+    Falsification(
+        nodeid='tests/testDataLoadersStayOutOfTheHub.py::testNoHubModuleCallsADataLoader',
+        source='vaibify/gui/templateManager.py',
+        old='    from .dataLoaders import fsReadLoaderSource\n',
+        new='    from .dataLoaders import fsReadLoaderSource, ffLoadValue\n',
+    ),
+    # --- Every text file and captured command output names its encoding ---
+    Falsification(
+        nodeid='tests/testTextIoNamesItsEncoding.py::testNoTextFileOrCommandOutputIsDecodedInTheProcessLocale',
+        source='vaibify/config/registryManager.py',
+        old='    with open(_S_REGISTRY_PATH, "r", encoding="utf-8") as fileHandle:\n',
+        new='    with open(_S_REGISTRY_PATH, "r") as fileHandle:\n',
+    ),
+    # --- The setup wizard keeps what it does not show and reports what it cannot read ---
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingThroughTheWizardKeepsEveryKeyItDoesNotShow',
+        source='vaibify/install/setupServer.py',
+        old=(
+            '    dictMerged = copy.deepcopy(dictExisting)\n'
+            '    for sKey in T_WIZARD_SCALAR_KEYS:\n'
+        ),
+        new=(
+            '    dictMerged = {}\n'
+            '    for sKey in T_WIZARD_SCALAR_KEYS:\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testASavedRepositoryKeepsItsBranchWithoutAskingTheRemote',
+        source='vaibify/install/setupServer.py',
+        old='        copy.deepcopy(dictExistingByUrl[sUrl]) if sUrl in dictExistingByUrl\n',
+        new='        copy.deepcopy(dictExistingByUrl[sUrl]) if False\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testAConfigThatCannotBeLoadedIsReportedNotRenderedAsEmpty',
+        source='vaibify/install/setupServer.py',
+        old='            raise HTTPException(422, {"sMessage": (\n',
+        new='            return {}\n            raise HTTPException(422, {"sMessage": (\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingOverUnreadableYamlNeedsTheResearchersConfirmation',
+        source='vaibify/install/setupServer.py',
+        old='    if dictExisting is None and not request.bOverwriteUnreadable:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testAConfigThatCannotBeLoadedIsReportedNotShownAsAnEmptyForm',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old=(
+            '                fnShowToast(await fsReadErrorMessage(response), "error",\n'
+            '                    I_UNLOADABLE_NOTICE_MILLISECONDS);\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testARefusedSaveShowsTheServersWordsNotAnObject',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old=(
+            '        if (jsonDetail && jsonDetail.listErrors) {\n'
+            '            return jsonDetail.listErrors.join("; ");\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testSavingOverAnUnreadableFileAsksFirstAndHonorsNo',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='        if (response.status !== 409) return response;\n',
+        new='        return response;\n',
+    ),
+    # --- A run's log reaches the container whatever its size ---
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testALogLargerThanOneExecArgumentIsWrittenInChunksThatEachFit',
+        source='vaibify/gui/pipelineLogger.py',
+        old='I_LOG_APPEND_CHUNK_BYTES = I_EXEC_ARGUMENT_BUDGET_BYTES * 3 // 4 - 1024\n',
+        new='I_LOG_APPEND_CHUNK_BYTES = 10 ** 9\n',
+    ),
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testAFailedAppendKeepsTheUnwrittenLinesForTheNextFlush',
+        source='vaibify/gui/pipelineLogger.py',
+        old='    del listLogLines[:iWrittenLines]\n',
+        new='    listLogLines.clear()\n',
+    ),
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testAHostLegFailureDoesNotEndTheRunAndKeepsTheLines',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '    except OSError as error:\n'
+            '        logging.getLogger("vaibify").warning(\n'
+            '            "log append failed: %s", error,\n'
+            '        )\n'
+            '        return False\n'
+        ),
+        new=(
+            '    except OSError as error:\n'
+            '        raise\n'
+        ),
+    ),
+    # --- A step rename reaches every record that names the old directory ---
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testTestDeclarationPathsFollowTheRenamedDirectory',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnRewriteTestDeclarationPaths(\n        dictStep, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],\n    )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testSyncRecordsFollowTheRenamedDirectory',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnRewriteSyncStatusKeys(\n        dictWorkflow, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],\n    )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testAFailedLaterStageRestoresTheMarkerUnderTheOldName',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnUndoMarkerMove(filesRepo, dictPlan, sWorkflowPath, dictReport)\n',
+        new='',
+    ),
+    # --- Symbolic cross-step references get the checks the positional form had ---
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testAMissingSymbolicDependencyStopsTheStepBeforeItRuns',
+        source='vaibify/gui/pipelineRunner.py',
+        old='r"\\{(Step\\d+\\.\\w+|step:[^.}\\s]+\\.\\w+)\\}", sCommand,',
+        new='r"\\{(Step\\d+\\.\\w+)\\}", sCommand,',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testSiblingDirectoriesWithTheSameBasenameKeepSeparateTokens',
+        source='vaibify/gui/pipelineUtils.py',
+        old='        if dictQualifiedCounts[sQualified] > 1:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testAnIdOutsideTheKebabAlphabetStillYieldsADependencyEdge',
+        source='vaibify/gui/workflowManager.py',
+        old='r"\\{step:([^.}\\s]+)\\.", sText',
+        new='r"\\{step:([a-z0-9][a-z0-9-]*)\\.", sText',
+    ),
+    Falsification(
+        nodeid='tests/testSymbolicStepReferencesAreChecked.py::testRenamingAStepIdInvalidatesTheDependencyGraphCache',
+        source='vaibify/gui/workflowManager.py',
+        old='        dictRelevant["sStepId"] = dictStep.get("sStepId", "")\n',
+        new='',
+    ),
+    # --- A run frame naming a step that cannot resolve is refused, not fatal ---
+    Falsification(
+        nodeid='tests/testRunFrameWithABadStepIsRefusedNotFatal.py::testAFrameNamingAnUnresolvableStepIsRefusedAndTheSocketSurvives',
+        source='vaibify/gui/pipelineServer.py',
+        old='    except (ValueError, TypeError) as error:\n        return {\n            "sType": "runRefused",\n            "sAction": sAction,',
+        new='    except KeyboardInterrupt as error:\n        return {\n            "sType": "runRefused",\n            "sAction": sAction,',
+    ),
+    Falsification(
+        nodeid='tests/testRunFrameWithABadStepIsRefusedNotFatal.py::testAFrameThatIsNotAJsonObjectIsRefusedAndTheSocketSurvives',
+        source='vaibify/gui/pipelineServer.py',
+        old='    except ValueError:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
+        new='    except KeyboardInterrupt:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
+    ),
+    # --- Dashboard edges that failed silently or answered the wrong question ---
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testAPathWithAFragmentOrQueryCharacterListsThatDirectory',
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        return String(sPath).split("/").map(encodeURIComponent).join("/");\n',
+        new='        return String(sPath);\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testARepositoryAnswerForAnotherContainerIsNotApplied',
+        source='vaibify/gui/static/scriptPolling.js',
+        old='                if (VaibifyApp.fsGetContainerId() !== sContainerId) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testAnInteractiveFrameSentWhileConnectingIsDeliveredOnOpen',
+        source='vaibify/gui/static/scriptWebSocket.js',
+        old='           in the same queue the open handler flushes. */\n        fnSend(dictMessage);\n',
+        new='           in the same queue the open handler flushes. */\n        _wsPipeline.send(JSON.stringify(dictMessage));\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testPushTellsTheResearcherWhenItsPreCheckFails',
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                "The " + _fsCanonicalServiceLabel(sService) +\n'
+            '                " push could not be opened: " +\n'
+            '                (error && error.message ? error.message : error),\n'
+            '                "error");\n'
+        ),
+        new='            throw error;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_the_report_link_opens_the_report_with_the_pages_credential',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='        _fnOpenAuthenticatedReport(elLink.getAttribute("data-path"));\n',
+        new='',
+    ),
+    # --- A per-remote secret slot name can be staged and mounted ---
+    Falsification(
+        nodeid='tests/testSecretNamesWithSeparatorsCanBeStagedAndMounted.py::testASlotNameWithSeparatorsIsStagedToAPrivateFile',
+        source='vaibify/config/secretManager.py',
+        old='prefix=f"vc_secret_{sFileNameSafeName}_", suffix=".tmp",',
+        new='prefix=f"vc_secret_{sName}_", suffix=".tmp",',
+    ),
+    Falsification(
+        nodeid='tests/testSecretNamesWithSeparatorsCanBeStagedAndMounted.py::testASlotNameWithAColonMountsAsOneTargetField',
+        source='vaibify/config/secretManager.py',
+        old='    return ["--mount", fileSpecification.getvalue()]',
+        new='    return ["-v", f"{sHostPath}:/run/secrets/{sName}:ro"]',
+    ),
+    # --- A session secret split by a line break is still redacted ---
+    Falsification(
+        nodeid='tests/testTranscriptSanitizerSplitSecrets.py::testASecretSplitByALineBreakIsRedacted',
+        source='vaibify/gui/transcriptSanitizer.py',
+        old='    return sBreak.join(re.escape(sCharacter) for sCharacter in sSecret)\n',
+        new='    return re.escape(sSecret)\n',
+    ),
+    # --- Concurrent writers cannot fork the attribution hash chains ---
+    Falsification(
+        nodeid='tests/testAttributionLogConcurrentAppends.py::testConcurrentEventAppendsKeepEveryRecordInOneChain',
+        source='vaibify/gui/attributionLog.py',
+        old='    with _LOCK_APPEND:\n        listEvents = flistLoadAttributionEvents(filesRepo)\n',
+        new='    if True:\n        listEvents = flistLoadAttributionEvents(filesRepo)\n',
+    ),
+    Falsification(
+        nodeid='tests/testAttributionLogConcurrentAppends.py::testConcurrentFlagAppendsKeepEveryFlagInOneChain',
+        source='vaibify/gui/attributionLog.py',
+        old='    with _LOCK_APPEND:\n        listFlags = flistLoadFlags(filesRepo)\n',
+        new='    if True:\n        listFlags = flistLoadFlags(filesRepo)\n',
+    ),
+    # --- A pipeline check that cannot ask the daemon answers busy ---
+    Falsification(
+        nodeid='tests/testCoverageRoutesBRegistry.py::testRunningPipelineCheckIsBusyWhenNoDaemonCanBeAsked',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if not fbDockerReachable(connectionDocker):\n        return True\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
+        new='    if not fbDockerReachable(connectionDocker):\n        return False\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
+    ),
+    # --- A conversion refused for its archive source changes nothing ---
+    Falsification(
+        nodeid='tests/testRefusedArchiveConversionChangesNothing.py::testARefusedArchiveConversionKeepsTheSessionAndScaffoldsNothing',
+        source='vaibify/gui/registryRoutes.py',
+        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
+        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
+    ),
+    # --- Nothing to reconcile is a success on the live-hub lane too ---
+    Falsification(
+        nodeid='tests/testReconcileNothingToReconcileExitsZero.py::testNothingToReconcileExitsZeroOnTheLiveHubLane',
+        source='vaibify/cli/commandReconcile.py',
+        old='    if not dictRequest:\n        return 0\n',
+        new='    if not dictRequest:\n        return 1\n',
     ),
 ]

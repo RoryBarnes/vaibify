@@ -345,7 +345,7 @@ def _fnRunLockCompile(pathRepo, sInput, listCompilePrefix, dictInstalled=None):
             cwd=str(pathRepo),
             capture_output=True,
             text=True,
-            timeout=120.0,
+            timeout=120.0, encoding="utf-8",
         )
     except FileNotFoundError:
         raise FileNotFoundError(_S_LOCK_TOOL_MISSING_MESSAGE) from None

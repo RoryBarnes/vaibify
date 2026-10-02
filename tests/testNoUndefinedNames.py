@@ -35,21 +35,15 @@ import pyflakes  # noqa: F401 — presence is the point
 
 _RE_LOCATION = re.compile(r":\d+:\d+:? ")
 
-# file -> {message: count}. Frozen 2026-08-29.
+# file -> {message: count}. The budget only falls. The one entry left is
+# a string annotation for a process handle: naming it needs an import of
+# subprocess, which the mutation inventory counts as an undisposed
+# capability acquisition, and a type-only import is not one. The
+# reviewer decides between exempting type-only imports there and
+# registering a typing-only prefix here.
 DICT_SEEDED_UNDEFINED_NAMES = {
-    "vaibify/gui/commitCarrier.py": {
-        "undefined name 'Callable'": 1,
-        "undefined name 'MutationAdmission'": 1,
-        "undefined name 'Task'": 2},
-    "vaibify/gui/containerOwnership.py": {
-        "undefined name 'StartReservation'": 1,
-        "undefined name 'WebSocket'": 1},
     "vaibify/gui/startReservation.py": {
-        "undefined name 'OwnershipIdentity'": 1,
         "undefined name 'Popen'": 1},
-    "vaibify/gui/terminalContainment.py": {
-        "undefined name 'DockerConnection'": 1,
-        "undefined name 'TerminalSession'": 1},
 }
 
 

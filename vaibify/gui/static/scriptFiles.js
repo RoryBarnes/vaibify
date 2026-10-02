@@ -23,7 +23,8 @@ var VaibifyFiles = (function () {
 
         try {
             var listEntries = await VaibifyApi.fdictGet(
-                "/api/files/" + sContainerId + sCurrentPath
+                "/api/files/" + sContainerId +
+                VaibifyUtilities.fsEncodeUrlPath(sCurrentPath)
             );
             fnRenderFileList(listEntries);
             _sRenderedFingerprint = _fsListingFingerprint(listEntries);
@@ -64,7 +65,8 @@ var VaibifyFiles = (function () {
         _bRefreshInFlight = true;
         try {
             var listEntries = await VaibifyApi.fdictGet(
-                "/api/files/" + sContainerId + sCurrentPath
+                "/api/files/" + sContainerId +
+                VaibifyUtilities.fsEncodeUrlPath(sCurrentPath)
             );
             var sFingerprint = _fsListingFingerprint(listEntries);
             if (sFingerprint !== _sRenderedFingerprint) {

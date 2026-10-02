@@ -136,10 +136,13 @@ def testConvertCommandCopiesARasterPlotRatherThanConverting():
 
 
 def testInteractiveContextLookupReturnsOnlyThePublishedEntry(monkeypatch):
-    dictInteractive = {"sMarker": "published"}
+    dictInteractive = {
+        "sRunId": "run-1", "dictPendingEvent": {"sType": "interactivePause"},
+        "iPauseSequence": 1,
+    }
     monkeypatch.setitem(
         pipelineServer.DICT_INTERACTIVE_CONTEXTS_BY_CONTAINER,
-        S_DOCKER_ID, dictInteractive,
+        S_DOCKER_ID, {"run-1": dictInteractive},
     )
     assert pipelineServer.fdictInteractiveContextForContainer(
         S_DOCKER_ID,

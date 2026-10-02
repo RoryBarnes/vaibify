@@ -68,7 +68,7 @@ def fdictDetectDockerRuntime():
         resultContext = subprocess.run(
             ["docker", "context", "ls", "--format",
              "{{.Name}}:{{.Current}}"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
         for sLine in resultContext.stdout.strip().split("\n"):
             if ":true" in sLine.lower():

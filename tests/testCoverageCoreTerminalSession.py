@@ -10,14 +10,13 @@ import fcntl
 import os
 import signal
 import struct
-import sys
 import termios
 import time
 
 import pytest
 
 from vaibify.config import containerLock, operationJournal
-from vaibify.gui import terminalContainment
+from vaibify.gui import terminalContainment, terminalSession
 from vaibify.gui.terminalSession import HostTerminalSession, TerminalSession
 from vaibify.host import hostCancellation, hostScratch
 from vaibify.host.hostConnection import HostConnection
@@ -145,15 +144,35 @@ def testResizeSetsTheWindowSizeOfThePty(sessionHost):
     assert (iRows, iColumns) == (33, 101)
 
 
-@pytest.mark.xfail(
-    sys.platform == "darwin", strict=True, raises=AssertionError,
-    reason=(
-        "BUG (macOS): terminalSession.HostTerminalSession.fbaReadOutput "
-        "expects EIO when the shell exits, but a Darwin PTY master "
-        "answers readable-then-empty (b'') instead, so _bRunning never "
-        "clears and pipelineServer.fnTerminalReadLoop polls forever."
-    ),
-)
+@pytest.mark.falsification
+def testAReadableEmptyReadIsTheShellsEof(sessionHost, monkeypatch):
+    """A master that is readable but yields nothing means the shell is gone.
+
+    A Darwin PTY master answers that way forever once the shell exits,
+    where a Linux one raises ``EIO``. Asserted on both platforms by
+    handing the session exactly the Darwin answer.
+
+    Kills: treating only ``OSError`` as the PTY's EOF, so the relay's
+    read loop polls a finished shell forever.
+    """
+    sessionHost.fnStart()
+    try:
+        iMasterFd = sessionHost._iMasterFd
+        with monkeypatch.context() as monkeypatchRead:
+            monkeypatchRead.setattr(
+                terminalSession.select, "select",
+                lambda listRead, listWrite, listError, fTimeout: (
+                    [iMasterFd], [], []),
+            )
+            monkeypatchRead.setattr(
+                terminalSession.os, "read", lambda iFd, iCount: b"")
+            baOutput = sessionHost.fbaReadOutput()
+        assert baOutput == b""
+        assert sessionHost._bRunning is False
+    finally:
+        sessionHost.fnClose()
+
+
 def testShellExitEndsTheReadLoop(sessionHost):
     """Once the shell exits, reading clears running so the relay stops."""
     sessionHost.fnStart()

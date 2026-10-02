@@ -917,12 +917,17 @@ class StateWriter:
                 self.dictState.update(dictPriorFields)
         return bLanded
 
-    def fnStop(self):
-        """Signal the writer to drain and exit, then join with no timeout."""
+    def fnStop(self, fJoinTimeoutSeconds=None):
+        """Signal the writer to drain and exit, then join it.
+
+        With no timeout the join waits for the drain to finish. A caller
+        that must not wait forever on a wedged container passes a bound;
+        the writer thread is then left to finish on its own.
+        """
         self.eventStop.set()
         self._fnCancelDebounceTimer()
         self.queueWrites.put(_SENTINEL_SHUTDOWN)
-        self.threadWriter.join()
+        self.threadWriter.join(fJoinTimeoutSeconds)
 
     @staticmethod
     def _fbIsTerminalUpdate(dictUpdate):

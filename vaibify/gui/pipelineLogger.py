@@ -17,6 +17,8 @@ import posixpath
 import re
 from datetime import datetime, timezone
 
+from vaibify.docker.execArgumentBudget import I_EXEC_ARGUMENT_BUDGET_BYTES
+
 from . import pipelineState
 from . import workflowManager
 from .pipelineUtils import fsShellQuote
@@ -35,6 +37,11 @@ I_LOG_BYTE_BUDGET = 4 * 1024 * 1024
 # the rest on each fresh run. Older logs are interesting only for
 # postmortem; they should never compete with the active run for disk.
 I_LOG_RETENTION_COUNT = 20
+# One append is one exec argument (the base64 of its text rides inside a
+# shell command), and Linux caps a single argument at 128 KB. Base64
+# makes four bytes of every three, so the raw text of one append is held
+# to three quarters of the shared exec budget less room for the command.
+I_LOG_APPEND_CHUNK_BYTES = I_EXEC_ARGUMENT_BUDGET_BYTES * 3 // 4 - 1024
 
 
 def fsGenerateLogFilename(sWorkflowName):
@@ -131,26 +138,60 @@ async def fnWriteLogToContainer(
 ):
     """Append accumulated log lines to a file in the container.
 
-    Uses ``cat >>`` rather than ``put_archive`` so a transient disk-full
+    Uses an append rather than ``put_archive`` so a transient disk-full
     or tar-encoding error does not truncate the file — the previous
-    bytes survive even when the next append fails. Each line is already
-    capped at ``I_LOG_LINE_BYTE_CAP`` by the logging callback, so the
-    here-doc cannot collide with shell argv length limits.
+    bytes survive even when the next append fails. The lines go in
+    chunks that each fit one exec argument, because a run can buffer far
+    more than one argument holds between flushes. Only lines that were
+    written leave the buffer: a failed append keeps them for the next
+    flush, and a line buffered while this one ran is never discarded.
     """
     if not listLogLines:
         return
-    sContent = "\n".join(listLogLines) + "\n"
-    await asyncio.to_thread(
-        _fnAppendLogContent,
-        connectionDocker, sContainerId, sLogPath, sContent,
+    iWrittenLines = await asyncio.to_thread(
+        _fiAppendLogLines,
+        connectionDocker, sContainerId, sLogPath, list(listLogLines),
     )
-    listLogLines.clear()
+    del listLogLines[:iWrittenLines]
 
 
-def _fnAppendLogContent(
+def _flistChunkLogLines(listLines):
+    """Split lines into chunks whose joined text fits one exec argument."""
+    listChunks = []
+    listCurrent = []
+    iCurrentBytes = 0
+    for sLine in listLines:
+        iLineBytes = len(sLine.encode("utf-8", errors="replace")) + 1
+        if listCurrent and iCurrentBytes + iLineBytes > (
+            I_LOG_APPEND_CHUNK_BYTES
+        ):
+            listChunks.append(listCurrent)
+            listCurrent = []
+            iCurrentBytes = 0
+        listCurrent.append(sLine)
+        iCurrentBytes += iLineBytes
+    if listCurrent:
+        listChunks.append(listCurrent)
+    return listChunks
+
+
+def _fiAppendLogLines(connectionDocker, sContainerId, sLogPath, listLines):
+    """Append the lines chunk by chunk; return how many were written."""
+    iWrittenLines = 0
+    for listChunk in _flistChunkLogLines(listLines):
+        sContent = "\n".join(listChunk) + "\n"
+        if not _fbAppendLogContent(
+            connectionDocker, sContainerId, sLogPath, sContent,
+        ):
+            break
+        iWrittenLines += len(listChunk)
+    return iWrittenLines
+
+
+def _fbAppendLogContent(
     connectionDocker, sContainerId, sLogPath, sContent,
 ):
-    """Append ``sContent`` to ``sLogPath`` inside the container.
+    """Append ``sContent`` to ``sLogPath``; return whether it was written.
 
     Encodes the payload as base64 and decodes it inside the container,
     so a scientific stdout line containing any shell metacharacter — or
@@ -168,13 +209,20 @@ def _fnAppendLogContent(
         f"printf '%s' {fsShellQuote(sEncoded)} | "
         f"base64 -d >> {sQuotedPath}"
     )
-    iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
-        sContainerId, sCommand,
-    )
+    try:
+        iExitCode, sOutput = connectionDocker.ftResultExecuteCommand(
+            sContainerId, sCommand,
+        )
+    except OSError as error:
+        logging.getLogger("vaibify").warning(
+            "log append failed: %s", error,
+        )
+        return False
     if iExitCode != 0:
         logging.getLogger("vaibify").warning(
             "log append failed (exit %s): %s", iExitCode, sOutput[:200],
         )
+    return iExitCode == 0
 
 
 # Files modified inside this window are presumed to belong to an
@@ -536,7 +584,8 @@ async def _fnFinalizeRun(
         connectionDocker, sContainerId, sLogPath, listLogLines
     )
     if sWorkflowPath:
-        dictOutcome = _fdictPersistRunResultsToState(
+        dictOutcome = await asyncio.to_thread(
+            _fdictPersistRunResultsToState,
             connectionDocker, sContainerId, dictState, dictWorkflow,
             sWorkflowPath,
         )
@@ -549,8 +598,8 @@ async def _fnFinalizeRun(
     dictCompleted["bRunMetadataPersisted"] = dictOutcome["bPersisted"]
     dictCompleted["sRunMetadataDetail"] = dictOutcome["sDetail"]
     if stateWriter is not None:
-        bTerminalFlushed = stateWriter.fbFlushTerminalStateAcknowledged(
-            dictCompleted,
+        bTerminalFlushed = await asyncio.to_thread(
+            stateWriter.fbFlushTerminalStateAcknowledged, dictCompleted,
         )
     else:
         with lockState:

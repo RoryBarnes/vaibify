@@ -185,7 +185,7 @@ def _fprocessRunGit(listArgs, sCwd=None, dictEnv=None):
             + listArgs,
             cwd=sCwd, env=dictEnv,
             capture_output=True, text=True,
-            timeout=_F_GIT_TIMEOUT_SECONDS,
+            timeout=_F_GIT_TIMEOUT_SECONDS, encoding="utf-8",
         )
     except FileNotFoundError as error:
         return _fprocessSyntheticGitFailure(listArgs, 127, str(error))

@@ -391,6 +391,7 @@ def _fsRunCheckedCommand(saCommand):
     """
     processResult = subprocess.run(
         saCommand, capture_output=True, text=True, timeout=30.0,
+        encoding="utf-8",
     )
     if processResult.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -648,7 +649,7 @@ def _fsCaptureGccVersion():
     try:
         processResult = subprocess.run(
             ["gcc", "--version"], capture_output=True, text=True,
-            timeout=5.0,
+            timeout=5.0, encoding="utf-8",
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -675,7 +676,7 @@ def _fsReadOsRelease():
     if not pathOsRelease.is_file():
         return None
     try:
-        return pathOsRelease.read_text()
+        return pathOsRelease.read_text(encoding="utf-8")
     except OSError:
         return None
 
