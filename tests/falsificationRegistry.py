@@ -25521,4 +25521,11 @@ def _fdictEntry(sRel):
         old='    from .dataLoaders import fsReadLoaderSource\n',
         new='    from .dataLoaders import fsReadLoaderSource, ffLoadValue\n',
     ),
+    # --- Every text file and captured command output names its encoding ---
+    Falsification(
+        nodeid='tests/testTextIoNamesItsEncoding.py::testNoTextFileOrCommandOutputIsDecodedInTheProcessLocale',
+        source='vaibify/config/registryManager.py',
+        old='    with open(_S_REGISTRY_PATH, "r", encoding="utf-8") as fileHandle:\n',
+        new='    with open(_S_REGISTRY_PATH, "r") as fileHandle:\n',
+    ),
 ]
