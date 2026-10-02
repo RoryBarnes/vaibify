@@ -25528,4 +25528,60 @@ def _fdictEntry(sRel):
         old='    with open(_S_REGISTRY_PATH, "r", encoding="utf-8") as fileHandle:\n',
         new='    with open(_S_REGISTRY_PATH, "r") as fileHandle:\n',
     ),
+    # --- The setup wizard keeps what it does not show and reports what it cannot read ---
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingThroughTheWizardKeepsEveryKeyItDoesNotShow',
+        source='vaibify/install/setupServer.py',
+        old=(
+            '    dictMerged = copy.deepcopy(dictExisting)\n'
+            '    for sKey in T_WIZARD_SCALAR_KEYS:\n'
+        ),
+        new=(
+            '    dictMerged = {}\n'
+            '    for sKey in T_WIZARD_SCALAR_KEYS:\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testASavedRepositoryKeepsItsBranchWithoutAskingTheRemote',
+        source='vaibify/install/setupServer.py',
+        old='        copy.deepcopy(dictExistingByUrl[sUrl]) if sUrl in dictExistingByUrl\n',
+        new='        copy.deepcopy(dictExistingByUrl[sUrl]) if False\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testAConfigThatCannotBeLoadedIsReportedNotRenderedAsEmpty',
+        source='vaibify/install/setupServer.py',
+        old='            raise HTTPException(422, {"sMessage": (\n',
+        new='            return {}\n            raise HTTPException(422, {"sMessage": (\n',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingOverUnreadableYamlNeedsTheResearchersConfirmation',
+        source='vaibify/install/setupServer.py',
+        old='    if dictExisting is None and not request.bOverwriteUnreadable:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testAConfigThatCannotBeLoadedIsReportedNotShownAsAnEmptyForm',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old=(
+            '                fnShowToast(await fsReadErrorMessage(response), "error",\n'
+            '                    I_UNLOADABLE_NOTICE_MILLISECONDS);\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testARefusedSaveShowsTheServersWordsNotAnObject',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old=(
+            '        if (jsonDetail && jsonDetail.listErrors) {\n'
+            '            return jsonDetail.listErrors.join("; ");\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheSetupWizardKeepsAndReports.py::testSavingOverAnUnreadableFileAsksFirstAndHonorsNo',
+        source='vaibify/gui/static/scriptSetupWizard.js',
+        old='        if (response.status !== 409) return response;\n',
+        new='        return response;\n',
+    ),
 ]

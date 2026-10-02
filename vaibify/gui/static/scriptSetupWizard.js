@@ -7,6 +7,7 @@ var VaibifySetup = (function () {
     var sSelectedTemplate = null;
     var sSessionCredential = "";
     var S_CREDENTIAL_STORAGE_KEY = "vaibifySetupCredential";
+    var I_UNLOADABLE_NOTICE_MILLISECONDS = 30000;
 
     /* --- Authentication ---
      * The launch URL carries a one-time capability in its fragment (never
@@ -403,21 +404,62 @@ var VaibifySetup = (function () {
 
     /* --- Save --- */
 
+    function fresponsePostConfig(dictConfig) {
+        return fresponseFetchAuthenticated("/api/setup/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(dictConfig),
+        });
+    }
+
+    /* The server's refusal comes in four shapes: a plain string, a list
+     * of validation errors, a message, or FastAPI's own list of field
+     * problems. Printing the object itself read "[object Object]". */
+    function fsDescribeErrorDetail(jsonDetail) {
+        if (typeof jsonDetail === "string") return jsonDetail;
+        if (Array.isArray(jsonDetail)) {
+            return jsonDetail.map(function (dictProblem) {
+                return dictProblem.msg || JSON.stringify(dictProblem);
+            }).join("; ");
+        }
+        if (jsonDetail && jsonDetail.listErrors) {
+            return jsonDetail.listErrors.join("; ");
+        }
+        if (jsonDetail && jsonDetail.sMessage) return jsonDetail.sMessage;
+        return "Save failed";
+    }
+
+    async function fsReadErrorMessage(response) {
+        try {
+            var dictError = await response.json();
+            return fsDescribeErrorDetail(dictError.detail);
+        } catch (error) {
+            return "Save failed (" + response.status + ")";
+        }
+    }
+
+    /* A vaibify.yml the server could not read is replaced only when the
+     * researcher says so: Save would otherwise discard it for the fields
+     * on this form. */
+    async function fresponseSaveConfirmingOverwrite(dictConfig) {
+        var response = await fresponsePostConfig(dictConfig);
+        if (response.status !== 409) return response;
+        var sMessage = await fsReadErrorMessage(response);
+        if (!window.confirm(sMessage + "\n\nReplace it?")) return null;
+        dictConfig.bOverwriteUnreadable = true;
+        return fresponsePostConfig(dictConfig);
+    }
+
     async function fdictSaveConfig() {
         if (!fbValidateForm()) return;
 
         var dictConfig = fdictBuildConfigFromForm();
         try {
-            var response = await fresponseFetchAuthenticated("/api/setup/save", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dictConfig),
-            });
+            var response = await fresponseSaveConfirmingOverwrite(
+                dictConfig);
+            if (response === null) return;
             if (!response.ok) {
-                var dictError = await response.json();
-                throw new Error(
-                    dictError.detail || "Save failed"
-                );
+                throw new Error(await fsReadErrorMessage(response));
             }
             // One save action, one next step. The wizard writes
             // vaibify.yml; the image is built separately by the CLI.
@@ -447,20 +489,25 @@ var VaibifySetup = (function () {
                 if (dictConfig && dictConfig.sProjectName) {
                     fnPopulateForm(dictConfig);
                 }
+            } else {
+                fnShowToast(await fsReadErrorMessage(response), "error",
+                    I_UNLOADABLE_NOTICE_MILLISECONDS);
             }
         } catch (error) {
-            /* No existing config, that is fine */
+            fnShowToast(
+                "Could not read the existing configuration: " +
+                error.message, "error", I_UNLOADABLE_NOTICE_MILLISECONDS);
         }
     }
 
     /* --- Toast Notifications --- */
 
-    function fnShowToast(sMessage, sType) {
+    function fnShowToast(sMessage, sType, iMilliseconds) {
         var el = document.createElement("div");
         el.className = "toast " + (sType || "");
         el.textContent = sMessage;
         document.getElementById("toastContainer").appendChild(el);
-        setTimeout(function () { el.remove(); }, 4000);
+        setTimeout(function () { el.remove(); }, iMilliseconds || 4000);
     }
 
     /* --- Utilities --- */
