@@ -71,12 +71,19 @@ dev = [
     # a pass for having checked nothing. Six of them failed unnoticed in
     # CI from 2026-07-29 until the tests-linux lane was repaired.
     "detect-secrets>=1.4",
-    # tests/testNoUndefinedNames.py imports this and FAILS when it is
+    # tests/testStaticAnalysisClean.py imports this and FAILS when it is
     # absent, for the same reason as detect-secrets above. It exists
     # because a free `dictCampaign` made two council routes answer 500
     # under a fully green suite -- a defect no fixture reached, and one
     # a static sweep catches for every route at once.
     "pyflakes>=2.3",
+    # Same file, same reason: pylint's error category finds what
+    # pyflakes cannot (a call with the wrong number of arguments, a
+    # module attribute that does not exist). The findings are identical
+    # on 3.3.9 / Python 3.9 and 4.1.1 / Python 3.13 (measured), so one
+    # range covers the whole interpreter matrix; the cap stops a new
+    # major release from changing the findings under a green branch.
+    "pylint>=3.3,<5",
     # The environment-archive deposit compresses with zstd where a
     # zstd codec exists and falls back to gzip where none does
     # (`compression.zstd` arrived in 3.14; the wheel is not a runtime
@@ -176,6 +183,16 @@ line-length = 79
 # pytest is configured in pytest.ini, which takes precedence over this
 # file. A second [tool.pytest.ini_options] table here would be dead
 # config that silently drifts from the one pytest actually reads.
+
+# Run by tests/testStaticAnalysisClean.py as `pylint --errors-only`. Only
+# checks that are wrong for this codebase are disabled or tuned here,
+# each with its reason; a finding that is merely not fixed yet belongs in
+# that test's seed instead, where it can only shrink.
+[tool.pylint.typecheck]
+# RouteContext stores its mapping with object.__setattr__ (the class
+# blocks ordinary assignment), which pylint cannot see: 19 false
+# no-member reports, all on this one attribute.
+generated-members = ["_dictRaw"]
 
 [tool.coverage.run]
 source = ["vaibify"]
