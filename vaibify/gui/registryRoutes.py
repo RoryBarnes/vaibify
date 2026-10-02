@@ -196,6 +196,7 @@ class ScanDependenciesRequest(BaseModel):
 
 class ContainerSettingsRequest(BaseModel):
     bNeverSleep: Optional[bool] = None
+    bX11Forwarding: Optional[bool] = None
     bClaudeAutoUpdate: Optional[bool] = None
     bCodexAutoUpdate: Optional[bool] = None
     bGeminiAutoUpdate: Optional[bool] = None
@@ -939,6 +940,8 @@ def _fnRegisterContainerSettings(app, dictCtx):
         configProject = _fconfigLoadForProject(dictProject)
         dictResult = {
             "bNeverSleep": configProject.bNeverSleep,
+            "bX11Forwarding": configProject.bX11Forwarding,
+            "bNetworkIsolation": configProject.bNetworkIsolation,
             "iCpuLimit": configProject.iCpuLimit,
             "fMemoryLimitGigabytes":
                 configProject.fMemoryLimitGigabytes,
@@ -978,6 +981,10 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 dictProject["sConfigPath"], "neverSleep",
                 request.bNeverSleep,
             )
+        if request.bX11Forwarding is not None:
+            bRestartRequired = _fbApplyX11Forwarding(
+                dictProject["sConfigPath"], request.bX11Forwarding,
+            ) or bRestartRequired
         for sAgent, _, sAutoUpdateField, _ in _T_AGENT_SETTINGS:
             bAutoUpdate = getattr(request, sAutoUpdateField)
             if bAutoUpdate is not None:
@@ -1000,6 +1007,26 @@ def _fnRegisterContainerSettings(app, dictCtx):
             "bSuccess": True,
             "bRestartRequired": bRestartRequired,
         }
+
+
+def _fbApplyX11Forwarding(sConfigPath, bNewValue):
+    """Apply the X11 forwarding opt-in; return True when it changed.
+
+    Refuses to turn forwarding on for a project that seals its network:
+    the two cannot coexist, and the launch would refuse it later.
+    """
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    configProject = fconfigLoadFromFile(sConfigPath)
+    if configProject.bX11Forwarding == bNewValue:
+        return False
+    if bNewValue and configProject.bNetworkIsolation:
+        raise HTTPException(
+            409,
+            "X11 forwarding cannot be combined with network isolation. "
+            "Turn networkIsolation off in vaibify.yml first.",
+        )
+    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)
+    return True
 
 
 def _fbApplyAgentAutoUpdate(sConfigPath, sAgent, bNewValue):

@@ -6806,8 +6806,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (409) instead of a 500.
     # 2334 -> 2335 (2026-10-01): one text open names its encoding.
     # 2335 -> 2336 (2026-10-01): the archive source is resolved before the session is released.
-    # 2336 -> 2339 (2026-10-02): the wizard requests carry the x11Forwarding opt-in.
-    "registryRoutes.py": 2339,
+    # 2336 -> 2366 (2026-10-02): the wizard requests and the settings route carry the
+    # x11Forwarding opt-in, refused beside networkIsolation (one helper, same module as
+    # the agent auto-update helper it parallels).
+    "registryRoutes.py": 2366,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

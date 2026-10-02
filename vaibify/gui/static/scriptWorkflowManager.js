@@ -1231,6 +1231,7 @@ var VaibifyWorkflowManager = (function () {
         dictData.bUseGithubAuth = true;
         dictData.bNeverSleep = _fbIsMacOs();
         dictData.bNetworkIsolation = false;
+        dictData.bX11Forwarding = false;
         dictData.iCpuLimit = 0;
         dictData.fMemoryLimitGigabytes = 0;
         dictData.sEnvironmentSource = _S_ENVIRONMENT_SOURCE_BUILD;
@@ -2131,6 +2132,7 @@ var VaibifyWorkflowManager = (function () {
             '</div></div>' +
             _fsRenderAuthSection() +
             _fsRenderRuntimeTogglesSection();
+        _fnWireX11AndIsolationExclusion();
     }
 
     function _fsRenderFeatureRow(dictFeature) {
@@ -2175,7 +2177,8 @@ var VaibifyWorkflowManager = (function () {
             ? _fsRenderNeverSleepRow() : "";
         return '<div class="form-group">' +
             '<label>Runtime options</label>' +
-            sNeverSleep + _fsRenderNetworkIsolationRow() + '</div>' +
+            sNeverSleep + _fsRenderNetworkIsolationRow() +
+            _fsRenderX11ForwardingRow() + '</div>' +
             _fsRenderResourceLimitsSection();
     }
 
@@ -2214,12 +2217,42 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsRenderNetworkIsolationRow() {
         var bChecked = _dictWizardData.bNetworkIsolation === true;
+        var bBlocked = _dictWizardData.bX11Forwarding === true;
         return '<label class="wizard-toggle-row" title="Blocks all ' +
             'outbound network traffic from the container.">' +
             '<input type="checkbox" id="wizardNetworkIsolation"' +
-            (bChecked ? " checked" : "") + '>' +
+            (bChecked ? " checked" : "") +
+            (bBlocked ? " disabled" : "") + '>' +
             '<span>Network isolation ' +
             '(block outbound traffic)</span></label>';
+    }
+
+    function _fsRenderX11ForwardingRow() {
+        var bChecked = _dictWizardData.bX11Forwarding === true;
+        var bBlocked = _dictWizardData.bNetworkIsolation === true;
+        return '<label class="wizard-toggle-row" title="Lets ' +
+            'graphical programs in the container open windows on ' +
+            'your screen. A connected program can read the screen ' +
+            'and send input, so it is off by default and cannot be ' +
+            'combined with network isolation.">' +
+            '<input type="checkbox" id="wizardX11Forwarding"' +
+            (bChecked ? " checked" : "") +
+            (bBlocked ? " disabled" : "") + '>' +
+            '<span>X11 display forwarding ' +
+            '(graphical windows on your screen)</span></label>';
+    }
+
+    function _fnWireX11AndIsolationExclusion() {
+        var elIsolation = document.getElementById(
+            "wizardNetworkIsolation");
+        var elForwarding = document.getElementById("wizardX11Forwarding");
+        if (!elIsolation || !elForwarding) return;
+        elIsolation.addEventListener("change", function () {
+            elForwarding.disabled = elIsolation.checked;
+        });
+        elForwarding.addEventListener("change", function () {
+            elIsolation.disabled = elForwarding.checked;
+        });
     }
 
     function _fnRenderStepPackages(elContent) {
@@ -2525,6 +2558,8 @@ var VaibifyWorkflowManager = (function () {
         return sNeverSleep + _fsSummaryRow(
             "Network isolation",
             _dictWizardData.bNetworkIsolation ? "Yes" : "No") +
+            _fsSummaryRow("X11 display forwarding",
+                _dictWizardData.bX11Forwarding ? "Yes" : "No") +
             _fsSummaryResourceLimitLines();
     }
 
@@ -2593,6 +2628,7 @@ var VaibifyWorkflowManager = (function () {
         _fnReadCheckboxInto("wizardNeverSleep", "bNeverSleep");
         _fnReadCheckboxInto("wizardNetworkIsolation",
             "bNetworkIsolation");
+        _fnReadCheckboxInto("wizardX11Forwarding", "bX11Forwarding");
         _fnReadPositiveNumberInto(
             "wizardCpuLimit", "iCpuLimit", true);
         _fnReadPositiveNumberInto(

@@ -26350,4 +26350,29 @@ def _fdictEntry(sRel):
         old='        fdictAssessContainerX11(\n            getattr(config, "bX11Forwarding", False), jsonInspect),\n',
         new='        fdictAssessContainerX11(\n            False, jsonInspect),\n',
     ),
+    # --- 2026-10-02: the X11 forwarding opt-in is a wizard and settings control ---
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardRemembersTheChoiceWhenThePageIsLeft',
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        _fnReadCheckboxInto("wizardX11Forwarding", "bX11Forwarding");\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheSettingsDialogSendsTheChosenX11Value',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    bX11Forwarding: bX11Forwarding,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Settings.py::test_turning_the_opt_in_on_persists_and_asks_for_a_recreate',
+        source='vaibify/gui/registryRoutes.py',
+        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    return True\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Settings.py::test_the_opt_in_is_refused_beside_network_isolation',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if bNewValue and configProject.bNetworkIsolation:\n',
+        new='    if False:\n',
+    ),
 ]
