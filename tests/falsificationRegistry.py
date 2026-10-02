@@ -3095,6 +3095,7 @@ def _fdictEntry(sRel):
         old="""            _fnUndoOrRecordSplit(
                 connectionDocker, sContainerId, sRepo, dictWorkflow,
                 iStepIndex, dictPlan, dictReport, errorCascade,
+                filesRepo, sWorkflowPath,
             )
             raise""",
         new='            raise',
@@ -25611,5 +25612,24 @@ def _fdictEntry(sRel):
             '    except OSError as error:\n'
             '        raise\n'
         ),
+    ),
+    # --- A step rename reaches every record that names the old directory ---
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testTestDeclarationPathsFollowTheRenamedDirectory',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnRewriteTestDeclarationPaths(\n        dictStep, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],\n    )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testSyncRecordsFollowTheRenamedDirectory',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnRewriteSyncStatusKeys(\n        dictWorkflow, dictPlan["sOldDirectory"], dictPlan["sNewDirectory"],\n    )\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStepRenameCascadeReachesEverything.py::testAFailedLaterStageRestoresTheMarkerUnderTheOldName',
+        source='vaibify/gui/stepRename.py',
+        old='    _fnUndoMarkerMove(filesRepo, dictPlan, sWorkflowPath, dictReport)\n',
+        new='',
     ),
 ]
