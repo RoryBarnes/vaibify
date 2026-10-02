@@ -26171,4 +26171,17 @@ def _fdictEntry(sRel):
         old='        raise HTTPException(400, "Directory must be an absolute path")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sDirectory)\n    if sResolved != sHome and not sResolved.startswith(sHome + os.sep):\n',
         new='        raise HTTPException(400, "Directory must be an absolute path")\n    sHome = os.path.expanduser("~")\n    sResolved = os.path.realpath(sDirectory)\n    if False:\n',
     ),
+    # --- Every guard function is anchored or seeded ---
+    Falsification(
+        nodeid='tests/testDeclaredGuaranteesAreAnchored.py::testEveryGuardFunctionIsAnchoredOrSeeded',
+        source='tests/testDeclaredGuaranteesAreAnchored.py',
+        old='    return tMutationLines[0] <= iLast and tMutationLines[1] >= iFirst\n',
+        new='    return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testDeclaredGuaranteesAreAnchored.py::testEveryDeclaredGuaranteeIsAnchoredWithNoSeed',
+        source='tests/testDeclaredGuaranteesAreAnchored.py',
+        old='    return tMutationLines[0] <= iLast and tMutationLines[1] >= iFirst\n',
+        new='    return False\n',
+    ),
 ]
