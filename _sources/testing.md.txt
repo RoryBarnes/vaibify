@@ -80,9 +80,16 @@ enforceable, re-checkable guarantee:
 4. **The re-kill harness** — `tools/reconfirmFalsification.py` — is the
    standing negative control. For every registry entry it requires the
    test to pass on clean code, applies the mutation, requires the test to
-   then fail with a genuine assertion failure (a compile error or an
-   unrelated failure does **not** count), and restores the source. It
-   reports any marked test with no entry and exits nonzero on any gap. It
+   then fail **in its call phase**, and restores the source. The verdict
+   is read from the JUnit XML pytest writes: a collection error, a
+   fixture-setup or teardown error, a mutant that does not compile (or,
+   for JavaScript, does not pass `node --check`) and a hang are each
+   reported as "not a kill". Every replayed entry has a wall-clock limit
+   (`--entry-timeout`, 600 seconds by default) enforced on its whole
+   process group, and the entry that timed out is named. Results are
+   flushed as they are known, so a job stopped at its ceiling leaves a
+   log. The harness reports any marked test with no entry and exits
+   nonzero on any gap. It
    mutates source, so it is deliberately **not** collected by
    `pytest tests/`; run it directly:
 

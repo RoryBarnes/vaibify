@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.14.dev262 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.14.dev279 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=94ec9cfd"></script>
+      <script src="_static/documentation_options.js?v=e448f5dc"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -202,9 +202,16 @@ half-mutation.</p>
 <li><p><strong>The re-kill harness</strong> — <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> — is the
 standing negative control. For every registry entry it requires the
 test to pass on clean code, applies the mutation, requires the test to
-then fail with a genuine assertion failure (a compile error or an
-unrelated failure does <strong>not</strong> count), and restores the source. It
-reports any marked test with no entry and exits nonzero on any gap. It
+then fail <strong>in its call phase</strong>, and restores the source. The verdict
+is read from the JUnit XML pytest writes: a collection error, a
+fixture-setup or teardown error, a mutant that does not compile (or,
+for JavaScript, does not pass <code class="docutils literal notranslate"><span class="pre">node</span> <span class="pre">--check</span></code>) and a hang are each
+reported as “not a kill”. Every replayed entry has a wall-clock limit
+(<code class="docutils literal notranslate"><span class="pre">--entry-timeout</span></code>, 600 seconds by default) enforced on its whole
+process group, and the entry that timed out is named. Results are
+flushed as they are known, so a job stopped at its ceiling leaves a
+log. The harness reports any marked test with no entry and exits
+nonzero on any gap. It
 mutates source, so it is deliberately <strong>not</strong> collected by
 <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">tests/</span></code>; run it directly:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/reconfirmFalsification.py

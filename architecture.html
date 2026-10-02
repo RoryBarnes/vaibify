@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev262 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev279 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=94ec9cfd"></script>
+      <script src="_static/documentation_options.js?v=e448f5dc"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -879,13 +879,19 @@ idle self-exit) ask <code class="docutils literal notranslate"><span class="pre"
 consults every project the hub knows is in the container: answering
 from the open project alone would hand over or abandon a container in
 the middle of another project’s run.</p>
-<p>The in-process records that describe one project’s state are keyed by
-PROJECT as well: the Level 3 verification’s status and no-verdict
-reason, the environment deposit, falsification runs, the dependency
-scan, the output checksum cache, the lock verdict, the remote checks,
-the git-fetch throttle and the push dedupe. Keyed by container alone,
-each showed one project’s state on another’s page or erased another
-project’s record.</p>
+<p>Most in-process records that describe one project’s state are keyed by
+PROJECT as well as container: the Level 3 verification’s no-verdict
+reason, the environment deposit (keyed by container and project; the
+progress calls name only the container and act on its one live
+deposit), falsification runs, the dependency scan, the output checksum
+cache, the lock verdict, the remote checks, the fetch throttle and the
+push dedupe. Keyed by container alone, each showed one project’s state
+on another’s page or erased another project’s record.</p>
+<p>The Level 3 verification registry (<code class="docutils literal notranslate"><span class="pre">verificationProgress.DICT_VERIFY_TASKS</span></code>)
+is keyed by CONTAINER, deliberately: it holds only live work, because a
+finished task evicts its own entry at once, and one verification holds a
+container at a time. The status it carries names its project, and
+readers compare that name before showing it.</p>
 </section>
 <section id="starting-a-container-is-a-server-owned-reservation">
 <h3>Starting a container is a server-owned reservation<a class="headerlink" href="#starting-a-container-is-a-server-owned-reservation" title="Link to this heading"></a></h3>
@@ -1548,10 +1554,11 @@ summaries.</p>
 <section id="application-layer">
 <h3>Application layer<a class="headerlink" href="#application-layer" title="Link to this heading"></a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> — FastAPI app factory, Pydantic models, shared
-utilities, WebSocket dispatch. Creates the app via
-<code class="docutils literal notranslate"><span class="pre">fappCreateApplication()</span></code>. Routes are delegated to the <code class="docutils literal notranslate"><span class="pre">routes/</span></code>
-package.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">appFactory.py</span></code> — the FastAPI app factory: <code class="docutils literal notranslate"><span class="pre">fappCreateApplication()</span></code>
+builds the app, wires the lifespan hooks and registers the routes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pipelineServer.py</span></code> — Pydantic models, shared utilities and WebSocket
+dispatch, and the re-exports the route modules import. Routes are
+delegated to the <code class="docutils literal notranslate"><span class="pre">routes/</span></code> package.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">routeContext.py</span></code> — typed <code class="docutils literal notranslate"><span class="pre">RouteContext</span></code> wrapper for the <code class="docutils literal notranslate"><span class="pre">dictCtx</span></code>
 dict. Provides both attribute access (<code class="docutils literal notranslate"><span class="pre">dictCtx.docker</span></code>) and dict
 access (<code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;docker&quot;]</span></code>).</p></li>
@@ -1687,10 +1694,18 @@ pipelineServer           &lt;-- app entry point, imports everything
 routes/*                 &lt;-- imported by pipelineServer via routes/__init__.py
 </pre></div>
 </div>
-<p>All imports are acyclic at module load time. One deferred import
-remains: <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code> defers importing <code class="docutils literal notranslate"><span class="pre">_ftRunCommandList</span></code>
-from <code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> to avoid a cycle (<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> eagerly
-re-exports <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code>).</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> graph above is acyclic at module load time. One
+deferred import remains in it: <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code> defers importing
+<code class="docutils literal notranslate"><span class="pre">_ftRunCommandList</span></code> from <code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> to avoid a cycle
+(<code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code> eagerly re-exports <code class="docutils literal notranslate"><span class="pre">pipelineTestRunner</span></code>).</p>
+<p>It is not true of the whole package. <code class="docutils literal notranslate"><span class="pre">vaibify/docker/__init__.py</span></code>
+and <code class="docutils literal notranslate"><span class="pre">vaibify/docker/imageBuilder.py</span></code> import each other at load time:
+<code class="docutils literal notranslate"><span class="pre">imageBuilder</span></code> takes <code class="docutils literal notranslate"><span class="pre">fnRunDockerCommand</span></code> from the package, so the
+package imports <code class="docutils literal notranslate"><span class="pre">fbImageExists</span></code> from <code class="docutils literal notranslate"><span class="pre">imageBuilder</span></code> only after
+defining that function. The late re-export at the foot of
+<code class="docutils literal notranslate"><span class="pre">__init__.py</span></code> is what makes the cycle work; do not move it above the
+definition. Function-local imports add many more edges than this
+diagram shows.</p>
 </section>
 <section id="re-export-pattern">
 <h2>Re-export pattern<a class="headerlink" href="#re-export-pattern" title="Link to this heading"></a></h2>
@@ -2237,7 +2252,12 @@ than consulted.</p>
 container gateway so the two lanes share one lifecycle rather than
 maintaining two that drift. The council brings the policy layer this one
 deliberately omits — admission quotas, per-provider accounting, the
-idle-watchdog veto — and wraps these rather than replacing them. The
+idle-watchdog veto. What the council gateway actually shares today is
+narrower than that sentence once promised: it imports
+<code class="docutils literal notranslate"><span class="pre">disposableSpecification</span></code> (the out-of-memory judgment) and does NOT
+wrap <code class="docutils literal notranslate"><span class="pre">disposableContainer</span></code> or <code class="docutils literal notranslate"><span class="pre">daemonCapacity</span></code>, so it still runs its own
+create-and-destroy lifecycle. Folding it onto <code class="docutils literal notranslate"><span class="pre">disposableContainer</span></code> is
+unfinished work, not a description of the code. The
 ledger here records reservations and their outcomes and nothing else,
 because those policies belong to whoever is spending the resource, not
 to the daemon lane.</p>

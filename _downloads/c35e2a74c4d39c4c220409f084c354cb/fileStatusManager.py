@@ -1665,6 +1665,9 @@ _LIST_CONTAINER_KEYED_CACHES = (
     "dictManifestShaCache",
     "dictPreviousModTimes",
     "dictPreviousModTimeProjects",
+    "dictLiveImageIdentities",
+    "dictPinnedImagePresence",
+    "dictProjectCreationRequests",
 )
 
 

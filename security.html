@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Security Model &mdash; Vaibify 0.0.14.dev262 documentation</title>
+  <title>Security Model &mdash; Vaibify 0.0.14.dev279 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=94ec9cfd"></script>
+      <script src="_static/documentation_options.js?v=e448f5dc"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -129,8 +129,8 @@ restrictions:</p>
 <tr class="row-odd"><td><p>Unprivileged user</p></td>
 <td><p>Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then <code class="docutils literal notranslate"><span class="pre">exec</span></code>s itself through <code class="docutils literal notranslate"><span class="pre">gosu</span></code> as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. <code class="docutils literal notranslate"><span class="pre">sudo</span></code> is absent from the image.</p></td>
 </tr>
-<tr class="row-even"><td><p>No host filesystem</p></td>
-<td><p>The host filesystem is not bind-mounted by default. Files enter and leave the container through <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code>.</p></td>
+<tr class="row-even"><td><p>Few host mounts</p></td>
+<td><p>The host filesystem is not bind-mounted wholesale. Files enter and leave the container through <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code>. Three kinds of host path are mounted: resolved secret files (read-only, under <code class="docutils literal notranslate"><span class="pre">/run/secrets/</span></code>), any <code class="docutils literal notranslate"><span class="pre">listBindMounts</span></code> entries you declare (validated against an allowlist, and refused if the source is missing), and, on Linux only, the X11 socket <code class="docutils literal notranslate"><span class="pre">/tmp/.X11-unix</span></code> (read-only), which is mounted into every container including those started with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>, after an <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+SI:localuser:$USER</span></code> grant to your account. On macOS the display is reached over TCP through XQuartz instead, with the same per-user <code class="docutils literal notranslate"><span class="pre">xhost</span></code> grant.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Workspace volume</p></td>
 <td><p>A Docker volume provides persistent storage at the configured <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code>. Volumes are isolated from the host directory tree.</p></td>
@@ -317,7 +317,9 @@ a restricted run against the author’s can diverge.</p>
 <p>Vaibify assumes the code running inside the container may be adversarial.
 The defenses are designed to contain:</p>
 <ul class="simple">
-<li><p><strong>Filesystem escape</strong> – no host mounts, no Docker socket.</p></li>
+<li><p><strong>Filesystem escape</strong> – no wholesale host mount and no Docker socket;
+the host paths that are mounted (secret files, declared bind mounts,
+the Linux X11 socket) are listed in the table above.</p></li>
 <li><p><strong>Network exfiltration</strong> – optional network isolation blocks all traffic.</p></li>
 <li><p><strong>Credential theft</strong> – partially. Secrets resolved from the host’s
 credential manager are mode-600 files, but they outlive the container
