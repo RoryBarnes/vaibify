@@ -586,19 +586,13 @@ def testCopyDirectoryIntoAnExistingDirectoryNestsIt(monkeypatch, tmp_path):
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "fnCopyHostPathIntoContainer promises docker cp's reading ('any "
-        "other destination IS the path to write'), but a DIRECTORY "
-        "source copied to a not-yet-existing destination is archived "
-        "under the SOURCE basename into dirname(destination), so it "
-        "lands at /workspace/inputData rather than /workspace/renamedData"
-    ),
-)
+@pytest.mark.falsification
 def testCopyDirectoryToANewPathLandsAtThatPath(monkeypatch, tmp_path):
-    """docker cp ./inputData /workspace/renamedData creates renamedData."""
+    """docker cp ./inputData /workspace/renamedData creates renamedData.
+
+    Kills: archiving a directory under its SOURCE basename when the
+    destination does not exist yet, so it lands at the source's name.
+    """
     pathTree = fnPopulateHostTree(tmp_path)
     connection, _, container = ftBuildConnection(monkeypatch)
     fnAnswerDirectoryProbe(container, False)
@@ -610,6 +604,44 @@ def testCopyDirectoryToANewPathLandsAtThatPath(monkeypatch, tmp_path):
         for infoMember in flistReadTarMembers(baArchive)
     }
     assert "/workspace/renamedData/dataFile.csv" in setLandedPaths
+
+
+def testCopyDirectoryToANewPathWithATrailingSlashLandsAtThatPath(
+    monkeypatch, tmp_path,
+):
+    pathTree = fnPopulateHostTree(tmp_path)
+    connection, _, container = ftBuildConnection(monkeypatch)
+    fnAnswerDirectoryProbe(container, False)
+    connection.fnCopyHostPathIntoContainer(
+        S_CONTAINER_ID, str(pathTree), "/workspace/renamedData/")
+    sDestination, baArchive = container.listPutArchives[0]
+    assert sDestination == "/workspace"
+    assert {infoMember.name for infoMember in flistReadTarMembers(baArchive)} >= {
+        "renamedData", "renamedData/dataFile.csv"}
+
+
+def testCopyDirectoryIntoAnExistingDirectoryKeepsItsOwnName(
+    monkeypatch, tmp_path,
+):
+    pathTree = fnPopulateHostTree(tmp_path)
+    connection, _, container = ftBuildConnection(monkeypatch)
+    fnAnswerDirectoryProbe(container, True)
+    connection.fnCopyHostPathIntoContainer(
+        S_CONTAINER_ID, str(pathTree), "/workspace/existing")
+    sDestination, baArchive = container.listPutArchives[0]
+    assert sDestination == "/workspace/existing"
+    assert "inputData/dataFile.csv" in {
+        infoMember.name for infoMember in flistReadTarMembers(baArchive)}
+
+
+def testAnArchiveNameForSeveralPathsIsRefused(monkeypatch, tmp_path):
+    pathTree = fnPopulateHostTree(tmp_path)
+    connection, _, container = ftBuildConnection(monkeypatch)
+    with pytest.raises(ValueError, match="exactly one host path"):
+        connection.fnWriteTreeViaTar(
+            S_CONTAINER_ID, "/workspace", [str(pathTree), str(pathTree)],
+            sArchiveName="renamed")
+    assert container.listPutArchives == []
 
 
 # ---------------------------------------------------------------------

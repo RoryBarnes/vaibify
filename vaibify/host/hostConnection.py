@@ -431,7 +431,7 @@ class HostConnection:
 
     def fnWriteTreeViaTar(
         self, sResourceId, sDestinationDirectory, listHostPaths,
-        iUid=None, iGid=None,
+        iUid=None, iGid=None, sArchiveName=None,
     ):
         """Refuse: a host project's files are already where they run.
 
@@ -444,7 +444,7 @@ class HostConnection:
         silently succeeding, which is what an alias to a host-side
         copy would do.
         """
-        del sDestinationDirectory, listHostPaths, iUid, iGid
+        del sDestinationDirectory, listHostPaths, iUid, iGid, sArchiveName
         raise HostPathOutsideProjectError(
             f"'{sResourceId}' is a host project: its files already live "
             "where the project runs, so there is no container workspace "

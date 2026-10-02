@@ -25503,4 +25503,15 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- A directory copied to a path that does not exist lands at that path ---
+    Falsification(
+        nodeid='tests/testCoverageDockerConnectionTransfers.py::testCopyDirectoryToANewPathLandsAtThatPath',
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '                sArchiveName=(\n'
+            '                    None if bDestinationIsDirectory\n'
+            '                    else posixpath.basename(sDestinationPath)),\n'
+        ),
+        new='',
+    ),
 ]
