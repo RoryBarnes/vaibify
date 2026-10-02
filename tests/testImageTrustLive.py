@@ -12,6 +12,7 @@ demands one (see ``tests/testDockerConnectionLive.py``).
 
 import json
 import os
+import time
 import subprocess
 from types import SimpleNamespace
 
@@ -106,6 +107,21 @@ def fsCreateLabelled():
         containerManager._fsRunKillableDockerCommand = fnOriginal
 
 
+def fbSettlesAsNotRunning(fTimeoutSeconds=30.0):
+    """Wait for a container that fails after it starts to stop running.
+
+    `docker start` returns once the process exists, so a container whose
+    entrypoint then fails is briefly running. A container that is still
+    running when the bound expires has not failed.
+    """
+    fDeadline = time.monotonic() + fTimeoutSeconds
+    while time.monotonic() < fDeadline:
+        if not containerManager.fbContainerIsRunning(S_PROJECT):
+            return True
+        time.sleep(0.25)
+    return False
+
+
 def fnAnswer(sDigest, sChoice):
     registryManager.fnRecordImageTrust(
         S_PROJECT, imageTrust.fdictBuildTrustRecord(sDigest, sChoice, False))
@@ -134,7 +150,8 @@ def testARestrictedLaunchOfAnImageThatNeedsRootFailsToStartAndIsNeverRunning(
         dictInspect["HostConfig"]["SecurityOpt"])
     assert dictInspect["Path"] == "/bin/sh"
     containerManager.fnStartCreatedContainer(sContainerId)
-    assert containerManager.fbContainerIsRunning(S_PROJECT) is False
+    assert fbSettlesAsNotRunning(), (
+        "the restricted container was still running after the wait")
     dictState = json.loads(fsDocker("inspect", sContainerId))[0]["State"]
     assert dictState["Running"] is False and dictState["ExitCode"] != 0
     with pytest.raises(RuntimeError) as errorRaised:
