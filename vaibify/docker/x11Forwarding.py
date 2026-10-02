@@ -53,6 +53,10 @@ S_STATE_NOT_LISTENING = "not-listening"
 S_STATE_NOT_RUNNING = "not-running"
 S_STATE_NO_DISPLAY = "no-display"
 S_STATE_UNSUPPORTED = "unsupported"
+S_STATE_NOT_CHECKED = "not-checked"
+S_STATE_CREATED_WITHOUT = "created-without-x11"
+S_STATE_CREATED_WITH = "created-with-x11"
+S_RECREATE_COMMAND = "vaibify stop && vaibify start"
 
 _setNoticesShownThisInvocation = set()
 
@@ -312,11 +316,11 @@ def _fsStartInstruction(dictServer):
     return "Start the Xquartz server, then restart the container."
 
 
-def _fdictAssessment(sState, sMessage, sFix):
+def _fdictAssessment(sState, sMessage, sFix, sCommand=""):
     """Build one assessment record."""
     return {
         "sState": sState, "bReady": sState == S_STATE_READY,
-        "sMessage": sMessage, "sFix": sFix,
+        "sMessage": sMessage, "sFix": sFix, "sCommand": sCommand,
     }
 
 
@@ -354,20 +358,83 @@ def fdictAssessHostX11():
     )
 
 
-def fdictAssessContainerX11(bContainerHasDisplay):
-    """Say whether a running container was created with X11 forwarding.
+def fbContainerForwardsDisplay(jsonInspect):
+    """Return True when a container was created with a forwarded display.
 
-    DISPLAY and the Linux socket mount are fixed when the container is
-    created, so enabling X11 later changes nothing until it is recreated.
+    Reads what ``docker inspect`` reports the container was created
+    with: a DISPLAY variable that is reachable, meaning either the X11
+    socket is mounted (Linux) or DISPLAY names the macOS TCP host.
     """
-    if bContainerHasDisplay:
-        return _fdictAssessment(S_STATE_READY, "", "")
-    return _fdictAssessment(
-        S_STATE_NO_DISPLAY,
-        "This container was created without X11 forwarding, so it has "
-        "no DISPLAY and graphical programs cannot open a window.",
-        "Stop and start the container so it is created again with X11.",
+    listEnvironment = (jsonInspect.get("Config") or {}).get("Env") or []
+    sDisplay = next(
+        (sEntry[len("DISPLAY="):] for sEntry in listEnvironment
+         if sEntry.startswith("DISPLAY=")), "",
     )
+    bSocketMounted = any(
+        dictMount.get("Destination") == "/tmp/.X11-unix"
+        for dictMount in jsonInspect.get("Mounts") or []
+    )
+    return bool(sDisplay) and (
+        bSocketMounted or sDisplay.startswith(MAC_CONTAINER_HOST)
+    )
+
+
+def fdictAssessContainerX11(bRequested, jsonInspect):
+    """Compare a container's real X11 wiring with the project's setting.
+
+    DISPLAY and the Linux socket mount are fixed when a container is
+    created, so changing ``x11Forwarding`` later changes nothing until
+    the container is created again. An empty ``jsonInspect`` means the
+    daemon did not answer and nothing is claimed.
+    """
+    if not jsonInspect:
+        return _fdictAssessment(
+            S_STATE_NOT_CHECKED, "The container could not be inspected.", "",
+        )
+    bForwarded = fbContainerForwardsDisplay(jsonInspect)
+    if bRequested and not bForwarded:
+        return _fdictAssessment(
+            S_STATE_CREATED_WITHOUT,
+            "This project sets x11Forwarding, but this container was "
+            "created without X11 forwarding, so it has no DISPLAY and "
+            "graphical programs cannot open a window.",
+            "Create the container again to enable it.", S_RECREATE_COMMAND,
+        )
+    if bForwarded and not bRequested:
+        return _fdictAssessment(
+            S_STATE_CREATED_WITH,
+            "This project has x11Forwarding off, but this container was "
+            "created with it and still has a display channel to your "
+            "screen.",
+            "Create the container again to remove it.", S_RECREATE_COMMAND,
+        )
+    return _fdictAssessment(S_STATE_READY, "", "")
+
+
+def flistDescribeAssessment(dictAssessment):
+    """Return the one sentence for a not-ready assessment, else nothing."""
+    if dictAssessment["bReady"] or dictAssessment["sState"] in (
+        S_STATE_NOT_CHECKED, S_STATE_UNSUPPORTED,
+    ):
+        return []
+    sCommand = dictAssessment.get("sCommand", "")
+    sTail = f" Run `{sCommand}`." if sCommand else ""
+    return [f"{dictAssessment['sMessage']} {dictAssessment['sFix']}{sTail}"]
+
+
+def ftDescribeX11Findings(bRequested, jsonInspect):
+    """Return ``(container lines, host lines)`` a surface should show.
+
+    Container lines say the running container disagrees with the
+    project's setting. Host lines say the setting is on but this host
+    cannot serve a display; they are only produced when it is on.
+    """
+    listContainerLines = flistDescribeAssessment(
+        fdictAssessContainerX11(bRequested, jsonInspect))
+    listHostLines = (
+        flistDescribeAssessment(fdictAssessHostX11()) if bRequested else []
+    )
+    return listContainerLines, listHostLines
 
 
 def fiResolveHostDisplayNumber():

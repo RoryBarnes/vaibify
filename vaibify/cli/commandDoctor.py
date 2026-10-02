@@ -32,6 +32,7 @@ import sys
 import click
 
 from .configLoader import ConfigLoadFailedExit, fconfigResolveProject
+from .doctorX11Checks import flistCheckX11Container, flistCheckX11Host
 from .preflightChecks import (
     fpreflightColimaHostagentLog,
     fpreflightColimaVersion,
@@ -84,6 +85,7 @@ def _flistStartOnlyChecks(config):
     listResults.extend(_flistPreflightBindMounts(config))
     listResults.extend(_flistPreflightBindMountFormats(config))
     listResults.extend(_flistPreflightColimaSharedRoots(config))
+    listResults.extend(flistCheckX11Host(config))
     return listResults
 
 
@@ -319,7 +321,7 @@ def _flistUnassessedContainerScope(sReason):
         )
         for sName in (
             "network-attachment", "resolver-configuration",
-            "dns-resolution",
+            "dns-resolution", "x11-container-display",
         )
     ]
 
@@ -347,9 +349,14 @@ def _flistContainerScopeChecks(config, bOnline):
             "the Docker connection could not be opened, so nothing "
             "inside the container could be examined."
         )
-    return flistDiagnoseContainerNetwork(
+    from vaibify.docker.containerManager import fjsonInspectContainer
+    listResults = flistDiagnoseContainerNetwork(
         config, sContainerName, connectionDocker, bOnline,
     )
+    listResults.extend(flistCheckX11Container(
+        config, fjsonInspectContainer(sContainerName),
+    ))
+    return listResults
 
 
 def _flistProjectScopeChecks(config):

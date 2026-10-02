@@ -418,6 +418,32 @@ def _flistDescribeConfigurationDrift(connectionDocker, sContainerId):
         return []
 
 
+def _ftDescribeX11Findings(connectionDocker, sContainerId):
+    """Return ``(container lines, host lines)`` about X11 forwarding.
+
+    The container lines say the running container was created
+    differently from what vaibify.yml asks for now; the host lines say
+    the project wants a display this host cannot serve. Like the drift
+    lines, every failure to establish a fact answers with NO lines.
+    """
+    from vaibify.config.registryManager import fdictGetProject
+    from vaibify.docker.containerManager import fjsonInspectContainer
+    from vaibify.docker.x11Forwarding import ftDescribeX11Findings
+    from ..pipelineServer import fsContainerNameForId
+    try:
+        sName = fsContainerNameForId(connectionDocker, sContainerId)
+        dictProject = fdictGetProject(sName) if sName else None
+        if not dictProject:
+            return [], []
+        from vaibify.cli.configLoader import fconfigLoadFromPath
+        configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
+        return ftDescribeX11Findings(
+            configProject.bX11Forwarding, fjsonInspectContainer(sContainerId),
+        )
+    except Exception:
+        return [], []
+
+
 def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     """Probe readiness, then add the two host-side notices.
 
@@ -444,12 +470,16 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     # -- filing it under the start's warnings would make the banner's
     # own heading false, and would put the one line naming a remedy
     # among lines that do not.
+    listX11ContainerLines, listX11HostLines = _ftDescribeX11Findings(
+        connectionDocker, sContainerId,
+    )
     dictReadiness["listConfigurationDrift"] = (
         _flistDescribeConfigurationDrift(connectionDocker, sContainerId)
+        + listX11ContainerLines
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,
-    )
+    ) + listX11HostLines
     if not listSecretWarnings:
         return dictReadiness
     listWarnings = list(dictReadiness.get("saWarnings") or [])

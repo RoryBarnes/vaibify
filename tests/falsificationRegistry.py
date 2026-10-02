@@ -26325,4 +26325,29 @@ def _fdictEntry(sRel):
         old='        "x11Forwarding": config.bX11Forwarding,\n',
         new='',
     ),
+    # --- 2026-10-02: X11 mismatches between container and vaibify.yml reach the dashboard and doctor ---
+    Falsification(
+        nodeid='tests/testX11Findings.py::testAContainerCreatedWithoutX11IsReportedWhenTheProjectWantsIt',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if bRequested and not bForwarded:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testAContainerStillCarryingX11IsReportedWhenTheProjectTurnedItOff',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if bForwarded and not bRequested:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testTheReadinessPayloadCarriesTheX11FindingsToTheDashboard',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        + listX11ContainerLines\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testDoctorTellsYouToRecreateAContainerMadeWithoutX11',
+        source='vaibify/cli/doctorX11Checks.py',
+        old='        fdictAssessContainerX11(\n            getattr(config, "bX11Forwarding", False), jsonInspect),\n',
+        new='        fdictAssessContainerX11(\n            False, jsonInspect),\n',
+    ),
 ]

@@ -8,7 +8,6 @@ import pytest
 from vaibify.docker import x11Forwarding
 from vaibify.docker.x11Forwarding import (
     fbMacXServerAcceptingNetworkConnections,
-    fdictAssessContainerX11,
     fdictAssessLinuxX11,
     fdictAssessMacX11,
     fdictFindMacXServer,
@@ -478,14 +477,3 @@ def test_linuxAssess_reports_a_missing_socket_directory(monkeypatch):
 def test_linuxAssess_ready_with_display_and_socket(monkeypatch):
     monkeypatch.setattr(x11Forwarding.os.path, "isdir", lambda sPath: True)
     assert fdictAssessLinuxX11()["bReady"] is True
-
-
-def test_containerAssess_without_display_demands_a_recreate():
-    dictAssessment = fdictAssessContainerX11(False)
-    assert dictAssessment["bReady"] is False
-    assert "created without X11" in dictAssessment["sMessage"]
-    assert "Stop and start" in dictAssessment["sFix"]
-
-
-def test_containerAssess_with_display_is_ready():
-    assert fdictAssessContainerX11(True)["bReady"] is True
