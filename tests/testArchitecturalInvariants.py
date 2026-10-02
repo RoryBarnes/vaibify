@@ -4780,7 +4780,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1185 -> 1199 (2026-08-30): the stall failure class, its
     # sentence, and the two execution facts it reports. The module
     # already owns "what happened to a turn".
-    "agentCouncilProviders.py": 1302,
+    # 1302 -> 1349 (2026-10-01): a turn the gateway killed, failed or left
+    # empty names the real reason for every provider, from one extractor.
+    "agentCouncilProviders.py": 1349,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans

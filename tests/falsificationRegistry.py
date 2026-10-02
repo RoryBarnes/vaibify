@@ -25461,4 +25461,46 @@ def _fdictEntry(sRel):
             '        return baOutput\n'
         ),
     ),
+    # --- Codex and Antigravity carry the real reason a turn ended ---
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testATurnTheKernelStoppedForMemorySaysSo',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='    if _fbExecutionWasKilledAtABound(dictExecution):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testANonzeroExitCarriesItsExitCodeAndAcquitsEveryBound',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old=(
+            '            "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),\n'
+            '            **_fdictDescribeExecutionFacts(dictExecution),\n'
+        ),
+        new=(
+            '            "sResultEventSubtype": str(dictResultEvent.get("subtype", "")),\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testAGenuinelyEmptyCompletionIsNamedNotFiledAsMissingFields',
+        source='vaibify/gui/agentCouncilProviders.py',
+        old='    if not sResultText.strip():\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testACodexTurnCutShortByTheLoginNamesTheLogin',
+        source='vaibify/gui/agentCouncilCodexProvider.py',
+        old=(
+            '            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (\n'
+            '                bBudgetCameFromLoginExpiry)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCouncilGatewayLifecycle.py::testAnAntigravityTurnCutShortByTheLoginNamesTheLogin',
+        source='vaibify/gui/agentCouncilAntigravityProvider.py',
+        old=(
+            '            self._dictTurnExecution["bBudgetCameFromLoginExpiry"] = (\n'
+            '                bBudgetCameFromLoginExpiry)\n'
+        ),
+        new='',
+    ),
 ]

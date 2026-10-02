@@ -349,7 +349,6 @@ def flistResultWithResponse(sResponse):
     ('[1, 2]', {"sRawResultText": "[1, 2]"}),
     ('{"sVerdict": "accept"} trailing prose',
      {"sRawResultText": '{"sVerdict": "accept"} trailing prose'}),
-    ("   ", {"sRawResultText": "   "}),
 ])
 def testAntigravityResponsesAreAdoptedOnlyWhenUnambiguous(
         sResponse, jsonExpected):
@@ -358,10 +357,17 @@ def testAntigravityResponsesAreAdoptedOnlyWhenUnambiguous(
 
 
 def testAnAntigravityStreamWithNoResultSaysSo():
-    assert antigravity.fdictExtractAntigravityStructuredResult(
-        [{"event": "init", "init": {}}]) == {
-            "sRawResultText": "",
-            "sEmptyResultReason": "antigravityProducedNoResult"}
+    dictResult = antigravity.fdictExtractAntigravityStructuredResult(
+        [{"event": "init", "init": {}}])
+    assert dictResult["sRawResultText"] == ""
+    assert dictResult["sEmptyResultReason"] == "noResultEvent"
+
+
+def testAnAntigravityResponseOfOnlyWhitespaceIsAnEmptyAnswer():
+    dictResult = antigravity.fdictExtractAntigravityStructuredResult(
+        flistResultWithResponse("   "))
+    assert dictResult["sRawResultText"] == ""
+    assert dictResult["sEmptyResultReason"] == "resultEventCarriedNoText"
 
 
 def testTheLastAntigravityResultEventIsTheOneAdopted():
