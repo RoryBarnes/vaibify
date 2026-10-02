@@ -25747,4 +25747,11 @@ def _fdictEntry(sRel):
         old='    if not fbDockerReachable(connectionDocker):\n        return True\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
         new='    if not fbDockerReachable(connectionDocker):\n        return False\n    try:\n        from .pipelineState import fbContainerHasLiveRun',
     ),
+    # --- A conversion refused for its archive source changes nothing ---
+    Falsification(
+        nodeid='tests/testRefusedArchiveConversionChangesNothing.py::testARefusedArchiveConversionKeepsTheSessionAndScaffoldsNothing',
+        source='vaibify/gui/registryRoutes.py',
+        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
+        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
+    ),
 ]

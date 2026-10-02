@@ -1651,6 +1651,19 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         # project being converted, so a host sandbox whose basename is
         # already Docker-safe may keep its name.
         _fnRejectDuplicateForConversion(request.sProjectName, sName)
+        # The candidate overlay baseline is captured BEFORE the config
+        # is rewritten: after that, and after a hub restart, the
+        # author's original feature set exists nowhere else on this
+        # host. It only reads the clone, and it can refuse (409), so it
+        # runs before anything is released or written.
+        dictImageSource = (
+            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(
+                dictProject, request,
+            )
+            if request.sEnvironmentSource
+            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE
+            else None
+        )
         # Every validator runs BEFORE the caller's own session is
         # released: a refused name must never cost the researcher the
         # project view they are converting from.
@@ -1668,18 +1681,6 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         _fnScaffoldWorkflowIfAbsent(
             dictProject["sDirectory"],
             request.sWorkflowName or request.sProjectName,
-        )
-        # The candidate overlay baseline is captured BEFORE the config
-        # is rewritten: after that, and after a hub restart, the
-        # author's original feature set exists nowhere else on this
-        # host.
-        dictImageSource = (
-            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(
-                dictProject, request,
-            )
-            if request.sEnvironmentSource
-            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE
-            else None
         )
         # Config file FIRST, registry entry SECOND. If the registry write
         # then fails, the config names a container but the entry is still
