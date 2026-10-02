@@ -1947,6 +1947,7 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             continue
         if _fbCampaignStoppedAtAProvenBoundary(dictCampaign):
             continue
+        _fnSettleRunningAttemptAsInterrupted(dictCampaign)
         agentCouncilCampaign.fnTransitionCampaignState(
             dictCampaign, agentCouncilCampaign.S_STATE_INTERRUPTED,
             "hubRestartedWhileATurnHadNoTerminalRecord")
@@ -1954,6 +1955,24 @@ def fiClassifyInterruptedCampaignsOnStartup(dictStore):
             dictStore, sCampaignId, dictCampaign)
         iClassified += 1
     return iClassified
+
+
+def _fnSettleRunningAttemptAsInterrupted(dictCampaign):
+    """Record the attempt a dead hub left running as an interruption.
+
+    Retry reads the last attempt, and only one that settled as the
+    terminating failure or interruption can be retired and re-run; a
+    campaign interrupted with its attempt still ``running`` could be
+    neither retried nor resumed, whatever the researcher reconciled.
+    The attempt settles before the transition whose checkpoint carries
+    it, the same order the engine keeps.
+    """
+    listRounds = dictCampaign.get("listRounds") or []
+    dictAttempt = (listRounds[-1] if listRounds else {}).get(
+        "dictPhaseAttempt")
+    if dictAttempt and dictAttempt.get("sAttemptState") == "running":
+        dictAttempt["sAttemptState"] = "outcomeSettled"
+        dictAttempt["sOutcome"] = "transitioned:interrupted"
 
 
 def _fbCampaignStoppedAtAProvenBoundary(dictCampaign):

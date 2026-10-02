@@ -25333,4 +25333,14 @@ def _fdictEntry(sRel):
             '        pass\n'
         ),
     ),
+    # --- A hub killed mid-phase leaves the campaign retryable ---
+    Falsification(
+        nodeid='tests/testCouncilCrashRecovery.py::testACampaignKilledMidPhaseIsRetryableAfterTheRestart',
+        source='vaibify/gui/agentCouncilController.py',
+        old=(
+            '        _fnSettleRunningAttemptAsInterrupted(dictCampaign)\n'
+            '        agentCouncilCampaign.fnTransitionCampaignState(\n'
+        ),
+        new='        agentCouncilCampaign.fnTransitionCampaignState(\n',
+    ),
 ]

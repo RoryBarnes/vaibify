@@ -6332,7 +6332,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # campaign's turn wall clock, named once for both budgets.
     # 2204 -> 2219 (2026-10-01): runners are created with the limits the
     # daemon allows, resolved once per campaign runtime.
-    "agentCouncilController.py": 2219,
+    # 2219 -> 2238 (2026-10-01): a campaign a dead hub interrupted gets its
+    # running attempt settled as an interruption, so Retry can admit it.
+    "agentCouncilController.py": 2238,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
