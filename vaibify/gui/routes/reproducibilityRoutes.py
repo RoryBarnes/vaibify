@@ -2064,6 +2064,12 @@ def _fnRegisterDeclareDeterminism(app, dictCtx):
         return {"dictDeterminism": dictDeterminism}
 
 
+class RegenerateEnvelopeRequest(BaseModel):
+    """The one consent Regenerate can carry: replace a manifest that is not yours."""
+
+    bReplaceForeignManifest: bool = False
+
+
 def _fnRegisterRegenerateEnvelope(app, dictCtx):
     """Register POST /api/workflow/{sContainerId}/level3/envelope.
 
@@ -2097,12 +2103,6 @@ def _fnRegisterRegenerateEnvelope(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             bReplaceForeignManifest,
         )
-
-
-class RegenerateEnvelopeRequest(BaseModel):
-    """The one consent Regenerate can carry: replace a manifest that is not yours."""
-
-    bReplaceForeignManifest: bool = False
 
 
 S_ACTION_CONFIRM_REPLACE_FOREIGN_MANIFEST = "confirm-replace-foreign-manifest"
