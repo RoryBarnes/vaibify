@@ -25584,4 +25584,32 @@ def _fdictEntry(sRel):
         old='        if (response.status !== 409) return response;\n',
         new='        return response;\n',
     ),
+    # --- A run's log reaches the container whatever its size ---
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testALogLargerThanOneExecArgumentIsWrittenInChunksThatEachFit',
+        source='vaibify/gui/pipelineLogger.py',
+        old='I_LOG_APPEND_CHUNK_BYTES = I_EXEC_ARGUMENT_BUDGET_BYTES * 3 // 4 - 1024\n',
+        new='I_LOG_APPEND_CHUNK_BYTES = 10 ** 9\n',
+    ),
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testAFailedAppendKeepsTheUnwrittenLinesForTheNextFlush',
+        source='vaibify/gui/pipelineLogger.py',
+        old='    del listLogLines[:iWrittenLines]\n',
+        new='    listLogLines.clear()\n',
+    ),
+    Falsification(
+        nodeid='tests/testPipelineLogAppend.py::testAHostLegFailureDoesNotEndTheRunAndKeepsTheLines',
+        source='vaibify/gui/pipelineLogger.py',
+        old=(
+            '    except OSError as error:\n'
+            '        logging.getLogger("vaibify").warning(\n'
+            '            "log append failed: %s", error,\n'
+            '        )\n'
+            '        return False\n'
+        ),
+        new=(
+            '    except OSError as error:\n'
+            '        raise\n'
+        ),
+    ),
 ]
