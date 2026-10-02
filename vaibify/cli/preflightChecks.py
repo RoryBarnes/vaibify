@@ -54,7 +54,7 @@ def _ftDockerInfoProbe():
     try:
         processResult = subprocess.run(
             ["docker", "info"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1, ""
@@ -321,7 +321,7 @@ def _fsReadColimaHostagentLogTail():
     """Return up to the last 200 lines of the hostagent log, '' on miss."""
     pathLog = _fpathColimaHostagentLog()
     try:
-        sContent = pathLog.read_text(errors="replace")
+        sContent = pathLog.read_text(errors="replace", encoding="utf-8")
     except (FileNotFoundError, OSError):
         return ""
     saLines = sContent.splitlines()[-_I_MAX_LOG_TAIL_LINES:]
@@ -403,6 +403,7 @@ def _fsSystemDockerServiceStatus(bRootless=False):
     try:
         processResult = subprocess.run(
             saCommand, capture_output=True, text=True, timeout=5,
+            encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -414,7 +415,7 @@ def _fsRecentDockerJournalTail():
     try:
         processResult = subprocess.run(
             ["journalctl", "-u", "docker.service", "-n", "50", "--no-pager"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""

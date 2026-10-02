@@ -399,7 +399,7 @@ def _flistParseColimaSharedRoots():
     try:
         processResult = subprocess.run(
             ["colima", "list", "--json"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []

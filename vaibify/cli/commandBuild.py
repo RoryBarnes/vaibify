@@ -321,7 +321,7 @@ def fbBuildArgsChangedSinceLastBuild(config):
     if not os.path.exists(sPath):
         return False
     try:
-        with open(sPath, "r") as fileHandle:
+        with open(sPath, "r", encoding="utf-8") as fileHandle:
             sPrevious = fileHandle.read().strip()
     except OSError:
         return False
@@ -334,7 +334,7 @@ def fnRecordBuildArgHash(config):
         parents=True, exist_ok=True,
     )
     sPath = _fsBuildArgHashPath(config.sProjectName)
-    with open(sPath, "w") as fileHandle:
+    with open(sPath, "w", encoding="utf-8") as fileHandle:
         fileHandle.write(fsBuildArgHash(config) + "\n")
 
 
@@ -354,7 +354,7 @@ def _fsResolveBaseImageDigest(config):
         processResult = subprocess.run(
             ["docker", "image", "inspect",
              "--format", "{{.RepoDigests}}", sBaseImage],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -415,7 +415,7 @@ def fnPruneDanglingImages():
     try:
         resultPrune = subprocess.run(
             ["docker", "image", "prune", "-f"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, encoding="utf-8",
         )
         if resultPrune.returncode == 0:
             listLines = resultPrune.stdout.strip().split("\n")
@@ -648,7 +648,7 @@ def _fsGitRemoteUrl(sDirectory):
         processResult = subprocess.run(
             ["git", "-C", sDirectory, "remote",
              "get-url", "origin"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
         if processResult.returncode == 0:
             return processResult.stdout.strip()
@@ -664,7 +664,7 @@ def _fsGitBranch(sDirectory):
         processResult = subprocess.run(
             ["git", "-C", sDirectory, "rev-parse",
              "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, encoding="utf-8",
         )
         if processResult.returncode == 0:
             return processResult.stdout.strip()
@@ -699,7 +699,7 @@ def _fsProjectDirectory():
 
 def _fnWriteFile(sPath, sContent):
     """Write string content to a file."""
-    with open(sPath, "w") as fileHandle:
+    with open(sPath, "w", encoding="utf-8") as fileHandle:
         fileHandle.write(sContent)
 
 
@@ -837,7 +837,7 @@ def fsDockerVmArch():
             ["docker", "info", "--format", "{{.Architecture}}"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
@@ -911,7 +911,7 @@ def _fiDockerDfBytes():
             ["docker", "system", "df", "--format", "{{json .}}"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1
@@ -1036,7 +1036,7 @@ def _fiDockerVmMemoryBytes():
             ["docker", "info", "--format", "{{.MemTotal}}"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=10, encoding="utf-8",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return -1
