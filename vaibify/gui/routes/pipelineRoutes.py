@@ -2385,9 +2385,6 @@ def _fdictAssemblePollResponse(
         "sExactSourceFingerprint": dictWorkflow.get(
             "_sSourceFingerprint", "",
         ),
-        "listStaleOutputAdvisories": _flistBuildStaleOutputAdvisories(
-            dictWorkflow, dictModTimes,
-        ),
         **_fdictBuildReloadWireKeys(dictReload),
     }
 
@@ -3329,26 +3326,6 @@ def _fiCountUniqueBlockingSteps(listBlockers):
         if isinstance(iIndex, int):
             setSteps.add(iIndex)
     return len(setSteps)
-
-
-def _flistBuildStaleOutputAdvisories(dictWorkflow, dictModTimes):
-    """Return the stale-output advisories the dashboard renders next poll."""
-    from ..staleOutputDetector import flistStaleOutputAdvisories
-    from ..workflowManager import fdictBuildDirectDependencies
-    dictDirect = fdictBuildDirectDependencies(dictWorkflow)
-    dictDeclaredUpstream = _fdictInvertDirectGraph(dictDirect)
-    return flistStaleOutputAdvisories(
-        dictWorkflow, dictModTimes, dictDeclaredUpstream,
-    )
-
-
-def _fdictInvertDirectGraph(dictDirect):
-    """Invert producer->consumers map into a consumer->producers map."""
-    dictUpstream = {}
-    for iProducer, setConsumers in (dictDirect or {}).items():
-        for iConsumer in setConsumers or set():
-            dictUpstream.setdefault(iConsumer, set()).add(iProducer)
-    return dictUpstream
 
 
 def _fdictBuildReloadedWorkflowShape(dictReload):

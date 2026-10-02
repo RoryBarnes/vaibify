@@ -1,13 +1,11 @@
 """Tests for the stale-output detector (Part D).
 
 Covers the per-file advisory shape, declared-edge suppression,
-sibling-step suppression, margin filter, clustering, and the
-wire-through helper that surfaces advisories in the poll response.
+sibling-step suppression, margin filter, clustering. The poll no
+longer carries the advisories (nothing rendered them); see
+testStaleOutputAdvisoryIsNotADeadPayload.py.
 """
 
-from vaibify.gui.routes.pipelineRoutes import (
-    _flistBuildStaleOutputAdvisories,
-)
 from vaibify.gui.staleOutputDetector import flistStaleOutputAdvisories
 
 
@@ -179,25 +177,3 @@ def testNeverProducedConsumerSkipped():
         dictWorkflow, dictMtimes, dictDeclaredUpstream={},
     )
     assert listAdvisories == []
-
-
-def testWireThroughReturnsAdvisoriesFromPollHelper():
-    """The poll-side helper builds the declared-upstream map from the workflow.
-
-    Exercises the path the live poll uses: `_flistBuildStaleOutputAdvisories`
-    derives `dictDeclaredUpstream` from `fdictBuildDirectDependencies`
-    and forwards to the detector. With an undeclared edge, the
-    advisory surfaces in the helper's output.
-    """
-    dictWorkflow = _fdictBuildSimpleWorkflow()
-    dictMtimes = {
-        "Producer/output.npy": 1000.0,
-        "Consumer/consumed.json": 500.0,
-        "Consumer/plot.pdf": 500.0,
-    }
-    listAdvisories = _flistBuildStaleOutputAdvisories(
-        dictWorkflow, dictMtimes,
-    )
-    assert len(listAdvisories) == 1
-    assert listAdvisories[0]["iConsumerStepIndex"] == 1
-    assert listAdvisories[0]["iLikelyProducerStepIndex"] == 0

@@ -171,17 +171,34 @@ var VaibifyMonitor = (function () {
             var response = await fetch(
                 "/api/monitor/" + sContainerId
             );
-            if (!response.ok) return;
+            if (!response.ok) {
+                fnMarkReadingsStale();
+                return;
+            }
             var dictData = await response.json();
             fnUpdateDisplay(dictData);
         } catch (error) {
-            /* Silently ignore fetch errors during polling */
+            fnMarkReadingsStale();
         } finally {
             _bMonitorInFlight = false;
         }
     }
 
+    /* A failed poll leaves the last numbers on screen. They stay, so
+       the sparkline history is not thrown away, but they are marked:
+       an unmarked number reads as current. */
+    function fnMarkReadingsStale() {
+        fnSetUnavailableNotice("poll-failed");
+        if (elMonitorPanel) {
+            elMonitorPanel.setAttribute("data-stale", "true");
+        }
+    }
+
     function fsHumanizeReason(sReason) {
+        if (sReason === "poll-failed") {
+            return "the last poll failed, so the figures above are " +
+                "from an earlier poll";
+        }
         if (sReason === "daemon-unreachable") {
             return "Docker daemon not reachable";
         }
@@ -284,6 +301,9 @@ var VaibifyMonitor = (function () {
     }
 
     function fnUpdateDisplay(dictData) {
+        if (elMonitorPanel) {
+            elMonitorPanel.removeAttribute("data-stale");
+        }
         var bAvailable = dictData.bAvailable !== false;
         fnSetUnavailableNotice(bAvailable ? "" : (dictData.sReason || ""));
         fnUpdateCpuMemoryDisplay(dictData);

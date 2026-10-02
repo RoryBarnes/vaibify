@@ -26184,4 +26184,79 @@ def _fdictEntry(sRel):
         old='    return tMutationLines[0] <= iLast and tMutationLines[1] >= iFirst\n',
         new='    return False\n',
     ),
+    # --- Browser: a copy button reports the browser's real answer,
+    # a drag carries a private validated type, the PROOF ledger shows
+    # only the gate's verdict, and a skipped poll is marked stale ---
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheDoiCopyButtonOnTheStatusCardReportsAFailedCopy',
+        source='vaibify/gui/static/scriptZenodoDepositCard.js',
+        old='                    elCopy.textContent = bCopied ? "Copied" : "Copy failed";\n',
+        new='                    elCopy.textContent = "Copied";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheQuarantineRemedyCopyButtonReportsAFailedCopy',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    elButton.textContent = bCopied\n                        ? "Copied" : "Copy failed";\n',
+        new='                    elButton.textContent = "Copied";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testCopyButtonsReportTheRealOutcome.py::testTheCouncilBriefCopyReportsAFailedCopy',
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        var bCopied = await VaibifyFileOps.fpromiseCopyText(sBrief);\n        if (bCopied) {\n',
+        new='        var bCopied = await VaibifyFileOps.fpromiseCopyText(sBrief);\n        if (true) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testDroppingPlainTextOnAStepDoesNotReorderIt',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        var sCarried = event.dataTransfer.getData(S_STEP_DRAG_TYPE);\n',
+        new='        var sCarried = event.dataTransfer.getData("text/plain");\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testADragCarryingAnIndexOfNoStepDoesNotReorderAnything',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        return iIndex < iCount ? iIndex : -1;\n',
+        new='        return iIndex;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testADropOntoATextNodeStillResolvesItsStep',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        if (nodeTarget && nodeTarget.nodeType !== 1) {\n            nodeTarget = nodeTarget.parentElement;\n        }\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testStepReorderUsesAPrivateDragType.py::testARealDragOfAStepAsksForTheReorder',
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='            event.dataTransfer.setData(\n                S_STEP_DRAG_TYPE, String(parseInt(elStep.dataset.index)));\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testEveryRowShowsTheVerdictTheGateGave',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='            (bMet ? "satisfied" : "unsatisfied") + \'" data-req-key="\' +\n',
+        new='            "satisfied" + \'" data-req-key="\' +\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testAFailedLevelThreeReadinessLeavesNoVerdictOnScreen',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        return !dictL3.dictL3ReadinessGaps;\n',
+        new='        return false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testProofTabLedgerFollowsTheGate.py::testAFailedLevelTwoReadinessReplacesTheLedgerWithTheFailure',
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        if (_dictLastReadiness && _dictLastReadiness.sError) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardSkipsAreMarkedStale.py::testAPollThatOmitsTheEnvelopeMarksTheProjectRowsStale',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            _dictWorkflowState.bEnvelopeDetailStale = true;\n',
+        new='            _dictWorkflowState.bEnvelopeDetailStale = false;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardSkipsAreMarkedStale.py::testAFailedMonitorPollMarksTheFiguresStale',
+        source='vaibify/gui/static/scriptResourceMonitor.js',
+        old='            if (!response.ok) {\n                fnMarkReadingsStale();\n                return;\n            }\n',
+        new='            if (!response.ok) {\n                return;\n            }\n',
+    ),
 ]

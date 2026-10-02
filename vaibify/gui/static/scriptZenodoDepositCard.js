@@ -253,12 +253,14 @@ var VaibifyZenodoDepositCard = (function () {
         var elCopy = elBody.querySelector(".zdc-copy");
         if (!elCopy) return;
         elCopy.addEventListener("click", function () {
-            _fnCopyToClipboard(dictSummary.sDoi || "");
             var sOriginal = elCopy.textContent;
-            elCopy.textContent = "Copied";
-            setTimeout(function () {
-                elCopy.textContent = sOriginal;
-            }, 1800);
+            VaibifyFileOps.fpromiseCopyText(dictSummary.sDoi || "")
+                .then(function (bCopied) {
+                    elCopy.textContent = bCopied ? "Copied" : "Copy failed";
+                    setTimeout(function () {
+                        elCopy.textContent = sOriginal;
+                    }, 1800);
+                });
         });
     }
 
@@ -266,20 +268,6 @@ var VaibifyZenodoDepositCard = (function () {
         if (!sUrl) return false;
         return sUrl.indexOf("https://zenodo.org/") === 0 ||
             sUrl.indexOf("https://sandbox.zenodo.org/") === 0;
-    }
-
-    function _fnCopyToClipboard(sText) {
-        if (!sText) return;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(sText);
-            return;
-        }
-        var elTmp = document.createElement("textarea");
-        elTmp.value = sText;
-        document.body.appendChild(elTmp);
-        elTmp.select();
-        try { document.execCommand("copy"); } catch (e) { /* noop */ }
-        document.body.removeChild(elTmp);
     }
 
     return {

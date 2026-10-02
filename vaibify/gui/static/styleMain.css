@@ -7047,6 +7047,19 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     padding: 10px 14px 12px 20px;
 }
 
+/* A poll that did not carry the project details: the rows are from an
+   earlier poll, and say so rather than reading as current. */
+.project-block-stale {
+    color: var(--text-secondary);
+    border-left: 3px solid var(--text-muted);
+    font-size: 13px;
+    padding: 6px 14px 6px 17px;
+}
+
+#monitorPanel[data-stale="true"] span {
+    opacity: 0.55;
+}
+
 .requirement-group-header {
     display: flex;
     align-items: center;

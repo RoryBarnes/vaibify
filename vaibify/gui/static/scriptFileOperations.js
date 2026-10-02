@@ -7,16 +7,30 @@ var VaibifyFileOps = (function () {
 
     /* --- Clipboard --- */
 
-    function fnCopyToClipboard(sText) {
+    /* Resolves true only when the browser accepted the text. Every
+       copy button must label itself from THIS answer: a button that
+       says "Copied" before the browser has answered says it even when
+       the write was refused, and the researcher then pastes something
+       else. The textarea path runs only after the asynchronous write
+       is refused, and execCommand reports its own refusal by returning
+       false rather than by throwing. */
+    function fpromiseCopyText(sText) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(sText).then(function () {
-                VaibifyApp.fnShowToast("Copied to clipboard", "success");
-            }).catch(function () {
-                _fnCopyToClipboardFallback(sText);
-            });
-        } else {
-            _fnCopyToClipboardFallback(sText);
+            return navigator.clipboard.writeText(sText).then(
+                function () { return true; },
+                function () { return _fbCopyViaTextarea(sText); });
         }
+        return Promise.resolve(_fbCopyViaTextarea(sText));
+    }
+
+    function fnCopyToClipboard(sText) {
+        fpromiseCopyText(sText).then(function (bCopied) {
+            if (bCopied) {
+                VaibifyApp.fnShowToast("Copied to clipboard", "success");
+            } else {
+                VaibifyApp.fnShowToast("Copy failed", "error");
+            }
+        });
     }
 
     /* Background copies (terminal copy-on-select) must never fall back
@@ -49,20 +63,21 @@ var VaibifyFileOps = (function () {
         });
     }
 
-    function _fnCopyToClipboardFallback(sText) {
+    function _fbCopyViaTextarea(sText) {
         var elTextarea = document.createElement("textarea");
         elTextarea.value = sText;
         elTextarea.style.position = "fixed";
         elTextarea.style.opacity = "0";
         document.body.appendChild(elTextarea);
         elTextarea.select();
+        var bCopied = false;
         try {
-            document.execCommand("copy");
-            VaibifyApp.fnShowToast("Copied to clipboard", "success");
+            bCopied = document.execCommand("copy") === true;
         } catch (e) {
-            VaibifyApp.fnShowToast("Copy failed", "error");
+            bCopied = false;
         }
         document.body.removeChild(elTextarea);
+        return bCopied;
     }
 
     /* --- Inline Editing --- */
@@ -584,6 +599,7 @@ var VaibifyFileOps = (function () {
 
     return {
         fnCopyToClipboard: fnCopyToClipboard,
+        fpromiseCopyText: fpromiseCopyText,
         fnCopyToClipboardWithoutStealingFocus:
             fnCopyToClipboardWithoutStealingFocus,
         fnInlineEditItem: fnInlineEditItem,

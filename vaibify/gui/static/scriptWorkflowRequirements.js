@@ -3411,6 +3411,14 @@ var VaibifyWorkflowRequirements = (function () {
             'moment.</div></div>';
     }
 
+    function _fsRenderStaleEnvelopeNotice(dictContext) {
+        if (dictContext.bEnvelopeDetailStale !== true) return "";
+        return '<div class="project-block-stale" role="status">' +
+            'The latest status check did not include the project ' +
+            'details, so the rows below are from an earlier check ' +
+            'and may be out of date.</div>';
+    }
+
     function fsRenderProjectBlock(dictContext) {
         if (dictContext.bProjectBlockAwaitsFirstAnswer === true) {
             return _fsRenderProjectBlockAwaitingAnswer(
@@ -3481,7 +3489,8 @@ var VaibifyWorkflowRequirements = (function () {
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';
         if (!bOpen) return sHtml;
-        var sBody = '<div class="project-block-body">';
+        var sBody = '<div class="project-block-body">' +
+            _fsRenderStaleEnvelopeNotice(dictContext);
         for (var i = 0; i < listSections.length; i++) {
             /* The promotions section renders only when there IS an
                interrupted promotion. Every other section is a
