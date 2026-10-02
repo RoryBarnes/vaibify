@@ -231,7 +231,7 @@ def testIdleWatchdogSurvivesAFailingTick(monkeypatch, caplog):
     """A reaper failure inside the watchdog is logged; ticks continue."""
     listTicks = []
 
-    def fnReap(app, dictCtx):
+    def fnReap(app, dictCtx, dictPipelineRunningByName=None):
         listTicks.append(1)
         raise RuntimeError("reaper broke")
 
