@@ -9531,12 +9531,22 @@ def _fdictEntry(sRel):
             'tests/testHostGitAndReposPanel.py::'
             'testAHostProjectCommitsItsCanonicalFiles'
         ),
-        source='vaibify/gui/connectionRouter.py',
-        # The router stops consulting the mode and sends every git verb
-        # to the Docker leg, which for a host project is either absent
-        # or holding a container that does not exist.
-        old='        if fbIsHostProject(sResourceId):\n',
-        new='        if False:\n',
+        source='vaibify/gui/routes/gitRoutes.py',
+        # The canonical commit bypasses the router the connection is
+        # picked through and drives the Docker leg directly, which for
+        # a host project is absent or holds a container that does not
+        # exist. (The earlier mutation, a router that always picks the
+        # Docker leg, broke the test fixture's own connect, so the test
+        # errored in setup and never reached the assertion.)
+        old=(
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"], sContainerId, dictWorkflow, sRepo,\n'
+        ),
+        new=(
+            '            lambda: _fdictScanThenCommitCanonical(\n'
+            '                dictCtx["docker"].connectionDockerLeg,\n'
+            '                sContainerId, dictWorkflow, sRepo,\n'
+        ),
     ),
     Falsification(
         nodeid=(
