@@ -25761,4 +25761,30 @@ def _fdictEntry(sRel):
         old='    if not dictRequest:\n        return 0\n',
         new='    if not dictRequest:\n        return 1\n',
     ),
+    # --- The style scanner fails on every shape of unparseable input
+    # and unprefixed binding, with no dependence on seeded debt ---
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerFailsClosedOnUnparseableReturnAnnotation',
+        source='tools/generateStyleInventory.py',
+        old='        except UnparseableAnnotationError:\n            self.fnRecord(sIdentity, S_CLASS_RETURN_ANNOTATION,\n                          "unparseable return annotation (fails closed)")\n            return\n',
+        new='        except UnparseableAnnotationError:\n            return\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerCatchesUnprefixedExceptHandlerBinding',
+        source='tools/generateStyleInventory.py',
+        old='        if node.name:\n            self._fnCheckBindingName(self.fsIdentity(node.name), node.name)\n',
+        new='        if node.name:\n            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerCatchesUnprefixedParameter',
+        source='tools/generateStyleInventory.py',
+        old='            self._fnCheckBindingName(sIdentity, nodeArgument.arg)\n            if nodeArgument.annotation is None:\n',
+        new='            if nodeArgument.annotation is None:\n',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testScannerRefusesAnUnparseableModuleInsteadOfSkippingIt',
+        source='tools/generateStyleInventory.py',
+        old='        except SyntaxError as error:\n            raise UnparseableModuleError(\n',
+        new='        except SyntaxError as error:\n            continue\n            raise UnparseableModuleError(\n',
+    ),
 ]
