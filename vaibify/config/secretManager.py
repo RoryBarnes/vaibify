@@ -5,6 +5,8 @@ configuration files.  Retrieval methods delegate to established
 credential managers (gh auth, OS keyring, Docker secrets).
 """
 
+import csv
+import io
 import os
 import re
 import stat
@@ -236,8 +238,9 @@ def _fsGetTempDirectory():
 
 def _fsWriteEphemeralFile(sName, sValue):
     """Write a value to a temp file with restrictive permissions."""
+    sFileNameSafeName = re.sub(r"[^A-Za-z0-9_.-]", "_", sName)
     iFileDescriptor, sFilePath = tempfile.mkstemp(
-        prefix=f"vc_secret_{sName}_", suffix=".tmp",
+        prefix=f"vc_secret_{sFileNameSafeName}_", suffix=".tmp",
         dir=_fsGetTempDirectory(),
     )
     try:
@@ -320,10 +323,26 @@ def flistPrepareDockerSecretArgs(listSecrets):
     return listArgs
 
 
+def flistBuildSecretMountArguments(sHostPath, sName):
+    """Return the docker arguments that mount a staged secret read-only.
+
+    ``--mount`` rather than ``-v``: a per-remote slot name carries a
+    colon (``service:owner/repo``), which ``-v`` reads as a field
+    separator. The specification is CSV-formatted because that is how
+    docker parses it, so a host path holding a comma stays one field.
+    """
+    fileSpecification = io.StringIO()
+    csv.writer(fileSpecification, lineterminator="").writerow([
+        "type=bind", f"source={sHostPath}",
+        f"target=/run/secrets/{sName}", "readonly",
+    ])
+    return ["--mount", fileSpecification.getvalue()]
+
+
 def _flistBuildSingleSecretArgs(dictSecret):
-    """Mount one secret and return its docker -v arguments."""
+    """Mount one secret and return its docker mount arguments."""
     sName = dictSecret["name"]
     sMethod = dictSecret["method"]
-    sHostPath = fsMountSecret(sName, sMethod)
-    sContainerPath = f"/run/secrets/{sName}"
-    return ["-v", f"{sHostPath}:{sContainerPath}:ro"]
+    return flistBuildSecretMountArguments(
+        fsMountSecret(sName, sMethod), sName,
+    )

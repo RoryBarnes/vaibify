@@ -25707,4 +25707,17 @@ def _fdictEntry(sRel):
         old='        _fnOpenAuthenticatedReport(elLink.getAttribute("data-path"));\n',
         new='',
     ),
+    # --- A per-remote secret slot name can be staged and mounted ---
+    Falsification(
+        nodeid='tests/testSecretNamesWithSeparatorsCanBeStagedAndMounted.py::testASlotNameWithSeparatorsIsStagedToAPrivateFile',
+        source='vaibify/config/secretManager.py',
+        old='prefix=f"vc_secret_{sFileNameSafeName}_", suffix=".tmp",',
+        new='prefix=f"vc_secret_{sName}_", suffix=".tmp",',
+    ),
+    Falsification(
+        nodeid='tests/testSecretNamesWithSeparatorsCanBeStagedAndMounted.py::testASlotNameWithAColonMountsAsOneTargetField',
+        source='vaibify/config/secretManager.py',
+        old='    return ["--mount", fileSpecification.getvalue()]',
+        new='    return ["-v", f"{sHostPath}:/run/secrets/{sName}:ro"]',
+    ),
 ]

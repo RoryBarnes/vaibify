@@ -112,12 +112,12 @@ def test_flistPrepareDockerSecretArgs():
         listArgs = flistPrepareDockerSecretArgs(listSecrets)
 
     assert len(listArgs) == 4
-    assert listArgs[0] == "-v"
-    assert "github_token" in listArgs[1]
-    assert ":ro" in listArgs[1]
-    assert listArgs[2] == "-v"
-    assert "zenodo_token" in listArgs[3]
-    assert ":ro" in listArgs[3]
+    assert listArgs[0] == "--mount"
+    assert "target=/run/secrets/github_token" in listArgs[1]
+    assert listArgs[1].endswith(",readonly")
+    assert listArgs[2] == "--mount"
+    assert "target=/run/secrets/zenodo_token" in listArgs[3]
+    assert listArgs[3].endswith(",readonly")
 
 
 def test_fsRetrieveSecret_rejects_unknown_method():

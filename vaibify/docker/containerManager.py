@@ -946,11 +946,11 @@ def _fnMountSingleSecret(
 ):
     """Retrieve one secret via secretManager and add its mount arg."""
     sName = dictSecret["name"]
+    from vaibify.config.secretManager import flistBuildSecretMountArguments
     sMethod = dictSecret["method"]
     sTempPath = fnMount(sName, sMethod)
     listCleanupFiles.append(sTempPath)
-    sContainerPath = f"/run/secrets/{sName}"
-    saRunArgs.extend(["-v", f"{sTempPath}:{sContainerPath}:ro"])
+    saRunArgs.extend(flistBuildSecretMountArguments(sTempPath, sName))
 
 
 def _fnCleanupTempFiles(listCleanupFiles):
