@@ -31,9 +31,7 @@ def testASecretSplitByALineBreakIsRedacted(sBreak):
     assert dictCounts[S_SESSION_SECRET_CATEGORY] == 1
 
 
-@pytest.mark.falsification
 def testASecretSplitInsideAJsonRecordIsRedactedAndStaysValidJson():
-    """Kills: missing a secret whose break is a JSON-escaped newline."""
     jsonRecord = {"sText": "paste " + S_SECRET[:9] + "\n" + S_SECRET[9:]}
     sSanitized, _ = ftResultSanitizeText(json.dumps(jsonRecord), [S_SECRET])
     assert S_SECRET[:9] not in sSanitized

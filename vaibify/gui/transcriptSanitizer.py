@@ -87,10 +87,11 @@ def _fsBuildLineBreakTolerantPattern(sSecret):
     """Return a regex matching the secret even when a line break splits it.
 
     A terminal wraps a long token at the screen width, so a captured
-    transcript can hold a secret with a newline, or a JSON-escaped
-    newline, in the middle of it.
+    transcript can hold a secret with a newline in the middle of it. A
+    JSON record is checked again after its strings are decoded, which
+    turns an escaped newline into a real one.
     """
-    sBreak = r"(?:\r?\n|\\r\\n|\\n)?"
+    sBreak = r"(?:\r?\n)?"
     return sBreak.join(re.escape(sCharacter) for sCharacter in sSecret)
 
 
