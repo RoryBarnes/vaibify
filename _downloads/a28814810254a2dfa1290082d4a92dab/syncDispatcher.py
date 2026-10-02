@@ -1349,7 +1349,7 @@ def _ftRunHostLsRemote(sProjectId, sAskpass):
         ["git"]
         + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
         + ["ls-remote", sUrl, "HEAD"],
-        capture_output=True, text=True, env=dictEnv,
+        capture_output=True, text=True, env=dictEnv, encoding="utf-8",
     )
     sDetail = fsRedactStderr((processResult.stderr or "").strip())
     return (processResult.returncode == 0, sDetail)

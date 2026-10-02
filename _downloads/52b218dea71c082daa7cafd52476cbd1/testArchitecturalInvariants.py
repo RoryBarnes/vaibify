@@ -4255,7 +4255,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # predicates are close to half the module and change for entirely
     # different reasons from lifespan plumbing — and splitting THAT is
     # the conversation this entry is deferring, not avoiding.
-    "serverLifespan.py": 852,
+    # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
+    # worker threads, and the reaper reads the probe's snapshot.
+    "serverLifespan.py": 885,
     # NEW at 819 (2026-10-01): the credential test publishes only
     # sanitized sentences (fsSanitizeJobDetail) and records an
     # unexpected fault by type; one cohesive job module.
@@ -4323,7 +4325,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # itself in the log. A live hub lost a session's lease with zero
     # operator-visible trace; the lines live at the commit points they
     # describe (tests/testLifecycleLogging.py pins them).
-    "containerOwnership.py": 952,
+    # 952 -> 956 (2026-10-01): type-only imports name the annotations.
+    "containerOwnership.py": 956,
     # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
     # default cap when the three exhausted-round exit routes and the
     # credential-gate refusal joined it. One cohesive responsibility —
@@ -4565,7 +4568,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # this module already composes — same responsibility, more of it.
     # 999 -> 1017 (2026-10-01): credential redaction by span
     # (fsRedactCredentialSpans) instead of replacing the whole text.
-    "agentCouncilStore.py": 1017,
+    # 1017 -> 1071 (2026-10-01): retention deletes only settled campaigns,
+    # oldest checkpoint first, instead of the first one alphabetically.
+    "agentCouncilStore.py": 1071,
     # NEW at 803 (2026-08-25): crossed the default cap by four lines,
     # all of them one more entry in DICT_EMPTY_TURN_EXPLANATIONS — the
     # out-of-memory case, which the gateway only started reporting the
@@ -4776,7 +4781,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1185 -> 1199 (2026-08-30): the stall failure class, its
     # sentence, and the two execution facts it reports. The module
     # already owns "what happened to a turn".
-    "agentCouncilProviders.py": 1302,
+    # 1302 -> 1349 (2026-10-01): a turn the gateway killed, failed or left
+    # empty names the real reason for every provider, from one extractor.
+    "agentCouncilProviders.py": 1349,
     # +2 (2026-07-04): the pipeline WS route claims the exclusive
     # pipeline lane and closes refusals after accept (fnCloseWithCode).
     # +18 (2026-07-07): three exec-free envelope status booleans
@@ -5542,7 +5549,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (workflowFieldTypes) before and after the state merge.
     # 2918 -> 2946 (2026-10-01): the loader attaches the hub-held record
     # of the GitHub remote a push reached (and the save strips it).
-    "workflowManager.py": 2946,
+    # 2946 -> 2947 (2026-10-01): the dependency-graph cache key carries sStepId.
+    "workflowManager.py": 2947,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -5933,7 +5941,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3660 -> 3661 (2026-09-29): one registration line for councilSnapshotRoutes.
     # 3661 -> 3678 (2026-10-01): fdictConfinedWriteKeywords, the one place
     # that turns the lexical write denylist into the write's own confinement.
-    "pipelineServer.py": 3678,
+    # 3678 -> 3719 (2026-10-01): an interactive pause belongs to its run:
+    # the per-run registry, the replay to a reconnecting socket, and the
+    # frame routing that finds the waiting run.
+    # 3719 -> 3720 (2026-10-01): the dependency scan's task is kept referenced.
+    # 3720 -> 3767 (2026-10-01): a malformed or unresolvable run frame is refused with an event.
+    "pipelineServer.py": 3767,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -5991,7 +6004,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the reaper keep reading as the container's one unit of live work.
     # The join, its member bookkeeping and the join-aware busy question
     # are durable-launch semantics; they belong beside the launch.
-    "commitCarrier.py": 1317,
+    # 1317 -> 1321 (2026-10-01): type-only imports name the annotations.
+    "commitCarrier.py": 1321,
     # NEW at 810 (2026-08-01): ORPHANED_SESSION slice 8 added the fifth
     # allowlisted operation, `mint-bootstrap` (the headless `vaibify do`
     # credential, §6b), to hostControlChannel.py. The module IS the
@@ -6187,7 +6201,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # loudly to announce it, are both decided here for that reason.
     # +2 (2026-09-24): a transfer retags every project's run and adopts
     # every command the shared durable record has in flight.
-    "sessionLifecycle.py": 1837,
+    # 1837 -> 1839 (2026-10-01): a fenced socket's close task is kept referenced.
+    "sessionLifecycle.py": 1839,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6321,14 +6336,23 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2187 -> 2188 (2026-09-29): the launch passes the manifest to the scope
     # note so participants learn what a tracked snapshot left out.
     # 2188 -> 2197 (2026-10-01): the plan seal hashes the file as written.
-    "agentCouncilController.py": 2197,
+    # 2197 -> 2204 (2026-10-01): the baseline executor runs under the
+    # campaign's turn wall clock, named once for both budgets.
+    # 2204 -> 2219 (2026-10-01): runners are created with the limits the
+    # daemon allows, resolved once per campaign runtime.
+    # 2219 -> 2238 (2026-10-01): a campaign a dead hub interrupted gets its
+    # running attempt settled as an interruption, so Retry can admit it.
+    # 2238 -> 2251 (2026-10-01): the shutdown releases the egress boundary after the runners drain.
+    "agentCouncilController.py": 2251,
     # NEW at 857 (2026-08-27): the conversation now outlives its
     # runner (researcher ruling — it must survive a meeting or a
     # class). Resting, waking, and the campaign-work drain predicate
     # are the same lifecycle the module already owned; the clocks
     # changed from bounding the conversation to bounding only the
     # runner's credential residency.
-    "agentCouncilChat.py": 868,
+    # 868 -> 870 (2026-10-01): the chat runner is created with the limits
+    # the daemon allows.
+    "agentCouncilChat.py": 870,
     # NEW at 899 (2026-08-01): ORPHANED_SESSION slice 9 —
     # startReservation.py is one lifecycle (design §10b): arbitrate the
     # start under the flock and the cardinality lock, launch it as a
@@ -6362,7 +6386,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # "something is stuck". Every launch site passes its own name.
     # 1069 -> 1119 (2026-10-01): the start asks how an unbuilt image may
     # run before it reserves, and a failed restricted launch says so.
-    "startReservation.py": 1119,
+    # 1119 -> 1122 (2026-10-01): type-only imports name the annotations.
+    "startReservation.py": 1122,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6512,7 +6537,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # projects' runs. The runner's command assembly is its job.
     # 1796 -> 1818 (2026-09-30): the attestation rerun's run mode, and
     # Verify using the run's own variables.
-    "pipelineRunner.py": 1818,
+    # 1818 -> 1843 (2026-10-01): preflight, the warning probes and the
+    # teardown joins run on worker threads, bounded.
+    # 1843 -> 1845 (2026-10-01): the pre-step check also matches symbolic tokens.
+    "pipelineRunner.py": 1845,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6540,14 +6568,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # reads it, which is this module's one responsibility.
     # +2 (2026-09-24): the live-run readers ask the per-project run
     # slots instead of a single per-container task.
-    "pipelineState.py": 1063,
-    "dataLoaders.py": 1222,
+    # 1063 -> 1068 (2026-10-01): the writer's stop accepts a join bound.
+    "pipelineState.py": 1068,
+    # 1222 -> 1229 (2026-10-01): a TFRecord feature is read from the decoded example.
+    # 1229 -> 1240 (2026-10-01): the module says where its loaders run.
+    "dataLoaders.py": 1240,
     # +20 (2026-08-12): the runner asks where this resource may write
     # its program instead of naming /tmp, and shell-quotes the answer
     # because a host scratch path descends from the researcher's home.
     # +2 (2026-08-12): the program runs on the interpreter that has
     # vaibify's dependencies, which on the host is not python3.
-    "introspectionScript.py": 1214,
+    # 1214 -> 1215 (2026-10-01): the container twin reads TFRecord features from the decoded example.
+    "introspectionScript.py": 1215,
     # +30 (2026-08-24): per-category deterministic generation. A
     # researcher or agent asking for one tier must not have the other
     # two silently rewritten underneath them, so each write is gated
@@ -6767,7 +6799,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # itself is only read.
     # +1 (2026-10-01): the registry removal declares its carrier mode.
     # 2329 -> 2332 (2026-10-01): the settings payload carries the image-trust answer.
-    "registryRoutes.py": 2332,
+    # 2332 -> 2334 (2026-10-01): adding a project names an unreadable registry
+    # (409) instead of a 500.
+    # 2334 -> 2335 (2026-10-01): one text open names its encoding.
+    # 2335 -> 2336 (2026-10-01): the archive source is resolved before the session is released.
+    "registryRoutes.py": 2336,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

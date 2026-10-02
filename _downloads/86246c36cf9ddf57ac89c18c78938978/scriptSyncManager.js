@@ -126,6 +126,12 @@ var VaibifySyncManager = (function () {
             }
             _sPushService = sService;
             await fnPopulatePushModal(sService);
+        } catch (error) {
+            VaibifyApp.fnShowToast(
+                "The " + _fsCanonicalServiceLabel(sService) +
+                " push could not be opened: " +
+                (error && error.message ? error.message : error),
+                "error");
         } finally {
             if (elToast && elToast.parentNode) elToast.remove();
         }
