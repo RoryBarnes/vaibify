@@ -331,15 +331,46 @@ var VaibifyReproducePublished = (function () {
 
     /* ---------------- stage 4: the result ---------------- */
 
+    function _fsAuthenticatedLink(sPath, sLabelHtml) {
+        /* The hub's credential is a request header, which an anchor
+           target cannot carry, so a plain new-tab link always answered
+           401. The click handler fetches with the page's credential
+           and opens the bytes instead. */
+        return '<a href="#" class="reproduce-open-report" data-path="'
+            + fnEscapeHtml(sPath) + '">' + sLabelHtml + "</a>";
+    }
+
+    async function _fnOpenAuthenticatedReport(sPath) {
+        var windowReport = window.open("", "_blank");
+        try {
+            var sText = await VaibifyApi.fsGetText(sPath);
+            var sBlobUrl = URL.createObjectURL(
+                new Blob([sText], {type: "text/plain;charset=utf-8"}));
+            windowReport.location.href = sBlobUrl;
+        } catch (error) {
+            if (windowReport) windowReport.close();
+            VaibifyApp.fnShowToast(
+                "The report could not be opened: " +
+                (error && error.message ? error.message : error), "error");
+        }
+    }
+
+    function _fnOpenReportFromClick(event) {
+        var elLink = event.target.closest(".reproduce-open-report");
+        if (!elLink) return;
+        event.preventDefault();
+        _fnOpenAuthenticatedReport(elLink.getAttribute("data-path"));
+    }
+
     function _fsReportLink(dictReport) {
         /* The report is a file this hub can serve, so the row is a
            link to it rather than an id and a directory to go and find
            by hand. */
         var sReportId = dictReport.sReportId || "";
         if (!sReportId) return "";
-        return '<a href="/api/reproductions/reports/'
-            + encodeURIComponent(sReportId) + '" target="_blank" '
-            + 'rel="noopener">' + fnEscapeHtml(sReportId) + "</a>";
+        return _fsAuthenticatedLink(
+            "/api/reproductions/reports/" + encodeURIComponent(sReportId),
+            fnEscapeHtml(sReportId));
     }
 
     function _fsRenderVerdict(dictReport) {
@@ -421,11 +452,9 @@ var VaibifyReproducePublished = (function () {
            row is a link to it, and only when one was written. */
         var sReportId = dictReport.sReportId || "";
         if (!dictReport.sReproducedManifestPath || !sReportId) return "";
-        return _fsFactRowHtml("Reproduced manifest",
-            '<a href="/api/reproductions/reports/'
-            + encodeURIComponent(sReportId) + '/manifest" target="_blank" '
-            + 'rel="noopener">' +
-            fnEscapeHtml(dictReport.sReproducedManifestPath) + "</a>");
+        return _fsFactRowHtml("Reproduced manifest", _fsAuthenticatedLink(
+            "/api/reproductions/reports/" + encodeURIComponent(sReportId)
+            + "/manifest", fnEscapeHtml(dictReport.sReproducedManifestPath)));
     }
 
     function _fsRenderFailure(dictFailure) {
@@ -446,6 +475,8 @@ var VaibifyReproducePublished = (function () {
     function fnBind() {
         _felById("btnReproduceStage").addEventListener("click", _fnStage);
         _felById("btnReproduceRun").addEventListener("click", _fnRun);
+        _felById("reproduceResultBody").addEventListener(
+            "click", _fnOpenReportFromClick);
         ["btnReproduceCancelSource", "btnReproduceCancelConfirm",
          "btnReproduceCloseResult"].forEach(function (sId) {
             _felById(sId).addEventListener("click", fnClose);

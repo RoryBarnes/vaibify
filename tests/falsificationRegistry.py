@@ -25670,4 +25670,41 @@ def _fdictEntry(sRel):
         old='    except ValueError:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
         new='    except KeyboardInterrupt:\n        return None\n    return dictRequest if isinstance(dictRequest, dict) else None\n',
     ),
+    # --- Dashboard edges that failed silently or answered the wrong question ---
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testAPathWithAFragmentOrQueryCharacterListsThatDirectory',
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        return String(sPath).split("/").map(encodeURIComponent).join("/");\n',
+        new='        return String(sPath);\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testARepositoryAnswerForAnotherContainerIsNotApplied',
+        source='vaibify/gui/static/scriptPolling.js',
+        old='                if (VaibifyApp.fsGetContainerId() !== sContainerId) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testAnInteractiveFrameSentWhileConnectingIsDeliveredOnOpen',
+        source='vaibify/gui/static/scriptWebSocket.js',
+        old='           in the same queue the open handler flushes. */\n        fnSend(dictMessage);\n',
+        new='           in the same queue the open handler flushes. */\n        _wsPipeline.send(JSON.stringify(dictMessage));\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testDashboardEdgesTellTheTruth.py::testPushTellsTheResearcherWhenItsPreCheckFails',
+        source='vaibify/gui/static/scriptSyncManager.js',
+        old=(
+            '            VaibifyApp.fnShowToast(\n'
+            '                "The " + _fsCanonicalServiceLabel(sService) +\n'
+            '                " push could not be opened: " +\n'
+            '                (error && error.message ? error.message : error),\n'
+            '                "error");\n'
+        ),
+        new='            throw error;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testReproducePublishedCard.py::test_the_report_link_opens_the_report_with_the_pages_credential',
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        old='        _fnOpenAuthenticatedReport(elLink.getAttribute("data-path"));\n',
+        new='',
+    ),
 ]

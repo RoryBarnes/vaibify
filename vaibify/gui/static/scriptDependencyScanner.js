@@ -345,7 +345,8 @@ var VaibifyDependencyScanner = (function () {
         elBrowser.innerHTML = '<div class="dep-browser-loading">' +
             'Loading...</div>';
         try {
-            var sUrl = "/api/files/" + sContainerId + sPath;
+            var sUrl = "/api/files/" + sContainerId +
+                VaibifyUtilities.fsEncodeUrlPath(sPath);
             var listEntries = await VaibifyApi.fdictGet(sUrl);
             elBrowser.innerHTML = fsRenderBreadcrumb(sPath) +
                 '<div class="dep-browser-list">' +

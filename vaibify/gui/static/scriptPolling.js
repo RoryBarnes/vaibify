@@ -293,6 +293,7 @@ var VaibifyPolling = (function () {
                     "/api/repos/" + sContainerId + "/status"
                 );
                 _fnReportPollSuccess("repos-status");
+                if (VaibifyApp.fsGetContainerId() !== sContainerId) return;
                 if (_fnOnReposStatus) {
                     _fnOnReposStatus(dictStatus);
                 }
