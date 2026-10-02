@@ -23477,11 +23477,12 @@ def _fdictEntry(sRel):
             'testADepositIsShownAndForgottenOnlyForItsOwnProject'
         ),
         source='vaibify/gui/archiveProgress.py',
-        old=(
-            '        if dictEntry.get("sProjectRepoPath") == sProjectRepoPath:\n'
-            '            DICT_DEPOSITS.pop(sContainerId, None)\n'
+        old='        DICT_DEPOSITS.pop((sContainerId, sProjectRepoPath), None)\n',
+        new=(
+            '        for tKey in [t for t in DICT_DEPOSITS'
+            ' if t[0] == sContainerId]:\n'
+            '            DICT_DEPOSITS.pop(tKey, None)\n'
         ),
-        new='        DICT_DEPOSITS.pop(sContainerId, None)\n',
     ),
     Falsification(
         nodeid=(
@@ -25817,5 +25818,25 @@ def _fdictEntry(sRel):
         source='vaibify/gui/routes/workflowRoutes.py',
         old='            fnReRaiseControlPlaneRefusal(error)\n            if _fbIsContainerStopped(error):\n',
         new='            if _fbIsContainerStopped(error):\n',
+    ),
+    # --- Per-container state is evicted with its container and never
+    # shared between two projects of one container ---
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testEveryCacheWrittenUnderAContainerIdIsInTheSweep',
+        source='vaibify/gui/fileStatusManager.py',
+        old='    "dictLiveImageIdentities",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testTheImageIdentityAndCreationCachesAreEvictedWithTheirContainer',
+        source='vaibify/gui/fileStatusManager.py',
+        old='    "dictPinnedImagePresence",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testPerContainerStateLifecycle.py::testASecondProjectsDepositDoesNotEraseTheFirstProjectsFailure',
+        source='vaibify/gui/archiveProgress.py',
+        old='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, sProjectRepoPath), {},\n        )\n',
+        new='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, ""), {},\n        )\n',
     ),
 ]

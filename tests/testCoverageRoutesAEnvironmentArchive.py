@@ -243,8 +243,14 @@ def _tConnectWithEnvelope(dictSlots, dictContainer=None):
 
 def _fnCancelRegisteredWorker(sContainerId):
     """Stop a detached worker the handler launched, so nothing leaks."""
-    dictEntry = archiveProgress.DICT_DEPOSITS.get(sContainerId) or {}
-    taskWorker = dictEntry.get("task")
+    for (sIdRecorded, _sProject), dictEntry in list(
+        archiveProgress.DICT_DEPOSITS.items(),
+    ):
+        if sIdRecorded == sContainerId:
+            _fnCancelOneWorker(dictEntry.get("task"))
+
+
+def _fnCancelOneWorker(taskWorker):
     if taskWorker is None or taskWorker.done():
         return
     loopWorker = taskWorker.get_loop()
@@ -495,9 +501,9 @@ def testADepositLaunchIsRegisteredAsDurableWork(monkeypatch):
             "bAccepted": True, "sPhase": archiveProgress.S_PHASE_STARTING,
         }
         assert S_SANDBOX_TOKEN not in responseHttp.text
-        assert archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID][
-            "sProjectRepoPath"
-        ] == "/workspace"
+        assert (S_CONTAINER_ID, "/workspace") in (
+            archiveProgress.DICT_DEPOSITS
+        )
     finally:
         _fnCancelRegisteredWorker(S_CONTAINER_ID)
 
@@ -519,7 +525,10 @@ def testAPromotionLaunchIsRegisteredAsDurableWork(
         assert responseHttp.status_code == 200, responseHttp.text
         assert responseHttp.json()["bAccepted"] is True
         assert S_PRODUCTION_TOKEN not in responseHttp.text
-        assert S_CONTAINER_ID in archiveProgress.DICT_DEPOSITS
+        assert any(
+            tKey[0] == S_CONTAINER_ID
+            for tKey in archiveProgress.DICT_DEPOSITS
+        )
     finally:
         _fnCancelRegisteredWorker(S_CONTAINER_ID)
 
@@ -540,7 +549,10 @@ def testClearingTheAnswerRemovesItAndForgetsAFailedAttempt():
     assert responseHttp.status_code == 200, responseHttp.text
     assert responseHttp.json() == {"sAnswer": "cleared"}
     assert imageArchive.S_IMAGE_ARCHIVE_KEY not in dictWorkflow
-    assert S_CONTAINER_ID not in archiveProgress.DICT_DEPOSITS
+    assert not any(
+        tKey[0] == S_CONTAINER_ID
+        for tKey in archiveProgress.DICT_DEPOSITS
+    )
     listSavedWorkflows = [
         json.loads(baContent) for sPath, baContent
         in connectionDocker._dictFiles.items()
@@ -601,7 +613,7 @@ def testTheDepositWorkerReportsEachPhaseAndStampsTheRecord(
         ):
             fnReport(*tArguments)
             listPhasesSeen.append(
-                archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID]["sPhase"],
+                archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]["sPhase"],
             )
         return _fdictDepositedRecord()
 
@@ -620,7 +632,7 @@ def testTheDepositWorkerReportsEachPhaseAndStampsTheRecord(
         archiveProgress.S_PHASE_SAVING, archiveProgress.S_PHASE_UPLOADING,
         archiveProgress.S_PHASE_VERIFYING,
     ]
-    assert archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID]["sPhase"] == (
+    assert archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]["sPhase"] == (
         archiveProgress.S_PHASE_SETTLED
     )
     assert dictCall["sService"] == "sandbox"
@@ -659,7 +671,7 @@ def testAFailedDepositKeepsItsReasonAndRemovesItsScratch(
         _fdictContainerBlock(), S_SANDBOX_TOKEN,
         ffilesEnsureRepoFiles(sProjectRepo),
     ))
-    dictEntry = archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID]
+    dictEntry = archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]
     assert dictEntry["sPhase"] == archiveProgress.S_PHASE_FAILED
     assert dictEntry["sReason"] == (
         "Zenodo authentication failed (401): token revoked"
@@ -738,7 +750,7 @@ def testThePromotionSettlesItsRecordOnlyOnceTheManifestIsPinned(
         dictSeen["sSidecarKey"] = sSidecarKey
         dictHooks["fnReportSaveProgress"](5, 10)
         dictSeen["sAfterSave"] = archiveProgress.DICT_DEPOSITS[
-            S_CONTAINER_ID]["sPhase"]
+            (S_CONTAINER_ID, sProjectRepo)]["sPhase"]
         dictHooks["fnReportUploadStarted"](10)
         dictHooks["fnReportVerifying"]()
         return (_fdictDepositedRecord("10.5281/zenodo.400"),
@@ -758,7 +770,7 @@ def testThePromotionSettlesItsRecordOnlyOnceTheManifestIsPinned(
     assert dictSeen["sToken"] == S_PRODUCTION_TOKEN
     assert dictSeen["sSidecarKey"] == S_WORKFLOW_RELATIVE_PATH
     assert dictSeen["sAfterSave"] == archiveProgress.S_PHASE_SAVING
-    assert archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID]["sPhase"] == (
+    assert archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]["sPhase"] == (
         archiveProgress.S_PHASE_SETTLED
     )
     dictContainer = fdictReadEnvironmentJson(
@@ -794,7 +806,7 @@ def testAFailedPromotionKeepsItsRecordVisibleAndItsReason(
     archiveProgress.fnRegisterDeposit(S_CONTAINER_ID, None, sProjectRepo)
     dictWorkflow = {"sProjectRepoPath": sProjectRepo}
     _fnRunPromotionWorker(sProjectRepo, dictWorkflow)
-    dictEntry = archiveProgress.DICT_DEPOSITS[S_CONTAINER_ID]
+    dictEntry = archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]
     assert dictEntry["sPhase"] == archiveProgress.S_PHASE_FAILED
     assert dictEntry["sReason"] == "Zenodo API error (502): gateway"
     assert [
