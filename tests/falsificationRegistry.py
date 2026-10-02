@@ -25754,4 +25754,11 @@ def _fdictEntry(sRel):
         old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
         new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
     ),
+    # --- Nothing to reconcile is a success on the live-hub lane too ---
+    Falsification(
+        nodeid='tests/testReconcileNothingToReconcileExitsZero.py::testNothingToReconcileExitsZeroOnTheLiveHubLane',
+        source='vaibify/cli/commandReconcile.py',
+        old='    if not dictRequest:\n        return 0\n',
+        new='    if not dictRequest:\n        return 1\n',
+    ),
 ]
