@@ -62,6 +62,7 @@ __all__ = [
 
 import hashlib
 import json
+import threading
 from datetime import datetime, timezone
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
@@ -87,6 +88,11 @@ F_ATTRIBUTION_WINDOW_SECONDS = 60.0
 # watchdog would judge changes whose explaining event is already out
 # of reach. Derived, never written as an independent literal.
 F_ATTRIBUTION_MTIME_CUTOFF_SECONDS = 1.5 * F_ATTRIBUTION_WINDOW_SECONDS
+
+# A record names its predecessor's hash, so reading the last record and
+# appending the next must be one step: two writers that both read the
+# same last record fork the chain and lose one of the records.
+_LOCK_APPEND = threading.Lock()
 
 _S_PREVIOUS_FLAG_KEY = "sPreviousFlagSha256"
 _S_PREVIOUS_EVENT_KEY = "sPreviousEventSha256"
@@ -179,16 +185,17 @@ def fnAppendAttributionEvent(
     """Record one mutation-channel event; no-op unless supervised."""
     if not fbSupervisionEnabled(dictWorkflow):
         return
-    listEvents = flistLoadAttributionEvents(filesRepo)
-    _fnAppendJsonlRecord(filesRepo, S_ATTRIBUTION_EVENTS_PATH, {
-        "sChannel": sChannel,
-        "sActor": sActor,
-        "sDetail": sDetail,
-        "sTimestampUtc": _fsCurrentTimestamp(),
-        _S_PREVIOUS_EVENT_KEY: (
-            _fsHashChainedRecord(listEvents[-1]) if listEvents else ""
-        ),
-    })
+    with _LOCK_APPEND:
+        listEvents = flistLoadAttributionEvents(filesRepo)
+        _fnAppendJsonlRecord(filesRepo, S_ATTRIBUTION_EVENTS_PATH, {
+            "sChannel": sChannel,
+            "sActor": sActor,
+            "sDetail": sDetail,
+            "sTimestampUtc": _fsCurrentTimestamp(),
+            _S_PREVIOUS_EVENT_KEY: (
+                _fsHashChainedRecord(listEvents[-1]) if listEvents else ""
+            ),
+        })
 
 
 def flistLoadAttributionEvents(filesRepo):
@@ -305,16 +312,17 @@ def fbAnyEventWithinWindow(
 
 def fdictAppendFlag(filesRepo, sFlagKind, sDetail):
     """Append one permanent, chained flag record and return it."""
-    listFlags = flistLoadFlags(filesRepo)
-    dictFlag = {
-        "sFlagKind": sFlagKind,
-        "sDetail": sDetail,
-        "sTimestampUtc": _fsCurrentTimestamp(),
-        _S_PREVIOUS_FLAG_KEY: (
-            _fsHashChainedRecord(listFlags[-1]) if listFlags else ""
-        ),
-    }
-    _fnAppendJsonlRecord(filesRepo, S_ATTRIBUTION_FLAGS_PATH, dictFlag)
+    with _LOCK_APPEND:
+        listFlags = flistLoadFlags(filesRepo)
+        dictFlag = {
+            "sFlagKind": sFlagKind,
+            "sDetail": sDetail,
+            "sTimestampUtc": _fsCurrentTimestamp(),
+            _S_PREVIOUS_FLAG_KEY: (
+                _fsHashChainedRecord(listFlags[-1]) if listFlags else ""
+            ),
+        }
+        _fnAppendJsonlRecord(filesRepo, S_ATTRIBUTION_FLAGS_PATH, dictFlag)
     return dictFlag
 
 

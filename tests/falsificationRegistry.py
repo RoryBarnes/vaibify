@@ -25727,4 +25727,17 @@ def _fdictEntry(sRel):
         old='    return sBreak.join(re.escape(sCharacter) for sCharacter in sSecret)\n',
         new='    return re.escape(sSecret)\n',
     ),
+    # --- Concurrent writers cannot fork the attribution hash chains ---
+    Falsification(
+        nodeid='tests/testAttributionLogConcurrentAppends.py::testConcurrentEventAppendsKeepEveryRecordInOneChain',
+        source='vaibify/gui/attributionLog.py',
+        old='    with _LOCK_APPEND:\n        listEvents = flistLoadAttributionEvents(filesRepo)\n',
+        new='    if True:\n        listEvents = flistLoadAttributionEvents(filesRepo)\n',
+    ),
+    Falsification(
+        nodeid='tests/testAttributionLogConcurrentAppends.py::testConcurrentFlagAppendsKeepEveryFlagInOneChain',
+        source='vaibify/gui/attributionLog.py',
+        old='    with _LOCK_APPEND:\n        listFlags = flistLoadFlags(filesRepo)\n',
+        new='    if True:\n        listFlags = flistLoadFlags(filesRepo)\n',
+    ),
 ]
