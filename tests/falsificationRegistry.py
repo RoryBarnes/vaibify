@@ -26347,4 +26347,10 @@ def _fdictEntry(sRel):
         old='    ".pypirc", ".pytest_cache"',
         new='    ".pytest_cache"',
     ),
+    Falsification(
+        nodeid='tests/testFunctionLengthStatement.py::testTheContainerAgentGuideStatesTheGuidelineNotAHardCap',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='- Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count',
+        new='- Functions should be under 20 lines',
+    ),
 ]

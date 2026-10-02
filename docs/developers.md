@@ -10,7 +10,8 @@ proposed changes are not duplicating work and will be of general interest.
 Vaibify follows the style conventions described in the project's global
 development standards: camelCase with Hungarian prefixes for variables,
 `f`-prefixed names for functions (with a return-type letter), files in
-camelCase without Hungarian prefixes, functions under 20 lines, no
+camelCase without Hungarian prefixes, functions usually 20-30 lines (split
+for reuse or a genuine conceptual boundary, never to satisfy a line count), no
 abbreviations for words shorter than 8 characters, and clear naming in
 preference to inline comments. If you are developing with an AI coding
 agent, read [`AGENTS.md`](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) at the repo root for the rules,

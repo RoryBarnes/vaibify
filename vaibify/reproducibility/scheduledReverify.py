@@ -755,8 +755,8 @@ def _fnAttachServiceIdentityFields(dictStatus, sService, dictConfig):
     """Stamp service-identity fields onto the status dict.
 
     Splits per-service identifier capture out of
-    :func:`fdictVerifyRemoteService` so the 20-line cap holds and the
-    per-service branches can grow independently if more identity
+    :func:`fdictVerifyRemoteService` so each function keeps one purpose
+    and the per-service branches can grow independently if more identity
     fields are needed later.
     """
     if sService == "github":
