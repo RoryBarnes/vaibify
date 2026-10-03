@@ -23,7 +23,8 @@ than asserted as a string. A shell chain is not a string -- ``a && b ||
 c && d`` parses as ``((a && b) || c) && d``, so the grouping is
 load-bearing and a substring assertion would pass on a version that
 runs the push after a FAILED add. The upstream is a local bare repo
-reached over git's ``ext::`` transport, so nothing touches the network
+reached over an ``ssh://`` URL whose ssh command runs the remote half
+locally (``tests/localGitRemote.py``), so nothing touches the network
 and the production hardening flags stay in force.
 
 Kills (confirmed, not assumed): reverting to the unconditional
@@ -38,6 +39,9 @@ import subprocess
 
 import pytest
 
+from tests.localGitRemote import (
+    fnUseFakeSshForThisTest, fsSshUrlForLocalRepository,
+)
 from vaibify.gui import syncDispatcher
 
 
@@ -66,15 +70,15 @@ def _fnRunGit(sCwd, *aArgs):
 
 
 @pytest.fixture
-def tRepoWithRemote(tmp_path):
+def tRepoWithRemote(tmp_path, monkeypatch):
     """Return (work tree, tracked file) wired to a real upstream.
 
-    The remote is reached through git's ``ext::`` transport, not a
-    plain path: the production command carries
-    ``protocol.file.allow=never``, which rightly refuses a local-path
-    remote, and weakening the hardening to make a test pass would
-    delete the thing being hardened. Pattern borrowed from
-    ``testDeclarationPushMutationCoverage``.
+    The remote is an ``ssh://`` URL, not a plain path: the production
+    command carries ``protocol.file.allow=never``, which rightly refuses
+    a local-path remote, and weakening the hardening to make a test pass
+    would delete the thing being hardened. The ssh command is a stand-in
+    that runs the remote half locally. (It used to be git's ``ext::``
+    transport, which the hardening list now refuses too.)
     """
     sSeed = str(tmp_path / "seed")
     os.makedirs(sSeed)
@@ -104,9 +108,10 @@ def tRepoWithRemote(tmp_path):
     _fnRunGit(sWork, "config", "user.email", "lane@example.invalid")
     _fnRunGit(sWork, "config", "user.name", "Test Lane")
     _fnRunGit(sWork, "config", "commit.gpgsign", "false")
+    fnUseFakeSshForThisTest(monkeypatch, tmp_path)
     _fnRunGit(
         sWork, "remote", "set-url", "origin",
-        "ext::git %s " + sOrigin,
+        fsSshUrlForLocalRepository(sOrigin),
     )
     return sWork, sTracked
 
