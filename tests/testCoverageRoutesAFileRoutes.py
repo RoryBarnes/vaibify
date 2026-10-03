@@ -45,6 +45,8 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
         self.sStreamFailure = ""
         self.sWriteFailure = ""
         self.listTreeWrites = []
+        self.listTreeWriteKeywords = []
+        self.errorTreeWrite = None
 
     def fbContainerPathIsFile(self, sContainerId, sPath):
         DockerDoubleThatCallsTheRealGates.fbContainerPathIsFile(
@@ -99,16 +101,24 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
 
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
-        iUid=None, iGid=None,
+        iUid=None, iGid=None, sArchiveName=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+        bCreateDestination=False,
     ):
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
         )
         if self.sWriteFailure:
             raise OSError(self.sWriteFailure)
+        if self.errorTreeWrite is not None:
+            raise self.errorTreeWrite
         self.listTreeWrites.append(
             (sDestinationDirectory, list(listHostPaths)),
         )
+        self.listTreeWriteKeywords.append({
+            "sAuthorizedRoot": sAuthorizedRoot,
+            "bCreateDestination": bCreateDestination,
+        })
 
 
 @pytest.fixture(autouse=True)
@@ -689,6 +699,83 @@ def testAFailedSeedCopyIsReportedNotSwallowed(
     )
     assert responseHttp.status_code == 500
     assert "tar stream interrupted" in responseHttp.json()["detail"]
+
+
+@pytest.mark.falsification
+def testASeedAsksTheReceiverToCreateItsDestinationBelowTheWorkspaceRoot(
+    tclientFiles, tmp_path,
+):
+    """The separate ``mkdir -p`` exec is gone; the receiver creates it.
+
+    The destination is bounded by the workspace root, so creation can
+    never reach above the volume.
+
+    Kills: dropping ``bCreateDestination=True`` from the seed's write,
+    which sends the copy to a destination directory nobody created.
+    """
+    client, connectionDocker = tclientFiles
+    _fnRegisterProject(_fsBuildHostProject(tmp_path))
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["scripts"]},
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    assert connectionDocker.listTreeWriteKeywords == [{
+        "sAuthorizedRoot": "/workspace", "bCreateDestination": True,
+    }]
+    assert not [
+        dictAdmitted for dictAdmitted in connectionDocker.listAdmittedPrimitives
+        if "mkdir" in dictAdmitted["sCommand"]
+    ]
+
+
+def _fnPlantTreeWriteError(connectionDocker, iMembersLanded):
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    errorRefused = ContainerWriteRefusedError(
+        "Copy into /workspace/hostProjectBravo refused: 'scripts' is a "
+        "symlink or not a directory")
+    errorRefused.iMembersLanded = iMembersLanded
+    connectionDocker.errorTreeWrite = errorRefused
+
+
+@pytest.mark.falsification
+def testASeedRefusedBeforeAnythingLandedAnswers403WithTheReason(
+    tclientFiles, tmp_path,
+):
+    """A decided refusal is a 4xx the container survives.
+
+    Kills: answering every refused copy with 500, which poisons the
+    journal record and quarantines a container over a symlink the
+    researcher can simply remove.
+    """
+    client, connectionDocker = tclientFiles
+    _fnRegisterProject(_fsBuildHostProject(tmp_path))
+    _fnPlantTreeWriteError(connectionDocker, 0)
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["scripts"]},
+    )
+    assert responseHttp.status_code == 403
+    assert "symlink or not a directory" in responseHttp.json()["detail"]
+
+
+@pytest.mark.falsification
+def testASeedThatStoppedPartWayIsAServerFailureNotARefusal(
+    tclientFiles, tmp_path,
+):
+    """Members landed, so the container's state is no longer known.
+
+    Kills: carrying a partial copy back as a clean refusal, which would
+    leave a half-seeded workspace unreconciled.
+    """
+    client, connectionDocker = tclientFiles
+    _fnRegisterProject(_fsBuildHostProject(tmp_path))
+    _fnPlantTreeWriteError(connectionDocker, 3)
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["scripts"]},
+    )
+    assert responseHttp.status_code == 500
 
 
 def testAnExplicitlySelectedGitDirectoryIsNotCopiedTwice(

@@ -229,6 +229,27 @@ def test_push_calls_transfer(mockPush, mockConfig):
     mockPush.assert_called_once_with("proj", "/src", "/dst")
 
 
+@patch("vaibify.cli.main.fconfigResolveProject")
+@patch("vaibify.docker.fileTransfer.fnPushToContainer")
+def test_a_refused_push_says_why_and_exits_nonzero(mockPush, mockConfig):
+    """A refusal is an answer, not a traceback.
+
+    The copy refuses a symlinked directory instead of following it; the
+    researcher has to be told which one and that nothing was changed.
+    """
+    from vaibify.docker.confinedWrite import ContainerWriteRefusedError
+    mockConfig.return_value = SimpleNamespace(sProjectName="proj")
+    mockPush.side_effect = ContainerWriteRefusedError(
+        "Copy into /workspace/data refused: 'data' is a symlink or not "
+        "a directory. Nothing was written.")
+    result = CliRunner().invoke(main, ["push", "/src", "/dst"])
+    assert result.exit_code == 1
+    assert "'data' is a symlink" in result.output
+    assert "Nothing was written" in result.output
+    assert "Traceback" not in result.output
+    assert "Pushed" not in result.output
+
+
 # -----------------------------------------------------------------------
 # pull
 # -----------------------------------------------------------------------

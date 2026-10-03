@@ -47,9 +47,14 @@ creates the file under a private name, `fchmod`s it and renames it into
 place. The file is owned by the container user because that user
 created it, so no uid/gid stamp exists to leak a default of 0. The old
 tarball write (`put_archive`, which extracts as root and follows
-in-container symlinks) is gone for single files; `fnWriteTreeViaTar` and
-the disposable repack still build tar entries and still default to
-1000:1000, locked to the Dockerfile by `testContainerUserUidIsOneThousand`.
+in-container symlinks) is gone for single files AND for trees:
+`fnWriteTreeViaTar` streams a tar to a second fixed program in the same
+module, the tree receiver, which runs as the container user, lands each
+member relative to directory descriptors, refuses a symlinked directory,
+hard links and devices, and reports how many members had landed so a
+partial copy says so. Only the disposable repack still builds tar
+entries that default to 1000:1000, locked to the Dockerfile by
+`testContainerUserUidIsOneThousand`.
 `tests/testArchitecturalInvariants.py::testFnWriteFileDefaultsToContainerUserOwnership`
 enforces that the single-file funnel never goes back to an archive.
 Researcher secrets mount with `--mount` (built by

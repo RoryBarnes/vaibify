@@ -14,9 +14,9 @@ from typing import List
 
 from ..actionCatalog import ffnAgentAction
 from ...docker.confinedWrite import ContainerWriteRefusedError
-from ..pipelineUtils import fsShellQuote
 from ..serverMiddleware import fbRequestRidesAgentLane
 from ..routeContext import (
+    fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
     fdictStampDockerIdForJournal,
     fnRejectAgentTokenLane,
@@ -619,7 +619,7 @@ def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
         )
         _fnCommitWorkspaceSeed(
             dictCtx, sContainerId, sDestination, listHostPaths,
-            dictLaneTuple, requestHttp,
+            dictLaneTuple, requestHttp, sWorkspaceRoot,
         )
         return {
             "bSuccess": True, "sDestination": sDestination,
@@ -702,36 +702,37 @@ def _flistResolveSeedPaths(sHostDirectory, saRelativePaths):
 
 def _fnCommitWorkspaceSeed(
     dictCtx, sContainerId, sDestination, listHostPaths,
-    dictLaneTuple, requestHttp,
+    dictLaneTuple, requestHttp, sWorkspaceRoot,
 ):
     """Commit the tree copy through carrier mode (a) (design §8)."""
     from .. import commitCarrier
 
     def fnSeedTheWorkspace():
         try:
-            dictCtx["docker"].ftResultExecuteCommand(
-                sContainerId, f"mkdir -p {fsShellQuote(sDestination)}",
-            )
             dictCtx["docker"].fnWriteTreeViaTar(
                 sContainerId, sDestination, listHostPaths,
+                sAuthorizedRoot=sWorkspaceRoot, bCreateDestination=True,
             )
         except ControlPlaneRefusalError:
             raise
+        except ContainerWriteRefusedError as error:
+            raise HTTPException(
+                403 if error.iMembersLanded == 0 else 500, str(error))
         except Exception as error:
             raise HTTPException(500, str(error))
 
-    # Journalled as a file-write, the kind it actually is, rather than
-    # a "workspace-seed" kind of its own: the journal's allowlist is
-    # the set of kinds `vaibify reconcile` knows how to settle, so a
-    # new kind is a promise the reconciler has to keep. The seed writes
-    # files into the workspace and settles exactly like the upload
-    # route beside it.
-    commitCarrier.fdictCommitSynchronousMutation(
+    # Journalled as a file-write, the kind it actually is: the journal's
+    # allowlist is the set of kinds `vaibify reconcile` can settle. A
+    # refusal that landed nothing is carried back as a value, so it does
+    # not quarantine the container; a copy that stopped part-way raises.
+    dictCommitted = commitCarrier.fdictCommitSynchronousMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "file-write", sDestination,
-        fnSeedTheWorkspace,
+        lambda: fdictCarryARefusalBackInsteadOfRaising(fnSeedTheWorkspace),
         fdictStampDockerIdForJournal(sContainerId),
     )
+    if dictCommitted["result"]["errorRefused"] is not None:
+        raise dictCommitted["result"]["errorRefused"]
 
 
 def _fsRequireProjectRepoForWrite(dictCtx, sContainerId):

@@ -1299,8 +1299,10 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     construction and no tar entry is stamped at all.
 
     Pair with ``testContainerUserUidIsOneThousand``, which pins the
-    Dockerfile's user UID: the tree writer and the disposable repack
-    still stamp tar entries and still default to it.
+    Dockerfile's user UID: the disposable repack still stamps tar
+    entries and still defaults to it. The tree writer no longer builds
+    an archive the daemon extracts: it streams one to a receiver that
+    runs as the container user, so it claims no owner at all.
 
     SCOPE: the DOCKER leg only. A host-mode connection (``vaibify/host/``)
     writes host files as the invoking user and carries its own guardrails

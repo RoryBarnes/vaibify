@@ -158,6 +158,9 @@ _I_CONTAINER_DEFAULT_GID = 1000
 # allowed.
 _I_TREE_TAR_SPOOL_BYTES = 32 * 1024 * 1024
 
+# How much of the spooled archive goes onto the exec socket per send.
+_I_STDIN_CHUNK_BYTES = 1024 * 1024
+
 
 def _fsResolveContainerUser(container):
     """Return the unprivileged user baked into the image, cached per id.
@@ -2524,14 +2527,18 @@ class DockerConnection:
             sContainerId, listCommand, baStdin,
         )
 
-    def _ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
+    def _ftRunProgramWithStdin(
+        self, sContainerId, listCommand, baStdin=None, fileStdin=None,
+    ):
         """Exec ``listCommand`` as the container user, feeding it stdin.
 
         No shell sits between the daemon and the program: the argument
         vector is exact. The write half of the hijacked connection is
         shut down once the payload is sent so the program sees EOF; a
         program that exits before reading everything (a refusal) is not
-        an error here, its exit code is the answer.
+        an error here, its exit code is the answer. The payload is
+        ``baStdin`` held in memory, or ``fileStdin`` streamed in chunks
+        so a whole directory tree never has to fit in memory.
         """
         sExecId = self.fsExecCreate(
             sContainerId, listCommand=listCommand, bTty=False,
@@ -2539,7 +2546,7 @@ class DockerConnection:
         socketExec = self.fsocketExecStart(sExecId, bTty=False)
         try:
             baStdout, baStderr = _ftExchangeWithExecSocket(
-                socketExec, baStdin,
+                socketExec, baStdin, fileStdin=fileStdin,
             )
         finally:
             socketExec.close()
@@ -2553,6 +2560,8 @@ class DockerConnection:
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+        bCreateDestination=False,
     ):
         """Copy host files and directories into a container directory.
 
@@ -2564,35 +2573,52 @@ class DockerConnection:
         indication anything was missing (2026-08-21).
 
         One archive, one round trip, whatever the tree's shape --
-        ``tarfile`` walks a directory natively. The destination
-        directory must already exist; ``put_archive`` does not create
-        it. Symlinks are archived AS symlinks (tarfile's default), so
-        a link pointing outside the project copies the link and never
-        the host bytes it names.
+        ``tarfile`` walks a directory natively. Symlinks are archived
+        AS symlinks (tarfile's default), so a link pointing outside the
+        project copies the link and never the host bytes it names.
 
-        Ownership is stamped, never inherited. ``tar.add`` would carry
-        the HOST's uid/gid onto every entry, which lands the files
-        foreign-owned inside the container and silently unwritable by
-        the in-container agent, which has no sudo by design -- the
-        same ownership defect the single-file writer avoids by running
-        as the container user.
+        The archive is NOT handed to the daemon. ``put_archive`` extracts
+        as root and follows every symlink it meets, so a link the
+        in-container agent planted at the destination, or at any
+        directory on the way to it, redirected the copy anywhere in the
+        container and handed an existing root-owned directory to the
+        container user. The spooled archive is instead streamed to a
+        fixed program (see :mod:`vaibify.docker.confinedWrite`) that
+        runs as the container user and lands each member relative to
+        directory descriptors it holds, refusing a symlinked directory
+        rather than following it. Ownership needs no stamp: the user
+        who creates a file owns it. ``iUid`` and ``iGid`` are accepted
+        for the duck type shared with the host connection and ignored.
 
-        Each path lands under its own basename. ``sArchiveName``, for a
-        call that copies exactly one path, is the name that path lands
-        under instead: how a directory is copied to a destination that
-        does not exist yet and is to be created with a different name.
+        The destination must already exist unless ``bCreateDestination``
+        asks the program to create the components below
+        ``sAuthorizedRoot``. Each path lands under its own basename.
+        ``sArchiveName``, for a call that copies exactly one path, is
+        the name that path lands under instead: how a directory is
+        copied to a destination that does not exist yet and is to be
+        created with a different name. A refusal or failure raises with
+        ``iMembersLanded`` set, so a caller can tell a clean refusal
+        (zero) from a partial copy.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteTreeViaTar",
         )
-        fileTar = self._ffileBuildTreeTar(
-            listHostPaths, iUid, iGid, sArchiveName,
+        del iUid, iGid
+        sProgram = confinedWrite.fsRenderConfinedTreeProgram(
+            sDestinationDirectory, sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
+            bCreateDestination=bCreateDestination,
         )
+        fileTar = self._ffileBuildTreeTar(listHostPaths, sArchiveName)
         try:
-            container = self.fcontainerGetById(sContainerId)
-            container.put_archive(sDestinationDirectory, fileTar)
+            tExecResult = self._ftRunProgramWithStdin(
+                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,
+            )
         finally:
             fileTar.close()
+        confinedWrite.fnRaiseWhenTreeWriteFailed(
+            tExecResult, sDestinationDirectory,
+        )
 
     def fnCopyHostPathIntoContainer(
         self, sContainerId, sHostSource, sContainerDestination,
@@ -2643,8 +2669,8 @@ class DockerConnection:
         )
 
     @staticmethod
-    def _ffileBuildTreeTar(listHostPaths, iUid, iGid, sArchiveName=None):
-        """Return a rewound tar of the host paths, owned by the container user.
+    def _ffileBuildTreeTar(listHostPaths, sArchiveName=None):
+        """Return a rewound tar of the host paths, claiming no ownership.
 
         ``sArchiveName`` renames the one path being archived; naming it
         for several paths would put them all at one name, so it is
@@ -2653,7 +2679,9 @@ class DockerConnection:
         Spooled rather than held in a ``BytesIO``: a researcher's
         directory is arbitrarily large, and the single-file path's
         in-memory buffer is only safe because its caller already holds
-        the bytes.
+        the bytes. Every entry's owner is cleared rather than inherited:
+        the receiving program ignores it (the user who creates a file
+        owns it), and a host login name has no business on the wire.
         """
         import os
         import tarfile
@@ -2663,9 +2691,6 @@ class DockerConnection:
                 "an archive name renames exactly one host path, not "
                 f"{len(listHostPaths)}"
             )
-        ffnStampOwnership = DockerConnection._ffnBuildOwnershipFilter(
-            iUid, iGid,
-        )
         fileTar = tempfile.SpooledTemporaryFile(
             max_size=_I_TREE_TAR_SPOOL_BYTES,
         )
@@ -2674,31 +2699,10 @@ class DockerConnection:
                 fileArchive.add(
                     sHostPath,
                     arcname=sArchiveName or os.path.basename(sHostPath),
-                    filter=ffnStampOwnership,
+                    filter=_finfoClearOwnership,
                 )
         fileTar.seek(0)
         return fileTar
-
-    @staticmethod
-    def _ffnBuildOwnershipFilter(iUid, iGid):
-        """Return a tarfile filter stamping the container user on every entry.
-
-        The NAME fields are cleared alongside the numeric ids: tar
-        readers that find a ``uname``/``gname`` resolve ownership by
-        name in preference to the number, so leaving the host's login
-        name on the entry would re-open the defect the numbers close.
-        """
-        iOwnerUid = iUid if iUid is not None else _I_CONTAINER_DEFAULT_UID
-        iOwnerGid = iGid if iGid is not None else _I_CONTAINER_DEFAULT_GID
-
-        def finfoStampOwnership(infoTar):
-            infoTar.uid = iOwnerUid
-            infoTar.gid = iOwnerGid
-            infoTar.uname = ""
-            infoTar.gname = ""
-            return infoTar
-
-        return finfoStampOwnership
 
     def fsExecCreate(
         self, sContainerId, sCommand="/bin/bash", sUser=None,
@@ -3000,20 +3004,27 @@ def _fbaCollectBoundedTarStream(iterTarStream, iMaxBytes, sDirectoryPath):
     return b"".join(listChunks)
 
 
-def _ftExchangeWithExecSocket(socketExec, baStdin):
-    """Send ``baStdin`` on a hijacked exec socket; return its output.
+def _ftExchangeWithExecSocket(socketExec, baStdin, fileStdin=None):
+    """Send a payload on a hijacked exec socket; return its output.
 
-    Half-closes the write side after the payload so the program sees
-    EOF, then reads the multiplexed stream to the end and splits it into
-    ``(baStdout, baStderr)``. A peer that closed early (a program that
-    refused before reading) raises on the send; its exit code, read by
-    the caller, is the answer, so that is swallowed here.
+    The payload is ``baStdin``, or the rest of ``fileStdin`` read in
+    chunks. Half-closes the write side after the payload so the program
+    sees EOF, then reads the multiplexed stream to the end and splits it
+    into ``(baStdout, baStderr)``. A peer that closed early (a program
+    that refused before reading) raises on the send; its exit code, read
+    by the caller, is the answer, so that is swallowed here.
     """
     import socket
     from docker.utils.socket import STDERR, frames_iter
     socketRaw = getattr(socketExec, "_sock", socketExec)
     try:
-        socketRaw.sendall(baStdin)
+        if fileStdin is None:
+            socketRaw.sendall(baStdin)
+        else:
+            for baChunk in iter(
+                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",
+            ):
+                socketRaw.sendall(baChunk)
         socketRaw.shutdown(socket.SHUT_WR)
     except (BrokenPipeError, ConnectionResetError):
         pass
@@ -3022,6 +3033,15 @@ def _ftExchangeWithExecSocket(socketExec, baStdin):
     for iStream, baChunk in frames_iter(socketExec, tty=False):
         (baStderr if iStream == STDERR else baStdout).extend(baChunk)
     return bytes(baStdout), bytes(baStderr)
+
+
+def _finfoClearOwnership(infoTar):
+    """Tarfile filter: drop the host's uid, gid and login names."""
+    infoTar.uid = 0
+    infoTar.gid = 0
+    infoTar.uname = ""
+    infoTar.gname = ""
+    return infoTar
 
 
 def _fiterChunksFromTarStream(iterTarStream, iChunkSizeBytes):

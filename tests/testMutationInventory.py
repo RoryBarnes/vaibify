@@ -385,7 +385,9 @@ I_UNCLASSIFIED_ROW_BUDGET = 277
 # two by run marker -- now share ONE exec site, _fsRunProcessSweep.
 # 226 -> 225 (2026-10-01): the removed second setup wizard's build call.
 # 225 -> 224 (2026-10-01): three Overleaf call sites became one.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
+# 224 -> 223 (2026-10-03): the workspace seed's separate `mkdir -p` exec is
+# gone; the tree receiver creates the destination itself.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 223
 
 
 # Every acquisition of a declared capability that still has no reviewed

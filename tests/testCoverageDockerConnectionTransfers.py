@@ -476,49 +476,72 @@ def fnPopulateHostTree(pathRoot):
     return pathTree
 
 
-def testTreeWriteStampsContainerOwnershipAndKeepsSymlinksAsLinks(
+def ftTreeCallThroughTheProgram(connection, clientDocker, *tCallArguments, **dictKeywords):
+    """Run a tree write over a daemon that records instead of executing.
+
+    Returns ``(sDestination, listMembers)``: the destination the receiver
+    program was rendered for, and the members of the archive streamed to
+    its standard input. The program's own behavior is covered against a
+    real tree in ``tests/testConfinedTreeWrite.py``; what these tests pin
+    is what the connection ASKS it to do.
+    """
+    import ast
+    import re
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
+    connection.fnWriteTreeViaTar(*tCallArguments, **dictKeywords)
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sDestination = ast.literal_eval(
+        re.search(r"^sDestination = (.+)$", sProgram, re.M).group(1))
+    return sDestination, flistReadTarMembers(daemon.listReceivedStdin[0])
+
+
+def testTreeWriteClaimsNoOwnershipAndKeepsSymlinksAsLinks(
     monkeypatch, tmp_path,
 ):
-    """Every entry is uid/gid 1000 with no host names; links stay links."""
+    """No host owner rides the archive; links stay links."""
     pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    connection.fnWriteTreeViaTar(
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    sDestination, listMembers = ftTreeCallThroughTheProgram(
+        connection, clientDocker,
         S_CONTAINER_ID, "/workspace/projectBeta", [str(pathTree)])
-    sDestination, baArchive = container.listPutArchives[0]
     assert sDestination == "/workspace/projectBeta"
-    dictMembers = {
-        infoMember.name: infoMember
-        for infoMember in flistReadTarMembers(baArchive)
-    }
+    dictMembers = {infoMember.name: infoMember for infoMember in listMembers}
     assert set(dictMembers) == {
         "inputData", "inputData/dataFile.csv", "inputData/nested",
         "inputData/nested/notes.txt", "inputData/outsideLink",
     }
     for infoMember in dictMembers.values():
-        assert (infoMember.uid, infoMember.gid) == (1000, 1000)
+        assert (infoMember.uid, infoMember.gid) == (0, 0)
         assert (infoMember.uname, infoMember.gname) == ("", "")
     assert dictMembers["inputData/outsideLink"].issym()
     assert dictMembers["inputData/outsideLink"].linkname == "/etc/passwd"
+    assert container.listPutArchives == []
 
 
-def testTreeWriteHonoursExplicitOwnership(monkeypatch, tmp_path):
-    """A caller-supplied uid/gid is stamped instead of the default."""
+def testTreeWriteIgnoresACallerSuppliedOwnership(monkeypatch, tmp_path):
+    """The duck-typed uid/gid are accepted and never reach the wire.
+
+    The user who creates a file owns it, so there is no owner to stamp.
+    """
     pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    connection.fnWriteTreeViaTar(
+    connection, clientDocker, _ = ftBuildConnection(monkeypatch)
+    _, listMembers = ftTreeCallThroughTheProgram(
+        connection, clientDocker,
         S_CONTAINER_ID, "/workspace", [str(pathTree)], iUid=2001, iGid=2002)
-    listMembers = flistReadTarMembers(container.listPutArchives[0][1])
     assert {(infoMember.uid, infoMember.gid) for infoMember in listMembers} == {
-        (2001, 2002),
+        (0, 0),
     }
 
 
 def testTreeWriteInAnEnforcedLaneIsRefusedBeforeTheDaemon(
     monkeypatch, tmp_path,
 ):
-    """Without an admission no archive reaches put_archive."""
+    """Without an admission nothing reaches the daemon at all."""
     pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
     tokenLane = mutationAdmission.ftokenMarkEnforcedLane()
     try:
         with pytest.raises(mutationAdmission.MutationNotAdmittedError):
@@ -526,6 +549,7 @@ def testTreeWriteInAnEnforcedLaneIsRefusedBeforeTheDaemon(
                 S_CONTAINER_ID, "/workspace", [str(pathTree)])
     finally:
         mutationAdmission.fnResetEnforcedLane(tokenLane)
+    assert daemon.listExecCreateKeywords == []
     assert container.listPutArchives == []
 
 
@@ -572,18 +596,38 @@ def testCopyFileToANewPathWritesThatExactPath(monkeypatch, tmp_path):
     assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 
 
+def ftCopyDirectoryThroughTheProgram(monkeypatch, tmp_path, sDestination, bExists):
+    """Copy the sample tree and return what the receiver was asked to do."""
+    pathTree = fnPopulateHostTree(tmp_path)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    fnAnswerDirectoryProbe(container, bExists)
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
+    connection.fnCopyHostPathIntoContainer(
+        S_CONTAINER_ID, str(pathTree), sDestination)
+    assert container.listPutArchives == []
+    return ftTreeRequestFromTheDaemon(daemon)
+
+
+def ftTreeRequestFromTheDaemon(daemon):
+    """Return ``(sDestination, setMemberNames)`` of the one tree write."""
+    import ast
+    import re
+    sProgram = daemon.listExecCreateKeywords[0]["cmd"][2]
+    sDestination = ast.literal_eval(
+        re.search(r"^sDestination = (.+)$", sProgram, re.M).group(1))
+    return sDestination, {
+        infoMember.name
+        for infoMember in flistReadTarMembers(daemon.listReceivedStdin[0])
+    }
+
+
 def testCopyDirectoryIntoAnExistingDirectoryNestsIt(monkeypatch, tmp_path):
     """A directory into an existing directory arrives under its own name."""
-    pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    fnAnswerDirectoryProbe(container, True)
-    connection.fnCopyHostPathIntoContainer(
-        S_CONTAINER_ID, str(pathTree), "/workspace/projectBeta")
-    sDestination, baArchive = container.listPutArchives[0]
+    sDestination, setNames = ftCopyDirectoryThroughTheProgram(
+        monkeypatch, tmp_path, "/workspace/projectBeta", True)
     assert sDestination == "/workspace/projectBeta"
-    assert "inputData/dataFile.csv" in {
-        infoMember.name for infoMember in flistReadTarMembers(baArchive)
-    }
+    assert "inputData/dataFile.csv" in setNames
 
 
 @pytest.mark.falsification
@@ -593,55 +637,41 @@ def testCopyDirectoryToANewPathLandsAtThatPath(monkeypatch, tmp_path):
     Kills: archiving a directory under its SOURCE basename when the
     destination does not exist yet, so it lands at the source's name.
     """
-    pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    fnAnswerDirectoryProbe(container, False)
-    connection.fnCopyHostPathIntoContainer(
-        S_CONTAINER_ID, str(pathTree), "/workspace/renamedData")
-    sDestination, baArchive = container.listPutArchives[0]
-    setLandedPaths = {
-        sDestination + "/" + infoMember.name
-        for infoMember in flistReadTarMembers(baArchive)
-    }
+    sDestination, setNames = ftCopyDirectoryThroughTheProgram(
+        monkeypatch, tmp_path, "/workspace/renamedData", False)
+    setLandedPaths = {sDestination + "/" + sName for sName in setNames}
     assert "/workspace/renamedData/dataFile.csv" in setLandedPaths
 
 
 def testCopyDirectoryToANewPathWithATrailingSlashLandsAtThatPath(
     monkeypatch, tmp_path,
 ):
-    pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    fnAnswerDirectoryProbe(container, False)
-    connection.fnCopyHostPathIntoContainer(
-        S_CONTAINER_ID, str(pathTree), "/workspace/renamedData/")
-    sDestination, baArchive = container.listPutArchives[0]
+    sDestination, setNames = ftCopyDirectoryThroughTheProgram(
+        monkeypatch, tmp_path, "/workspace/renamedData/", False)
     assert sDestination == "/workspace"
-    assert {infoMember.name for infoMember in flistReadTarMembers(baArchive)} >= {
-        "renamedData", "renamedData/dataFile.csv"}
+    assert setNames >= {"renamedData", "renamedData/dataFile.csv"}
 
 
 def testCopyDirectoryIntoAnExistingDirectoryKeepsItsOwnName(
     monkeypatch, tmp_path,
 ):
-    pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
-    fnAnswerDirectoryProbe(container, True)
-    connection.fnCopyHostPathIntoContainer(
-        S_CONTAINER_ID, str(pathTree), "/workspace/existing")
-    sDestination, baArchive = container.listPutArchives[0]
+    sDestination, setNames = ftCopyDirectoryThroughTheProgram(
+        monkeypatch, tmp_path, "/workspace/existing", True)
     assert sDestination == "/workspace/existing"
-    assert "inputData/dataFile.csv" in {
-        infoMember.name for infoMember in flistReadTarMembers(baArchive)}
+    assert "inputData/dataFile.csv" in setNames
 
 
 def testAnArchiveNameForSeveralPathsIsRefused(monkeypatch, tmp_path):
     pathTree = fnPopulateHostTree(tmp_path)
-    connection, _, container = ftBuildConnection(monkeypatch)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    daemon = ExecProgramDaemon(bExecute=False)
+    clientDocker.api = daemon
     with pytest.raises(ValueError, match="exactly one host path"):
         connection.fnWriteTreeViaTar(
             S_CONTAINER_ID, "/workspace", [str(pathTree), str(pathTree)],
             sArchiveName="renamed")
     assert container.listPutArchives == []
+    assert daemon.listExecCreateKeywords == []
 
 
 # ---------------------------------------------------------------------

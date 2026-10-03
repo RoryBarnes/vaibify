@@ -26520,4 +26520,108 @@ def _fdictEntry(sRel):
         old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAMissingDestinationIsRefusedUnlessCreationWasAsked'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    except FileNotFoundError:\n        if not bCreate:\n            fnRefuse("refused: \'" + sName + "\' does not exist")\n',
+        new='    except FileNotFoundError:\n        if False:\n            fnRefuse("refused: \'" + sName + "\' does not exist")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testASymlinkedDestinationIsRefusedAndNothingLandsOutside'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testASymlinkedIntermediateDestinationComponentIsRefused'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAMemberDirectoryThatIsASymlinkIsRefusedNotReplaced'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAFileMemberReplacesASymlinkAtItsPathInsteadOfFollowingIt'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='        sTemporary = ".vaibify-write-" + secrets.token_hex(8)\n        iFlags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW\n        iFile = os.open(sTemporary, iFlags, 0o600, dir_fd=iParent)\n',
+        new='        sTemporary = sFinal\n        iFlags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC\n        iFile = os.open(sTemporary, iFlags, 0o600, dir_fd=iParent)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testARefusalAfterSomeMembersSaysHowManyLanded'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    sys.stderr.write("@@LANDED_PREFIX@@" + str(iMembersLanded) + "\\\\n")\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testTheTreeWriteRunsTheConfinedProgramAndNeverPutsAnArchive'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedAsksTheReceiverToCreateItsDestinationBelowTheWorkspaceRoot'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='sAuthorizedRoot=sWorkspaceRoot, bCreateDestination=True,\n',
+        new='sAuthorizedRoot=sWorkspaceRoot,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedRefusedBeforeAnythingLandedAnswers403WithTheReason'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='403 if error.iMembersLanded == 0 else 500, str(error))',
+        new='500, str(error))',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedThatStoppedPartWayIsAServerFailureNotARefusal'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='403 if error.iMembersLanded == 0 else 500, str(error))',
+        new='403, str(error))',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtTheDestinationDoesNotRedirectOrChangeOwnership'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtAnIntermediateComponentDoesNotRedirect'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAMemberDirectoryThatIsASymlinkIsRefusedAndKeptNotDeleted'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
 ]

@@ -133,9 +133,7 @@ LIST_MODELLED_COMMANDS = [
         "sMatch": "mkdir -p",
         "sPurpose": (
             "state-directory bootstrap before a state.json save (a "
-            "legacy root-layout repo has no .vaibify directory yet), "
-            "and the workspace seed's destination, which put_archive "
-            "requires to exist before it will unpack into it"
+            "legacy root-layout repo has no .vaibify directory yet)"
         ),
         "sLaneTwoAssertion": "testRealContainerMakesDirectories",
     },
@@ -521,7 +519,9 @@ class FailClosedDockerAdapter:
 
     def fnWriteTreeViaTar(
         self, sContainerId, sDestinationDirectory, listHostPaths,
-        iUid=None, iGid=None,
+        iUid=None, iGid=None, sArchiveName=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+        bCreateDestination=False,
     ):
         """Record the tree copy as one entry per archived top-level path.
 
