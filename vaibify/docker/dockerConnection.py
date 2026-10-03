@@ -3009,14 +3009,34 @@ def _ftExchangeWithExecSocket(socketExec, baStdin, fileStdin=None):
 
     The payload is ``baStdin``, or the rest of ``fileStdin`` read in
     chunks. Half-closes the write side after the payload so the program
-    sees EOF, then reads the multiplexed stream to the end and splits it
-    into ``(baStdout, baStderr)``. A peer that closed early (a program
-    that refused before reading) raises on the send; its exit code, read
-    by the caller, is the answer, so that is swallowed here.
+    sees EOF, and splits the multiplexed stream into ``(baStdout,
+    baStderr)``.
+
+    The output is read WHILE the payload is sent, not after: a program
+    that stops early (a full disk, a refusal) makes the daemon close the
+    connection with the host still sending, which on Linux is a reset
+    that fails the host's next ``send`` and its next ``recv``. Reading
+    afterwards lost the reason the program had written to its standard
+    error. A peer that closed early is not an error here: its exit
+    code, read by the caller, is the answer, so the reset is swallowed
+    on both sides.
     """
     import socket
+    import threading
     from docker.utils.socket import STDERR, frames_iter
     socketRaw = getattr(socketExec, "_sock", socketExec)
+    baStdout = bytearray()
+    baStderr = bytearray()
+
+    def _fnCollectOutput():
+        try:
+            for iStream, baChunk in frames_iter(socketExec, tty=False):
+                (baStderr if iStream == STDERR else baStdout).extend(baChunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    threadReader = threading.Thread(target=_fnCollectOutput, daemon=True)
+    threadReader.start()
     try:
         if fileStdin is None:
             socketRaw.sendall(baStdin)
@@ -3028,10 +3048,7 @@ def _ftExchangeWithExecSocket(socketExec, baStdin, fileStdin=None):
         socketRaw.shutdown(socket.SHUT_WR)
     except (BrokenPipeError, ConnectionResetError):
         pass
-    baStdout = bytearray()
-    baStderr = bytearray()
-    for iStream, baChunk in frames_iter(socketExec, tty=False):
-        (baStderr if iStream == STDERR else baStdout).extend(baChunk)
+    threadReader.join()
     return bytes(baStdout), bytes(baStderr)
 
 

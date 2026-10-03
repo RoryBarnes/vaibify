@@ -26728,4 +26728,12 @@ def _fdictEntry(sRel):
         old='    iMarker = sLine.find(S_CPU_MARKER)\n',
         new='    iMarker = 0 if sLine.startswith(S_CPU_MARKER) else -1\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testExecSocketExchange.py::testTheOutputIsReadWhileThePayloadIsStillBeingSent'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='    threadReader.start()\n    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.join()\n',
+        new='    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.start()\n    threadReader.join()\n',
+    ),
 ]

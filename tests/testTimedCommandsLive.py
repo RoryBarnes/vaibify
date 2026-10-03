@@ -30,6 +30,13 @@ S_USER = "researcher"
 S_WORKDIR = "/home/researcher"
 S_RUN_ID = "ab12cd34ef56ab78"
 
+# A busy loop sized so that the CPU time of the real command is several
+# times the floor on the fastest runner measured (0.19 s for 25 million
+# iterations on a CI Linux runner), while the CPU time of the ``echo``
+# the old wrapper timed in its place is about zero.
+I_BURN_ITERATIONS = 100_000_000
+F_BURN_FLOOR_SECONDS = 0.15
+
 
 @pytest.fixture(scope="module")
 def liveContainer():
@@ -127,10 +134,11 @@ def testBothSidesOfAnAndChainRunAndTheSecondIsTimed(liveContainer):
     """
     iExitCode, fCpu, listLines = _ftRunThroughTheRunner(
         liveContainer,
-        ["echo first && python3 -c 'sum(range(25_000_000)); print(\"second\")'"])
+        ["echo first && python3 -c "
+         f"'sum(range({I_BURN_ITERATIONS})); print(\"second\")'"])
     assert iExitCode == 0, listLines
     assert "first" in listLines and "second" in listLines, listLines
-    assert fCpu is not None and fCpu > 0.2, fCpu
+    assert fCpu is not None and fCpu > F_BURN_FLOOR_SECONDS, fCpu
     assert not any(
         sLine.startswith("__VAIBIFY_CPU__") for sLine in listLines)
 
@@ -225,9 +233,10 @@ def testACommandWithNoTrailingNewlineKeepsItsTextAndItsCpuReading(
     """
     iExitCode, fCpu, listLines = _ftRunThroughTheRunner(
         liveContainer,
-        ["python3 -c \"import sys; sum(range(25_000_000)); "
+        ["python3 -c \"import sys; "
+         f"sum(range({I_BURN_ITERATIONS})); "
          "sys.stdout.write('no newline here')\""])
     assert iExitCode == 0, listLines
     assert listLines[-1] == "no newline here", listLines
     assert not any("__VAIBIFY_CPU__" in sLine for sLine in listLines)
-    assert fCpu is not None and fCpu > 0.2, fCpu
+    assert fCpu is not None and fCpu > F_BURN_FLOOR_SECONDS, fCpu
