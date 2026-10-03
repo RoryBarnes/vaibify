@@ -26383,4 +26383,10 @@ def _fdictEntry(sRel):
         old='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n',
         new='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n    app.post("/api/zenodo/{sContainerId}/download")(lambda: None)\n',
     ),
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testKillForegroundWorksWhenTheHubWasLaunchedWithSignalsIgnored',
+        source='vaibify/host/hostConnection.py',
+        old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
+        new='',
+    ),
 ]
