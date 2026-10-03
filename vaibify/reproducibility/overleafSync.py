@@ -54,11 +54,13 @@ _LIST_SENSITIVE_KEYWORDS = (
 # Hardening flags prepended to every ``git clone`` / ``git fetch`` run.
 # Kept as a local copy of ``reproducibility.gitHardening`` because this
 # module is shipped into the container as a standalone script and
-# cannot import from the ``vaibify`` package at run time. Keep the
-# two lists in lockstep; no test compares them.
+# cannot import from the ``vaibify`` package at run time. The two
+# lists must stay identical; ``testTheContainerShippedCopyMatchesTheSharedList``
+# fails when they drift.
 _LIST_GIT_HARDENING_CONFIG = [
     "-c", "protocol.file.allow=never",
     "-c", "protocol.allow=user",
+    "-c", "protocol.ext.allow=never",
     "-c", "core.symlinks=false",
     "-c", "submodule.recurse=false",
 ]

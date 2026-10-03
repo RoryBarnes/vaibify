@@ -11,7 +11,10 @@ question on the host can run somebody else's program as the researcher.
 THIS FILE CHANGES NO BEHAVIOR. It documents the CURRENT behavior, so
 every "runs" assertion below records a real exposure and the test of
 that name is expected to FAIL (and be rewritten) the day the exposure
-is closed. Each mechanism is a tiny shell script this suite writes that
+is closed. One has been: the ``ext::`` transport ran under the hardening
+list until ``protocol.ext.allow=never`` joined it (2026-10-03), and the
+tests that recorded it were rewritten as this paragraph says they would
+be. Each mechanism is a tiny shell script this suite writes that
 appends to a marker file under a temporary directory and does nothing
 else, so nothing outside ``tmp_path`` is ever touched.
 
@@ -39,6 +42,9 @@ import pytest
 
 from tests import hostGitProbeHarness as harness
 from tests.hostGitProbeCalls import DICT_PROBE_CALLS
+from vaibify.cli.repositoryPreflight import (
+    RemoteUnreachableError, fdictProbeRepositoryBranch,
+)
 from vaibify.reproducibility.gitHardening import (
     LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
     LIST_GIT_HARDENING_CONFIG,
@@ -144,7 +150,7 @@ SET_FILTER_AND_HOOK = {
     "hookPostIndexChange", "hooksPathConfig",
 }
 SET_FSMONITOR_FAMILY = {"fsmonitor", "includePath", "includeIfGitdir"}
-SET_NETWORK = {"credentialHelper", "gitProxy", "insteadOfExt", "sshCommand"}
+SET_NETWORK = {"credentialHelper", "gitProxy", "sshCommand"}
 SET_STATUS_NO_FSMONITOR_FLAG = SET_FILTER_AND_HOOK | SET_FSMONITOR_FAMILY
 SET_TYPED_READ = SET_FILTER_AND_HOOK
 SET_COMMIT = SET_STATUS_NO_FSMONITOR_FLAG | {"gpgProgram", "hookPreCommit"}
@@ -169,6 +175,7 @@ DICT_EXPECTED_TRIGGERS = {
     "typedReadGitUntrackedInventory": set(),
     "typedReadGitWorktreeIdentities": SET_TYPED_READ,
     "commandBuildRemoteAndBranch": set(),
+    "repositoryPreflightProbeFromARepository": set(),
     "containerGitStatusViaShell": SET_STATUS_NO_FSMONITOR_FLAG,
     "containerGitAddViaShell": SET_STATUS_NO_FSMONITOR_FLAG,
     "containerGitCommitViaShell": SET_COMMIT,
@@ -259,7 +266,6 @@ DICT_NEUTRALIZERS = {
     },
     "gpgSignOff": {"listGlobal": ["-c", "commit.gpgSign=false"]},
     "credentialHelperReset": {"listGlobal": ["-c", "credential.helper="]},
-    "protocolExtNever": {"listGlobal": ["-c", "protocol.ext.allow=never"]},
     "sshCommandOverridden": {"listGlobal": ["-c", "core.sshCommand=false"]},
     "sshCommandEnvironment": {
         "dictEnvironment": {"GIT_SSH_COMMAND": "false"},
@@ -295,7 +301,6 @@ LIST_NEUTRALIZER_ROWS = [
     ("gpgProgram", ["commit", "-m", "probe"], "stage"),
     ("hookPostMerge", ["merge", "--no-ff", "--no-edit", "@{upstream}"],
      "none"),
-    ("insteadOfExt", ["fetch", "--no-tags", "origin"], "none"),
     ("sshCommand", ["fetch", "--no-tags", "origin"], "none"),
     ("credentialHelper", ["fetch", "--no-tags", "origin"], "none"),
     ("gitProxy", ["fetch", "--no-tags", "origin"], "none"),
@@ -341,7 +346,6 @@ DICT_EXPECTED_NEUTRALIZERS = {
     "hooksPathConfig:commit -m probe": SET_STOPS_HOOKS,
     "gpgProgram:commit -m probe": {"gpgSignOff"},
     "hookPostMerge:merge --no-ff --no-edit @{upstream}": SET_STOPS_HOOKS,
-    "insteadOfExt:fetch --no-tags origin": {"protocolExtNever"},
     "sshCommand:fetch --no-tags origin":
         {"sshCommandEnvironment", "sshCommandOverridden"},
     "credentialHelper:fetch --no-tags origin": {"credentialHelperReset"},
@@ -539,24 +543,55 @@ def testAttributeSourceStopsAFilterSelectedByWorktreeAttributes(worldProbe):
     assert not bRan
 
 
-def testExtTransportRunsOnlyBecauseVaibifyAllowsProtocolsForTheUser(
-    worldProbe,
-):
-    listFetch = ["fetch", "--no-tags", "origin"]
+def _fsetRunFetchUnderHardening(worldProbe, listHardening):
+    """Fetch a repository whose origin is rewritten to ``ext::``."""
     sRepo = worldProbe.fsFreshCell("insteadOfExt")
     harness.fnClearMarkers(worldProbe.sMarkers)
-    processBare = subprocess.run(
-        ["git", *listFetch], cwd=sRepo, capture_output=True, text=True,
-    )
-    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == []
-    assert "not allowed" in processBare.stderr
-    subprocess.run(
-        ["git", *LIST_GIT_HARDENING_CONFIG, *listFetch],
+    processFetch = subprocess.run(
+        ["git", *listHardening, "fetch", "--no-tags", "origin"],
         cwd=sRepo, capture_output=True, text=True,
     )
-    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == [
-        "insteadOfExt",
-    ]
+    return (
+        set(harness.flistReadTriggeredMechanisms(worldProbe.sMarkers)),
+        processFetch.stderr,
+    )
+
+
+@pytest.mark.falsification
+def testTheHardeningListRefusesTheExtTransport(worldProbe):
+    """A repository rewriting its origin to ``ext::`` runs nothing.
+
+    ``ext::`` runs an arbitrary command. Plain git refuses it, and the
+    hardening list used to turn it back on: ``protocol.allow=user`` is
+    the default for every protocol with no policy of its own, which
+    overrides git's built-in "never" for ``ext``. The list now states
+    ``protocol.ext.allow=never`` itself.
+
+    Kills: dropping ``protocol.ext.allow=never`` from the list.
+    """
+    setRan, sStderr = _fsetRunFetchUnderHardening(
+        worldProbe, LIST_GIT_HARDENING_CONFIG)
+    assert setRan == set()
+    assert "not allowed" in sStderr
+
+
+def testExtTransportRunsWhenOnlyTheUserProtocolPolicyIsSet(worldProbe):
+    """The cause, with the control: the list minus its ext line runs it.
+
+    Proves the explicit flag is what stops ``ext::``, not something else
+    in the list, and that ``protocol.allow=user`` alone does not.
+    """
+    listWithoutExtPolicy = []
+    for iIndex in range(0, len(LIST_GIT_HARDENING_CONFIG), 2):
+        listPair = LIST_GIT_HARDENING_CONFIG[iIndex:iIndex + 2]
+        if "protocol.ext.allow" not in listPair[1]:
+            listWithoutExtPolicy.extend(listPair)
+    assert "protocol.allow=user" in listWithoutExtPolicy
+    setRan, _ = _fsetRunFetchUnderHardening(worldProbe, listWithoutExtPolicy)
+    assert setRan == {"insteadOfExt"}
+    setBare, sBareStderr = _fsetRunFetchUnderHardening(worldProbe, [])
+    assert setBare == set()
+    assert "not allowed" in sBareStderr
 
 
 def testCredentialHelperRunsDuringContainerGitFetch(worldProbe):
@@ -701,3 +736,117 @@ def testDisablingACleanFilterChangesTheStatusAnswer(worldProbe, tmp_path):
     ).stdout
     assert sHonest == ""
     assert "data.txt" in sSuppressed
+
+
+# ----------------------------------------------------------------------
+# Layer 4: a repository-free question must read no repository.
+# ----------------------------------------------------------------------
+
+T_NETWORK_MECHANISMS_ASKED_BY_URL = ("sshCommand", "gitProxy", "credentialHelper")
+
+
+def _fsOriginOf(sRepo):
+    return subprocess.run(
+        ["git", "config", "remote.origin.url"], cwd=sRepo,
+        capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def _fsetRawLsRemoteFromInside(worldProbe, sMechanism):
+    """The control: plain ``ls-remote`` from inside the repository."""
+    sRepo = worldProbe.fsFreshCell(sMechanism)
+    harness.fnClearMarkers(worldProbe.sMarkers)
+    subprocess.run(
+        ["git", "ls-remote", _fsOriginOf(sRepo), "HEAD"], cwd=sRepo,
+        capture_output=True, text=True, timeout=60,
+    )
+    return set(harness.flistReadTriggeredMechanisms(worldProbe.sMarkers))
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sMechanism", T_NETWORK_MECHANISMS_ASKED_BY_URL)
+def testThePreflightProbeReadsNoConfigFromTheDirectoryItWasStartedIn(
+    worldProbe, sMechanism,
+):
+    """A repository in the hub's working directory is not consulted.
+
+    The control runs plain ``ls-remote`` from inside the same repository
+    and proves the mechanism fires there; the probe, started in that
+    directory, must not.
+
+    Kills: running the probe in the inherited working directory.
+    """
+    assert _fsetRawLsRemoteFromInside(worldProbe, sMechanism) == {sMechanism}
+    assert fsetRunCall(
+        worldProbe, "repositoryPreflightProbeFromARepository", sMechanism,
+    ) == set()
+
+
+@pytest.mark.falsification
+def testAnInheritedGitDirIsNotAskedForItsConfig(
+    worldProbe, monkeypatch, tmp_path,
+):
+    """``GIT_DIR`` from a parent tool (a hook) selects no repository here.
+
+    Kills: leaving ``GIT_DIR`` in the probe's environment, which makes
+    git read that repository's config from a perfectly neutral
+    directory.
+    """
+    sRepo = worldProbe.fsFreshCell("sshCommand")
+    monkeypatch.setenv("GIT_DIR", os.path.join(sRepo, ".git"))
+    monkeypatch.chdir(tmp_path)
+    harness.fnClearMarkers(worldProbe.sMarkers)
+    subprocess.run(
+        ["git", "ls-remote", "ssh://probe.invalid/repo.git", "HEAD"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == [
+        "sshCommand"], "the control must fire or the probe proves nothing"
+    harness.fnClearMarkers(worldProbe.sMarkers)
+    with pytest.raises(RemoteUnreachableError):
+        fdictProbeRepositoryBranch("ssh://probe.invalid/repo.git", "main")
+    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == []
+
+
+@pytest.mark.falsification
+def testInjectedConfigParametersAreNotInheritedByTheProbe(
+    worldProbe, monkeypatch, tmp_path,
+):
+    """``GIT_CONFIG_PARAMETERS`` is a ``-c`` flag the environment carries.
+
+    Kills: leaving it in the probe's environment, where it names an ssh
+    command for the probe exactly as ``-c core.sshCommand=...`` would.
+    """
+    sRepo = worldProbe.fsFreshCell("sshCommand")
+    sScript = subprocess.run(
+        ["git", "config", "--file", os.path.join(sRepo, ".git", "config"),
+         "core.sshCommand"], capture_output=True, text=True,
+    ).stdout.strip()
+    monkeypatch.setenv(
+        "GIT_CONFIG_PARAMETERS", "'core.sshcommand=" + sScript + "'")
+    monkeypatch.chdir(tmp_path)
+    harness.fnClearMarkers(worldProbe.sMarkers)
+    subprocess.run(
+        ["git", "ls-remote", "ssh://probe.invalid/repo.git", "HEAD"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == [
+        "sshCommand"], "the control must fire or the probe proves nothing"
+    harness.fnClearMarkers(worldProbe.sMarkers)
+    with pytest.raises(RemoteUnreachableError):
+        fdictProbeRepositoryBranch("ssh://probe.invalid/repo.git", "main")
+    assert harness.flistReadTriggeredMechanisms(worldProbe.sMarkers) == []
+
+
+@pytest.mark.falsification
+def testTheContainerShippedCopyMatchesTheSharedList():
+    """The Overleaf sync script cannot import the shared list, so it copies it.
+
+    A copy with no test is a copy that drifts: the ``ext::`` flag was
+    added to one and could have been missed in the other.
+
+    Kills: dropping a flag from the shipped copy alone.
+    """
+    from vaibify.reproducibility import overleafSync
+    assert overleafSync._LIST_GIT_HARDENING_CONFIG == (
+        LIST_GIT_HARDENING_CONFIG)

@@ -12,10 +12,16 @@ Every vaibify git call that authenticates with a managed credential
 must therefore reset the inherited helper list.
 """
 
+import os
+import re
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from vaibify.reproducibility.gitHardening import (
     LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
+    LIST_GIT_HARDENING_CONFIG,
 )
 
 
@@ -62,6 +68,87 @@ def test_host_ls_remote_validation_carries_isolation():
     assert listCommand[0] == "git"
     assert ["-c", "credential.helper="] == listCommand[1:3]
     assert "ls-remote" in listCommand
+
+
+def _fnRunHostLsRemoteCapturingTheCall(monkeypatch):
+    from vaibify.gui import syncDispatcher
+    mockRun = MagicMock()
+    mockRun.return_value.returncode = 0
+    mockRun.return_value.stderr = ""
+    with patch("vaibify.gui.syncDispatcher.subprocess.run", mockRun):
+        syncDispatcher._ftRunHostLsRemote(
+            "abcdef123456789012345678", "/tmp/askpass")
+    return mockRun.call_args
+
+
+@pytest.mark.falsification
+def test_host_ls_remote_validation_carries_the_hardening_list_after_the_reset(
+    monkeypatch,
+):
+    """The reset comes first, then the hardening, then the question.
+
+    Kills: dropping the hardening list from the validation's command.
+    """
+    callArguments = _fnRunHostLsRemoteCapturingTheCall(monkeypatch)
+    listCommand = callArguments[0][0]
+    iHardening = listCommand.index(LIST_GIT_HARDENING_CONFIG[1]) - 1
+    assert listCommand[:3] == ["git", "-c", "credential.helper="]
+    assert listCommand[iHardening:iHardening + len(
+        LIST_GIT_HARDENING_CONFIG)] == LIST_GIT_HARDENING_CONFIG
+    assert listCommand[-3:] == ["--", listCommand[-2], "HEAD"]
+    assert listCommand.index("ls-remote") > iHardening
+
+
+@pytest.mark.falsification
+def test_host_ls_remote_validation_runs_from_an_empty_directory(
+    monkeypatch, tmp_path,
+):
+    """Kills: running the validation in the hub's working directory."""
+    monkeypatch.chdir(tmp_path)
+    callArguments = _fnRunHostLsRemoteCapturingTheCall(monkeypatch)
+    assert os.path.realpath(callArguments[1]["cwd"]) != os.path.realpath(
+        str(tmp_path))
+
+
+@pytest.mark.falsification
+def test_host_ls_remote_validation_keeps_its_token_and_drops_the_repository(
+    monkeypatch,
+):
+    """The askpass helper survives; an inherited ``GIT_DIR`` does not.
+
+    Kills: handing the validation the unscrubbed process environment.
+    """
+    monkeypatch.setenv("GIT_DIR", "/somewhere/.git")
+    dictEnvironment = _fnRunHostLsRemoteCapturingTheCall(
+        monkeypatch)[1]["env"]
+    assert "GIT_DIR" not in dictEnvironment
+    assert dictEnvironment["GIT_ASKPASS"] == "/tmp/askpass"
+    assert dictEnvironment["GIT_TERMINAL_PROMPT"] == "0"
+
+
+def test_every_host_site_that_supplies_a_git_token_resets_the_helper_list():
+    """The inventory of host paths that carry vaibify's own credential.
+
+    A host git call that authenticates with a token vaibify manages
+    (``GIT_ASKPASS`` set to a vaibify helper) must reset the inherited
+    credential-helper list first, or an ambient keychain entry answers
+    in its place. Today that is the Overleaf mirror funnel and the
+    Overleaf validation; GitHub's host paths authenticate through the
+    researcher's own credentials and are deliberately left alone. A new
+    site is a decision, so it fails here until it is listed and reset.
+    """
+    pathPackage = Path(__file__).resolve().parent.parent / "vaibify"
+    setSites = set()
+    for pathModule in pathPackage.rglob("*.py"):
+        sSource = pathModule.read_text(encoding="utf-8")
+        if re.search(r"\[\"GIT_ASKPASS\"\]\s*=", sSource):
+            setSites.add(str(pathModule.relative_to(pathPackage)))
+            assert "LIST_GIT_CREDENTIAL_ISOLATION_CONFIG" in sSource, (
+                f"{pathModule.name} supplies GIT_ASKPASS without the "
+                "credential-helper reset")
+    assert setSites == {
+        "gui/syncDispatcher.py", "reproducibility/overleafMirror.py",
+    }
 
 
 def test_credential_helper_args_reset_before_adding_helper():

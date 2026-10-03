@@ -94,17 +94,25 @@ carry these flags:
 ```
 -c protocol.file.allow=never
 -c protocol.allow=user
+-c protocol.ext.allow=never
 -c core.symlinks=false
 -c submodule.recurse=false
 ```
 and `--no-recurse-submodules` on clones. These defend against
-malicious-repo attacks (`.gitmodules` with `file://` URLs,
-cross-tree symlinks, hook execution). The canonical list lives at
+malicious-repo attacks (`.gitmodules` with `file://` URLs, an `ext::`
+transport that runs a command, cross-tree symlinks, hook execution).
+`protocol.ext.allow=never` is stated on its own because
+`protocol.allow=user` alone turns `ext::` back on. A call that needs no
+repository (`git ls-remote`) also runs from an empty directory with an
+environment that selects none
+(`gitHardening.fcontextOpenHermeticGitInvocation`), so a repository in
+the hub's working directory cannot configure it. The canonical list lives at
 `vaibify/reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG`
 and is imported by `gui.gitStatus`, `reproducibility.overleafMirror`,
 and `gui.syncDispatcher`. `reproducibility.overleafSync` keeps a
 local copy because it ships into the container as a standalone
-script — keep the two lists in lockstep.
+script; `testTheContainerShippedCopyMatchesTheSharedList` fails when
+the two drift.
 
 ### Verification follows the push (GitHub)
 A GitHub verify is bound to the remote the project last pushed to. The

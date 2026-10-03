@@ -14,6 +14,12 @@ import subprocess
 import sys
 
 from tests.hostGitProbeHarness import fnModifyTrackedFile
+# Bound at import, before the suite-wide fixture replaces the module's
+# probe with a stub that never runs git: a probe of the stub measures
+# nothing.
+from vaibify.cli.repositoryPreflight import (
+    RemoteUnreachableError, fdictProbeRepositoryBranch,
+)
 
 
 class LocalShellConnection:
@@ -126,6 +132,28 @@ def fnCallBuildRemoteAndBranch(sRepo):
     commandBuild._fsGitBranch(sRepo)
 
 
+def fnCallRepositoryPreflightProbe(sRepo):
+    """Ask a repository's own origin URL, with the hub started inside it.
+
+    The probe runs from whatever directory vaibify was launched in; a
+    repository there carries its own config. The URL asked is the
+    cell's ``origin`` (an ssh, git or http address for the network
+    mechanisms), so each mechanism has the address that would reach it.
+    """
+    sOrigin = subprocess.run(
+        ["git", "config", "remote.origin.url"], cwd=sRepo,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    sPreviousDirectory = os.getcwd()
+    os.chdir(sRepo)
+    try:
+        fdictProbeRepositoryBranch(sOrigin, "main")
+    except RemoteUnreachableError:
+        pass
+    finally:
+        os.chdir(sPreviousDirectory)
+
+
 def fnCallContainerGitStatus(sRepo):
     from vaibify.gui import containerGit
     containerGit.fdictGitStatusInContainer(
@@ -217,6 +245,8 @@ DICT_PROBE_CALLS = {
     "typedReadGitUntrackedInventory": fnCallTypedReadUntrackedInventory,
     "typedReadGitWorktreeIdentities": fnCallTypedReadWorktreeIdentities,
     "commandBuildRemoteAndBranch": fnCallBuildRemoteAndBranch,
+    "repositoryPreflightProbeFromARepository":
+        fnCallRepositoryPreflightProbe,
     "containerGitStatusViaShell": fnCallContainerGitStatus,
     "containerGitAddViaShell": fnCallContainerGitAdd,
     "containerGitCommitViaShell": fnCallContainerGitCommit,
