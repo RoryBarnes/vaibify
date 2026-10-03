@@ -803,26 +803,26 @@ def _fparserBuildCommandLine():
         prog="overleafSync",
         description="Sync figures and TeX with an Overleaf project.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    _fnAddLsRemoteParser(subparsers)
-    _fnAddPushParser(subparsers)
-    _fnAddPushAnnotatedParser(subparsers)
-    _fnAddPullParser(subparsers)
+    parserSubcommands = parser.add_subparsers(dest="command", required=True)
+    _fnAddLsRemoteParser(parserSubcommands)
+    _fnAddPushParser(parserSubcommands)
+    _fnAddPushAnnotatedParser(parserSubcommands)
+    _fnAddPullParser(parserSubcommands)
     return parser
 
 
-def _fnAddLsRemoteParser(subparsers):
+def _fnAddLsRemoteParser(parserSubcommands):
     """Register the ls-remote subcommand."""
-    sub = subparsers.add_parser(
+    sub = parserSubcommands.add_parser(
         "ls-remote", help="Validate credentials via git ls-remote.",
     )
     sub.add_argument("--project", required=True)
     sub.set_defaults(func=_fnRunLsRemote)
 
 
-def _fnAddPushParser(subparsers):
+def _fnAddPushParser(parserSubcommands):
     """Register the push subcommand."""
-    sub = subparsers.add_parser(
+    sub = parserSubcommands.add_parser(
         "push", help="Push figures (paths from stdin).",
     )
     sub.add_argument("--project", required=True)
@@ -831,9 +831,9 @@ def _fnAddPushParser(subparsers):
     sub.set_defaults(func=_fnRunPush)
 
 
-def _fnAddPushAnnotatedParser(subparsers):
+def _fnAddPushAnnotatedParser(parserSubcommands):
     """Register the push-annotated subcommand."""
-    sub = subparsers.add_parser(
+    sub = parserSubcommands.add_parser(
         "push-annotated",
         help="Push figures + annotate TeX (JSON payload on stdin).",
     )
@@ -846,9 +846,9 @@ def _fnAddPushAnnotatedParser(subparsers):
     sub.set_defaults(func=_fnRunPushAnnotated)
 
 
-def _fnAddPullParser(subparsers):
+def _fnAddPullParser(parserSubcommands):
     """Register the pull subcommand."""
-    sub = subparsers.add_parser(
+    sub = parserSubcommands.add_parser(
         "pull", help="Pull TeX files (paths from stdin).",
     )
     sub.add_argument("--project", required=True)

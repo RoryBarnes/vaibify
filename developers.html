@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -119,7 +119,8 @@ proposed changes are not duplicating work and will be of general interest.</p>
 <p>Vaibify follows the style conventions described in the project’s global
 development standards: camelCase with Hungarian prefixes for variables,
 <code class="docutils literal notranslate"><span class="pre">f</span></code>-prefixed names for functions (with a return-type letter), files in
-camelCase without Hungarian prefixes, functions under 20 lines, no
+camelCase without Hungarian prefixes, functions usually 20-30 lines (split
+for reuse or a genuine conceptual boundary, never to satisfy a line count), no
 abbreviations for words shorter than 8 characters, and clear naming in
 preference to inline comments. If you are developing with an AI coding
 agent, read <a class="reference external" href="https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md"><code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code></a> at the repo root for the rules,
@@ -145,6 +146,20 @@ rule are intact:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>-v
 </pre></div>
 </div>
+<p>Run the static-analysis check, which is also the <code class="docutils literal notranslate"><span class="pre">lint</span></code> lane in CI.
+It runs <code class="docutils literal notranslate"><span class="pre">pyflakes</span></code> (every message except “imported but unused”, because
+the package re-exports names through facade modules on purpose) and
+<code class="docutils literal notranslate"><span class="pre">pylint</span> <span class="pre">--errors-only</span></code> against <code class="docutils literal notranslate"><span class="pre">vaibify/</span></code>, and compares the findings to
+two exact seeds in the test file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/testStaticAnalysisClean.py<span class="w"> </span>-v
+</pre></div>
+</div>
+<p>A new finding fails the test. A seeded finding that has since been fixed
+also fails it, so the seed can only shrink: lower the entry in the same
+commit as the fix. Add a seed entry only with a reason, never to silence
+a real defect. Checks that pylint gets wrong for this codebase are
+disabled in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code> under <code class="docutils literal notranslate"><span class="pre">[tool.pylint]</span></code>, each with its reason.
+Run <code class="docutils literal notranslate"><span class="pre">pylint</span> <span class="pre">--errors-only</span> <span class="pre">vaibify/</span></code> to see the raw report.</p>
 <p>The suite has three kinds of test — unit/behavior tests, architectural
 invariants, and <strong>falsification tests</strong> (kill-confirmed tests, proven to
 fail when the guard they defend is broken) — plus a standing re-kill

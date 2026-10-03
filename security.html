@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Security Model &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Security Model &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 <li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Security Model</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#container-isolation">Container Isolation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#x11-display-forwarding">X11 display forwarding</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#secrets-management">Secrets Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#security-audit">Security Audit</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#images-vaibify-did-not-build">Images vaibify did not build</a><ul>
@@ -130,19 +131,53 @@ restrictions:</p>
 <td><p>Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then <code class="docutils literal notranslate"><span class="pre">exec</span></code>s itself through <code class="docutils literal notranslate"><span class="pre">gosu</span></code> as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. <code class="docutils literal notranslate"><span class="pre">sudo</span></code> is absent from the image.</p></td>
 </tr>
 <tr class="row-even"><td><p>Few host mounts</p></td>
-<td><p>The host filesystem is not bind-mounted wholesale. Files enter and leave the container through <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code>. Three kinds of host path are mounted: resolved secret files (read-only, under <code class="docutils literal notranslate"><span class="pre">/run/secrets/</span></code>), any <code class="docutils literal notranslate"><span class="pre">listBindMounts</span></code> entries you declare (validated against an allowlist, and refused if the source is missing), and, on Linux only, the X11 socket <code class="docutils literal notranslate"><span class="pre">/tmp/.X11-unix</span></code> (read-only), which is mounted into every container including those started with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>, after an <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+SI:localuser:$USER</span></code> grant to your account. On macOS the display is reached over TCP through XQuartz instead, with the same per-user <code class="docutils literal notranslate"><span class="pre">xhost</span></code> grant.</p></td>
+<td><p>The host filesystem is not bind-mounted wholesale. Files enter and leave the container through <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code>. Three kinds of host path are mounted: resolved secret files (read-only, under <code class="docutils literal notranslate"><span class="pre">/run/secrets/</span></code>), any <code class="docutils literal notranslate"><span class="pre">listBindMounts</span></code> entries you declare (validated against an allowlist, and refused if the source is missing), and, only for a project that sets <code class="docutils literal notranslate"><span class="pre">x11Forwarding:</span> <span class="pre">true</span></code>, the Linux X11 socket <code class="docutils literal notranslate"><span class="pre">/tmp/.X11-unix</span></code> (read-only) after an <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+SI:localuser:$USER</span></code> grant to your account. See “X11 display forwarding” below.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Workspace volume</p></td>
 <td><p>A Docker volume provides persistent storage at the configured <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code>. Volumes are isolated from the host directory tree.</p></td>
 </tr>
 <tr class="row-even"><td><p>Network isolation</p></td>
-<td><p>Set <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> to start the container with <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>, blocking all outbound traffic.</p></td>
+<td><p>Set <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> to start the container with <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">none</span></code>, blocking all outbound traffic. It cannot be combined with <code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Localhost-only GUI</p></td>
+<tr class="row-odd"><td><p>No display by default</p></td>
+<td><p>A container receives no <code class="docutils literal notranslate"><span class="pre">DISPLAY</span></code>, no X11 socket, and no <code class="docutils literal notranslate"><span class="pre">xhost</span></code> grant unless the project sets <code class="docutils literal notranslate"><span class="pre">x11Forwarding:</span> <span class="pre">true</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Localhost-only GUI</p></td>
 <td><p>The pipeline viewer and setup wizard bind to <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, never <code class="docutils literal notranslate"><span class="pre">0.0.0.0</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
+</section>
+<section id="x11-display-forwarding">
+<h2>X11 display forwarding<a class="headerlink" href="#x11-display-forwarding" title="Link to this heading"></a></h2>
+<p>Graphical programs in the container (a PDF viewer, an interactive plot
+window) need the host’s X display. Forwarding is <strong>off by default</strong> and
+is enabled per project with <code class="docutils literal notranslate"><span class="pre">x11Forwarding:</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
+<p>What it exposes: an X client connected to your display can read what is
+drawn on the screen and send keystrokes and mouse events to other
+windows. A program in the container that you do not trust, including a
+compromised agent, then has a channel out of the container that the file
+system and network controls do not cover. For that reason forwarding is
+opt-in, and vaibify refuses to start a project that sets both
+<code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code> and <code class="docutils literal notranslate"><span class="pre">networkIsolation</span></code>: a sealed container cannot reach
+the X server anyway, and a display channel would defeat the seal.</p>
+<p>What vaibify changes on the host when it is enabled:</p>
+<ul class="simple">
+<li><p><strong>Linux:</strong> mounts <code class="docutils literal notranslate"><span class="pre">/tmp/.X11-unix</span></code> read-only and runs
+<code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+SI:localuser:$USER</span></code>, which admits only your own account.
+Revoke it with <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">-SI:localuser:$USER</span></code>.</p></li>
+<li><p><strong>macOS:</strong> the container reaches the X server over TCP at
+<code class="docutils literal notranslate"><span class="pre">host.docker.internal</span></code>, which requires the server (XQuartz or the
+MacPorts X11 application) to accept network clients. Vaibify starts
+the server, runs <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+SI:localuser:$USER</span></code> and <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">+localhost</span></code>
+(<code class="docutils literal notranslate"><span class="pre">SI:localuser</span></code> only admits clients on the local socket, not a TCP
+connection from the container engine), and tells you if the server
+refuses network clients. Revoke the TCP entry with <code class="docutils literal notranslate"><span class="pre">xhost</span> <span class="pre">-localhost</span></code>.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">DISPLAY</span></code> is fixed when a container is created. After you turn
+<code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code> on, or install or reconfigure the X server, stop and
+start the container so it is created again; <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> and the
+dashboard say when a running container was created without it.</p>
 </section>
 <section id="secrets-management">
 <h2>Secrets Management<a class="headerlink" href="#secrets-management" title="Link to this heading"></a></h2>
@@ -319,7 +354,7 @@ The defenses are designed to contain:</p>
 <ul class="simple">
 <li><p><strong>Filesystem escape</strong> – no wholesale host mount and no Docker socket;
 the host paths that are mounted (secret files, declared bind mounts,
-the Linux X11 socket) are listed in the table above.</p></li>
+the X11 socket of a project that opted in) are listed in the table above.</p></li>
 <li><p><strong>Network exfiltration</strong> – optional network isolation blocks all traffic.</p></li>
 <li><p><strong>Credential theft</strong> – partially. Secrets resolved from the host’s
 credential manager are mode-600 files, but they outlive the container

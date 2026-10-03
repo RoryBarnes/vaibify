@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Known technical debt &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Known technical debt &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -107,6 +107,16 @@ without discussion:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">introspectionScript.py</span></code> duplicates format-handling logic from
 <code class="docutils literal notranslate"><span class="pre">dataLoaders.py</span></code>. Container scripts cannot import from the host.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dictCtx</span></code> abbreviates “context” although the style guide forbids
+abbreviating words shorter than eight characters. It is the per-hub
+context dictionary every route module receives, and its spelling is
+part of a registration signature used throughout the backend
+(<code class="docutils literal notranslate"><span class="pre">fnRegisterAll(app,</span> <span class="pre">dictCtx)</span></code>). Ruled an accepted, documented
+exception (ruling R4, 2026-10-02): neither style scanner flags it and
+it is not to be renamed in passing. <code class="docutils literal notranslate"><span class="pre">tests/testStyleInvariants.py</span></code>
+pins this entry. <code class="docutils literal notranslate"><span class="pre">el</span></code> in the frontend is NOT such an exception; it
+waits for a JavaScript naming lane and must not be mass-renamed
+piecemeal.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">DockerConnection.fnWriteFileViaTar</span></code> no longer builds a tarball. It
 execs a fixed program as the container user and streams the bytes on
 stdin (<code class="docutils literal notranslate"><span class="pre">vaibify/docker/confinedWrite.py</span></code>), because a <code class="docutils literal notranslate"><span class="pre">put_archive</span></code>
@@ -133,21 +143,6 @@ no <code class="docutils literal notranslate"><span class="pre">conda</span> <sp
 accepting the field produced a container without the requested
 packages and said nothing. Wiring it is the honest fix; refusing is
 the honest interim.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/zenodo/{id}/download</span></code> cannot work, and its two tests
-pass anyway.</strong> It calls <code class="docutils literal notranslate"><span class="pre">syncDispatcher.ftResultDownloadDataset</span></code>,
-which exists nowhere — verified at runtime, <code class="docutils literal notranslate"><span class="pre">hasattr</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>, so
-every real call raises <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> and answers 500. The tests in
-<code class="docutils literal notranslate"><span class="pre">testSyncRoutesCoverage.py</span></code> patch the name into existence with
-<code class="docutils literal notranslate"><span class="pre">create=True</span></code>, which is why the suite has been exercising a function
-the product does not have. It is advertised to the in-container agent
-as <code class="docutils literal notranslate"><span class="pre">download-zenodo-dataset</span></code> with <code class="docutils literal notranslate"><span class="pre">bAgentSafe:</span> <span class="pre">True</span></code>, so an agent
-asked to fetch a dataset calls it and fails. <strong>Do not “fix” this by
-deleting or loosening the tests</strong> — the missing function is the
-defect. It is also the one mutating route left undeclared by the
-carrier migration, deliberately: inside a carrier that
-<code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> would poison the journal and quarantine a working
-container over a broken button. Writing the function is a feature
-decision.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">terminalContainment.py</span></code> and the <code class="docutils literal notranslate"><span class="pre">terminal</span></code> journal kind also
 reconcile records written by EARLIER hub versions — release, the
 safe reaper and shutdown all settle terminal records through

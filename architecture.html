@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1530,9 +1530,7 @@ legacy ambient admission by decision (2026-08-05), so
 Read-only routes cannot cause the hand-over failure; declaring them
 would have caught a <em>future</em> mistake where somebody adds a write to a
 shared helper, which is worth having and was not worth the remaining
-cost. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/zenodo/{id}/download</span></code> is the one mutating route left
-undeclared, deliberately: it calls a function that does not exist, so
-migrating it would quarantine a working container over a broken button.</p>
+cost.</p>
 <p><strong>Nothing here is verified by the ordinary route tests.</strong> 27 test files
 define a <code class="docutils literal notranslate"><span class="pre">fnWriteFile</span></code> mock and none of them consults the admission
 gate, so “forget a carrier and the primitive raises loudly” is true of

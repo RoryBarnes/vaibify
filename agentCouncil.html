@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -69,7 +69,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#the-charter-the-by-laws-every-participant-is-bound-by">The charter — the by-laws every participant is bound by</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#execution-backend">Execution backend</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-first-council-on-a-computer">The first council on a computer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#files-vaibify-never-copies">Files vaibify never copies</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#credential-risk-disclosure">Credential-risk disclosure</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#output">Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#asking-the-chairbot">Asking the chairbot</a></li>
@@ -509,6 +512,28 @@ tree. Participants are told what was left out — counts, sizes and
 top-level folders, never file names — and that they must not assume the
 contents of omitted files. In this scope a new untracked output file
 does not mark a finished council stale; an edit to a tracked file does.</p>
+<section id="files-vaibify-never-copies">
+<h3>Files vaibify never copies<a class="headerlink" href="#files-vaibify-never-copies" title="Link to this heading"></a></h3>
+<p>Whatever the scope, vaibify leaves out paths that may hold a secret or
+steer a participant, even when they are tracked, and lists each one
+under <strong>Files that will be missing</strong> as “excluded by vaibify policy”.
+The policy matches path components at any depth:</p>
+<ul class="simple">
+<li><p>repository and runtime state (<code class="docutils literal notranslate"><span class="pre">.git</span></code>, <code class="docutils literal notranslate"><span class="pre">.vaibify</span></code>) and generated
+caches (<code class="docutils literal notranslate"><span class="pre">__pycache__</span></code>, <code class="docutils literal notranslate"><span class="pre">.pytest_cache</span></code>, <code class="docutils literal notranslate"><span class="pre">.ipynb_checkpoints</span></code>);</p></li>
+<li><p>agent configuration and instruction files (<code class="docutils literal notranslate"><span class="pre">.claude</span></code>, <code class="docutils literal notranslate"><span class="pre">.codex</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.gemini</span></code>, <code class="docutils literal notranslate"><span class="pre">.mcp.json</span></code>, <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CLAUDE.local.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.override.md</span></code>, and similar);</p></li>
+<li><p>credential stores: <code class="docutils literal notranslate"><span class="pre">.ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">.netrc</span></code>, <code class="docutils literal notranslate"><span class="pre">.git-credentials</span></code>, <code class="docutils literal notranslate"><span class="pre">.aws</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.docker</span></code>, <code class="docutils literal notranslate"><span class="pre">.npmrc</span></code>, <code class="docutils literal notranslate"><span class="pre">.pypirc</span></code>, <code class="docutils literal notranslate"><span class="pre">.config/gh</span></code>, <code class="docutils literal notranslate"><span class="pre">.env</span></code>, and every
+<code class="docutils literal notranslate"><span class="pre">.env.*</span></code> variant.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">.env.*</span></code> includes templates such as <code class="docutils literal notranslate"><span class="pre">.env.example</span></code>. A template
+conventionally holds no secrets, but nothing can tell it from a file
+that does, so the whole family is excluded; put a template’s contents in
+the question if a participant needs them. Names that merely begin with
+the same letters (<code class="docutils literal notranslate"><span class="pre">.environment</span></code>, <code class="docutils literal notranslate"><span class="pre">.envrc</span></code>) are not excluded.</p>
+</section>
 </section>
 <section id="credential-risk-disclosure">
 <h2>Credential-risk disclosure<a class="headerlink" href="#credential-risk-disclosure" title="Link to this heading"></a></h2>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev284 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev304 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ea50e152"></script>
+      <script src="_static/documentation_options.js?v=0b1925a9"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -178,27 +178,32 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Disable outbound network access</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pipInstallFlags</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Forward the host X display so graphical programs in the container can open windows. Opt-in because a connected client can read the screen and inject input (see <a class="reference internal" href="security.html"><span class="std std-doc">Security</span></a>). Refused together with <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code>. Takes effect when the container is created, so stop and start it after changing this. Also a checkbox in the creation wizard and in the project’s Settings dialog</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pipInstallFlags</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--prefer-binary</span></code></p></td>
 <td><p>Extra flags passed to <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> during the image build</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">neverSleep</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neverSleep</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Keep the host awake (<code class="docutils literal notranslate"><span class="pre">caffeinate</span></code>) while the container runs; macOS only, ignored elsewhere</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dashboardPort</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dashboardPort</span></code></p></td>
 <td><p>integer</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>The project’s dashboard port. <code class="docutils literal notranslate"><span class="pre">0</span></code> means “not yet assigned”: the first launch picks a free port and writes it back here so the same port is reused on every restart. A non-zero value must be 1024–65535</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code></p></td>
 <td><p>integer</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Cap on container CPU cores. <code class="docutils literal notranslate"><span class="pre">0</span></code> means no explicit limit (all host cores minus one); a positive value is clamped to the host’s core count</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code></p></td>
 <td><p>float</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
 <td><p>Container memory cap in GB. <code class="docutils literal notranslate"><span class="pre">0</span></code> means unlimited; a non-zero value must be at least <code class="docutils literal notranslate"><span class="pre">0.25</span></code></p></td>

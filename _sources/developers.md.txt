@@ -10,7 +10,8 @@ proposed changes are not duplicating work and will be of general interest.
 Vaibify follows the style conventions described in the project's global
 development standards: camelCase with Hungarian prefixes for variables,
 `f`-prefixed names for functions (with a return-type letter), files in
-camelCase without Hungarian prefixes, functions under 20 lines, no
+camelCase without Hungarian prefixes, functions usually 20-30 lines (split
+for reuse or a genuine conceptual boundary, never to satisfy a line count), no
 abbreviations for words shorter than 8 characters, and clear naming in
 preference to inline comments. If you are developing with an AI coding
 agent, read [`AGENTS.md`](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md) at the repo root for the rules,
@@ -43,6 +44,23 @@ rule are intact:
 ```bash
 pytest tests/testArchitecturalInvariants.py -v
 ```
+
+Run the static-analysis check, which is also the `lint` lane in CI.
+It runs `pyflakes` (every message except "imported but unused", because
+the package re-exports names through facade modules on purpose) and
+`pylint --errors-only` against `vaibify/`, and compares the findings to
+two exact seeds in the test file:
+
+```bash
+pytest tests/testStaticAnalysisClean.py -v
+```
+
+A new finding fails the test. A seeded finding that has since been fixed
+also fails it, so the seed can only shrink: lower the entry in the same
+commit as the fix. Add a seed entry only with a reason, never to silence
+a real defect. Checks that pylint gets wrong for this codebase are
+disabled in `pyproject.toml` under `[tool.pylint]`, each with its reason.
+Run `pylint --errors-only vaibify/` to see the raw report.
 
 The suite has three kinds of test — unit/behavior tests, architectural
 invariants, and **falsification tests** (kill-confirmed tests, proven to
