@@ -376,6 +376,28 @@ top-level folders, never file names — and that they must not assume the
 contents of omitted files. In this scope a new untracked output file
 does not mark a finished council stale; an edit to a tracked file does.
 
+### Files vaibify never copies
+
+Whatever the scope, vaibify leaves out paths that may hold a secret or
+steer a participant, even when they are tracked, and lists each one
+under **Files that will be missing** as "excluded by vaibify policy".
+The policy matches path components at any depth:
+
+- repository and runtime state (`.git`, `.vaibify`) and generated
+  caches (`__pycache__`, `.pytest_cache`, `.ipynb_checkpoints`);
+- agent configuration and instruction files (`.claude`, `.codex`,
+  `.gemini`, `.mcp.json`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
+  `CLAUDE.local.md`, `AGENTS.override.md`, and similar);
+- credential stores: `.ssh`, `.netrc`, `.git-credentials`, `.aws`,
+  `.docker`, `.npmrc`, `.pypirc`, `.config/gh`, `.env`, and every
+  `.env.*` variant.
+
+`.env.*` includes templates such as `.env.example`. A template
+conventionally holds no secrets, but nothing can tell it from a file
+that does, so the whole family is excluded; put a template's contents in
+the question if a participant needs them. Names that merely begin with
+the same letters (`.environment`, `.envrc`) are not excluded.
+
 ## Credential-risk disclosure
 
 The runner backend reuses the provider account already configured for

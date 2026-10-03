@@ -4278,7 +4278,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # another project since the workflow was read. It sits beside the
     # carried save it guards, which must refuse before its carrier
     # opens a journal record.
-    "routeContext.py": 934,
+    # 934 -> 936 (2026-10-02): the save-time refusal also grades the x11Forwarding conflict.
+    "routeContext.py": 936,
     # NEW at 808 (2026-09-03): conftestManager.py sat at exactly the
     # cap and crossed it when the generated conftest gained the walk
     # that locates the project repo from its own file. The stamped
@@ -4531,7 +4532,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # here: testGetArchiveKeepsExactlyItsTwoHomes pins get_archive to this
     # module; the scope's definition, observation and inventory live in
     # agentCouncilSnapshotScope.
-    "agentCouncilContext.py": 1358,
+    # 1358 -> 1404 (2026-10-02): the credential-exclusion policy grew
+    # nine entries plus prefix and component-sequence matching; it is
+    # the same responsibility (what a snapshot contains and why).
+    "agentCouncilContext.py": 1404,
     # NEW at 837 (2026-08-26): the store crossed the default cap when
     # the durable provenance sidecar landed — the evidence ledger's
     # recorded state and the turn counter now survive a hub restart
@@ -6805,7 +6809,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (409) instead of a 500.
     # 2334 -> 2335 (2026-10-01): one text open names its encoding.
     # 2335 -> 2336 (2026-10-01): the archive source is resolved before the session is released.
-    "registryRoutes.py": 2336,
+    # 2336 -> 2366 (2026-10-02): the wizard requests and the settings route carry the
+    # x11Forwarding opt-in, refused beside networkIsolation (one helper, same module as
+    # the agent auto-update helper it parallels).
+    "registryRoutes.py": 2366,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7471,7 +7478,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1064 -> 1067 (2026-10-01): the registry removal moves to the
     # container-lifecycle scope, with the reason.
     # 1067 -> 1068 (2026-10-01): the image-trust answer route's scope.
-    "routeScope.py": 1068,
+    # 1068 -> 1073 (2026-10-02): the Open in VS Code link route joins the container-read allowlist.
+    "routeScope.py": 1073,
 }
 
 

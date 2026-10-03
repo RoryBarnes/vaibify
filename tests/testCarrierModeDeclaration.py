@@ -189,7 +189,6 @@ SET_SEEDED_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("POST", "/api/workflows/{sContainerId}/create"),
     ("POST", "/api/workflows/{sContainerId}/request-creation"),
     ("POST", "/api/zenodo/{sContainerId}/archive"),
-    ("POST", "/api/zenodo/{sContainerId}/download"),
     ("POST", "/api/zenodo/{sContainerId}/metadata"),
     ("PUT", "/api/draft/{sContainerId}/{sFilePath:path}"),
     ("PUT", "/api/file/{sContainerId}/{sFilePath:path}"),

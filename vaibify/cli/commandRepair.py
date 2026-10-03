@@ -213,7 +213,7 @@ def _fiReportReprobe(config, connectionDocker, sContainerName):
         return I_REPAIR_CONFIRMED
     if sOutcome == S_REPROBE_UNVERIFIED:
         click.echo(
-            f"The repair ran, but NOTHING was verified: this project "
+            "The repair ran, but NOTHING was verified: this project "
             "names no host of its own that vaibify may resolve, or "
             "the container could not answer a lookup at all. Do not "
             "read this as a fix. Check it yourself, or run `vaibify "

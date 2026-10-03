@@ -486,7 +486,9 @@ def _flistCollectErrors(request):
     as the config, and a wizard that wrote a value the build then
     refuses would only move the discovery later.
     """
-    from vaibify.cli.configFieldPreflight import flistDescribeInvalidFields
+    from vaibify.cli.configFieldPreflight import (
+        flistDescribeUnusableConfiguration,
+    )
     listErrors = []
     if not request.sProjectName.strip():
         listErrors.append("projectName is required")
@@ -494,7 +496,7 @@ def _flistCollectErrors(request):
         listErrors.append(
             f"Invalid packageManager: '{request.sPackageManager}'"
         )
-    listErrors.extend(flistDescribeInvalidFields(request))
+    listErrors.extend(flistDescribeUnusableConfiguration(request))
     return listErrors
 
 

@@ -280,6 +280,7 @@ def testStoppedContainerMakesEveryContainerCheckUnassessed(monkeypatch):
     )
     assert [r.sName for r in listResults] == [
         "network-attachment", "resolver-configuration", "dns-resolution",
+        "x11-container-display",
     ]
     assert {r.sLevel for r in listResults} == {S_LEVEL_NOT_CHECKED}
     assert "exists but is exited" in listResults[0].sMessage
@@ -307,6 +308,25 @@ def testRunningContainerIsWalkedThroughTheNetworkGraph(monkeypatch):
     assert "172.17.0.1" in dictByName["network-attachment"].sMessage
     assert "192.168.5.1" in dictByName["resolver-configuration"].sMessage
     assert dictByName["dns-resolution"].sLevel == S_LEVEL_NOT_CHECKED
+
+
+def testRunningContainerWithoutADisplayIsFlaggedWhenX11IsRequested(
+    monkeypatch,
+):
+    fnPinContainerState(monkeypatch, "running")
+    fnPinDockerConnection(monkeypatch, _ContainerConnection())
+    fnPinInspect(monkeypatch, fjsonBridgeInspect())
+    monkeypatch.setattr(
+        containerManager, "fjsonInspectContainer",
+        lambda sContainerName: fjsonBridgeInspect(),
+    )
+    listResults = commandDoctor._flistContainerScopeChecks(
+        fconfigForDoctor(bX11Forwarding=True), False,
+    )
+    dictByName = {r.sName: r for r in listResults}
+    assert dictByName["x11-container-display"].sLevel == S_LEVEL_WARN
+    assert dictByName["x11-container-display"].sCommand == (
+        "vaibify stop && vaibify start")
 
 
 # ---------------------------------------------------------------------

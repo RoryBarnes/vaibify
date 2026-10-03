@@ -126,6 +126,36 @@ jobs:
       - name: Run the architectural invariants
         run: python -m pytest tests/testArchitecturalInvariants.py -q
 
+  # A NAMED check for the error-grade static analysis (pyflakes and
+  # `pylint --errors-only`). The same test runs inside every matrix leg;
+  # this job adds the name, so that a required check called `lint` fails
+  # on its own line, and so that dropping a marker filter from the matrix
+  # cannot silently remove it. A single interpreter is enough: the
+  # findings were measured identical on Python 3.9 and 3.13. It costs a
+  # few minutes, almost all of it pylint.
+  lint:
+    name: 'lint'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run pyflakes and pylint errors against the seeds
+        timeout-minutes: 10
+        run: python -m pytest tests/testStaticAnalysisClean.py -q
+
   # Splitting it out is what makes failing honest affordable: a
   # transient daemon problem fails this one job instead of all twelve
   # matrix cells. The ordinary matrix stays Docker-free.

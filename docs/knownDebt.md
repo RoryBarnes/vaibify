@@ -10,6 +10,16 @@ without discussion:
 
 - `introspectionScript.py` duplicates format-handling logic from
   `dataLoaders.py`. Container scripts cannot import from the host.
+- `dictCtx` abbreviates "context" although the style guide forbids
+  abbreviating words shorter than eight characters. It is the per-hub
+  context dictionary every route module receives, and its spelling is
+  part of a registration signature used throughout the backend
+  (`fnRegisterAll(app, dictCtx)`). Ruled an accepted, documented
+  exception (ruling R4, 2026-10-02): neither style scanner flags it and
+  it is not to be renamed in passing. `tests/testStyleInvariants.py`
+  pins this entry. `el` in the frontend is NOT such an exception; it
+  waits for a JavaScript naming lane and must not be mass-renamed
+  piecemeal.
 - `DockerConnection.fnWriteFileViaTar` no longer builds a tarball. It
   execs a fixed program as the container user and streams the bytes on
   stdin (`vaibify/docker/confinedWrite.py`), because a `put_archive`
@@ -36,21 +46,6 @@ without discussion:
   accepting the field produced a container without the requested
   packages and said nothing. Wiring it is the honest fix; refusing is
   the honest interim.
-- **`POST /api/zenodo/{id}/download` cannot work, and its two tests
-  pass anyway.** It calls `syncDispatcher.ftResultDownloadDataset`,
-  which exists nowhere — verified at runtime, `hasattr` is `False`, so
-  every real call raises `AttributeError` and answers 500. The tests in
-  `testSyncRoutesCoverage.py` patch the name into existence with
-  `create=True`, which is why the suite has been exercising a function
-  the product does not have. It is advertised to the in-container agent
-  as `download-zenodo-dataset` with `bAgentSafe: True`, so an agent
-  asked to fetch a dataset calls it and fails. **Do not "fix" this by
-  deleting or loosening the tests** — the missing function is the
-  defect. It is also the one mutating route left undeclared by the
-  carrier migration, deliberately: inside a carrier that
-  `AttributeError` would poison the journal and quarantine a working
-  container over a broken button. Writing the function is a feature
-  decision.
 - `terminalContainment.py` and the `terminal` journal kind also
   reconcile records written by EARLIER hub versions — release, the
   safe reaper and shutdown all settle terminal records through

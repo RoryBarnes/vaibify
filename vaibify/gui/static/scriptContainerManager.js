@@ -1234,6 +1234,7 @@ var VaibifyContainerManager = (function () {
             'as this container is running, preventing sleep. ' +
             'Has no effect on Linux.</p>' +
             '</div>' +
+            _fsRenderX11Setting(dictSettings) +
             _fsRenderResourceLimitSettings(dictSettings) +
             _fsRenderImageTrustSetting(dictSettings) +
             '<div class="modal-actions">' +
@@ -1249,6 +1250,8 @@ var VaibifyContainerManager = (function () {
             "click", async function () {
                 var bNeverSleep = document.getElementById(
                     "settingNeverSleep").checked;
+                var bX11Forwarding = document.getElementById(
+                    "settingX11Forwarding").checked;
                 var iCpuLimit = _fiParsePositiveNumber(
                     "settingCpuLimit", true);
                 var fMemoryLimitGigabytes = _fiParsePositiveNumber(
@@ -1256,10 +1259,29 @@ var VaibifyContainerManager = (function () {
                 elModal.remove();
                 await fnSaveContainerSettings(sName, {
                     bNeverSleep: bNeverSleep,
+                    bX11Forwarding: bX11Forwarding,
                     iCpuLimit: iCpuLimit,
                     fMemoryLimitGigabytes: fMemoryLimitGigabytes,
                 });
             });
+    }
+
+    function _fsRenderX11Setting(dictSettings) {
+        var bSealed = dictSettings.bNetworkIsolation === true;
+        return '<div class="settings-option">' +
+            '<label class="settings-option-row">' +
+            '<input type="checkbox" id="settingX11Forwarding"' +
+            (dictSettings.bX11Forwarding ? " checked" : "") +
+            (bSealed ? " disabled" : "") + '>' +
+            '<span class="settings-option-label">' +
+            'X11 display forwarding</span></label>' +
+            '<p class="settings-option-help">' +
+            'Lets graphical programs in the container open windows ' +
+            'on your screen. A connected program can read the screen ' +
+            'and send input, so this is off by default. It takes ' +
+            'effect when the container is created again.' +
+            (bSealed ? ' Unavailable while network isolation is on.' : '') +
+            '</p></div>';
     }
 
     function _fsRenderImageTrustSetting(dictSettings) {

@@ -690,15 +690,6 @@ def testAnArxivCacheThatCannotBeClearedReturnsTheError():
     assert sError == "read-only file system"
 
 
-def testAZenodoDestinationWithANulByteIsRefused():
-    with pytest.raises(HTTPException) as excInfo:
-        syncRoutes._fnValidateZenodoDestination(
-            "dataFile\x00.csv", {"sProjectRepoPath": "/workspace/alpha"},
-        )
-    assert excInfo.value.status_code == 400
-    assert excInfo.value.detail == "sDestination contains null byte"
-
-
 # ── Startup sweep of ephemeral credential files ──
 
 

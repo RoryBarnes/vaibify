@@ -99,6 +99,7 @@ class ProjectConfig:
         default_factory=ReproducibilityConfig
     )
     bNetworkIsolation: bool = False
+    bX11Forwarding: bool = False
     bNeverSleep: bool = False
     iDashboardPort: int = 0
     iCpuLimit: int = 0
@@ -125,6 +126,7 @@ _YAML_TO_HUNGARIAN = {
     "secrets": "listSecrets",
     "reproducibility": "reproducibility",
     "networkIsolation": "bNetworkIsolation",
+    "x11Forwarding": "bX11Forwarding",
     "neverSleep": "bNeverSleep",
     "dashboardPort": "iDashboardPort",
     "cpuLimit": "iCpuLimit",
@@ -812,6 +814,7 @@ def _fdictScalarFieldsToYaml(config):
         "bindMounts": config.listBindMounts,
         "secrets": config.listSecrets,
         "networkIsolation": config.bNetworkIsolation,
+        "x11Forwarding": config.bX11Forwarding,
         "neverSleep": config.bNeverSleep,
         "dashboardPort": config.iDashboardPort,
         "cpuLimit": config.iCpuLimit,

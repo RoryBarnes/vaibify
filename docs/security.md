@@ -14,10 +14,44 @@ restrictions:
 |------------------------|---------------------------------------------|
 | No Docker socket       | The Docker socket is never mounted inside the container. Code in the container cannot create, inspect, or control other containers. |
 | Unprivileged user      | Your code runs as a non-root user. The entrypoint starts as root to configure system paths, then `exec`s itself through `gosu` as the unprivileged user for workspace setup and everything after — so root exists at container start, not only at image build, but nothing you run inherits it. `sudo` is absent from the image. |
-| Few host mounts        | The host filesystem is not bind-mounted wholesale. Files enter and leave the container through `vaibify push` and `vaibify pull`. Three kinds of host path are mounted: resolved secret files (read-only, under `/run/secrets/`), any `listBindMounts` entries you declare (validated against an allowlist, and refused if the source is missing), and, on Linux only, the X11 socket `/tmp/.X11-unix` (read-only), which is mounted into every container including those started with `networkIsolation: true`, after an `xhost +SI:localuser:$USER` grant to your account. On macOS the display is reached over TCP through XQuartz instead, with the same per-user `xhost` grant. |
+| Few host mounts        | The host filesystem is not bind-mounted wholesale. Files enter and leave the container through `vaibify push` and `vaibify pull`. Three kinds of host path are mounted: resolved secret files (read-only, under `/run/secrets/`), any `listBindMounts` entries you declare (validated against an allowlist, and refused if the source is missing), and, only for a project that sets `x11Forwarding: true`, the Linux X11 socket `/tmp/.X11-unix` (read-only) after an `xhost +SI:localuser:$USER` grant to your account. See "X11 display forwarding" below. |
 | Workspace volume       | A Docker volume provides persistent storage at the configured `workspaceRoot`. Volumes are isolated from the host directory tree. |
-| Network isolation      | Set `networkIsolation: true` in `vaibify.yml` to start the container with `--network none`, blocking all outbound traffic. |
+| Network isolation      | Set `networkIsolation: true` in `vaibify.yml` to start the container with `--network none`, blocking all outbound traffic. It cannot be combined with `x11Forwarding`. |
+| No display by default  | A container receives no `DISPLAY`, no X11 socket, and no `xhost` grant unless the project sets `x11Forwarding: true`. |
 | Localhost-only GUI     | The pipeline viewer and setup wizard bind to `127.0.0.1`, never `0.0.0.0`. |
+
+## X11 display forwarding
+
+Graphical programs in the container (a PDF viewer, an interactive plot
+window) need the host's X display. Forwarding is **off by default** and
+is enabled per project with `x11Forwarding: true` in `vaibify.yml`.
+
+What it exposes: an X client connected to your display can read what is
+drawn on the screen and send keystrokes and mouse events to other
+windows. A program in the container that you do not trust, including a
+compromised agent, then has a channel out of the container that the file
+system and network controls do not cover. For that reason forwarding is
+opt-in, and vaibify refuses to start a project that sets both
+`x11Forwarding` and `networkIsolation`: a sealed container cannot reach
+the X server anyway, and a display channel would defeat the seal.
+
+What vaibify changes on the host when it is enabled:
+
+- **Linux:** mounts `/tmp/.X11-unix` read-only and runs
+  `xhost +SI:localuser:$USER`, which admits only your own account.
+  Revoke it with `xhost -SI:localuser:$USER`.
+- **macOS:** the container reaches the X server over TCP at
+  `host.docker.internal`, which requires the server (XQuartz or the
+  MacPorts X11 application) to accept network clients. Vaibify starts
+  the server, runs `xhost +SI:localuser:$USER` and `xhost +localhost`
+  (`SI:localuser` only admits clients on the local socket, not a TCP
+  connection from the container engine), and tells you if the server
+  refuses network clients. Revoke the TCP entry with `xhost -localhost`.
+
+`DISPLAY` is fixed when a container is created. After you turn
+`x11Forwarding` on, or install or reconfigure the X server, stop and
+start the container so it is created again; `vaibify doctor` and the
+dashboard say when a running container was created without it.
 
 ## Secrets Management
 
@@ -164,7 +198,7 @@ The defenses are designed to contain:
 
 - **Filesystem escape** -- no wholesale host mount and no Docker socket;
   the host paths that are mounted (secret files, declared bind mounts,
-  the Linux X11 socket) are listed in the table above.
+  the X11 socket of a project that opted in) are listed in the table above.
 - **Network exfiltration** -- optional network isolation blocks all traffic.
 - **Credential theft** -- partially. Secrets resolved from the host's
   credential manager are mode-600 files, but they outlive the container

@@ -23,6 +23,7 @@ from .preflightResult import PreflightResult, S_LEVEL_FAIL, S_SCOPE_PROJECT
 __all__ = [
     "S_PREFLIGHT_NAME",
     "flistDescribeInvalidFields",
+    "flistDescribeUnusableConfiguration",
     "fpreflightConfigurationFields",
 ]
 
@@ -80,6 +81,21 @@ def _fsDescribeWorkspaceRoot(sWorkspaceRoot):
     return ""
 
 
+def _fsDescribeX11WithNetworkIsolation(config):
+    """Return the complaint about X11 forwarding on a sealed container."""
+    if getattr(config, "bX11Forwarding", False) and getattr(
+        config, "bNetworkIsolation", False,
+    ):
+        return (
+            "x11Forwarding and networkIsolation are both true; a "
+            "container with no network cannot reach the X server that "
+            "forwarding exists to reach, and forwarding a display into "
+            "a sealed container would defeat the seal. Set one of them "
+            "to false"
+        )
+    return ""
+
+
 _T_FIELD_DESCRIBERS = (
     ("sContainerUser", _fsDescribeContainerUser),
     ("sPythonVersion", _fsDescribePythonVersion),
@@ -107,9 +123,22 @@ def flistDescribeInvalidFields(config):
     return listComplaints
 
 
+def flistDescribeUnusableConfiguration(config):
+    """Return every complaint about a config or a wizard request.
+
+    The invalid fields, plus the one conflict that spans two of them:
+    X11 forwarding asked for on a container sealed from the network.
+    """
+    listComplaints = flistDescribeInvalidFields(config)
+    sX11Complaint = _fsDescribeX11WithNetworkIsolation(config)
+    if sX11Complaint:
+        listComplaints.append(sX11Complaint)
+    return listComplaints
+
+
 def fpreflightConfigurationFields(config):
     """Return a fail result for unusable fields, else None."""
-    listComplaints = flistDescribeInvalidFields(config)
+    listComplaints = flistDescribeUnusableConfiguration(config)
     if not listComplaints:
         return None
     return PreflightResult(
