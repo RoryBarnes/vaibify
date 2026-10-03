@@ -125,7 +125,7 @@ from .determinismEnvironment import (  # noqa: F401
     S_ENV_PREFIX_KEY,
     S_ENV_OVERLAY_KEY,
     S_DETERMINISM_APPLIED_KEY,
-    S_MATPLOTLIB_CONFIG_DIR,
+    S_MATPLOTLIB_CONFIG_ROOT,
     _fiQueryHeadCommitEpoch,
     fsBuildMatplotlibSaltShell,
     _fsBuildDeterminismEnvPrefix,

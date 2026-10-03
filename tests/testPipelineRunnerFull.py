@@ -872,7 +872,7 @@ def test_fiQueryHeadCommitEpoch_returns_zero_on_unparseable_output():
     assert iEpoch == 0
 
 
-def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
+def test_fsBuildDeterminismEnvPrefix_with_valid_epoch(monkeypatch):
     """The prefix pins both the build epoch and matplotlib's SVG salt.
 
     The exact string is asserted so a silent change to what the run
@@ -886,16 +886,25 @@ def test_fsBuildDeterminismEnvPrefix_with_valid_epoch():
     is written. The bytes the matplotlibrc ends up holding are the same
     either way.
     """
+    from vaibify.gui import determinismEnvironment
+    monkeypatch.setattr(
+        determinismEnvironment, "_fsMintMatplotlibRunToken",
+        lambda: "0123456789abcdef",
+    )
     mockDocker = _fMockDocker(0, "1745798400\n")
     sPrefix = _fnRunAsync(_fsBuildDeterminismEnvPrefix(
         mockDocker, "cid", "/workspace/repo",
     ))
+    sDirectory = "'/tmp/vaibifyMatplotlib.0123456789abcdef'"
     assert sPrefix == (
         "export SOURCE_DATE_EPOCH=1745798400 && "
-        "export MPLCONFIGDIR='/tmp/vaibifyMatplotlib' && "
-        "{ mkdir -p '/tmp/vaibifyMatplotlib' && "
+        "find '/tmp' -maxdepth 1 -type d -name 'vaibifyMatplotlib.*' "
+        "-mmin +720 -exec rm -rf {} + 2>/dev/null || true && "
+        f"export MPLCONFIGDIR={sDirectory} && "
+        f"{{ mkdir -p -m 700 {sDirectory} && "
         "printf '%s\\n' \"svg.hashsalt: 1745798400\" "
-        "> '/tmp/vaibifyMatplotlib/matplotlibrc' || "
+        f"> {sDirectory}/matplotlibrc.$$ && "
+        f"mv -f {sDirectory}/matplotlibrc.$$ {sDirectory}/matplotlibrc || "
         "echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; } && "
     )
 

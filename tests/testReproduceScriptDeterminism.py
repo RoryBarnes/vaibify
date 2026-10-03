@@ -395,7 +395,9 @@ def test_the_salt_comes_from_the_runners_own_builder():
     produces has to appear in the script.
     """
     sScript = fsRenderReproduceScript(_fdictBuildFigureWorkflow())
-    assert fsBuildMatplotlibSaltShell("$SOURCE_DATE_EPOCH") in sScript
+    assert fsBuildMatplotlibSaltShell(
+        "$SOURCE_DATE_EPOCH", '"/tmp/vaibifyMatplotlib.$$"',
+    ) in sScript
 
 
 def test_the_run_bypasses_the_images_entrypoint():

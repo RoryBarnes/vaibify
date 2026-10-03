@@ -53,9 +53,17 @@ could not. Four things not to undo:
   a *quoted* heredoc — the thing that keeps workflow-controlled step
   text off the host shell — cannot carry a host value into its body.
 - **The salt comes from the runner's own builder**
-  (`determinismEnvironment.fsBuildMatplotlibSaltShell`), which takes a
-  shell WORD so both lanes can call it. A private copy in the generator
-  would drift, and the two lanes disagreeing is the defect being fixed.
+  (`determinismEnvironment.fsBuildMatplotlibSaltShell`), which takes two
+  shell WORDS, the epoch and the directory, so both lanes can call it.
+  A private copy in the generator would drift, and the two lanes
+  disagreeing is the defect being fixed. The directory is private to a
+  run (the runner mints one per run, `reproduce.sh` uses its own
+  temporary one and removes it on exit, naming it literally in the trap
+  because a step may export its own `MPLCONFIGDIR`): with one shared
+  path, run A wrote salt 111, run B wrote 222 and A then read 222,
+  which grades a reproducible SVG as not reproducible. Only the salt
+  reaches the figure's bytes, never the path
+  (`tests/testMatplotlibSaltIsolationLive.py` measures it).
 - **`--entrypoint bash` is load-bearing.** A vaibify image declares
   `USER researcher`, and its entrypoint's first phase needs root:
   measured, `docker run <image> bash -s` exits 255 on
