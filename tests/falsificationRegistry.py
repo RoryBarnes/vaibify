@@ -26624,4 +26624,60 @@ def _fdictEntry(sRel):
         old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
         new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testBothAcceptedSpellingsOfTheGuardAreExempt'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        self._setTypeOnlyImports = _fsetFindTypeOnlyImports(treeModule)\n',
+        new='        self._setTypeOnlyImports = set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAnImportUnderAnUnrelatedNamedGuardIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        return bFlagBound and nodeTest.id == _S_TYPE_CHECKING_NAME\n',
+        new='        return bFlagBound\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testTheElseBranchOfTheGuardIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        for nodeStatement in nodeGuard.body:\n',
+        new='        for nodeStatement in nodeGuard.body + nodeGuard.orelse:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAReboundFlagIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    bFlagBound = iFlagBindings == 1 and any(\n',
+        new='    bFlagBound = iFlagBindings >= 1 and any(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAFlagFromAnotherModuleIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='            and nodeStatement.module == _S_TYPING_MODULE_NAME\n',
+        new='            and True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAGuardInsideAFunctionIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    for nodeGuard in treeModule.body:\n',
+        new='    for nodeGuard in ast.walk(treeModule):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAnImportWhoseNameIsUsedAtRuntimeIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='            if not setBound & setRuntimeNames:\n',
+        new='            if True:\n',
+    ),
 ]

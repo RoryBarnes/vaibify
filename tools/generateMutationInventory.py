@@ -587,6 +587,159 @@ _DICT_EMPTY_BINDINGS = {
 }
 
 
+_S_TYPE_CHECKING_NAME = "TYPE_CHECKING"
+_S_TYPING_MODULE_NAME = "typing"
+
+
+def _fbImportsTypeCheckingBinding(nodeStatement, sName):
+    """Return True for the one plain spelling that binds ``sName``.
+
+    ``from typing import TYPE_CHECKING`` or ``import typing``, neither
+    aliased: an alias, or the same name taken from another module, is
+    not the flag and is counted like any other import.
+    """
+    if sName == _S_TYPE_CHECKING_NAME:
+        return (
+            isinstance(nodeStatement, ast.ImportFrom)
+            and nodeStatement.module == _S_TYPING_MODULE_NAME
+            and not nodeStatement.level
+            and any(
+                nodeAlias.name == sName and nodeAlias.asname is None
+                for nodeAlias in nodeStatement.names
+            )
+        )
+    return isinstance(nodeStatement, ast.Import) and any(
+        nodeAlias.name == sName and nodeAlias.asname is None
+        for nodeAlias in nodeStatement.names
+    )
+
+
+def _flistBindingsOfName(nodeNode, sName):
+    """Return the names ``nodeNode`` binds that equal ``sName``, or [].
+
+    Every way Python binds a name, so a rebinding of the flag anywhere in
+    the module is seen: a store or delete, a definition, a parameter, an
+    import alias, an ``except ... as`` name, a ``global``/``nonlocal``
+    declaration, a match capture, and an attribute store on
+    ``TYPE_CHECKING`` (``typing.TYPE_CHECKING = True``).
+    """
+    if isinstance(nodeNode, ast.Name):
+        bBinds = not isinstance(nodeNode.ctx, ast.Load)
+    elif isinstance(nodeNode, ast.Attribute):
+        bBinds = (
+            nodeNode.attr == sName and not isinstance(nodeNode.ctx, ast.Load)
+        )
+    elif isinstance(nodeNode, ast.alias):
+        sBound = nodeNode.asname or nodeNode.name.split(".")[0]
+        return [sBound] if sBound == sName else []
+    elif isinstance(nodeNode, ast.arg):
+        return [nodeNode.arg] if nodeNode.arg == sName else []
+    elif isinstance(nodeNode, (ast.Global, ast.Nonlocal)):
+        return [sName] if sName in nodeNode.names else []
+    else:
+        sBound = getattr(nodeNode, "name", None) or getattr(
+            nodeNode, "rest", None,
+        )
+        return [sBound] if sBound == sName else []
+    sIdentifier = getattr(nodeNode, "id", None) or getattr(
+        nodeNode, "attr", None,
+    )
+    return [sName] if bBinds and sIdentifier == sName else []
+
+
+def _fiCountBindings(treeModule, sName):
+    """Return how many times the module binds ``sName``, any way at all."""
+    return sum(
+        len(_flistBindingsOfName(nodeNode, sName))
+        for nodeNode in ast.walk(treeModule)
+    )
+
+
+def _fbIsTypeCheckingGuard(nodeStatement, bFlagBound, bModuleBound):
+    """Return True for ``if TYPE_CHECKING:`` or ``if typing.TYPE_CHECKING:``."""
+    if not isinstance(nodeStatement, ast.If):
+        return False
+    nodeTest = nodeStatement.test
+    if isinstance(nodeTest, ast.Name):
+        return bFlagBound and nodeTest.id == _S_TYPE_CHECKING_NAME
+    return (
+        bModuleBound
+        and isinstance(nodeTest, ast.Attribute)
+        and nodeTest.attr == _S_TYPE_CHECKING_NAME
+        and isinstance(nodeTest.value, ast.Name)
+        and nodeTest.value.id == _S_TYPING_MODULE_NAME
+    )
+
+
+def _fsetNamesOutsideAnnotations(treeModule):
+    """Return the names loaded anywhere except inside an annotation."""
+    setAnnotationNodes = set()
+    for nodeNode in ast.walk(treeModule):
+        for nodeAnnotation in (
+            getattr(nodeNode, "annotation", None),
+            getattr(nodeNode, "returns", None),
+        ):
+            if nodeAnnotation is not None:
+                setAnnotationNodes.update(
+                    id(nodeInner) for nodeInner in ast.walk(nodeAnnotation)
+                )
+    return {
+        nodeNode.id for nodeNode in ast.walk(treeModule)
+        if isinstance(nodeNode, ast.Name)
+        and isinstance(nodeNode.ctx, ast.Load)
+        and id(nodeNode) not in setAnnotationNodes
+    }
+
+
+def _fsetFindTypeOnlyImports(treeModule):
+    """Return the ids of the imports that exist only for the type checker.
+
+    An import is exempted from the acquisition record only when ALL hold:
+    it sits directly in the body of a module-level ``if TYPE_CHECKING:``
+    (or ``if typing.TYPE_CHECKING:``); that flag was bound by a plain
+    ``from typing import TYPE_CHECKING`` (or ``import typing``) and is
+    bound nowhere else in the module -- not by assignment, definition,
+    parameter, import or ``typing.TYPE_CHECKING = ...`` -- so nothing
+    can have made the guard true; and no name the import binds is loaded outside an annotation,
+    so the import is not standing in for a runtime use. Anything else --
+    ``if False:``, the ``else:`` branch, a guard inside a function, an
+    aliased or foreign ``TYPE_CHECKING``, a rebound flag -- is counted,
+    conservatively. Calls are recorded separately by ``visit_Call``, and
+    no subtree is pruned.
+
+    This is a static source convention that keeps a string annotation
+    from costing a reviewed capability acquisition. It is not a runtime
+    security boundary: code that sets the flag by reflection, or executes
+    the guarded import some other way, is outside what a scan can see.
+    """
+    iFlagBindings = _fiCountBindings(treeModule, _S_TYPE_CHECKING_NAME)
+    bFlagBound = iFlagBindings == 1 and any(
+        _fbImportsTypeCheckingBinding(nodeStatement, _S_TYPE_CHECKING_NAME)
+        for nodeStatement in treeModule.body
+    )
+    bModuleBound = iFlagBindings == 0 and any(
+        _fbImportsTypeCheckingBinding(nodeStatement, _S_TYPING_MODULE_NAME)
+        for nodeStatement in treeModule.body
+    ) and _fiCountBindings(treeModule, _S_TYPING_MODULE_NAME) == 1
+    if not (bFlagBound or bModuleBound):
+        return set()
+    setRuntimeNames = _fsetNamesOutsideAnnotations(treeModule)
+    setApproved = set()
+    for nodeGuard in treeModule.body:
+        if not _fbIsTypeCheckingGuard(nodeGuard, bFlagBound, bModuleBound):
+            continue
+        for nodeStatement in nodeGuard.body:
+            if not isinstance(nodeStatement, (ast.Import, ast.ImportFrom)):
+                continue
+            setBound = {
+                nodeAlias.asname or nodeAlias.name.split(".")[0]
+                for nodeAlias in nodeStatement.names
+            }
+            if not setBound & setRuntimeNames:
+                setApproved.add(id(nodeStatement))
+    return setApproved
+
+
 class _VisitorCallSites(ast.NodeVisitor):
     """Collect every reference that can reach a container.
 
@@ -615,6 +768,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         self._listFunctionStack = []
         self._listScopeStack = []
         self._setCalledFunctionNodes = set()
+        self._setTypeOnlyImports = set()
         self._dictScopeModel = {}
 
     def fnCollect(self, treeModule):
@@ -623,6 +777,7 @@ class _VisitorCallSites(ast.NodeVisitor):
             if isinstance(nodeCall, ast.Call):
                 self._setCalledFunctionNodes.add(id(nodeCall.func))
         self._dictScopeModel = fdictBuildScopeModel(treeModule)
+        self._setTypeOnlyImports = _fsetFindTypeOnlyImports(treeModule)
         self.visit(treeModule)
 
     def visit_FunctionDef(self, nodeFunction):
@@ -703,6 +858,8 @@ class _VisitorCallSites(ast.NodeVisitor):
 
     def visit_Import(self, nodeImport):
         """Record an import that acquires a whole-module capability."""
+        if id(nodeImport) in self._setTypeOnlyImports:
+            return
         for nodeAlias in nodeImport.names:
             sCapability = DICT_CAPABILITY_MODULES.get(
                 nodeAlias.name.split(".")[0],
@@ -722,7 +879,7 @@ class _VisitorCallSites(ast.NodeVisitor):
         the Docker SDK, and reading the two as the same thing would put
         five vaibify modules in the record for importing themselves.
         """
-        if nodeImport.level:
+        if nodeImport.level or id(nodeImport) in self._setTypeOnlyImports:
             self.generic_visit(nodeImport)
             return
         sModule = nodeImport.module or ""
