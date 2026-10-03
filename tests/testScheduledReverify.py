@@ -17,6 +17,23 @@ import pytest
 from vaibify.reproducibility import overleafSync, scheduledReverify
 
 
+@pytest.fixture(autouse=True)
+def fixtureNoNetworkForTheArchivedAttestation(monkeypatch):
+    """Keep these tests off zenodo.org.
+
+    Their workflows declare Zenodo records, so a verify reaches
+    ``_fjsonFetchArchivedAttestation`` and, unpatched, asks the real
+    API. It answers 404 (no attestation) when it is up and a 503 when
+    it is not, and the second turned eight assertions red on one
+    runner. "The record serves no attestation" is the answer these
+    tests have always relied on, so it is stated here.
+    """
+    monkeypatch.setattr(
+        scheduledReverify, "_fjsonFetchArchivedAttestation",
+        lambda dictConfig: None,
+    )
+
+
 _BA_DATA_CONTENT = b"canonical data bytes\n"
 S_DATA_SHA = hashlib.sha256(_BA_DATA_CONTENT).hexdigest()
 _BA_TEST_CONTENT = b"def test_quantitative(): pass\n"

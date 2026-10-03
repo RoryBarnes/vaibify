@@ -444,6 +444,17 @@ switch. Carrying a disabled step's outputs would let anyone silence a
 step and still attest around it. The AI Declaration needs no case of
 its own — it is an interactive step, and the general rule covers it.
 
+**The rerun grades only bytes it regenerated (2026-10-01 ruling).** The
+shadow rerun runs every executed step's data commands whatever
+`bPlotOnly` says, and deletes every path an executed step produces
+before running anything, so a file left over from the original run can
+never be graded as reproduced. An output the rerun did not write is
+`missing`, never `matched`. A path that is both carried (human-made) and
+produced by an executed step is an ambiguous overlap, and the rerun is
+refused by name rather than silently keeping the file. Pinned inputs
+(`reproduce.sh`, `Dockerfile`, `requirements.lock`, `environment.json`,
+scripts) are counted separately from declared outputs.
+
 **A verification produces a FILE, and the per-file outcomes are the
 authority (2026-09-11).** The rerun keeps every observed hash in
 `listFileOutcomes` (one `{sPath, sExpected, sObserved, sStatus}` per
@@ -491,7 +502,7 @@ entry, i.e. a scientific claim keyed to a manifest digest saying the
 project does not reproduce, on the strength of a precondition the run
 could not meet. It also destroyed any earlier passing attestation the
 unchanged manifest still entitled the project to. Both lanes now branch
-on `bRerunAttempted` — `reproducibilityRoutes._fnRecordOutcome` and
+on `bRerunAttempted` — `reproducibilityRoutes._fbRecordOutcome` and
 `commandReproduce._fbWriteAttestationFromRun` — and they **must agree,
 because they write the same file**. The hub remembers the reason
 in-process (`_DICT_LAST_NO_VERDICT`) and the PROOF tab renders it; that

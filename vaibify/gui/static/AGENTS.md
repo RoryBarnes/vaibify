@@ -119,20 +119,26 @@ and related). Do not manipulate the state dicts or the DOM directly
 from feature modules; always go through the application's public
 methods.
 
-## Stale-output advisories
+## Escaping, copying, dragging and stale marks
 
-The poll response carries `listStaleOutputAdvisories` produced by
-[vaibify/gui/staleOutputDetector.py](../staleOutputDetector.py). Each
-advisory has `iConsumerStepIndex`, `iLikelyProducerStepIndex`,
-`listOffendingFiles`, and `fAgeDeltaSeconds`. When rendering the
-Step Viewer, treat each path in `listOffendingFiles` exactly like an
-L1-blocker offending file — same failure-mode glyph, no separate icon
-set — and surface the suggested undeclared upstream as an extra row
-in the consumer step's dependency list with a "Declare as upstream"
-affordance that writes the producer's token(s) into the consumer's
-`saDependencies`. The only resolution paths are "Declare as upstream"
-(workflow JSON update) and the existing `run-step`. Do not add an
-acknowledge or dismiss action.
+- `VaibifyUtilities.fnEscapeHtml` is the only HTML escaper. The
+  `textContent` to `innerHTML` idiom does not escape quotes, so it is
+  banned in attribute context (a source scan enforces it). Prefer DOM
+  assignment for constructed elements.
+- `scriptImageTrust.js` asks how an image vaibify did not build may run
+  (restricted, as its author built it, or inspect only). The question
+  and its option text come from one backend module; do not restate them
+  in JavaScript.
+- Copy buttons go through `VaibifyFileOps.fpromiseCopyText` and report
+  the real outcome, including a rejected `writeText`.
+- Step drags carry the private `vaibify/step` type with an index
+  validated on drop; never read a drag payload as a plain-text type.
+- A PROOF requirement row whose readiness request failed says
+  "unknown", never an invented "not met" (`data-req-key` keys the rows
+  to the gate's verdict).
+- A poll that omits the envelope, or a failed resource-monitor poll,
+  marks what is on screen as stale (`bEnvelopeDetailStale`); never leave
+  a stale verdict on screen unmarked.
 
 ## Non-refactored island
 
@@ -269,7 +275,7 @@ pattern wholesale.
   client-known staleness signals into the cell's multi-line tooltip;
   red ⚠ only when a genuine failure underlies it, orange ⚠ for
   staleness/regression.
-- The Project row (`fsRenderProjectHeader`, labeled "Project"
+- The Project row (`fsRenderProjectBlock`, labeled "Project"
   precisely so it does not read as a summary of the steps) is an
   expandable step-like row. Its cells are NOT an aggregate or summary of the
   step rows: they cover only the requirements that attach to the

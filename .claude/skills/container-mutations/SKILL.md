@@ -31,23 +31,29 @@ that worked (a partial map reads as a claim about the files it omits).
 Any NEW batched probe must go through the same splitter —
 `tests/testExecArgumentBudget.py` is the kill-confirmed guard.
 
-**Host→container file writes default to the unprivileged container
-user.** Every backend write of a file inside the workspace volume
+**Host→container file writes run as the unprivileged container user.**
+Every backend write of a single file inside the workspace volume
 funnels through `fnWriteFile` / `fnWriteFileViaTar` in
 [vaibify/docker/dockerConnection.py](vaibify/docker/dockerConnection.py),
-which calls `container.put_archive(tarball)`. The tarball entry's
-uid/gid IS the file's owner inside the container, and `tarfile.TarInfo`
-natively defaults uid/gid to 0. If that default ever leaks through, the
-file lands root-owned and the in-container agent cannot edit it (sudo
-is absent by design — commit 426f6b7). The symptom is a researcher's
-`git push` failing on `.git/objects/<prefix>` or the agent unable to
-modify `project.json` after a backend save. The dispatcher's
-`_finfoBuildTarEntry` defaults the stamps to
-`_I_CONTAINER_DEFAULT_UID`/`_GID` (1000:1000, locked to the Dockerfile
-by `testContainerUserUidIsOneThousand`); any new host→container write
-path must preserve that default.
+which exec the fixed program in
+[vaibify/docker/confinedWrite.py](vaibify/docker/confinedWrite.py) as the
+container user (never root) and send the bytes on its stdin. The program
+walks the path one component at a time with `O_NOFOLLOW` and
+`O_DIRECTORY` against a directory descriptor it already holds, so a
+symlink planted by the in-container agent is refused rather than
+followed, and a swap after a component was opened cannot redirect the
+write. It refuses forbidden metadata names (`.git`, `.vaibify`) by name,
+creates the file under a private name, `fchmod`s it and renames it into
+place. The file is owned by the container user because that user
+created it, so no uid/gid stamp exists to leak a default of 0. The old
+tarball write (`put_archive`, which extracts as root and follows
+in-container symlinks) is gone for single files; `fnWriteTreeViaTar` and
+the disposable repack still build tar entries and still default to
+1000:1000, locked to the Dockerfile by `testContainerUserUidIsOneThousand`.
 `tests/testArchitecturalInvariants.py::testFnWriteFileDefaultsToContainerUserOwnership`
-enforces it.
+enforces that the single-file funnel never goes back to an archive.
+Researcher secrets mount with `--mount` (built by
+`secretManager.flistBuildSecretMountArguments`), not `-v`.
 
 **Container access has exactly one authority: the lease plus
 `dictContainerOwners`.** A container is owned by a per-claim,

@@ -36,11 +36,12 @@ from fastapi import HTTPException
 
 
 def _fnRegisterExample(app, dictCtx):
-    """Register GET /api/<name>/<resource>."""
+    """Register GET /api/<name>/{sContainerId}/<resource>."""
 
-    @app.get("/api/<name>/<resource>")
-    async def fnHandleExample(sArg: str):
-        dictCtx["require"]()
+    @app.get("/api/<name>/{sContainerId}/<resource>")
+    async def fnHandleExample(sContainerId: str):
+        fnRequire = dictCtx["require"]
+        fnRequire(sContainerId)
         # ... implementation ...
         return {"bOk": True}
 
@@ -52,8 +53,9 @@ def fnRegisterAll(app, dictCtx):
 
 Notes:
 
-- Functions remain under 20 lines. Factor helpers out (`_fn…`,
-  `_fs…`, `_fdict…`) if a handler grows.
+- Functions are about 20 to 30 lines (a guideline: split for reuse or a
+  genuine conceptual boundary, never to meet a line count). Factor helpers
+  out (`_fn…`, `_fs…`, `_fdict…`) if a handler grows.
 - The module-level `fnRegisterAll` should only call the per-endpoint
   `_fn…` helpers. Keep it thin so tests can import it without side
   effects.
@@ -173,7 +175,7 @@ errors.
   import from `..pipelineServer`, `..pipelineRunner`, and domain
   modules, but not from other route modules — those are siblings.
 - **A 500 error on the new endpoint when the container is stopped.**
-  Handlers should check container state via `dictCtx["require"]()`
+  Handlers should check container state via `dictCtx["require"]` (called with the container id)
   early and return a clean 4xx error when the container is not
   running. Do not mask the error — surface it.
 - **Module not picked up at startup.** Both the `__all__` entry and

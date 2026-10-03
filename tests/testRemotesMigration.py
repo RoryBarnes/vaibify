@@ -25,6 +25,15 @@ from vaibify.gui.workflowManager import (
 )
 from vaibify.reproducibility import scheduledReverify
 
+
+@pytest.fixture(autouse=True)
+def fixtureNoNetworkForTheArchivedAttestation(monkeypatch):
+    """Keep these tests off zenodo.org (a 503 there reddened a runner)."""
+    monkeypatch.setattr(
+        scheduledReverify, "_fjsonFetchArchivedAttestation",
+        lambda dictConfig: None,
+    )
+
 DICT_MIRROR_MODULE_BY_SERVICE = {
     "github": "githubMirror",
     "overleaf": "overleafMirror",
