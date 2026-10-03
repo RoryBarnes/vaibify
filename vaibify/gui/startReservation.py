@@ -75,7 +75,6 @@ from . import startResultStore
 
 if TYPE_CHECKING:
     from subprocess import Popen
-
     from .containerOwnership import OwnershipIdentity
 
 logger = logging.getLogger("vaibify")

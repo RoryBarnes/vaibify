@@ -6395,7 +6395,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1069 -> 1119 (2026-10-01): the start asks how an unbuilt image may
     # run before it reserves, and a failed restricted launch says so.
     # 1119 -> 1122 (2026-10-01): type-only imports name the annotations.
-    "startReservation.py": 1122,
+    # 1122 -> 1123 (2026-10-03): the process handle's annotation names
+    # its import, under the type-only guard.
+    "startReservation.py": 1123,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6548,7 +6550,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1818 -> 1843 (2026-10-01): preflight, the warning probes and the
     # teardown joins run on worker threads, bounded.
     # 1843 -> 1845 (2026-10-01): the pre-step check also matches symbolic tokens.
-    "pipelineRunner.py": 1845,
+    # 1845 -> 1863 (2026-10-03): the CPU-time wrapper hands the command to
+    # a shell instead of to ``time``, and a CPU marker glued to an
+    # unterminated last line is split off. Both are the runner's own
+    # command assembly and output handling.
+    "pipelineRunner.py": 1863,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

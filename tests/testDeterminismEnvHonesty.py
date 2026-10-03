@@ -317,9 +317,8 @@ def test_env_prefix_is_applied_outside_the_time_wrapper():
     the env prefix inside, that becomes ``/usr/bin/time -f FMT export
     SOURCE_DATE_EPOCH=... && cmd``: GNU time execs ``export``, exits
     127, and the real command never runs. Measured with a stand-in
-    time binary. The base image ships no ``/usr/bin/time``, so the
-    bug is dormant — a project adding it via ``systemPackages``
-    would wake it.
+    time binary. ``time`` is in the default system packages, so the
+    wrapper runs in every default image and this is not a dormant case.
     """
     from vaibify.gui.pipelineRunner import _ftRunSingleCommand
     mockDocker = _fMockDocker()

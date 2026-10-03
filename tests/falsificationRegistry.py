@@ -26680,4 +26680,52 @@ def _fdictEntry(sRel):
         old='            if not setBound & setRuntimeNames:\n',
         new='            if True:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandComposition.py::testTheCommandReachesTheShellAsOneQuotedArgument'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandComposition.py::testAMarkerGluedToAnUnterminatedLastLineIsSplitOff'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    iMarker = sLine.find(S_CPU_MARKER)\n',
+        new='    iMarker = 0 if sLine.startswith(S_CPU_MARKER) else -1\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testACommandThatStartsWithABuiltinRunsInTheShellNotUnderTheTimeBinary'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testBothSidesOfAnAndChainRunAndTheSecondIsTimed'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testTheCommandsOwnExitStatusComesThrough'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sShellInvocation} || true; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testACommandWithNoTrailingNewlineKeepsItsTextAndItsCpuReading'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    iMarker = sLine.find(S_CPU_MARKER)\n',
+        new='    iMarker = 0 if sLine.startswith(S_CPU_MARKER) else -1\n',
+    ),
 ]
