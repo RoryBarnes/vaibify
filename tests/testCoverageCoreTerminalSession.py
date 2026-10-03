@@ -133,6 +133,44 @@ def testKillForegroundInterruptsARunningCommand(sessionHost):
     assert b"ALIVE-6" in fbaAwaitOutput(sessionHost, "ALIVE-6", 15.0)
 
 
+@pytest.fixture()
+def fixtureHubLaunchedWithInterruptSignalsIgnored():
+    """Ignore SIGINT and SIGQUIT in this process, as a background launch does.
+
+    A job started with ``&`` by a non-interactive shell begins with both
+    signals ignored, and an ignored signal stays ignored across exec.
+    """
+    dictPrevious = {
+        iSignal: signal.signal(iSignal, signal.SIG_IGN)
+        for iSignal in (signal.SIGINT, signal.SIGQUIT)
+    }
+    yield
+    for iSignal, previous in dictPrevious.items():
+        signal.signal(iSignal, previous)
+
+
+@pytest.mark.falsification
+def testKillForegroundWorksWhenTheHubWasLaunchedWithSignalsIgnored(
+    sessionHost, fixtureHubLaunchedWithInterruptSignalsIgnored,
+):
+    """The shell's jobs take Ctrl-C however the hub itself was launched.
+
+    Kills: removing the two ``signal.signal(...SIG_DFL)`` lines from
+    ``_S_TERMINAL_LAUNCH_STUB``, so the shell inherits the hub's ignored
+    SIGINT and SIGQUIT.
+    """
+    sessionHost.fnStart()
+    sessionHost.fnSendInput(b"echo READY-$((5*5))\n")
+    assert b"READY-25" in fbaAwaitOutput(sessionHost, "READY-25", 15.0)
+    iShellProcessGroup = os.tcgetpgrp(sessionHost._iMasterFd)
+    sessionHost.fnSendInput(b"sh -c 'echo JOB-$((6*7)); exec sleep 60'\n")
+    assert b"JOB-42" in fbaAwaitOutput(sessionHost, "JOB-42", 15.0)
+    fnAwaitForegroundLeavesShell(sessionHost, iShellProcessGroup, 15.0)
+    sessionHost.fnKillForeground()
+    sessionHost.fnSendInput(b"echo ALIVE-$((2*3))\n")
+    assert b"ALIVE-6" in fbaAwaitOutput(sessionHost, "ALIVE-6", 15.0)
+
+
 def testResizeSetsTheWindowSizeOfThePty(sessionHost):
     """The PTY reports the rows and columns the browser asked for."""
     sessionHost.fnStart()

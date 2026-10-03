@@ -26269,4 +26269,10 @@ def _fdictEntry(sRel):
         old='            if (!response.ok) {\n                fnMarkReadingsStale();\n                return;\n            }\n',
         new='            if (!response.ok) {\n                return;\n            }\n',
     ),
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testKillForegroundWorksWhenTheHubWasLaunchedWithSignalsIgnored',
+        source='vaibify/host/hostConnection.py',
+        old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
+        new='',
+    ),
 ]
