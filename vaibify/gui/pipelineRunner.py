@@ -344,12 +344,10 @@ async def _ftRunSingleCommand(
     sees traffic throughout the run without paying per-line frame
     overhead on chatty runs.
 
-    ``sEnvPrefix`` goes OUTSIDE the ``/usr/bin/time`` wrapper. Inside
-    it, the wrapper composes ``/usr/bin/time -f ... export FOO=1 &&
-    cmd``, so GNU time tries to exec ``export``, exits 127, and the
-    ``&&`` never reaches the real command. That path is dormant only
-    because the base image ships no ``/usr/bin/time``; a project that
-    adds it via ``systemPackages`` would fail every step.
+    ``sEnvPrefix`` goes OUTSIDE the ``/usr/bin/time`` wrapper, so its
+    exports are inherited by the shell the wrapper starts. ``time`` is
+    in the default system packages, so the wrapper runs in every
+    default image.
     """
     await _fnEmitCommandHeader(
         fnStatusCallback, sOriginal, sResolved
@@ -444,10 +442,8 @@ def _ftBuildBatchingEmitter(fnStatusCallback, loopMain, dictAccum):
     lockBuffer = threading.Lock()
 
     def fnEmitChunk(sStream, sLine):
-        if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
-            return
-        if dictBatch["bDisabled"]:
+        sLine = _fsAbsorbCpuMarker(sLine, dictAccum)
+        if sLine is None or dictBatch["bDisabled"]:
             return
         listToSend, bFirstLine = _ftAppendAndMaybeDrainBatch(
             dictBatch, lockBuffer, sLine,
@@ -613,10 +609,8 @@ def _ffBuildStreamingChunkEmitter(fnStatusCallback, loopMain, dictAccum):
     dictBatch = {"bDisabled": False}
 
     def fnEmitOne(sStream, sLine):
-        if sLine.startswith("__VAIBIFY_CPU__ "):
-            dictAccum["fCpu"] = _ffParseCpuTime(sLine)
-            return
-        if dictBatch["bDisabled"]:
+        sLine = _fsAbsorbCpuMarker(sLine, dictAccum)
+        if sLine is None or dictBatch["bDisabled"]:
             return
         _fnFlushBatchFromWorker(
             dictBatch, fnStatusCallback, loopMain, [sLine],
@@ -676,12 +670,36 @@ async def _fnEmitHeartbeatLoop(fnStatusCallback):
 
 
 def _fsWrapWithTime(sCommand):
-    """Wrap a command with /usr/bin/time to capture CPU usage."""
+    """Wrap a command with /usr/bin/time to capture CPU usage.
+
+    GNU time executes its arguments directly, with no shell, so the
+    researcher's ``cd d && cmd`` became a program called ``cd`` (exit
+    127) and ``a && b`` timed only ``a``. The command goes to the exec's
+    own shell, quoted as ONE argument; its exit status comes through.
+    """
+    sShellInvocation = f"/bin/bash -c {fsShellQuote(sCommand)}"
     return (
         f"{{ if [ -x /usr/bin/time ]; then "
         f"/usr/bin/time -f '__VAIBIFY_CPU__ %U %S' "
-        f"{sCommand}; else {sCommand}; fi; }} 2>&1"
+        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"
     )
+
+
+S_CPU_MARKER = "__VAIBIFY_CPU__ "
+
+
+def _fsAbsorbCpuMarker(sLine, dictAccum):
+    """Record a CPU marker in ``sLine``; return the text to forward.
+
+    GNU time writes its marker straight after the command's last output,
+    so an unterminated final line arrives glued to it. The marker is
+    split off and the text kept; ``None`` means only the marker was there.
+    """
+    iMarker = sLine.find(S_CPU_MARKER)
+    if iMarker < 0:
+        return sLine
+    dictAccum["fCpu"] = _ffParseCpuTime(sLine[iMarker:])
+    return sLine[:iMarker] or None
 
 
 def _ffParseCpuTime(sOutput):

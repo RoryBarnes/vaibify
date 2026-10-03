@@ -26520,4 +26520,220 @@ def _fdictEntry(sRel):
         old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAMissingDestinationIsRefusedUnlessCreationWasAsked'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    except FileNotFoundError:\n        if not bCreate:\n            fnRefuse("refused: \'" + sName + "\' does not exist")\n',
+        new='    except FileNotFoundError:\n        if False:\n            fnRefuse("refused: \'" + sName + "\' does not exist")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testASymlinkedDestinationIsRefusedAndNothingLandsOutside'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testASymlinkedIntermediateDestinationComponentIsRefused'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAMemberDirectoryThatIsASymlinkIsRefusedNotReplaced'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testAFileMemberReplacesASymlinkAtItsPathInsteadOfFollowingIt'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='        sTemporary = ".vaibify-write-" + secrets.token_hex(8)\n        iFlags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW\n        iFile = os.open(sTemporary, iFlags, 0o600, dir_fd=iParent)\n',
+        new='        sTemporary = sFinal\n        iFlags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC\n        iFile = os.open(sTemporary, iFlags, 0o600, dir_fd=iParent)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testARefusalAfterSomeMembersSaysHowManyLanded'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    sys.stderr.write("@@LANDED_PREFIX@@" + str(iMembersLanded) + "\\\\n")\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWrite.py::testTheTreeWriteRunsTheConfinedProgramAndNeverPutsAnArchive'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedAsksTheReceiverToCreateItsDestinationBelowTheWorkspaceRoot'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='sAuthorizedRoot=sWorkspaceRoot, bCreateDestination=True,\n',
+        new='sAuthorizedRoot=sWorkspaceRoot,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedRefusedBeforeAnythingLandedAnswers403WithTheReason'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='403 if error.iMembersLanded == 0 else 500, str(error))',
+        new='500, str(error))',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesAFileRoutes.py::testASeedThatStoppedPartWayIsAServerFailureNotARefusal'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        old='403 if error.iMembersLanded == 0 else 500, str(error))',
+        new='403, str(error))',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtTheDestinationDoesNotRedirectOrChangeOwnership'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAPlantedSymlinkAtAnIntermediateComponentDoesNotRedirect'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedTreeWriteLive.py::testAMemberDirectoryThatIsASymlinkIsRefusedAndKeptNotDeleted'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            tExecResult = self._ftRunProgramWithStdin(\n                sContainerId, ["python3", "-c", sProgram], fileStdin=fileTar,\n            )\n',
+        new='            self.fcontainerGetById(sContainerId).put_archive(\n                sDestinationDirectory, fileTar)\n            tExecResult = ExecResult(iExitCode=0, sStdout="", sStderr="")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testBothAcceptedSpellingsOfTheGuardAreExempt'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        self._setTypeOnlyImports = _fsetFindTypeOnlyImports(treeModule)\n',
+        new='        self._setTypeOnlyImports = set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAnImportUnderAnUnrelatedNamedGuardIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        return bFlagBound and nodeTest.id == _S_TYPE_CHECKING_NAME\n',
+        new='        return bFlagBound\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testTheElseBranchOfTheGuardIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='        for nodeStatement in nodeGuard.body:\n',
+        new='        for nodeStatement in nodeGuard.body + nodeGuard.orelse:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAReboundFlagIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    bFlagBound = iFlagBindings == 1 and any(\n',
+        new='    bFlagBound = iFlagBindings >= 1 and any(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAFlagFromAnotherModuleIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='            and nodeStatement.module == _S_TYPING_MODULE_NAME\n',
+        new='            and True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAGuardInsideAFunctionIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='    for nodeGuard in treeModule.body:\n',
+        new='    for nodeGuard in ast.walk(treeModule):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMutationScannerTypeCheckingExemption.py::testAnImportWhoseNameIsUsedAtRuntimeIsStillCounted'
+        ),
+        source='tools/generateMutationInventory.py',
+        old='            if not setBound & setRuntimeNames:\n',
+        new='            if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandComposition.py::testTheCommandReachesTheShellAsOneQuotedArgument'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandComposition.py::testAMarkerGluedToAnUnterminatedLastLineIsSplitOff'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    iMarker = sLine.find(S_CPU_MARKER)\n',
+        new='    iMarker = 0 if sLine.startswith(S_CPU_MARKER) else -1\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testACommandThatStartsWithABuiltinRunsInTheShellNotUnderTheTimeBinary'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testBothSidesOfAnAndChainRunAndTheSecondIsTimed'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sCommand}; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testTheCommandsOwnExitStatusComesThrough'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='        f"{sShellInvocation}; else {sCommand}; fi; }} 2>&1"\n',
+        new='        f"{sShellInvocation} || true; else {sCommand}; fi; }} 2>&1"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTimedCommandsLive.py::testACommandWithNoTrailingNewlineKeepsItsTextAndItsCpuReading'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        old='    iMarker = sLine.find(S_CPU_MARKER)\n',
+        new='    iMarker = 0 if sLine.startswith(S_CPU_MARKER) else -1\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecSocketExchange.py::testTheOutputIsReadWhileThePayloadIsStillBeingSent'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='    threadReader.start()\n    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.join()\n',
+        new='    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.start()\n    threadReader.join()\n',
+    ),
 ]

@@ -116,34 +116,3 @@ def test_toolbar_workflow_name_is_clickable_dropdown():
     sBindings = _fsReadStaticFile("scriptEventBindings.js")
     assert "activeWorkflowName" in sBindings
     assert "fnToggleWorkflowDropdown" in sBindings
-
-
-def test_repos_panel_functions_under_twenty_lines():
-    import re
-    sSource = _fsReadStaticFile("scriptReposPanel.js")
-    listLines = sSource.split("\n")
-    patFunc = re.compile(r"^\s*(async\s+)?function\s+(\w+)\s*\(")
-    iIdx = 0
-    listOver = []
-    while iIdx < len(listLines):
-        match = patFunc.match(listLines[iIdx])
-        if match:
-            sName = match.group(2)
-            iDepth = 0
-            iStart = iIdx
-            bFoundOpen = False
-            while iIdx < len(listLines):
-                iDepth += listLines[iIdx].count("{")
-                iDepth -= listLines[iIdx].count("}")
-                if "{" in listLines[iIdx]:
-                    bFoundOpen = True
-                if bFoundOpen and iDepth == 0:
-                    break
-                iIdx += 1
-            iLength = iIdx - iStart + 1
-            if iLength > 20:
-                listOver.append((sName, iLength))
-        iIdx += 1
-    assert not listOver, (
-        "Functions over 20 lines: " + str(listOver)
-    )

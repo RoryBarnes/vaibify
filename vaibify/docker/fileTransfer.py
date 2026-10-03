@@ -7,12 +7,11 @@ A PUSH is NOT. ``docker cp`` writes the destination owned by root, and
 the container user is unprivileged with no sudo by design, so every
 file this command deposited was one the in-container agent -- and the
 researcher's own shell -- could not modify. The backend never had this
-defect because its writes go through the tar writer in
-``dockerConnection``, which stamps the container user onto every entry
-rather than letting ``tarfile``'s native uid 0 through. Push now goes
-the same way -- through the gateway, which owns both writers and the
-destination probe they need -- and ``docker cp`` is deliberately no
-longer reachable from this direction.
+defect because its writes go through the gateway's confined writers in
+``dockerConnection``, which run as the container user, so that user owns
+what they create. Push now goes the same way -- through the gateway,
+which owns both writers and the destination probe they need -- and
+``docker cp`` is deliberately no longer reachable from this direction.
 """
 
 from pathlib import PurePosixPath

@@ -63,6 +63,8 @@ correspond to the variable type or cast, i.e. Hungarian notation. Use the follow
 - Tuple = "t"
 - Generator/iterator = "iter"
 - A `@contextmanager`/`@asynccontextmanager` function = "context" (its return annotation, if any, describes the undecorated generator: `Iterator[T]`, never `ContextManager[T]`)
+- An asyncio event loop = "loop"
+- A DOM `Element`/`HTMLElement` = "element" (not any DOM `Node`)
 
 If a cast is not listed above, ask me. Beyond these core casts, a
 closed registry of domain prefixes (e.g. `set`, `path`, `config`,
@@ -97,7 +99,7 @@ action-verb rule in rule 6 is not machine-enforced.
 
 5. File names should be camelcase, but should not use Hungarian prefixes.
 
-6. Don't abbreviate any word less than 8 characters long. Function names must have an action verb in them (except for main).
+6. Don't abbreviate any word less than 8 characters long. Function names must have an action verb in them (except for main). The one accepted exception is `dictCtx`, the per-hub context dictionary every route module receives, whose spelling is part of a registration signature (see `docs/knownDebt.md`); allow no other abbreviation, and do no mass renames.
 
 7. Use inline documentation sparingly. Clear, long variable and function names allow the developer to understand how the code is executing just by reading the source code.
 

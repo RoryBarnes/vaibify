@@ -51,19 +51,15 @@ _RE_LINE_REFERENCE = re.compile(r" from line \d+")
 S_UNUSED_IMPORT_MESSAGE = "imported but unused"
 I_PYLINT_FATAL_OR_USAGE_BITS = 1 | 32
 
-# file -> {message: count}. The budget only falls. The Popen entry is a
-# string annotation for a process handle: naming it needs an import of
-# subprocess, which the mutation inventory counts as an undisposed
-# capability acquisition, and a type-only import is not one. The
-# reviewer decides between exempting type-only imports there and
-# registering a typing-only prefix here. The pipelineRunner entries are
-# re-export facades (``# noqa: F401``) that a function then imports
-# again locally. The dataLoaders entries are the loader source that is
-# embedded for the container, which repeats the host module's imports
-# on purpose (see "begin loader source" in that module).
+# file -> {message: count}. The budget only falls. The pipelineRunner
+# entries are re-export facades (``# noqa: F401``) that a function then
+# imports again locally. The dataLoaders entries are the loader source
+# that is embedded for the container, which repeats the host module's
+# imports on purpose (see "begin loader source" in that module). The
+# ``Popen`` string annotation in startReservation once sat here; its
+# import now lives under ``if TYPE_CHECKING:``, which the mutation
+# inventory's scanner does not count as a capability acquisition.
 DICT_SEEDED_PYFLAKES_FINDINGS = {
-    "vaibify/gui/startReservation.py": {
-        "undefined name 'Popen'": 1},
     "vaibify/gui/pipelineRunner.py": {
         "redefinition of unused '_fiRunTestCommands'": 1,
         "redefinition of unused 'fnPruneOldLogs'": 1},

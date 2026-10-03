@@ -430,7 +430,10 @@ def fnPushCommand(project, source, destination):
     if _fbCopiedWithinHostProject(configProject, source, destination):
         return
     from vaibify.docker.fileTransfer import fnPushToContainer
-    fnPushToContainer(configProject.sProjectName, source, destination)
+    try:
+        fnPushToContainer(configProject.sProjectName, source, destination)
+    except OSError as error:
+        raise click.ClickException(str(error))
     click.echo(f"Pushed {source} -> {destination}")
 
 
