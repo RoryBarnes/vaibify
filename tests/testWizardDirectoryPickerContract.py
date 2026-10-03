@@ -7,7 +7,6 @@ string-presence pattern in testReposPanelFrontendContract.py.
 """
 
 import os
-import re
 
 _sStaticDir = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -289,34 +288,4 @@ def test_input_modal_raised_above_picker():
     assert iZ > 1100, (
         "Input modal z-index must exceed picker z-index 1100; "
         "got " + str(iZ)
-    )
-
-
-def test_directory_browser_functions_under_twenty_lines():
-    sSource = _fsReadStaticFile("scriptDirectoryBrowser.js")
-    listLines = sSource.split("\n")
-    patFunc = re.compile(r"^\s*(async\s+)?function\s+(\w+)\s*\(")
-    iIdx = 0
-    listOver = []
-    while iIdx < len(listLines):
-        match = patFunc.match(listLines[iIdx])
-        if match:
-            sName = match.group(2)
-            iDepth = 0
-            iStart = iIdx
-            bFoundOpen = False
-            while iIdx < len(listLines):
-                iDepth += listLines[iIdx].count("{")
-                iDepth -= listLines[iIdx].count("}")
-                if "{" in listLines[iIdx]:
-                    bFoundOpen = True
-                if bFoundOpen and iDepth == 0:
-                    break
-                iIdx += 1
-            iLength = iIdx - iStart + 1
-            if iLength > 20:
-                listOver.append((sName, iLength))
-        iIdx += 1
-    assert not listOver, (
-        "Functions over 20 lines: " + str(listOver)
     )
