@@ -26,8 +26,10 @@ without discussion:
   extracts as root and follows symlinks the in-container agent planted.
   The name is kept because the mutation ledger, the falsification
   registry and sixty-odd call sites key on it; renaming it is a
-  mechanical follow-up, not a behavior change. `fnWriteTreeViaTar`
-  still uses `put_archive` and still trusts its destination directory.
+  mechanical follow-up, not a behavior change. `fnWriteTreeViaTar` no
+  longer uses `put_archive` either: it streams a tar to a fixed receiver
+  program (the same module) that lands each member relative to directory
+  descriptors, so a planted symlink is refused rather than followed.
 - `scriptFigureViewer.js` was not part of the 2026-01 frontend
   refactor. Kept as a single cohesive module.
 - Re-export blocks exist across `pipelineRunner`, `pipelineServer`,
