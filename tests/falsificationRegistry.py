@@ -25396,14 +25396,14 @@ def _fdictEntry(sRel):
         nodeid='tests/testBackgroundTasksAreReferenced.py::testTheDependencyScanTaskIsKept',
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '        fnKeepTaskReferenced(loop.create_task(\n'
+            '        fnKeepTaskReferenced(loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
             '        ))\n'
         ),
         new=(
-            '        loop.create_task(\n'
+            '        loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
@@ -26268,5 +26268,256 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptResourceMonitor.js',
         old='            if (!response.ok) {\n                fnMarkReadingsStale();\n                return;\n            }\n',
         new='            if (!response.ok) {\n                return;\n            }\n',
+    ),
+    # --- 2026-10-02: X11 forwarding detects, starts and explains every Mac X server ---
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_findServer_recognizes_the_macports_application',
+        source='vaibify/docker/x11Forwarding.py',
+        old='        "saAppPaths": ("/Applications/MacPorts/X11.app",),\n',
+        new='        "saAppPaths": (),\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_startServer_opens_the_found_application_path',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort(["open", "-a", dictServer["sAppPath"]])\n',
+        new='    _fnRunBestEffort(["open", "-a", "XQuartz"])\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_assess_blocked_names_the_servers_own_preference_domain',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    sDomain = dictServer["sPreferenceDomain"]\n    if fsReadNetworkClientPreference(sDomain) == "blocked":\n',
+        new='    sDomain = "org.xquartz.X11"\n    if fsReadNetworkClientPreference(sDomain) == "blocked":\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_display_number_three_selects_tcp_port_6003',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    return int(matchDisplay.group(1)) if matchDisplay else 0\n',
+        new='    return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Forwarding.py::test_macGrant_admits_the_local_user_and_the_tcp_loopback',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    _fnRunBestEffort([_fsFindXhost(), "+localhost"])\n',
+        new='',
+    ),
+    # --- 2026-10-02: X11 forwarding is opt-in per project and refused beside network isolation ---
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testAProjectThatDidNotOptInGetsNoDisplayNoSocketAndNoXhost',
+        source='vaibify/docker/containerManager.py',
+        old='    if not getattr(config, "bX11Forwarding", False):\n        return\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11OptIn.py::testForwardingBesideNetworkIsolationIsRefusedNamingBothKeys',
+        source='vaibify/docker/containerManager.py',
+        old='    if getattr(config, "bNetworkIsolation", False):\n        raise RuntimeError(\n',
+        new='    if False:\n        raise RuntimeError(\n',
+    ),
+    Falsification(
+        nodeid='tests/testCreationWizardRoutes.py::testCreateProjectRefusesX11BesideNetworkIsolation',
+        source='vaibify/cli/configFieldPreflight.py',
+        old='    if sX11Complaint:\n        listComplaints.append(sX11Complaint)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testSetupWizardKeepsWhatItDoesNotShow.py::testSavingThroughTheWizardKeepsTheX11ForwardingOptIn',
+        source='vaibify/config/projectConfig.py',
+        old='        "x11Forwarding": config.bX11Forwarding,\n',
+        new='',
+    ),
+    # --- 2026-10-02: X11 mismatches between container and vaibify.yml reach the dashboard and doctor ---
+    Falsification(
+        nodeid='tests/testX11Findings.py::testAContainerCreatedWithoutX11IsReportedWhenTheProjectWantsIt',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if bRequested and not bForwarded:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testAContainerStillCarryingX11IsReportedWhenTheProjectTurnedItOff',
+        source='vaibify/docker/x11Forwarding.py',
+        old='    if bForwarded and not bRequested:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testTheReadinessPayloadCarriesTheX11FindingsToTheDashboard',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        + listX11ContainerLines\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Findings.py::testDoctorTellsYouToRecreateAContainerMadeWithoutX11',
+        source='vaibify/cli/doctorX11Checks.py',
+        old='        fdictAssessContainerX11(\n            getattr(config, "bX11Forwarding", False), jsonInspect),\n',
+        new='        fdictAssessContainerX11(\n            False, jsonInspect),\n',
+    ),
+    # --- 2026-10-02: the X11 forwarding opt-in is a wizard and settings control ---
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheWizardRemembersTheChoiceWhenThePageIsLeft',
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        _fnReadCheckboxInto("wizardX11Forwarding", "bX11Forwarding");\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheX11OptInIsOffByDefaultAndExcludesIsolation.py::testTheSettingsDialogSendsTheChosenX11Value',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                    bX11Forwarding: bX11Forwarding,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testX11Settings.py::test_turning_the_opt_in_on_persists_and_asks_for_a_recreate',
+        source='vaibify/gui/registryRoutes.py',
+        old='    _fnUpdateYamlBoolField(sConfigPath, "x11Forwarding", bNewValue)\n    return True\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testX11Settings.py::test_the_opt_in_is_refused_beside_network_isolation',
+        source='vaibify/gui/registryRoutes.py',
+        old='    if bNewValue and configProject.bNetworkIsolation:\n',
+        new='    if False:\n',
+    ),
+    # --- 2026-10-02: Open in VS Code builds a link the Dev Containers extension parses ---
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::testTheLinkIsTheAttachedContainerFormTheExtensionParses',
+        source='vaibify/gui/vscodeAttachLink.py',
+        old='    return "vscode://vscode-remote/attached-container+" + sHex + quote(\n',
+        new='    return "vscode://ms-vscode-remote.remote-containers/attach?containerId=" + sHex + quote(\n',
+    ),
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::testTheRouteLinksTheIdNotTheNameAndUsesTheProjectsWorkspace',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        sContainerId, sWorkspaceRoot, fsReadEffectiveDockerHost(),\n',
+        new='        sContainerId, sWorkspaceRoot, "",\n',
+    ),
+    Falsification(
+        nodeid='tests/testVsCodeAttachLink.py::test_the_in_container_agent_lane_is_refused_the_hosts_docker_endpoint',
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        fnRejectAgentTokenLane(request)\n        dictCtx["require"](sContainerId)\n        return await asyncio.to_thread(\n            _fdictBuildVsCodeLink,',
+        new='        dictCtx["require"](sContainerId)\n        return await asyncio.to_thread(\n            _fdictBuildVsCodeLink,',
+    ),
+    Falsification(
+        nodeid='tests/browser/testOpenInVsCodeAsksTheHostForTheLink.py::testTheButtonFollowsTheLinkTheHostBuilt',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n            elLink.click();\n',
+        new='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testDotenvVariantsAreExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".env.": "credential',
+        new='    ".envX": "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testALookalikeNameIsNotExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".env.": "credential',
+        new='    ".env": "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheAwsCredentialDirectoryIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".aws": "credential store (cloud provider credentials)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheNpmConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePythonIndexConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".pypirc": "credential store (package index token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheDockerConfigurationDirectoryIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".docker": "credential store (container registry login)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheGitHubCliLoginIsExcludedAsAComponentSequence',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    (".config", "gh"): "credential',
+        new='    (".config", "ghX"): "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheModelContextProtocolConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".mcp.json": "agent tool configuration that may carry server tokens",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePersonalClaudeInstructionsAreExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    "CLAUDE.local.md": "agent instruction file; personal and untracked by "\n                       "convention, and it may hold private settings",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePersonalAgentsOverrideIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    "AGENTS.override.md": "agent instruction file; personal and untracked "\n                          "by convention, and it may hold private settings",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheWholeDirectoryCaptureOmitsAndRecordsEverySecretPath',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheGitTrackedScopeOmitsEverySecretPathEvenWhenCommitted',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheSizeProbeWeighsExactlyWhatTheCaptureKeeps',
+        source='vaibify/docker/dockerConnection.py',
+        old='    ".pypirc", ".pytest_cache"',
+        new='    ".pytest_cache"',
+    ),
+    Falsification(
+        nodeid='tests/testFunctionLengthStatement.py::testTheContainerAgentGuideStatesTheGuidelineNotAHardCap',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='- Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count',
+        new='- Functions should be under 20 lines',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testTheEventLoopAndElementPrefixesAreRegistered',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop", "BaseEventLoop"},\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testASubparsersActionBindingIsStillDebtButParserSubcommandsIsNot',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop"',
+        new='    "subparsers": {"X"},\n    "loop": {"AbstractEventLoop"',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testOverleafSyncKeepsNoSubparsersBinding',
+        source='vaibify/reproducibility/overleafSync.py',
+        old='    parserSubcommands = parser.add_subparsers(',
+        new='    subparsers = parser.add_subparsers(',
+    ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnActionIsAbsentFromTheAgentCatalog',
+        source='vaibify/gui/actionCatalog.py',
+        old='    {"sName": "verify-remote", "sCategory": "sync",',
+        new='    {"sName": "download-zenodo-dataset", "sCategory": "sync",\n     "sMethod": "POST",\n     "sPath": "/api/zenodo/{sContainerId}/download",\n     "bAgentSafe": True,\n     "sDescription": "restored"},\n    {"sName": "verify-remote", "sCategory": "sync",',
+    ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnRouteIsNotRegisteredOnTheHubApplication',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n',
+        new='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n    app.post("/api/zenodo/{sContainerId}/download")(lambda: None)\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testKillForegroundWorksWhenTheHubWasLaunchedWithSignalsIgnored',
+        source='vaibify/host/hostConnection.py',
+        old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
+        new='',
     ),
 ]

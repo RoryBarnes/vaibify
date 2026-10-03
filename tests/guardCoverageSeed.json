@@ -176,7 +176,6 @@
 "vaibify/gui/routes/syncRoutes.py::_fnValidateOverleafFilePaths",
 "vaibify/gui/routes/syncRoutes.py::_fnValidateOverleafTargetDirectory",
 "vaibify/gui/routes/syncRoutes.py::_fnValidateVerifyService",
-"vaibify/gui/routes/syncRoutes.py::_fnValidateZenodoDestination",
 "vaibify/gui/routes/testRoutes.py::_fsetValidateGenerateCategories",
 "vaibify/gui/routes/workflowRoutes.py::_fnRefuseConnectWhileStarting",
 "vaibify/gui/routes/workflowRoutes.py::_fnRejectDuplicateWorkflowName",

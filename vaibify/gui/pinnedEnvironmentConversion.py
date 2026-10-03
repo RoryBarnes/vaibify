@@ -52,7 +52,7 @@ S_ENVIRONMENT_SOURCE_ARCHIVE = "archive"
 
 T_RUNTIME_YAML_KEYS = (
     "projectName", "cpuLimit", "memoryLimitGigabytes", "secrets",
-    "neverSleep", "networkIsolation",
+    "neverSleep", "networkIsolation", "x11Forwarding",
 )
 T_BASE_YAML_KEYS = (
     "baseImage", "pythonVersion", "containerUser", "workspaceRoot",

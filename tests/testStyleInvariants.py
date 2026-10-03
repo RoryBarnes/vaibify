@@ -198,6 +198,18 @@ DICT_TIER_TWO_REGISTRY_COPY = {
     # deposition's files.
     "hasher": {"_Hash", "HASH"},
     "overleaf": {"OverleafConfig"},
+    # Approved 2026-10-02 (ruling R4). A DOM element: the frontend's
+    # live spelling is `el`, which is not a vocabulary prefix, and the
+    # JavaScript lane has no scanner yet. Registered so the Python
+    # tooling that inspects or generates markup has a word for it; no
+    # JavaScript binding is renamed by this entry.
+    "element": {"Element", "HTMLElement"},
+    # Approved 2026-10-02 (ruling R4). An asyncio event loop. The
+    # registry's prefixes are type nouns (`thread`, `task`, `lock`), so
+    # the noun `loop` is used rather than `asyncLoop`: `loopRunning`,
+    # `loopMain`. Both were already live spellings in pipelineRunner
+    # and sessionLifecycle and sat in the frozen seed.
+    "loop": {"AbstractEventLoop", "BaseEventLoop"},
 }
 
 
@@ -243,7 +255,12 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # its seeded `tar` binding with it.
 # 340 -> 335 (2026-10-01): the process-liveness clocks are UTC instants and
 # their bindings carry the registered `datetime` prefix.
-I_LEGACY_VARIABLE_BUDGET = 335
+# 335 -> 320 (2026-10-02, ruling R4): registering `loop` and `element`
+# retired the live loopMain/loopRunning spellings and any element
+# bindings at a stroke (the registry entry is the burn-down), and
+# overleafSync's `subparsers` became `parserSubcommands` while
+# pipelineServer's bare `loop` became `loopRunning`.
+I_LEGACY_VARIABLE_BUDGET = 320
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,
@@ -487,7 +504,6 @@ legacy-fn-return	vaibify/gui/routes/stepRoutes.py::_fnRegisterStepsList.fnValida
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterArxivConfigure.fnConfigureArxiv
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDag.fnGetDag
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDagExport.fnExportDag
-legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterDatasetDownload.fnDownloadDataset
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubAddFile.fnGithubAddFile
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubIdentity.fnGithubIdentity
 legacy-fn-return	vaibify/gui/routes/syncRoutes.py::_fnRegisterGithubPush.fnGithubPush
@@ -1229,6 +1245,54 @@ def testVariableBindingsCarryCastPrefixes(listScannedRows):
 def testScannerCatchesUnprefixedBinding():
     assert _fbSyntheticCaught(
         "def fnWork():\n    banana = 1\n", "legacy-variable", "banana")
+
+
+@pytest.mark.falsification
+def testTheEventLoopAndElementPrefixesAreRegistered():
+    """Ruling R4: `loop` and `element` are registered domain prefixes.
+
+    Kills: dropping either entry from the tool's registry (a binding
+    then falls back to the unprefixed-binding debt class).
+    """
+    sSource = ("def fnWork():\n    loopRunning = 1\n    elementTarget = 2\n")
+    assert not _fbSyntheticCaught(sSource, "legacy-variable", "loopRunning")
+    assert not _fbSyntheticCaught(
+        sSource, "legacy-variable", "elementTarget")
+
+
+@pytest.mark.falsification
+def testASubparsersActionBindingIsStillDebtButParserSubcommandsIsNot():
+    """The renamed argparse binding conforms; the old spelling does not.
+
+    Kills: registering `subparsers` or treating it as an exception
+    instead of renaming it (ruling R4).
+    """
+    assert _fbSyntheticCaught(
+        "def fnWork():\n    subparsers = 1\n", "legacy-variable",
+        "subparsers")
+    assert not _fbSyntheticCaught(
+        "def fnWork():\n    parserSubcommands = 1\n", "legacy-variable",
+        "parserSubcommands")
+
+
+@pytest.mark.falsification
+def testOverleafSyncKeepsNoSubparsersBinding():
+    """Kills: reverting the argparse subcommand binding to `subparsers`."""
+    sSource = (PATH_REPOSITORY / "vaibify" / "reproducibility"
+               / "overleafSync.py").read_text()
+    assert "parserSubcommands" in sSource
+    assert " subparsers" not in sSource.replace("add_subparsers", "")
+
+
+def testDictCtxIsADocumentedAbbreviationException():
+    """`dictCtx` is an accepted exception, stated where debt is recorded."""
+    sKnownDebt = (PATH_REPOSITORY / "docs" / "knownDebt.md").read_text()
+    assert "`dictCtx` abbreviates" in sKnownDebt
+    dictInventory = json.loads(PATH_INVENTORY.read_text())
+    assert not any("dictCtx" in dictRow["sIdentity"].split("::")[-1]
+                   for dictRow in dictInventory["listRows"]), (
+        "dictCtx is an accepted exception; a scanner row for it means "
+        "a scanner started flagging it")
 
 
 def testPrefixVocabularyIsClosed():

@@ -245,24 +245,6 @@ def test_zenodo_archive_blocked_when_isolated(clientHttp):
     _fbAssertBlocked(responseHttp)
 
 
-def test_zenodo_download_blocked_when_isolated(clientHttp):
-    """Zenodo dataset download returns 409 when the container is isolated."""
-    _fnConnectToContainer(clientHttp)
-    with patch(
-        "vaibify.docker.containerManager.fbContainerIsNetworkIsolated",
-        return_value=True,
-    ):
-        responseHttp = clientHttp.post(
-            f"/api/zenodo/{S_CONTAINER_ID}/download",
-            json={
-                "iRecordId": 1234567,
-                "sFileName": "data.h5",
-                "sDestination": "/workspace/data.h5",
-            },
-        )
-    _fbAssertBlocked(responseHttp)
-
-
 def test_overleaf_mirror_refresh_blocked_when_isolated(clientHttp):
     """Overleaf mirror refresh returns 409 when the container is isolated."""
     _fnConnectToContainer(clientHttp)

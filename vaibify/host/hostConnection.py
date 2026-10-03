@@ -116,9 +116,14 @@ _S_GATED_LAUNCH_STUB = (
 # CONTROLLING terminal — which is what gives bash working job control,
 # and job control is why the containment probe must match the SESSION,
 # not the group (verified live: a backgrounded job wears its own
-# pgid).
+# pgid). SIGINT and SIGQUIT are reset to their defaults first: a hub
+# launched in the background starts with both ignored, an ignored
+# signal survives exec, and the shell's jobs would then never take
+# Ctrl-C or the Kill button.
 _S_TERMINAL_LAUNCH_STUB = (
-    "import os,sys\n"
+    "import os,signal,sys\n"
+    "signal.signal(signal.SIGINT,signal.SIG_DFL)\n"
+    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\n"
     "os.read(int(sys.argv[1]),1)\n"
     "os.setsid()\n"
     "iTty = os.open(os.ttyname(0), os.O_RDWR)\n"

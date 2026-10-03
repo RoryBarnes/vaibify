@@ -191,6 +191,18 @@ DICT_TIER_TWO_REGISTRY = {
     # deposition's files.
     "hasher": {"_Hash", "HASH"},
     "overleaf": {"OverleafConfig"},
+    # Approved 2026-10-02 (ruling R4). A DOM element: the frontend's
+    # live spelling is `el`, which is not a vocabulary prefix, and the
+    # JavaScript lane has no scanner yet. Registered so the Python
+    # tooling that inspects or generates markup has a word for it; no
+    # JavaScript binding is renamed by this entry.
+    "element": {"Element", "HTMLElement"},
+    # Approved 2026-10-02 (ruling R4). An asyncio event loop. The
+    # registry's prefixes are type nouns (`thread`, `task`, `lock`), so
+    # the noun `loop` is used rather than `asyncLoop`: `loopRunning`,
+    # `loopMain`. Both were already live spellings in pipelineRunner
+    # and sessionLifecycle and sat in the frozen seed.
+    "loop": {"AbstractEventLoop", "BaseEventLoop"},
 }
 
 DICT_ALL_AGREEMENT = {**DICT_TIER_ONE_AGREEMENT, **DICT_TIER_TWO_REGISTRY}

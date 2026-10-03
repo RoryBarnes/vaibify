@@ -411,11 +411,17 @@ I_REPOSITORY_WEIGHT_LARGEST_FILES = 64
 # the snapshot never carries, and offering the pack for "exclusion".
 # The same repository weighs 148 MB of actual content.
 _TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS = (
-    ".claude", ".cline", ".clinerules", ".codex", ".env", ".gemini",
-    ".git", ".git-credentials", ".ipynb_checkpoints", ".netrc",
-    ".opencode", ".openhands", ".pi", ".pytest_cache", ".ssh",
-    ".vaibify", "AGENTS.md", "CLAUDE.md", "GEMINI.md", "__pycache__",
+    ".aws", ".claude", ".cline", ".clinerules", ".codex", ".docker",
+    ".env", ".gemini", ".git", ".git-credentials", ".ipynb_checkpoints",
+    ".mcp.json", ".netrc", ".npmrc", ".opencode", ".openhands", ".pi",
+    ".pypirc", ".pytest_cache", ".ssh", ".vaibify", "AGENTS.md",
+    "AGENTS.override.md", "CLAUDE.local.md", "CLAUDE.md", "GEMINI.md",
+    "__pycache__",
 )
+# Mirrors of DICT_EXCLUDED_COMPONENT_PREFIX_REASONS and
+# DICT_EXCLUDED_COMPONENT_SEQUENCE_REASONS, pinned the same way.
+_TUPLE_REPOSITORY_WEIGHT_PRUNED_PREFIXES = (".env.",)
+_TUPLE_REPOSITORY_WEIGHT_PRUNED_SEQUENCES = ((".config", "gh"),)
 # The two network-state reads the container-scope diagnostic runs.
 # They mutate nothing, and they carry no credential: a name lookup
 # sends a query to whatever resolver the container is configured with,
@@ -638,10 +644,19 @@ _DICT_TYPED_READ_PROGRAMS = {
         "top=" + str(I_REPOSITORY_WEIGHT_LARGEST_FILES) + "\n"
         "skip=" + repr(set(_TUPLE_REPOSITORY_WEIGHT_PRUNED_COMPONENTS))
         + "\n"
+        "prefixes=" + repr(_TUPLE_REPOSITORY_WEIGHT_PRUNED_PREFIXES)
+        + "\n"
+        "sequences=" + repr(_TUPLE_REPOSITORY_WEIGHT_PRUNED_SEQUENCES)
+        + "\n"
+        "def pruned(dirpath,name):\n"
+        "    if name in skip or name.startswith(prefixes): return True\n"
+        "    rel=tuple(os.path.relpath(\n"
+        "        os.path.join(dirpath,name),root).split(os.sep))\n"
+        "    return any(rel[-len(q):]==q for q in sequences)\n"
         "n=0; b=0; truncated=False; heap=[]\n"
         "escaping=[]; special=[]; submodules=[]\n"
         "for dirpath,dirnames,filenames in os.walk(root):\n"
-        "    dirnames[:]=[d for d in dirnames if d not in skip]\n"
+        "    dirnames[:]=[d for d in dirnames if not pruned(dirpath,d)]\n"
         # A checked-out submodule's files are enumerated by no
         # superproject git command, so every one of them is an
         # unobserved member and the capture refuses. Its marker is a
@@ -654,7 +669,7 @@ _DICT_TYPED_READ_PROGRAMS = {
         "        dirnames[:]=[]\n"
         "        continue\n"
         "    for name in filenames:\n"
-        "        if name in skip: continue\n"
+        "        if pruned(dirpath,name): continue\n"
         "        p=os.path.join(dirpath,name)\n"
         # A symlink contributes NO content bytes, because the snapshot
         # stores it as a link rather than following it. os.lstat would

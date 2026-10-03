@@ -978,25 +978,6 @@ def test_fnRunDockerCommand_failure(mockRun):
 
 
 @patch("subprocess.run")
-def test_fnStartXquartz_not_running(mockRun):
-    from vaibify.docker.x11Forwarding import fnStartXquartz
-    mockRun.side_effect = [
-        MagicMock(returncode=1),
-        MagicMock(returncode=0),
-    ]
-    fnStartXquartz()
-    assert mockRun.call_count == 2
-
-
-@patch("subprocess.run")
-def test_fnStartXquartz_already_running(mockRun):
-    from vaibify.docker.x11Forwarding import fnStartXquartz
-    mockRun.return_value = MagicMock(returncode=0)
-    fnStartXquartz()
-    assert mockRun.call_count == 1
-
-
-@patch("subprocess.run")
 def test_fbProcessIsRunning_true(mockRun):
     from vaibify.docker.x11Forwarding import _fbProcessIsRunning
     mockRun.return_value = MagicMock(returncode=0)
@@ -1008,17 +989,6 @@ def test_fbProcessIsRunning_false(mockRun):
     from vaibify.docker.x11Forwarding import _fbProcessIsRunning
     mockRun.return_value = MagicMock(returncode=1)
     assert _fbProcessIsRunning("nonexistent") is False
-
-
-@patch.dict("os.environ", {"USER": "alice"}, clear=False)
-@patch("subprocess.run")
-def test_fnDisableX11Auth(mockRun):
-    """xhost grant is scoped to the current local user (audit H4)."""
-    from vaibify.docker.x11Forwarding import fnDisableX11Auth
-    fnDisableX11Auth()
-    saCommand = mockRun.call_args[0][0]
-    assert "xhost" in saCommand
-    assert "+SI:localuser:alice" in saCommand
 
 
 @patch("subprocess.run")

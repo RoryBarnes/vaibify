@@ -1382,9 +1382,7 @@ legacy ambient admission by decision (2026-08-05), so
 Read-only routes cannot cause the hand-over failure; declaring them
 would have caught a *future* mistake where somebody adds a write to a
 shared helper, which is worth having and was not worth the remaining
-cost. `POST /api/zenodo/{id}/download` is the one mutating route left
-undeclared, deliberately: it calls a function that does not exist, so
-migrating it would quarantine a working container over a broken button.
+cost.
 
 **Nothing here is verified by the ordinary route tests.** 27 test files
 define a `fnWriteFile` mock and none of them consults the admission

@@ -21,7 +21,7 @@ __all__ = [
     "fbDockerHostIsExportedByVaibify",
     "fsActiveDockerContext", "fbColimaActive", "ftColimaVersion",
     "fsResolveDockerEndpoint", "fsReadActiveContextEndpoint",
-    "fsColimaProfileName", "fdictClassifyDockerRuntime",
+    "fsReadEffectiveDockerHost", "fsColimaProfileName", "fdictClassifyDockerRuntime",
     "S_RUNTIME_DOCKER_DESKTOP", "S_RUNTIME_COLIMA",
     "S_RUNTIME_LINUX_ROOTFUL", "S_RUNTIME_LINUX_ROOTLESS",
     "S_RUNTIME_UNKNOWN", "fdictReadDaemonFacts",
@@ -135,6 +135,20 @@ def fsResolveDockerEndpoint():
     if sHost:
         return sHost + " (resolved from the Docker context by vaibify)"
     return "DOCKER_HOST unset and no context endpoint (docker-py default)"
+
+
+def fsReadEffectiveDockerHost():
+    """Return the bare endpoint URL vaibify talks to, or '' when unknown.
+
+    The same precedence as :func:`fsResolveDockerEndpoint` -- an explicit
+    ``DOCKER_HOST`` first, then the active context's endpoint -- without
+    the explanatory phrase, for callers that hand the endpoint to
+    another program.
+    """
+    sHost = os.environ.get("DOCKER_HOST")
+    if sHost:
+        return sHost
+    return fsReadActiveContextEndpoint()
 
 
 # Colima names its default profile's context ``colima`` and every other

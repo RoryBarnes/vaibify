@@ -349,12 +349,6 @@ class SaveAndRunTestRequest(BaseModel):
     sFilePath: str
 
 
-class DatasetDownloadRequest(BaseModel):
-    iRecordId: int
-    sFileName: str
-    sDestination: str
-
-
 # ---------------------------------------------------------------
 # Shared utility functions
 # ---------------------------------------------------------------
@@ -3112,8 +3106,8 @@ def _fnLaunchDependencyScan(
 ):
     """Schedule background source-code dependency scan."""
     try:
-        loop = asyncio.get_running_loop()
-        fnKeepTaskReferenced(loop.create_task(
+        loopRunning = asyncio.get_running_loop()
+        fnKeepTaskReferenced(loopRunning.create_task(
             _fnScanDependenciesBackground(
                 dictCtx, sContainerId, dictWorkflow,
             )
