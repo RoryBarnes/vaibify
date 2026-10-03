@@ -380,7 +380,9 @@ def test_a_setsid_descendant_escapes_the_probe(tProjectAndSession):
         )
         assert _fbAwaitOutputContains(session, "FORKED")
         fDeadline = time.monotonic() + 5.0
-        while not os.path.exists(sPidPath):
+        while not (
+            os.path.exists(sPidPath) and os.path.getsize(sPidPath) > 0
+        ):
             assert time.monotonic() < fDeadline, "no escapee pid file"
             time.sleep(0.05)
         iEscapeePid = int(open(sPidPath).read())

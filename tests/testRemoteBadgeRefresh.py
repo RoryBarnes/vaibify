@@ -489,11 +489,12 @@ def test_a_check_that_never_returns_stops_pulsing(monkeypatch):
     """
     remoteCheckState.fnMarkChecking(S_CONTAINER_ID, "github")
     assert remoteCheckState.fbIsCheckInFlight(S_CONTAINER_ID, "github")
-    fFrozen = [0.0]
+    fRealNow = remoteCheckState.time.monotonic()
+    fFrozen = [fRealNow]
     monkeypatch.setattr(
         remoteCheckState.time, "monotonic", lambda: fFrozen[0],
     )
-    fFrozen[0] = remoteCheckState.F_CHECK_TIMEOUT_SECONDS * 1000
+    fFrozen[0] = fRealNow + remoteCheckState.F_CHECK_TIMEOUT_SECONDS * 1000
     dictCheck = remoteCheckState.fdictDescribeChecks(
         S_CONTAINER_ID,
     )["github"]
