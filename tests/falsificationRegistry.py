@@ -25396,14 +25396,14 @@ def _fdictEntry(sRel):
         nodeid='tests/testBackgroundTasksAreReferenced.py::testTheDependencyScanTaskIsKept',
         source='vaibify/gui/pipelineServer.py',
         old=(
-            '        fnKeepTaskReferenced(loop.create_task(\n'
+            '        fnKeepTaskReferenced(loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
             '        ))\n'
         ),
         new=(
-            '        loop.create_task(\n'
+            '        loopRunning.create_task(\n'
             '            _fnScanDependenciesBackground(\n'
             '                dictCtx, sContainerId, dictWorkflow,\n'
             '            )\n'
@@ -26399,5 +26399,125 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptApplication.js',
         old='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n            elLink.click();\n',
         new='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testDotenvVariantsAreExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".env.": "credential',
+        new='    ".envX": "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testALookalikeNameIsNotExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".env.": "credential',
+        new='    ".env": "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheAwsCredentialDirectoryIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".aws": "credential store (cloud provider credentials)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheNpmConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePythonIndexConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".pypirc": "credential store (package index token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheDockerConfigurationDirectoryIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".docker": "credential store (container registry login)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheGitHubCliLoginIsExcludedAsAComponentSequence',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    (".config", "gh"): "credential',
+        new='    (".config", "ghX"): "credential',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheModelContextProtocolConfigurationIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".mcp.json": "agent tool configuration that may carry server tokens",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePersonalClaudeInstructionsAreExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    "CLAUDE.local.md": "agent instruction file; personal and untracked by "\n                       "convention, and it may hold private settings",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testThePersonalAgentsOverrideIsExcluded',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    "AGENTS.override.md": "agent instruction file; personal and untracked "\n                          "by convention, and it may hold private settings",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheWholeDirectoryCaptureOmitsAndRecordsEverySecretPath',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheGitTrackedScopeOmitsEverySecretPathEvenWhenCommitted',
+        source='vaibify/gui/agentCouncilContext.py',
+        old='    ".npmrc": "credential store (package registry token)",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testTheSizeProbeWeighsExactlyWhatTheCaptureKeeps',
+        source='vaibify/docker/dockerConnection.py',
+        old='    ".pypirc", ".pytest_cache"',
+        new='    ".pytest_cache"',
+    ),
+    Falsification(
+        nodeid='tests/testFunctionLengthStatement.py::testTheContainerAgentGuideStatesTheGuidelineNotAHardCap',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='- Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count',
+        new='- Functions should be under 20 lines',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testTheEventLoopAndElementPrefixesAreRegistered',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop", "BaseEventLoop"},\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testASubparsersActionBindingIsStillDebtButParserSubcommandsIsNot',
+        source='tools/generateStyleInventory.py',
+        old='    "loop": {"AbstractEventLoop"',
+        new='    "subparsers": {"X"},\n    "loop": {"AbstractEventLoop"',
+    ),
+    Falsification(
+        nodeid='tests/testStyleInvariants.py::testOverleafSyncKeepsNoSubparsersBinding',
+        source='vaibify/reproducibility/overleafSync.py',
+        old='    parserSubcommands = parser.add_subparsers(',
+        new='    subparsers = parser.add_subparsers(',
+    ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnActionIsAbsentFromTheAgentCatalog',
+        source='vaibify/gui/actionCatalog.py',
+        old='    {"sName": "verify-remote", "sCategory": "sync",',
+        new='    {"sName": "download-zenodo-dataset", "sCategory": "sync",\n     "sMethod": "POST",\n     "sPath": "/api/zenodo/{sContainerId}/download",\n     "bAgentSafe": True,\n     "sDescription": "restored"},\n    {"sName": "verify-remote", "sCategory": "sync",',
+    ),
+    Falsification(
+        nodeid='tests/testZenodoDatasetDownloadIsWithdrawn.py::testTheWithdrawnRouteIsNotRegisteredOnTheHubApplication',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n',
+        new='    _fnRegisterOverleafMirrorRefresh(app, dictCtx)\n    app.post("/api/zenodo/{sContainerId}/download")(lambda: None)\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageCoreTerminalSession.py::testKillForegroundWorksWhenTheHubWasLaunchedWithSignalsIgnored',
+        source='vaibify/host/hostConnection.py',
+        old='    "signal.signal(signal.SIGINT,signal.SIG_DFL)\\n"\n    "signal.signal(signal.SIGQUIT,signal.SIG_DFL)\\n"\n',
+        new='',
     ),
 ]

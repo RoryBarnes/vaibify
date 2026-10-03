@@ -1238,7 +1238,7 @@ Two rules that must never be violated, skill or not:
 
 - Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)
 - Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)
-- Functions should be under 20 lines
+- Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count
 - Output figures go in `Plot/` subdirectories
 
 ## Creating New Pipeline Steps

@@ -5733,13 +5733,6 @@ def testAnOutOfRangeStepIsRefusedBeforeTheContainerIsTouched(
 # carry a mode-(a) project.json write, and setup carries BOTH -- so
 # its two carriers are asserted separately, or a missing one hides
 # behind the other.
-#
-# One route in this family is deliberately NOT here: POST
-# /api/zenodo/{id}/download was left awaiting, because
-# ``syncDispatcher.ftResultDownloadDataset`` exists nowhere in the
-# repository and every production call raises. See the comment at its
-# registration for why carrying a route that cannot run would make it
-# worse rather than better.
 # ---------------------------------------------------------------------
 
 S_SYNC_OVERLEAF_PROJECT_ID = "ol1234"

@@ -499,14 +499,6 @@ LIST_AGENT_ACTIONS = [
                      "record. Only declared records are removable; "
                      "the primary record belongs to the archive "
                      "flow."},
-    {"sName": "download-zenodo-dataset", "sCategory": "sync",
-     "sMethod": "POST",
-     "sPath": "/api/zenodo/{sContainerId}/download",
-     "bAgentSafe": True,
-     "sDescription": "Pull a dataset from a Zenodo record. "
-                     "Args: {sRecordId, sFileName, sDestination}. "
-                     "sDestination must be repo-relative; "
-                     "absolute or ..-escaping values are rejected."},
     {"sName": "verify-remote", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/sync/{sContainerId}/{sService}/verify",

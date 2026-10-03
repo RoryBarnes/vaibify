@@ -509,7 +509,6 @@ SET_ROUTES_AWAITING_CARRIER_MODE = frozenset({
     ("GET", "/api/zenodo/{sContainerId}/deposit"),
     ("GET", "/api/zenodo/{sContainerId}/metadata"),
     ("HEAD", "/api/figure/{sContainerId}/{sFilePath:path}"),
-    ("POST", "/api/zenodo/{sContainerId}/download"),
 })
 
 
