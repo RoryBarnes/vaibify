@@ -74,18 +74,11 @@ DICT_SEEDED_PYFLAKES_FINDINGS = {
         "redefinition of unused 'np'": 1},
 }
 
-# file -> {"symbol: message": count}. The budget only falls. The one
-# entry is a real defect, known and recorded: the dataset-download
-# route calls a dispatcher function that exists nowhere (see
-# _fnRegisterDatasetDownload and
-# tests/testModuleAttributeReferencesResolve.py, which seeds it for the
-# same reason: migrating the route would make a broken button
-# quarantine a working container).
-DICT_SEEDED_PYLINT_FINDINGS = {
-    "vaibify/gui/routes/syncRoutes.py": {
-        "no-member: Module 'vaibify.gui.syncDispatcher' has no "
-        "'ftResultDownloadDataset' member": 1},
-}
+# file -> {"symbol: message": count}. The budget only falls. It is empty:
+# the one finding it once held, the dataset-download route calling a
+# dispatcher function that exists nowhere, went away when the route was
+# withdrawn.
+DICT_SEEDED_PYLINT_FINDINGS = {}
 
 
 def _fnRecordFinding(dictFound, sPath, sMessage):
