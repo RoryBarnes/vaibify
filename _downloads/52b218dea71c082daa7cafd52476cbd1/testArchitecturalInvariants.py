@@ -5350,7 +5350,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3645 -> 3696 (2026-10-01): the push reads and records, in the
     # hub's registry, the remote it reached, which is what a later
     # verify is bound to.
-    "routes/syncRoutes.py": 3696,
+    "routes/syncRoutes.py": 3633,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5952,7 +5952,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # frame routing that finds the waiting run.
     # 3719 -> 3720 (2026-10-01): the dependency scan's task is kept referenced.
     # 3720 -> 3767 (2026-10-01): a malformed or unresolvable run frame is refused with an event.
-    "pipelineServer.py": 3767,
+    "pipelineServer.py": 3761,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7000,7 +7000,7 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1413 -> 1419 (2026-09-30): update-step's description names the
     # fields the agent lane may write.
     # 1419 -> 1425 (2026-10-01): the image-trust answer route is user-only, with its reason.
-    "actionCatalog.py": 1425,
+    "actionCatalog.py": 1417,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
