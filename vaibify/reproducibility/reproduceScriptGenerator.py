@@ -396,14 +396,24 @@ def _fsBuildContainerPreamble():
     ``SOURCE_DATE_EPOCH`` is a value some tools reject and others read
     as "now", which is two wrong answers), and the host preamble has
     already said on stderr what that costs.
+
+    The salt lives in the script's OWN temporary directory (named by its
+    process id) and the script removes it on exit. The trap names that
+    directory literally, never ``$MPLCONFIGDIR``: a step may export its
+    own, and the trap must not delete the researcher's.
     """
     from vaibify.gui.determinismEnvironment import (
+        S_MATPLOTLIB_CONFIG_ROOT, S_MATPLOTLIB_DIRECTORY_PREFIX,
         fsBuildMatplotlibSaltShell,
+    )
+    sDirectory = (
+        f'"{S_MATPLOTLIB_CONFIG_ROOT}/{S_MATPLOTLIB_DIRECTORY_PREFIX}$$"'
     )
     return "\n".join([
         "set -euo pipefail",
         'if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then',
-        "    " + fsBuildMatplotlibSaltShell("$SOURCE_DATE_EPOCH"),
+        "    " + fsBuildMatplotlibSaltShell("$SOURCE_DATE_EPOCH", sDirectory),
+        "    trap 'rm -rf " + sDirectory + "' EXIT",
         "else",
         "    unset SOURCE_DATE_EPOCH",
         "fi",

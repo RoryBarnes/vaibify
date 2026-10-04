@@ -266,9 +266,21 @@ def test_svg_salt_is_reachable_by_matplotlib_via_its_config_dir():
     assert "mkdir -p" in sPrefix
 
 
+def _fsSaltOf(sPrefix):
+    """Return the ``svg.hashsalt`` line a prefix writes."""
+    import re
+    return re.search(r'svg\.hashsalt: \d+', sPrefix).group(0)
+
+
 def test_svg_salt_is_stable_across_runs_of_the_same_source():
-    """Identical source must yield an identical salt, run after run."""
-    assert _fsPrefixForEpoch(I_EPOCH) == _fsPrefixForEpoch(I_EPOCH)
+    """Identical source must yield an identical salt, run after run.
+
+    The salt is the epoch, so it is identical; the DIRECTORY it is
+    written to differs per run on purpose (and does not reach the output
+    bytes), so the prefixes as a whole are not compared.
+    """
+    assert _fsSaltOf(_fsPrefixForEpoch(I_EPOCH)) == (
+        _fsSaltOf(_fsPrefixForEpoch(I_EPOCH)))
 
 
 def test_svg_salt_tracks_the_source_it_came_from():

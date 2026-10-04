@@ -22,6 +22,7 @@ resolve.
 import asyncio
 import logging
 import os
+import secrets
 
 from .pipelineUtils import fsShellQuote
 
@@ -29,8 +30,10 @@ __all__ = [
     "S_ENV_PREFIX_KEY",
     "S_ENV_OVERLAY_KEY",
     "S_DETERMINISM_APPLIED_KEY",
-    "S_MATPLOTLIB_CONFIG_DIR",
+    "S_MATPLOTLIB_CONFIG_ROOT",
+    "S_MATPLOTLIB_DIRECTORY_PREFIX",
     "fsBuildMatplotlibSaltShell",
+    "fsBuildMatplotlibStaleSweepShell",
 ]
 
 S_ENV_PREFIX_KEY = "__sEnvPrefix"
@@ -42,7 +45,19 @@ S_DETERMINISM_APPLIED_KEY = "__bDeterminismApplied"
 # (measured against matplotlib 3.5.0), so seeding the salt here supplies
 # a default the researcher can still override, rather than clobbering
 # one they set deliberately.
-S_MATPLOTLIB_CONFIG_DIR = "/tmp/vaibifyMatplotlib"
+#
+# The directory is PRIVATE TO ONE RUN: ``<root>/<prefix><token>``. It used
+# to be one fixed path holding the project's HEAD epoch, and concurrent
+# runs are allowed now, so a run could import matplotlib and read the
+# salt another run had just written (measured: run A wrote 111, run B
+# wrote 222, and A then read 222), which grades a reproducible SVG as not
+# reproducible. A lock around the write would not help: the loser reads
+# the winner's value. Only the SALT reaches the output bytes; the
+# directory's path does not (``tests/testMatplotlibSaltIsolationLive.py``
+# renders the same figure from two directories and compares the bytes).
+S_MATPLOTLIB_CONFIG_ROOT = "/tmp"
+S_MATPLOTLIB_DIRECTORY_PREFIX = "vaibifyMatplotlib."
+I_STALE_MATPLOTLIB_DIRECTORY_MINUTES = 720
 
 
 async def _fiQueryHeadCommitEpoch(
@@ -67,7 +82,7 @@ async def _fiQueryHeadCommitEpoch(
         return 0
 
 
-def fsBuildMatplotlibSaltShell(sEpochShellWord):
+def fsBuildMatplotlibSaltShell(sEpochShellWord, sDirectoryShellWord):
     """Return shell that pins matplotlib's ``svg.hashsalt`` to an epoch.
 
     There is no environment variable for that rcParam, so the salt is
@@ -76,27 +91,61 @@ def fsBuildMatplotlibSaltShell(sEpochShellWord):
     chain: a step must still run when its determinism cannot be
     guaranteed.
 
-    ``sEpochShellWord`` is interpolated inside a DOUBLE-quoted shell
-    word, so a caller may pass either a literal integer (the live
-    runner, which knows the epoch) or a shell expansion such as
-    ``$SOURCE_DATE_EPOCH`` (``reproduce.sh``, which reads the epoch out
-    of the envelope on the reproducing host and cannot know it at
-    generation time). Both lanes must pin the same rcParam to the same
-    value in the same directory, so they share this one builder rather
-    than each spelling the file out.
+    ``sEpochShellWord`` and ``sDirectoryShellWord`` are shell WORDS, not
+    values: the epoch is interpolated inside a DOUBLE-quoted word, so a
+    caller may pass a literal integer (the live runner, which knows the
+    epoch) or an expansion such as ``$SOURCE_DATE_EPOCH``
+    (``reproduce.sh``, which reads the epoch out of the envelope on the
+    reproducing host); the directory is a quoted literal (the runner,
+    one per run) or a quoted expansion such as ``"/tmp/x.$$"``
+    (``reproduce.sh``, its own temporary directory). Both lanes pin the
+    same rcParam to the same value through this one builder rather than
+    each spelling the file out. Whatever the directory is, it must not be
+    one another run can write to: see ``S_MATPLOTLIB_CONFIG_ROOT``.
+
+    The file is written under a private name and renamed into place, so a
+    process starting while a sibling command of the same run rewrites it
+    can never read it half-written.
 
     Returned as a bare statement with no trailing separator: the runner
-    chains it into a command prefix, the reproduction emits it as a
-    line of its own.
+    chains it into a command prefix, the reproduction emits it as a line
+    of its own.
     """
-    sDirectory = fsShellQuote(S_MATPLOTLIB_CONFIG_DIR)
-    sFile = fsShellQuote(S_MATPLOTLIB_CONFIG_DIR + "/matplotlibrc")
     return (
-        f"export MPLCONFIGDIR={sDirectory} && "
-        f"{{ mkdir -p {sDirectory} && "
-        f"printf '%s\\n' \"svg.hashsalt: {sEpochShellWord}\" > {sFile} || "
+        f"export MPLCONFIGDIR={sDirectoryShellWord} && "
+        f"{{ mkdir -p -m 700 {sDirectoryShellWord} && "
+        f"printf '%s\\n' \"svg.hashsalt: {sEpochShellWord}\" "
+        f"> {sDirectoryShellWord}/matplotlibrc.$$ && "
+        f"mv -f {sDirectoryShellWord}/matplotlibrc.$$ "
+        f"{sDirectoryShellWord}/matplotlibrc || "
         f"echo 'vaibify: matplotlib svg.hashsalt not pinned' >&2; }}"
     )
+
+
+def fsBuildMatplotlibStaleSweepShell(sRoot=S_MATPLOTLIB_CONFIG_ROOT):
+    """Return shell that removes per-run salt directories nobody uses.
+
+    A run's directory outlives its commands (each command is a separate
+    exec, and the font cache inside it is reused by the next one), and a
+    killed run cannot clean up after itself, so the next command's prefix
+    removes directories of this family that have not been touched for
+    half a day. A live run rewrites its ``matplotlibrc`` with every
+    command, which keeps its directory's modification time current; one
+    that is swept mid-run is rebuilt by the next command's prefix. The
+    pattern is the family's own name at the top level of ``sRoot`` and
+    nothing else.
+    """
+    return (
+        f"find {fsShellQuote(sRoot)} -maxdepth 1 -type d "
+        f"-name {fsShellQuote(S_MATPLOTLIB_DIRECTORY_PREFIX + '*')} "
+        f"-mmin +{I_STALE_MATPLOTLIB_DIRECTORY_MINUTES} "
+        "-exec rm -rf {} + 2>/dev/null || true"
+    )
+
+
+def _fsMintMatplotlibRunToken():
+    """Return a fresh token naming one run's salt directory."""
+    return secrets.token_hex(8)
 
 
 async def _fsBuildDeterminismEnvPrefix(
@@ -122,9 +171,14 @@ async def _fsBuildDeterminismEnvPrefix(
     )
     if iEpoch <= 0:
         return ""
+    sDirectory = fsShellQuote(
+        f"{S_MATPLOTLIB_CONFIG_ROOT}/{S_MATPLOTLIB_DIRECTORY_PREFIX}"
+        f"{_fsMintMatplotlibRunToken()}"
+    )
     return (
         f"export SOURCE_DATE_EPOCH={iEpoch} && "
-        + fsBuildMatplotlibSaltShell(str(iEpoch))
+        + fsBuildMatplotlibStaleSweepShell(S_MATPLOTLIB_CONFIG_ROOT) + " && "
+        + fsBuildMatplotlibSaltShell(str(iEpoch), sDirectory)
         + " && "
     )
 

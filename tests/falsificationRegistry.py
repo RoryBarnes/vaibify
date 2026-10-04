@@ -26840,4 +26840,36 @@ def _fdictEntry(sRel):
         old='            capture_output=True, text=True, env=dictHermetic,\n',
         new='            capture_output=True, text=True, env=dictEnv,\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testMatplotlibSaltIsolation.py::testTwoRunsGetTwoDirectoriesAndEachReadsItsOwnSalt'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        old='        f"{_fsMintMatplotlibRunToken()}"\n',
+        new='        "shared"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMatplotlibSaltIsolation.py::testOnlyStaleDirectoriesOfTheFamilyAreSwept'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        old='        f"-mmin +{I_STALE_MATPLOTLIB_DIRECTORY_MINUTES} "\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMatplotlibSaltIsolation.py::testTheExitTrapNeverDeletesADirectoryAStepExportedItself'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        old='        "    trap \'rm -rf " + sDirectory + "\' EXIT",\n',
+        new='        "    trap \'rm -rf \\"$MPLCONFIGDIR\\"\' EXIT",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMatplotlibSaltIsolationLive.py::testARunReadsItsOwnSaltWhileAnotherRunWritesADifferentOne'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        old='        f"{_fsMintMatplotlibRunToken()}"\n',
+        new='        "shared"\n',
+    ),
 ]
