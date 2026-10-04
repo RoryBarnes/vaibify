@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev320 documentation</title>
+  <title>Configuration Reference &mdash; Vaibify 0.0.14.dev323 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3ef79f86"></script>
+      <script src="_static/documentation_options.js?v=090f15ec"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -161,7 +161,7 @@ file; the Python dataclass uses Hungarian notation internally.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">baseImage</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">ubuntu:24.04</span></code></p></td>
-<td><p>Base Docker image</p></td>
+<td><p>Base Docker image. Left out, or set to <code class="docutils literal notranslate"><span class="pre">ubuntu:24.04</span></code>, the build uses the digest-pinned image named in the Dockerfile, not whatever the tag points at that day. Any other value is used as written; a different Ubuntu release is refused (see below)</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code></p></td>
 <td><p>string</p></td>
@@ -416,7 +416,7 @@ add a <code class="docutils literal notranslate"><span class="pre">conda</span> 
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gpu</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Enable NVIDIA GPU passthrough</p></td>
+<td><p>Enable NVIDIA GPU passthrough. <strong>Builds with <code class="docutils literal notranslate"><span class="pre">gpu:</span> <span class="pre">true</span></code> are refused for now</strong>: the GPU image sits on Ubuntu 22.04 while the toolchain is pinned to Ubuntu 24.04, and NVIDIA publishes no CUDA 12.2 image for 24.04</p></td>
 </tr>
 </tbody>
 </table>
@@ -570,15 +570,19 @@ them:</p>
 <td><p>their own format</p></td>
 <td><p>the image recipe cannot use the value (<code class="docutils literal notranslate"><span class="pre">pythonVersion</span></code> becomes the apt package <code class="docutils literal notranslate"><span class="pre">python3.12</span></code>, so <code class="docutils literal notranslate"><span class="pre">3.12.1</span></code> is refused)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">systemPackages</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">baseImage</span></code>, <code class="docutils literal notranslate"><span class="pre">features.gpu</span></code></p></td>
+<td><p>the image’s own toolchain</p></td>
+<td><p>the name says another Ubuntu release than the 24.04 the toolchain is pinned to, or the GPU feature is on; the build would stop at the pinned <code class="docutils literal notranslate"><span class="pre">apt-get</span></code> step after the base image had been fetched</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">systemPackages</span></code></p></td>
 <td><p>Launchpad, for the series <code class="docutils literal notranslate"><span class="pre">baseImage</span></code> names</p></td>
 <td><p>Ubuntu publishes no such package</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code></p></td>
 <td><p>pypi.org’s simple index</p></td>
 <td><p>the index serves no such project</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repositories[].branch</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">repositories[].branch</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">ls-remote</span></code> against the remote</p></td>
 <td><p>the remote has no such branch; the refusal names its default</p></td>
 </tr>
@@ -588,7 +592,11 @@ them:</p>
 is evidence about the value: an index, archive or remote that cannot be
 reached, a <code class="docutils literal notranslate"><span class="pre">pipInstallFlags</span></code> naming an index other than pypi.org, and a
 <code class="docutils literal notranslate"><span class="pre">baseImage</span></code> outside the Ubuntu releases vaibify knows. Each reports
-“not checked” and the build goes ahead and asks for itself.</p>
+“not checked” and the build goes ahead and asks for itself. The
+<code class="docutils literal notranslate"><span class="pre">baseImage</span></code> refusal judges only what the image’s name says: a
+digest-only reference or a registry mirror carries no release in its
+spelling, so it is not refused, and the Dockerfile’s own guard still
+stops a base that is not Ubuntu.</p>
 <p>Both setup wizards apply the same field rules when they SAVE, so a
 value the build would refuse is refused at the form. They also write
 each repository’s branch by asking the remote for its default rather

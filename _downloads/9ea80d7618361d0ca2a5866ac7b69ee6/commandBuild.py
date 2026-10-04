@@ -22,6 +22,7 @@ from .configLoader import (
 from .doctorHostChecks import fbInterpreterRunsTranslated
 from .preflightChecks import fpreflightColimaVersion, fpreflightDaemon
 from .daemonDiskPreflight import fpreflightDaemonFreeDisk
+from .baseImagePreflight import fpreflightBaseImage
 from .configFieldPreflight import fpreflightConfigurationFields
 from .pythonPackagePreflight import fpreflightPythonPackageNames
 from .repositoryPreflight import fpreflightRepositoryBranches
@@ -29,6 +30,7 @@ from .systemPackagePreflight import fpreflightSystemPackageNames
 from .preflightResult import (
     S_LEVEL_NOT_CHECKED, PreflightResult, fnPrintPreflightReport,
 )
+from vaibify.config.projectConfig import fbBaseImageUsesDockerfilePin
 from vaibify.resources import fnCopyPackagedTree
 
 
@@ -151,8 +153,14 @@ def fnDiscardBuildContext(sStagedDir):
 
 
 def fbBaseImageIsFloating(config):
-    """Return True iff the configured base image lacks an @sha256: pin."""
+    """Return True iff the build's base image is a tag with no @sha256: pin.
+
+    A project that names no base image, or the shipped default, is
+    built from the digest the Dockerfile pins, so it is never floating.
+    """
     sBaseImage = getattr(config, "sBaseImage", "") or ""
+    if fbBaseImageUsesDockerfilePin(sBaseImage):
+        return False
     return "@sha256:" not in sBaseImage
 
 
@@ -160,8 +168,8 @@ def fnWarnIfBaseImageFloating(config):
     """Print a clear stdout warning when sBaseImage is a floating tag.
 
     L3 attestation requires a digest pin so a reproducer can pull the
-    exact bytes that produced the figures. A floating ``ubuntu:24.04``
-    tag silently drifts as upstream republishes the image; we warn now
+    exact bytes that produced the figures. A floating tag such as
+    ``ubuntu:noble`` silently drifts as upstream republishes it; we warn now
     and capture the resolved digest after the build so attestation has
     a record even when the user config is loose.
     """
@@ -1116,6 +1124,7 @@ def flistRunBuildPreflight(config):
 # test_both_build_lanes_run_the_same_configuration_checks binds them.
 T_CONFIGURATION_PREFLIGHTS = (
     fpreflightConfigurationFields,
+    fpreflightBaseImage,
     fpreflightSystemPackageNames,
     fpreflightPythonPackageNames,
     fpreflightRepositoryBranches,
@@ -1125,11 +1134,11 @@ T_CONFIGURATION_PREFLIGHTS = (
 def _flistPreflightConfiguration(config):
     """Return every config-scoped preflight result, in reporting order.
 
-    The same four checks the dashboard's build route runs, named here
-    once: each asks an external authority (the field's own format,
-    Ubuntu's archive, pypi.org, each git remote) whether the build's
-    inputs resolve, so an hour is not spent discovering that one does
-    not.
+    The same checks the dashboard's build route runs, named here once:
+    each asks an authority (the field's own format, the image's
+    toolchain, Ubuntu's archive, pypi.org, each git remote) whether the
+    build's inputs resolve, so an hour is not spent discovering that
+    one does not.
     """
     listConfigurationResults = []
     for fnPreflight in T_CONFIGURATION_PREFLIGHTS:
