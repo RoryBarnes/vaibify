@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev323 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev325 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=090f15ec"></script>
+      <script src="_static/documentation_options.js?v=66fe0138"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#viewing-window">Viewing Window</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#opening-the-container-in-vs-code">Opening the container in VS Code</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-main-tab">The Main tab</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-steps-block">The Steps block</a><ul>
@@ -256,6 +257,15 @@ see <a class="reference internal" href="#agent-actions">Agent actions</a> below.
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
 <p>The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.</p>
+</section>
+<section id="opening-the-container-in-vs-code">
+<h2>Opening the container in VS Code<a class="headerlink" href="#opening-the-container-in-vs-code" title="Link to this heading"></a></h2>
+<p><strong>View &gt; Open in VS Code</strong> opens the running container in a <strong>new</strong> VS Code window, so the window you already have, and any unsaved files in it, are left alone. It needs the Dev Containers extension. The button is hidden in a remote session, because the link names a container that exists only on the remote machine’s Docker daemon.</p>
+<p>The first time, two confirmations appear that are not Vaibify’s:</p>
+<ul class="simple">
+<li><p><strong>Your browser</strong> asks whether to open the <code class="docutils literal notranslate"><span class="pre">vscode://</span></code> link in Visual Studio Code. Firefox offers a checkbox to remember the answer.</p></li>
+<li><p><strong>VS Code</strong> asks “An external application wants to open … Do you want to open this folder?” This is VS Code’s guard against links from other applications; the dialog has a checkbox to stop asking, and the setting behind it is <code class="docutils literal notranslate"><span class="pre">security.promptForRemoteFileProtocolHandling</span></code>. Vaibify does not change your VS Code settings.</p></li>
+</ul>
 </section>
 <section id="repos-panel">
 <h2>Repos panel<a class="headerlink" href="#repos-panel" title="Link to this heading"></a></h2>
