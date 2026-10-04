@@ -77,7 +77,8 @@ def test_the_export_stamps_the_fingerprint_of_what_it_composed(
     (tmp_path / "Dockerfile").write_text(S_BASE)
     monkeypatch.setattr(
         imageDockerfileExport,
-        "flistResolveOverlayNamesForContainer", lambda sName: [],
+        "flistResolveOverlayNamesForContainer",
+        lambda sName, sImageDigest="": [],
     )
     monkeypatch.setattr(
         imageDockerfileExport.resources, "fpathContainerImageRoot",
@@ -87,6 +88,66 @@ def test_the_export_stamps_the_fingerprint_of_what_it_composed(
     assert fsExtractRecipeFingerprint(sText) == (
         fsComputeRecipeFingerprint(S_BASE, [])
     )
+
+
+@pytest.mark.falsification
+def test_the_export_describes_the_pinned_image_not_the_config(
+    tmp_path, monkeypatch,
+):
+    """The exported Dockerfile composes what the PINNED image holds.
+
+    The envelope pins the agent-free environment while ``vaibify.yml``
+    still names the coding agents stacked on it. Composed from the
+    config, the header would claim agents the pinned image does not
+    hold, the recipe fingerprint would match no image, and a reader
+    obtaining the image would be refused for a disagreement the author
+    never made.
+
+    Kills: resolving the overlays from ``vaibify.yml`` when the pinned
+    image carries its own label.
+    """
+    from vaibify.config import registryManager
+    from vaibify.reproducibility import environmentSnapshot, imageDockerfileExport
+    from vaibify.reproducibility.dockerfileComposer import (
+        flistExtractOverlayOrder,
+    )
+    (tmp_path / "Dockerfile").write_text(S_BASE)
+    for sOverlay in ("jupyter", "claude"):
+        pathOverlay = tmp_path / imageBuilder._DICT_OVERLAY_DOCKERFILE_MAP[sOverlay]
+        pathOverlay.parent.mkdir(parents=True, exist_ok=True)
+        pathOverlay.write_text(f"FROM ${{BASE_IMAGE}}\nRUN echo {sOverlay}\n")
+    pathConfig = tmp_path / "vaibify.yml"
+    pathConfig.write_text("projectName: proj\n")
+    monkeypatch.setattr(
+        imageDockerfileExport.resources, "fpathContainerImageRoot",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(registryManager, "flistGetAllProjects", lambda: [
+        {"sContainerName": "proj", "sConfigPath": str(pathConfig)},
+    ])
+    monkeypatch.setattr(
+        "vaibify.config.projectConfig.fconfigLoadFromFile", lambda sPath: None,
+    )
+    monkeypatch.setattr(
+        imageBuilder, "flistDetermineOverlays",
+        lambda config: ["jupyter", "claude"],
+    )
+    monkeypatch.setattr(
+        environmentSnapshot, "_fsInspectFormatValue",
+        lambda sTarget, sFormat: "jupyter\n",
+    )
+    sText = imageDockerfileExport.fsBuildImageDockerfileText(
+        "proj", "sha256:" + "e" * 64,
+    )
+    assert flistExtractOverlayOrder(sText) == ["jupyter"]
+    assert "echo claude" not in sText
+    monkeypatch.setattr(
+        environmentSnapshot, "_fsInspectFormatValue",
+        lambda sTarget, sFormat: "<no value>\n",
+    )
+    assert flistExtractOverlayOrder(
+        imageDockerfileExport.fsBuildImageDockerfileText("proj", "sha256:x"),
+    ) == ["jupyter", "claude"], "an unlabelled image falls back to its config"
 
 
 @pytest.mark.falsification
@@ -136,6 +197,97 @@ def test_the_builder_labels_every_build_with_the_chain_fingerprint(
             "the label displaced the build-context path from the "
             "end of the argv"
         )
+
+
+def _fdictLabelsOfBuild(saCommand):
+    """Return the ``--label`` pairs one docker build argv stamps."""
+    dictLabels = {}
+    for iIndex, sArgument in enumerate(saCommand):
+        if sArgument == "--label":
+            sKey, _, sValue = saCommand[iIndex + 1].partition("=")
+            dictLabels[sKey] = sValue
+    return dictLabels
+
+
+@pytest.mark.falsification
+def test_each_stage_is_labelled_with_what_it_holds(tmp_path):
+    """A stage's labels describe THAT stage, never the finished chain.
+
+    The stage below the first coding agent is the environment a
+    researcher publishes, and a reproducer proves which overlays it
+    holds by these very labels. When every stage carried the whole
+    chain's list, the agent-free stage claimed agents it did not hold
+    and could never be published as agent-free. Agent stages name the
+    agent-free stage's image ID; environment stages name nothing, even
+    when their FROM image named something.
+
+    Kills: stamping the whole chain's overlay list on every stage.
+    """
+    from types import SimpleNamespace
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_ENVIRONMENT_IMAGE_LABEL,
+        S_OVERLAYS_IMAGE_LABEL,
+    )
+    (tmp_path / "Dockerfile").write_text(S_BASE)
+    for sOverlay in ("jupyter", "claude", "codex"):
+        pathOverlay = tmp_path / imageBuilder._DICT_OVERLAY_DOCKERFILE_MAP[sOverlay]
+        pathOverlay.parent.mkdir(parents=True, exist_ok=True)
+        pathOverlay.write_text(f"FROM ${{BASE_IMAGE}}\nRUN echo {sOverlay}\n")
+    config = SimpleNamespace(
+        sProjectName="proj", sBaseImage="python:3.12",
+        sPythonVersion="3.12", sContainerUser="researcher",
+        sWorkspaceRoot="/workspace", sPackageManager="pip",
+        features=SimpleNamespace(bGpu=False, bLatex=False),
+    )
+    listCommands = []
+    listInspected = []
+    with patch.object(
+        imageBuilder, "_fnRunDockerBuild",
+        side_effect=lambda saCommand: listCommands.append(saCommand),
+    ), patch.object(
+        imageBuilder, "flistDetermineOverlays",
+        return_value=["jupyter", "claude", "codex"],
+    ), patch.object(
+        imageBuilder, "fsReadImageId",
+        side_effect=lambda sRef: listInspected.append(sRef) or "sha256:env",
+    ), patch.object(imageBuilder, "_fnPruneDanglingImages"):
+        imageBuilder.fnBuildImage(config, str(tmp_path))
+    listStages = [
+        _fdictLabelsOfBuild(saCommand) for saCommand in listCommands
+        if "--label" in saCommand
+    ]
+    assert [d[S_OVERLAYS_IMAGE_LABEL] for d in listStages] == [
+        "", "jupyter", "jupyter,claude", "jupyter,claude,codex",
+    ]
+    assert [d[S_ENVIRONMENT_IMAGE_LABEL] for d in listStages] == [
+        "", "", "sha256:env", "sha256:env",
+    ]
+    assert listInspected == ["proj:jupyter"], (
+        "the environment is the stage BELOW the first agent"
+    )
+    listTexts = [
+        (s, (tmp_path / imageBuilder._DICT_OVERLAY_DOCKERFILE_MAP[s]).read_text())
+        for s in ("jupyter", "claude", "codex")
+    ]
+    assert [d[S_RECIPE_IMAGE_LABEL] for d in listStages] == [
+        fsComputeRecipeFingerprint(S_BASE, listTexts[:iCount])
+        for iCount in range(4)
+    ]
+
+
+def test_every_environment_overlay_precedes_every_agent_side_overlay():
+    """The published environment is a PREFIX of the chain, by construction.
+
+    ``fnBuildImage`` names the environment as the stage below the first
+    agent-side overlay. Were an environment overlay ever ordered after
+    one, it would be built above an agent and silently left out of the
+    environment.
+    """
+    listOrder = imageBuilder.flistCanonicalOverlayOrder()
+    listEnvironment = [
+        s for s in listOrder if imageBuilder.fbOverlayBelongsToEnvironment(s)
+    ]
+    assert listOrder[:len(listEnvironment)] == listEnvironment
 
 
 @pytest.mark.falsification

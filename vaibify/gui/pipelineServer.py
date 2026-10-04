@@ -2781,7 +2781,7 @@ def fdictBuildImageArchiveDetail(
     from vaibify.gui import archiveProgress
     from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import (
-        archivePermanence, imageArchive, levelGates,
+        archiveDepositPlan, archivePermanence, imageArchive, levelGates,
     )
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson,
@@ -2806,13 +2806,14 @@ def fdictBuildImageArchiveDetail(
     except LookupError as errorLookup:
         listIssues = []
         sUncheckedReason = str(errorLookup)
+    sState = imageArchive.fsResolveArchiveState(
+        dictEnvironment, dictWorkflow,
+        sCheckState=_fsArchiveCheckState(dictDeposit),
+        bPinnedImageInLocalStore=bPinnedImageInLocalStore,
+        bHostProject=fbIsHostProject(sContainerId),
+    )
     return {
-        "sState": imageArchive.fsResolveArchiveState(
-            dictEnvironment, dictWorkflow,
-            sCheckState=_fsArchiveCheckState(dictDeposit),
-            bPinnedImageInLocalStore=bPinnedImageInLocalStore,
-            bHostProject=fbIsHostProject(sContainerId),
-        ),
+        "sState": sState,
         # The row renders a cell per level from this one payload, so
         # the LEVEL 2 half travels as the gate's own verdict. Deriving
         # it in JavaScript would make the frontend a second authority
@@ -2837,6 +2838,14 @@ def fdictBuildImageArchiveDetail(
         # those bytes went; "unknown" renders exactly as today.
         "sPermanence": archivePermanence.fsClassifyDepositRecord(
             imageArchive.fdictReadArchiveRecord(dictEnvironment),
+        ),
+        # Where a deposit from this row can go, the deposit this
+        # project made before, and which choice is recommended -- from
+        # the module the deposit route resolves the choice through, so
+        # the row cannot name a destination the upload does not use.
+        "dictDepositPlan": archiveDepositPlan.fdictBuildDepositPlan(
+            (dictEnvironment or {}).get("dictContainer"),
+            bCovered=(sState == "attained"),
         ),
     }
 
@@ -2871,13 +2880,10 @@ def _fsArchiveCheckState(dictDeposit):
     """
     sPhase = (dictDeposit or {}).get("sPhase") or ""
     from vaibify.gui import archiveProgress
-    if sPhase in (
-        archiveProgress.S_PHASE_STARTING,
-        archiveProgress.S_PHASE_SAVING,
-        archiveProgress.S_PHASE_UPLOADING,
-    ):
-        return "checking"
-    return ""
+    # The progress record's own list of live phases: a copy here once
+    # left out "verifying", so the row stopped reading as in progress
+    # during the last check before the publish.
+    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) else ""
 
 
 def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
@@ -2910,6 +2916,8 @@ def fdictAssessEnvelopeImageCurrency(dictCtx, sContainerId, filesRepo):
         sPinned,
         dictIdentity.get("sImageDigest") or "",
         dictIdentity.get("sImageId") or "",
+        dictIdentity.get("sEnvironmentImageDigest") or "",
+        dictIdentity.get("sEnvironmentImageId") or "",
     )
     dictDerivation = dictIdentity.get("dictDerivation")
     dictAnswer["bEnvironmentObtained"] = dictDerivation is not None
@@ -3633,6 +3641,7 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     routes.sessionRoutes.fnRegisterAll(app, dictCtx)
     routes.levelRoutes.fnRegisterAll(app, dictCtx)
     routes.reproducibilityRoutes.fnRegisterAll(app, dictCtx)
+    routes.committedFileRoutes.fnRegisterAll(app, dictCtx)
     routes.environmentArchiveRoutes.fnRegisterAll(app, dictCtx)
     routes.promotionRecoveryRoutes.fnRegisterAll(app, dictCtx)
     routes.reproductionRoutes.fnRegisterAll(app, dictCtx)

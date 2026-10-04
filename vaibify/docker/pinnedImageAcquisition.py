@@ -28,7 +28,9 @@ THE ORDER IS THE CONTRACT
    tagged.
 4. Stack the DIFFERENTIAL overlays -- the resolved chain minus the
    proven set -- on the obtained image ID, requesting the pinned
-   platform, labelling the result as derived from the base.
+   platform, labelling the result as derived from the base. Then read
+   the stacked layers back and refuse if they reach the author's
+   environment (``agentLayerSeparation``).
 5. Tag the result as ``<projectName>:latest``, by ID.
 6. Describe before enabling: the agent install keys go into
    ``vaibify.yml`` and the resolved chain into the registry entry.
@@ -144,6 +146,9 @@ def fdictAcquireForProject(
         dictAcquired["sRequiredPlatform"], sDockerDir, fnReport,
         dockerDisposable,
     )
+    _fnRefuseAgentsThatReachTheEnvironment(
+        sBaseImageId, sRunningImageId, fnReport,
+    )
     fnReport(f"Tagging {sRunningImageId[:19]}... as {dictProject['sName']}:latest")
     disposableContainer.fnTagImage(
         dockerDisposable, sRunningImageId, dictProject["sName"], "latest",
@@ -218,15 +223,15 @@ def _fsDescribeAcquisitionEvent(dictEvent):
     """Render one chain event as a progress line."""
     sPhase = str(dictEvent.get("sPhase") or "")
     if sPhase == "attempt":
-        return (
-            f"{dictEvent.get('sLink')}: "
-            + ("served" if dictEvent.get("bSucceeded") else "failed")
-            + (f" ({dictEvent.get('sDetail')})" if dictEvent.get("sDetail") else "")
-        )
+        return _fsDescribeAttempt(dictEvent)
     if sPhase == "downloading":
         iBytes = int(dictEvent.get("iBytes") or 0)
         iTotal = int(dictEvent.get("iTotalBytes") or 0)
-        return f"downloading the archived image: {iBytes} of {iTotal} bytes"
+        sPercent = f" ({100 * iBytes // iTotal}%)" if iTotal else ""
+        return (
+            f"downloading the archived image: {iBytes / 1e6:.0f} MB of "
+            f"{iTotal / 1e6:.0f} MB{sPercent}"
+        )
     if sPhase == "pulling":
         return f"pulling {dictEvent.get('sImageReference')} for {dictEvent.get('sPlatform')}"
     if sPhase == "acquired":
@@ -236,6 +241,41 @@ def _fsDescribeAcquisitionEvent(dictEvent):
             + (" (emulated)" if dictEvent.get("bEmulated") else "")
         )
     return sPhase
+
+
+def _fsDescribeAttempt(dictEvent):
+    """Say what one source of the chain answered, and what happens next.
+
+    A source that does not have the image is the chain working, not a
+    failure: an image that was archived rather than published to a
+    registry is never on one, so the first line of every such download
+    used to read "registry pull: failed" above a download that then
+    succeeded. Docker's own words stay in brackets for anyone
+    diagnosing a source that should have answered.
+    """
+    from vaibify.reproducibility.imageAcquisition import (
+        S_LINK_ARCHIVE,
+        S_LINK_LOCAL,
+        S_LINK_REGISTRY,
+    )
+    sLink = str(dictEvent.get("sLink") or "")
+    sDetail = str(dictEvent.get("sDetail") or "")
+    sSaid = f" (Docker said: {sDetail})" if sDetail else ""
+    if dictEvent.get("bSucceeded"):
+        return f"{sLink}: served"
+    dictNotAvailable = {
+        S_LINK_REGISTRY: (
+            "no registry has this image -- normal for an image that was "
+            "archived rather than published -- so vaibify tries the "
+            "next source"
+        ),
+        S_LINK_ARCHIVE: (
+            "the archived copy could not be used, so vaibify looks for a "
+            "copy already on this machine"
+        ),
+        S_LINK_LOCAL: "no copy of the image is on this machine either",
+    }
+    return dictNotAvailable.get(sLink, f"{sLink}: not available") + sSaid
 
 
 def flistProveOverlayBaseline(
@@ -362,15 +402,12 @@ def _fsStackAndResolve(
     try:
         fnPrepareBuildContext(configProject, sStagedDir, dictProject["sDirectory"])
         # The chain is stacked in BUILD order (a prerequisite before
-        # the agent that needs it); the label records the resulting
-        # SET in canonical order, which is the only form its parser
-        # accepts.
+        # the agent that needs it); each stage's label records the
+        # SET so far in canonical order, which is the only form its
+        # parser accepts.
         sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
             dictProject["sName"], sBaseImageId, listChain, sStagedDir,
-            sPlatform,
-            imageBuilder.flistCanonicalizeOverlaySet(
-                list(listProven) + list(listChain),
-            ),
+            sPlatform, list(listProven),
         )
     finally:
         fnDiscardBuildContext(sStagedDir)
@@ -383,6 +420,41 @@ def _fsStackAndResolve(
             "inspected, so nothing was tagged"
         )
     return dictRunning["sId"]
+
+
+def _fnRefuseAgentsThatReachTheEnvironment(sBaseImageId, sRunningImageId, fnReport):
+    """Step 4b: the stacked agents leave the author's environment untouched.
+
+    The reader's agents are the reader's choice precisely because they
+    cannot change what the author's environment computes; this is where
+    that is checked, on the image actually built, before anything is
+    tagged. A check that could not run refuses too -- an unrun check
+    establishes nothing.
+    """
+    from vaibify.reproducibility.agentLayerSeparation import (
+        AgentLayerSeparationError,
+        fdictCheckAgentLayerSeparation,
+        fsDescribeViolations,
+    )
+    if sRunningImageId == sBaseImageId:
+        return
+    fnReport("checking that the added agents leave the author's environment untouched")
+    try:
+        dictChecked = fdictCheckAgentLayerSeparation(sBaseImageId, sRunningImageId)
+    except AgentLayerSeparationError as errorCheck:
+        raise PinnedImageAcquisitionRefusedError(
+            "the added agents could not be checked against the author's "
+            f"environment ({errorCheck}), so nothing was tagged.",
+            sAction=S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
+        ) from errorCheck
+    if dictChecked["listViolations"]:
+        raise PinnedImageAcquisitionRefusedError(
+            "the added agents reach into the author's environment: "
+            + fsDescribeViolations(dictChecked["listViolations"])
+            + ". Nothing was tagged. Re-obtain the pinned image without "
+            "them, or choose other agents.",
+            sAction=S_ACTION_REOBTAIN_WITHOUT_ADDITIONS,
+        )
 
 
 def _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport):

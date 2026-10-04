@@ -1384,7 +1384,7 @@ var VaibifyWorkflowManager = (function () {
                 if (_fbPromotingToHostProject()) {
                     _fnSubmitPromoteHostProject();
                 } else {
-                    _fnSubmitConvertProject();
+                    _fnExecuteConversion();
                 }
             } else {
                 _fnSubmitCreateProject();
@@ -1515,10 +1515,7 @@ var VaibifyWorkflowManager = (function () {
             (bPinnedChosen ? " checked" : "") +
             (bObtainable ? "" : " disabled") + '>' +
             '<span>Use the author’s pinned image</span></label>' +
-            (bObtainable ? "" :
-                '<div class="wizard-environment-refusal">' +
-                VaibifyUtilities.fnEscapeHtml(dictPinned.sRefusal || "") +
-                '</div>') +
+            (bObtainable ? "" : _fsRenderEnvironmentRefusal(dictPinned)) +
             (bObtainable ?
                 '<table class="wizard-environment-facts">' +
                 _fsEnvironmentFactRow("Pinned image",
@@ -1548,6 +1545,19 @@ var VaibifyWorkflowManager = (function () {
             'different image digest, so the result will not carry the ' +
             'author’s digest and cannot reproduce their bytes ' +
             'exactly.</div></div>';
+    }
+
+    function _fsRenderEnvironmentRefusal(dictPinned) {
+        /* The researcher's sentence first; the rule it comes from,
+           which is what the command line prints, one click away. */
+        var sPlain = dictPinned.sPlainRefusal || dictPinned.sRefusal || "";
+        var sDetails = dictPinned.sPlainRefusal ? (dictPinned.sRefusal || "") : "";
+        return '<div class="wizard-environment-refusal">' +
+            VaibifyUtilities.fnEscapeHtml(sPlain) +
+            (sDetails ? '<details class="wizard-environment-refusal-details">' +
+                '<summary>Details</summary>' +
+                VaibifyUtilities.fnEscapeHtml(sDetails) + '</details>' : "") +
+            '</div>';
     }
 
     function _fnBindEnvironmentChoice(elContent) {
@@ -1583,11 +1593,18 @@ var VaibifyWorkflowManager = (function () {
     }
 
     function _flistAuthorEnabledFeatures() {
-        var dictAuthor = (_dictWizardData.dictPinnedEnvironment || {})
-            .dictAuthorFeatures || {};
+        /* Agents from the list the conversion itself will use; the
+           other toggles from the author's vaibify.yml. */
+        var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
+        var dictAuthor = dictPinned.dictAuthorFeatures || {};
+        var listAgents = dictPinned.listAgentOverlays || [];
+        var listAuthorAgents = dictPinned.listAuthorOverlays || [];
         return _LIST_FEATURE_DEFINITIONS.map(function (dictFeature) {
             return dictFeature.sKey;
         }).filter(function (sKey) {
+            if (listAgents.indexOf(sKey) !== -1) {
+                return listAuthorAgents.indexOf(sKey) !== -1;
+            }
             return dictAuthor[sKey] === true;
         });
     }
@@ -1599,10 +1616,10 @@ var VaibifyWorkflowManager = (function () {
            addition. */
         if (!_fbUsingPinnedImage()) return "";
         var dictPinned = _dictWizardData.dictPinnedEnvironment || {};
-        var dictAuthor = dictPinned.dictAuthorFeatures || {};
         var listAgents = dictPinned.listAgentOverlays || [];
+        var listAuthorAgents = dictPinned.listAuthorOverlays || [];
         if (listAgents.indexOf(sKey) !== -1) {
-            return dictAuthor[sKey] === true ? "author" : "";
+            return listAuthorAgents.indexOf(sKey) !== -1 ? "author" : "";
         }
         return "base";
     }
@@ -1631,7 +1648,8 @@ var VaibifyWorkflowManager = (function () {
 
     function _fsFinalButtonLabel() {
         if (_dictWizardData.sMode !== "convert") return "Create";
-        return _fbPromotingToHostProject() ? "Promote" : "Convert";
+        if (_fbPromotingToHostProject()) return "Promote";
+        return _fbUsingPinnedImage() ? "Convert and obtain" : "Convert and build";
     }
 
     function _fnRenderStepDirectory(elContent) {
@@ -1981,7 +1999,7 @@ var VaibifyWorkflowManager = (function () {
             '<div id="wizardSeedRemoteNotice"></div>' +
             '<div id="wizardSeedList" class="wizard-feature-list">' +
             '<p class="muted-text">Reading the folder&hellip;</p>' +
-            '</div></div>';
+            '</div><div id="wizardCommittedFiles"></div></div>';
         _fnLoadSeedCandidates();
     }
 
@@ -2005,6 +2023,57 @@ var VaibifyWorkflowManager = (function () {
                         error.message)) + '</p>';
         }
         _fnLoadSeedRemoteNotice();
+        _fnLoadCommittedFileDifferences();
+    }
+
+    async function _fnLoadCommittedFileDifferences() {
+        /* A reader who re-ran a published project on this machine has,
+           by design, files that differ from the ones the author's
+           manifest pins -- and Level 3 verification refuses a project
+           in that state. Offered only when it is true, and never
+           ticked for them: copying the folder as it is stays the
+           default, because some researchers mean to keep their run. */
+        var elCommitted = document.getElementById("wizardCommittedFiles");
+        if (!elCommitted) return;
+        try {
+            var dictResult = await VaibifyApi.fdictGet(
+                "/api/registry/" +
+                encodeURIComponent(_dictWizardData.sHostName) +
+                "/committed-file-differences");
+            var listPaths = dictResult.listDifferingPaths || [];
+            _dictWizardData.listCommittedFileDifferences = listPaths;
+            if (listPaths.length === 0) {
+                _dictWizardData.bRestoreCommittedFiles = false;
+            }
+            elCommitted.innerHTML = _fsRenderCommittedFileChoice(listPaths);
+        } catch (error) {
+            elCommitted.innerHTML = '<p class="muted-text">' +
+                VaibifyUtilities.fnEscapeHtml(
+                    "Could not compare this folder with its last " +
+                    "commit, so it will be copied as it is: " +
+                    VaibifyUtilities.fsSanitizeErrorForUser(
+                        error.message)) + '</p>';
+        }
+    }
+
+    function _fsRenderCommittedFileChoice(listPaths) {
+        if (listPaths.length === 0) return "";
+        return '<label class="wizard-feature-row">' +
+            '<input type="checkbox" id="wizardRestoreCommittedFiles"' +
+            (_dictWizardData.bRestoreCommittedFiles ? " checked" : "") +
+            '><span><strong>Start from the committed files</strong> ' +
+            '&mdash; ' + listPaths.length + ' file' +
+            (listPaths.length === 1 ? "" : "s") + ' the manifest ' +
+            'pins differ' + (listPaths.length === 1 ? "s" : "") +
+            ' from the last commit. Tick to put the committed ' +
+            'versions in the container; your own versions in this ' +
+            'folder are not touched.</span></label>' +
+            '<details class="wizard-committed-files"><summary>' +
+            'Which files</summary><ul>' +
+            listPaths.map(function (sPath) {
+                return '<li><code>' +
+                    VaibifyUtilities.fnEscapeHtml(sPath) + '</code></li>';
+            }).join("") + '</ul></details>';
     }
 
     function _fnRenderSeedCandidates(listEntries) {
@@ -2446,7 +2515,7 @@ var VaibifyWorkflowManager = (function () {
             _fsSummaryReposLine() + _fsSummarySeedLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
             _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
-            '</div>';
+            '</div>' + _fsSummaryConversionNextSteps();
     }
 
     function _fsSummarySeedLine() {
@@ -2457,7 +2526,17 @@ var VaibifyWorkflowManager = (function () {
         var saSeedPaths = _dictWizardData.saSeedPaths || [];
         var sValue = saSeedPaths.length > 0
             ? saSeedPaths.join(", ") : "Nothing";
-        return _fsSummaryRow("Copied into the container", sValue);
+        return _fsSummaryRow("Copied into the container", sValue) +
+            _fsSummaryCommittedFilesLine();
+    }
+
+    function _fsSummaryCommittedFilesLine() {
+        var iDiffering =
+            (_dictWizardData.listCommittedFileDifferences || []).length;
+        if (iDiffering === 0) return "";
+        return _fsSummaryRow("Pinned files that differ (" + iDiffering +
+            ")", _dictWizardData.bRestoreCommittedFiles
+                ? "the committed versions" : "copied as they are");
     }
 
     function _fsSummaryHeadBlock() {
@@ -2526,8 +2605,22 @@ var VaibifyWorkflowManager = (function () {
             "Image",
             "the author’s pinned image " +
             (dictPinned.sPinnedImageReference || "") +
+            (dictPinned.sRequiredPlatform
+                ? " for " + dictPinned.sRequiredPlatform : "") +
             (_dictWizardData.bAllowEmulation ? " (emulation allowed)" : "")
-        );
+        ) + _fsSummaryRow("Image comes from", _fsPinnedImageSources(dictPinned));
+    }
+
+    function _fsPinnedImageSources(dictPinned) {
+        /* Where the image will come from, in the order it is tried, so
+           a researcher reading the Summary knows the download is from
+           the author's archive before it starts. */
+        var sArchive = dictPinned.bDepositOnRecord
+            ? "the archived copy on Zenodo (" +
+              (dictPinned.sDepositVersionDoi || "no DOI recorded") + ")"
+            : "no archived copy is on record";
+        return "a registry if one has it; otherwise " + sArchive +
+            "; otherwise a copy already on this machine";
     }
 
     function _fsSummaryAuthLine() {
@@ -2585,6 +2678,11 @@ var VaibifyWorkflowManager = (function () {
         /* Only read when the page is actually on screen: a blank list
            saved from some other page would read as "the researcher
            unticked everything" and silently copy nothing. */
+        var elRestore = document.getElementById(
+            "wizardRestoreCommittedFiles");
+        if (elRestore) {
+            _dictWizardData.bRestoreCommittedFiles = elRestore.checked;
+        }
         var listRows = document.querySelectorAll(".wizard-seed-input");
         if (listRows.length === 0) return;
         _dictWizardData.saSeedPaths = Array.prototype.filter.call(
@@ -2768,48 +2866,46 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
-    function _fnSubmitConvertProject() {
-        /* One confirm modal before the irreversible-ish step: it
-           re-registers the project under a new name, a build runs next
-           (minutes to hours), and the vaibify.yml is rewritten with
-           container fields. A project open in THIS tab is released by
-           the server as part of the conversion; only another session's
-           hold refuses. A failed build does NOT revert to host -- it
-           leaves a registered, not-yet-built container, exactly the
-           normal post-create state. */
+    function _fsSummaryConversionNextSteps() {
+        /* The Summary is the conversion's only confirmation, so it
+           says what the final button does: after it the project is
+           registered as a container and its vaibify.yml is rewritten,
+           which Back no longer undoes. A failed build or acquisition
+           does NOT revert to host -- it leaves a registered, unbuilt
+           container, exactly the normal post-create state. */
+        if (_dictWizardData.sMode !== "convert" ||
+                _fbPromotingToHostProject()) {
+            return "";
+        }
         var bPinned = _fbUsingPinnedImage();
-        VaibifyApp.fnShowConfirmModal(
-            "Convert to a containerized Project",
-            _fsConversionConfirmBody(),
-            _fnExecuteConversion,
-            {
-                sConfirmLabel: bPinned ? "Convert and obtain" : "Convert and build",
-                sCancelLabel: "Go back",
-                sDetails:
-                    "If the project is open in this tab it is closed " +
-                    "automatically; a project open in another session " +
-                    "must be closed there first. If the " +
-                    (bPinned ? "acquisition" : "build") + " fails, " +
-                    "the project stays registered as a container that " +
-                    "has not been built yet -- it does not revert to a " +
-                    "host sandbox -- and you can retry from its tile.",
-            }
-        );
+        return '<div class="wizard-summary-next"><p><strong>' +
+            'When you press ' +
+            (bPinned ? "Convert and obtain" : "Convert and build") +
+            ':</strong> ' +
+            VaibifyUtilities.fnEscapeHtml(_fsConversionNextStepsText()) +
+            '</p><p class="muted-text">If the project is open in this ' +
+            'tab it is closed automatically; a project open in another ' +
+            'session must be closed there first. If the ' +
+            (bPinned ? "download" : "build") + ' fails, the project ' +
+            'stays registered as a container that has not been ' +
+            (bPinned ? "obtained" : "built") + ' yet, and you can ' +
+            'retry from its tile.</p></div>';
     }
 
-    function _fsConversionConfirmBody() {
+    function _fsConversionNextStepsText() {
         var sWhatStartsNext = _fbUsingPinnedImage()
-            ? "only its runtime settings are rewritten, and the " +
-              "author’s pinned image is obtained next (a registry " +
-              "pull, then the archived deposit, then a copy on this " +
-              "daemon; agents you added are stacked on it)"
-            : "vaibify.yml is rewritten with the container settings " +
-              "you chose, and a Docker image build starts next (this " +
-              "can take minutes to hours)";
-        return "Re-register '" + _dictWizardData.sHostName +
-            "' as the containerized project '" +
-            _dictWizardData.sProjectName + "'. The project's " +
-            sWhatStartsNext + ".";
+            ? "Only the runtime settings in its vaibify.yml change; " +
+              "the environment stays the author’s. Next, vaibify " +
+              "downloads the author’s pinned image — from a registry " +
+              "if one has it, otherwise from the archived copy on " +
+              "Zenodo, otherwise a copy already on this machine — and " +
+              "adds any agents you chose on top of it."
+            : "Its vaibify.yml is rewritten with the container " +
+              "settings you chose, and a Docker image build starts " +
+              "next (this can take minutes to hours).";
+        return "'" + _dictWizardData.sHostName + "' will become the " +
+            "containerized project '" + _dictWizardData.sProjectName +
+            "'. " + sWhatStartsNext;
     }
 
     function _fbWizardTargetsTheOpenProject() {
@@ -2823,6 +2919,11 @@ var VaibifyWorkflowManager = (function () {
     }
 
     async function _fnExecuteConversion() {
+        /* The Summary's final button is the only confirmation, so it
+           is held while the request is in flight: a second click
+           would ask to convert a project that no longer exists. */
+        var elButton = document.getElementById("btnWizardNext");
+        elButton.disabled = true;
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
         var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
@@ -2846,11 +2947,13 @@ var VaibifyWorkflowManager = (function () {
             if (bSocketWasOpen) {
                 VaibifyPipelineRunner.fnConnectPipelineWebSocket();
             }
+            elButton.disabled = false;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
             return;
         }
+        elButton.disabled = false;
         _fnCloseWizard();
         if (bHeldByThisTab) {
             /* The conversion released this tab's session, and the
@@ -2870,16 +2973,20 @@ var VaibifyWorkflowManager = (function () {
             "Converted '" + sHostName + "' to '" + sNewName + "'. " +
             (bAcquire ? "Obtaining the author’s pinned image now."
                 : "Building the image now."), "success");
+        /* The files chosen on the Files page were recorded with the
+           conversion, and are copied by the first start that succeeds
+           -- this one, or a retry from the tile after a failure. */
         var bBuiltAndRunning = bAcquire
             ? await VaibifyContainerManager.fnAcquireImage(
                 sNewName, _dictWizardData.bAllowEmulation === true)
             : await VaibifyContainerManager.fnBuildContainer(sNewName);
-        /* A failed build has already said so, with the builder's own
-           output. Attempting the copy anyway would bury that behind a
-           second, vaguer message about a container that was never
-           created. */
-        if (bBuiltAndRunning) {
-            await _fnCopySelectedFilesIntoContainer(sNewName);
+        if (!bBuiltAndRunning &&
+                (_dictWizardData.saSeedPaths || []).length > 0) {
+            VaibifyApp.fnShowToast(
+                "Your files have not been copied into '" + sNewName +
+                "' yet. They are copied the first time the container " +
+                "starts, including after a retry from its tile; your " +
+                "originals are untouched.", "info");
         }
         VaibifyContainerManager.fnLoadContainers();
     }
@@ -2915,64 +3022,6 @@ var VaibifyWorkflowManager = (function () {
         return Object.assign({}, _dictWizardData, {
             listPythonPackages: listMerged,
         });
-    }
-
-    async function _fnCopySelectedFilesIntoContainer(sNewName) {
-        /* After the build AND the start it performs: the workspace is
-           a Docker volume that does not exist until the container
-           runs, so there is nowhere to copy to before this point. A
-           failure is reported and never swallowed -- a container the
-           researcher believes holds their files but does not is the
-           dashboard lying about state. */
-        var saSeedPaths = _dictWizardData.saSeedPaths || [];
-        if (saSeedPaths.length === 0) return;
-        /* Claim first. Copying into a container is a container
-           mutation, so it is refused unless this session holds the
-           lease -- and nobody holds one on a container that came into
-           existence thirty seconds ago. Claiming is honest here rather
-           than a workaround: this tab created the container and is
-           about to put the researcher's files in it, which is exactly
-           what owning it means. */
-        if (!await VaibifyContainerManager.fbClaimContainer(sNewName)) {
-            VaibifyApp.fnShowToast(
-                "The container was built, but your files were not " +
-                "copied in: it is in use in another session.", "error");
-            return;
-        }
-        /* The route is container-SCOPED, so its path segment must be
-           the container id the authority resolves against the owner
-           map -- the name the wizard has been carrying is not
-           interchangeable there. */
-        var sContainerId =
-            await VaibifyContainerManager.fsResolveContainerId(sNewName);
-        if (!sContainerId) {
-            /* Name the recovery, not just the symptom: the originals
-               are untouched on the host, so the researcher needs to
-               know nothing was lost and what to do next. Drag-and-drop
-               onto the Files panel is the affordance that actually
-               exists (scriptFiles.js); do not promise a re-copy
-               button here until there is one. */
-            VaibifyApp.fnShowToast(
-                "Your files were not copied in: '" + sNewName +
-                "' is not running yet. Your originals are untouched " +
-                "— start it from its tile, then drag them onto the " +
-                "Files panel.", "error");
-            return;
-        }
-        try {
-            var dictResult = await VaibifyApi.fdictPost(
-                "/api/files/" + encodeURIComponent(sContainerId) +
-                "/seed-workspace", {saRelativePaths: saSeedPaths});
-            VaibifyApp.fnShowToast(
-                "Copied " + dictResult.iCopiedCount +
-                " item(s) into " + dictResult.sDestination + ".",
-                "success");
-        } catch (error) {
-            VaibifyApp.fnShowToast(
-                "The container was built, but copying your files in " +
-                "failed: " + VaibifyUtilities.fsSanitizeErrorForUser(
-                    error.message), "error");
-        }
     }
 
     async function _fnSubmitPromoteHostProject() {

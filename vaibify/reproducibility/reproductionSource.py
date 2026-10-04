@@ -137,7 +137,15 @@ class ReproductionSourceRefusedError(Exception):
     Derives from ``Exception``, never ``OSError``: a refusal swallowed
     by an ``except OSError`` is how a control decision silently
     downgrades into an I/O hiccup.
+
+    ``sPlainReason`` is the same refusal in a researcher's words, for a
+    page that shows it before any command has run; the message itself
+    names the rule, which is what the command line prints.
     """
+
+    def __init__(self, sMessage, sPlainReason=""):
+        super().__init__(sMessage)
+        self.sPlainReason = sPlainReason
 
 
 class WorkflowSelectionRequiredError(ReproductionSourceRefusedError):
@@ -1090,13 +1098,17 @@ def _fdictReadEnvelopeOrRefuse(filesRepo):
     if dictEnvironment is None:
         raise ReproductionSourceRefusedError(
             "rule 2 (environment envelope): .vaibify/environment.json is "
-            "missing or is not a JSON object"
+            "missing or is not a JSON object",
+            "This folder has no record of the environment its results "
+            "were made in, so there is no author's image to obtain.",
         )
     try:
         sPinned = fsResolvePinnedImageReference(dictEnvironment)
     except ShadowRerunRefusedError as error:
         raise ReproductionSourceRefusedError(
-            f"rule 2 (environment envelope): {error}"
+            f"rule 2 (environment envelope): {error}",
+            "This copy of the project does not name the author's image "
+            "exactly, so vaibify cannot obtain it.",
         ) from error
     dictEnvironment["_sPinnedImageReference"] = sPinned
     dictContainer = dictEnvironment.get("dictContainer") or {}
@@ -1110,7 +1122,10 @@ def _fdictReadEnvelopeOrRefuse(filesRepo):
             + ", so the pinned platform cannot be requested. The source "
             "names its environment: there is no architecture picker and "
             "no host-derived default. Regenerate the envelope while the "
-            "container is running."
+            "container is running.",
+            "This copy of the project does not record which kind of "
+            "processor the author's image was built for, so vaibify "
+            "cannot fetch it.",
         )
     return dictEnvironment
 
@@ -1134,6 +1149,11 @@ def fdictDescribePinnedEnvironment(sRepoPath):
     except ReproductionSourceRefusedError as error:
         return {
             "bObtainable": False, "sRefusal": str(error),
+            "sPlainRefusal": (
+                (error.sPlainReason or "vaibify cannot obtain the "
+                 "author's image for this copy of the project.")
+                + _S_PLAIN_CHECK_THE_CLONE
+            ),
             "sPinnedImageReference": "", "sRequiredPlatform": "",
             "bDepositOnRecord": False, "sDepositVersionDoi": "",
             "sZenodoService": "",
@@ -1143,6 +1163,7 @@ def fdictDescribePinnedEnvironment(sRepoPath):
     return {
         "bObtainable": True,
         "sRefusal": "",
+        "sPlainRefusal": "",
         "sPinnedImageReference": dictEnvironment["_sPinnedImageReference"],
         "sRequiredPlatform": fsRequiredPlatformFromArchitecture(
             str(dictContainer.get("sArchitecture") or ""),
@@ -1192,6 +1213,21 @@ def _fnRefuseUnlessManifestComplete(filesRepo, dictWorkflow):
         )
 
 
+_S_PLAIN_DEPOSIT_MISMATCH = (
+    "The archived copy of the author's image that this project records "
+    "does not match the image it pins, so vaibify will not use it."
+)
+
+# Said after every plain refusal the Environment page shows: the one
+# cause a researcher can check for themselves is a clone that is not
+# the published version -- behind it, or carrying local commits.
+_S_PLAIN_CHECK_THE_CLONE = (
+    " If this is a clone of a published project, check that it matches "
+    "the published version: `git status` says whether it is behind, and "
+    "`git log origin/main` shows what was published."
+)
+
+
 def _fdictDepositFacts(dictEnvironment):
     """Return what the envelope says about an archived image.
 
@@ -1208,11 +1244,13 @@ def _fdictDepositFacts(dictEnvironment):
         )
     except LookupError as error:
         raise ReproductionSourceRefusedError(
-            f"rule 6 (deposit covers the envelope): {error}"
+            f"rule 6 (deposit covers the envelope): {error}",
+            _S_PLAIN_DEPOSIT_MISMATCH,
         ) from error
     if listReasons:
         raise ReproductionSourceRefusedError(
-            "rule 6 (deposit covers the envelope): " + " ".join(listReasons)
+            "rule 6 (deposit covers the envelope): " + " ".join(listReasons),
+            _S_PLAIN_DEPOSIT_MISMATCH,
         )
     return {
         "bDepositOnRecord": True,

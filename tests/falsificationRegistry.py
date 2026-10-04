@@ -3270,20 +3270,6 @@ def _fdictEntry(sRel):
         ),
     ),
     Falsification(
-        # The version field is machine-recorded provenance, so accepting a
-        # made-up provider name turns arbitrary unvalidated data into an
-        # attestation claim.
-        nodeid='tests/testAiProvenanceStamp.py::test_agent_version_stamp_rejects_unexpected_provider_name',
-        source='vaibify/reproducibility/aiProvenanceStamp.py',
-        old=(
-            '        sAgent not in {\n'
-            '            "claude", "codex", "gemini", "opencode", "cline",\n'
-            '            "openhands", "pi",\n'
-            '        }\n'
-        ),
-        new='        False\n',
-    ),
-    Falsification(
         # A disabled update choice is an explicit user preference. If this
         # mapping vanishes, deserialization silently restores the default
         # true and the dashboard misrepresents what will run at startup.
@@ -14717,24 +14703,6 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testDockerfileProvenance.py::'
-            'test_the_builder_labels_every_build_with_the_chain_'
-            'fingerprint'
-        ),
-        # Never stamp the label. The check can then determine nothing
-        # -- every answer is the honest None -- and Dockerfile
-        # staleness goes back to being invisible while every surface
-        # still renders.
-        source='vaibify/docker/imageBuilder.py',
-        old=(
-            '    sRecipeFingerprint = _fsComputeChainFingerprint(\n'
-            '        sDockerDir, listOverlays,\n'
-            '    )'
-        ),
-        new='    sRecipeFingerprint = ""',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testDockerfileProvenance.py::'
             'test_a_mismatched_fingerprint_is_reported_not_absorbed'
         ),
         # Answer True whenever both fingerprints exist. The label and
@@ -15287,74 +15255,6 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old='             bChecking: bRunning,',
         new='             bChecking: false,',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
-            'test_an_unready_project_is_told_what_is_missing'
-        ),
-        # RE-ANCHORED 2026-08-31: the fetch is now wrapped in a
-        # try/finally that releases the button's busy hold, so the
-        # deletion has to take the wrapper with it. The mutant still
-        # releases the button -- a mutant that left it disabled would
-        # be killed by the button never re-enabling rather than by the
-        # missing pre-flight, which is a different guard.
-        source='vaibify/gui/static/scriptApplication.js',
-        old=(
-            '        var dictReady;\n'
-            '        try {\n'
-            '            dictReady = await _fdictFetchL3Readiness();\n'
-            '        } finally {\n'
-            '            fnRelease();\n'
-            '        }\n'
-            '        /* BOTH refusal classes route to the checklist '
-            'modal. The\n'
-            '           package mismatch is not one of the seven '
-            'envelope gaps, so\n'
-            '           gating on bL3ReadinessOK alone let it slip '
-            'past this\n'
-            '           pre-flight and reach the researcher as a bare '
-            'failure toast\n'
-            '           (reported 2026-09-01). */\n'
-            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
-            'true ||\n'
-            '                dictReady.bImageMatchesDeclaredPackages '
-            '=== false ||\n'
-            '                dictReady.bLockDoesNotBlockVerification '
-            '=== false ||\n'
-            '                dictReady.bDockerfileDescribesPinnedImage '
-            '=== false)) {\n'
-            '            _fnShowLevel3NotReadyModal(dictReady);\n'
-            '            return;\n'
-            '        }\n'
-        ),
-        new='        fnRelease();\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
-            'test_a_ready_project_still_gets_the_copy_warning'
-        ),
-        # Suppress the copy warning for everyone: the pre-flight would
-        # then have traded one failure for a worse one.
-        source='vaibify/gui/static/scriptApplication.js',
-        old=(
-            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
-            'true ||\n'
-            '                dictReady.bImageMatchesDeclaredPackages '
-            '=== false ||\n'
-            '                dictReady.bLockDoesNotBlockVerification '
-            '=== false ||\n'
-            '                dictReady.bDockerfileDescribesPinnedImage '
-            '=== false)) {\n'
-            '            _fnShowLevel3NotReadyModal(dictReady);\n'
-            '            return;\n'
-            '        }\n'
-        ),
-        new=(
-            '        _fnShowLevel3NotReadyModal(dictReady || {});\n'
-            '        return;\n'
-        ),
     ),
     Falsification(
         nodeid=(
@@ -17768,21 +17668,6 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testEnvironmentArchive.py::'
-            'test_a_failed_deposit_leaves_the_row_the_state_the_envelope_'
-            'earns'
-        ),
-        source='vaibify/gui/pipelineServer.py',
-        old='        return "checking"\n    return ""\n',
-        new=(
-            '        return "checking"\n'
-            '    if sPhase == archiveProgress.S_PHASE_FAILED:\n'
-            '        return "uncheckable"\n'
-            '    return ""\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testEnvironmentArchive.py::'
             'test_the_upload_phase_is_reported_before_the_bytes_go_up'
         ),
         source='vaibify/reproducibility/imageDeposit.py',
@@ -17895,19 +17780,6 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testEnvironmentArchive.py::'
-            'test_a_regeneration_of_the_same_image_keeps_the_deposit_record'
-        ),
-        source='vaibify/reproducibility/environmentSnapshot.py',
-        old=(
-            '    dictCarried = dict(dictFresh)\n'
-            '    for sKey in ("dictImageArchive", '
-            'S_SUPERSEDED_ARCHIVE_KEY):\n'
-        ),
-        new='    dictCarried = dict(dictFresh)\n    for sKey in ():\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testEnvironmentArchive.py::'
             'test_a_regeneration_of_a_different_platform_drops_the_record'
         ),
         source='vaibify/reproducibility/environmentSnapshot.py',
@@ -17997,12 +17869,6 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/reproductionSource.py',
         old='    if sFailure:\n        raise ReproductionSourceRefusedError(\n            f"rule 1 (project file validates)',
         new='    if False:\n        raise ReproductionSourceRefusedError(\n            f"rule 1 (project file validates)',
-    ),
-    Falsification(
-        nodeid='tests/testReproductionSource.py::test_rule_2_a_tag_instead_of_a_digest_refuses',
-        source='vaibify/reproducibility/reproductionSource.py',
-        old='    except ShadowRerunRefusedError as error:\n        raise ReproductionSourceRefusedError(\n            f"rule 2 (environment envelope): {error}"\n        ) from error\n',
-        new='    except ShadowRerunRefusedError:\n        sPinned = ""\n',
     ),
     Falsification(
         nodeid='tests/testReproductionSource.py::test_rule_3_a_malformed_manifest_refuses',
@@ -18521,29 +18387,6 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testEnvironmentArchive.py::'
-            'test_the_deposit_sends_the_fields_zenodo_requires'
-        ),
-        source='vaibify/reproducibility/imageDeposit.py',
-        # The reported bug exactly: vaibify's Hungarian metadata shape
-        # posted straight to Zenodo, refused for three missing
-        # required fields AFTER the image had been saved and
-        # compressed.
-        old=(
-            '        zenodoClient.fdictBuildApiMetadata(\n'
-            '            imageArchive.fdictStampDepositMetadata(\n'
-            '                dictMetadata, dictRecord,\n'
-            '            ),\n'
-            '            S_IMAGE_UPLOAD_TYPE,\n'
-            '        ),\n'
-        ),
-        new=(
-            '        imageArchive.fdictStampDepositMetadata('
-            'dictMetadata, dictRecord),\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testEnvironmentArchive.py::'
             'test_an_unchanged_envelope_is_not_rewritten'
         ),
         source='vaibify/reproducibility/environmentSnapshot.py',
@@ -18825,17 +18668,6 @@ def _fdictEntry(sRel):
             '            _DICT_MARK_TO_LEVEL_STATE[sMark] || "unknown";'
         ),
         new='        dictStateByLevel[3] = "none";',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
-            'test_a_saved_answer_is_shown_back_in_the_form'
-        ),
-        source='vaibify/gui/static/scriptWorkflowRequirements.js',
-        # leaves every radio blank, so a recorded answer reads as a save
-        # that did not take
-        old="            return sAnswer === sValue ? ' checked' : '';",
-        new="            return '';",
     ),
     Falsification(
         nodeid=(
@@ -19875,22 +19707,6 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid=(
             'tests/testPinnedImageAcquisition.py::'
-            'test_a_derived_image_is_labelled_with_the_set_in_canonical_order'
-        ),
-        source='vaibify/docker/pinnedImageAcquisition.py',
-        # the label is stamped in BUILD order, which its parser refuses
-        old=(
-            '            imageBuilder.flistCanonicalizeOverlaySet(\n'
-            '                list(listProven) + list(listChain),\n'
-            '            ),\n'
-        ),
-        new=(
-            '            list(listProven) + list(listChain),\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testPinnedImageAcquisition.py::'
             'test_the_retry_without_additions_drops_them_before_obtaining'
         ),
         source='vaibify/docker/pinnedImageAcquisition.py',
@@ -20794,21 +20610,6 @@ def _fdictEntry(sRel):
         # over an object of the right length and the wrong bytes.
         old='    if sReported and sReported != sSent:\n',
         new='    if False:\n',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testTheArchiveIsAskedWhatItStored.py::'
-            'test_a_disagreeing_archive_costs_a_draft_and_never_a_doi'
-        ),
-        source='vaibify/reproducibility/imageDeposit.py',
-        # The deposit hands back a record over an archive nobody
-        # asked, which is the state this feature exists to end.
-        old=(
-            '        fnRefuseUnlessArchiveHoldsWhatWeSent(\n'
-            '            clientZenodo, iDepositId, dictRecord,\n'
-            '        )\n'
-        ),
-        new='',
     ),
     # --- 2026-09-14: the project deposit is asked what it stored ---
     Falsification(
@@ -25846,8 +25647,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testPerContainerStateLifecycle.py::testASecondProjectsDepositDoesNotEraseTheFirstProjectsFailure',
         source='vaibify/gui/archiveProgress.py',
-        old='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, sProjectRepoPath), {},\n        )\n',
-        new='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, ""), {},\n        )\n',
+        old='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, sProjectRepoPath), {},\n        )\n        dictEntry["sProjectRepoPath"] = sProjectRepoPath\n        dictEntry["task"] = None\n        dictEntry["sPhase"] = S_PHASE_FAILED\n',
+        new='        dictEntry = DICT_DEPOSITS.setdefault(\n            (sContainerId, ""), {},\n        )\n        dictEntry["sProjectRepoPath"] = sProjectRepoPath\n        dictEntry["task"] = None\n        dictEntry["sPhase"] = S_PHASE_FAILED\n',
     ),
     # --- The documented charter is the charter the code sends ---
     Falsification(
@@ -27006,5 +26807,1054 @@ def _fdictEntry(sRel):
         source='vaibify/gui/vscodeAttachLink.py',
         old='    ) + S_NEW_WINDOW_QUERY',
         new='    )',
+    ),
+
+    Falsification(
+        # The version field is machine-recorded provenance, so accepting a
+        # made-up provider name turns arbitrary unvalidated data into an
+        # attestation claim.
+        nodeid='tests/testAiProvenanceStamp.py::test_agent_version_stamp_rejects_unexpected_provider_name',
+        source='vaibify/reproducibility/aiProvenanceStamp.py',
+        old='        sAgent not in T_AGENT_OVERLAY_NAMES\n',
+        new='        False\n',
+    ),
+    Falsification(
+        # Antigravity is asked for by its overlay name, a command no
+        # image installs, so its version is never recorded.
+        nodeid='tests/testAiProvenanceStamp.py::test_the_capture_asks_each_agent_by_the_command_it_installs',
+        source='vaibify/gui/aiProvenanceCapture.py',
+        old='_DICT_AGENT_COMMANDS = {"antigravity": "agy"}\n',
+        new='_DICT_AGENT_COMMANDS = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_the_builder_labels_every_build_with_the_chain_'
+            'fingerprint'
+        ),
+        # Never stamp the label. The check can then determine nothing
+        # -- every answer is the honest None -- and Dockerfile
+        # staleness goes back to being invisible while every surface
+        # still renders.
+        source='vaibify/docker/imageBuilder.py',
+        old='        sRecipeFingerprint=_fsComputeChainFingerprint(sDockerDir, []),\n',
+        new='        sRecipeFingerprint="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentSnapshot.py::'
+            'test_the_envelope_pins_the_environment_below_the_agents'
+        ),
+        # Pin the container's own image -- the agents' -- so every
+        # reproduction and every deposit carries the agents again.
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old='        sImageId = fsResolveEnvironmentImageId(sRunningImageId)\n',
+        new='        sImageId = sRunningImageId\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentSnapshot.py::'
+            'test_an_environment_the_image_is_not_built_on_pins_nothing'
+        ),
+        # Trust the label without asking the layers.
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        old=(
+            '    if listOwnLayers[:len(listEnvironmentLayers)] != '
+            'listEnvironmentLayers:\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentDrift.py::'
+            'test_a_rebuild_is_compared_on_its_environment_not_its_agents'
+        ),
+        # Compare the pin against :latest, so every rebuild with an
+        # agent reports that the environment moved.
+        source='vaibify/cli/commandBuild.py',
+        old='    sImageReference = _fsBuiltEnvironmentReference(config.sProjectName)\n',
+        new='    sImageReference = f"{config.sProjectName}:latest"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_the_export_describes_the_pinned_image_not_the_config'
+        ),
+        # Compose from vaibify.yml even when the pinned image says what
+        # it holds, so the header claims the agents above the pin.
+        source='vaibify/reproducibility/imageDockerfileExport.py',
+        old='    if listLabelled is not None:\n        return listLabelled\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_overwriting_or_removing_an_environment_file_is_caught'
+        ),
+        # A path the environment holds is judged as a new one.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if dictOld is not None:\n        return _flistJudgeExistingPath(sPath, dictEntry, dictOld)\n',
+        new='    if False:\n        return _flistJudgeExistingPath(sPath, dictEntry, dictOld)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_command_the_environment_already_runs_is_caught'
+        ),
+        # An agent's command never reads as shadowing the environment's.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='        and posixpath.basename(sPath) in setBaseCommands\n',
+        new='        and False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_adding_where_programs_search_is_caught'
+        ),
+        # Additions to searched locations pass.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if sSearched:\n        return [_fdictViolation("searched", sPath, sSearched)]\n',
+        new='    if False:\n        return [_fdictViolation("searched", sPath, sSearched)]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_startup_file_may_only_gain_path_prepends'
+        ),
+        # Any appended startup line is accepted.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='            if sDirectory is None:\n',
+        new='            if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_the_images_settings_may_only_gain_path_directories'
+        ),
+        # Every environment variable reads as unchanged.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='        if dictBaseEnvironment.get(sName) == dictAgentEnvironment.get(sName):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_a_pin_that_holds_agents_is_never_deposited'
+        ),
+        # An image that says it holds agents is deposited as the environment.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if listAgentsInside:\n        raise AgentLayerSeparationError(\n',
+        new='    if False:\n        raise AgentLayerSeparationError(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_agents_that_reach_the_environment_stop_the_deposit'
+        ),
+        # The layer check runs and its violations are ignored.
+        source='vaibify/reproducibility/agentLayerSeparation.py',
+        old='    if dictChecked["listViolations"]:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAgentLayerSeparation.py::'
+            'test_the_deposit_refuses_before_saving_anything'
+        ),
+        # The deposit never asks the gate.
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old='        _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_added_agents_that_reach_the_environment_are_never_tagged'
+        ),
+        # The stacked image is tagged without reading its layers back.
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        old=(
+            '    _fnRefuseAgentsThatReachTheEnvironment(\n'
+            '        sBaseImageId, sRunningImageId, fnReport,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::'
+            'test_the_legacy_builders_stdout_reaches_the_live_pane'
+        ),
+        # Pipe only stderr again, so the legacy builder's steps go to
+        # the hub's terminal and the live pane stays blank.
+        source='vaibify/docker/imageBuilder.py',
+        old=(
+            '        stdout=subprocess.PIPE,\n'
+            '        stderr=subprocess.STDOUT,\n'
+        ),
+        new='        stderr=subprocess.PIPE,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAContainerOffThePinWarnsBesideTheSnapshotRow.py::'
+            'test_a_container_off_the_pin_raises_the_glyph_and_nothing_else'
+        ),
+        # The mismatch is again reported only inside the expanded row.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return S_IMAGE_CURRENCY_WARNING_TOOLTIP;\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfigurationFingerprint.py::'
+            'testAFreshBuildStampsTheFileItWasBuiltFrom'
+        ),
+        # The build adds the project repository to the caller's config,
+        # so the stamp never matches the file again.
+        source='vaibify/cli/commandBuild.py',
+        old='    configContext = copy.deepcopy(config)\n',
+        new='    configContext = config\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheDriftBannerHidesForThisVisit.py::'
+            'test_the_drift_banner_closes_for_this_visit_and_returns_while_true'
+        ),
+        # The banner renders with no way to close it again.
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            "            'id=\"btnDismissConfigurationDrift\" ' +\n"
+        ),
+        new="            'id=\"btnDismissConfigurationDriftGone\" ' +\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_rebuilt_image_does_not_unanswer_the_question'
+        ),
+        # A regenerated envelope's lineage note no longer answers the
+        # Level 2 question, so a returning project drops a rung.
+        source='vaibify/reproducibility/levelGates.py',
+        old='    if fdictArchiveLineageOf(dictContainer):\n        return True\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDockerfileProvenance.py::'
+            'test_each_stage_is_labelled_with_what_it_holds'
+        ),
+        # Every stage carries the finished chain's list again, so the
+        # agent-free stage claims the agents above it and can never be
+        # published as agent-free.
+        source='vaibify/docker/imageBuilder.py',
+        old='            listOverlays=listStageOverlays,\n',
+        new='            listOverlays=listOverlays,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_an_unready_project_is_told_what_is_missing'
+        ),
+        # RE-ANCHORED 2026-08-31: the fetch is now wrapped in a
+        # try/finally that releases the button's busy hold, so the
+        # deletion has to take the wrapper with it. The mutant still
+        # releases the button -- a mutant that left it disabled would
+        # be killed by the button never re-enabling rather than by the
+        # missing pre-flight, which is a different guard.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var dictReady;\n'
+            '        try {\n'
+            '            dictReady = await _fdictFetchL3Readiness();\n'
+            '        } finally {\n'
+            '            fnRelease();\n'
+            '        }\n'
+            '        /* BOTH refusal classes route to the checklist '
+            'modal. The\n'
+            '           package mismatch is not one of the seven '
+            'envelope gaps, so\n'
+            '           gating on bL3ReadinessOK alone let it slip '
+            'past this\n'
+            '           pre-flight and reach the researcher as a bare '
+            'failure toast\n'
+            '           (reported 2026-09-01). */\n'
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new='        fnRelease();\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyRefusesBeforeItWarns.py::'
+            'test_a_ready_project_still_gets_the_copy_warning'
+        ),
+        # Suppress the copy warning for everyone: the pre-flight would
+        # then have traded one failure for a worse one.
+        # RE-ANCHORED 2026-09-26: the refusal branch first offers the
+        # committed-file restore, and the mutant takes that with it.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictReady && (dictReady.bL3ReadinessOK !== '
+            'true ||\n'
+            '                dictReady.bImageMatchesDeclaredPackages '
+            '=== false ||\n'
+            '                dictReady.bLockDoesNotBlockVerification '
+            '=== false ||\n'
+            '                dictReady.bDockerfileDescribesPinnedImage '
+            '=== false)) {\n'
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
+            '            _fnShowLevel3NotReadyModal(dictReady);\n'
+            '            return;\n'
+            '        }\n'
+        ),
+        new=(
+            '        _fnShowLevel3NotReadyModal(dictReady || {});\n'
+            '        return;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_failed_deposit_leaves_the_row_the_state_the_envelope_'
+            'earns'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        # RE-ANCHORED 2026-09-29: the live phases are now asked of
+        # archiveProgress.fbPhaseIsLive; the mutation is unchanged.
+        old=(
+            '    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) '
+            'else ""\n'
+        ),
+        new=(
+            '    if sPhase == archiveProgress.S_PHASE_FAILED:\n'
+            '        return "uncheckable"\n'
+            '    return "checking" if archiveProgress.fbPhaseIsLive(sPhase) '
+            'else ""\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_a_regeneration_of_the_same_image_keeps_the_deposit_record'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # RE-ANCHORED 2026-09-27: the carried keys now include the
+        # lineage note; the mutant still carries nothing.
+        old=(
+            '    for sKey in (\n'
+            '        "dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY, '
+            'S_ARCHIVE_LINEAGE_KEY,\n'
+            '    ):\n'
+        ),
+        new='    for sKey in ():\n',
+    ),
+    Falsification(
+        nodeid='tests/testReproductionSource.py::test_rule_2_a_tag_instead_of_a_digest_refuses',
+        source='vaibify/reproducibility/reproductionSource.py',
+        # RE-ANCHORED 2026-09-26: the refusal now carries a plain reason.
+        old='    except ShadowRerunRefusedError as error:\n        raise ReproductionSourceRefusedError(\n            f"rule 2 (environment envelope): {error}",\n            "This copy of the project does not name the author\'s image "\n            "exactly, so vaibify cannot obtain it.",\n        ) from error\n',
+        new='    except ShadowRerunRefusedError:\n        sPinned = ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchive.py::'
+            'test_the_deposit_sends_the_fields_zenodo_requires'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # The reported bug exactly: vaibify's Hungarian metadata shape
+        # posted straight to Zenodo, refused for three missing
+        # required fields AFTER the image had been saved and
+        # compressed.
+        # RE-ANCHORED 2026-09-27: the metadata is built once, before
+        # the draft, so the new-version lane can set it too.
+        old=(
+            '    dictApiMetadata = zenodoClient.fdictBuildApiMetadata(\n'
+            '        imageArchive.fdictStampDepositMetadata(dictMetadata, '
+            'dictRecord),\n'
+            '        S_IMAGE_UPLOAD_TYPE,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictApiMetadata = imageArchive.fdictStampDepositMetadata('
+            'dictMetadata, dictRecord)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_saved_answer_is_shown_back_in_the_form'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # leaves every radio blank, so a recorded answer reads as a save
+        # that did not take
+        old='            dictChoice.bChecked = dictChoice.sValue === sSelected;\n',
+        new='            dictChoice.bChecked = false;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_derived_image_is_labelled_with_the_set_in_canonical_order'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the label is stamped in BUILD order, which its parser refuses
+        old=(
+            '        listLabelOverlays = flistCanonicalizeOverlaySet(\n'
+            '            list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1]),\n'
+            '        )\n'
+        ),
+        new=(
+            '        listLabelOverlays = (\n'
+            '            list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1])\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTheArchiveIsAskedWhatItStored.py::'
+            'test_a_disagreeing_archive_costs_a_draft_and_never_a_doi'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # The deposit hands back a record over an archive nobody
+        # asked, which is the state this feature exists to end.
+        # RE-ANCHORED 2026-09-27: the call names the versioned lane.
+        old=(
+            '        fnRefuseUnlessArchiveHoldsWhatWeSent(\n'
+            '            clientZenodo, iDepositId, dictRecord,\n'
+            '            bVersioned=bool(iParentDepositId),\n'
+            '        )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_only_pinned_files_that_differ_from_head_are_listed'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # every changed tracked file is listed, pinned or not
+        old='        if sPath in setPinnedPaths\n',
+        new='        if sPath or setPinnedPaths\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_regenerated_manifest_is_itself_listed'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the manifest no longer pins itself
+        old='    setPinnedPaths.add(_S_MANIFEST_RELATIVE_PATH)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_the_restore_writes_the_committed_bytes_and_nothing_else'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the restore reaches the index, never the working tree
+        old='         "--worktree", "--", *listBatch],\n',
+        new='         "--staged", "--", *listBatch],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_pinned_name_that_looks_like_a_pattern_restores_only_itself'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # a pinned name is read as a pattern that matches unpinned work
+        old='        ["--literal-pathspecs", "restore", "--source=HEAD",\n',
+        new='        ["restore", "--source=HEAD",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_the_restore_refuses_the_researchers_own_directory'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the restore runs in the researcher's own directory
+        old=(
+            '    if filesRepo.fsLocalRootOrNone() is not None:\n'
+            '        raise CommittedFilesUndeterminedError(\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise CommittedFilesUndeterminedError(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFiles.py::'
+            'test_a_path_that_is_not_pinned_is_never_restored'
+        ),
+        source='vaibify/reproducibility/committedFiles.py',
+        # the caller's list is trusted instead of re-asked
+        old=(
+            '        sPath for sPath in listPathsToRestore '
+            'if sPath in setStillDiffering\n'
+        ),
+        new='        sPath for sPath in listPathsToRestore\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommittedFileRoutes.py::'
+            'test_the_seed_restores_only_within_the_entries_it_copied'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # every pinned path counts as copied, so an excluded one returns
+        old='            return True\n    return False\n',
+        new='            return True\n    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testWizardStartsFromCommittedFiles.py::'
+            'test_the_reader_can_start_the_container_from_the_committed_files'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # RE-ANCHORED 2026-09-27: the choice rides the conversion into
+        # the registry and the first start copies it; the mutant drops
+        # it there, where the seed now reads it.
+        old=(
+            '                    "bRestoreCommittedFiles": bool(\n'
+            '                        request.bRestoreCommittedFiles),\n'
+        ),
+        new='                    "bRestoreCommittedFiles": False,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testVerifyOffersCommittedRestore.py::'
+            'test_a_foreign_manifest_is_offered_the_committed_files_then_the_copy'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the pre-flight goes straight to the regenerate checklist
+        old=(
+            '            if (await _fbOfferCommittedFileRestore(\n'
+            '                    dictReady, fnOnConfirm, elButton)) {\n'
+            '                return;\n'
+            '            }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_refusal_is_said_in_the_researchers_words_first'
+        ),
+        source='vaibify/reproducibility/reproductionSource.py',
+        # the plain field carries the rule text again
+        old=(
+            '                (error.sPlainReason or "vaibify cannot obtain the "\n'
+        ),
+        new=(
+            '                (str(error) or "vaibify cannot obtain the "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_zstd_deposit_this_python_cannot_open_is_refused_before_downloading'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the codec is asked only after the whole archive is fetched
+        old=(
+            '        _fnRefuseWithoutACodecFor(str(dictRecord.get('
+            '"sTarballName") or ""))\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFailureToastOffersADiagnosis.py::'
+            'testTheDiagnosisOpensWithTheFailureItself'
+        ),
+        source='vaibify/gui/static/scriptDiagnosis.js',
+        # the report again shows only the machine's checks
+        old='        if (!sFailure) return "";\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAFailureToastOffersADiagnosis.py::'
+            'testSelectingAToastsTextDoesNotOpenTheDiagnosis'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the click that ends a selection acts again
+        old='                if (_fbSelectionEndsInside(el)) return;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_acquisition_failure_is_reported_whole'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the acquisition message is cut the way the build one is
+        old='            f"{error}"\n',
+        new='            f"{str(error)[:240]}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageAcquisition.py::'
+            'test_a_zstd_archive_loads_on_a_client_that_iterates_the_upload'
+        ),
+        source='vaibify/docker/disposableContainer.py',
+        # the daemon is handed the decompressing reader itself
+        old='            dockerDisposable.images.load(fiterReadInChunks(fileStream)) or [],\n',
+        new='            dockerDisposable.images.load(fileStream) or [],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_files_a_conversion_chose_stay_pending_until_copied'
+        ),
+        source='vaibify/gui/routes/fileRoutes.py',
+        # the pending request seeds from its own (empty) fields
+        old='    if not request.bApplyPending:\n',
+        new='    if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_the_wizard_reads_the_authors_agents_the_way_the_conversion_does'
+        ),
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        # the page reads the author's agents from vaibify.yml alone again
+        old='        listAuthorOverlays=_flistCandidateOverlaysOrEmpty(dictProject),\n',
+        new=(
+            '        listAuthorOverlays=[sKey for sKey, bOn in '
+            '_fdictReadAuthorFeatures(dictProject["sConfigPath"]).items() '
+            'if bOn is True],\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCompareManifests.py::'
+            'test_each_file_outcome_reads_at_the_panel_width'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        # the verdict is squeezed into a sliver, as the table did
+        old='.file-outcome-word {\n    white-space: nowrap;\n}\n',
+        new=(
+            '.file-outcome-word {\n    display: inline-block;\n'
+            '    width: 2ch;\n    word-break: break-all;\n}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_changed_image_keeps_the_record_it_was_archived_under'
+        ),
+        source='vaibify/reproducibility/environmentSnapshot.py',
+        # the lineage goes with the record when the image changes
+        old='            return _fdictWithArchiveLineage(dictPrevious, dictFresh)\n',
+        new='            return dictFresh\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_new_image_on_the_same_service_is_a_new_version'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # every deposit opens a fresh record again
+        old=(
+            '    iParentDepositId = fiParentDepositIdOnService(\n'
+            '        dictParentArchive, clientZenodo.sService,\n'
+            '    )\n'
+        ),
+        new='    iParentDepositId = 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageArchiveVersioning.py::'
+            'test_a_new_version_still_holding_the_old_image_is_never_published'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # a new-version draft is not asked for leftover files
+        old='    if bVersioned:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_permanent_earlier_deposit_is_continued_as_a_new_version'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # a continuable permanent record is recommended a duplicate
+        old='        return S_CHOICE_NEW_VERSION\n',
+        new='        return S_CHOICE_NEW_RECORD_PERMANENT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_sandbox_earlier_deposit_is_recommended_a_new_permanent_'
+            'record'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # any continuable record is recommended a new version
+        old=(
+            '        dictPrevious["sPermanence"]\n'
+            '        == archivePermanence.S_PERMANENCE_PERMANENT\n'
+        ),
+        new='        True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_new_record_starts_fresh_even_on_the_zenodo_holding_the_'
+            'last'
+        ),
+        source='vaibify/reproducibility/archiveDepositPlan.py',
+        # every choice continues the earlier record, as the route once did
+        old='            if sChoice == S_CHOICE_NEW_VERSION else {}\n',
+        new='            if True else {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_the_chosen_destination_reaches_the_upload'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # the upload goes where the project setting says, not the row
+        old=(
+            '            ZenodoClient(dictDestination["sZenodoService"], '
+            'sToken=sToken),\n'
+        ),
+        new=(
+            '            ZenodoClient(dictWorkflow.get("sZenodoService") or '
+            '"sandbox", sToken=sToken),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_a_referenced_doi_is_looked_up_on_the_zenodo_it_names'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # a permanent DOI is looked for on the sandbox
+        old='        zenodoClient.fsServiceForDoi(sVersionDoi),\n',
+        new='        "sandbox",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testArchiveDepositPlan.py::'
+            'test_the_row_payload_ships_the_plan'
+        ),
+        source='vaibify/gui/pipelineServer.py',
+        old=(
+            '        "dictDepositPlan": archiveDepositPlan.fdictBuildDepositPlan(\n'
+        ),
+        new=(
+            '        "dictDepositPlanDropped": '
+            'archiveDepositPlan.fdictBuildDepositPlan(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_deposit_with_no_choice_is_refused_before_any_token_is_read'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        # a missing choice quietly becomes a new permanent record
+        old='    sChoice = str((dictBody or {}).get("sChoice") or "").strip()\n',
+        new=(
+            '    sChoice = str((dictBody or {}).get("sChoice") or '
+            '"new-record-permanent").strip()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_a_deposit_asks_the_slot_of_the_chosen_destination'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old=(
+            '            dictCtx["docker"], sContainerId,\n'
+            '            dictDestination["sZenodoService"],\n'
+        ),
+        new=(
+            '            dictCtx["docker"], sContainerId,\n'
+            '            dictWorkflow.get("sZenodoService") or "sandbox",\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_row_names_the_earlier_deposit_and_marks_the_'
+            'recommendation'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        # the earlier deposit and the recommendation vanish from the row
+        old='        var sHtml = _fsRenderArchiveGuidance(dictArchive) +\n',
+        new='        var sHtml = "" +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_button_names_the_option_the_researcher_clicked'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        # a click on an option no longer reaches the button
+        old=(
+            '        ".environment-archive-answer": '
+            '_fnHandleEnvironmentArchiveChoice,\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_the_deposit_sends_the_choice_only_after_a_confirmation_'
+            'naming_it'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # the confirmation stops naming the destination
+        old=(
+            '                ? dictAction.dictConfirm.fsMessageFromElement'
+            '(elButton)\n'
+        ),
+        new='                ? ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_an_upload_arrives_whole_with_its_length_declared'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # requests can no longer size the body
+        old='    def __len__(self):\n        return self._iBytesTotal\n\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_a_dropped_connection_is_retried_from_the_start'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        old='_I_UPLOAD_ATTEMPTS = 3\n',
+        new='_I_UPLOAD_ATTEMPTS = 1\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_an_upload_shows_its_bytes_and_a_restarted_attempt'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '                fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +\n'
+        ),
+        new='                fnEscapeHtml("Uploading to Zenodo") +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_every_step_of_a_deposit_names_itself_in_order'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        # the draft is prepared under the finished save's message
+        old=(
+            '    if fnReportPreparingDraft is not None:\n'
+            '        fnReportPreparingDraft()\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_every_step_between_the_counters_names_itself'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        var sStep = _DICT_DEPOSIT_STEP_SENTENCES[dictDeposit.sPhase];\n',
+        new='        var sStep = "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_each_failed_attempt_is_reported_with_how_far_it_got'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        old=(
+            '            if fnReportAttemptFailed is not None:\n'
+            '                fnReportAttemptFailed(dictAttempt)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_failed_attempts_outlive_the_deposit_and_not_the_next_one'
+        ),
+        source='vaibify/gui/archiveProgress.py',
+        old=(
+            '            "listAttempts": [\n'
+            '                dict(dictAttempt)\n'
+            '                for dictAttempt in dictEntry.get("listAttempts") or []\n'
+            '            ],\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheEnvironmentArchiveRowTellsItsStatesApart.py::'
+            'test_a_failed_deposit_keeps_every_attempt_on_the_row'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return _fsRenderFailedUploadAttempts(dictDeposit) +\n',
+        new='        return "" +\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoUploadResilience.py::'
+            'test_the_upload_hands_the_connection_large_blocks'
+        ),
+        source='vaibify/reproducibility/zenodoClient.py',
+        # back to the 8 KB blocks http.client asks for
+        old='            iSize if bReadAll else max(iSize, _CHUNK_SIZE),\n',
+        new='            iSize,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_a_stop_mid_upload_publishes_nothing_and_discards_the_draft'
+        ),
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old='    archiveProgress.fnRaiseIfStopRequested(sContainerId)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_a_stop_cannot_land_once_the_publish_has_begun'
+        ),
+        source='vaibify/gui/archiveProgress.py',
+        old='            or dictEntry.get("sPhase") == S_PHASE_PUBLISHING\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveStop.py::'
+            'test_an_abandoned_save_kills_and_reaps_docker_save'
+        ),
+        source='vaibify/reproducibility/imageDeposit.py',
+        old='        processSave.kill()\n        processSave.wait()\n        raise\n',
+        new='        raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheArchiveRowNamesWhereADepositGoes.py::'
+            'test_stop_asks_first_then_sends_the_stop'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '            _fsRenderDepositPhase(dictDeposit) +\n'
+            '            _fsRenderDepositStopControl(dictArchive);\n'
+        ),
+        new='            _fsRenderDepositPhase(dictDeposit);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testASettledAttestationRechecksTheRemotes.py::'
+            'test_a_settled_verification_rechecks_the_remotes_once'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            _fnRecheckRemotesWhenAttestationSettles(\n'
+            '                bAttestationWasRunning,\n'
+            '                dictStatus.dictWorkflowEnvelopeDetail);\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoPublishWhereTheRecordIs.py::'
+            'test_a_new_version_keeps_the_chain_and_publishes_where_the_'
+            'record_is'
+        ),
+        source='vaibify/gui/routes/syncRoutes.py',
+        old=(
+            '        dictWorkflow["sZenodoService"] = '
+            'dictCrossInstance["sRecordedService"]\n'
+        ),
+        new=(
+            '        dictWorkflow["sZenodoService"] = '
+            'dictCrossInstance["sTargetService"]\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheZenodoRowOffersBothRemedies.py::'
+            'test_a_record_on_the_other_zenodo_offers_both_remedies'
+        ),
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '            _fsRenderActionButton(\n'
+            '                "publish-where-the-zenodo-record-is", "",\n'
+            '                "Deposit a new version\\u2026") +\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testEnvironmentArchiveRoutes.py::'
+            'test_the_agent_check_compares_the_live_image_with_the_envelopes_pin'
+        ),
+        # The layer check is asked about an empty pin.
+        source='vaibify/gui/routes/environmentArchiveRoutes.py',
+        old='        str(dictContainer.get("sImageDigest") or ""),\n        fdictCaptureLiveImageIdentity(sContainerId),\n',
+        new='        "",\n        fdictCaptureLiveImageIdentity(sContainerId),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_layer_check_that_cannot_run_refuses_and_tags_nothing'
+        ),
+        # A check that could not run no longer refuses: its own error escapes.
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        old='    except AgentLayerSeparationError as errorCheck:\n',
+        new='    except ZeroDivisionError as errorCheck:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageReproducibilityImageAcquisition.py::'
+            'testAZstdTarballWithoutACodecIsRefused'
+        ),
+        # A zstd deposit with no codec is no longer refused.
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if imageDeposit._ftResolveZstdCodec() is None:\n        raise ImageAcquisitionRefusedError(\n            "the deposit is zstd-compressed',
+        new='    if False:\n        raise ImageAcquisitionRefusedError(\n            "the deposit is zstd-compressed',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_dockerfile_header_naming_no_agents_beats_a_config_that_lists_them'
+        ),
+        # The candidate is read from vaibify.yml first; the header never wins.
+        source='vaibify/gui/pinnedEnvironmentConversion.py',
+        old='    if listFromHeader is not None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageReproducibilityImageAcquisition.py::'
+            'testAFailedArchiveFollowedByALocalCopyReadsAsLocalNeverArchive'
+        ),
+        # The local link's success is reported as the archive.
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='        return sPinnedReference, S_OBTAINED_LOCAL\n',
+        new='        return sPinnedReference, S_OBTAINED_ARCHIVE\n',
     ),
 ]

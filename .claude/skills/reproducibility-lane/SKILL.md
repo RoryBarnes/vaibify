@@ -408,6 +408,33 @@ fail and every transition after a stop reads its answer
 (`fnStopContainer` returns it) -- a stop that failed must never let a
 retag, a cleared origin record or a build through.
 
+**The envelope pins the agent-free ENVIRONMENT, never the coding
+agents (ruled 2026-09-28).** Agents write code and compute nothing, so
+the pin -- and with it the shadow rerun, `reproduce.sh`, the deposit
+and a reader's acquisition -- is the build stage below the first agent,
+and a reader brings their own agents. Five things not to undo, each
+kill-confirmed. Every stage's `vaibify-overlays` and recipe labels
+describe THAT stage (`test_each_stage_is_labelled_with_what_it_holds`);
+stamping the whole chain's list on every stage is how `:base` came to
+claim agents it did not hold. Agent and prerequisite stages name the
+agent-free stage in `vaibify-environment-image-id` and every other
+stage stamps it EMPTY, so no stage inherits a value through `FROM`.
+`fsResolveEnvironmentImageId` trusts the label only after the named
+image's layers prove a prefix of the running image's, and an
+environment it cannot vouch for pins NOTHING with `sUnpinnedReason` --
+falling back to the running image would publish the agents while every
+record said otherwise. `agentLayerSeparation` reads the agents' layers
+out of `docker save`, naming blobs by UNCOMPRESSED sha256 (the
+containerd store gzips them and writes the manifest last; tiny empty
+layers are real layers -- a size cut-off reported real images as
+unreadable) and refuses on five rules before a deposit saves a byte
+and before a reader's stacked agents are tagged; an unrun check
+refuses too. And the deposit refuses a pin whose own label names
+agents. Currency reads a pin on the environment below the live image
+as `sRelation: "derived"`, the note obtained images already use.
+`tests/testAgentLayerSeparation.py`,
+`tests/testEnvironmentSnapshot.py`, `tests/testDockerfileProvenance.py`.
+
 
 ## A human step's outputs are GIVEN, not reproduced
 

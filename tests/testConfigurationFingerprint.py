@@ -140,6 +140,13 @@ def testAnUnlabelledImageIsNeverReportedAsDrifted():
     assert any("Rebuild" in sLine for sLine in listLines), (
         "a drift warning must name its remedy"
     )
+    sAll = " ".join(listLines)
+    assert "Admin \u2192 Environments" in sAll, (
+        "Rebuild lives on the Environments hub, not the Project hub"
+    )
+    assert "Environment snapshot" in sAll, (
+        "and say WHERE the buttons that apply it are"
+    )
 
 
 def testTheBuildStampsTheConfigurationLabel():
@@ -230,4 +237,43 @@ def testTheReadinessPayloadKeepsDriftOutOfTheStartWarnings():
     assert 'saWarnings' not in sRoutes[iAssignment:iAssignment + 200], (
         "drift must ride its own key; the warnings list is headed "
         "\"from the most recent container start\" and this is not"
+    )
+
+
+@pytest.mark.falsification
+def testAFreshBuildStampsTheFileItWasBuiltFrom(tmp_path):
+    """The fingerprint a build stamps equals the file it read, project repo and all.
+
+    Driven through real ``git``: the build adds the project's own
+    repository to the list the entrypoint clones, reading the remote
+    out of the project directory. That addition once landed on the
+    config object the fingerprint is computed from, so a project that
+    did not list its own repository -- nearly every one -- was stamped
+    with a fingerprint its ``vaibify.yml`` could never match, and every
+    freshly built container said it predated that file
+    (researcher-reported, 2026-09-28).
+
+    Kills: preparing the build context on the caller's config object.
+    """
+    import subprocess
+    from vaibify.cli.commandBuild import fnPrepareBuildContext
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    pathProject = tmp_path / "project"
+    pathProject.mkdir()
+    subprocess.run(["git", "init", "-q", str(pathProject)], check=True)
+    subprocess.run(
+        ["git", "-C", str(pathProject), "remote", "add", "origin",
+         "https://example.org/owner/project.git"], check=True,
+    )
+    pathConfig = pathProject / "vaibify.yml"
+    pathConfig.write_text("projectName: probe\npythonVersion: '3.12'\n")
+    pathContext = tmp_path / "context"
+    pathContext.mkdir()
+    configBuilt = fconfigLoadFromPath(str(pathConfig))
+    fnPrepareBuildContext(configBuilt, str(pathContext), str(pathProject))
+    assert "https://example.org/owner/project.git" in (
+        pathContext / "container.conf"
+    ).read_text(), "the container must still be told to clone the project"
+    assert fsComputeConfigurationFingerprint(configBuilt) == (
+        fsComputeConfigurationFingerprint(fconfigLoadFromPath(str(pathConfig)))
     )

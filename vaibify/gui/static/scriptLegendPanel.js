@@ -71,7 +71,9 @@ var VaibifyLegendPanel = (function () {
                 "regression-warning-orange",
             sLabel: "Warning column, orange — something changed " +
                 "since verification (script, outputs, an earlier " +
-                "step) or a level regressed; hover for the reasons",
+                "step, the container's image) or needs a look (a " +
+                "deposit that is not permanent); the level cells " +
+                "keep their state; hover for the reasons",
         },
         {
             sIcon: "⚠", sClass: "l1-blocker-file-glyph",

@@ -65,6 +65,7 @@ from vaibify.gui.registryRoutes import (
 )
 from vaibify.reproducibility import shadowRerun
 from vaibify.reproducibility.dockerfileComposer import (
+    S_ENVIRONMENT_IMAGE_LABEL,
     S_OVERLAYS_IMAGE_LABEL,
     S_RECIPE_IMAGE_LABEL,
     flistExtractOverlayOrder,
@@ -196,7 +197,11 @@ def test_the_build_stamps_the_overlays_label_beside_the_recipe():
     assert f"{S_OVERLAYS_IMAGE_LABEL}=node,claude" in listArguments
     assert _flistRecipeLabelArguments("", []) == [
         "--label", f"{S_OVERLAYS_IMAGE_LABEL}=",
+        "--label", f"{S_ENVIRONMENT_IMAGE_LABEL}=",
     ]
+    assert f"{S_ENVIRONMENT_IMAGE_LABEL}=sha256:e" in _flistRecipeLabelArguments(
+        "", ["claude"], "sha256:e",
+    )
     assert _flistRecipeLabelArguments("", None) == []
 
 
@@ -363,6 +368,23 @@ def _fdictRegisterObtainedProject(tmp_path, listAuthorOverlays, listAdditional,
     return registryManager.fdictGetProject("proj")
 
 
+def _flistPatchTheSeparationCheck(monkeypatch, listViolations=()):
+    """Answer the layer check without a daemon; return the calls it saw."""
+    listChecked = []
+
+    def fdictCheck(sEnvironmentImageId, sAgentImageId):
+        listChecked.append((sEnvironmentImageId, sAgentImageId))
+        return {
+            "listViolations": list(listViolations), "iAgentLayers": 1,
+            "iAddedPaths": 1,
+        }
+    monkeypatch.setattr(
+        "vaibify.reproducibility.agentLayerSeparation."
+        "fdictCheckAgentLayerSeparation", fdictCheck,
+    )
+    return listChecked
+
+
 def _fnPatchTheChain(monkeypatch, listAcquisitionCalls):
     monkeypatch.setattr(
         pinnedImageAcquisition, "_fdictRecheckTheClone",
@@ -452,10 +474,129 @@ def test_the_origin_record_is_written_last(tmp_path, monkeypatch):
         pinnedImageAcquisition, "_fnWriteAgentInstallKeys",
         lambda *aArgs: (_ for _ in ()).throw(OSError("disk full")),
     )
+    _flistPatchTheSeparationCheck(monkeypatch)
     with pytest.raises(OSError):
         fdictAcquireForProject(dictProject, False, dockerDisposable=store)
     assert store.dictHeld[S_DERIVED_ID].listTags == ["proj:latest"]
     assert fdictReadOriginRecord("proj") is None
+
+
+@pytest.mark.falsification
+def test_added_agents_that_reach_the_environment_are_never_tagged(
+    tmp_path, monkeypatch,
+):
+    """The reader's agents are checked against the author's image before the tag.
+
+    Kills: skipping the layer check on a stacked image.
+    """
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
+    _fnPatchTheChain(monkeypatch, [])
+    store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
+    store.dictHeld[S_DERIVED_ID] = _FakeImage(
+        S_DERIVED_ID, {S_PINNED_BASE_LABEL: S_BASE_ID},
+    )
+    monkeypatch.setattr(
+        pinnedImageAcquisition, "_fsStackAndResolve",
+        lambda *aArgs, **kwargs: S_DERIVED_ID,
+    )
+    listChecked = _flistPatchTheSeparationCheck(monkeypatch, [
+        {"sRule": "shadows", "sPath": "/usr/local/bin/python3", "sDetail": "d"},
+    ])
+    with pytest.raises(PinnedImageAcquisitionRefusedError) as excinfo:
+        fdictAcquireForProject(dictProject, False, dockerDisposable=store)
+    assert listChecked == [(S_BASE_ID, S_DERIVED_ID)]
+    assert "/usr/local/bin/python3" in str(excinfo.value)
+    assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
+    assert store.dictHeld[S_DERIVED_ID].listTags == []
+    assert fdictReadOriginRecord("proj") is None
+
+
+@pytest.mark.falsification
+def test_a_layer_check_that_cannot_run_refuses_and_tags_nothing(
+    tmp_path, monkeypatch,
+):
+    """An unrun check establishes nothing, so the stacked image is not tagged.
+
+    Kills: letting the check's own error escape instead of refusing.
+    """
+    from vaibify.reproducibility.agentLayerSeparation import (
+        AgentLayerSeparationError,
+    )
+    dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
+    _fnPatchTheChain(monkeypatch, [])
+    store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
+    store.dictHeld[S_DERIVED_ID] = _FakeImage(
+        S_DERIVED_ID, {S_PINNED_BASE_LABEL: S_BASE_ID},
+    )
+    monkeypatch.setattr(
+        pinnedImageAcquisition, "_fsStackAndResolve",
+        lambda *aArgs, **kwargs: S_DERIVED_ID,
+    )
+
+    def fdictCannotRun(sEnvironmentImageId, sAgentImageId):
+        raise AgentLayerSeparationError("could not inspect the image")
+
+    monkeypatch.setattr(
+        "vaibify.reproducibility.agentLayerSeparation."
+        "fdictCheckAgentLayerSeparation", fdictCannotRun,
+    )
+    with pytest.raises(PinnedImageAcquisitionRefusedError) as excinfo:
+        fdictAcquireForProject(dictProject, False, dockerDisposable=store)
+    assert "could not be checked" in str(excinfo.value)
+    assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
+    assert store.dictHeld[S_DERIVED_ID].listTags == []
+
+
+@pytest.mark.falsification
+def test_a_dockerfile_header_naming_no_agents_beats_a_config_that_lists_them(
+    tmp_path,
+):
+    """An agent-free image is accepted and the reader's agents stack on top.
+
+    Kills: reading vaibify.yml before the Dockerfile header.
+
+    The header says the author's image holds no overlays while the
+    committed vaibify.yml enables agents; the header is the claim about
+    the image, so the candidate is empty and the requested agents are
+    ADDITIONS the reader chose.
+    """
+    from types import SimpleNamespace
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictBuildArchiveImageSource,
+    )
+    dictProject = _fdictRegisterObtainedProject(tmp_path, [], [])
+    with open(os.path.join(dictProject["sDirectory"], "Dockerfile"), "w") as fileHandle:
+        fileHandle.write(
+            "# vaibify:generated-image-dockerfile\n"
+            "#   base + overlays in order: (none)\n"
+        )
+    dictSource = fdictBuildArchiveImageSource(
+        dictProject,
+        SimpleNamespace(listFeatures=["claude", "gemini"], bAllowEmulation=True),
+    )
+    assert dictSource["listAuthorOverlays"] == []
+    assert dictSource["listAdditionalAgents"] == ["claude", "gemini"]
+
+
+def test_a_stock_install_below_python_3_14_declares_a_zstd_codec():
+    """The archive deposit is zstd; a reader needs the codec in a stock install.
+
+    The wheel is a runtime dependency below 3.14 (where the standard
+    library has the codec), never only a dev extra: a reader refused
+    after the full download was the failure on a stock install.
+    """
+    import re
+    import sys
+    from vaibify.reproducibility import imageDeposit
+    sPyproject = open(
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml"),
+        encoding="utf-8",
+    ).read()
+    sRuntimeBlock = sPyproject.split("dependencies = [", 1)[1].split("]", 1)[0]
+    assert re.search(
+        r'"zstandard>=[0-9.]+; python_version < \'3\.14\'"', sRuntimeBlock,
+    )
+    assert imageDeposit._ftResolveZstdCodec() is not None, sys.version
 
 
 def test_a_changed_pin_refuses_before_anything_is_obtained(tmp_path, monkeypatch):
@@ -772,6 +913,31 @@ def test_the_pinned_environment_is_described_from_the_clone(tmp_path):
     ] is False
 
 
+@pytest.mark.falsification
+def test_a_refusal_is_said_in_the_researchers_words_first(tmp_path):
+    """Kills: showing the rule text where the researcher's sentence belongs.
+
+    The Environment page is read before anything has run, by someone
+    who has never met "rule 2" -- and the rule's own remedy (regenerate
+    the envelope) would rewrite a published clone's record. The plain
+    sentence names the cause and the one check a reader can make; the
+    rule stays available as the detail.
+    """
+    sRepo = str(tmp_path / "clone")
+    dictEnvelope = fdictBuildEnvelope()
+    dictEnvelope["dictContainer"].pop("sArchitecture")
+    fnWriteJson(sRepo, ".vaibify/environment.json", dictEnvelope)
+    dictRefused = fdictDescribePinnedEnvironment(sRepo)
+    sPlain = dictRefused["sPlainRefusal"]
+    assert "kind of processor" in sPlain
+    assert "git status" in sPlain
+    assert "rule 2" not in sPlain and "Regenerate" not in sPlain
+    assert dictRefused["sRefusal"].startswith("rule 2")
+    assert fdictDescribePinnedEnvironment(str(tmp_path / "nowhere"))[
+        "sPlainRefusal"
+    ].startswith("This folder has no record")
+
+
 def test_the_conversion_result_names_the_acquire_hand_off(tmp_path):
     _fdictRegisterObtainedProject(tmp_path, [], [])
     dictResult = registryRoutes._fdictConversionResult("proj", True)
@@ -787,6 +953,16 @@ def test_the_conversion_result_names_the_acquire_hand_off(tmp_path):
 # Review findings (2026-09-12): the label is a SET, the refusal offers
 # its recovery, and a transition needs the container gone
 # ---------------------------------------------------------------------
+
+
+def _fdictLabelsOfBuild(saCommand):
+    """Return the ``--label`` pairs one docker build argv stamps."""
+    dictLabels = {}
+    for iIndex, sArgument in enumerate(saCommand):
+        if sArgument == "--label":
+            sKey, _, sValue = saCommand[iIndex + 1].partition("=")
+            dictLabels[sKey] = sValue
+    return dictLabels
 
 
 def _fnPatchTheBuildContext(monkeypatch, tmp_path):
@@ -816,6 +992,10 @@ def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
     ``flistParseOverlaysLabel`` (reproduced), and an image so labelled
     could never again be acquired as a pinned image.
 
+    Each stage is labelled with the set it holds SO FAR, and names the
+    obtained base as its environment image: whatever is stacked on the
+    author's pin, the pin stays the environment.
+
     Kills: stamping ``listProven + listChain`` as the label.
     """
     dictProject = _fdictRegisterObtainedProject(tmp_path, ["claude"], ["gemini"])
@@ -824,25 +1004,33 @@ def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
     store = _FakeStore({S_OVERLAYS_IMAGE_LABEL: "claude"})
     sDerivedId = "sha256:" + "d" * 64
     store.dictHeld[sDerivedId] = _FakeImage(sDerivedId, {})
-    listStackCalls = []
-
-    def fsStack(sProjectName, sBaseImageId, listChain, sStagedDir, sPlatform,
-                listLabelOverlays, bNoCache=False):
-        listStackCalls.append((list(listChain), list(listLabelOverlays)))
-        return sDerivedId
-    monkeypatch.setattr(imageBuilder, "fsStackOverlaysOnObtainedBase", fsStack)
+    store.dictHeld["proj:gemini"] = store.dictHeld[sDerivedId]
+    listBuildCommands = []
+    monkeypatch.setattr(
+        imageBuilder, "_fnRunDockerBuild",
+        lambda saCommand: listBuildCommands.append(list(saCommand)),
+    )
+    _flistPatchTheSeparationCheck(monkeypatch)
     dictRecord = fdictAcquireForProject(
         dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
     )
-    listChain, listLabel = listStackCalls[0]
-    assert listChain == ["node", "gemini"], "build order: the prerequisite first"
+    listStages = [
+        _fdictLabelsOfBuild(saCommand) for saCommand in listBuildCommands
+    ]
+    assert [saCommand[saCommand.index("-t") + 1] for saCommand in
+            listBuildCommands] == ["proj:node", "proj:gemini"], (
+        "build order: the prerequisite first"
+    )
     listCanonical = imageBuilder.flistCanonicalizeOverlaySet(["claude", "node", "gemini"])
     assert listCanonical == ["node", "claude", "gemini"]
-    assert listLabel == listCanonical
-    assert listLabel != ["claude"] + listChain, "the label must not be build order"
-    assert flistParseOverlaysLabel(
-        fsRenderOverlaysLabelValue(listLabel), imageBuilder.flistCanonicalOverlayOrder(),
-    ) == listLabel
+    assert listStages[0][S_OVERLAYS_IMAGE_LABEL] == "node,claude"
+    assert listStages[1][S_OVERLAYS_IMAGE_LABEL] == "node,claude,gemini"
+    for dictLabels in listStages:
+        assert flistParseOverlaysLabel(
+            dictLabels[S_OVERLAYS_IMAGE_LABEL],
+            imageBuilder.flistCanonicalOverlayOrder(),
+        )
+        assert dictLabels[S_ENVIRONMENT_IMAGE_LABEL] == S_BASE_ID
     assert dictRecord["listResolvedOverlays"] == listCanonical
     assert dictRecord["sRunningImageId"] == sDerivedId
     assert registryManager.fdictGetProject("proj")["dictImageSource"][
@@ -877,7 +1065,7 @@ def test_the_retry_without_additions_drops_them_before_obtaining(
             dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
         )
     assert excinfo.value.sAction == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
-    assert buildRoutes._fdictBuildFailureDetail(excinfo.value, "", "proj")[
+    assert buildRoutes._fdictAcquisitionFailureDetail(excinfo.value, "proj")[
         "sAction"
     ] == S_ACTION_REOBTAIN_WITHOUT_ADDITIONS
     assert store.dictHeld[S_BASE_ID].listTags == [], "refused before tagging"
@@ -1162,3 +1350,115 @@ def test_a_container_fact_refusal_names_the_switch_for_a_built_clone(
         {}, None, {"bChecked": True, "bMatches": True},
         {"bDockerfileDescribesPinnedImage": True}, dictBuiltClone,
     ) == "digest"
+
+
+def test_a_registry_miss_reads_as_the_chain_working_not_a_failure():
+    """An archived-only image is never on a registry; that is not an error.
+
+    The first line of every such download used to read "registry pull:
+    failed" above a download that then succeeded. Docker's own words
+    stay, in brackets, for anyone diagnosing a registry that should
+    have answered.
+    """
+    from vaibify.docker.pinnedImageAcquisition import (
+        _fsDescribeAcquisitionEvent,
+    )
+    from vaibify.reproducibility.imageAcquisition import S_LINK_REGISTRY
+    sLine = _fsDescribeAcquisitionEvent({
+        "sPhase": "attempt", "sLink": S_LINK_REGISTRY,
+        "bSucceeded": False, "sDetail": "ImageNotFound: 404",
+    })
+    assert "failed" not in sLine
+    assert "no registry has this image" in sLine
+    assert "Docker said: ImageNotFound: 404" in sLine
+    sProgress = _fsDescribeAcquisitionEvent({
+        "sPhase": "downloading", "iBytes": 475505283,
+        "iTotalBytes": 951010566,
+    })
+    assert sProgress == (
+        "downloading the archived image: 476 MB of 951 MB (50%)"
+    )
+
+
+@pytest.mark.falsification
+def test_an_acquisition_failure_is_reported_whole():
+    """Kills: cutting the chain's refusal to the build formatter's 240 chars.
+
+    The chain names every source it tried, registry first. An archived
+    image is never on a registry, so that first reason is long and
+    always there -- and a cut at 240 characters removed exactly the
+    reasons the archived copy and the local copy gave, which are the
+    ones a researcher can act on (2026-09-26).
+    """
+    sRegistryMiss = (
+        "registry pull: failed (ImageNotFound: 404 Client Error for "
+        "http+docker://localhost/v1.56/images/create?tag=sha256%3A"
+        + "5" * 64 + "&fromImage=example&platform=linux%2Famd64: Not Found)"
+    )
+    errorRefused = PinnedImageAcquisitionRefusedError(
+        "the pinned image could not be obtained: no link of the chain "
+        "yielded example@sha256:" + "5" * 64 + ". Links tried: "
+        + sRegistryMiss + "; archived deposit: failed (the archive's "
+        "decisive reason); copy on this daemon: failed (no copy)."
+    )
+    sMessage = buildRoutes._fdictAcquisitionFailureDetail(
+        errorRefused, "proj")["sMessage"]
+    assert "the archive's decisive reason" in sMessage
+    assert sMessage.startswith("Obtaining the author's pinned image")
+    assert "Build of" not in sMessage
+
+
+@pytest.mark.falsification
+def test_the_files_a_conversion_chose_stay_pending_until_copied(tmp_path):
+    """Kills: seeding from the request instead of the recorded choice.
+
+    The wizard used to copy the chosen files itself, only when its own
+    first acquisition succeeded; a failed download followed by Re-obtain
+    from the tile opened an empty workspace (2026-09-26). The choice is
+    now recorded with the conversion, and whichever start succeeds
+    first asks for it.
+    """
+    from vaibify.gui.routes import fileRoutes
+    _fdictRegisterObtainedProject(tmp_path, [], [])
+    registryManager.fnSetPendingSeed("proj", {
+        "saRelativePaths": ["Step", "MANIFEST.sha256"],
+        "bRestoreCommittedFiles": True,
+    })
+    requestPending = fileRoutes.WorkspaceSeedRequest(bApplyPending=True)
+    assert fileRoutes._ftSeedChoice("proj", requestPending) == (
+        ["Step", "MANIFEST.sha256"], True,
+    )
+    registryManager.fnSetPendingSeed("proj", None)
+    assert fileRoutes._ftSeedChoice("proj", requestPending) is None
+    assert "dictPendingSeed" not in registryManager.fdictGetProject("proj")
+    requestExplicit = fileRoutes.WorkspaceSeedRequest(
+        saRelativePaths=["data"], bRestoreCommittedFiles=False,
+    )
+    assert fileRoutes._ftSeedChoice("proj", requestExplicit) == (
+        ["data"], False,
+    )
+
+
+@pytest.mark.falsification
+def test_the_wizard_reads_the_authors_agents_the_way_the_conversion_does(
+    tmp_path,
+):
+    """Kills: marking agents as the author's from vaibify.yml alone.
+
+    A published clone's Dockerfile header said the image was built with
+    no overlays while its vaibify.yml enabled Claude and Codex. The
+    page showed both as already installed; the conversion, reading the
+    header, asked to add them; the acquisition refused (2026-09-27).
+    """
+    from vaibify.gui.pinnedEnvironmentConversion import (
+        fdictDescribePinnedEnvironmentForWizard,
+    )
+    dictProject = _fdictRegisterObtainedProject(tmp_path, [], [])
+    with open(os.path.join(dictProject["sDirectory"], "Dockerfile"), "w") as fileHandle:
+        fileHandle.write(
+            "# vaibify:generated-image-dockerfile\n"
+            "#   base + overlays in order: (none)\n"
+        )
+    dictDescribed = fdictDescribePinnedEnvironmentForWizard(dictProject, None)
+    assert dictDescribed["dictAuthorFeatures"].get("claude") is True
+    assert dictDescribed["listAuthorOverlays"] == []

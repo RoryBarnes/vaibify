@@ -1047,6 +1047,48 @@ def _fnRegisterZenodoStartNewConcept(app, dictCtx):
         }
 
 
+def _fnRegisterZenodoPublishWhereTheRecordIs(app, dictCtx):
+    """Register POST /api/zenodo/{id}/publish-where-the-record-is."""
+
+    @ffnAgentAction("publish-where-the-zenodo-record-is")
+    @app.post("/api/zenodo/{sContainerId}/publish-where-the-record-is")
+    @ffnDeclareCarrierMode(
+        S_CARRIER_MODE_A_SYNCHRONOUS, S_CARRIER_MODE_B_LOCK_HELD,
+    )
+    async def fdictPublishWhereTheZenodoRecordIs(
+        sContainerId: str, requestHttp: Request,
+    ):
+        """Set the project to publish on the Zenodo holding its record.
+
+        The other remedy the cross-instance refusal names, and the one
+        that keeps the version chain: the next publish becomes a new
+        version of the recorded deposit. It writes the same declaration
+        the Zenodo settings dialog writes -- one click where there was
+        a dialog nobody could find (researcher-reported, 2026-09-29).
+        A researcher's choice, never a promotion's side effect: the
+        declaration is compared by Level 2, so it changes project.json,
+        and the next GitHub push and Zenodo publish carry it.
+        """
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        dictCrossInstance = syncBookkeeping.fdictDescribeCrossInstanceParent(
+            dictWorkflow, dictWorkflow.get("sZenodoService") or "sandbox",
+        )
+        if not dictCrossInstance:
+            raise HTTPException(409, (
+                "This project already publishes to the Zenodo that holds "
+                "its record, so there is nothing to change."
+            ))
+        dictWorkflow["sZenodoService"] = dictCrossInstance["sRecordedService"]
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "Publishing where the Zenodo record is",
+        )
+        return {"sZenodoService": dictCrossInstance["sRecordedService"]}
+
+
 def _fnClearPrimaryZenodoRecord(dictWorkflow):
     """Clear the recorded deposit's identifiers; keep the declaration."""
     dictZenodo = (
@@ -3554,6 +3596,7 @@ def fnRegisterAll(app, dictCtx):
     _fnRegisterZenodoArchive(app, dictCtx)
     _fnRegisterZenodoPromote(app, dictCtx)
     _fnRegisterZenodoStartNewConcept(app, dictCtx)
+    _fnRegisterZenodoPublishWhereTheRecordIs(app, dictCtx)
     _fnRegisterZenodoMetadata(app, dictCtx)
     _fnRegisterZenodoDeposit(app, dictCtx)
     _fnRegisterZenodoRecords(app, dictCtx)

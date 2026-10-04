@@ -90,7 +90,11 @@ class _FakeImages:
         return imagePulled
 
     def load(self, fileStream):
-        baData = fileStream.read()
+        # ITERATED, the way requests before 2.32 sends a body of
+        # unknown length -- the strictest real caller. Reading it with
+        # .read() is what let a zstd reader that refuses iteration pass
+        # here and fail on a researcher's machine.
+        baData = b"".join(fileStream)
         self._store.listLoaded.append(baData)
         if not self._store.bLoadable:
             raise RuntimeError("daemon refused the tarball")
@@ -979,3 +983,57 @@ def test_a_record_without_a_size_is_refused_before_any_fetch(tmp_path, monkeypat
             "iTarballBytes": 0,
         }, str(tmp_path), lambda dictStatus: None)
     assert "no size" in str(excinfo.value)
+
+
+@pytest.mark.falsification
+def test_a_zstd_deposit_this_python_cannot_open_is_refused_before_downloading(
+    monkeypatch,
+):
+    """Kills: dropping the codec check that runs before the download.
+
+    A hub with no zstd codec fetched the whole archive -- about a
+    gigabyte for a small project -- and only then refused to open it
+    (2026-09-26, on Python 3.10). The refusal must come first, name
+    the codec to install, and leave the download untouched.
+    """
+    monkeypatch.setattr(imageDeposit, "_ftResolveZstdCodec", lambda: None)
+
+    def fnDownloadMustNotRun(*args, **kwargs):
+        raise AssertionError("the archive was downloaded before the refusal")
+
+    monkeypatch.setattr(
+        imageAcquisition, "fsDownloadVerifiedTarball", fnDownloadMustNotRun,
+    )
+    listAttempts = []
+    sLoaded = imageAcquisition._fsArchiveServes(
+        None,
+        {"dictContainer": {"dictImageArchive": {
+            "sTarballName": "environment-image.tar.zst",
+        }}},
+        listAttempts, lambda dictEvent: None,
+    )
+    assert sLoaded == ""
+    sReason = str(listAttempts[-1])
+    assert "pip install zstandard" in sReason, sReason
+    assert "not downloaded" in sReason, sReason
+
+
+@pytest.mark.falsification
+def test_a_zstd_archive_loads_on_a_client_that_iterates_the_upload(tmp_path):
+    """Kills: handing the daemon the decompressing reader itself.
+
+    requests before 2.32 iterates an upload of unknown length, and
+    zstandard's reader raises UnsupportedOperation when iterated: the
+    whole archive downloaded, then "Connection aborted" (2026-09-26).
+    """
+    zstandard = pytest.importorskip("zstandard")
+    baTarball = b"an image tarball's bytes" * 4096
+    sPath = str(tmp_path / "environment-image.tar.zst")
+    with open(sPath, "wb") as fileHandle:
+        fileHandle.write(zstandard.ZstdCompressor().compress(baTarball))
+    store = FakeImageStore()
+    sLoaded = imageAcquisition._fsLoadTarball(
+        store, sPath, lambda dictEvent: None,
+    )
+    assert sLoaded == S_LOADED_IMAGE_ID
+    assert store.listLoaded == [baTarball]

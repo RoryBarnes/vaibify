@@ -634,6 +634,8 @@ def testASeedCopiesTheSelectionPlusTheGitDirectory(
         "bSuccess": True,
         "sDestination": "/workspace/hostProjectBravo",
         "iCopiedCount": 2,
+        "listRestoredPaths": [],
+        "sRestoreRefusal": "",
     }
     assert connectionDocker.listTreeWrites == [(
         "/workspace/hostProjectBravo",

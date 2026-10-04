@@ -2216,6 +2216,52 @@ what it does not contain is the kernel (containers use the host's),
 source for anything compiled, or the project itself, which lives in a
 runtime volume and is deposited separately.
 
+### The archive is the agent-free environment
+
+Nor does it contain the coding agents. They write code and compute
+nothing, so a reproduction must not need them — and a public deposit
+that carried one vendor's agent would tie a result to that vendor.
+The envelope therefore pins the build stage below the first coding
+agent, and everything that follows the pin (the shadow rerun,
+`reproduce.sh`, the deposit, a reader's acquisition) runs that image.
+
+Three mechanisms make the pin findable and the claim checkable.
+**Truthful stage labels**: `fnBuildImage` stamps each stage with the
+overlays IT holds and the recipe fingerprint of ITS prefix, where it
+used to stamp the whole chain's list on every stage (so the agent-free
+`:base` claimed agents it did not hold). Canonical order puts every
+environment overlay before every agent-side one, so the environment is
+always a prefix of the chain, which a test pins. **The environment
+label**: an agent or prerequisite stage carries
+`vaibify-environment-image-id` naming the agent-free stage's image ID,
+and every other stage carries it EMPTY, so a stage built FROM another
+vaibify image cannot inherit that image's value.
+`environmentSnapshot.fsResolveEnvironmentImageId` follows it only after
+confirming the named image's layers are a prefix of the running
+image's; a label the daemon cannot vouch for pins NOTHING (with
+`sUnpinnedReason`), because falling back to the running image would
+publish the agents while every record said otherwise. Currency reads a
+pin on the environment below the live image as `sRelation: "derived"`,
+the note obtained images already used; the rebuild-drift warning and
+the exported Dockerfile compare and compose from the environment too.
+**The layer check**: `reproducibility/agentLayerSeparation` streams
+`docker save` of the agents' image, names each blob by the sha256 of
+its uncompressed bytes (the diff ID `docker image inspect` lists —
+the containerd store compresses layers and writes the manifest last),
+and applies five rules to the layers above the environment: no
+overwrite or removal, no shadowed command, nothing added where a
+program searches, startup files gain only `PATH` prepends, settings
+unchanged but for `PATH`. It runs before a deposit saves a byte and
+before a reader's stacked agents are tagged, and an unrun check
+refuses, since it established nothing.
+
+Two limits are stated rather than hidden. The rules enumerate the
+search mechanisms vaibify knows; a pass is evidence, and the Level 3
+rerun — which regenerates the outputs in the agent-free image — is the
+proof. And agents update themselves at container start, writing into
+the home directory at run time where no image check reaches; the
+agent-free pin is why that cannot touch a verification.
+
 ### One row, two blocks, and the L3 half never reads the L2 answer
 
 | Block | Criterion | Passes on |
@@ -2233,7 +2279,10 @@ than a lock: change the answer, deposit, and the level opens with
 nothing to undo. The one direction that IS sound is the other:
 `fbImageArchiveQuestionSettled` reads the deposit record, because
 having deposited is having decided, evidenced more strongly than a
-recorded answer.
+recorded answer. The lineage note a changed image leaves behind counts
+too: a rebuild does not unanswer the question, and reading only the
+record put a Level 2 blocker in front of every project returning to
+Level 3, where it silenced the arrow pointing at the new deposit.
 
 This is the third requirement on the ladder where declining passes,
 after Personal AI Configuration and the determinism block, so the
@@ -2249,6 +2298,21 @@ digest and the architecture it covers rather than leaning on adjacency,
 because the envelope is regenerated whenever a workflow crosses Level 1
 and a record carried forward on adjacency alone would describe an image
 nobody deposited.
+
+When the image changes, the record is dropped but a lineage note,
+`dictContainer.dictImageArchiveLineage` (the old version DOI, concept DOI
+and service), is kept. No gate reads it. Where the next deposit goes
+is the researcher's explicit choice, never the project's Zenodo
+setting: `archiveDepositPlan` offers a new VERSION of that record (only
+on the Zenodo that holds it, because Zenodo cannot version across
+services), a new permanent record, or a new sandbox record, and
+recommends continuing a permanent record and otherwise a new permanent
+one. The poll ships that plan, the Environment archive row renders its
+options and pre-selects none, and the deposit route resolves the
+chosen option through the same module, so the destination the row
+names is the one the upload uses. A new-version draft inherits the
+previous image, so it is also checked for files vaibify did not send
+before it is published.
 
 Three hazards are structural, each a plausible simplification that
 breaks the feature silently:
@@ -2655,11 +2719,15 @@ whole Zenodo verify over a promotion that had nothing to do with them.
 The consequence is a guard: Zenodo's `newversion` flow asks ONE
 instance for a new version of a record it holds, so a publish whose
 recorded deposit and declared target disagree is refused locally and by
-name, rather than sent out to come back as a bare 404. The remedy it
-names exists — `start-new-concept` retires the recorded identifiers
-into a superseded note so the next publish creates a fresh concept —
-because a refusal pointing at a remedy that does not exist is worse
-than no refusal at all.
+name, rather than sent out to come back as a bare 404. Both remedies
+it names have a button on the Zenodo row, labeled with the site each
+acts on, because a refusal pointing at a remedy that does not exist is
+worse than no refusal at all. `publish-where-the-record-is` sets the
+declaration to the instance holding the record -- the researcher's
+explicit choice, writing what the Zenodo settings dialog writes -- so
+the next publish is a new version and the chain is kept.
+`start-new-concept` retires the recorded identifiers into a superseded
+note so the next publish creates a fresh, unlinked record.
 
 ### The promotion is bracketed, because a lost DOI cannot be guessed
 
@@ -2785,6 +2853,14 @@ once the attestation is current, the GitHub and Zenodo envelope rows
 are genuinely independent and the arrow disappears exactly when order
 stops mattering. An arrow on the wrong row is worse than no arrow,
 because it carries more authority than the row it points at.
+
+**The arrow speaks only inside the endgame, including on a return.**
+Outstanding Level 2 work silences it (2026-09-16): below Level 2,
+publishing is the next step, and a blocked publish row would be the
+dashboard refusing the remedy. A 2026-09-28 extension that let the
+arrow sequence the endgame for a project *returning* to Level 3 was
+withdrawn on 2026-09-29, because it grayed out the push a researcher
+needed; a returning project climbs like any other.
 
 The order ships in the poll payload. Re-deriving it in JavaScript
 would be a second authority on a question that has one — the mistake

@@ -1994,12 +1994,12 @@ class TestPollLevelStatePayload:
             # claim a divergence nobody found.
             "dictArchivedAttestation",
             # The recorded deposit and the declared target on
-            # DIFFERENT Zenodo instances, as the backend's own refusal
-            # sentence. The row renders it beside the control that
-            # resolves it; a refusal naming a remedy the screen does
-            # not offer is the "name the cause" rule failing in its
-            # worst direction.
-            "sZenodoCrossInstanceRefusal",
+            # DIFFERENT Zenodo instances: the backend's own refusal
+            # sentence and the instances its two remedies act on. The
+            # row renders them beside the controls that resolve it; a
+            # refusal naming a remedy the screen does not offer is the
+            # "name the cause" rule failing in its worst direction.
+            "dictZenodoCrossInstance",
             # In-flight promotions, so an interrupted one is surfaced
             # on LOAD. The browser that started it may be gone, and a
             # minted DOI nobody wrote down cannot be recovered by

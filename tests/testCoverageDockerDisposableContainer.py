@@ -234,7 +234,8 @@ class _FakeImageCollection:
         return _FakeImage("sha256:pulledImageId")
 
     def load(self, fileStream):
-        fileStream.read()
+        for _baChunk in fileStream:
+            pass
         return self.listLoadAnswer
 
     def get(self, sReference):

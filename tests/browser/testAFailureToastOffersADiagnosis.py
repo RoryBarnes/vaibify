@@ -118,3 +118,83 @@ def testAStartRefusedForAnUnbuiltImageOffersTheBuild(
     sDialog = pageDashboard.locator("#modalConfirm").inner_text()
     assert "has not been built yet" in sDialog
     assert "Build now" in sDialog
+
+
+def _fnFailTheStop(pageDashboard, sDetail):
+    pageDashboard.route(
+        f"**/api/containers/{S_CONTAINER_NAME}/stop",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=500, content_type="application/json",
+            body=json.dumps({"detail": sDetail}),
+        ),
+    )
+    pageDashboard.route(
+        "**/api/system/doctor",
+        lambda routeIntercepted: routeIntercepted.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"listFindings": [{
+                "sName": "docker-daemon", "sLevel": "ok", "sScope": "host",
+                "sMessage": "Docker daemon reachable.",
+            }]}),
+        ),
+    )
+
+
+@pytest.mark.falsification
+def testTheDiagnosisOpensWithTheFailureItself(pageDashboard, serverHub):
+    """Kills: a diagnosis that shows only the machine's checks.
+
+    The checks are about this machine and can all pass while the
+    failure sits inside a download: a researcher clicked a failed
+    acquisition's toast and got a page of passing checks, with the
+    error that mattered nowhere on it (2026-09-26).
+    """
+    _fnLoadTheHub(pageDashboard, serverHub)
+    _fnFailTheStop(pageDashboard, "the deposit could not be decompressed")
+    _fnOpenTheKebab(pageDashboard)
+    pageDashboard.click(f'{S_TILE} [data-action="stop"]')
+    pageDashboard.wait_for_selector(".toast.error", timeout=10000)
+    pageDashboard.click(".toast.error")
+    pageDashboard.wait_for_selector(
+        "#modalInfo .diagnosis-finding--ok", timeout=10000,
+    )
+    sFailure = pageDashboard.locator(
+        "#modalInfo .diagnosis-failure").inner_text()
+    assert "the deposit could not be decompressed" in sFailure
+    assert pageDashboard.locator("#modalInfo .diagnosis-copy").count() == 1
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testSelectingAToastsTextDoesNotOpenTheDiagnosis(pageDashboard, serverHub):
+    """Kills: treating the click that ends a text selection as "act".
+
+    A researcher tried to copy a failure and was carried into the
+    diagnosis instead, and the toast they were copying was gone.
+    """
+    _fnLoadTheHub(pageDashboard, serverHub)
+    _fnFailTheStop(
+        pageDashboard, "a long failure message the researcher wants to copy",
+    )
+    _fnOpenTheKebab(pageDashboard)
+    pageDashboard.click(f'{S_TILE} [data-action="stop"]')
+    pageDashboard.wait_for_selector(".toast.error", timeout=10000)
+    # Let the slide-in finish, and close the menu that opened the stop,
+    # so the drag lands on the toast's settled text.
+    pageDashboard.wait_for_timeout(500)
+    pageDashboard.keyboard.press("Escape")
+    dictBox = pageDashboard.locator(".toast.error").first.bounding_box()
+    fY = dictBox["y"] + dictBox["height"] / 2
+    pageDashboard.mouse.move(dictBox["x"] + 8, fY)
+    pageDashboard.mouse.down()
+    pageDashboard.mouse.move(dictBox["x"] + dictBox["width"] / 2, fY, steps=8)
+    pageDashboard.mouse.up()
+    pageDashboard.wait_for_timeout(400)
+    assert pageDashboard.evaluate("() => String(window.getSelection())"), (
+        "the drag selected nothing, so this test proves nothing"
+    )
+    assert not pageDashboard.is_visible("#modalInfo"), (
+        "selecting the toast's text opened the diagnosis"
+    )
+    assert pageDashboard.locator(".toast.error").count() >= 1
+    assert pageDashboard.listPageErrors == []

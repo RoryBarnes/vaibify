@@ -131,9 +131,28 @@ def fdictDescribePinnedEnvironmentForWizard(dictProject, connectionDocker):
             connectionDocker, dictPinned["sRequiredPlatform"],
         ),
         dictAuthorFeatures=_fdictReadAuthorFeatures(dictProject["sConfigPath"]),
+        # The agents the author's image is taken to hold, read by the
+        # SAME rule the conversion applies (the committed Dockerfile's
+        # header, else vaibify.yml). The page used to read vaibify.yml
+        # alone, so a clone whose header said "(none)" showed Claude
+        # and Codex as already installed while the conversion asked to
+        # add them -- and the acquisition refused (2026-09-27).
+        listAuthorOverlays=_flistCandidateOverlaysOrEmpty(dictProject),
         listAgentOverlays=list(T_AGENT_OVERLAY_NAMES),
         listBaseFeatureKeys=list(T_BASE_FEATURE_KEYS),
     )
+
+
+def _flistCandidateOverlaysOrEmpty(dictProject):
+    """Return the conversion's candidate overlays, or ``[]`` if unreadable.
+
+    An unreadable config refuses the conversion itself, with a reason;
+    the page shows no agent as the author's rather than guessing one.
+    """
+    try:
+        return list(_ftCandidateOverlayBaseline(dictProject)[0])
+    except HTTPException:
+        return []
 
 
 def _fdictReadAuthorFeatures(sConfigPath):
@@ -363,6 +382,7 @@ def _fdictAuthorBaseOntoRuntime(dictAuthor, dictExisting):
 
 def _ftCandidateOverlayBaseline(dictProject):
     """Return ``(listCandidateOverlays, sRecipeFingerprint)`` from the clone."""
+    import yaml
     from vaibify.cli.configLoader import fconfigLoadFromPath
     from vaibify.docker.imageBuilder import flistDetermineOverlays
     from vaibify.reproducibility.dockerfileComposer import (
@@ -385,7 +405,7 @@ def _ftCandidateOverlayBaseline(dictProject):
         return flistDetermineOverlays(
             fconfigLoadFromPath(dictProject["sConfigPath"]),
         ), ""
-    except ValueError as error:
+    except (ValueError, yaml.YAMLError) as error:
         raise HTTPException(409, detail={"sMessage": (
             "The clone's vaibify.yml cannot be loaded, so the author's "
             f"feature set cannot be read: {error}"

@@ -2769,10 +2769,10 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # The recorded deposit and the declared target on DIFFERENT
         # Zenodo instances. A publish would ask one instance for a new
         # version of the other's record, so the archive flow refuses
-        # it -- and the remedy needs a control, not just a refusal
-        # naming one.
-        "sZenodoCrossInstanceRefusal":
-            syncBookkeeping.fsDescribeCrossInstanceParent(
+        # it -- and each remedy needs a control, labeled with the
+        # instance it acts on, not just a sentence naming them.
+        "dictZenodoCrossInstance":
+            syncBookkeeping.fdictDescribeCrossInstanceParent(
                 dictWorkflow,
                 (dictWorkflow or {}).get("sZenodoService") or "sandbox",
             ),

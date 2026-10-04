@@ -1079,23 +1079,127 @@ var VaibifyWorkflowRequirements = (function () {
            deposit that is working from one that stopped. */
         var dictDeposit = dictArchive.dictDeposit;
         if (!dictDeposit) return "";
+        return _fsRenderFailedUploadAttempts(dictDeposit) +
+            _fsRenderDepositPhase(dictDeposit) +
+            _fsRenderDepositStopControl(dictArchive);
+    }
+
+    function _fsRenderDepositStopControl(dictArchive) {
+        /* A deposit can be stopped up to the publish, and not after:
+           the publish mints a DOI. The hub decides both (bStoppable,
+           and the phase it refuses a stop in); the row only offers
+           what the hub would accept. A requested stop takes effect at
+           the next checkpoint -- within one MiB of the upload -- so
+           the row says it is under way rather than claiming it done. */
+        var dictDeposit = dictArchive.dictDeposit;
+        if (dictArchive.sState !== "running" || !dictDeposit.bStoppable ||
+                dictDeposit.sPhase === "publishing") {
+            return "";
+        }
+        if (dictDeposit.bStopRequested) {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml("Stopping the deposit at its next step\u2026") +
+                '</div>';
+        }
+        return _fsRenderActionButton(
+            "stop-environment-archive-deposit", "", "Stop the deposit",
+            false, true);
+    }
+
+    function _fsRenderDepositPhase(dictDeposit) {
         if (dictDeposit.sPhase === "failed") {
             return '<div class="requirement-row-status">' +
                 fnEscapeHtml("The deposit failed: " +
                     (dictDeposit.sReason || "no reason recorded")) +
                 '</div>';
         }
-        if (dictDeposit.sPhase === "saving" ||
-            dictDeposit.sPhase === "uploading") {
+        if (dictDeposit.sPhase === "saving") {
             return '<div class="requirement-row-status">' +
-                fnEscapeHtml(dictDeposit.sPhase === "saving"
-                    ? "Saving the image: " +
-                        _fsFormatGigabytes(dictDeposit.iBytesRead) +
-                        " of " +
-                        _fsFormatGigabytes(dictDeposit.iBytesTotal)
-                    : "Uploading to Zenodo") + '</div>';
+                fnEscapeHtml("Saving the image: " +
+                    _fsFormatGigabytes(dictDeposit.iBytesRead) + " of " +
+                    _fsFormatGigabytes(dictDeposit.iBytesTotal)) + '</div>';
         }
-        return "";
+        if (dictDeposit.sPhase === "uploading") {
+            return '<div class="requirement-row-status">' +
+                fnEscapeHtml(_fsDescribeUploadProgress(dictDeposit)) +
+                '</div>';
+        }
+        var sStep = _DICT_DEPOSIT_STEP_SENTENCES[dictDeposit.sPhase];
+        return sStep
+            ? '<div class="requirement-row-status">' +
+              fnEscapeHtml(sStep) + '</div>'
+            : "";
+    }
+
+    /* Every step of a deposit names itself. The steps between the
+       byte counters used to show nothing but the row's pulse, so a
+       researcher watched "depositing now" and then "uploading" with
+       unexplained waits between (researcher-reported, 2026-09-29). */
+    var _DICT_DEPOSIT_STEP_SENTENCES = {
+        starting: "Starting the deposit.",
+        "checking-agents": "Checking that the coding agents leave the " +
+            "environment untouched. This reads the whole image and " +
+            "usually takes under a minute.",
+        "preparing-draft": "Preparing the Zenodo draft that will " +
+            "receive the image.",
+        verifying: "Checking that Zenodo holds exactly what was sent, " +
+            "then publishing.",
+        publishing: "Publishing on Zenodo. This step mints the DOI and " +
+            "can no longer be stopped.",
+        stopped: "You stopped the deposit. Nothing was published, and " +
+            "you can deposit again at any time.",
+    };
+
+    var _DICT_UPLOAD_ATTEMPT_ENDINGS = {
+        dropped: "the connection was dropped",
+        "timed-out": "the upload stalled and timed out",
+    };
+
+    function _fsRenderFailedUploadAttempts(dictDeposit) {
+        /* Each attempt that ended without Zenodo's answer stays on the
+           row -- through the attempts after it and past a final
+           failure -- so a researcher can judge from how far each got,
+           and how long it ran, whether trying again is worthwhile
+           (researcher-requested, 2026-09-29). */
+        return (dictDeposit.listAttempts || []).map(function (dictAttempt) {
+            return '<div class="requirement-row-status ' +
+                'environment-archive-attempt">' +
+                fnEscapeHtml(_fsDescribeFailedAttempt(dictAttempt)) +
+                '</div>';
+        }).join("");
+    }
+
+    function _fsDescribeFailedAttempt(dictAttempt) {
+        var sEnding = _DICT_UPLOAD_ATTEMPT_ENDINGS[dictAttempt.sCause] ||
+            ("Zenodo answered " + (dictAttempt.iStatus || "an error") +
+             ", meaning its servers were overloaded");
+        var fSeconds = dictAttempt.fSeconds || 0;
+        var sDuration = fSeconds < 60
+            ? Math.round(fSeconds) + " seconds"
+            : (fSeconds / 60).toFixed(1) + " minutes";
+        var sSent = dictAttempt.iBytesSent
+            ? _fsFormatGigabytes(dictAttempt.iBytesSent) : "0.00 GB";
+        return "Attempt " + dictAttempt.iAttempt + ": " + sEnding +
+            " at " + sSent + " of " +
+            _fsFormatGigabytes(dictAttempt.iBytesTotal) + ", after " +
+            sDuration + ".";
+    }
+
+    function _fsDescribeUploadProgress(dictDeposit) {
+        /* The upload is the longest silent stretch of a deposit, and a
+           researcher who saw only "Uploading to Zenodo" for twenty
+           minutes could not tell slow from stuck (researcher-reported,
+           2026-09-29). A dropped connection restarts from zero, so a
+           counter that went backwards says why. */
+        if (!dictDeposit.iBytesTotal) return "Uploading to Zenodo";
+        var sSent = dictDeposit.iBytesRead
+            ? _fsFormatGigabytes(dictDeposit.iBytesRead) : "0.00 GB";
+        return "Uploading to Zenodo: " + sSent + " of " +
+            _fsFormatGigabytes(dictDeposit.iBytesTotal) + " sent" +
+            (dictDeposit.iAttempt > 1
+                ? " (the connection dropped, so this is attempt " +
+                  dictDeposit.iAttempt + ")"
+                : "");
     }
 
     function _fsFormatGigabytes(iBytes) {
@@ -1143,70 +1247,280 @@ var VaibifyWorkflowRequirements = (function () {
         var dictRecord = dictArchive.dictRecord;
         var sDoi = (dictRecord || {}).sVersionDoi || "";
         if (!sDoi) return "";
+        // Which Zenodo holds it, beside the DOI itself: a permanent
+        // deposit used to be marked only by the ABSENCE of a sandbox
+        // warning, which is no mark at all.
         return '<label class="determinism-form-row ' +
             'environment-archive-deposited">' +
             '<span class="environment-archive-doi-label">' +
-            'Deposited DOI</span>' +
+            fnEscapeHtml("Deposited DOI, on " +
+                _fsDescribeDepositPermanence(dictArchive.sPermanence)) +
+            '</span>' +
             '<input type="text" readonly ' +
             'class="input-modal-field environment-archive-doi-value" ' +
             'value="' + fnEscapeHtml(sDoi) + '">' +
             '</label>';
     }
 
-    function _fsRenderArchiveForm(dictArchive) {
-        if (dictArchive.sState === "running") return "";
-        // Show the recorded answer back. The radios rendered blank on
-        // every open until 2026-09-08, so a researcher who declined
-        // and reopened the block saw an untouched form -- which reads
-        // as "the save did not take", not as "you already answered".
-        // A form that cannot show its own state is write-only, and a
-        // researcher cannot audit a decision they cannot see.
+    /* --- Where a deposit goes, and which way is recommended ---
+
+       The row used to offer "Deposit this image in Zenodo" while the
+       route read the project's Zenodo setting: nothing said sandbox or
+       permanent, nor whether the upload would continue the record
+       this project had already deposited. Every choice below comes
+       from the poll's dictDepositPlan, which the route resolves the
+       researcher's choice through -- the row names destinations, it
+       never decides them (researcher-reported, 2026-09-28). */
+
+    var _DICT_ZENODO_SERVICE_PHRASES = {
+        zenodo: "zenodo.org (permanent)",
+        sandbox: "the Zenodo sandbox (testing only; not permanent)",
+    };
+
+    var _DICT_PERMANENCE_PHRASES = {
+        permanent: "zenodo.org (permanent)",
+        sandbox: "the Zenodo sandbox (not permanent)",
+    };
+
+    function _fsDescribeZenodoService(sService) {
+        return _DICT_ZENODO_SERVICE_PHRASES[sService] ||
+            "a Zenodo vaibify cannot identify";
+    }
+
+    function _fsDescribeDepositPermanence(sPermanence) {
+        return _DICT_PERMANENCE_PHRASES[sPermanence] ||
+            "a Zenodo vaibify cannot identify";
+    }
+
+    function _fsNamePreviousRecord(dictPrevious) {
+        /* The version DOI is what a paper citing that image cites; the
+           concept DOI, when recorded, is the record that groups every
+           version. */
+        return dictPrevious.sConceptDoi
+            ? "the record " + dictPrevious.sConceptDoi
+            : dictPrevious.sVersionDoi;
+    }
+
+    function _fsRenderPreviousDeposit(dictArchive) {
+        var dictPrevious = (dictArchive.dictDepositPlan || {})
+            .dictPreviousDeposit;
+        if (!dictPrevious || dictArchive.sState === "attained") return "";
+        return '<div class="requirement-row-status ' +
+            'environment-archive-previous">' + fnEscapeHtml(
+                "This project has deposited its environment before: " +
+                dictPrevious.sVersionDoi + " on " +
+                _fsDescribeDepositPermanence(dictPrevious.sPermanence) +
+                (dictPrevious.sConceptDoi
+                    ? ", a version of the record " +
+                      dictPrevious.sConceptDoi + " (all versions)"
+                    : "") + ".") + '</div>';
+    }
+
+    function _fsExplainRecommendation(dictPlan) {
+        var dictPrevious = dictPlan.dictPreviousDeposit;
+        if (dictPlan.sRecommendedChoice === "new-version") {
+            return "Recommended: deposit a new version of " +
+                _fsNamePreviousRecord(dictPrevious) + " on " +
+                _fsDescribeZenodoService(
+                    dictPlan.listChoices[0].sZenodoService) +
+                ". Anyone citing the record reaches every version, " +
+                "this image gets its own version DOI, and a " +
+                "permanent archive is what Level 3 requires.";
+        }
+        var sWhy = "Level 3 requires a permanent archive.";
+        if (dictPrevious && dictPrevious.sPermanence === "sandbox") {
+            sWhy = "Your earlier deposit is on the Zenodo sandbox, " +
+                "which keeps nothing permanently and cannot be " +
+                "continued on zenodo.org, and Level 3 requires a " +
+                "permanent archive.";
+        } else if (dictPrevious && !dictPrevious.bCanContinue) {
+            sWhy = "Vaibify cannot continue your earlier deposit " +
+                "because it cannot tell which Zenodo holds it, and " +
+                "Level 3 requires a permanent archive.";
+        }
+        return "Recommended: start a new record on zenodo.org. " +
+            sWhy + " Choose the sandbox only to practice a deposit.";
+    }
+
+    function _fsRenderArchiveGuidance(dictArchive) {
+        var dictPlan = dictArchive.dictDepositPlan || {};
+        var sHtml = _fsRenderPreviousDeposit(dictArchive);
+        if (!dictPlan.sRecommendedChoice) return sHtml;
+        return sHtml + '<div class="environment-archive-guidance">' +
+            fnEscapeHtml(_fsExplainRecommendation(dictPlan)) + '</div>';
+    }
+
+    function _fdictDescribeDepositChoice(dictOffered, dictPrevious) {
+        /* Everything the row says about one destination: the option,
+           the line beneath it, the button, and the confirmation. One
+           place, so the four cannot disagree about where it goes. */
+        var sService = dictOffered.sZenodoService;
+        var bPermanent = sService === "zenodo";
+        var sWhere = bPermanent ? "zenodo.org" : "the Zenodo sandbox";
+        var sConsequence = bPermanent
+            ? "Deleting a zenodo.org deposit later requires contacting " +
+              "Zenodo, and the DOI is tombstoned rather than removed."
+            : "The sandbox mints test DOIs and makes no preservation " +
+              "promise, so this deposit does not satisfy Level 3.";
+        var dictDescription = {sButton: "", sLabel: "", sDetail: "",
+            sOutcome: ""};
+        if (dictOffered.sChoice === "new-version") {
+            var sRecord = _fsNamePreviousRecord(dictPrevious);
+            dictDescription.sLabel = "Deposit a new version of " +
+                sRecord + " on " + _fsDescribeZenodoService(sService);
+            dictDescription.sDetail = "Keeps this project's images in " +
+                "one record: its DOI reaches every version, and this " +
+                "image gets its own version DOI.";
+            dictDescription.sButton = "Deposit new version on " +
+                sWhere + "…";
+            dictDescription.sOutcome = "a NEW VERSION of " + sRecord +
+                " on " + sWhere + ", with its own version DOI";
+        } else {
+            dictDescription.sLabel = "Start a new record on " +
+                _fsDescribeZenodoService(sService);
+            dictDescription.sDetail = bPermanent
+                ? "A separate record with its own permanent DOI" +
+                  (dictPrevious ? ", unconnected to " +
+                      dictPrevious.sVersionDoi : "") + "."
+                : "For practicing a deposit. Zenodo may clear the " +
+                  "sandbox at any time, and nothing there can later " +
+                  "become a version of a zenodo.org record.";
+            dictDescription.sButton = "Deposit on " + sWhere +
+                (bPermanent ? " (permanent)" : " (testing)") + "…";
+            dictDescription.sOutcome = "a NEW RECORD on " + sWhere +
+                (bPermanent ? ", with a new permanent DOI"
+                    : ", with a test DOI") +
+                (dictPrevious ? ", unconnected to your earlier " +
+                    "deposit " + dictPrevious.sVersionDoi : "");
+        }
+        dictDescription.sConfirm = "Vaibify will save this project's " +
+            "container image, compress it, and publish it as " +
+            dictDescription.sOutcome + ". " + sConsequence + " The " +
+            "image is usually several gigabytes, so this takes " +
+            "minutes and needs that much free disk space while it runs.";
+        return dictDescription;
+    }
+
+    function _fsRenderArchiveChoice(dictChoice) {
+        /* One option. Its button label, action and confirmation ride
+           on the radio, so the button beneath the form follows
+           whichever option is selected. */
+        return '<label class="determinism-form-row">' +
+            '<input type="radio" name="environment-archive-answer" ' +
+            'class="environment-archive-answer" value="' +
+            fnEscapeHtml(dictChoice.sValue) + '" ' +
+            'data-archive-action="' + fnEscapeHtml(dictChoice.sAction) +
+            '" data-archive-button="' + fnEscapeHtml(dictChoice.sButton) +
+            '" data-archive-confirm="' +
+            fnEscapeHtml(dictChoice.sConfirm || "") + '"' +
+            (dictChoice.bChecked ? ' checked' : '') + '>' +
+            '<span>' + fnEscapeHtml(dictChoice.sLabel) +
+            (dictChoice.bRecommended
+                ? ' <span class="environment-archive-recommended">' +
+                  'Recommended</span>' : '') + '</span>' +
+            (dictChoice.sDetail
+                ? '<span class="environment-archive-choice-detail">' +
+                  fnEscapeHtml(dictChoice.sDetail) + '</span>' : '') +
+            '</label>';
+    }
+
+    function _flistBuildArchiveChoices(dictArchive, sSelected) {
+        var dictPlan = dictArchive.dictDepositPlan || {};
+        var listChoices = (dictPlan.listChoices || []).map(
+            function (dictOffered) {
+                var dictDescription = _fdictDescribeDepositChoice(
+                    dictOffered, dictPlan.dictPreviousDeposit);
+                return Object.assign(dictDescription, {
+                    sValue: dictOffered.sChoice,
+                    sAction: "deposit-environment-archive",
+                    bRecommended:
+                        dictOffered.sChoice === dictPlan.sRecommendedChoice,
+                });
+            });
+        listChoices.push({
+            sValue: "referenced", sAction: "answer-environment-archive",
+            sButton: "Save this answer",
+            sLabel: "Use a deposit that already holds this exact image",
+            sDetail: "For a deposit made elsewhere of this same image. " +
+                "Vaibify checks the record before accepting it.",
+        });
+        listChoices.push({
+            sValue: "declined", sAction: "answer-environment-archive",
+            sButton: "Save this answer",
+            sLabel: "Decline — do not archive this image",
+        });
+        listChoices.forEach(function (dictChoice) {
+            dictChoice.bChecked = dictChoice.sValue === sSelected;
+        });
+        return listChoices;
+    }
+
+    function _fsSelectArchiveChoice(dictArchive) {
+        /* Show the recorded answer back -- the radios rendered blank on
+           every open until 2026-09-08, which read as "the save did not
+           take". Nothing else is ever pre-selected, the recommendation
+           included: a default would put a decision in the researcher's
+           mouth, and here the decision mints a public DOI. The
+           recommendation is marked and explained instead. */
         var sAnswer = dictArchive.sAnswer || "";
-        var fsChecked = function (sValue) {
-            return sAnswer === sValue ? ' checked' : '';
-        };
-        // The DOI belongs to the RECORD, not the answer -- no answer
-        // carries a value, deliberately, so that the DOI has one
-        // authority. It is restored only for the answer that means
-        // "I pointed at an existing deposit": showing it under a
-        // deposit vaibify made would invite an edit to a field that
-        // is not the source of that DOI. The version DOI is the one
-        // recorded and so the one shown; Zenodo's concept DOI always
-        // resolves to the newest version, which is the wrong string
-        // to hand back to a researcher editing a pin.
+        return (sAnswer === "referenced" || sAnswer === "declined")
+            ? sAnswer : "";
+    }
+
+    function _fsRenderArchiveReferenceDoi(dictArchive) {
+        // The DOI belongs to the RECORD, not the answer, so it is
+        // restored only for "I pointed at an existing deposit". It is
+        // never pre-filled with the earlier deposit: that one holds a
+        // previous image, and the reference check would refuse it.
         var sDoiValue = "";
-        if (sAnswer === "referenced" && dictArchive.dictRecord &&
+        if (dictArchive.sAnswer === "referenced" && dictArchive.dictRecord &&
                 dictArchive.dictRecord.sVersionDoi) {
             sDoiValue = ' value="' + fnEscapeHtml(
                 dictArchive.dictRecord.sVersionDoi) + '"';
         }
-        return '<div class="environment-archive-form">' +
-            '<label class="determinism-form-row">' +
-            '<input type="radio" name="environment-archive-answer" ' +
-            'class="environment-archive-answer" value="referenced"' +
-            fsChecked("referenced") + '>' +
-            '<span>Use a deposit that already holds this image</span>' +
-            '</label>' +
-            '<label class="determinism-form-row">' +
+        return '<label class="determinism-form-row ' +
+            'environment-archive-reference">' +
             '<input type="text" class="environment-archive-doi" ' +
             'placeholder="10.5281/zenodo.NNNNNNN (version DOI)"' +
             sDoiValue + '>' +
-            '</label>' +
-            '<label class="determinism-form-row">' +
-            '<input type="radio" name="environment-archive-answer" ' +
-            'class="environment-archive-answer" value="declined"' +
-            fsChecked("declined") + '>' +
-            '<span>Decline — do not archive this image</span>' +
-            '</label>' +
+            '</label>';
+    }
+
+    function _fsRenderArchiveContinueButton(listChoices) {
+        /* Disabled until an option is chosen, because until then it
+           has nothing true to say about what it would do. */
+        var dictSelected = listChoices.filter(function (dictChoice) {
+            return dictChoice.bChecked;
+        })[0];
+        var sButton = _fsRenderActionButton(
+            dictSelected ? dictSelected.sAction
+                : "answer-environment-archive", "",
+            dictSelected ? dictSelected.sButton : "Choose an option above")
+            .replace('class="btn wf-action-btn',
+                'class="btn wf-action-btn environment-archive-continue');
+        return dictSelected ? sButton
+            : sButton.replace('<button ', '<button disabled ');
+    }
+
+    function _fsRenderArchiveForm(dictArchive) {
+        if (dictArchive.sState === "running") return "";
+        var listChoices = _flistBuildArchiveChoices(
+            dictArchive, _fsSelectArchiveChoice(dictArchive));
+        var sHtml = _fsRenderArchiveGuidance(dictArchive) +
+            '<div class="environment-archive-form">';
+        listChoices.forEach(function (dictChoice) {
+            sHtml += _fsRenderArchiveChoice(dictChoice);
+            if (dictChoice.sValue === "referenced") {
+                sHtml += _fsRenderArchiveReferenceDoi(dictArchive);
+            }
+        });
+        return sHtml +
             // Declining is a complete answer to the Level 2 question
             // and a permanent bar on Level 3, and those two facts
             // pull opposite ways -- so the row says both, where the
             // choice is made. The Level 3 gate reads the deposit
             // RECORD and never this answer, which is what keeps
-            // declining a decision rather than a lock: depositing
-            // later opens Level 3 with nothing to undo. Saying only
-            // "this passes Level 2" would let a researcher retire an
-            // image believing the ladder was still open to them.
+            // declining a decision rather than a lock.
             '<div class="environment-archive-decline-warning">' +
             'Declining answers the Level 2 question, but leaves this ' +
             'project unable to reach PROOF Level 3: that rung ' +
@@ -1215,22 +1529,33 @@ var VaibifyWorkflowRequirements = (function () {
             'this answer and deposit later — nothing here is ' +
             'irreversible until the image is gone from this machine.' +
             '</div>' +
-            _fsRenderActionButton(
-                "answer-environment-archive", "", "Save this answer") +
+            _fsRenderArchiveContinueButton(listChoices) +
             // Only once something is recorded: a radio cannot be
             // unselected by clicking it, so without this the answer
             // was final in practice even though the Level 3 gate
-            // never reads it. Offering it on an unanswered question
-            // would be a control that undoes nothing.
-            (sAnswer
+            // never reads it.
+            (dictArchive.sAnswer
                 ? _fsRenderActionButton(
                     "clear-environment-archive-answer", "",
                     "Clear this answer", false, true)
                 : "") +
-            '</div>' +
-            _fsRenderActionButton(
-                "deposit-environment-archive", "",
-                "Deposit this image in Zenodo");
+            '</div>';
+    }
+
+    function fnFollowArchiveChoice(elRadio) {
+        /* The button beneath the form names what it will do for the
+           option now selected: a deposit names its destination, an
+           answer says it saves. */
+        var elForm = elRadio.closest(".environment-archive-form");
+        var elButton = elForm &&
+            elForm.querySelector(".environment-archive-continue");
+        if (!elButton) return;
+        elButton.dataset.wfAction = elRadio.dataset.archiveAction || "";
+        elButton.textContent = elRadio.dataset.archiveButton || "";
+        // A button the ordering blocked stays blocked; its title says why.
+        if (!elButton.classList.contains("wf-action-blocked")) {
+            elButton.disabled = false;
+        }
     }
 
     function _fdictEnvelopeRemoteRowHealth(
@@ -1299,8 +1624,7 @@ var VaibifyWorkflowRequirements = (function () {
             sPermanence: (dictDetail.dictArchivePermanence || {})
                 .sProjectArchivePermanence || "",
             sArchivedDoi: dictZenodo.sZenodoDoiVerified || "",
-            sCrossInstance:
-                dictDetail.sZenodoCrossInstanceRefusal || "",
+            dictCrossInstance: dictDetail.dictZenodoCrossInstance || {},
             /* The gate's own tri-state verdict, not a re-derivation:
                "the archive carries an attestation covering its own
                manifest" is a Level 3 conjunct of THIS row, and the
@@ -1313,16 +1637,23 @@ var VaibifyWorkflowRequirements = (function () {
         };
     }
 
-    function _fsRenderCrossInstanceRemedy(sRefusal) {
-        /* A refusal naming a remedy that has no control is the "name
-           the cause" rule failing in its worst direction: the
-           researcher follows the instruction and finds nothing to
-           press. The backend's own sentence is the explanation. */
-        if (!sRefusal) return "";
+    function _fsRenderCrossInstanceRemedy(dictCrossInstance) {
+        /* Both remedies the refusal names, each a button. Setting the
+           instance back used to have no control at all -- it lived in
+           a settings dialog a researcher could not find -- and the one
+           button offered, "Start a new concept", was Zenodo jargon for
+           giving up the version chain (researcher-reported,
+           2026-09-29). The labels are short and the researcher's own
+           (ruled 2026-09-29): the backend's sentence directly above
+           them names both sites, so the buttons need not. */
+        if (!dictCrossInstance || !dictCrossInstance.sMessage) return "";
         return '<div class="permanence-warning">\u26a0 ' +
-            fnEscapeHtml(sRefusal) + '</div>' +
+            fnEscapeHtml(dictCrossInstance.sMessage) + '</div>' +
+            _fsRenderActionButton(
+                "publish-where-the-zenodo-record-is", "",
+                "Deposit a new version\u2026") +
             _fsRenderActionButton("start-new-zenodo-concept", "",
-                "Start a new concept\u2026", false, true);
+                "Start a new deposit\u2026", false, true);
     }
 
     function _fsRenderArchivedDoiRow(sDoi) {
@@ -1450,7 +1781,7 @@ var VaibifyWorkflowRequirements = (function () {
                 dictArchiveInfo) +
             _fsRenderArchivedDoiRow(dictArchive.sArchivedDoi) +
             _fsRenderCrossInstanceRemedy(
-                dictArchive.sCrossInstance) +
+                dictArchive.dictCrossInstance) +
             _fsRenderPermanenceNote(
                 dictArchive.sPermanence,
                 "This project's Zenodo deposit",
@@ -2892,6 +3223,27 @@ var VaibifyWorkflowRequirements = (function () {
             '</div>';
     }
 
+    var S_IMAGE_CURRENCY_WARNING_TOOLTIP =
+        "The container you have open runs a different image than " +
+        "the one this envelope pins, and verifications grade the " +
+        "pinned image. Open this row to regenerate or to keep the pin.";
+
+    function _fsImageCurrencyRowWarning(sKey, dictImageCurrency) {
+        /* The ⚠ BESIDE the row, echoed on the Artifacts heading, and
+           never a change of the row's colour or its Level 3 cell
+           (researcher's ruling, 2026-09-28): the pinned envelope is
+           still true of the published record, so the level stands,
+           but a warning only visible inside an expanded row went
+           unseen. Only a determined MISMATCH raises it -- null is
+           "nothing determined", and "derived" is agents stacked on
+           the pin, which is the pin working as designed. */
+        if (sKey !== "environmentSnapshot") return "";
+        if ((dictImageCurrency || {}).bPinnedImageIsLive !== false) {
+            return "";
+        }
+        return S_IMAGE_CURRENCY_WARNING_TOOLTIP;
+    }
+
     function _fdictArtifactRow(
         sKey, dictArtifact, dictImageCurrency, dictDetailForLock
     ) {
@@ -2900,6 +3252,7 @@ var VaibifyWorkflowRequirements = (function () {
             iLevel: 3,
             sTitle: _DICT_ENVELOPE_ARTIFACT_LABELS[sKey],
             sState: _fsArtifactStateFromDetail(dictArtifact),
+            sWarning: _fsImageCurrencyRowWarning(sKey, dictImageCurrency),
             fsDetail: function () {
                 return _fsRenderArtifactDetail(
                     sKey, dictArtifact,
@@ -2970,14 +3323,22 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fsRenderLevelStrip(
         dictStateByLevel, sTitle, dictReasonByLevel, dictCheckingByLevel,
+        sWarning, sWarningClass,
     ) {
-        // Three cells (L1 | L2 | L3) behind a warning-column spacer,
-        // so every strip in the column shares the banner's four-slot
-        // geometry: the levels this requirement gates carry its
-        // state; the others show the n/a dash — a user hunting for
-        // Level 2 blockers scans one column.
+        // Three cells (L1 | L2 | L3) behind the warning column, so
+        // every strip shares the banner's four-slot geometry: the
+        // levels this requirement gates carry its state; the others
+        // show the n/a dash — a user hunting for Level 2 blockers
+        // scans one column. A requirement's ⚠ sits in the warning
+        // column, where a step's does, in the legend's orange: it
+        // says "look here", and never changes a level cell.
         var sHtml = '<span class="step-level-strip">' +
-            '<span class="step-regression-cell"></span>';
+            (sWarning
+                ? '<span class="step-regression-cell ' +
+                  'regression-warning-orange ' + sWarningClass +
+                  '" title="' + fnEscapeHtml(sWarning) +
+                  '">\u26a0</span>'
+                : '<span class="step-regression-cell"></span>');
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             var sLevelState = dictStateByLevel[iLevel] ||
                 "not-applicable";
@@ -3112,19 +3473,18 @@ var VaibifyWorkflowRequirements = (function () {
             fnEscapeHtml(dictRow.sKey) + '">' +
             '<span class="requirement-row-title">' +
             _fsExpandTriangle(bOpen) +
-            fnEscapeHtml(dictRow.sTitle) +
-            // BESIDE the state, never replacing it. A sandbox deposit
-            // really does hold matching bytes, so moving the row's
-            // colour would be a claim nobody earned; the glyph says
-            // the bytes are somewhere that promises nothing.
-            (dictRow.sWarning
-                ? '<span class="requirement-row-warning" title="' +
-                  fnEscapeHtml(dictRow.sWarning) + '">\u26a0</span>'
-                : '') + '</span>' +
+            fnEscapeHtml(dictRow.sTitle) + '</span>' +
+            // BESIDE the state, never replacing it: the glyph sits in
+            // the warning column, and the level cells keep the row's
+            // own colour. A sandbox deposit really does hold matching
+            // bytes, so moving that colour would be a claim nobody
+            // earned; the glyph says the bytes are somewhere that
+            // promises nothing.
             _fsRenderLevelStrip(
                 dictStateByLevel, dictRow.sTitle,
                 dictRow.dictReasonByLevel,
-                _fdictCheckingLevelsOf([dictRow])) +
+                _fdictCheckingLevelsOf([dictRow]),
+                dictRow.sWarning || "", "requirement-row-warning") +
             '</div>' +
             _fsRenderNextStepReason(dictRow, dictNextStep);
         if (bOpen) {
@@ -3302,19 +3662,17 @@ var VaibifyWorkflowRequirements = (function () {
         return dictByLevel;
     }
 
-    function _fsRenderGroupWarning(listRows) {
+    function _fsGroupWarningText(listRows) {
         /* Groups start collapsed, and a row's ⚠ inside one was the
            easiest thing on the page to miss -- "first capture awaiting
            your review" sat unseen under a closed AI heading. The glyph
-           is echoed on the heading, naming each row that raised it. */
-        var listWarnings = listRows.filter(function (dictRow) {
+           is echoed in the heading's warning column, naming each row
+           that raised it. */
+        return listRows.filter(function (dictRow) {
             return Boolean(dictRow.sWarning);
         }).map(function (dictRow) {
             return dictRow.sTitle + ": " + dictRow.sWarning;
-        });
-        if (listWarnings.length === 0) return "";
-        return ' <span class="requirement-group-warning" title="' +
-            fnEscapeHtml(listWarnings.join("\n")) + '">\u26a0</span>';
+        }).join("\n");
     }
 
     function _fsRenderRequirementGroup(
@@ -3336,8 +3694,7 @@ var VaibifyWorkflowRequirements = (function () {
             sGroupKey + '">' +
             '<span class="requirement-group-title">' +
             _fsExpandTriangle(bOpen) +
-            _DICT_GROUP_TITLES[sGroupKey] +
-            _fsRenderGroupWarning(listRows) + '</span>' +
+            _DICT_GROUP_TITLES[sGroupKey] + '</span>' +
             _fsRenderOrderingArrow(
                 dictNextStep,
                 _fbGroupHoldsTheNextRow(listRows, dictNextStep)
@@ -3345,7 +3702,9 @@ var VaibifyWorkflowRequirements = (function () {
             _fsRenderLevelStrip(
                 _fdictGroupStateByLevel(listRows),
                 _DICT_GROUP_TITLES[sGroupKey], null,
-                _fdictCheckingLevelsOf(listRows)) + '</div>';
+                _fdictCheckingLevelsOf(listRows),
+                _fsGroupWarningText(listRows),
+                "requirement-group-warning") + '</div>';
         if (bOpen) {
             sHtml += '<div class="requirement-group-body">';
             for (var i = 0; i < listRows.length; i++) {
@@ -3517,5 +3876,6 @@ var VaibifyWorkflowRequirements = (function () {
         // every tick is exactly what the row's explicit "Ask Zenodo"
         // button exists to avoid.
         fnRecordPromotionOutcome: fnRecordPromotionOutcome,
+        fnFollowArchiveChoice: fnFollowArchiveChoice,
     };
 })();

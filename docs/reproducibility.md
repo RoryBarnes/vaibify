@@ -247,8 +247,11 @@ the layers below the Python interpreter. Written by
 from three orthogonal capture helpers:
 
 - `fdictCaptureContainerImageDigest(sContainerName)` — the immutable
-  `<image>@sha256:...` digest of the running container image, via
-  `docker inspect`.
+  `<image>@sha256:...` digest (or local image ID) of the agent-free
+  ENVIRONMENT the running container's image is built on, via `docker
+  inspect`. Coding agents are stacked above that image and are not
+  part of what the envelope pins; see "The archived environment holds
+  no coding agent" below.
 - `fdictCaptureHostBinaryHashes(listBinaryPaths)` — for each binary
   the project declares as a host-side dependency (e.g., a compiled
   scientific executable referenced from `saHostBinaries` in
@@ -306,6 +309,66 @@ answerable with `archived`, `referenced` or `declined`. Declining
 satisfies Level 2 and blocks only the Level 3 criterion, which never
 reads the answer — so a project that declined and later deposits
 reaches Level 3 with nothing to undo.
+
+The Environment archive row names every place a deposit can go before
+anything is uploaded: a new version of the project's earlier record
+(on the Zenodo that holds it), a new record on zenodo.org, or a new
+record on the Zenodo sandbox, which is for practice and never
+satisfies Level 3. When the project has deposited before, the row says
+so and recommends continuing a permanent record; otherwise it
+recommends a new permanent one. Nothing is pre-selected, the
+confirmation names the chosen destination, and a missing token for
+that Zenodo is asked for without changing where the project
+publishes.
+
+While a deposit runs, the row names each step and counts the bytes
+uploaded. A dropped connection is retried twice, and each attempt that
+ended is kept on the row with how far it got and how long it ran. A
+running deposit can be stopped from the row up to the moment it starts
+publishing; after that the DOI is being minted and cannot be taken
+back. A stopped deposit publishes nothing.
+
+#### The archived environment holds no coding agent
+
+Coding agents help write the code; they compute no result. So the
+image the envelope pins, the Level 3 rerun uses and the archive
+deposits is the **agent-free environment** — the build stage just
+below the first coding agent — and the agents the researcher worked
+with are stacked above it. A reproducer then installs whichever agents
+they like, or none, and the published record names no vendor's
+software as part of the environment.
+
+Each build stage is labeled with what it holds (`vaibify-overlays`),
+and every stage that installs an agent, or a prerequisite installed
+only for one (Node.js, uv), names the agent-free stage in
+`vaibify-environment-image-id`. The envelope follows that label and
+checks it against the image's layers before pinning; the agents'
+names are recorded as `dictContainer.listAgentOverlays`, and their
+versions in the AI provenance stamp. The deposit's description names
+them as used, not included.
+
+That is honest only if the agents cannot change what the environment
+computes, so before a deposit — and again when a reproducer stacks
+their own agents on an obtained image — vaibify reads the agents'
+layers back out of `docker save` and refuses if any of them:
+
+1. overwrites or removes a file the environment holds (package-manager
+   bookkeeping and logs excepted);
+2. adds a command the environment already has on its `PATH`;
+3. adds a file where an interpreter or the loader searches — an
+   existing Python package directory, a shared-library directory,
+   shell or loader configuration, fonts, R or Julia libraries;
+4. appends anything but a `PATH` prepend to a shell startup file;
+5. changes the image's settings beyond prepending to `PATH`.
+
+The same two images always get the same verdict. The rules enumerate
+the search mechanisms vaibify knows, so a pass is strong evidence
+rather than proof; the proof is the Level 3 rerun itself, which
+regenerates every pinned output inside the agent-free image. An image
+built before these labels existed pins the image the container runs,
+as it always did, and a deposit refuses a pinned image whose own label
+says it holds agents, naming the remedy: rebuild with this vaibify,
+restart, and deposit again.
 
 ### The Dockerfile is provenance; the digest is reproduction
 
@@ -584,13 +647,25 @@ all of it was baked in at build time. Nothing on screen said so. Now a
 banner does, and it names the remedy:
 
 ```
-This container predates your vaibify.yml
-  vaibify.yml has changed since this image was built, so the container
-  is still running the old recipe.
-  Rebuild the environment to apply it. Ports, mounts, secrets and
-  resource limits are not part of this — those apply on the next start
-  and never need a rebuild.
+This container is running an older version of your environment
+  The environment's settings (its packages, repositories, Python
+  version or features) changed after this container was built, so
+  those changes are not in effect yet.
+  To apply them, open Admin → Environments and choose Rebuild from the
+  ⋮ menu on this environment's tile; the container restarts on the new
+  build when it finishes.
+  If this project is already verified, the rebuild changes its
+  environment: afterwards open Project → Artifacts → Environment
+  snapshot, click Regenerate now, and verify again.
+  Ports, shared folders, passwords and memory limits never need a
+  rebuild: they take effect the next time the container starts.
 ```
+
+The comparison is against `vaibify.yml` as you wrote it. A build also
+adds the project's own repository to the list the container clones,
+but that addition belongs to the build, not to your file, and it is
+kept out of the stamp — otherwise every fresh container would claim to
+predate the file it was just built from.
 
 **The second line is as load-bearing as the first.** Ports, bind
 mounts, secrets, network isolation and the CPU/memory ceilings are

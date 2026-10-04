@@ -5158,7 +5158,28 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shell, the preflight order and the durable launch.
     # +9 (2026-09-24): each deposit record names the project it
     # deposits for, so another project's row neither pulses nor erases it.
-    "routes/environmentArchiveRoutes.py": 844,
+    # +4 (2026-09-27): the deposit names the record the environment was
+    # archived under before, so a changed image is its next version.
+    # +29 (2026-09-28): the deposit refuses, before saving, an
+    # environment the coding agents are part of or reach, and names the
+    # agents it leaves out; the check and the sentence live in
+    # reproducibility/agentLayerSeparation.py, the call sites here.
+    # +40 (2026-09-28): the deposit goes where the researcher CHOSE --
+    # the request's choice is resolved (reproducibility/
+    # archiveDepositPlan.py holds the policy), the chosen Zenodo's token
+    # is read, and a missing one is a 409 naming its instance; a
+    # referenced DOI is looked up on the Zenodo it names.
+    # +12 (2026-09-29): the deposit and the promotion put the upload's
+    # bytes and attempt on the row, through one callback factory.
+    # +16 (2026-09-29): every byte-less step of a deposit (the agent
+    # check, the draft preparation) names itself on the row.
+    # +13 (2026-09-29): each upload attempt that ends without Zenodo's
+    # answer is kept on the row, through one callback factory.
+    # +61 (2026-09-29): a running deposit can be stopped -- the stop
+    # route, and the checkpoint every progress report now passes
+    # through. Still one lane (this project's image archive); the stop
+    # state and its lock live in gui/archiveProgress.py.
+    "routes/environmentArchiveRoutes.py": 1019,
     # NEW at 802 (2026-08-06): testRoutes.py crossed the cap on the
     # generate-test migration, under the 2026-08-05 ruling above — an
     # existing route module, carrier plumbing, raised once rather than
@@ -5352,7 +5373,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 3645 -> 3696 (2026-10-01): the push reads and records, in the
     # hub's registry, the remote it reached, which is what a later
     # verify is bound to.
-    "routes/syncRoutes.py": 3633,
+    # +43 (2026-09-29): publish-where-the-record-is, the cross-instance
+    # refusal's OTHER remedy, beside the start-new-concept route that
+    # is its twin -- same flow, same bookkeeping, same module.
+    "routes/syncRoutes.py": 3688,
     # main +59 (2026-07-10): content-fingerprint piggyback in the
     # polling stat batch (_ftStatAndFingerprintViaPathfile) — same
     # exec, one sha256 line — feeding the reload detector.
@@ -5954,7 +5978,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # frame routing that finds the waiting run.
     # 3719 -> 3720 (2026-10-01): the dependency scan's task is kept referenced.
     # 3720 -> 3767 (2026-10-01): a malformed or unresolvable run frame is refused with an event.
-    "pipelineServer.py": 3761,
+    # +1 (2026-09-26): registers the committed-file route module.
+    # +2 (2026-09-28): the envelope-currency comparison passes the
+    # agent-free environment's identity, so a pin on the environment
+    # below the agents reads as derived rather than as drift.
+    # +9 (2026-09-28): the archive row's payload carries the deposit
+    # plan -- where a deposit can go and which is recommended.
+    # 3671 -> 3770 (2026-10-04): measured after merging the agent-free
+    # environment archive branch into main; both sides' growth.
+    "pipelineServer.py": 3770,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6824,7 +6856,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2336 -> 2366 (2026-10-02): the wizard requests and the settings route carry the
     # x11Forwarding opt-in, refused beside networkIsolation (one helper, same module as
     # the agent auto-update helper it parallels).
-    "registryRoutes.py": 2366,
+    # +35 (2026-09-26): the Files page's read of which pinned files in
+    # the researcher's own directory differ from the last commit. It
+    # sits beside the wizard's other reads of that directory (the git
+    # remote, the dependency scan), sharing their directory lookup and
+    # agent-lane refusal; the restore itself runs in the container.
+    # +12 (2026-09-27): the conversion records the Files page's choice
+    # on the registry entry, so the first start that succeeds -- not
+    # only the wizard's own -- copies it.
+    # 2375 -> 2413 (2026-10-04): measured after merging the agent-free
+    # environment archive branch into main; both sides' growth.
+    "registryRoutes.py": 2413,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7012,7 +7054,18 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1413 -> 1419 (2026-09-30): update-step's description names the
     # fields the agent lane may write.
     # 1419 -> 1425 (2026-10-01): the image-trust answer route is user-only, with its reason.
-    "actionCatalog.py": 1417,
+    # +19 (2026-09-26): list-committed-file-differences (agent-safe
+    # read) and restore-committed-files (user-only: it discards the
+    # container's changes to the files it restores).
+    # +5 (2026-09-28): deposit-environment-archive documents its
+    # required sChoice argument.
+    # +10 (2026-09-29): stop-environment-archive-deposit (user-only,
+    # like the deposit it stops).
+    # +11 (2026-09-29): publish-where-the-zenodo-record-is (user-only:
+    # it decides where a permanent DOI is minted).
+    # 1440 -> 1462 (2026-10-04): measured after merging the agent-free
+    # environment archive branch into main; both sides' growth.
+    "actionCatalog.py": 1462,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7094,7 +7147,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # denylist to the confined write and answer a refusal with 403.
     # 853 -> 915 (2026-10-01): the capped, path-free pull and the RFC 6266
     # download header belong beside the routes that use them.
-    "routes/fileRoutes.py": 915,
+    # +59 (2026-09-26): the seed can start the container from the
+    # committed versions of the pinned files that differ, among the
+    # entries copied. It must run inside the seed's own admission,
+    # after the copy lands and before anyone else can see the tree.
+    # +33 (2026-09-27): the seed applies the conversion's recorded
+    # choice when asked for the pending copy, and clears it once the
+    # copy lands -- one seed route for the wizard and every retry.
+    # 932 -> 1009 (2026-10-04): measured after merging the agent-free
+    # environment archive branch into main; both sides' growth.
+    "routes/fileRoutes.py": 1009,
     # NEW at 824 (2026-08-05): repoRoutes.py crossed the cap when the
     # two Repos-panel pushes were migrated onto carrier mode (b)
     # (migration plan phase 2). The added lines are one worker, one
@@ -7491,7 +7553,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container-lifecycle scope, with the reason.
     # 1067 -> 1068 (2026-10-01): the image-trust answer route's scope.
     # 1068 -> 1073 (2026-10-02): the Open in VS Code link route joins the container-read allowlist.
-    "routeScope.py": 1073,
+    # +4 (2026-09-26): committed-file-differences acknowledged as a
+    # container read, with why it is one.
+    # 1058 -> 1076 (2026-10-04): measured after merging the agent-free
+    # environment archive branch into main; both sides' growth.
+    "routeScope.py": 1076,
 }
 
 

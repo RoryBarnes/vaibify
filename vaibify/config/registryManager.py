@@ -455,6 +455,32 @@ def fdictGetPushedGithubRemotes(sName):
     return dict(dictRemotes) if isinstance(dictRemotes, dict) else {}
 
 
+S_PENDING_SEED_KEY = "dictPendingSeed"
+
+
+def fnSetPendingSeed(sName, dictPendingSeed):
+    """Record, or with ``None`` clear, the files a conversion still has to copy in.
+
+    A converted container's workspace is a fresh volume that exists
+    only once the container runs, so the files the researcher chose on
+    the wizard's Files page are copied after the first successful
+    start. Held here rather than in the browser page, because that
+    first start may come from a later retry -- a failed download
+    followed by Re-obtain lost the choice entirely and opened an empty
+    workspace (2026-09-26). Cleared when a copy succeeds.
+    """
+    def fnWriteSeed(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        if dictPendingSeed:
+            dictEntry[S_PENDING_SEED_KEY] = dict(dictPendingSeed)
+        else:
+            dictEntry.pop(S_PENDING_SEED_KEY, None)
+
+    _fnMutateRegistryLocked(fnWriteSeed)
+
+
 def fnSwitchProjectToBuilding(sName):
     """Clear the image source AND the origin record in one locked mutation.
 
