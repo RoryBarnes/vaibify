@@ -26397,8 +26397,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/browser/testOpenInVsCodeAsksTheHostForTheLink.py::testTheButtonFollowsTheLinkTheHostBuilt',
         source='vaibify/gui/static/scriptApplication.js',
-        old='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n            elLink.click();\n',
-        new='            elLink.href = dictLink.sUri;\n            document.body.appendChild(elLink);\n',
+        old='            fnSuspendUnloadGuard(I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS);\n            elLink.click();\n',
+        new='            fnSuspendUnloadGuard(I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS);\n',
     ),
     Falsification(
         nodeid='tests/testCouncilSnapshotCredentialExclusions.py::testDotenvVariantsAreExcluded',
@@ -26979,5 +26979,32 @@ def _fdictEntry(sRel):
         source='vaibify/cli/commandBuild.py',
         old='    fpreflightConfigurationFields,\n    fpreflightBaseImage,\n',
         new='    fpreflightConfigurationFields,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testOpenInVsCodeAsksTheHostForTheLink.py::testOpeningVsCodeDoesNotLetTheUnloadGuardCancelTheLaunch'
+        ),
+        # the guard no longer stands down, so the leave-page prompt returns
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            fnSuspendUnloadGuard(I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testOpenInVsCodeAsksTheHostForTheLink.py::testTheUnloadGuardIsArmedAgainOnceTheLaunchHasHadItsChance'
+        ),
+        # the stand-down becomes effectively permanent
+        source='vaibify/gui/static/scriptApplication.js',
+        old='    var I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS = 3000;\n',
+        new='    var I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS = 3000000000;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVsCodeAttachLink.py::testTheLinkAsksForANewWindowSoNoOpenFileIsDisturbed'
+        ),
+        # the link stops asking for a new window
+        source='vaibify/gui/vscodeAttachLink.py',
+        old='    ) + S_NEW_WINDOW_QUERY',
+        new='    )',
     ),
 ]

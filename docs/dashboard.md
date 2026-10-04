@@ -120,6 +120,15 @@ see [Agent actions](#agent-actions) below.
 
 The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
+## Opening the container in VS Code
+
+**View > Open in VS Code** opens the running container in a **new** VS Code window, so the window you already have, and any unsaved files in it, are left alone. It needs the Dev Containers extension. The button is hidden in a remote session, because the link names a container that exists only on the remote machine's Docker daemon.
+
+The first time, two confirmations appear that are not Vaibify's:
+
+- **Your browser** asks whether to open the `vscode://` link in Visual Studio Code. Firefox offers a checkbox to remember the answer.
+- **VS Code** asks "An external application wants to open ... Do you want to open this folder?" This is VS Code's guard against links from other applications; the dialog has a checkbox to stop asking, and the setting behind it is `security.promptForRemoteFileProtocolHandling`. Vaibify does not change your VS Code settings.
+
 ## Repos panel
 
 The Repos panel is the home tab for sandbox and toolkit projects (the

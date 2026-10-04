@@ -55,6 +55,25 @@ def testTheLinkIsTheAttachedContainerFormTheExtensionParses():
     assert "remote-containers" not in sUri and "attach?" not in sUri
 
 
+@pytest.mark.falsification
+def testTheLinkAsksForANewWindowSoNoOpenFileIsDisturbed():
+    """Kills: dropping ``windowId=_blank``, so VS Code opens the container
+    in the window the researcher already has and asks whether to save
+    that window's unsaved files before replacing it (reported 2026-10-04).
+
+    VS Code's own URL handler reads the parameter; it was confirmed in
+    the shipped 1.138.0 source, which passes ``forceNewWindow`` when it
+    finds ``windowId=_blank`` on the link. That a window really opens
+    needs a real VS Code and was not run here.
+    """
+    sUri = fsBuildAttachUri(S_CONTAINER_ID, "/workspace", S_COLIMA_SOCKET)
+
+    assert urlsplit(sUri).query == "windowId=_blank"
+    _, dictConfig, sPath = _fdictParseLikeTheExtension(sUri)
+    assert dictConfig["containerId"] == S_CONTAINER_ID
+    assert sPath == "/workspace"
+
+
 def testTheDefaultSocketOrNoEndpointAddsNoSetting():
     for sHost in ("", "unix:///var/run/docker.sock"):
         _, dictConfig, _ = _fdictParseLikeTheExtension(
@@ -64,7 +83,7 @@ def testTheDefaultSocketOrNoEndpointAddsNoSetting():
 
 def testAWorkspaceRootWithASpaceIsQuoted():
     sUri = fsBuildAttachUri(S_CONTAINER_ID, "/work space")
-    assert sUri.endswith("/work%20space")
+    assert urlsplit(sUri).path.endswith("/work%20space")
 
 
 def test_the_endpoint_is_DOCKER_HOST_first_then_the_context(monkeypatch):
