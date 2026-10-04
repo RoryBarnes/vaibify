@@ -28035,4 +28035,14 @@ def _fdictEntry(sRel):
         old='        return Boolean(dictLabel) && dictLabel.bShow === true;\n',
         new='        return Boolean(dictLabel);\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testQuickStartReaderJourneyLive.py::'
+            'testAReadersContainerRunReproducesTheAuthorsVectorFigures'
+        ),
+        # A foreign manifest is recognised but the recorded epoch is dropped on the floor.
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return iRecordedEpoch, ""\n',
+        new='    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return 0, "forced"\n',
+    ),
 ]
