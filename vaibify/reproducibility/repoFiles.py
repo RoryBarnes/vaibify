@@ -906,6 +906,25 @@ def fnInjectManifestTextIntoSnapshot(filesSnapshot, sManifestText):
         dictEntry["bIsFile"] = True
 
 
+def _fdictSnapshotExtras(
+    dictCachedKeys, bHashManifestEntries, bReadReproductions,
+):
+    """Return only the typed-read options this fetch actually asks for.
+
+    A fetch that wants none of them (the readiness route) passes none,
+    so a connection that predates them is called exactly as it always
+    was.
+    """
+    dictExtras = {}
+    if dictCachedKeys:
+        dictExtras["dictCachedKeys"] = dictCachedKeys
+    if bHashManifestEntries:
+        dictExtras["bHashManifestEntries"] = True
+    if bReadReproductions:
+        dictExtras["bReadReproductions"] = True
+    return dictExtras
+
+
 def _fdictFillCacheHits(dictAnswered, dictCachedEntries):
     """Replace each ``bCacheHit`` answer with the hash its key vouches for.
 
@@ -1010,9 +1029,10 @@ class SnapshotRepoFiles:
                     listScriptRelPaths, listHashRelPaths,
                 ),
                 sorted(set(listAbsHashPaths or [])),
-                dictCachedKeys=dictCachedKeys,
-                bHashManifestEntries=bHashManifestEntries,
-                bReadReproductions=bReadReproductions,
+                **_fdictSnapshotExtras(
+                    dictCachedKeys, bHashManifestEntries,
+                    bReadReproductions,
+                ),
             )
         else:
             # Legacy transport for adapters without the typed read

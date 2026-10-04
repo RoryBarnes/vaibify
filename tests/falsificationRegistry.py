@@ -21711,20 +21711,17 @@ def _fdictEntry(sRel):
         # repr() doubles every backslash, so the estimate admits a
         # rendered argument the kernel refuses.
         old=(
-            '        iRenderedBytes = len(\n'
-            '            _DICT_TYPED_READ_PROGRAMS'
-            '[S_TYPED_READ_REPO_SNAPSHOT]\n'
-            '            .replace(\n'
-            '                _S_TYPED_READ_PATH_SLOT,\n'
-            '                _fsTypedReadPathLiteral(listArgs),\n'
-            '            ).encode("utf-8"),\n'
-            '        )\n'
+            '    return len(\n'
+            '        _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]\n'
+            '        .replace(_S_TYPED_READ_PATH_SLOT, '
+            '_fsTypedReadPathLiteral(listArgs))\n'
+            '        .encode("utf-8")\n'
+            '    )\n'
         ),
         new=(
-            '        iRenderedBytes = sum(\n'
-            '            len(sArg.encode("utf-8")) + 4 '
-            'for sArg in listArgs\n'
-            '        )\n'
+            '    return sum(\n'
+            '        len(sArg.encode("utf-8")) + 4 for sArg in listArgs\n'
+            '    )\n'
         ),
     ),
     Falsification(

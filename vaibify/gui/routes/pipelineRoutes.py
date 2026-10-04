@@ -2129,6 +2129,8 @@ def _fdictCachedEntriesForSnapshot(dictShaCache):
     """
     dictOffered = {}
     for sRelPath, dictEntry in dictShaCache.items():
+        if not isinstance(dictEntry, dict):
+            continue
         listKey = dictEntry.get("listStatKey")
         if (
             dictEntry.get("sSha256")

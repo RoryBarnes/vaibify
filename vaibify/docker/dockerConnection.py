@@ -1381,6 +1381,15 @@ def _fdictParseJsonTypedRead(tExecResult, sWhat):
             f"The {sWhat} read answered unparseable output: {errorParse}")
 
 
+def _fiRenderedSnapshotBytes(listArgs):
+    """Return the byte size of the snapshot program once its arguments are in."""
+    return len(
+        _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]
+        .replace(_S_TYPED_READ_PATH_SLOT, _fsTypedReadPathLiteral(listArgs))
+        .encode("utf-8")
+    )
+
+
 def _fsTypedReadPathLiteral(objPaths):
     """Return the Python literal a typed-read program embeds for its paths.
 
@@ -2203,13 +2212,14 @@ class DockerConnection:
         ):
             for sPath in listGroup or []:
                 listArgs.append(sPrefix + ":" + sPath)
-        for sPath, listKey in sorted((dictCachedKeys or {}).items()):
-            listArgs.append(
-                "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath)
         if bHashManifestEntries:
             listArgs.append("f:manifestEntries")
         if bReadReproductions:
             listArgs.append("f:reproductions")
+        listKeyArgs = [
+            "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath
+            for sPath, listKey in sorted((dictCachedKeys or {}).items())
+        ]
         # The RENDERED single argument, not an estimate of the path
         # bytes going into it: repr() doubles every backslash and
         # escapes what it must, so an estimate admits a command the
@@ -2217,13 +2227,14 @@ class DockerConnection:
         # names rendering to twice their estimate (external review,
         # 2026-09-16). This renders the same program the typed read
         # will run, so the number is the argument's actual size.
-        iRenderedBytes = len(
-            _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]
-            .replace(
-                _S_TYPED_READ_PATH_SLOT,
-                _fsTypedReadPathLiteral(listArgs),
-            ).encode("utf-8"),
-        )
+        iRenderedBytes = _fiRenderedSnapshotBytes(listArgs + listKeyArgs)
+        if listKeyArgs and iRenderedBytes <= I_EXEC_ARGUMENT_BUDGET_BYTES:
+            listArgs = listArgs + listKeyArgs
+        else:
+            # The cached keys are an optimisation: past the budget the
+            # program simply rehashes what it was not told it may skip,
+            # which is slower and correct.
+            iRenderedBytes = _fiRenderedSnapshotBytes(listArgs)
         if iRenderedBytes > I_EXEC_ARGUMENT_BUDGET_BYTES:
             raise ValueError(
                 f"the repository snapshot's {len(listArgs)} paths "

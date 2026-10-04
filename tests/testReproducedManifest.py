@@ -515,7 +515,12 @@ def test_a_clone_carrying_another_identitys_attestation_records_a_reproduction(
     assert sRecordPath.endswith("_reproduced.json")
     dictRecord = json.loads((pathRepo / sRecordPath).read_text())
     assert dictRecord["sVerdict"] == "reproduced"
-    assert dictRecord["sReproducedManifestPath"] == S_REPRODUCED_MANIFEST_FILENAME
+    # The timestamped history copy, never the shared root file a later
+    # run overwrites: the record's evidence must outlive the next run.
+    assert dictRecord["sReproducedManifestPath"] != S_REPRODUCED_MANIFEST_FILENAME
+    assert dictRecord["sReproducedManifestPath"].startswith(
+        ".vaibify/reproducedManifests/")
+    assert dictRecord["sReproducedManifestPath"] in listWritten
     assert dictRecord["sRecordedNote"] == reproductionRecord.S_REPRODUCTION_RECORD_NOTE
     assert dictRecord["dictSource"]["sRepositoryName"] == "repo"
     assert str(tmp_path) not in json.dumps(dictRecord)

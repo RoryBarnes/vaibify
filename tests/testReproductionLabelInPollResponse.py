@@ -412,3 +412,26 @@ def test_the_label_never_shows_for_ones_own_manifest(tmp_path):
     _fnWriteRecord(sRepo, _fdictOutcomeFor(sRepo))
     dictLabel, _c, _x = _fdictPollLabel(sRepo)
     assert dictLabel["bShow"] is False
+
+
+def test_cached_keys_past_the_exec_budget_are_dropped_not_refused(tmp_path):
+    """The cache is an optimisation: too many keys must not blind the poll.
+
+    Thousands of cached entries would render past the exec argument
+    budget; the snapshot then asks for no skipping and rehashes, rather
+    than raising and leaving the dashboard on a conservative tick.
+    """
+    sRepo = _fsBuildReaderClone(tmp_path)
+    connection = LocalSnapshotConnection()
+    dictManyEntries = {
+        f"cached/file{iIndex:06d}.dat": {
+            "listStatKey": [1, 2, 3, 4], "sSha256": "a" * 64}
+        for iIndex in range(4000)
+    }
+    filesPoll = SnapshotRepoFiles.ffilesFetch(
+        connection, S_CONTAINER_ID, sRepo,
+        dictCachedEntries=dictManyEntries, bHashManifestEntries=True,
+    )
+    assert connection.iSnapshotReads == 1
+    assert not [s for s in connection.listLastArgs if s.startswith("x:")]
+    assert filesPoll.fdictAllHashEntries()["MANIFEST.sha256"]["sSha256"]
