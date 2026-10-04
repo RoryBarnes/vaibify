@@ -156,10 +156,13 @@ async def fiRunAllTests(
         {"sType": "started", "sCommand": "runAllTests"}
     )
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
-    from .pipelineRunner import _fnInjectDeterminismEnvPrefix
+    from .pipelineRunner import (
+        _fnAnnounceDeterminismEpochSource, _fnInjectDeterminismEnvPrefix,
+    )
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVars,
     )
+    await _fnAnnounceDeterminismEpochSource(fnStatusCallback, dictVars)
     iFinalExitCode = await _fiRunTestsForAllSteps(
         connectionDocker, sContainerId, dictWorkflow,
         dictVars, fnStatusCallback,

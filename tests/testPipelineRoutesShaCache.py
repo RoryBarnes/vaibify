@@ -131,48 +131,36 @@ def test_no_project_repo_skips_persistence_silently():
     assert connectionFake.listWrites == []
 
 
+class _FakeFilesAnswering:
+    """Answer the hash entries the snapshot's own program would."""
+
+    def __init__(self, sSha256, listKey):
+        self._dictEntry = {
+            "sSha256": sSha256, "listStatKey": listKey,
+            "sSymlinkSegment": None, "bEscapesRoot": False,
+        }
+
+    def fdictAllHashEntries(self):
+        return {"out/a.dat": dict(self._dictEntry)}
+
+
 def test_persist_only_runs_on_update():
-    """An identical sha+mtime should not trigger a write."""
-    connectionFake = _RecordingFakeDocker()
-    dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-
-    class _FakeFilesNoChange:
-        def fdictHashFiles(self, listPaths):
-            return {
-                sPath: {
-                    "sSha256": "aa", "sSymlinkSegment": None,
-                    "bEscapesRoot": False,
-                }
-                for sPath in listPaths
-            }
-
-    dictMtimesRel = {"out/a.dat": "1700"}
+    """An identical sha and stat key should not trigger a write."""
+    dictCache = {"out/a.dat": {
+        "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
     bChanged = pipelineRoutes._fbUpdateShaCache(
-        dictCache, _FakeFilesNoChange(),
-        ["out/a.dat"], dictMtimesRel,
+        dictCache, _FakeFilesAnswering("aa", [1, 2, 3, 4]),
     )
     assert bChanged is False
 
 
 def test_persist_runs_when_sha_changes():
-    """A fresh sha or mtime advances the cache and signals persistence."""
-    connectionFake = _RecordingFakeDocker()
-    dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-
-    class _FakeFilesChanged:
-        def fdictHashFiles(self, listPaths):
-            return {
-                sPath: {
-                    "sSha256": "bb", "sSymlinkSegment": None,
-                    "bEscapesRoot": False,
-                }
-                for sPath in listPaths
-            }
-
-    dictMtimesRel = {"out/a.dat": "1800"}
+    """A fresh sha or key advances the cache and signals persistence."""
+    dictCache = {"out/a.dat": {
+        "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
     bChanged = pipelineRoutes._fbUpdateShaCache(
-        dictCache, _FakeFilesChanged(),
-        ["out/a.dat"], dictMtimesRel,
+        dictCache, _FakeFilesAnswering("bb", [1, 2, 3, 5]),
     )
     assert bChanged is True
-    assert dictCache["out/a.dat"] == {"iMtime": 1800, "sSha256": "bb"}
+    assert dictCache["out/a.dat"] == {
+        "listStatKey": [1, 2, 3, 5], "sSha256": "bb"}

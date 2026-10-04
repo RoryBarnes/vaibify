@@ -1644,28 +1644,28 @@ LIST_FALSIFICATIONS = [
         new="""_SET_ETAG_VOLATILE_KEYS = frozenset({"iL3BlockerCount"})""",
     ),
     Falsification(
-        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestSplitCachedAndChanged::test_stale_mtime_forces_rehash',
+        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestCachedEntriesForSnapshot::test_an_entry_without_a_stat_key_is_never_offered',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""            and dictEntry.get("iMtime") == iMtime""",
-        new='            and True',
+        old="""            and isinstance(listKey, list) and len(listKey) == 4\n""",
+        new='            and True\n',
     ),
     Falsification(
-        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestSplitCachedAndChanged::test_matching_mtime_reuses_cache',
+        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestCachedEntriesForSnapshot::test_an_entry_under_its_full_key_is_offered_with_its_hash',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old='if bCacheValid:',
-        new='if False:',
+        old='            dictOffered[sRelPath] = dictEntry\n',
+        new='            pass\n',
     ),
     Falsification(
-        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestUpdateShaCacheSingleFieldChange::test_mtime_only_change_signals_persistence',
+        nodeid='tests/testPipelineRoutesMutationCoverage.py::TestUpdateShaCacheSingleFieldChange::test_key_only_change_signals_persistence',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""                or dictExisting.get("iMtime") != iMtime""",
-        new="""                and dictExisting.get("iMtime") != iMtime""",
+        old='        if dictShaCache.get(sRelPath) != dictNew:\n',
+        new='        if (dictShaCache.get(sRelPath) or {}).get("sSha256") != sSha256:\n',
     ),
     Falsification(
         nodeid='tests/testPipelineRoutesMutationCoverage.py::TestUpdateShaCacheSingleFieldChange::test_sha_only_change_signals_persistence',
         source='vaibify/gui/routes/pipelineRoutes.py',
-        old="""                or dictExisting.get("iMtime") != iMtime""",
-        new="""                and dictExisting.get("iMtime") != iMtime""",
+        old='        if dictShaCache.get(sRelPath) != dictNew:\n',
+        new='        if (dictShaCache.get(sRelPath) or {}).get("listStatKey") != list(listKey):\n',
     ),
     Falsification(
         nodeid='tests/testSyncDispatcherMutationCoverage.py::test_digest_script_matches_git_blob_sha',
@@ -2076,9 +2076,9 @@ LIST_FALSIFICATIONS = [
         # branch: every rerun re-derives from a HEAD the manifest
         # commit already moved.
         old="""    if iSourceDateEpochOverride > 0:
-        return iSourceDateEpochOverride
-    return await _fiQueryHeadCommitEpoch(""",
-        new="""    return await _fiQueryHeadCommitEpoch(""",
+        return iSourceDateEpochOverride, "the explicit override"
+""",
+        new="",
     ),
     Falsification(
         nodeid='tests/testRecordedEpochReplay.py::test_rerun_lane_passes_the_recorded_epoch_to_the_runner',
@@ -2622,8 +2622,7 @@ def _fdictEntry(sRel):
         # docker gateway when the snapshot became a declared typed
         # read; both transports now run this one constant.
         source='vaibify/docker/dockerConnection.py',
-        old="""    dictOut["dictFiles"][sRel] = dictEntry
-def _fdictEntry(sRel):
+        old="""def _fdictEntry(sRel):
     d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
@@ -2637,8 +2636,7 @@ def _fdictEntry(sRel):
     sRootReal = os.path.realpath(sRoot)
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):""",
-        new="""    dictOut["dictFiles"][sRel] = dictEntry
-def _fdictEntry(sRel):
+        new="""def _fdictEntry(sRel):
     d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
@@ -12998,8 +12996,8 @@ def _fdictEntry(sRel):
         # The host branch never fires: host runs silently fall back to
         # vaibify-authored shell text prepended to the researcher's
         # command, with the salt directory back on a world-shared /tmp.
-        old='    if fbIsHostProject(sContainerId):\n',
-        new='    if False:\n',
+        old='    if fbIsHostProject(sContainerId):\n        dictOverlay = await _fdictBuildHostDeterminismOverlay(\n',
+        new='    if False:\n        dictOverlay = await _fdictBuildHostDeterminismOverlay(\n',
     ),
     Falsification(
         nodeid=(
@@ -13010,8 +13008,8 @@ def _fdictEntry(sRel):
         # The container lane routed through the overlay path: the
         # Docker leg takes no environment argument, so its determinism
         # guarantees would exist only as silently dropped data.
-        old='    if fbIsHostProject(sContainerId):\n',
-        new='    if True:\n',
+        old='    if fbIsHostProject(sContainerId):\n        dictOverlay = await _fdictBuildHostDeterminismOverlay(\n',
+        new='    if True:\n        dictOverlay = await _fdictBuildHostDeterminismOverlay(\n',
     ),
     Falsification(
         nodeid=(
@@ -24314,8 +24312,8 @@ def _fdictEntry(sRel):
             'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheRunnerExportsTheNamespaceForALoadedWorkflow'
         ),
         source='vaibify/gui/determinismEnvironment.py',
-        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n    if fbIsHostProject(sContainerId):\n',
-        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n    if fbIsHostProject(sContainerId):\n',
+        old='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        fsWorkflowLoadedFromPath(dictWorkflow),\n    )\n    iSourceDateEpochOverride, sEpochSource',
+        new='    sWorkflowSlug = fsWorkflowSlugFromPath(\n        dictWorkflow.get("sPath", ""),\n    )\n    iSourceDateEpochOverride, sEpochSource',
     ),
     Falsification(
         nodeid=(
@@ -27856,5 +27854,185 @@ def _fdictEntry(sRel):
         source='vaibify/reproducibility/imageAcquisition.py',
         old='        return sPinnedReference, S_OBTAINED_LOCAL\n',
         new='        return sPinnedReference, S_OBTAINED_ARCHIVE\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_a_foreign_manifest_container_run_replays_the_recorded_epoch'
+        ),
+        # the recorded-epoch branch is never taken: every run dates from HEAD
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    if iRecordedEpoch > 0:\n        return iRecordedEpoch,',
+        new='    if False:\n        return iRecordedEpoch,',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_the_authors_own_run_dates_from_head'
+        ),
+        # the ownership condition is inverted: the author replays and a reader does not
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return iRecordedEpoch, ""',
+        new='    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return iRecordedEpoch, ""',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_undetermined_ownership_dates_from_head_and_says_why'
+        ),
+        # an ownership git cannot settle is treated as foreign
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    return 0, "whose manifest this is could not be determined"',
+        new='    return iRecordedEpoch, ""',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_a_host_mode_run_never_replays'
+        ),
+        # a host-mode run replays the recorded epoch
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    if fbIsHostProject(sContainerId):\n        return 0, "this project runs on this machine"',
+        new='    if False:\n        return 0, "this project runs on this machine"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_an_explicit_override_beats_the_recorded_epoch'
+        ),
+        # the recorded replay outranks the rerun lane\'s explicit override
+        source='vaibify/gui/determinismEnvironment.py',
+        old='    if iSourceDateEpochOverride > 0:\n        return iSourceDateEpochOverride, "the explicit override"',
+        new='    if False:\n        return iSourceDateEpochOverride, "the explicit override"',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRunReplaysRecordedEpoch.py::'
+            'test_the_run_lane_and_the_test_lane_get_the_same_epoch'
+        ),
+        # the test runner stops handing the project repository to the shared resolver
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='    await _fnInjectDeterminismEnvPrefix(\n        connectionDocker, sContainerId, dictWorkflow, dictVars,\n    )\n    await _fnAnnounceDeterminismEpochSource',
+        new='    await _fnInjectDeterminismEnvPrefix(\n        connectionDocker, sContainerId, {**dictWorkflow, "sProjectRepoPath": ""}, dictVars,\n    )\n    await _fnAnnounceDeterminismEpochSource',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testForeignManifestGuard.py::'
+            'test_the_level_one_crossing_in_a_container_never_rewrites_a_foreign_envelope'
+        ),
+        # The envelope is refreshed on the Level 1 crossing whoever owns the manifest.
+        source='vaibify/gui/fileStatusManager.py',
+        old='    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_reproduced_record_shows_the_label'
+        ),
+        # a reproduced record never shows the label
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    return _fdictLabelForReproduced(dictNewest, dictLastNoVerdict)\n',
+        new='    return _fdictLabel(S_STATE_ABSENT)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_diverged_record_shows_no_label'
+        ),
+        # a diverged newest record no longer clears the label
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if dictNewest.get("sVerdict") == _S_VERDICT_DIVERGED:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_later_diverged_clears_and_a_later_no_verdict_keeps_with_both_named'
+        ),
+        # the newest reproduced record is picked instead of the newest decisive one
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        if dictRecord.get("sVerdict") in (\n            _S_VERDICT_REPRODUCED, _S_VERDICT_DIVERGED,\n        )\n',
+        new='        if dictRecord.get("sVerdict") == _S_VERDICT_REPRODUCED\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_change_to_any_pinned_file_clears_the_label'
+        ),
+        # the live hash of a manifest entry is never compared
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        if not sObserved or _fsLiveDigest(filesPoll, sPath) != sObserved:\n',
+        new='        if not sObserved:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_rewrite_that_restores_the_mtime_is_rehashed_and_clears_the_label'
+        ),
+        # the cache key is the whole-second mtime again
+        source='vaibify/docker/dockerConnection.py',
+        old='    return [statResult.st_mtime_ns, statResult.st_ctime_ns,\n            statResult.st_size, statResult.st_ino]\n',
+        new='    return [statResult.st_mtime_ns // 1000000000, 0, 0, 0]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_file_changing_during_the_hash_is_neither_cached_nor_matched'
+        ),
+        # the stat after the hash is never taken
+        source='vaibify/docker/dockerConnection.py',
+        old='        bSteady = (_flistStatKey(os.fstat(iFd)) == listKey\n                   and _flistStatKey(os.stat(sAbs)) == listKey)\n',
+        new='        bSteady = True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_containment_is_checked_on_a_cache_hit'
+        ),
+        # a path that escapes the root is hashed as if it were inside it
+        source='vaibify/docker/dockerConnection.py',
+        old='    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):\n        d["bEscapesRoot"] = True\n        return d\n',
+        new='    if False:\n        d["bEscapesRoot"] = True\n        return d\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_record_for_another_workflow_does_not_supersede'
+        ),
+        # records are selected across all workflows
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        and dictRecord.get("sWorkflowRelativePath") == sWorkflowRelativePath\n',
+        new='        and True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_unreadable_evidence_is_neither_absent_nor_reproduced'
+        ),
+        # a failed read is treated as no records
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    listRecords = _flistParseRecords(dictRecordTexts)\n    if listRecords is None:\n',
+        new='    listRecords = _flistParseRecords(dictRecordTexts) or []\n    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_the_label_never_shows_for_ones_own_manifest'
+        ),
+        # the ownership check is dropped
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if dictRecord.get("sManifestOwnershipAtRun") != _S_OWNERSHIP_FOREIGN:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheProjectHeadingReadsReproduced.py::'
+            'test_the_heading_reads_reproduced_only_for_a_shown_label'
+        ),
+        # The heading draws the label whatever the server's verdict says.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        return Boolean(dictLabel) && dictLabel.bShow === true;\n',
+        new='        return Boolean(dictLabel);\n',
     ),
 ]

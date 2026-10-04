@@ -824,7 +824,8 @@ TUPLE_SNAPSHOT_SKIP_TEXT_PATHS = (
 
 def _fsBuildSnapshotScriptCommand(
     sRootPath, listScriptRelPaths, listHashRelPaths,
-    listAbsHashPaths=None,
+    listAbsHashPaths=None, dictCachedKeys=None,
+    bHashManifestEntries=False, bReadReproductions=False,
 ):
     """Return the one-exec command collecting the poll snapshot.
 
@@ -861,6 +862,9 @@ def _fsBuildSnapshotScriptCommand(
             "listSkipTextPaths": list(TUPLE_SNAPSHOT_SKIP_TEXT_PATHS),
             "listHashPaths": listHashPaths,
             "listAbsHashPaths": sorted(set(listAbsHashPaths or [])),
+            "dictCachedKeys": dict(dictCachedKeys or {}),
+            "bHashManifestEntries": bool(bHashManifestEntries),
+            "bReadReproductions": bool(bReadReproductions),
         },
     )
 
@@ -902,6 +906,24 @@ def fnInjectManifestTextIntoSnapshot(filesSnapshot, sManifestText):
         dictEntry["bIsFile"] = True
 
 
+def _fdictFillCacheHits(dictAnswered, dictCachedEntries):
+    """Replace each ``bCacheHit`` answer with the hash its key vouches for.
+
+    The program answered a hit only for a path whose stat key equalled
+    the key it was handed, so the cached hash is the one taken under
+    that very key. A hit the cache cannot back is a hash of ``None``:
+    never a guess, and never a match.
+    """
+    dictFilled = {}
+    for sRelPath, dictEntry in dictAnswered.items():
+        dictEntry = dict(dictEntry)
+        if dictEntry.get("bCacheHit"):
+            dictEntry["sSha256"] = (
+                dictCachedEntries.get(sRelPath) or {}).get("sSha256")
+        dictFilled[sRelPath] = dictEntry
+    return dictFilled
+
+
 def ffilesConservativeSnapshot(sRootPath):
     """Return the all-absent snapshot for ONE degraded poll tick.
 
@@ -936,12 +958,17 @@ class SnapshotRepoFiles:
         self._dictFiles = dictFiles or {}
         self._dictHashes = dictHashes or {}
         self._dictAbsHashes = dictAbsHashes or {}
+        self.dictReproductionRecords = None
+        self.sReproductionsError = ""
+        self.bManifestHasEscapedPaths = False
 
     @classmethod
     def ffilesFetch(
         cls, connectionDocker, sContainerId, sRootPath,
         listScriptRelPaths=None, listHashRelPaths=None,
         dictSeedHashes=None, listAbsHashPaths=None,
+        dictCachedEntries=None, bHashManifestEntries=False,
+        bReadReproductions=False,
     ):
         """Fetch one snapshot with exactly ONE container exec.
 
@@ -952,7 +979,22 @@ class SnapshotRepoFiles:
         ``listAbsHashPaths`` are out-of-repo absolute paths (declared
         binaries) hashed in the same exec and answered later via
         ``fdictHashAbsolutePaths``.
+
+        ``dictCachedEntries`` maps a path to ``{listStatKey, sSha256}``:
+        the ``[mtime_ns, ctime_ns, size, inode]`` key a cached hash was
+        taken under, and the hash. The program stats each path itself,
+        hashes only when the key moved, and answers ``bCacheHit`` when
+        it did not, which this method fills from the cache. Containment
+        is checked on every path whether or not it is hashed. ``bHashManifestEntries``
+        adds every ``MANIFEST.sha256`` entry to the batch and
+        ``bReadReproductions`` reads the reproduction records, in the
+        same single exec.
         """
+        dictCachedKeys = {
+            sRelPath: dictEntry["listStatKey"]
+            for sRelPath, dictEntry in (dictCachedEntries or {}).items()
+            if dictEntry.get("sSha256") and dictEntry.get("listStatKey")
+        }
         fnTypedSnapshot = getattr(
             connectionDocker, "ftReadRepoSnapshot", None,
         )
@@ -968,6 +1010,9 @@ class SnapshotRepoFiles:
                     listScriptRelPaths, listHashRelPaths,
                 ),
                 sorted(set(listAbsHashPaths or [])),
+                dictCachedKeys=dictCachedKeys,
+                bHashManifestEntries=bHashManifestEntries,
+                bReadReproductions=bReadReproductions,
             )
         else:
             # Legacy transport for adapters without the typed read
@@ -977,6 +1022,9 @@ class SnapshotRepoFiles:
             sCommand = _fsBuildSnapshotScriptCommand(
                 sRootPath, listScriptRelPaths, listHashRelPaths,
                 listAbsHashPaths=listAbsHashPaths,
+                dictCachedKeys=dictCachedKeys,
+                bHashManifestEntries=bHashManifestEntries,
+                bReadReproductions=bReadReproductions,
             )
             tExecResult = connectionDocker.ftRunInContainerStreamed(
                 sContainerId, sCommand,
@@ -1003,13 +1051,22 @@ class SnapshotRepoFiles:
                 "answer; refusing to fabricate one"
             )
         dictHashes = dict(dictSeedHashes or {})
-        dictHashes.update(dictParsed.get("dictHashes") or {})
-        return cls(
+        dictHashes.update(_fdictFillCacheHits(
+            dictParsed.get("dictHashes") or {}, dictCachedEntries or {},
+        ))
+        filesSnapshot = cls(
             sRootPath,
             dictParsed["dictFiles"],
             dictHashes,
             dictAbsHashes=dictParsed.get("dictAbsHashes") or {},
         )
+        filesSnapshot.dictReproductionRecords = dictParsed.get(
+            "dictReproductionRecords")
+        filesSnapshot.sReproductionsError = dictParsed.get(
+            "sReproductionsError", "")
+        filesSnapshot.bManifestHasEscapedPaths = bool(
+            dictParsed.get("bManifestHasEscapedPaths"))
+        return filesSnapshot
 
     def fsLocalRootOrNone(self):
         """Return None: the snapshot mirrors container state."""
@@ -1068,11 +1125,17 @@ class SnapshotRepoFiles:
         """Return snapshotted hash entries; unsampled paths map to missing."""
         dictResult = {}
         for sRelPath in listRelPaths:
-            dictResult[sRelPath] = self._dictHashes.get(sRelPath) or {
-                "sSha256": None, "sSymlinkSegment": None,
-                "bEscapesRoot": False,
+            dictEntry = self._dictHashes.get(sRelPath) or {}
+            dictResult[sRelPath] = {
+                "sSha256": dictEntry.get("sSha256"),
+                "sSymlinkSegment": dictEntry.get("sSymlinkSegment"),
+                "bEscapesRoot": bool(dictEntry.get("bEscapesRoot")),
             }
         return dictResult
+
+    def fdictAllHashEntries(self):
+        """Return every hash entry the snapshot holds, keyed by path."""
+        return dict(self._dictHashes)
 
     def flistListJsonFilenames(self, sRelDir):
         """Directory listings are not sampled in the poll snapshot."""

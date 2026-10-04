@@ -6590,7 +6590,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # a shell instead of to ``time``, and a CPU marker glued to an
     # unterminated last line is split off. Both are the runner's own
     # command assembly and output handling.
-    "pipelineRunner.py": 1863,
+    # 1863 -> 1865 (2026-10-04): the run log names the epoch that dated the run.
+    "pipelineRunner.py": 1865,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

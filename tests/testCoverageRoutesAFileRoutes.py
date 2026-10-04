@@ -644,6 +644,42 @@ def testASeedCopiesTheSelectionPlusTheGitDirectory(
     )]
 
 
+def testASeedHandsOverTheWorkingTreeNotTheCommittedVersion(
+    tclientFiles, tmp_path,
+):
+    """The copy's source is the researcher's files as they are now.
+
+    A file edited since the last commit is copied with its edit: the
+    path the writer receives reads back the working-tree bytes, which
+    differ from what HEAD holds.
+    """
+    import subprocess
+    client, connectionDocker = tclientFiles
+    sDirectory = str(tmp_path / "hostProjectCharlie")
+    os.makedirs(sDirectory)
+    for listArguments in (["init", "-q"],):
+        subprocess.run(["git", "-C", sDirectory, *listArguments], check=True)
+    sFile = os.path.join(sDirectory, "result.txt")
+    with open(sFile, "w") as fileOut:
+        fileOut.write("committed\n")
+    subprocess.run(["git", "-C", sDirectory, "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", sDirectory, "-c", "user.email=a@example.invalid",
+         "-c", "user.name=A", "commit", "-q", "-m", "seed"], check=True,
+    )
+    with open(sFile, "w") as fileOut:
+        fileOut.write("edited since the commit\n")
+    _fnRegisterProject(sDirectory)
+    responseHttp = client.post(
+        f"/api/files/{S_CONTAINER_ID}/seed-workspace",
+        json={"saRelativePaths": ["result.txt"]},
+    )
+    assert responseHttp.status_code == 200, responseHttp.text
+    sHandedOver = connectionDocker.listTreeWrites[0][1][0]
+    with open(sHandedOver) as fileRead:
+        assert fileRead.read() == "edited since the commit\n"
+
+
 def testASeedOfAnUnregisteredProjectNamesTheContainer(
     tclientFiles,
 ):

@@ -64,6 +64,9 @@ const VaibifyApp = (function () {
             dictWorkflowScopeLevels: null,
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
+            /* The server's verdict on whether this reader's copy has
+               been reproduced; rendered, never re-derived. */
+            dictReproductionLabel: null,
             /* True when the latest poll shipped no envelope although an
                earlier one had: the rows still on screen are from that
                earlier poll and must say so. */
@@ -1063,6 +1066,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictWorkflowLevelHighWater = {};
         _dictWorkflowState.dictWorkflowEnvelopeDetail = null;
         _dictWorkflowState.bEnvelopeDetailStale = false;
+        _dictWorkflowState.dictReproductionLabel = null;
         _dictWorkflowState.dictRemoteChecks = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
@@ -2178,6 +2182,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
             bEnvelopeDetailStale:
                 _dictWorkflowState.bEnvelopeDetailStale,
+            dictReproductionLabel:
+                _dictWorkflowState.dictReproductionLabel,
             dictRemoteChecks:
                 _dictWorkflowState.dictRemoteChecks,
             bProjectBlockAwaitsFirstAnswer:
@@ -6837,6 +6843,8 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictStepLevelWarnings =
                 dictStatus.dictStepLevelWarnings;
         }
+        _dictWorkflowState.dictReproductionLabel =
+            dictStatus.dictReproductionLabel || null;
         if (dictStatus.dictWorkflowEnvelopeDetail) {
             var bAttestationWasRunning = (
                 _dictWorkflowState.dictWorkflowEnvelopeDetail || {}

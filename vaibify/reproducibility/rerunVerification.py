@@ -40,6 +40,7 @@ quietly disagree with the other about what "reproduced" means.
 """
 
 import asyncio
+import hashlib
 import posixpath
 from datetime import datetime, timezone
 
@@ -186,11 +187,15 @@ def fdictRerunAndVerifyWorkflow(
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictExpectedManifest = fdictSnapshotExpectedManifest(filesRepo)
+    dictWorkflowEvidence = fdictSnapshotWorkflowEvidence(
+        filesRepo, sWorkflowPath,
+    )
     iSourceDateEpoch = fiRecordedSourceDateEpoch(filesRepo)
     sRerunStartedIso = datetime.now(timezone.utc).isoformat()
 
     def fdictStampRunFacts(dictOutcome):
         """Name the manifest graded and the moment the run began."""
+        dictOutcome.update(dictWorkflowEvidence)
         dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
         dictOutcome["iSourceDateEpoch"] = iSourceDateEpoch
         dictOutcome["sRerunStartedIso"] = sRerunStartedIso
@@ -433,6 +438,28 @@ def fdictSnapshotExpectedManifest(filesRepo):
         "listEntries": listEntries,
         "sDigest": fsCurrentManifestDigest(filesRepo),
     }
+
+
+def fdictSnapshotWorkflowEvidence(filesRepo, sWorkflowPath):
+    """Freeze the workflow file's repo-relative path and digest.
+
+    Taken beside the expected manifest, from the tree the rerun is
+    about to run in, so a reproduction record binds the workflow it
+    actually ran. An unreadable file is recorded as an empty digest,
+    which no live file can equal.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    sRelativePath = posixpath.relpath(
+        sWorkflowPath, fsRepoRootOf(filesRepo),
+    ) if sWorkflowPath else ""
+    if not sRelativePath or sRelativePath.startswith(".."):
+        return {"sWorkflowRelativePath": "", "sWorkflowDigest": ""}
+    try:
+        sDigest = hashlib.sha256(
+            filesRepo.fbaReadBytes(sRelativePath)).hexdigest()
+    except (OSError, ValueError):
+        sDigest = ""
+    return {"sWorkflowRelativePath": sRelativePath, "sWorkflowDigest": sDigest}
 
 
 def fdictVerifyRerunOutputs(

@@ -328,6 +328,46 @@ for sRel in dictArgs["listContentPaths"]:
         except (OSError, UnicodeDecodeError):
             dictEntry["sText"] = None
     dictOut["dictFiles"][sRel] = dictEntry
+def _flistStatKey(statResult):
+    # Nanosecond mtime AND ctime, size and inode: a program can set a
+    # file's mtime back but not its ctime, and a replaced file has a
+    # new inode. A whole-second mtime alone is a key a same-second
+    # rewrite does not move.
+    return [statResult.st_mtime_ns, statResult.st_ctime_ns,
+            statResult.st_size, statResult.st_ino]
+def _fdictReadOnceAgainstKey(sAbs, listCachedKey):
+    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        iFd = os.open(sAbs, iFlags)
+    except OSError:
+        return {"sSha256": None}
+    try:
+        listKey = _flistStatKey(os.fstat(iFd))
+        if listCachedKey and listKey == list(listCachedKey):
+            return {"sSha256": None, "listStatKey": listKey,
+                    "bCacheHit": True}
+        h = hashlib.sha256()
+        while True:
+            ba = os.read(iFd, 65536)
+            if not ba:
+                break
+            h.update(ba)
+        bSteady = (_flistStatKey(os.fstat(iFd)) == listKey
+                   and _flistStatKey(os.stat(sAbs)) == listKey)
+    except OSError:
+        return {"sSha256": None}
+    finally:
+        os.close(iFd)
+    if not bSteady:
+        return {"sSha256": None, "listStatKey": listKey, "bTornRead": True}
+    return {"sSha256": h.hexdigest(), "listStatKey": listKey}
+def _fdictHashAgainstKey(sAbs, listCachedKey):
+    # One immediate retry; a file still changing is reported as torn,
+    # never hashed and never matched.
+    dictRead = _fdictReadOnceAgainstKey(sAbs, listCachedKey)
+    if dictRead.get("bTornRead"):
+        dictRead = _fdictReadOnceAgainstKey(sAbs, listCachedKey)
+    return dictRead
 def _fdictEntry(sRel):
     d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
     if os.path.isabs(sRel):
@@ -344,10 +384,50 @@ def _fdictEntry(sRel):
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
         d["bEscapesRoot"] = True
         return d
-    d["sSha256"] = _fsHash(sReal)
+    d.update(_fdictHashAgainstKey(
+        sReal, dictArgs.get("dictCachedKeys", {}).get(sRel)))
     return d
-for sRel in dictArgs["listHashPaths"]:
+listHashPaths = list(dictArgs["listHashPaths"])
+if dictArgs.get("bHashManifestEntries"):
+    try:
+        with open(os.path.join(sRoot, "MANIFEST.sha256"), "r") as f:
+            sManifestText = f.read()
+    except (OSError, UnicodeDecodeError):
+        sManifestText = ""
+    for sLine in sManifestText.splitlines():
+        if not sLine or sLine.startswith("#"):
+            continue
+        if sLine.startswith("\\\\"):
+            dictOut["bManifestHasEscapedPaths"] = True
+            continue
+        sHashPart, sSeparator, sPathPart = sLine.partition("  ")
+        if sSeparator:
+            listHashPaths.append(sPathPart)
+for sRel in listHashPaths:
     dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
+if dictArgs.get("bReadReproductions"):
+    dictOut["dictReproductionRecords"] = {}
+    sRecordDir = os.path.join(sRoot, ".vaibify", "reproductions")
+    try:
+        listNames = sorted(
+            [s for s in os.listdir(sRecordDir) if s.endswith(".json")],
+            reverse=True)[:40]
+    except FileNotFoundError:
+        listNames = []
+    except OSError as error:
+        listNames = []
+        dictOut["sReproductionsError"] = type(error).__name__
+    for sName in listNames:
+        try:
+            iFd = os.open(os.path.join(sRecordDir, sName),
+                          os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(iFd, "rb") as f:
+                baBody = f.read(4194305)
+            if len(baBody) > 4194304:
+                raise OSError("record too large")
+            dictOut["dictReproductionRecords"][sName] = baBody.decode("utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            dictOut["sReproductionsError"] = type(error).__name__
 for sAbs in dictArgs.get("listAbsHashPaths", []):
     dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
 sys.stdout.write(json.dumps(dictOut))
@@ -921,7 +1001,9 @@ _DICT_TYPED_READ_PROGRAMS = {
         "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
         "dictArgs = {\"sRoot\": \"\", \"listContentPaths\": [],\n"
         "            \"listSkipTextPaths\": [], \"listHashPaths\": [],\n"
-        "            \"listAbsHashPaths\": []}\n"
+        "            \"listAbsHashPaths\": [], \"dictCachedKeys\": {},\n"
+        "            \"bHashManifestEntries\": False,\n"
+        "            \"bReadReproductions\": False}\n"
         "dictKeyByPrefix = {\"c\": \"listContentPaths\",\n"
         "                   \"k\": \"listSkipTextPaths\",\n"
         "                   \"h\": \"listHashPaths\",\n"
@@ -929,6 +1011,14 @@ _DICT_TYPED_READ_PROGRAMS = {
         "for sArg in listArgs:\n"
         "    if sArg[:2] == \"r:\":\n"
         "        dictArgs[\"sRoot\"] = sArg[2:]\n"
+        "    elif sArg == \"f:manifestEntries\":\n"
+        "        dictArgs[\"bHashManifestEntries\"] = True\n"
+        "    elif sArg == \"f:reproductions\":\n"
+        "        dictArgs[\"bReadReproductions\"] = True\n"
+        "    elif sArg[:2] == \"x:\":\n"
+        "        sKeyText, _sSep, sKeyPath = sArg[2:].partition(\"|\")\n"
+        "        dictArgs[\"dictCachedKeys\"][sKeyPath] = [\n"
+        "            int(s) for s in sKeyText.split(\",\")]\n"
         "    elif sArg[1:2] == \":\" and sArg[:1] in dictKeyByPrefix:\n"
         "        dictArgs[dictKeyByPrefix[sArg[:1]]].append(sArg[2:])\n"
         + S_REPO_SNAPSHOT_PROGRAM_CORE
@@ -2083,6 +2173,8 @@ class DockerConnection:
     def ftReadRepoSnapshot(
         self, sContainerId, sRootPath, listContentPaths,
         listSkipTextPaths, listHashPaths, listAbsHashPaths,
+        dictCachedKeys=None, bHashManifestEntries=False,
+        bReadReproductions=False,
     ):
         """Run the one-exec poll snapshot as a DECLARED read.
 
@@ -2111,6 +2203,13 @@ class DockerConnection:
         ):
             for sPath in listGroup or []:
                 listArgs.append(sPrefix + ":" + sPath)
+        for sPath, listKey in sorted((dictCachedKeys or {}).items()):
+            listArgs.append(
+                "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath)
+        if bHashManifestEntries:
+            listArgs.append("f:manifestEntries")
+        if bReadReproductions:
+            listArgs.append("f:reproductions")
         # The RENDERED single argument, not an estimate of the path
         # bytes going into it: repr() doubles every backslash and
         # escapes what it must, so an estimate admits a command the

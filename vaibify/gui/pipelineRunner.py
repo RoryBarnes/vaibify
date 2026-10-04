@@ -131,6 +131,7 @@ from .determinismEnvironment import (  # noqa: F401
     _fsBuildDeterminismEnvPrefix,
     _fnInjectDeterminismEnvPrefix,
     _fnAnnounceDegradedDeterminism,
+    _fnAnnounceDeterminismEpochSource,
 )
 
 # ---------------------------------------------------------------------------
@@ -1706,6 +1707,7 @@ async def _ftPrepareLogAndVariables(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
+    await _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables)
     await _fnAnnounceDegradedDeterminism(fnLogging, dictVariables)
     fnClearOutputModifiedFlags(dictWorkflow)
     return sLogPath, listLogLines, fnLogging, dictVariables

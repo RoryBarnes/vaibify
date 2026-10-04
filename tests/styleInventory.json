@@ -212,7 +212,6 @@
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/figureRoutes.py::_fnRegisterFigure.fresponseCheckFigure.p", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestBlocking::manifestWriter", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fdictVerifyManifestUnderTheDrain::manifestWriter", "sReason": ""},
-    {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_fiCoercePollMtime::mtimeValue", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/pipelineRoutes.py::_ftRunManifestVerify::manifestWriter", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/reproducibilityRoutes.py::_fnRequireScalarType.typeOption", "sReason": ""},
     {"sDebtClass": "legacy-variable", "sIdentity": "vaibify/gui/routes/sessionRoutes.py::_fbIsPortAcceptingConnections.sock", "sReason": ""},
@@ -341,7 +340,7 @@
     "legacy-literal-return": 0,
     "legacy-name": 0,
     "legacy-return-annotation": 0,
-    "legacy-variable": 320,
+    "legacy-variable": 319,
     "legacy-yield": 0
   }
 }

@@ -458,3 +458,40 @@ def test_each_file_outcome_reads_at_the_panel_width(pageDashboard, serverHub):
         assert dictRow["fPathShare"] >= 0.33, dictRow
         assert dictRow["fWordHeight"] <= dictRow["fLine"] * 1.5, dictRow
     assert pageDashboard.listPageErrors == []
+
+
+def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_comparison(
+    pageDashboard, serverHub,
+):
+    """A freshly converted container's check lists what differs, plainly.
+
+    The reader's container holds the outputs their own computer made,
+    and the manifest is the author's, untouched: the toast names how
+    many files differ and the first of them, and says nothing about a
+    manifest this machine wrote.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/workflow/**/manifest/verify",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "iTotal": 24, "iMatching": 22,
+                "listMismatches": [
+                    {"sPath": S_MATCHED_PATH}, {"sPath": S_DIVERGED_PATH},
+                ],
+                "saIncomplete": [], "sManifestOwnership": "foreign",
+                "bManifestDiffersFromHead": False,
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyApp.fnRunProjectAction('verify-manifest', '', null)")
+    pageDashboard.wait_for_selector(
+        "#toastContainer .toast.warning", state="visible", timeout=5000,
+    )
+    sToast = pageDashboard.text_content("#toastContainer .toast.warning")
+    assert "2 of 24 files differ from the manifest" in sToast, sToast
+    assert S_MATCHED_PATH in sToast, sToast
+    assert "this machine wrote" not in sToast, sToast
+    assert pageDashboard.listPageErrors == []

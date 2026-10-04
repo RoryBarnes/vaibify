@@ -260,7 +260,9 @@ I_LEGACY_ANNOTATION_MISMATCH_BUDGET = 0
 # bindings at a stroke (the registry entry is the burn-down), and
 # overleafSync's `subparsers` became `parserSubcommands` while
 # pipelineServer's bare `loop` became `loopRunning`.
-I_LEGACY_VARIABLE_BUDGET = 320
+# 320 -> 319 (2026-10-04): the whole-second poll mtime coercion was replaced
+# by the snapshot's own stat key, and took its unprefixed parameter with it.
+I_LEGACY_VARIABLE_BUDGET = 319
 
 DICT_BUDGETS = {
     "legacy-name": I_LEGACY_NAME_BUDGET,

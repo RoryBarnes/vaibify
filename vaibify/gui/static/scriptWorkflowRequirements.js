@@ -3770,6 +3770,30 @@ var VaibifyWorkflowRequirements = (function () {
             'moment.</div></div>';
     }
 
+    function _fsReproducedHoverText(dictLabel) {
+        /* The server decided; this only phrases it. The date is the
+           day of the record, and an emulated success still reads
+           "(reproduced)" with the emulation named here. */
+        var sDay = String(dictLabel.sRecordedIso || "").slice(0, 10);
+        var sText = "Reproduced on " + sDay +
+            (dictLabel.sPlatform ? " (" + dictLabel.sPlatform + ")" : "") +
+            (dictLabel.bEmulated ? " under emulation" : "") + ".";
+        if (dictLabel.sLatestAttemptVerdict === "no-verdict") {
+            sText += " The latest attempt, on " +
+                String(dictLabel.sLatestAttemptIso || "").slice(0, 10) +
+                ", reached no verdict: " + (dictLabel.sReason || "") + ".";
+        }
+        return sText;
+    }
+
+    function _fbReproducedLabelShows(dictContext) {
+        /* The server decided; absent, diverged, stale and unreadable
+           all draw nothing. This is a reader's achievement, never a
+           state to be inferred from silence. */
+        var dictLabel = dictContext.dictReproductionLabel;
+        return Boolean(dictLabel) && dictLabel.bShow === true;
+    }
+
     function _fsRenderStaleEnvelopeNotice(dictContext) {
         if (dictContext.bEnvelopeDetailStale !== true) return "";
         return '<div class="project-block-stale" role="status">' +
@@ -3838,12 +3862,17 @@ var VaibifyWorkflowRequirements = (function () {
            that have none. */
         _dictBlockedRowReasons = _fdictHomeBlockedRows(
             dictDetail.dictBlockedRows || {});
+        var bReproduced = _fbReproducedLabelShows(dictContext);
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
-            'title="Requirements that apply to the project as a ' +
-            'whole rather than to any single step. Click the banner ' +
-            'to collapse or expand.">' +
+            'title="' + (bReproduced
+                ? fnEscapeHtml(_fsReproducedHoverText(
+                    dictContext.dictReproductionLabel))
+                : 'Requirements that apply to the project as a ' +
+                  'whole rather than to any single step. Click the ' +
+                  'banner to collapse or expand.') + '">' +
             _fsExpandTriangle(bOpen) + 'Project' +
+            (bReproduced ? ' (reproduced)' : '') +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';

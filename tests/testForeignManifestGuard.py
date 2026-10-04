@@ -203,3 +203,37 @@ def test_the_manifest_check_says_which_manifest_it_read(tmp_path):
     dictResult = pipelineRoutes._fdictBuildManifestVerifyResult(sRepo, [], [])
     assert dictResult["bManifestDiffersFromHead"] is True
     assert dictResult["iTotal"] == 1 and dictResult["iMatching"] == 1
+
+
+@pytest.mark.falsification
+def test_the_level_one_crossing_in_a_container_never_rewrites_a_foreign_envelope(
+    tmp_path,
+):
+    """Kills: refreshing the envelope on the crossing whoever owns the manifest.
+
+    A reader's container crosses Level 1 the moment the steps are
+    approved. The refresh is asked on the container's adapter, not the
+    host's, and it must leave the author's envelope alone there too.
+    """
+    from vaibify.gui import fileStatusManager
+    sRepo = _fsRepositoryWithACommittedManifest(tmp_path, S_OTHER_EMAIL)
+    dictWorkflow = {"sProjectRepoPath": sRepo}
+    with patch.object(
+        fileStatusManager, "_ffilesForWorkflowRepo",
+        lambda dictWorkflow, connectionDocker, sContainerId: sRepo,
+    ), patch(
+        "vaibify.reproducibility.levelGates.fbAtLeastLevel1",
+        return_value=True,
+    ), patch(
+        "vaibify.reproducibility.dataArchiver."
+        "fdictGenerateReproducibilityEnvelope",
+    ) as mockEnvelope:
+        fileStatusManager._fnRefreshEnvelopeIfLevel1(
+            dictWorkflow, "container", object(),
+        )
+        assert not mockEnvelope.called
+        fsRunGit(["config", "user.email", S_FIXTURE_EMAIL], sRepo)
+        fileStatusManager._fnRefreshEnvelopeIfLevel1(
+            dictWorkflow, "container", object(),
+        )
+    assert mockEnvelope.called

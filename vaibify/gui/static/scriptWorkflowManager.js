@@ -1037,7 +1037,10 @@ var VaibifyWorkflowManager = (function () {
         'exactly reproducible.</p>',
 
         '<p>Which of this directory&rsquo;s files and folders to copy ' +
-        'into the container.</p>' +
+        'into the container &mdash; the files as they are now, ' +
+        'including any outputs you regenerated. <strong>Start from the ' +
+        'committed files</strong> copies the author&rsquo;s committed ' +
+        'versions of the pinned files instead.</p>' +
         '<p><strong>Why you have to choose:</strong> a container does ' +
         'not share your folder. Its <code>/workspace</code> is a ' +
         'separate Docker volume, so nothing of yours is in there ' +
@@ -1296,10 +1299,33 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
+    function _fsWizardHelpBody(iPage) {
+        /* A conversion's Summary has no Create button and builds
+           nothing yet: its help says what its own final button does,
+           not what a new project's does. */
+        var bConversionSummary = iPage === _DICT_WIZARD_PAGE.SUMMARY &&
+            _dictWizardData.sMode === "convert" &&
+            !_fbPromotingToHostProject();
+        if (!bConversionSummary) return _LIST_WIZARD_HELP[iPage] || "";
+        var bPinned = _fbUsingPinnedImage();
+        return '<p>Review your selections. Pressing <strong>' +
+            (bPinned ? "Convert and obtain" : "Convert and build") +
+            '</strong> converts this project to a container project: ' +
+            'it rewrites the runtime settings in <code>vaibify.yml</code>' +
+            ' and registers the project as a container.</p><p>The ' +
+            (bPinned ? "download of the author&rsquo;s image"
+                : "build") +
+            ' starts <strong>immediately</strong> and can take minutes' +
+            (bPinned ? '' : ' to hours') + '. If it fails, the project ' +
+            'stays registered as a container that has not been ' +
+            (bPinned ? 'obtained' : 'built') + ' yet, and you can retry ' +
+            'from its tile.</p>';
+    }
+
     function _fnHandleWizardHelpClick() {
         var iPage = _fiWizardPageAt(_iWizardStep);
         var sTitle = _LIST_WIZARD_TITLES[iPage] + " — Help";
-        var sBody = _LIST_WIZARD_HELP[iPage] || "";
+        var sBody = _fsWizardHelpBody(iPage);
         VaibifyModals.fnShowInfoModal(sTitle, sBody);
         _fnRaiseInfoModalAboveWizard();
     }
@@ -2508,13 +2534,20 @@ var VaibifyWorkflowManager = (function () {
                 '</div>';
             return;
         }
+        var bFixedByAuthorsImage = _dictWizardData.sMode === "convert" &&
+            _fbUsingPinnedImage();
+        /* The author's image fixes Python, the repositories and the
+           packages; rows for them would state settings that govern
+           nothing in the five-page flow. */
         elContent.innerHTML =
             '<div class="wizard-summary-block">' +
             _fsSummaryHeadBlock() +
-            _fsSummaryRow("Python", _dictWizardData.sPythonVersion) +
-            _fsSummaryReposLine() + _fsSummarySeedLine() +
+            (bFixedByAuthorsImage ? "" : _fsSummaryRow(
+                "Python", _dictWizardData.sPythonVersion) +
+                _fsSummaryReposLine()) + _fsSummarySeedLine() +
             _fsSummaryFeaturesLine() + _fsSummaryAuthLine() +
-            _fsSummaryPackagesLines() + _fsSummaryToggleLines() +
+            (bFixedByAuthorsImage ? "" : _fsSummaryPackagesLines()) +
+            _fsSummaryToggleLines() +
             '</div>' + _fsSummaryConversionNextSteps();
     }
 

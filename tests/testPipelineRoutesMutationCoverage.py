@@ -271,69 +271,65 @@ class TestFileStatusEtagSignals:
         assert self._fsTag(dictBase) != self._fsTag(dictChanged)
 
 
-# ── Hole 5: _ftSplitCachedAndChanged revalidates against mtime ───
+# ── Hole 5: the cache offers an entry only under its full stat key ───
 
 
-class TestSplitCachedAndChanged:
-    """A cache entry is reused only when its mtime still matches."""
+class TestCachedEntriesForSnapshot:
+    """An entry is offered only with the four-integer key it was hashed under."""
 
-    def test_stale_mtime_forces_rehash(self):
-        """Kills: Remove the dictEntry.get('iMtime') == iMtime conjunct in _ftSplitCachedAndChanged."""
+    def test_an_entry_without_a_stat_key_is_never_offered(self):
+        """Kills: Drop the listStatKey conjunct in _fdictCachedEntriesForSnapshot."""
         dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        dictSeed, listNeedHash = pipelineRoutes._ftSplitCachedAndChanged(
-            ["out/a.dat"], {"out/a.dat": "1800"}, dictShaCache,
-        )
-        assert "out/a.dat" in listNeedHash
-        assert "out/a.dat" not in dictSeed
+        assert pipelineRoutes._fdictCachedEntriesForSnapshot(
+            dictShaCache) == {}
 
-    def test_matching_mtime_reuses_cache(self):
-        """Kills: Force _ftSplitCachedAndChanged to always rehash by treating a matching-mtime entry as changed (drop the cache-hit seed branch)."""
-        dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
-        dictSeed, listNeedHash = pipelineRoutes._ftSplitCachedAndChanged(
-            ["out/a.dat"], {"out/a.dat": "1700"}, dictShaCache,
-        )
-        assert "out/a.dat" in dictSeed
-        assert dictSeed["out/a.dat"]["sSha256"] == "aa"
-        assert "out/a.dat" not in listNeedHash
+    def test_an_entry_under_its_full_key_is_offered_with_its_hash(self):
+        """Kills: Offer no entry at all from _fdictCachedEntriesForSnapshot (always rehash)."""
+        dictEntry = {"listStatKey": [1, 2, 3, 4], "sSha256": "aa"}
+        dictOffered = pipelineRoutes._fdictCachedEntriesForSnapshot(
+            {"out/a.dat": dictEntry})
+        assert dictOffered == {"out/a.dat": dictEntry}
 
 
 # ── Hole 6: _fbUpdateShaCache detects a single-field change ──────
 
 
-class _FakeFilesFixedSha:
-    """Return a fixed sha256 for every requested path."""
+class _FakeFilesAnswering:
+    """Answer one hash entry per path, as the snapshot's own program does."""
 
-    def __init__(self, sSha256):
-        self._sSha256 = sSha256
+    def __init__(self, dictEntries):
+        self._dictEntries = dictEntries
 
-    def fdictHashFiles(self, listPaths):
-        return {
-            sPath: {
-                "sSha256": self._sSha256,
-                "sSymlinkSegment": None,
-                "bEscapesRoot": False,
-            }
-            for sPath in listPaths
-        }
+    def fdictAllHashEntries(self):
+        return dict(self._dictEntries)
+
+
+def _fdictSteadyEntry(sSha256, listKey):
+    return {
+        "sSha256": sSha256, "listStatKey": listKey,
+        "sSymlinkSegment": None, "bEscapesRoot": False,
+    }
 
 
 class TestUpdateShaCacheSingleFieldChange:
-    """A change in either sha or mtime alone signals persistence."""
+    """A change in either sha or stat key alone signals persistence."""
 
-    def test_mtime_only_change_signals_persistence(self):
+    def test_key_only_change_signals_persistence(self):
         """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
-        dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
+        dictCache = {"out/a.dat": {
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
         bChanged = pipelineRoutes._fbUpdateShaCache(
-            dictCache, _FakeFilesFixedSha("aa"),
-            ["out/a.dat"], {"out/a.dat": "1800"},
+            dictCache, _FakeFilesAnswering({
+                "out/a.dat": _fdictSteadyEntry("aa", [9, 2, 3, 4])}),
         )
         assert bChanged is True
 
     def test_sha_only_change_signals_persistence(self):
         """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
-        dictCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
+        dictCache = {"out/a.dat": {
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
         bChanged = pipelineRoutes._fbUpdateShaCache(
-            dictCache, _FakeFilesFixedSha("bb"),
-            ["out/a.dat"], {"out/a.dat": "1700"},
+            dictCache, _FakeFilesAnswering({
+                "out/a.dat": _fdictSteadyEntry("bb", [1, 2, 3, 4])}),
         )
         assert bChanged is True
