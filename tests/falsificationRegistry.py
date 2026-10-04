@@ -26872,4 +26872,40 @@ def _fdictEntry(sRel):
         old='        f"{_fsMintMatplotlibRunToken()}"\n',
         new='        "shared"\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheRequiredCheckToolExpandsAMatrixExcludeToTheCellsThatRun'
+        ),
+        # the exclude list is applied to nothing, so every cell survives
+        source='tools/syncRequiredChecks.py',
+        old='            dictCell, dictMatrix.get("exclude") or [],\n        )\n    ]',
+        new='            dictCell, [],\n        )\n    ]',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheRequiredCheckToolRefusesAnExcludeThatMatchesNoCell'
+        ),
+        # an exclude that matches nothing is accepted instead of refused
+        source='tools/syncRequiredChecks.py',
+        old='        if not any(fbMatrixCellIsExcluded(dictCell, [dictExclude])\n',
+        new='        if False and not any(fbMatrixCellIsExcluded(dictCell, [dictExclude])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testThePullRequestMacosLaneRunsTheTwoEdgePythonsOnTheOlderMacos'
+        ),
+        # one middle Python is quietly restored to the older macOS
+        source='.github/workflows/tests-macos.yml',
+        old='          - {os: macos-15, python-version: "3.13"}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut'
+        ),
+        # the nightly stops running the older macOS the PR lane thinned out
+        source='.github/workflows/tests-macos-nightly.yml',
+        old='        os: [macos-15, macos-26]\n',
+        new='        os: [macos-26]\n',
+    ),
 ]

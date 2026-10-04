@@ -242,7 +242,7 @@ window.
 
 | Workflow | Runs | Matrix |
 |---|---|---|
-| `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 + macOS 15/26 × Python 3.9–3.14 |
+| `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 and macOS 26 × Python 3.9–3.14, plus macOS 15 × Python 3.9 and 3.14 |
 | `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union |
 | `browser-chromium.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python cell) |
 | `browser-firefox.yml` | the same suite in Firefox, minus the five `clipboardPermissions` tests Playwright can only grant in Chromium | on pull requests |
@@ -298,6 +298,7 @@ varies across the matrix, and a bare noun for anything that does not:
 | Check | Lane |
 |---|---|
 | `unit:ubuntu-22.04:python-3.9` … `unit:macos-26:python-3.14` | `tests-linux`, `tests-macos` |
+| `nightly:<os>:python-<version>` | `tests-macos-nightly` (never required) |
 | `falsification:ubuntu-24.04:python-3.9` … | `falsification` |
 | `results:<os>:python-<version>` | the test-results report published by `tests-linux` |
 | `browser` | `browser` |
@@ -337,7 +338,10 @@ Renaming a job invalidates the ruleset entry that named it: the old name
 stops being reported and every pull request waits forever on a check
 that no longer exists. Run `syncRequiredChecks.py --apply` **before**
 merging a rename, not after — otherwise the renaming pull request is
-itself blocked by the names it is replacing.
+itself blocked by the names it is replacing. The same holds when a
+matrix cell is dropped: the pull-request macOS lane left out macOS 15
+on Python 3.10–3.13, and those four names had to leave the ruleset
+before the change could merge.
 ```
 
 `results:*` is deliberately excluded from the required set: it reports
@@ -349,6 +353,7 @@ doubles the wait for no extra signal.
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
+| `tests-macos-nightly.yml` | the full macOS unit matrix, macOS 15 and 26 × Python 3.9–3.14, so the four cells the pull-request lane leaves out (macOS 15 on 3.10–3.13) still run within a day | nightly + manual |
 | `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch on an amd64 and an arm64 runner, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change | monthly + manual |

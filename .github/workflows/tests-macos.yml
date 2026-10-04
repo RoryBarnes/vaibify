@@ -33,9 +33,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # macOS 26 runs every supported Python; macOS 15 runs only the two
+      # that bracket the range. macOS runners are the scarcest in the
+      # fleet, and a breakage that spares both ends of the range yet
+      # hits a middle version on an older macOS is rare. The four cells
+      # left out here run every night in tests-macos-nightly.yml, so
+      # they are late rather than absent. Keep the two files' cells in
+      # step: testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut
+      # fails if they drift.
       matrix:
         os: [macos-15, macos-26]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - {os: macos-15, python-version: "3.10"}
+          - {os: macos-15, python-version: "3.11"}
+          - {os: macos-15, python-version: "3.12"}
+          - {os: macos-15, python-version: "3.13"}
 
     steps:
       - uses: actions/checkout@v5

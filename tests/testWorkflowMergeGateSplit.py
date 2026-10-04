@@ -557,7 +557,27 @@ def _flistExpandJobNames(sWorkflowName):
                 for sCandidate in listExpanded
                 for sValue in listValues
             ]
-        listNames.extend(listExpanded)
+        listNames.extend(
+            _flistWithoutExcludedCells(listExpanded, sName, dictMatrix)
+        )
+    return listNames
+
+
+def _flistWithoutExcludedCells(listNames, sNameTemplate, dictMatrix):
+    """Drop the names of the cells a matrix ``exclude`` removes.
+
+    Written apart from the tool's cell expansion on purpose, like the
+    token list above: the agreement test is only worth something if the
+    two are derived separately.
+    """
+    for dictExclude in dictMatrix.get("exclude") or []:
+        sExcludedName = sNameTemplate
+        for sToken, sKey in _T_MATRIX_TOKENS:
+            if sKey in dictExclude:
+                sExcludedName = sExcludedName.replace(
+                    sToken, str(dictExclude[sKey]),
+                )
+        listNames = [sName for sName in listNames if sName != sExcludedName]
     return listNames
 
 
@@ -733,3 +753,115 @@ def testNoDerivedCheckNameCarriesAnUnexpandedMatrixToken():
         f"every merge: {listOffenders}. Add the dimension to "
         "T_MATRIX_TOKENS in tools/syncRequiredChecks.py."
     )
+
+
+@pytest.mark.falsification
+def testTheRequiredCheckToolExpandsAMatrixExcludeToTheCellsThatRun():
+    """An ``exclude`` removes exactly the cells it names from the names.
+
+    The tool used to refuse any matrix carrying ``exclude``. A lane that
+    drops cells therefore could not be synced at all, and anyone who
+    worked around the refusal by listing every cell by hand would have
+    left the ruleset requiring names the lane no longer reports.
+
+    Kills: applying no ``exclude`` entry, so every cell of the plain
+    product is offered as a required check name.
+    """
+    moduleTool = _fmoduleLoadRequiredCheckTool()
+
+    listCells = moduleTool.flistExpandMatrixCells(
+        "workflow.yml", "tests",
+        {
+            "os": ["a", "b"],
+            "python-version": ["3.9", "3.10"],
+            "exclude": [{"os": "a", "python-version": "3.10"}],
+        },
+    )
+
+    assert listCells == [
+        {"os": "a", "python-version": "3.9"},
+        {"os": "b", "python-version": "3.9"},
+        {"os": "b", "python-version": "3.10"},
+    ], f"the excluded cell was not the only one removed: {listCells}"
+
+
+@pytest.mark.falsification
+def testTheRequiredCheckToolRefusesAnExcludeThatMatchesNoCell():
+    """A misspelled ``exclude`` must stop the tool, not pass silently.
+
+    GitHub ignores an exclude entry that matches nothing, so the cell
+    the author meant to drop keeps running. A tool that believed the
+    exclude had worked would derive a required set that is one name
+    short of what the lane reports, and that name would never gate.
+
+    Kills: accepting an exclude entry that removes nothing.
+    """
+    moduleTool = _fmoduleLoadRequiredCheckTool()
+
+    with pytest.raises(SystemExit) as excinfoRefusal:
+        moduleTool.flistExpandMatrixCells(
+            "workflow.yml", "tests",
+            {
+                "os": ["a"],
+                "python-version": ["3.9"],
+                "exclude": [{"os": "a", "python-version": "3.99"}],
+            },
+        )
+
+    assert "matches no cell" in str(excinfoRefusal.value)
+
+
+@pytest.mark.falsification
+def testThePullRequestMacosLaneRunsTheTwoEdgePythonsOnTheOlderMacos():
+    """macOS 15 runs only the Pythons that bracket the supported range.
+
+    Eight macOS unit checks per pull request: macOS 26 with all six
+    Pythons, macOS 15 with 3.9 and 3.14. The tool and this suite expand
+    the matrix separately, so both are asserted.
+
+    Kills: restoring a middle Python to macOS 15 in the pull-request
+    lane, which returns the macOS queue to twelve unit jobs.
+    """
+    moduleTool = _fmoduleLoadRequiredCheckTool()
+    setExpected = {
+        f"unit:macos-26:python-{sVersion}"
+        for sVersion in ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14")
+    } | {"unit:macos-15:python-3.9", "unit:macos-15:python-3.14"}
+
+    assert set(moduleTool.flistExpandJobNames("tests-macos.yml")) == setExpected
+    assert set(_flistExpandJobNames("tests-macos.yml")) == setExpected
+
+
+@pytest.mark.falsification
+def testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut():
+    """Cells dropped from the pull-request lane must run somewhere.
+
+    The pull-request lane runs fewer macOS cells to spare the runner
+    queue. That is only an honest saving if the dropped cells still run
+    on a schedule: otherwise "macOS 15, Python 3.12" is quietly
+    untested, and nothing says so. The nightly lane must run the whole
+    product of the operating systems and Pythons the pull-request lane
+    names, and none of its names may look like a required ``unit:``
+    check, or someone will add one to the ruleset and block every merge
+    on a lane that never reports on a pull request.
+
+    Kills: narrowing the nightly lane's operating systems or Pythons,
+    which leaves cells the pull-request lane dropped untested.
+    """
+    dictPullRequestMatrix = yaml.safe_load(
+        (_PATH_WORKFLOWS / "tests-macos.yml").read_text()
+    )["jobs"]["tests"]["strategy"]["matrix"]
+    setWholeProduct = {
+        f"nightly:{sOperatingSystem}:python-{sVersion}"
+        for sOperatingSystem in dictPullRequestMatrix["os"]
+        for sVersion in dictPullRequestMatrix["python-version"]
+    }
+
+    listNightlyNames = _flistExpandJobNames("tests-macos-nightly.yml")
+
+    assert set(listNightlyNames) == setWholeProduct, (
+        "the nightly macOS lane does not run the full product of the "
+        "operating systems and Pythons the pull-request lane names."
+    )
+    assert not any(sName.startswith("unit:") for sName in listNightlyNames)
+    assert "tests-macos-nightly.yml" not in T_PRE_MERGE_WORKFLOWS

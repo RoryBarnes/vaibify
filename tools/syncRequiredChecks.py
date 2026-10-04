@@ -83,6 +83,48 @@ T_READ_ONLY_FIELDS = (
 )
 
 
+def fbMatrixCellIsExcluded(dictCell, listExcludeEntries):
+    """Return True when any ``exclude`` entry matches every key it names."""
+    return any(
+        all(dictCell.get(sKey) == str(sValue)
+            for sKey, sValue in dictExclude.items())
+        for dictExclude in listExcludeEntries
+    )
+
+
+def flistExpandMatrixCells(sWorkflowName, sJobKey, dictMatrix):
+    """Return the cells a job's matrix runs: the product minus ``exclude``.
+
+    An ``exclude`` entry that matches no cell is refused. GitHub ignores
+    it, so a misspelled value would leave the cell this tool believes is
+    gone still running, and the derived names would no longer be the
+    names the lane reports.
+    """
+    listCells = [{}]
+    for sToken, sKey in T_MATRIX_TOKENS:
+        listValues = dictMatrix.get(sKey)
+        if not isinstance(listValues, list):
+            continue
+        listCells = [
+            {**dictCell, sKey: str(sValue)}
+            for dictCell in listCells for sValue in listValues
+        ]
+    for dictExclude in dictMatrix.get("exclude") or []:
+        if not any(fbMatrixCellIsExcluded(dictCell, [dictExclude])
+                   for dictCell in listCells):
+            raise SystemExit(
+                f"{sWorkflowName}: job {sJobKey!r} has an exclude entry "
+                f"{dictExclude!r} that matches no cell of its matrix; "
+                f"correct it, as GitHub would silently ignore it."
+            )
+    return [
+        dictCell for dictCell in listCells
+        if not fbMatrixCellIsExcluded(
+            dictCell, dictMatrix.get("exclude") or [],
+        )
+    ]
+
+
 def flistExpandJobNames(sWorkflowName):
     """Return the concrete check names one workflow's jobs produce.
 
@@ -90,10 +132,9 @@ def flistExpandJobNames(sWorkflowName):
     job without a ``name:`` would be reported to GitHub under its job
     key, so skipping it silently drops that lane from the required set
     — the lane runs, fails, and blocks nothing. A matrix carrying
-    ``include``/``exclude`` expands to a different cell set than the
-    plain product computed here, so the derived names would require
-    checks that never report (blocking every merge) or miss cells that
-    do.
+    ``include`` adds cells the plain product does not contain, so the
+    derived names would miss cells that report. ``exclude`` is expanded
+    by ``flistExpandMatrixCells``.
     """
     dictWorkflow = yaml.safe_load(
         (_PATH_WORKFLOWS / sWorkflowName).read_text(encoding="utf-8")
@@ -107,23 +148,20 @@ def flistExpandJobNames(sWorkflowName):
                 f"it one so its check name is explicit, then re-run."
             )
         dictMatrix = (dictJob.get("strategy") or {}).get("matrix") or {}
-        if "include" in dictMatrix or "exclude" in dictMatrix:
+        if "include" in dictMatrix:
             raise SystemExit(
-                f"{sWorkflowName}: job {sJobKey!r} uses matrix "
-                f"include/exclude, which this tool cannot expand; "
-                f"extend flistExpandJobNames before re-running."
+                f"{sWorkflowName}: job {sJobKey!r} uses matrix include, "
+                f"which this tool cannot expand; extend "
+                f"flistExpandMatrixCells before re-running."
             )
-        listExpanded = [sName]
-        for sToken, sKey in T_MATRIX_TOKENS:
-            listValues = dictMatrix.get(sKey)
-            if not isinstance(listValues, list):
-                continue
-            listExpanded = [
-                sCandidate.replace(sToken, str(sValue))
-                for sCandidate in listExpanded
-                for sValue in listValues
-            ]
-        listNames.extend(listExpanded)
+        for dictCell in flistExpandMatrixCells(
+            sWorkflowName, sJobKey, dictMatrix,
+        ):
+            sCheckName = sName
+            for sToken, sKey in T_MATRIX_TOKENS:
+                if sKey in dictCell:
+                    sCheckName = sCheckName.replace(sToken, dictCell[sKey])
+            listNames.append(sCheckName)
     return listNames
 
 

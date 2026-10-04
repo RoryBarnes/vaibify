@@ -1,0 +1,70 @@
+name: tests-macos-nightly
+
+# The full macOS unit matrix, once a night.
+#
+# tests-macos.yml runs macOS 26 on every supported Python but macOS 15
+# on only the two that bracket the range (3.9 and 3.14), because macOS
+# runners queue for hours. This lane runs the whole 2 x 6 product, so
+# the four cells the pull-request lane leaves out are exercised within a
+# day instead of never.
+#
+# It is neither a merge gate nor a publisher. Its job names start with
+# `nightly:` on purpose: the ruleset matches required checks by name, so
+# a name that cannot be mistaken for a `unit:` check keeps anyone from
+# adding a lane that never reports on a pull request to the required
+# set, which would block every merge on a check that cannot arrive.
+# It is deliberately not wired to any release gate (maintainer ruling,
+# 2026-10-03); a red night is a signal to read, not a block.
+#
+# No `push: [main]`: testEveryWorkflowIsClassifiedOrDeliberatelyScheduled
+# forbids an event-driven lane outside the pre/post-merge split, and a
+# twelve-job macOS run on every merge is the queue pressure this lane
+# exists to relieve.
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A nightly result is something somebody wants, never a draft to be
+# replaced, so a newer run waits instead of cancelling an older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: 'nightly:${{ matrix.os }}:python-${{ matrix.python-version }}'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        # The same ceiling and the same selection as tests-macos.yml, so
+        # a night's result is comparable with a pull request's.
+        timeout-minutes: 50
+        run: |
+          python -m pytest tests/ -m "not docker and not docker_live and not browser" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term
