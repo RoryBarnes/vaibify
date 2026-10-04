@@ -26908,4 +26908,76 @@ def _fdictEntry(sRel):
         old='        os: [macos-15, macos-26]\n',
         new='        os: [macos-26]\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testTheDefaultBaseImageIsNotPassedSoTheDockerfilePinApplies'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testTheBuildCommandCarriesNoBaseImageForTheDefault'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePinLive.py::testADefaultProjectIsBuiltFromTheDockerfilesPinNotTheConfiguredTag'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAnExplicitBaseImageIsHonouredVerbatim'
+        ),
+        # every BASE_IMAGE is swallowed, ignoring a pin the researcher chose
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if False:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAnotherUbuntuReleaseIsRefusedBeforeAnyBuildWork'
+        ),
+        # another Ubuntu release is no longer refused before the build
+        source='vaibify/cli/baseImagePreflight.py',
+        old='    if sUbuntuVersion and sUbuntuVersion != S_SUPPORTED_UBUNTU_VERSION:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAGpuBuildIsRefusedWithTheReasonAndTheRemedy'
+        ),
+        # a GPU build is no longer refused before the build
+        source='vaibify/cli/baseImagePreflight.py',
+        old='    if getattr(getattr(config, "features", None), "bGpu", False):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::test_a_build_on_another_ubuntu_release_is_refused'
+        ),
+        # the dashboard build stops asking about the base image
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightBaseImage, S_REFUSAL_UNSUPPORTED_BASE_IMAGE),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommandBuildPreflight.py::test_flistRunBuildPreflight_carries_the_base_image_verdict'
+        ),
+        # vaibify build stops asking about the base image
+        source='vaibify/cli/commandBuild.py',
+        old='    fpreflightConfigurationFields,\n    fpreflightBaseImage,\n',
+        new='    fpreflightConfigurationFields,\n',
+    ),
 ]

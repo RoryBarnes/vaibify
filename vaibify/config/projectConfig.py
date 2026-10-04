@@ -15,6 +15,18 @@ from .bindMountValidator import (
 )
 
 
+# The base image a project gets when it names none. The Dockerfile pins
+# this tag by digest in its own ``ARG BASE_IMAGE``, and that digest is
+# the ONE record of the pin: a build whose baseImage is unset or equal
+# to this value is built from it, never from the floating tag.
+S_DEFAULT_BASE_IMAGE = "ubuntu:24.04"
+
+
+def fbBaseImageUsesDockerfilePin(sBaseImage):
+    """Return True when baseImage is unset or the shipped default."""
+    return (sBaseImage or "").strip() in ("", S_DEFAULT_BASE_IMAGE)
+
+
 @dataclass
 class FeaturesConfig:
     bJupyter: bool = False
@@ -65,7 +77,7 @@ class ProjectConfig:
     sProjectName: str = ""
     sContainerUser: str = "researcher"
     sPythonVersion: str = "3.12"
-    sBaseImage: str = "ubuntu:24.04"
+    sBaseImage: str = S_DEFAULT_BASE_IMAGE
     sWorkspaceRoot: str = "/workspace"
     sPackageManager: str = "pip"
     listRepositories: List[Dict[str, str]] = field(

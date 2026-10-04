@@ -29,6 +29,7 @@ __all__ = [
     "flistUnknownSystemPackages",
     "fpreflightSystemPackageNames",
     "fsSeriesForBaseImage",
+    "fsUbuntuVersionForBaseImage",
 ]
 
 
@@ -56,12 +57,17 @@ class ArchiveUnreachableError(Exception):
     """The archive gave no answer about a name; nothing is known."""
 
 
+def fsUbuntuVersionForBaseImage(sBaseImage):
+    """Return the Ubuntu release number a base image names, or ''."""
+    matchImage = _REGEX_UBUNTU_BASE_IMAGE.match((sBaseImage or "").strip())
+    return matchImage.group(1) if matchImage else ""
+
+
 def fsSeriesForBaseImage(sBaseImage):
     """Return the Ubuntu series a base image names, or '' when unknown."""
-    matchImage = _REGEX_UBUNTU_BASE_IMAGE.match((sBaseImage or "").strip())
-    if matchImage is None:
-        return ""
-    return _DICT_SERIES_BY_VERSION.get(matchImage.group(1), "")
+    return _DICT_SERIES_BY_VERSION.get(
+        fsUbuntuVersionForBaseImage(sBaseImage), "",
+    )
 
 
 def _fsPackageNameFromEntry(sEntry):

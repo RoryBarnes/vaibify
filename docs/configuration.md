@@ -17,7 +17,7 @@ file; the Python dataclass uses Hungarian notation internally.
 | `projectName`     | string  | *(required)*      | Docker container and image name      |
 | `containerUser`   | string  | `researcher`      | Non-root user inside the container   |
 | `pythonVersion`   | string  | `3.12`            | Python version to install            |
-| `baseImage`       | string  | `ubuntu:24.04`    | Base Docker image                    |
+| `baseImage`       | string  | `ubuntu:24.04`    | Base Docker image. Left out, or set to `ubuntu:24.04`, the build uses the digest-pinned image named in the Dockerfile, not whatever the tag points at that day. Any other value is used as written; a different Ubuntu release is refused (see below) |
 | `workspaceRoot`   | string  | `/workspace`      | Mount point for the workspace volume |
 | `packageManager`  | string  | `pip`             | Package manager: `pip`, `conda`, or `mamba` |
 | `networkIsolation`| boolean | `false`           | Disable outbound network access      |
@@ -100,7 +100,7 @@ Nested under the `features` key:
 | `openhandsAutoUpdate` | boolean | `true` | Update OpenHands when the container starts |
 | `pi`         | boolean | `false` | Install Pi coding agent          |
 | `piAutoUpdate` | boolean | `true` | Update Pi when the container starts |
-| `gpu`        | boolean | `false` | Enable NVIDIA GPU passthrough    |
+| `gpu`        | boolean | `false` | Enable NVIDIA GPU passthrough. **Builds with `gpu: true` are refused for now**: the GPU image sits on Ubuntu 22.04 while the toolchain is pinned to Ubuntu 24.04, and NVIDIA publishes no CUDA 12.2 image for 24.04 |
 
 All enabled CLIs receive the same Vaibify context, skills, persistent
 configuration directory, and `vaibify-do` dashboard bridge. Auto-updates
@@ -188,6 +188,7 @@ them:
 | Field | Asked of | A failure means |
 |---|---|---|
 | `containerUser`, `pythonVersion`, `workspaceRoot` | their own format | the image recipe cannot use the value (`pythonVersion` becomes the apt package `python3.12`, so `3.12.1` is refused) |
+| `baseImage`, `features.gpu` | the image's own toolchain | the name says another Ubuntu release than the 24.04 the toolchain is pinned to, or the GPU feature is on; the build would stop at the pinned `apt-get` step after the base image had been fetched |
 | `systemPackages` | Launchpad, for the series `baseImage` names | Ubuntu publishes no such package |
 | `pythonPackages` | pypi.org's simple index | the index serves no such project |
 | `repositories[].branch` | `git ls-remote` against the remote | the remote has no such branch; the refusal names its default |
@@ -196,7 +197,11 @@ Three answers are deliberately **not** refusals, because none of them
 is evidence about the value: an index, archive or remote that cannot be
 reached, a `pipInstallFlags` naming an index other than pypi.org, and a
 `baseImage` outside the Ubuntu releases vaibify knows. Each reports
-"not checked" and the build goes ahead and asks for itself.
+"not checked" and the build goes ahead and asks for itself. The
+`baseImage` refusal judges only what the image's name says: a
+digest-only reference or a registry mirror carries no release in its
+spelling, so it is not refused, and the Dockerfile's own guard still
+stops a base that is not Ubuntu.
 
 Both setup wizards apply the same field rules when they SAVE, so a
 value the build would refuse is refused at the form. They also write

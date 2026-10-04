@@ -471,6 +471,28 @@ def test_a_build_naming_an_unpublished_system_package_is_refused(
 
 
 @pytest.mark.falsification
+def test_a_build_on_another_ubuntu_release_is_refused(fixtureClient):
+    """Kills: dropping the base-image check from the route's table,
+    under which the dashboard builds jammy under noble pins and
+    reports the failure from inside the apt step."""
+    from types import SimpleNamespace
+
+    response = _fresponseBuildWithConfig(
+        fixtureClient,
+        SimpleNamespace(
+            sBaseImage="ubuntu:22.04",
+            features=SimpleNamespace(bGpu=False),
+        ),
+    )
+    assert response.status_code == 409, response.text
+    dictDetail = response.json()["detail"]
+    assert "ubuntu:22.04" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_UNSUPPORTED_BASE_IMAGE
+    )
+
+
+@pytest.mark.falsification
 def test_a_build_whose_fields_cannot_make_a_container_is_refused(
     fixtureClient,
 ):

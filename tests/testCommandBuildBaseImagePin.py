@@ -21,10 +21,14 @@ from vaibify.cli import commandBuild
 
 
 def _fConfigFloating(sProjectName="floatingproj"):
-    """Minimal config object with a floating-tag baseImage."""
+    """Minimal config object with a floating-tag baseImage.
+
+    ``ubuntu:24.04`` is deliberately not the floating tag here: it is the
+    shipped default, which builds from the Dockerfile's own digest pin.
+    """
     return SimpleNamespace(
         sProjectName=sProjectName,
-        sBaseImage="ubuntu:24.04",
+        sBaseImage="ubuntu:noble",
     )
 
 
@@ -49,7 +53,7 @@ def test_fnWarnIfBaseImageFloating_prints_warning():
     with redirect_stdout(sBuffer):
         commandBuild.fnWarnIfBaseImageFloating(_fConfigFloating())
     sOutput = sBuffer.getvalue()
-    assert "ubuntu:24.04" in sOutput
+    assert "ubuntu:noble" in sOutput
     assert "@sha256:" in sOutput
     assert "Warning" in sOutput
 
@@ -81,7 +85,7 @@ def test_fnRecordBaseImageDigestIfFloating_writes_env_json(tmp_path):
     with open(sPathEnv, "r") as fileHandle:
         dictPayload = json.load(fileHandle)
     assert dictPayload["sBaseImageDigest"].startswith("ubuntu@sha256:")
-    assert dictPayload["sConfiguredBaseImage"] == "ubuntu:24.04"
+    assert dictPayload["sConfiguredBaseImage"] == "ubuntu:noble"
 
 
 def test_fnRecordBaseImageDigestIfFloating_skips_without_vaibify_yml(

@@ -75,9 +75,10 @@ def test_fsResolveBaseImage_gpu():
 
 def test_flistBuildArgPairs_format():
     config = _fConfigWithFeatures()
-    listPairs = _flistBuildArgPairs(config, "ubuntu:24.04")
+    sPinnedBase = "ubuntu:24.04@sha256:" + "a" * 64
+    listPairs = _flistBuildArgPairs(config, sPinnedBase)
     assert "--build-arg" in listPairs
-    assert any("BASE_IMAGE=ubuntu:24.04" in s for s in listPairs)
+    assert f"BASE_IMAGE={sPinnedBase}" in listPairs
     assert any("PYTHON_VERSION=3.12" in s for s in listPairs)
 
 
