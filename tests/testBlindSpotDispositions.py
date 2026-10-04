@@ -299,7 +299,11 @@ DICT_BLIND_SPOT_DISPOSITIONS = {
             "only variable part is the project id inside a URL built "
             "from a module constant. Reaches a remote, never a "
             "container, and its stderr is redacted so a credential "
-            "cannot ride out in an error message."
+            "cannot ride out in an error message. Re-read 2026-10-03: it "
+            "now also carries the hardening list, puts the URL after an "
+            "option terminator and runs from an empty directory with an "
+            "environment that selects no repository; the executable and "
+            "the URL are still fixed, so the ruling stands."
         ),
         "listSupportingSymbols": [
             "gui/syncDispatcher.py::_ftRunHostLsRemote",
@@ -393,11 +397,18 @@ DICT_SUPPORTING_SYMBOL_FINGERPRINTS = {
     # text encoding of the captured output (encoding="utf-8"); the
     # executable, the URL's constant host and the redacted stderr are
     # untouched.
-    "gui/syncDispatcher.py::_ftRunHostLsRemote": "60eb8d1483d811f0",
+    # Re-read 2026-10-03 and the ruling SURVIVES: the call gained the
+    # hardening list, an option terminator and an empty working
+    # directory; the executable, the fixed host and the redacted stderr
+    # are untouched.
+    "gui/syncDispatcher.py::_ftRunHostLsRemote": "a74eabc5a06d49ca",
     "reproducibility/gitHardening.py::LIST_GIT_CREDENTIAL_ISOLATION_CONFIG":
         "f11e8b4053702d61",
+    # Re-read 2026-10-03 and the ruling SURVIVES: the list gained
+    # ``protocol.ext.allow=never``; it is still a module constant, and
+    # only the git subcommand varies at the sites that cite it.
     "reproducibility/gitHardening.py::LIST_GIT_HARDENING_CONFIG":
-        "bbc7222727695adc",
+        "a4d9ee7f2642ad4d",
 }
 
 

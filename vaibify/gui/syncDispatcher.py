@@ -1335,22 +1335,32 @@ def _ftRunHostLsRemote(sProjectId, sAskpass):
     answers first and a mistyped or expired token "validates" against
     someone else's credential, then fails later in the container where
     no ambient helper exists.
+
+    It needs no repository, so it asks from an empty directory with the
+    hardening list; git would otherwise read the config of whatever
+    repository the hub was started in, beside the token this carries.
     """
     import os
     from vaibify.reproducibility.gitHardening import (
         LIST_GIT_CREDENTIAL_ISOLATION_CONFIG,
+        fcontextOpenHermeticGitInvocation,
     )
     from vaibify.reproducibility.overleafMirror import fsRedactStderr
     sUrl = f"https://{_S_OVERLEAF_HOST}/{sProjectId}"
     dictEnv = os.environ.copy()
     dictEnv["GIT_ASKPASS"] = sAskpass
     dictEnv["GIT_TERMINAL_PROMPT"] = "0"
-    processResult = subprocess.run(
-        ["git"]
-        + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
-        + ["ls-remote", sUrl, "HEAD"],
-        capture_output=True, text=True, env=dictEnv, encoding="utf-8",
-    )
+    with fcontextOpenHermeticGitInvocation(dictEnv) as (
+        sWorkingDirectory, dictHermetic,
+    ):
+        processResult = subprocess.run(
+            ["git"]
+            + list(LIST_GIT_CREDENTIAL_ISOLATION_CONFIG)
+            + list(LIST_GIT_HARDENING_CONFIG)
+            + ["ls-remote", "--", sUrl, "HEAD"],
+            capture_output=True, text=True, env=dictHermetic,
+            encoding="utf-8", cwd=sWorkingDirectory,
+        )
     sDetail = fsRedactStderr((processResult.stderr or "").strip())
     return (processResult.returncode == 0, sDetail)
 

@@ -8,6 +8,7 @@ what to write. These tests drive the check with faked remotes; the
 live answer was confirmed by hand when the check was written.
 """
 
+import os
 import subprocess
 from types import SimpleNamespace
 
@@ -112,7 +113,8 @@ def test_ls_remote_output_is_read_for_the_default_and_the_branch():
         dictSeen["listCommand"] = listCommand
         dictSeen["sPrompt"] = kwargs["env"].get("GIT_TERMINAL_PROMPT")
         sStdout = (
-            S_LS_REMOTE_MASTER_ONLY if "hextor" in listCommand[3]
+            S_LS_REMOTE_MASTER_ONLY if "hextor" in listCommand[
+                listCommand.index("--") + 1]
             else S_LS_REMOTE_MAIN
         )
         return SimpleNamespace(returncode=0, stdout=sStdout, stderr="")
@@ -120,8 +122,10 @@ def test_ls_remote_output_is_read_for_the_default_and_the_branch():
     assert fdictProbeRepositoryBranch(
         "https://host.example/group/hextor", "main", fnRun,
     ) == {"bBranchExists": False, "sDefaultBranch": "master"}
-    assert dictSeen["listCommand"][:3] == ["git", "ls-remote", "--symref"]
-    assert dictSeen["listCommand"][-1] == "refs/heads/main"
+    listCommand = dictSeen["listCommand"]
+    assert listCommand[0] == "git"
+    assert listCommand[listCommand.index("ls-remote") + 1] == "--symref"
+    assert listCommand[-1] == "refs/heads/main"
     assert dictSeen["sPrompt"] == "0", "a private remote must fail, not prompt"
     assert fdictProbeRepositoryBranch(
         "https://host.example/group/fillet", "main", fnRun,
@@ -155,3 +159,120 @@ def test_the_default_branch_reads_empty_when_the_remote_cannot_be_asked():
     assert fsDefaultBranchOfRemote(
         "https://host.example/group/private", _fnProbeFake(DICT_REMOTES),
     ) == ""
+
+
+# ----------------------------------------------------------------------
+# What the probe will and will not ask, and how it asks
+# ----------------------------------------------------------------------
+
+
+def _fnRecordingRun(listCalls):
+    def fnRun(listCommand, **kwargs):
+        listCalls.append((listCommand, kwargs))
+        return SimpleNamespace(returncode=0, stdout=S_LS_REMOTE_MAIN, stderr="")
+    return fnRun
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sUrl", [
+    "--upload-pack=touch /tmp/marker",
+    "-oProxyCommand=false",
+    "ext::sh -c touch% /tmp/marker",
+    "fd::3",
+    "foo+bar::address",
+    " https://host.example/group/repo",
+    "",
+])
+def test_an_address_that_is_an_option_or_a_command_is_never_asked(sUrl):
+    """A project file's URL is data, and these are not addresses.
+
+    A leading ``-`` is parsed as an option; ``<transport>::<address>``
+    hands the address to a remote helper, and ``ext::`` runs it as a
+    command.
+
+    Kills: handing such a URL to git.
+    """
+    listCalls = []
+    with pytest.raises(RemoteUnreachableError):
+        fdictProbeRepositoryBranch(sUrl, "main", _fnRecordingRun(listCalls))
+    assert listCalls == []
+
+
+@pytest.mark.parametrize("sUrl", [
+    "https://github.com/owner/repo",
+    "git@github.com:owner/repo.git",
+    "ssh://git@host.example:2222/owner/repo.git",
+    "http://[::1]:8080/owner/repo.git",
+])
+def test_an_ordinary_address_is_asked(sUrl):
+    listCalls = []
+    fdictProbeRepositoryBranch(sUrl, "main", _fnRecordingRun(listCalls))
+    assert len(listCalls) == 1
+
+
+@pytest.mark.falsification
+def test_the_probe_carries_the_hardening_list():
+    """Kills: dropping the hardening list from the probe's command."""
+    from vaibify.reproducibility.gitHardening import LIST_GIT_HARDENING_CONFIG
+    listCalls = []
+    fdictProbeRepositoryBranch(
+        "https://host.example/group/repo", "main", _fnRecordingRun(listCalls))
+    listCommand = listCalls[0][0]
+    iStart = listCommand.index(LIST_GIT_HARDENING_CONFIG[1]) - 1
+    assert listCommand[iStart:iStart + len(LIST_GIT_HARDENING_CONFIG)] == (
+        LIST_GIT_HARDENING_CONFIG)
+    assert listCommand.index("ls-remote") > iStart
+
+
+@pytest.mark.falsification
+def test_the_address_follows_the_option_terminator():
+    """Kills: passing the address where git can read it as an option."""
+    listCalls = []
+    fdictProbeRepositoryBranch(
+        "https://host.example/group/repo", "main", _fnRecordingRun(listCalls))
+    listCommand = listCalls[0][0]
+    iTerminator = listCommand.index("--")
+    assert listCommand[iTerminator + 1] == "https://host.example/group/repo"
+
+
+@pytest.mark.falsification
+def test_the_probe_runs_from_an_empty_directory_that_is_not_the_inherited_one(
+    monkeypatch, tmp_path,
+):
+    """A repository in the inherited directory must never be consulted.
+
+    Kills: running ls-remote in the process's working directory.
+    """
+    monkeypatch.chdir(tmp_path)
+    listCalls = []
+    fdictProbeRepositoryBranch(
+        "https://host.example/group/repo", "main", _fnRecordingRun(listCalls))
+    sUsed = listCalls[0][1]["cwd"]
+    assert os.path.realpath(sUsed) != os.path.realpath(str(tmp_path))
+    assert os.path.realpath(
+        listCalls[0][1]["env"]["GIT_CEILING_DIRECTORIES"],
+    ) == os.path.dirname(os.path.realpath(sUsed))
+
+
+@pytest.mark.falsification
+def test_the_probe_does_not_inherit_a_repository_or_injected_config(
+    monkeypatch,
+):
+    """Kills: passing the process environment through unchanged."""
+    monkeypatch.setenv("GIT_DIR", "/somewhere/.git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/somewhere")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'core.sshcommand=x'")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.sshCommand")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "x")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/the/researchers/own/config")
+    listCalls = []
+    fdictProbeRepositoryBranch(
+        "https://host.example/group/repo", "main", _fnRecordingRun(listCalls))
+    dictEnvironment = listCalls[0][1]["env"]
+    for sName in ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_PARAMETERS",
+                  "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"):
+        assert sName not in dictEnvironment, sName
+    assert dictEnvironment["GIT_CONFIG_GLOBAL"] == (
+        "/the/researchers/own/config")
+    assert dictEnvironment["GIT_TERMINAL_PROMPT"] == "0"

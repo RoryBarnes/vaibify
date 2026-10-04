@@ -26736,4 +26736,108 @@ def _fdictEntry(sRel):
         old='    threadReader.start()\n    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.join()\n',
         new='    try:\n        if fileStdin is None:\n            socketRaw.sendall(baStdin)\n        else:\n            for baChunk in iter(\n                lambda: fileStdin.read(_I_STDIN_CHUNK_BYTES), b"",\n            ):\n                socketRaw.sendall(baChunk)\n        socketRaw.shutdown(socket.SHUT_WR)\n    except (BrokenPipeError, ConnectionResetError):\n        pass\n    threadReader.start()\n    threadReader.join()\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitSafetyProbes.py::testTheHardeningListRefusesTheExtTransport'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='    "-c", "protocol.ext.allow=never",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitSafetyProbes.py::testTheContainerShippedCopyMatchesTheSharedList'
+        ),
+        source='vaibify/reproducibility/overleafSync.py',
+        old='    "-c", "protocol.ext.allow=never",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitSafetyProbes.py::testThePreflightProbeReadsNoConfigFromTheDirectoryItWasStartedIn'
+        ),
+        source='vaibify/cli/repositoryPreflight.py',
+        old='                cwd=sWorkingDirectory,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitSafetyProbes.py::testAnInheritedGitDirIsNotAskedForItsConfig'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",\n',
+        new='    "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostGitSafetyProbes.py::testInjectedConfigParametersAreNotInheritedByTheProbe'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='    "GIT_NAMESPACE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",\n',
+        new='    "GIT_NAMESPACE", "GIT_CONFIG_COUNT",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::test_an_address_that_is_an_option_or_a_command_is_never_asked'
+        ),
+        source='vaibify/cli/repositoryPreflight.py',
+        old='    _fnRequireOrdinaryRemoteUrl(sUrl)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::test_the_probe_carries_the_hardening_list'
+        ),
+        source='vaibify/cli/repositoryPreflight.py',
+        old='                ["git", *LIST_GIT_HARDENING_CONFIG, "ls-remote", "--symref",\n',
+        new='                ["git", "ls-remote", "--symref",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::test_the_address_follows_the_option_terminator'
+        ),
+        source='vaibify/cli/repositoryPreflight.py',
+        old='                 "--", sUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
+        new='                 sUrl, "HEAD", f"refs/heads/{sBranch}"],\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::test_the_probe_runs_from_an_empty_directory_that_is_not_the_inherited_one'
+        ),
+        source='vaibify/cli/repositoryPreflight.py',
+        old='                cwd=sWorkingDirectory,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRepositoryPreflight.py::test_the_probe_does_not_inherit_a_repository_or_injected_config'
+        ),
+        source='vaibify/reproducibility/gitHardening.py',
+        old='        dictScrubbed = fdictScrubRepositorySelection(dictBase)\n',
+        new='        dictScrubbed = dict(dictBase)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialIsolation.py::test_host_ls_remote_validation_carries_the_hardening_list_after_the_reset'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old='            + list(LIST_GIT_HARDENING_CONFIG)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialIsolation.py::test_host_ls_remote_validation_runs_from_an_empty_directory'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old='            encoding="utf-8", cwd=sWorkingDirectory,\n',
+        new='            encoding="utf-8",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCredentialIsolation.py::test_host_ls_remote_validation_keeps_its_token_and_drops_the_repository'
+        ),
+        source='vaibify/gui/syncDispatcher.py',
+        old='            capture_output=True, text=True, env=dictHermetic,\n',
+        new='            capture_output=True, text=True, env=dictEnv,\n',
+    ),
 ]

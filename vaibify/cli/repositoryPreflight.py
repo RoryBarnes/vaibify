@@ -15,6 +15,10 @@ import os
 import re
 import subprocess
 
+from vaibify.reproducibility.gitHardening import (
+    LIST_GIT_HARDENING_CONFIG, fcontextOpenHermeticGitInvocation,
+)
+
 from .preflightResult import (
     PreflightResult, S_LEVEL_FAIL, S_LEVEL_NOT_CHECKED, S_SCOPE_PROJECT,
 )
@@ -156,22 +160,53 @@ def _fdictParseLsRemote(sStdout, sBranch):
     return {"bBranchExists": bBranchExists, "sDefaultBranch": sDefaultBranch}
 
 
+_REGEX_REMOTE_HELPER_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*::")
+
+
+def _fnRequireOrdinaryRemoteUrl(sUrl):
+    """Refuse a remote git would read as an option or a command.
+
+    A URL that starts with ``-`` is parsed as an option (``--upload-pack``
+    runs a program), and ``<transport>::<address>`` hands the address to
+    a remote helper (``ext::`` runs a command). Neither is an address, so
+    a repository entry that looks like one is not asked.
+    """
+    if not sUrl or sUrl.startswith("-") or sUrl != sUrl.strip():
+        raise RemoteUnreachableError(
+            "the repository URL is empty or begins like a command-line "
+            "option, so it was not asked",
+        )
+    if _REGEX_REMOTE_HELPER_URL.match(sUrl):
+        raise RemoteUnreachableError(
+            "the repository URL names a remote helper rather than an "
+            "address, so it was not asked",
+        )
+
+
 def fdictProbeRepositoryBranch(sUrl, sBranch, fnRun=subprocess.run):
     """Return ``{bBranchExists, sDefaultBranch}`` from the remote, or raise.
 
     ``GIT_TERMINAL_PROMPT=0`` so a private remote fails rather than
-    waits for a password nobody is there to type.
+    waits for a password nobody is there to type. The question is asked
+    from an empty directory with the hardening list and an environment
+    that selects no repository: the URL comes from a project file, and
+    the directory vaibify was started in may be a repository whose own
+    config names an ssh command, a proxy or a rewrite.
     """
-    dictEnvironment = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-    try:
-        processLsRemote = fnRun(
-            ["git", "ls-remote", "--symref", sUrl, "HEAD",
-             f"refs/heads/{sBranch}"],
-            capture_output=True, text=True,
-            timeout=F_REMOTE_TIMEOUT_SECONDS, env=dictEnvironment,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as errorRun:
-        raise RemoteUnreachableError(f"{sUrl}: {errorRun}") from errorRun
+    _fnRequireOrdinaryRemoteUrl(sUrl)
+    with fcontextOpenHermeticGitInvocation(
+        dict(os.environ, GIT_TERMINAL_PROMPT="0"),
+    ) as (sWorkingDirectory, dictEnvironment):
+        try:
+            processLsRemote = fnRun(
+                ["git", *LIST_GIT_HARDENING_CONFIG, "ls-remote", "--symref",
+                 "--", sUrl, "HEAD", f"refs/heads/{sBranch}"],
+                capture_output=True, text=True,
+                timeout=F_REMOTE_TIMEOUT_SECONDS, env=dictEnvironment,
+                cwd=sWorkingDirectory,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as errorRun:
+            raise RemoteUnreachableError(f"{sUrl}: {errorRun}") from errorRun
     if processLsRemote.returncode != 0:
         raise RemoteUnreachableError(
             f"{sUrl}: {(processLsRemote.stderr or '').strip()[:200]}",

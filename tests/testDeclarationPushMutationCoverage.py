@@ -22,6 +22,9 @@ from starlette.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.carrierStandDown import fnStandCarrierDown
+from tests.localGitRemote import (
+    fnUseFakeSshForThisTest, fsSshUrlForLocalRepository,
+)
 from vaibify.gui import containerGit, routeContext, syncDispatcher
 from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
 from vaibify.gui.routes import gitRoutes, repoRoutes
@@ -518,7 +521,7 @@ def _fsGitOutput(sRepoPath, *saArguments):
     ).stdout.strip()
 
 
-def _tBuildClonePair(pathTmp):
+def _tBuildClonePair(pathTmp, monkeypatch):
     """Return (sClonePath, sOriginPath): a work clone with upstream."""
     sSeed = str(pathTmp / "seed")
     (pathTmp / "seed").mkdir()
@@ -542,18 +545,20 @@ def _tBuildClonePair(pathTmp):
     _fprocessRunGit(sClone, "config", "user.name", "Test")
     # The dispatcher command carries the production hardening flags,
     # and protocol.file.allow=never rightly refuses a plain-path
-    # remote. git's ext transport is user-allowed under the same
-    # policy, so the push stays real without weakening the flags.
-    # (%s tokenizes on spaces — pytest tmp paths contain none.)
+    # remote. An ssh:// remote whose ssh command runs the remote half
+    # locally keeps the push real without weakening the flags
+    # (tests/localGitRemote.py; the ext transport that used to serve
+    # here is refused by the list now).
+    fnUseFakeSshForThisTest(monkeypatch, pathTmp)
     _fprocessRunGit(
         sClone, "remote", "set-url", "origin",
-        "ext::git %s " + sOrigin,
+        fsSshUrlForLocalRepository(sOrigin),
     )
     return sClone, sOrigin
 
 
 def test_push_staged_pushes_an_already_committed_repo_real_git(
-    tmp_path,
+    tmp_path, monkeypatch,
 ):
     """THE 2026-07-02 live bug, against real git: a repo whose work is
     already committed (nothing staged, ahead of origin) must still
@@ -564,7 +569,7 @@ def test_push_staged_pushes_an_already_committed_repo_real_git(
     Kills: syncDispatcher.py the '(git diff --cached --quiet || ...)'
     guard -> unconditional 'git commit &&'.
     """
-    sClone, sOrigin = _tBuildClonePair(tmp_path)
+    sClone, sOrigin = _tBuildClonePair(tmp_path, monkeypatch)
     (tmp_path / "work" / "declaration.md").write_text("declared\n")
     _fprocessRunGit(sClone, "add", "declaration.md")
     _fprocessRunGit(sClone, "commit", "-m", "already committed")
@@ -580,7 +585,7 @@ def test_push_staged_pushes_an_already_committed_repo_real_git(
 
 
 def test_push_staged_commits_staged_changes_then_pushes_real_git(
-    tmp_path,
+    tmp_path, monkeypatch,
 ):
     """The staged case against real git: staged changes are committed
     with the requested message and the commit reaches origin.
@@ -588,7 +593,7 @@ def test_push_staged_commits_staged_changes_then_pushes_real_git(
     Kills: syncDispatcher.py staged-chain 'git push' -> 'git push
     --dry-run' (a commit that never reaches origin).
     """
-    sClone, sOrigin = _tBuildClonePair(tmp_path)
+    sClone, sOrigin = _tBuildClonePair(tmp_path, monkeypatch)
     (tmp_path / "work" / "base.txt").write_text("updated\n")
     _fprocessRunGit(sClone, "add", "base.txt")
 
