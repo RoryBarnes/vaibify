@@ -131,6 +131,7 @@ const VaibifyApp = (function () {
     };
 
     var I_MAX_UNDO = 50;
+    var I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS = 3000;
     var fbIsBinaryFile = VaibifyUtilities.fbIsBinaryFile;
 
     var DICT_MODE_WORKFLOW = {
@@ -6850,11 +6851,12 @@ const VaibifyApp = (function () {
             var elLink = document.createElement("a");
             elLink.href = dictLink.sUri;
             document.body.appendChild(elLink);
+            fnSuspendUnloadGuard(I_EXTERNAL_LAUNCH_GRACE_MILLISECONDS);
             elLink.click();
             elLink.remove();
             fnShowToast(
-                "Asked VS Code to open this container. It needs the " +
-                "Dev Containers extension.", "success");
+                "Asked VS Code to open this container in a new window. " +
+                "It needs the Dev Containers extension.", "success");
         } catch (error) {
             fnShowToast(fsSanitizeErrorForUser(error.message), "error");
         }
@@ -7213,7 +7215,20 @@ const VaibifyApp = (function () {
 
 document.addEventListener("DOMContentLoaded", VaibifyApp.fnInitialize);
 
+/* Following a link to another application (vscode://) is a navigation
+   as far as the browser is concerned, so it fires `beforeunload` first,
+   and a guard that cancels every unload makes the browser ask whether to
+   leave the page; answering "Stay" cancels the launch (Firefox,
+   2026-10-04). The page is not actually unloaded, so the guard stands
+   down for a short window around such a launch and nowhere else. */
+var _iUnloadGuardResumesAtMilliseconds = 0;
+
+function fnSuspendUnloadGuard(iMilliseconds) {
+    _iUnloadGuardResumesAtMilliseconds = Date.now() + iMilliseconds;
+}
+
 function fnBlockUnload(event) {
+    if (Date.now() < _iUnloadGuardResumesAtMilliseconds) return;
     event.preventDefault();
     event.returnValue = "";
 }

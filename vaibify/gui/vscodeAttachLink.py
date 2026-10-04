@@ -11,6 +11,10 @@ default socket, the endpoint to ask. Without that endpoint the extension
 runs ``docker`` with ``DOCKER_CONTEXT=default`` and cannot see a
 container on a daemon reached through a named context or a socket
 elsewhere, which is how a Colima user's attach fails.
+
+The link asks for a NEW window. Without ``windowId=_blank`` VS Code
+opens the container in the window the researcher already has, and asks
+whether to save that window's unsaved files before replacing it.
 """
 
 import json
@@ -19,6 +23,7 @@ from urllib.parse import quote
 __all__ = ["fsBuildAttachUri"]
 
 S_DEFAULT_DOCKER_SOCKET = "unix:///var/run/docker.sock"
+S_NEW_WINDOW_QUERY = "?windowId=_blank"
 
 
 def fsBuildAttachUri(sContainerId, sWorkspaceRoot, sDockerHost=""):
@@ -37,4 +42,4 @@ def fsBuildAttachUri(sContainerId, sWorkspaceRoot, sDockerHost=""):
     ).encode("utf-8").hex()
     return "vscode://vscode-remote/attached-container+" + sHex + quote(
         sWorkspaceRoot, safe="/",
-    )
+    ) + S_NEW_WINDOW_QUERY
