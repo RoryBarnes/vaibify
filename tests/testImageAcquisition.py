@@ -1019,18 +1019,53 @@ def test_a_zstd_deposit_this_python_cannot_open_is_refused_before_downloading(
 
 
 @pytest.mark.falsification
-def test_a_zstd_archive_loads_on_a_client_that_iterates_the_upload(tmp_path):
+def test_a_zstd_archive_loads_on_a_client_that_iterates_the_upload(
+    tmp_path, monkeypatch,
+):
     """Kills: handing the daemon the decompressing reader itself.
 
     requests before 2.32 iterates an upload of unknown length, and
     zstandard's reader raises UnsupportedOperation when iterated: the
     whole archive downloaded, then "Connection aborted" (2026-09-26).
+    The standard library's reader (Python 3.14) iterates happily, so
+    the refusal is built into the reader here, whichever codec the
+    interpreter resolves: the test must not depend on the version.
     """
-    zstandard = pytest.importorskip("zstandard")
+    import io
+    codec = imageDeposit._ftResolveZstdCodec()
+    if codec is None:
+        pytest.skip("no zstd codec on this interpreter")
     baTarball = b"an image tarball's bytes" * 4096
     sPath = str(tmp_path / "environment-image.tar.zst")
     with open(sPath, "wb") as fileHandle:
-        fileHandle.write(zstandard.ZstdCompressor().compress(baTarball))
+        writerZstd = codec[1](fileHandle)
+        writerZstd.write(baTarball)
+        writerZstd.close()
+
+    class _ReaderThatRefusesIteration:
+        def __init__(self, fileReader):
+            self._fileReader = fileReader
+
+        def read(self, iSize=-1):
+            return self._fileReader.read(iSize)
+
+        def __iter__(self):
+            raise io.UnsupportedOperation("iteration is not supported")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *aExceptionInfo):
+            self._fileReader.close()
+
+        def __getattr__(self, sName):
+            return getattr(self._fileReader, sName)
+
+    monkeypatch.setattr(
+        imageDeposit, "_ftResolveZstdCodec",
+        lambda: (codec[0], codec[1], lambda fileRaw:
+                 _ReaderThatRefusesIteration(codec[2](fileRaw))),
+    )
     store = FakeImageStore()
     sLoaded = imageAcquisition._fsLoadTarball(
         store, sPath, lambda dictEvent: None,
