@@ -26872,4 +26872,112 @@ def _fdictEntry(sRel):
         old='        f"{_fsMintMatplotlibRunToken()}"\n',
         new='        "shared"\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheRequiredCheckToolExpandsAMatrixExcludeToTheCellsThatRun'
+        ),
+        # the exclude list is applied to nothing, so every cell survives
+        source='tools/syncRequiredChecks.py',
+        old='            dictCell, dictMatrix.get("exclude") or [],\n        )\n    ]',
+        new='            dictCell, [],\n        )\n    ]',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheRequiredCheckToolRefusesAnExcludeThatMatchesNoCell'
+        ),
+        # an exclude that matches nothing is accepted instead of refused
+        source='tools/syncRequiredChecks.py',
+        old='        if not any(fbMatrixCellIsExcluded(dictCell, [dictExclude])\n',
+        new='        if False and not any(fbMatrixCellIsExcluded(dictCell, [dictExclude])\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testThePullRequestMacosLaneRunsTheTwoEdgePythonsOnTheOlderMacos'
+        ),
+        # one middle Python is quietly restored to the older macOS
+        source='.github/workflows/tests-macos.yml',
+        old='          - {os: macos-15, python-version: "3.13"}\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testWorkflowMergeGateSplit.py::testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut'
+        ),
+        # the nightly stops running the older macOS the PR lane thinned out
+        source='.github/workflows/tests-macos-nightly.yml',
+        old='        os: [macos-15, macos-26]\n',
+        new='        os: [macos-26]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testTheDefaultBaseImageIsNotPassedSoTheDockerfilePinApplies'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testTheBuildCommandCarriesNoBaseImageForTheDefault'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePinLive.py::testADefaultProjectIsBuiltFromTheDockerfilesPinNotTheConfiguredTag'
+        ),
+        # the floating tag is passed again and overrides the Dockerfile pin
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if True:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAnExplicitBaseImageIsHonouredVerbatim'
+        ),
+        # every BASE_IMAGE is swallowed, ignoring a pin the researcher chose
+        source='vaibify/docker/imageBuilder.py',
+        old='    if not fbBaseImageUsesDockerfilePin(sBaseImage):\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+        new='    if False:\n        dictArgs["BASE_IMAGE"] = sBaseImage\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAnotherUbuntuReleaseIsRefusedBeforeAnyBuildWork'
+        ),
+        # another Ubuntu release is no longer refused before the build
+        source='vaibify/cli/baseImagePreflight.py',
+        old='    if sUbuntuVersion and sUbuntuVersion != S_SUPPORTED_UBUNTU_VERSION:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBaseImagePin.py::testAGpuBuildIsRefusedWithTheReasonAndTheRemedy'
+        ),
+        # a GPU build is no longer refused before the build
+        source='vaibify/cli/baseImagePreflight.py',
+        old='    if getattr(getattr(config, "features", None), "bGpu", False):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildProgressRoutes.py::test_a_build_on_another_ubuntu_release_is_refused'
+        ),
+        # the dashboard build stops asking about the base image
+        source='vaibify/gui/buildRoutes.py',
+        old='        (fpreflightBaseImage, S_REFUSAL_UNSUPPORTED_BASE_IMAGE),\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCommandBuildPreflight.py::test_flistRunBuildPreflight_carries_the_base_image_verdict'
+        ),
+        # vaibify build stops asking about the base image
+        source='vaibify/cli/commandBuild.py',
+        old='    fpreflightConfigurationFields,\n    fpreflightBaseImage,\n',
+        new='    fpreflightConfigurationFields,\n',
+    ),
 ]

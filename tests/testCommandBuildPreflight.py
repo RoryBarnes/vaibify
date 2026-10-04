@@ -596,6 +596,31 @@ def test_flistRunBuildPreflight_carries_the_package_name_verdict(
     "vaibify.cli.preflightChecks._ftDockerInfoProbe",
     return_value=(0, ""),
 )
+def test_flistRunBuildPreflight_carries_the_base_image_verdict(
+    mockProbe, mockArch, mockDisk, mockMem,
+):
+    """Kills: dropping the base-image check from the CLI's table, so
+    `vaibify build` on another Ubuntu release stops at the pinned apt
+    step after the base image has been fetched."""
+    from vaibify.cli import baseImagePreflight
+    config = SimpleNamespace(
+        features=SimpleNamespace(bGpu=False), sBaseImage="ubuntu:22.04",
+    )
+    listResults = flistRunBuildPreflight(config)
+    listNames = [
+        preflightResult.sName for preflightResult in listResults
+        if preflightResult.sLevel == "fail"
+    ]
+    assert listNames == [baseImagePreflight.S_PREFLIGHT_NAME]
+
+
+@patch("vaibify.cli.commandBuild._flistPreflightMemory", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightDisk", return_value=[])
+@patch("vaibify.cli.commandBuild._flistPreflightArch", return_value=[])
+@patch(
+    "vaibify.cli.preflightChecks._ftDockerInfoProbe",
+    return_value=(0, ""),
+)
 def test_flistRunBuildPreflight_carries_the_free_disk_verdict(
     mockProbe, mockArch, mockDisk, mockMem,
 ):

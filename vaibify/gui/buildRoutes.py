@@ -134,6 +134,7 @@ def _fnRegisterBuildContainer(app, dictCtx):
 
 
 S_REFUSAL_UNKNOWN_PYTHON_PACKAGE = "unknown-python-package"
+S_REFUSAL_UNSUPPORTED_BASE_IMAGE = "unsupported-base-image"
 S_REFUSAL_DAEMON_DISK_FULL = "daemon-disk-full"
 S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH = "unknown-repository-branch"
 S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE = "unknown-system-package"
@@ -143,13 +144,14 @@ S_REFUSAL_UNUSABLE_CONFIGURATION = "unusable-configuration"
 def _flistConfigurationPreflights():
     """Return ``(check, refusal code)`` for every config-scoped preflight.
 
-    One table rather than a helper per check: four checks with the same
+    One table rather than a helper per check: five checks with the same
     shape were copies of the same twelve lines away from being
-    unmaintainable, and a fifth would have been written the same way.
+    unmaintainable, and a sixth would have been written the same way.
     Each check answers for the researcher's vaibify.yml and is the same
     one ``vaibify build`` runs; the set must match
     ``commandBuild.T_CONFIGURATION_PREFLIGHTS``, which a test enforces.
     """
+    from vaibify.cli.baseImagePreflight import fpreflightBaseImage
     from vaibify.cli.configFieldPreflight import fpreflightConfigurationFields
     from vaibify.cli.pythonPackagePreflight import (
         fpreflightPythonPackageNames,
@@ -158,6 +160,7 @@ def _flistConfigurationPreflights():
     from vaibify.cli.systemPackagePreflight import fpreflightSystemPackageNames
     return [
         (fpreflightConfigurationFields, S_REFUSAL_UNUSABLE_CONFIGURATION),
+        (fpreflightBaseImage, S_REFUSAL_UNSUPPORTED_BASE_IMAGE),
         (fpreflightSystemPackageNames, S_REFUSAL_UNKNOWN_SYSTEM_PACKAGE),
         (fpreflightPythonPackageNames, S_REFUSAL_UNKNOWN_PYTHON_PACKAGE),
         (fpreflightRepositoryBranches, S_REFUSAL_UNKNOWN_REPOSITORY_BRANCH),

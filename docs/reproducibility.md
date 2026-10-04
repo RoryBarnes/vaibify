@@ -423,7 +423,10 @@ ARG APT_SNAPSHOT_DATE=20260909
 the pinned versions always resolve. Three axes are now frozen
 together — the base image by digest, the packages by version, and the
 archive by date — and the toolchain changes when **a maintainer moves
-the date**, never when Ubuntu publishes.
+the date**, never when Ubuntu publishes. A project that leaves out
+`baseImage`, or sets it to `ubuntu:24.04`, is built from the digest the
+Dockerfile pins; a project that names any other base image is built from
+that value as written.
 
 The scope is deliberately narrow. That date covers only the pinned
 toolchain block. Everything in the waived block above it — editors,

@@ -9,6 +9,8 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+from vaibify.config.projectConfig import fbBaseImageUsesDockerfilePin
+
 from . import fnRunDockerCommand
 
 
@@ -459,9 +461,17 @@ def fsArchiveSnapshotForBuild(datetimeNow=None):
 
 
 def _flistBuildArgPairs(config, sBaseImage):
-    """Return list of --build-arg KEY=VALUE pairs."""
-    dictArgs = {
-        "BASE_IMAGE": sBaseImage,
+    """Return list of --build-arg KEY=VALUE pairs.
+
+    BASE_IMAGE is left out when the project names no base image of its
+    own, so the Dockerfile's digest-pinned default applies. Passing the
+    floating tag instead is what used to override the pin on every
+    ``vaibify build``.
+    """
+    dictArgs = {}
+    if not fbBaseImageUsesDockerfilePin(sBaseImage):
+        dictArgs["BASE_IMAGE"] = sBaseImage
+    dictArgs |= {
         "APT_BUILD_SNAPSHOT": fsArchiveSnapshotForBuild(),
         "PYTHON_VERSION": config.sPythonVersion,
         "CONTAINER_USER": config.sContainerUser,
