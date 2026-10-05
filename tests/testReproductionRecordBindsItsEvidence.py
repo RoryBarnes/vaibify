@@ -63,7 +63,7 @@ def _fdictOutcome(sRepo):
         "bPassed": True, "bRerunAttempted": True, "listFileOutcomes": listOutcomes,
         "iOutputHashesMatched": len(listOutcomes),
         "iOutputHashesTotal": len(listOutcomes), "listDivergedHashes": [],
-        "sManifestDigest": hashlib.sha256(
+        "sManifestDigest": "sha256:" + hashlib.sha256(
             sManifestText.encode("utf-8")).hexdigest(),
         **dictEvidence,
     }
@@ -103,7 +103,7 @@ def test_a_reader_record_binds_the_baseline_and_the_snapshots_digests(
     assert dictRecord["sWorkflowRelativePath"] == S_FIXTURE_WORKFLOW_PATH
     assert dictRecord["dictSource"]["sWorkflowPath"] == S_FIXTURE_WORKFLOW_PATH
     with open(os.path.join(sRepo, "MANIFEST.sha256"), "rb") as fileIn:
-        assert dictRecord["sManifestDigest"] == hashlib.sha256(
+        assert dictRecord["sManifestDigest"] == "sha256:" + hashlib.sha256(
             fileIn.read()).hexdigest()
     assert dictRecord["sWorkflowDigest"]
     # The outcomes point at the timestamped copy, never the shared root

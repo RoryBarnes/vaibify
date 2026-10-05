@@ -118,7 +118,7 @@ def _fdictOutcomeFor(sRepo, sVerdictPassed=True, sManifestDigest=None):
         "iOutputHashesMatched": len(listOutcomes),
         "iOutputHashesTotal": len(listOutcomes),
         "listDivergedHashes": [], "listFileOutcomes": listOutcomes,
-        "sManifestDigest": sManifestDigest or hashlib.sha256(
+        "sManifestDigest": sManifestDigest or "sha256:" + hashlib.sha256(
             sManifestText.encode("utf-8")).hexdigest(),
         "sWorkflowRelativePath": S_FIXTURE_WORKFLOW_PATH,
         "sWorkflowDigest": hashlib.sha256(

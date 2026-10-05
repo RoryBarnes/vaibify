@@ -185,7 +185,7 @@ def _fdictLabelForReproduced(dictRecord, dictLastNoVerdict):
 
 def _fsReasonEvidenceChanged(filesPoll, dictRecord):
     """Return why the record's evidence no longer holds, or ``""`` if it does."""
-    sBoundManifest = str(dictRecord.get("sManifestDigest") or "")
+    sBoundManifest = _fsBareDigest(dictRecord.get("sManifestDigest"))
     if not sBoundManifest or _fsLiveDigest(
         filesPoll, _S_MANIFEST_PATH,
     ) != sBoundManifest:
@@ -197,6 +197,19 @@ def _fsReasonEvidenceChanged(filesPoll, dictRecord):
     ) != sBoundWorkflow:
         return "the workflow file is not the one the reproduction ran"
     return _fsReasonAnEntryMoved(filesPoll, dictRecord)
+
+
+def _fsBareDigest(sDigest):
+    """Return the hex of a digest, with or without the ``sha256:`` prefix.
+
+    The shadow rerun records the manifest's digest in the form
+    ``fsCurrentManifestDigest`` gives (prefixed), while a snapshot
+    hashes bare. Found by driving the whole journey: comparing the two
+    forms as strings never matched, so a real reproduction never earned
+    its label.
+    """
+    sText = str(sDigest or "")
+    return sText[len("sha256:"):] if sText.startswith("sha256:") else sText
 
 
 def _fsLiveDigest(filesPoll, sRelativePath):

@@ -28092,4 +28092,14 @@ def _fdictEntry(sRel):
         old='        return int(listReply[0]), listReply[1] or ""\n',
         new='        return 0, ""\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testQuickStartJourneyThroughRoutesLive.py::'
+            'test_the_readers_journey_through_the_real_hub'
+        ),
+        # The record's prefixed manifest digest is compared as a string with the snapshot's bare hash.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    return sText[len("sha256:"):] if sText.startswith("sha256:") else sText\n',
+        new='    return sText\n',
+    ),
 ]
