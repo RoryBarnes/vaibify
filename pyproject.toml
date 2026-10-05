@@ -191,6 +191,12 @@ line-length = 79
 # checks that are wrong for this codebase are disabled or tuned here,
 # each with its reason; a finding that is merely not fixed yet belongs in
 # that test's seed instead, where it can only shrink.
+[tool.pylint.main]
+# pysam is a compiled extension, and pylint reads no member of a compiled
+# module it has not been allowed to load: on any machine with pysam
+# installed, every pysam.AlignmentFile read as a false no-member.
+extension-pkg-allow-list = ["pysam"]
+
 [tool.pylint.typecheck]
 # RouteContext stores its mapping with object.__setattr__ (the class
 # blocks ordinary assignment), which pylint cannot see: 19 false
