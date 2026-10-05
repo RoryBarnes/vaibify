@@ -164,7 +164,10 @@ jobs:
         # out with every test passing. There is no per-test timeout, so
         # this ceiling is the lane's only hang detector; 40 leaves about
         # 70% headroom and still reports a hung run in under an hour.
-        timeout-minutes: 40
+        # 40 -> 60 on 2026-10-05, under the same rule: this branch added
+        # browser tests and the Firefox leg finished all 507 in 40:09, one
+        # second past the ceiling.
+        timeout-minutes: 60
         env:
           # Turns the "playwright not installed" skip into a failure.
           # A browser job that goes green without a browser is the same
