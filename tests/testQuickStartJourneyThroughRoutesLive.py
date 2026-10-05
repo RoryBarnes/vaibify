@@ -41,7 +41,9 @@ from tests.sessionTokenTestHelper import fsBootstrapCredential
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from tests.testImageAcquisition import LoopbackDeposit, fnPointZenodoAt
 
-pytestmark = pytest.mark.docker_live
+# It serves the real hub on a port, so the falsification harness must run
+# its entry exclusively (tests/testFalsificationSharding.py).
+pytestmark = [pytest.mark.docker_live, pytest.mark.exclusive]
 
 S_BASE_IMAGE = "python:3.12-slim"
 S_FIXTURE_TAG = "vaibify-journey-fixture:live"
