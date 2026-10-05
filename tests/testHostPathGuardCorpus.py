@@ -196,6 +196,11 @@ def _fdictBuildPathTakingCalls(connection):
                 S_PROJECT_NAME, [sPath],
             )
         ),
+        "fdictFetchSmallFiles": (
+            lambda sPath: connection.fdictFetchSmallFiles(
+                S_PROJECT_NAME, [sPath],
+            )
+        ),
         "fsHashContainerFileSha256": (
             lambda sPath: connection.fsHashContainerFileSha256(
                 S_PROJECT_NAME, sPath,

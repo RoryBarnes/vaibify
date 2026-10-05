@@ -152,12 +152,17 @@ def testThePollMapsAMarkerOfALoadedWorkflowOntoItsStep():
     dictMarker = {"dictOutputHashes": {"stepDir/f.pdf": "abc"}}
     mockDocker = MagicMock()
 
-    def fbaFetch(sContainerId, sPath):
+    def fbaFetchOrNone(sContainerId, sPath):
         if sPath == S_REPO + "/.vaibify/test_markers/beta/stepDir.json":
             return json.dumps(dictMarker).encode("utf-8")
-        raise FileNotFoundError(sPath)
+        return None
 
-    mockDocker.fbaFetchFile.side_effect = fbaFetch
+    mockDocker.fdictFetchSmallFiles.side_effect = (
+        lambda sContainerId, listPaths: {
+            sPath: fbaFetchOrNone(sContainerId, sPath)
+            for sPath in listPaths
+        }
+    )
     assert pipelineRoutes._fdictLoadMarkersForPoll(
         {"docker": mockDocker}, "containerId", dictLoaded,
     ) == {0: dictMarker}

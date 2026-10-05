@@ -277,6 +277,23 @@ def test_fnEnsureVaibifyGitignore_skips_when_present():
 # ----------------------------------------------------------------------
 
 
+def _ffnBatchedFetchFrom(fnFetchOneFile):
+    """Return a fake ``fdictFetchSmallFiles`` built on a one-file fetch.
+
+    A file the one-file fetch reports missing answers ``None``, the
+    batched read's contract for "could not be opened".
+    """
+    def fdictFetchSmallFiles(sContainerId, listPaths):
+        dictFiles = {}
+        for sPath in listPaths:
+            try:
+                dictFiles[sPath] = fnFetchOneFile(sContainerId, sPath)
+            except FileNotFoundError:
+                dictFiles[sPath] = None
+        return dictFiles
+    return fdictFetchSmallFiles
+
+
 def _fnBuildBootstrapMock(
     dictMarkers, dictDiskHashes,
 ):
@@ -302,6 +319,9 @@ def _fnBuildBootstrapMock(
         raise FileNotFoundError(sPath)
 
     mockDocker.fbaFetchFile.side_effect = _fFetchFile
+    mockDocker.fdictFetchSmallFiles.side_effect = (
+        _ffnBatchedFetchFrom(_fFetchFile)
+    )
 
     def _fExecuteCommand(sContainerId, sCommand, **_kwargs):
         if "git hash-object" in sCommand or "python3" in sCommand:
@@ -413,7 +433,7 @@ def test_bootstrap_returns_empty_state_for_empty_repo_path():
         mockDocker, "cid", dictWorkflow, "",
     )
     assert dictState["dictStepState"] == {}
-    mockDocker.fbaFetchFile.assert_not_called()
+    mockDocker.fdictFetchSmallFiles.assert_not_called()
 
 
 def test_fetch_markers_encodes_nested_step_directory():
@@ -427,7 +447,9 @@ def test_fetch_markers_encodes_nested_step_directory():
         listProbed.append(sPath)
         raise FileNotFoundError(sPath)
 
-    mockDocker.fbaFetchFile.side_effect = _fFetch
+    mockDocker.fdictFetchSmallFiles.side_effect = (
+        _ffnBatchedFetchFrom(_fFetch)
+    )
     listSteps = [{"sDirectory": "Step01/sub"}]
     stateManager._flistFetchMarkers(
         mockDocker, "cid", "/workspace/Project",

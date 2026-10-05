@@ -70,6 +70,7 @@ from vaibify.config import mutationAdmission
 from vaibify.config import processLiveness
 from vaibify.docker.dockerConnection import (
     ExecResult,
+    I_MAX_SMALL_FILE_BYTES,
     S_TYPED_READ_GIT_REPO_STATUS,
     fsRenderBatchedTypedReadProgram,
 )
@@ -278,6 +279,31 @@ class HostConnection:
         return HostRepoFiles(sRootReal).fdictHashFiles(
             list(listRelPaths),
         )
+
+    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+        """Return ``{sPath: bytes or None}`` for small host files.
+
+        The host twin of the container leg's batched read, on its terms:
+        ``None`` for a file that cannot be opened, ``ValueError`` for one
+        over the ceiling, and every path through this leg's guard first.
+        Keyed by the path the caller gave, as the mtime read is.
+        """
+        dictFiles = {}
+        for sPath in listPaths:
+            sRealPath = self._fsValidateHostPath(sContainerId, sPath)
+            try:
+                with open(sRealPath, "rb") as fileHandle:
+                    baContent = fileHandle.read(I_MAX_SMALL_FILE_BYTES + 1)
+            except OSError:
+                dictFiles[sPath] = None
+                continue
+            if len(baContent) > I_MAX_SMALL_FILE_BYTES:
+                raise ValueError(
+                    f"{sPath} exceeds the {I_MAX_SMALL_FILE_BYTES}-byte "
+                    "small-file ceiling."
+                )
+            dictFiles[sPath] = baContent
+        return dictFiles
 
     def fdictStatPathMtimes(self, sContainerId, listPaths):
         """Return ``{sPath: sMtime}`` for the host paths that exist.

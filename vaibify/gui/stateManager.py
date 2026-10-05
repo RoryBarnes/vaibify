@@ -1162,30 +1162,30 @@ def _flistFetchMarkers(
     directory.
     """
     from .fileStatusManager import fsMarkerNameFromStepDirectory
-    listResult = []
-    for dictStep in listSteps:
-        sDirectory = dictStep.get("sDirectory", "")
-        if not sDirectory:
-            continue
-        sMarkerPath = posixpath.join(
-            sProjectRepoPath, S_TEST_MARKERS_RELATIVE,
-            sWorkflowSlug,
-            fsMarkerNameFromStepDirectory(sDirectory),
-        )
-        dictMarker = _fdictReadMarker(
-            connectionDocker, sContainerId, sMarkerPath,
-        )
-        listResult.append((dictStep, dictMarker))
-    return listResult
-
-
-def _fdictReadMarker(connectionDocker, sContainerId, sMarkerPath):
-    """Parse one marker file; return None when missing or malformed."""
+    listStepsWithPaths = [
+        (dictStep, posixpath.join(
+            sProjectRepoPath, S_TEST_MARKERS_RELATIVE, sWorkflowSlug,
+            fsMarkerNameFromStepDirectory(dictStep["sDirectory"]),
+        ))
+        for dictStep in listSteps if dictStep.get("sDirectory", "")
+    ]
     try:
-        baContent = connectionDocker.fbaFetchFile(
-            sContainerId, sMarkerPath,
+        # ONE read for every marker (per-step reads took 4.95 s on a
+        # 73-step project, 2026-10-05); a failed read leaves all unread.
+        dictContents = connectionDocker.fdictFetchSmallFiles(
+            sContainerId, [sPath for _, sPath in listStepsWithPaths],
         )
-    except FileNotFoundError:
+    except OSError:
+        dictContents = {}
+    return [
+        (dictStep, _fdictParseMarker(dictContents.get(sMarkerPath)))
+        for dictStep, sMarkerPath in listStepsWithPaths
+    ]
+
+
+def _fdictParseMarker(baContent):
+    """Parse one marker's bytes; return None when missing or malformed."""
+    if baContent is None:
         return None
     try:
         return json.loads(baContent.decode("utf-8"))

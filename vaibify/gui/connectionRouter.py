@@ -218,6 +218,12 @@ class ConnectionRouter:
             sResourceId,
         ).fdictReadFilesystemUsage(sResourceId, *tArguments, **dictKeywords)
 
+    def fdictFetchSmallFiles(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fdictFetchSmallFiles(sResourceId, *tArguments, **dictKeywords)
+
     def fdictStatPathMtimes(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         return self.fconnectionForResource(
