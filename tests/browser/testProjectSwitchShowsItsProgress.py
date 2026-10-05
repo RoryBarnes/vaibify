@@ -19,7 +19,14 @@ from tests.browser.testSwitchingProjectsKeepsEachProjectsState import (
     S_SECOND_WORKFLOW_NAME,
     _fsWriteSecondWorkflow,
 )
-from tests.browser.conftest import fnOpenTheSeededHostWorkflow
+from tests.browser.testLostClaimIsRecoverable import (  # noqa: F401
+    fixtureDropClaimsBetweenJourneys,
+)
+from tests.browser.conftest import (
+    S_HOST_PROJECT_READY,
+    S_HOST_WORKFLOW_NAME,
+    fnOpenTheSeededHostWorkflow,
+)
 
 
 pytestmark = pytest.mark.browser
@@ -196,3 +203,63 @@ def test_admin_projects_shows_the_list_screen_while_it_searches(
     finally:
         pageDashboard.unroute_all(behavior="ignoreErrors")
         os.remove(sSecondPath)
+
+
+@pytest.mark.falsification
+def test_a_late_failed_search_never_replaces_a_list_already_shown(
+    pageDashboard, serverHub,
+):
+    """Kills: the first search's failure overwriting a list drawn since.
+
+    The list screen now appears before its first search answers, so the
+    screen's own three-second refresh can draw the list first. A first
+    search that then FAILS -- a claim reaped while it was in flight is
+    one way -- used to replace those cards with its failure line, and a
+    researcher's click on a project landed on nothing (found by the
+    Firefox lane, 2026-10-05).
+    """
+    listHeld = []
+    listSearchesSeen = []
+
+    def fnHoldTheConnectSearch(routeIntercepted):
+        # The screen's refresh poll fires its first search as the screen
+        # appears, before the connect asks; the connect's is the second.
+        listSearchesSeen.append(routeIntercepted.request.url)
+        if len(listSearchesSeen) == 2:
+            listHeld.append(routeIntercepted)
+            return
+        routeIntercepted.continue_()
+
+    pageDashboard.route(_S_WORKFLOW_SEARCH_ROUTE, fnHoldTheConnectSearch)
+    try:
+        pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+        pageDashboard.click(
+            f'.container-tile[data-name="{S_HOST_PROJECT_READY}"] '
+            '.container-tile-main', timeout=15000,
+        )
+        pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+        pageDashboard.click("#btnConfirmOk")
+        _fnAwaitHeld(pageDashboard, listHeld)
+        pageDashboard.wait_for_selector(
+            f"#listWorkflows >> text={S_HOST_WORKFLOW_NAME}", timeout=20000,
+        )
+
+        with pageDashboard.expect_response(
+            lambda response: response.status == 500, timeout=10000,
+        ):
+            listHeld[0].fulfill(
+                status=500, content_type="application/json",
+                body='{"detail": "Search failed."}',
+            )
+        # The failure is handled within the same few event-loop turns
+        # that deliver it; the overwrite this guards against happened
+        # within milliseconds. A superseded failure leaves no trace to
+        # wait on, by design.
+        pageDashboard.wait_for_timeout(500)
+
+        assert pageDashboard.locator(
+            f"#listWorkflows >> text={S_HOST_WORKFLOW_NAME}").is_visible()
+        assert "could not be loaded" not in pageDashboard.inner_text(
+            "#listWorkflows")
+    finally:
+        pageDashboard.unroute_all(behavior="ignoreErrors")

@@ -28230,4 +28230,17 @@ def _fdictEntry(sRel):
             '            VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_a_late_failed_search_never_replaces_a_list_already_shown'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '            if (!VaibifyWorkflowManager.fbWorkflowListAwaitsAnswer()) {\n'
+            '                return;\n'
+            '            }\n'
+        ),
+        new='',
+    ),
 ]

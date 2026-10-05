@@ -2682,6 +2682,14 @@ var VaibifyContainerManager = (function () {
                 "/api/workflows/" + sId);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
+            /* The screen's own refresh may have drawn the list while
+               this search was in flight; its answer is newer, and a
+               failure that arrives after it describes nothing on
+               screen. Overwriting the cards with it left a researcher's
+               click landing on nothing (Firefox lane, 2026-10-05). */
+            if (!VaibifyWorkflowManager.fbWorkflowListAwaitsAnswer()) {
+                return;
+            }
             VaibifyWorkflowManager.fnShowWorkflowListStatus(
                 "The project list could not be loaded.", false);
             VaibifyDiagnosis.fnReportFailureFromError(error);

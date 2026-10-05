@@ -47,6 +47,10 @@ var VaibifyWorkflowManager = (function () {
         _sRenderedWorkflowCardsHtml = "";
     }
 
+    function fbWorkflowListAwaitsAnswer() {
+        return _sRenderedWorkflowCardsHtml === "";
+    }
+
     function fnRenderWorkflowList(listWorkflows, sId) {
         var elList = document.getElementById("listWorkflows");
         var sCardsHtml = "";
@@ -3237,6 +3241,7 @@ var VaibifyWorkflowManager = (function () {
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fnShowProjectHubHelp: fnShowProjectHubHelp,
         fnShowWorkflowListStatus: fnShowWorkflowListStatus,
+        fbWorkflowListAwaitsAnswer: fbWorkflowListAwaitsAnswer,
         S_NO_ENVIRONMENT_OPEN: _S_NO_ENVIRONMENT_OPEN,
         fnSelectWorkflow: fnSelectWorkflow,
         fnRefreshWorkflow: fnRefreshWorkflow,
