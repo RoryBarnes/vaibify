@@ -8,9 +8,9 @@ no action a researcher could take that vaibify did not already know
 how to do for them.
 
 This module is the host half of that action. It answers three
-questions the pure composer cannot: WHICH overlays built this
-container (from the project's own ``vaibify.yml``, located through the
-registry), WHAT the packaged Dockerfiles say (through
+questions the pure composer cannot: WHICH overlays built the pinned
+image (from its own overlays label, else the project's ``vaibify.yml``
+located through the registry), WHAT the packaged Dockerfiles say (through
 ``resources.fpathContainerImageRoot``, never a ``parents[N]`` walk),
 and WHETHER writing is allowed (never over a file vaibify did not
 generate).
@@ -41,25 +41,60 @@ __all__ = [
 ]
 
 
-def flistResolveOverlayNamesForContainer(sContainerName):
-    """Return the ordered overlay names enabled for this container.
+def flistResolveOverlayNamesForContainer(sContainerName, sImageDigest=""):
+    """Return the ordered overlay names the PINNED image was built with.
 
-    Resolved from the project's ``vaibify.yml`` rather than from the
-    image, because the image records no such list and inferring it
-    from installed binaries would be a guess dressed as provenance.
-    Returns an empty list for a project whose config cannot be read —
-    a base-only chain is still an honest artifact, and the header
-    names the overlays it composed.
+    Read off the pinned image's own overlays label when it carries one:
+    the envelope pins the agent-free environment, and ``vaibify.yml``
+    also names the coding agents stacked above it, which the pinned
+    image does not hold -- a Dockerfile composed from the config would
+    describe an image nobody pinned. An image built before the label
+    existed falls back to the project's ``vaibify.yml``, which is what
+    built it. Inferring the list from installed binaries would be a
+    guess dressed as provenance. Returns an empty list for a project
+    whose config cannot be read — a base-only chain is still an honest
+    artifact, and the header names the overlays it composed.
     """
     from vaibify.config.projectConfig import fconfigLoadFromFile
     from vaibify.config.registryManager import flistGetAllProjects
     from vaibify.docker.imageBuilder import flistDetermineOverlays
+    listLabelled = _flistReadPinnedOverlaysLabel(sImageDigest)
+    if listLabelled is not None:
+        return listLabelled
     sConfigPath = _fsConfigPathForContainer(
         flistGetAllProjects(), sContainerName,
     )
     if not sConfigPath or not os.path.isfile(sConfigPath):
         return []
     return flistDetermineOverlays(fconfigLoadFromFile(sConfigPath))
+
+
+def _flistReadPinnedOverlaysLabel(sImageDigest):
+    """Return the pinned image's overlays label as a list, or ``None``.
+
+    ``None`` -- no pin, no label, an unreachable daemon, or a label this
+    vaibify cannot parse -- means the image does not say, and the
+    caller falls back; an empty list is the image saying "no overlays".
+    """
+    from vaibify.docker.imageBuilder import flistCanonicalOverlayOrder
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_OVERLAYS_IMAGE_LABEL, flistParseOverlaysLabel,
+    )
+    from vaibify.reproducibility.environmentSnapshot import (
+        _fsInspectFormatValue,
+    )
+    if not sImageDigest:
+        return None
+    try:
+        sValue = _fsInspectFormatValue(
+            sImageDigest,
+            '{{index .Config.Labels "' + S_OVERLAYS_IMAGE_LABEL + '"}}',
+        ).strip()
+        if sValue == "<no value>":
+            return None
+        return flistParseOverlaysLabel(sValue, flistCanonicalOverlayOrder())
+    except Exception:  # noqa: BLE001 — an unreadable label does not say
+        return None
 
 
 def _fsConfigPathForContainer(listProjects, sContainerName):
@@ -79,7 +114,7 @@ def fsBuildImageDockerfileText(sContainerName, sImageDigest=""):
     exported file describes the pinned image's actual build inputs.
     """
     listOverlayNames = flistResolveOverlayNamesForContainer(
-        sContainerName,
+        sContainerName, sImageDigest,
     )
     pathImageRoot = resources.fpathContainerImageRoot()
     sBaseText = _fsReadPackagedDockerfile(

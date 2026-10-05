@@ -323,8 +323,12 @@ jobs:
       - name: Re-confirm (exclusive, 1 worker)
         # A hang detector, not a budget. The ubuntu exclusive leg measures
         # 26-28 minutes (6 runs, 2026-09-08), so 45 left under 1.6x and one
-        # slow runner would kill a leg that was going to pass.
-        timeout-minutes: 75
+        # slow runner would kill a leg that was going to pass. RAISED
+        # from 75 (2026-10-05): merging the agent-free archive work and
+        # the reader-journey entries grew the registry by about a
+        # hundred entries, and the leg was cut off with every mutation
+        # it had reached killed.
+        timeout-minutes: 110
         env:
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
           VAIBIFY_REQUIRE_BROWSER: '1' 

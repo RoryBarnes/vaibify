@@ -348,6 +348,11 @@ var VaibifyEventBindings = (function () {
         VaibifyApp.fnToggleFileGroup(elMatch.dataset.fileGroup);
     }
 
+    function _fnHandleEnvironmentArchiveChoice(event, elMatch) {
+        // No preventDefault: the click is what checks the radio.
+        VaibifyWorkflowRequirements.fnFollowArchiveChoice(elMatch);
+    }
+
     function _fnHandleProjectAction(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -567,6 +572,7 @@ var VaibifyEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
+        ".environment-archive-answer": _fnHandleEnvironmentArchiveChoice,
         ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,
         ".wf-view-ai-declaration": _fnHandleViewAiDeclaration,

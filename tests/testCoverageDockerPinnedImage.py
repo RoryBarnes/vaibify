@@ -26,9 +26,12 @@ from vaibify.docker.pinnedImageAcquisition import (
     PinnedImageAcquisitionRefusedError,
     fdictAcquireForProject,
 )
+from vaibify.reproducibility import agentLayerSeparation
 from vaibify.reproducibility.dockerfileComposer import S_OVERLAYS_IMAGE_LABEL
 from vaibify.reproducibility.imageAcquisition import (
     ImageAcquisitionRefusedError,
+    S_LINK_ARCHIVE,
+    S_LINK_REGISTRY,
 )
 
 
@@ -162,9 +165,9 @@ def testEveryChainLinkIsReportedAndTheBaseIsTaggedById(
     )
     listCalls = []
     fnStubAcquisitionChain(monkeypatch, listEvents=[
-        {"sPhase": "attempt", "sLink": "registry", "bSucceeded": False,
+        {"sPhase": "attempt", "sLink": S_LINK_REGISTRY, "bSucceeded": False,
          "sDetail": "manifest unknown"},
-        {"sPhase": "attempt", "sLink": "deposit", "bSucceeded": True},
+        {"sPhase": "attempt", "sLink": S_LINK_ARCHIVE, "bSucceeded": True},
         {"sPhase": "downloading", "iBytes": 5, "iTotalBytes": 10},
         {"sPhase": "pulling", "sImageReference": "registry.example/x",
          "sPlatform": "linux/amd64"},
@@ -183,9 +186,11 @@ def testEveryChainLinkIsReportedAndTheBaseIsTaggedById(
     ] == S_FIXTURE_IMAGE_DIGEST
     assert f"Pinned image: {S_FIXTURE_IMAGE_DIGEST} (linux/amd64)" in listLines
     for sExpected in (
-        "registry: failed (manifest unknown)",
-        "deposit: served",
-        "downloading the archived image: 5 of 10 bytes",
+        "no registry has this image -- normal for an image that was "
+        "archived rather than published -- so vaibify tries the next "
+        "source (Docker said: manifest unknown)",
+        f"{S_LINK_ARCHIVE}: served",
+        "downloading the archived image: 0 MB of 0 MB (50%)",
         "pulling registry.example/x for linux/amd64",
         "obtained registry.example/x from the archive (emulated)",
         "verifying",
@@ -273,6 +278,10 @@ def testAStackedOverlayIsBuiltOnTheBaseIdForThePinnedPlatform(
     storeFake.dictHeld[S_DERIVED_ID] = storeFake.dictHeld[
         f"{S_PROJECT_NAME}:claude"
     ]
+    monkeypatch.setattr(
+        agentLayerSeparation, "fdictCheckAgentLayerSeparation",
+        lambda sBaseImageId, sStackedImageId: {"listViolations": []},
+    )
     dictRecord = fdictAcquireForProject(
         dictProject, False, dockerDisposable=storeFake,
     )

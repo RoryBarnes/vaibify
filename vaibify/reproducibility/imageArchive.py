@@ -265,7 +265,7 @@ def flistDescribeArchiveMismatch(dictEnvironment):
     # path only.
     dictRecord = dictContainer.get(S_IMAGE_ARCHIVE_KEY)
     if not isinstance(dictRecord, dict):
-        return ["No image archive has been deposited for this envelope."]
+        return [_fsDescribeAbsentRecord(dictContainer)]
     if not sEnvelopeArchitecture:
         raise LookupError(
             "The environment snapshot records no architecture, so "
@@ -274,6 +274,27 @@ def flistDescribeArchiveMismatch(dictEnvironment):
         )
     return _flistCompareRecordToEnvelope(
         dictRecord, sEnvelopeDigest, sEnvelopeArchitecture,
+    )
+
+
+def _fsDescribeAbsentRecord(dictContainer):
+    """Say that no deposit covers this image, naming any earlier one.
+
+    "No image archive has been deposited" was literally true after a
+    rebuild and still misled: it hid that this project HAD deposited
+    its environment, which is the fact that stops a researcher
+    starting an unrelated record instead of a new version.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictArchiveLineageOf,
+    )
+    sPreviousDoi = fdictArchiveLineageOf(dictContainer).get("sVersionDoi")
+    if not sPreviousDoi:
+        return "No image archive has been deposited for this envelope."
+    return (
+        "The image this envelope pins has not been deposited yet. "
+        f"This project's earlier deposit, {sPreviousDoi}, holds a "
+        "previous image."
     )
 
 

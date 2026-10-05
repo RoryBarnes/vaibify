@@ -51,6 +51,7 @@ import json
 import posixpath
 
 from vaibify.reproducibility import imageArchive
+from vaibify.reproducibility import gitEvidence
 from vaibify.reproducibility.gitEvidence import (
     RecordKindUndeterminedError,
     fbRepositoryCarriesForeignTrackedFile,
@@ -142,6 +143,10 @@ def flistWriteVerificationOutcome(
     what a failed write means to its caller.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    # The baseline is the lane's, read before it exported the tree and
+    # carried on the outcome. Never re-read here: HEAD may have moved
+    # since, and a record must not name source it never verified.
+    dictBaseline = dictOutcome.get("dictBaselineEvidence")
     sStatus = S_STATUS_PASSED if dictOutcome.get("bPassed") else S_STATUS_FAILED
     sTimestampUtc = fsCurrentTimestampUtc()
     sReproducedPath = fsWriteReproducedManifest(
@@ -156,7 +161,9 @@ def flistWriteVerificationOutcome(
         dictRecord = fdictBuildReproductionRecord(
             dictOutcome, fdictReadEnvironmentJson(filesRepo) or {},
             dictWorkflow, fsRepoRootOf(filesRepo), fDurationSeconds,
-            sReproducedPath or None,
+            fsReproducedManifestHistoryPath(sTimestampUtc, sStatus)
+            if sReproducedPath else None,
+            dictBaseline,
         )
         listPaths.append(
             fsWriteReproductionRecord(filesRepo, dictRecord, sTimestampUtc),
@@ -172,7 +179,7 @@ def flistWriteVerificationOutcome(
 
 def fdictBuildReproductionRecord(
     dictOutcome, dictEnvironment, dictWorkflow, sRepositoryRoot,
-    fDurationSeconds, sReproducedManifestPath,
+    fDurationSeconds, sReproducedManifestPath, dictBaseline=None,
 ):
     """Return a reproduction record for a verification of one's own clone.
 
@@ -220,7 +227,28 @@ def fdictBuildReproductionRecord(
         dictSource, dictAcquired, dictOutcome, dictRecheck, fDurationSeconds,
     )
     dictRecord["sReproducedManifestPath"] = sReproducedManifestPath
+    _fnBindEvidence(dictRecord, dictOutcome, dictBaseline or {})
     return dictRecord
+
+
+def _fnBindEvidence(dictRecord, dictOutcome, dictBaseline):
+    """Write onto a record the evidence that makes its verdict checkable.
+
+    Every digest comes from the EXPORTED SNAPSHOT the rerun froze
+    before any step ran, never from a file read afterwards; the
+    baseline comes from the HEAD the lane read before it exported.
+    """
+    dictRecord["dictSource"]["sResolvedCommit"] = str(
+        dictBaseline.get("sResolvedCommit") or "")
+    dictRecord["dictSource"]["sWorkflowPath"] = str(
+        dictOutcome.get("sWorkflowRelativePath") or "")
+    dictRecord["sWorkflowRelativePath"] = str(
+        dictOutcome.get("sWorkflowRelativePath") or "")
+    dictRecord["sWorkflowDigest"] = str(
+        dictOutcome.get("sWorkflowDigest") or "")
+    dictRecord["listPathsDifferingFromBaseline"] = dictBaseline.get(
+        "listPathsDifferingFromBaseline")
+    dictRecord["bBaselineKnown"] = bool(dictBaseline.get("bBaselineKnown"))
 
 
 def fsWriteReproductionRecord(filesRepo, dictRecord, sTimestampUtc):

@@ -151,7 +151,7 @@ def test_the_round_trip_promote_declare_refuse_start_new_concept():
     sRefusal = syncBookkeeping.fsDescribeCrossInstanceParent(
         dictWorkflow, "sandbox",
     )
-    assert "new concept" in sRefusal
+    assert "new, separate record" in sRefusal
     syncRoutes._fnRetireSupersededZenodoRecord(dictWorkflow)
     syncRoutes._fnClearPrimaryZenodoRecord(dictWorkflow)
     assert syncBookkeeping.fsDescribeCrossInstanceParent(

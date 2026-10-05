@@ -69,6 +69,7 @@ __all__ = [
     "fdictCreateDisposableGateway",
     "fdictReserveAndCreateContainer",
     "fdictPullImage",
+    "fiterReadInChunks",
     "fsLoadImageFromStream",
     "fdictInspectImage",
     "fnTagImage",
@@ -194,6 +195,27 @@ def _fsSdkImageIdentity(dockerImage):
     return str(getattr(dockerImage, "id", "") or "")
 
 
+_I_LOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def fiterReadInChunks(fileStream):
+    """Yield a stream's bytes in fixed-size chunks.
+
+    The daemon upload has no length, and ``requests`` before 2.32 sends
+    such a body by ITERATING it. zstandard's decompressing reader
+    declares ``__iter__`` and raises ``UnsupportedOperation`` from it,
+    so every zstd archive failed to load as "Connection aborted" on a
+    host with an older ``requests`` -- after the whole download had
+    succeeded (2026-09-26; reproduced against a real daemon with
+    requests 2.31). Chunks read with ``read`` work on every version.
+    """
+    while True:
+        baChunk = fileStream.read(_I_LOAD_CHUNK_BYTES)
+        if not baChunk:
+            return
+        yield baChunk
+
+
 def fsLoadImageFromStream(dockerDisposable, fileStream):
     """Load an image tarball stream; return the ID the daemon reports.
 
@@ -203,7 +225,8 @@ def fsLoadImageFromStream(dockerDisposable, fileStream):
     """
     listIds = [
         sId for sId in map(
-            _fsSdkImageIdentity, dockerDisposable.images.load(fileStream) or [],
+            _fsSdkImageIdentity,
+            dockerDisposable.images.load(fiterReadInChunks(fileStream)) or [],
         ) if sId
     ]
     if not listIds:

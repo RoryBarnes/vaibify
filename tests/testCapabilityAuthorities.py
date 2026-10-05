@@ -145,6 +145,24 @@ DICT_NAMED_AUTHORITIES = {
             "non-zero exit, raised as CalledProcessError or reported "
             "as UNAVAILABLE.",
         ),
+    "reproducibility/agentLayerSeparation.py|<module>|process-launch|"
+    "subprocess|import|0":
+        _fdictAuthority(
+            ["background"],
+            "`docker save` of the image the researcher's container runs, "
+            "read layer by layer to prove the coding agents stacked on "
+            "the agent-free environment leave it untouched. "
+            "Hub-reachable through the environment-archive deposit's "
+            "durable task and through a reader's acquire-image task, "
+            "both before anything is saved or tagged. It runs on the "
+            "HOST because it talks to the daemon, and it mutates "
+            "nothing: the daemon serializes an image and writes nothing "
+            "back, and the stream is read in memory, never written to "
+            "disk. One launch site, _fdictSaveAndReadLayers, a fixed "
+            "argv list with no shell; its one value is an image ID the "
+            "daemon itself reported, its own argv element, so it cannot "
+            "become an option or a second command.",
+        ),
     # -- reproducing a published project ---------------------------------
     "reproducibility/reproductionSource.py|<module>|process-launch|"
     "subprocess|import|0":

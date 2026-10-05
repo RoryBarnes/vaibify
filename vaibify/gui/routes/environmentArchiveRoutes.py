@@ -39,12 +39,15 @@ from ..routeContext import (
     fgenericRunWorkerUnderTheDrain,
 )
 from ..routeScope import (
+    S_CARRIER_SEPARATE_AUTHORITY,
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_MODE_C_DURABLE,
     ffnDeclareCarrierMode,
 )
-from ...reproducibility import imageArchive, imageDeposit
+from ...reproducibility import (
+    agentLayerSeparation, archiveDepositPlan, imageArchive, imageDeposit,
+)
 from ...reproducibility.imageDeposit import (
     _fbRepinManifestOrWarn,
     fdictStampArchiveRecord as _fdictStampArchiveRecord,
@@ -65,6 +68,15 @@ logger = logging.getLogger(__name__)
 # a PRODUCTION token without recording the instance as where this
 # project publishes.
 _S_PRODUCTION_TOKEN_MISSING = "PRODUCTION-TOKEN-MISSING"
+
+# The deposit route's counterpart: the researcher chose a destination
+# whose token this host does not hold. It names the instance, because
+# a deposit can now go to either one.
+_S_ZENODO_TOKEN_MISSING = "ZENODO-TOKEN-MISSING"
+
+# The service key a ZenodoClient takes, spelled as the instance the
+# connection dialog offers.
+_DICT_INSTANCE_BY_SERVICE = {"zenodo": "production", "sandbox": "sandbox"}
 
 
 def _fsRequireProjectRepo(dictWorkflow):
@@ -204,8 +216,7 @@ async def _fdictAdoptExistingDeposit(
     filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
     dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
     dictRecord = await asyncio.to_thread(
-        _fdictVerifyReferencedDeposit,
-        dictWorkflow, sVersionDoi, dictContainer,
+        _fdictVerifyReferencedDeposit, sVersionDoi, dictContainer,
     )
     await _fdictWriteArchiveRecordUnderTheDrain(
         dictCtx, sContainerId, dictWorkflow, dictRecord, requestHttp,
@@ -247,7 +258,7 @@ def _fdictRequireEnvelopeContainerBlock(filesRepo):
     return dictContainer
 
 
-def _fdictVerifyReferencedDeposit(dictWorkflow, sVersionDoi, dictContainer):
+def _fdictVerifyReferencedDeposit(sVersionDoi, dictContainer):
     """Fetch the referenced record and build its archive record, or raise."""
     from ...gui.workflowManager import fsZenodoRecordIdFromDoi
     from ...reproducibility import zenodoClient
@@ -258,8 +269,11 @@ def _fdictVerifyReferencedDeposit(dictWorkflow, sVersionDoi, dictContainer):
             f"{sVersionDoi!r} is not a Zenodo DOI. A Zenodo DOI ends "
             "in '/zenodo.<number>'.",
         )
+    # The Zenodo the DOI itself names, never the project's setting: a
+    # permanent DOI looked up on the sandbox is a record that does not
+    # exist there.
     clientZenodo = zenodoClient.ZenodoClient(
-        dictWorkflow.get("sZenodoService") or "sandbox",
+        zenodoClient.fsServiceForDoi(sVersionDoi),
     )
     try:
         dictZenodoRecord = clientZenodo.fdictFetchPublishedRecord(sRecordId)
@@ -346,7 +360,7 @@ def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
         S_CARRIER_MODE_B_LOCK_HELD, S_CARRIER_MODE_C_DURABLE,
     )
     async def fdictDepositEnvironmentArchive(
-        sContainerId: str, requestHttp: Request,
+        sContainerId: str, dictBody: dict, requestHttp: Request,
     ):
         dictCtx["require"](sContainerId)
         dictWorkflow = fdictRequireWorkflow(
@@ -356,14 +370,67 @@ def _fnRegisterDepositEnvironmentArchive(app, dictCtx):
         _fnRefuseIfDepositInFlight(sContainerId)
         filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
         dictContainer = _fdictRequireEnvelopeContainerBlock(filesRepo)
+        dictDestination = _fdictResolveDepositDestination(
+            dictContainer, dictBody,
+        )
         sToken = await asyncio.to_thread(
             _fsReadZenodoTokenFromContainer,
-            dictCtx["docker"], sContainerId, dictWorkflow,
+            dictCtx["docker"], sContainerId,
+            dictDestination["sZenodoService"],
         )
         return await _fdictLaunchDepositDurably(
             dictCtx, sContainerId, dictWorkflow, dictContainer,
-            sToken, requestHttp,
+            dictDestination, sToken, requestHttp,
         )
+
+
+def _fdictResolveDepositDestination(dictContainer, dictBody):
+    """Return ``{sZenodoService, dictParentArchive}`` or raise HTTP 422.
+
+    The researcher's choice is required, never defaulted from the
+    project's Zenodo setting: a default is how a deposit came to go
+    somewhere the row never named.
+    """
+    sChoice = str((dictBody or {}).get("sChoice") or "").strip()
+    try:
+        sService, dictParent = archiveDepositPlan.ftResolveDepositChoice(
+            dictContainer, sChoice,
+        )
+    except ValueError as errorChoice:
+        raise HTTPException(422, str(errorChoice)) from None
+    return {"sZenodoService": sService, "dictParentArchive": dictParent}
+
+
+def _fnRegisterStopEnvironmentArchiveDeposit(app, dictCtx):
+    """Register POST /api/workflow/{id}/environment-archive/deposit/stop.
+
+    Asks the running deposit to stop at its next checkpoint. It touches
+    no container -- the request is a flag in this hub's progress record
+    -- and it answers 409 once the publish has begun, because a DOI
+    being minted cannot be taken back.
+    """
+
+    @ffnAgentAction("stop-environment-archive-deposit")
+    @app.post(
+        "/api/workflow/{sContainerId}/environment-archive/deposit/stop"
+    )
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    async def fdictStopEnvironmentArchiveDeposit(sContainerId: str):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        if not archiveProgress.fbRequestStop(
+            sContainerId, fsRepoRootOf(filesRepo),
+        ):
+            raise HTTPException(
+                409,
+                "There is no deposit of this project that can be "
+                "stopped: none is running, or it has begun publishing "
+                "on Zenodo, and a DOI being minted cannot be taken back.",
+            )
+        return {"bStopRequested": True}
 
 
 def _fnRefuseIfDepositInFlight(sContainerId):
@@ -377,9 +444,9 @@ def _fnRefuseIfDepositInFlight(sContainerId):
 
 
 def _fsReadZenodoTokenFromContainer(
-    connectionDocker, sContainerId, dictWorkflow,
+    connectionDocker, sContainerId, sZenodoService,
 ):
-    """Return the researcher's Zenodo token, or raise HTTP 409.
+    """Return the Zenodo token for ``sZenodoService``, or raise HTTP 409.
 
     Vaibify stores this token in the CONTAINER keyring, because every
     other Zenodo call it makes runs as a script inside the container.
@@ -389,30 +456,37 @@ def _fsReadZenodoTokenFromContainer(
     and no log. The alternative was streaming a gigabyte the other
     way through an exec socket built for a terminal.
 
-    An absent token is a 409 with an instruction, never a 500: the
-    researcher has simply not connected Zenodo yet.
+    An absent token is a 409 naming the instance, never a 500: the
+    dashboard answers it by asking for that token WITHOUT recording
+    the instance as where this project publishes.
     """
     from ...reproducibility.zenodoClient import fsZenodoTokenName
-    sSlot = fsZenodoTokenName(
-        dictWorkflow.get("sZenodoService") or "sandbox",
-    )
     try:
-        sToken = connectionDocker.fsFetchKeyringSecret(sContainerId, sSlot)
+        sToken = connectionDocker.fsFetchKeyringSecret(
+            sContainerId, fsZenodoTokenName(sZenodoService),
+        )
     except LookupError as errorLookup:
+        # An UNREADABLE slot is not an empty one: asking for a token
+        # would claim none is stored and fix nothing.
         raise HTTPException(409, str(errorLookup)) from None
     if not sToken:
-        raise HTTPException(
-            409,
-            "No Zenodo token is stored for this project, so vaibify "
-            "cannot publish the environment archive. Connect Zenodo "
-            "from the Repos panel and try again.",
-        )
+        sInstance = _DICT_INSTANCE_BY_SERVICE[sZenodoService]
+        raise HTTPException(409, {
+            "sError": _S_ZENODO_TOKEN_MISSING,
+            "sInstance": sInstance,
+            "sMessage": (
+                f"No {sInstance} Zenodo token is stored for this "
+                "project, so vaibify cannot deposit the image there. "
+                "Add one and try again; where this project publishes "
+                "is unchanged."
+            ),
+        })
     return sToken
 
 
 async def _fdictLaunchDepositDurably(
-    dictCtx, sContainerId, dictWorkflow, dictContainer, sToken,
-    requestHttp,
+    dictCtx, sContainerId, dictWorkflow, dictContainer, dictDestination,
+    sToken, requestHttp,
 ):
     """Launch the deposit as REGISTERED durable work (mode c).
 
@@ -430,10 +504,12 @@ async def _fdictLaunchDepositDurably(
 
     def ftaskStartDeposit():
         taskWorker = asyncio.create_task(_fnRunDepositWorker(
-            sContainerId, dictWorkflow, dictContainer, sToken, filesRepo,
+            sContainerId, dictWorkflow, dictContainer, dictDestination,
+            sToken, filesRepo,
         ))
         archiveProgress.fnRegisterDeposit(
             sContainerId, taskWorker, fsRepoRootOf(filesRepo),
+            bStoppable=True,
         )
         return taskWorker
 
@@ -451,7 +527,8 @@ async def _fdictLaunchDepositDurably(
 
 
 async def _fnRunDepositWorker(
-    sContainerId, dictWorkflow, dictContainer, sToken, filesRepo,
+    sContainerId, dictWorkflow, dictContainer, dictDestination, sToken,
+    filesRepo,
 ):
     """Save, upload, publish, then stamp the record onto the envelope.
 
@@ -465,13 +542,17 @@ async def _fnRunDepositWorker(
     try:
         dictRecord = await asyncio.to_thread(
             _fdictDepositSynchronously,
-            sContainerId, dictWorkflow, dictContainer, sToken,
-            fdictReadAttestation(filesRepo),
+            sContainerId, dictWorkflow, dictContainer, dictDestination,
+            sToken, fdictReadAttestation(filesRepo),
         )
         await asyncio.to_thread(
             _fdictStampArchiveRecord, filesRepo, dictWorkflow, dictRecord,
         )
         archiveProgress.fnSettleDeposit(sContainerId)
+    except archiveProgress.DepositStoppedError:
+        # A decision, not a failure: nothing was published, and the
+        # upload's own handler has already discarded the draft.
+        archiveProgress.fnRecordStopped(sContainerId, fsRepoRootOf(filesRepo))
     except Exception as errorDeposit:  # noqa: BLE001 — reported, not raised
         # The researcher is the only one who can act on this, and the
         # task's exception would otherwise be readable nowhere: the
@@ -498,7 +579,8 @@ def _fsDescribeDepositFailure(errorDeposit):
 
 
 def _fdictDepositSynchronously(
-    sContainerId, dictWorkflow, dictContainer, sToken, dictAttestation,
+    sContainerId, dictWorkflow, dictContainer, dictDestination, sToken,
+    dictAttestation,
 ):
     """Run the whole deposit on a worker thread; return the record."""
     import shutil
@@ -506,32 +588,51 @@ def _fdictDepositSynchronously(
     sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
 
     def fnReportSaveProgress(iBytesRead, iBytesTotal):
-        archiveProgress.fnRecordProgress(
+        _fnRecordPhaseUnlessStopped(
             sContainerId, archiveProgress.S_PHASE_SAVING,
             iBytesRead, iBytesTotal,
         )
 
     def fnReportUploadStarted(iTarballBytes):
-        archiveProgress.fnRecordProgress(
+        _fnRecordPhaseUnlessStopped(
             sContainerId, archiveProgress.S_PHASE_UPLOADING,
             0, iTarballBytes,
         )
 
+    def fnReportPublishing():
+        if not archiveProgress.fbEnterPublishingUnlessStopped(sContainerId):
+            raise archiveProgress.DepositStoppedError(
+                "You stopped the deposit.")
+
     try:
+        _fnRecordPhaseUnlessStopped(
+            sContainerId, archiveProgress.S_PHASE_CHECKING_AGENTS,
+        )
+        _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer)
         return imageDeposit.fdictDepositImageArchive(
-            ZenodoClient(
-                dictWorkflow.get("sZenodoService") or "sandbox",
-                sToken=sToken,
-            ),
+            ZenodoClient(dictDestination["sZenodoService"], sToken=sToken),
             str(dictContainer.get("sImageDigest") or ""),
             str(dictContainer.get("sArchitecture") or ""),
             sScratchDirectory,
-            _fdictBuildArchiveDepositMetadata(dictWorkflow),
+            _fdictBuildArchiveDepositMetadata(
+                dictWorkflow, dictContainer, dictAttestation,
+            ),
             fnReportSaveProgress,
             dictAttestation,
             fnReportUploadStarted=fnReportUploadStarted,
-            fnReportVerifying=lambda: archiveProgress.fnRecordProgress(
-                sContainerId, archiveProgress.S_PHASE_VERIFYING, 0, 0,
+            fnReportVerifying=_ffnReportPhase(
+                sContainerId, archiveProgress.S_PHASE_VERIFYING,
+            ),
+            fnReportPublishing=fnReportPublishing,
+            # The record the researcher chose to continue, or none when
+            # they chose a new record.
+            dictParentArchive=dictDestination["dictParentArchive"],
+            fnReportUploadProgress=_ffnReportUploadProgress(sContainerId),
+            fnReportPreparingDraft=_ffnReportPhase(
+                sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
+            ),
+            fnReportUploadAttemptFailed=_ffnReportUploadAttemptFailed(
+                sContainerId,
             ),
         )
     finally:
@@ -540,7 +641,25 @@ def _fdictDepositSynchronously(
         shutil.rmtree(sScratchDirectory, ignore_errors=True)
 
 
-def _fdictBuildArchiveDepositMetadata(dictWorkflow):
+def _fnRefuseAgentsInTheEnvironment(sContainerId, dictContainer):
+    """Raise before any byte is saved if the agents are, or reach, the environment.
+
+    The layer check reads the container's whole image (about half a
+    minute for a few gigabytes); a refusal lands on the deposit row as
+    its failure, naming what to do.
+    """
+    from ...reproducibility.environmentSnapshot import (
+        fdictCaptureLiveImageIdentity,
+    )
+    agentLayerSeparation.fdictVerifyAgentsLeaveThePinAlone(
+        str(dictContainer.get("sImageDigest") or ""),
+        fdictCaptureLiveImageIdentity(sContainerId),
+    )
+
+
+def _fdictBuildArchiveDepositMetadata(
+    dictWorkflow, dictContainer=None, dictAttestation=None,
+):
     """Return the vaibify-shaped metadata for the image deposit.
 
     A SEPARATE record from the science deposit, not a version of it,
@@ -548,6 +667,9 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
     forward: one image used for N papers is one large upload plus N
     small science records that reference it, and versioning would mean
     re-uploading the image every time.
+
+    The image is the agent-free ENVIRONMENT; the coding agents stacked
+    above it during the work are named, not included.
     """
     from .. import workflowManager
     dictScience = dict(workflowManager.fdictGetZenodoMetadata(dictWorkflow))
@@ -560,11 +682,14 @@ def _fdictBuildArchiveDepositMetadata(dictWorkflow):
     return {
         "sTitle": "Container image for " + sProjectTitle,
         "sDescription": (
-            "The container image these results were produced in, "
+            "The container image these results are computed in, "
             "saved with 'docker save' and compressed. Load it with "
             "'docker load' to obtain the exact compiler, numeric "
             "libraries, interpreter and installed packages the "
             "original run used."
+            + agentLayerSeparation.fsDescribeAgentsLeftOut(
+                dictContainer, dictAttestation,
+            )
         ),
         "listCreators": dictScience.get("listCreators") or [],
         "sLicense": dictScience.get("sLicense") or "",
@@ -740,7 +865,9 @@ async def _fnRunPromotionWorker(
         dictRecord, sPromotionId = await asyncio.to_thread(
             archivePromotion.ftPromoteImageArchive,
             dictContainer, sToken, filesRepo, sSidecarKey,
-            _fdictBuildArchiveDepositMetadata(dictWorkflow),
+            _fdictBuildArchiveDepositMetadata(
+                dictWorkflow, dictContainer, fdictReadAttestation(filesRepo),
+            ),
             _fdictBuildPromotionProgressHooks(sContainerId),
         )
         syncBookkeeping.fnMirrorPendingPromotions(
@@ -802,7 +929,54 @@ def _fdictBuildPromotionProgressHooks(sContainerId):
                 0, iBytes,
             )
         ),
+        "fnReportUploadProgress": _ffnReportUploadProgress(sContainerId),
+        "fnReportPreparingDraft": _ffnReportPhase(
+            sContainerId, archiveProgress.S_PHASE_PREPARING_DRAFT,
+        ),
+        "fnReportUploadAttemptFailed": _ffnReportUploadAttemptFailed(
+            sContainerId,
+        ),
     }
+
+
+def _ffnReportUploadAttemptFailed(sContainerId):
+    """Return the callback that keeps a failed upload attempt on the row."""
+    def fnReportUploadAttemptFailed(dictAttempt):
+        archiveProgress.fnRecordUploadAttemptFailed(sContainerId, dictAttempt)
+    return fnReportUploadAttemptFailed
+
+
+def _ffnReportPhase(sContainerId, sPhase):
+    """Return a callback that puts one byte-less phase on the row."""
+    def fnReportPhase():
+        _fnRecordPhaseUnlessStopped(sContainerId, sPhase)
+    return fnReportPhase
+
+
+def _ffnReportUploadProgress(sContainerId):
+    """Return the callback that puts the upload's bytes on the row."""
+    def fnReportUploadProgress(iBytesSent, iBytesTotal, iAttempt):
+        _fnRecordPhaseUnlessStopped(
+            sContainerId, archiveProgress.S_PHASE_UPLOADING,
+            iBytesSent, iBytesTotal, iAttempt=iAttempt,
+        )
+    return fnReportUploadProgress
+
+
+def _fnRecordPhaseUnlessStopped(
+    sContainerId, sPhase, iBytesRead=0, iBytesTotal=0, iAttempt=0,
+):
+    """Record progress, or raise at this checkpoint if a stop was asked.
+
+    Every progress report is a checkpoint, so the upload -- which
+    reports each MiB -- stops within one MiB of the request, and the
+    save within one read. A raise inside the upload is not a connection
+    error, so it is never retried.
+    """
+    archiveProgress.fnRaiseIfStopRequested(sContainerId)
+    archiveProgress.fnRecordProgress(
+        sContainerId, sPhase, iBytesRead, iBytesTotal, iAttempt=iAttempt,
+    )
 
 
 def _fdictStampPromotedRecord(
@@ -841,4 +1015,5 @@ def fnRegisterAll(app, dictCtx):
     """Register every environment-archive endpoint."""
     _fnRegisterAnswerEnvironmentArchive(app, dictCtx)
     _fnRegisterDepositEnvironmentArchive(app, dictCtx)
+    _fnRegisterStopEnvironmentArchiveDeposit(app, dictCtx)
     _fnRegisterPromoteEnvironmentArchive(app, dictCtx)

@@ -167,6 +167,12 @@ class ConvertToContainerRequest(BaseModel):
     # attempt: an obtained image built for another architecture runs
     # under emulation only when the researcher said so twice.
     bAllowEmulation: bool = False
+    # The Files page: what to copy into the container once it first
+    # runs, and whether pinned files that differ from the last commit
+    # start as their committed versions. Recorded on the entry, never
+    # held by the page, because the first run may be a later retry.
+    saSeedPaths: List[str] = []
+    bRestoreCommittedFiles: bool = False
 
 
 class PromoteHostProjectRequest(BaseModel):
@@ -227,6 +233,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterHostDirectories(app, dictCtx)
     _fnRegisterProjectGitRemote(app, dictCtx)
     _fnRegisterScanDependencies(app, dictCtx)
+    _fnRegisterCommittedFileDifferences(app, dictCtx)
     _fnRegisterGetTemplates(app, dictCtx)
     _fnRegisterGetTemplateConfig(app, dictCtx)
     _fnRegisterCreateProject(app, dictCtx)
@@ -1378,6 +1385,40 @@ def _fnRegisterProjectGitRemote(app, dictCtx):
         }
 
 
+def _fnRegisterCommittedFileDifferences(app, dictCtx):
+    """Register GET /api/registry/{sName}/committed-file-differences.
+
+    The Files page asks it before a conversion: which files the
+    committed manifest pins now differ from the last commit in the
+    researcher's own directory, so the choice to start the container
+    from the committed versions names what it would change. Read-only
+    -- the restore itself runs in the container, never here -- and it
+    refuses the agent lane, because it reads the researcher's own
+    repository. A folder that is not a repository has no commit, so
+    nothing in it can differ from one.
+    """
+
+    @app.get("/api/registry/{sName}/committed-file-differences")
+    async def fdictReadCommittedFileDifferences(
+        sName: str, requestHttp: Request,
+    ):
+        fnRejectAgentTokenLane(requestHttp)
+        from vaibify.reproducibility import committedFiles
+        sDirectory = _fsRequireProjectDirectory(sName)
+        if not os.path.exists(os.path.join(sDirectory, ".git")):
+            return {"listDifferingPaths": []}
+        try:
+            listDiffering = await asyncio.to_thread(
+                committedFiles.flistPinnedPathsDifferingFromHead, sDirectory,
+            )
+        except committedFiles.CommittedFilesUndeterminedError as error:
+            raise HTTPException(409, (
+                f"Git could not say which files differ from the last "
+                f"commit: {error}"
+            )) from error
+        return {"listDifferingPaths": listDiffering}
+
+
 def _fnRegisterScanDependencies(app, dictCtx):
     """Register POST /api/registry/{sName}/scan-dependencies.
 
@@ -1727,6 +1768,12 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             registryManager.fnConvertProjectToContainer(
                 sName, request.sProjectName, dictImageSource,
             )
+            if request.saSeedPaths:
+                registryManager.fnSetPendingSeed(request.sProjectName, {
+                    "saRelativePaths": list(request.saSeedPaths),
+                    "bRestoreCommittedFiles": bool(
+                        request.bRestoreCommittedFiles),
+                })
         except KeyError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:

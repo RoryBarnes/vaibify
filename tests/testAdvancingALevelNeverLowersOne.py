@@ -138,6 +138,9 @@ DICT_LADDER_ACTION_RUNGS = {
     "answer-environment-archive": 2,
     "clear-environment-archive-answer": 0,
     "deposit-environment-archive": 3,
+    # Withdraws a deposit in progress and writes nothing: it can only
+    # leave the ladder where it was.
+    "stop-environment-archive-deposit": 0,
     # The two promotions reach for Level 3: a sandbox deposit cannot
     # carry the permanence claim that rung asks for.
     "promote-environment-archive": 3,
@@ -152,6 +155,9 @@ DICT_LADDER_ACTION_RUNGS = {
     # Level 2: it changes what the published-copies rows compare
     # against, by retiring the deposit those rows are checked against.
     "start-new-zenodo-concept": 2,
+    # Level 2 too: it changes the declared publish target, which
+    # project.json carries and the published-copies rows compare.
+    "publish-where-the-zenodo-record-is": 2,
     "remove-ai-model": 0,
 }
 

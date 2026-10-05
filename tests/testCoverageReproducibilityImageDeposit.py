@@ -519,7 +519,7 @@ class _FailingUploadClient:
     def fdictCreateDraft(self, dictMetadata):
         return {"id": 4321, "links": {"bucket": "https://x.invalid/b"}}
 
-    def fnUploadToBucket(self, sBucketUrl, sPath):
+    def fnUploadToBucket(self, sBucketUrl, sPath, **dictCallbacks):
         raise ConnectionError("upload interrupted")
 
     def fnDeleteDraft(self, iDepositId):

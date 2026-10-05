@@ -48,6 +48,7 @@ import tempfile
 __all__ = [
     "LIST_GIT_CREDENTIAL_ISOLATION_CONFIG",
     "LIST_GIT_HARDENING_CONFIG",
+    "T_MANIFEST_OWNERSHIP_GIT_QUESTIONS",
     "fcontextOpenHermeticGitInvocation",
     "fdictScrubRepositorySelection",
 ]
@@ -60,6 +61,22 @@ LIST_GIT_HARDENING_CONFIG = [
     "-c", "core.symlinks=false",
     "-c", "submodule.recurse=false",
 ]
+
+
+# The git questions that settle whose MANIFEST.sha256 a repository
+# carries, spelled once. The file-status poll cannot run git itself, so
+# the snapshot program asks exactly these inside the container and the
+# host answers the ownership predicate from the replies; the predicate
+# in ``gitEvidence`` asks nothing else, and
+# ``tests/testManifestOwnershipFromSnapshotFacts.py`` runs it against
+# real repositories in every state to prove it.
+T_MANIFEST_OWNERSHIP_GIT_QUESTIONS = (
+    ("rev-parse", "--verify", "--quiet", "HEAD"),
+    ("rev-parse", "--is-inside-work-tree"),
+    ("ls-tree", "--name-only", "HEAD", "--", "MANIFEST.sha256"),
+    ("log", "-1", "--format=%ce", "--", "MANIFEST.sha256"),
+    ("config", "user.email"),
+)
 
 
 # Credential isolation for host-side git calls that authenticate with a

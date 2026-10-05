@@ -15,25 +15,36 @@ complete has established nothing -- no DOI, no record on disk -- so
 there is nothing to persist, and the researcher still has to be told
 why. That is what the settled entry is for.
 
-Keyed by (container, project): one deposit holds a container at a
-time, but a container hosts several projects, and another project's
-deposit is neither this project's row to pulse nor this project's
-answer to erase.
+Keyed by container, because one deposit holds a container at a time,
+and each record names the project it deposits for: a container hosts
+several projects, and another project's deposit is neither this
+project's row to pulse nor this project's answer to erase.
 """
 
 __all__ = [
     "DICT_DEPOSITS",
+    "DepositStoppedError",
+    "S_PHASE_PUBLISHING",
+    "S_PHASE_STOPPED",
+    "S_PHASE_CHECKING_AGENTS",
     "S_PHASE_FAILED",
+    "S_PHASE_PREPARING_DRAFT",
     "S_PHASE_SAVING",
     "S_PHASE_SETTLED",
     "S_PHASE_STARTING",
     "S_PHASE_UPLOADING",
     "S_PHASE_VERIFYING",
     "fbDepositIsLive",
+    "fbEnterPublishingUnlessStopped",
+    "fbRequestStop",
+    "fnRaiseIfStopRequested",
+    "fnRecordStopped",
+    "fbPhaseIsLive",
     "fdictReadDeposit",
     "fnForgetDeposit",
     "fnRecordFailure",
     "fnRecordProgress",
+    "fnRecordUploadAttemptFailed",
     "fnRegisterDeposit",
     "fnSettleDeposit",
 ]
@@ -42,23 +53,52 @@ import threading
 
 
 S_PHASE_STARTING = "starting"
+# Reading the whole image to prove the coding agents' layers leave the
+# environment alone -- tens of seconds that used to show as "starting".
+S_PHASE_CHECKING_AGENTS = "checking-agents"
 S_PHASE_SAVING = "saving"
+# Creating the Zenodo draft (or the new version of the earlier record),
+# clearing the inherited image out of it and describing this one.
+S_PHASE_PREPARING_DRAFT = "preparing-draft"
 S_PHASE_UPLOADING = "uploading"
 # Asking the archive what it stored, after the upload and before the
 # record is called good. Seconds, not minutes: Zenodo reports the MD5
 # it computed server-side, so the check is one small request rather
 # than a re-download.
 S_PHASE_VERIFYING = "verifying"
+# The publish mints a permanent DOI, so from here on the deposit can no
+# longer be stopped; entering this phase and honoring a stop request
+# are decided under one lock, so neither can slip past the other.
+S_PHASE_PUBLISHING = "publishing"
 S_PHASE_SETTLED = "settled"
 S_PHASE_FAILED = "failed"
+# The researcher stopped the deposit before the publish: nothing was
+# published. A phase of its own because "failed" would be a false
+# account of a decision.
+S_PHASE_STOPPED = "stopped"
 
 # The phases during which the row pulses. A phase outside this set is
 # a settled one, so a caller cannot make the row pulse forever by
 # inventing a name.
 _T_LIVE_PHASES = (
-    S_PHASE_STARTING, S_PHASE_SAVING, S_PHASE_UPLOADING,
-    S_PHASE_VERIFYING,
+    S_PHASE_STARTING, S_PHASE_CHECKING_AGENTS, S_PHASE_SAVING,
+    S_PHASE_PREPARING_DRAFT, S_PHASE_UPLOADING, S_PHASE_VERIFYING,
+    S_PHASE_PUBLISHING,
 )
+
+
+class DepositStoppedError(Exception):
+    """The researcher stopped the deposit; raised at its next checkpoint.
+
+    Not an ``OSError``: every ``except OSError`` on the upload path --
+    and the retry, which catches connection errors -- must let it
+    through, or a stop would read as a dropped connection and be retried.
+    """
+
+
+def fbPhaseIsLive(sPhase):
+    """True when ``sPhase`` names a deposit still under way."""
+    return sPhase in _T_LIVE_PHASES
 
 # Keyed by (container id, project repo path): a container hosts several
 # projects, and a second project's deposit must not erase the first's
@@ -81,8 +121,15 @@ def _ftKeyOfLiveDeposit(sContainerId):
     return None
 
 
-def fnRegisterDeposit(sContainerId, taskWorker, sProjectRepoPath):
-    """Record that a project's deposit has started in this container."""
+def fnRegisterDeposit(
+    sContainerId, taskWorker, sProjectRepoPath, bStoppable=False,
+):
+    """Record that a project's deposit has started in this container.
+
+    ``bStoppable`` is true only for work whose checkpoints honor a stop:
+    a promotion keeps a crash-recovery record of its draft, and
+    stopping it would leave that record naming a discarded draft.
+    """
     with _LOCK_DEPOSITS:
         DICT_DEPOSITS[(sContainerId, sProjectRepoPath)] = {
             "sProjectRepoPath": sProjectRepoPath,
@@ -91,11 +138,62 @@ def fnRegisterDeposit(sContainerId, taskWorker, sProjectRepoPath):
             "iBytesRead": 0,
             "iBytesTotal": 0,
             "sReason": "",
+            "listAttempts": [],
+            "bStoppable": bool(bStoppable),
+            "bStopRequested": False,
         }
 
 
-def fnRecordProgress(sContainerId, sPhase, iBytesRead=0, iBytesTotal=0):
-    """Update the container's live deposit's phase and byte counters."""
+def fbRequestStop(sContainerId, sProjectRepoPath):
+    """Ask this project's live deposit to stop; False when it cannot.
+
+    It cannot when no stoppable deposit of this project is live, or
+    when the publish has begun -- a DOI is being minted and a stop now
+    would be a promise nothing can keep.
+    """
+    with _LOCK_DEPOSITS:
+        dictEntry = DICT_DEPOSITS.get((sContainerId, sProjectRepoPath)) or {}
+        if (
+            not dictEntry.get("bStoppable")
+            or dictEntry.get("sPhase") not in _T_LIVE_PHASES
+            or dictEntry.get("sPhase") == S_PHASE_PUBLISHING
+        ):
+            return False
+        dictEntry["bStopRequested"] = True
+        return True
+
+
+def fnRaiseIfStopRequested(sContainerId):
+    """Raise ``DepositStoppedError`` when the researcher asked to stop."""
+    with _LOCK_DEPOSITS:
+        tKey = _ftKeyOfLiveDeposit(sContainerId)
+        bStop = tKey is not None and DICT_DEPOSITS[tKey].get("bStopRequested")
+    if bStop:
+        raise DepositStoppedError("You stopped the deposit.")
+
+
+def fbEnterPublishingUnlessStopped(sContainerId):
+    """Enter the publish phase, or return False when a stop came first."""
+    with _LOCK_DEPOSITS:
+        tKey = _ftKeyOfLiveDeposit(sContainerId)
+        if tKey is None:
+            return True
+        dictEntry = DICT_DEPOSITS[tKey]
+        if dictEntry.get("bStopRequested"):
+            return False
+        dictEntry["sPhase"] = S_PHASE_PUBLISHING
+        return True
+
+
+def fnRecordProgress(
+    sContainerId, sPhase, iBytesRead=0, iBytesTotal=0, iAttempt=0,
+):
+    """Update one live deposit's phase, byte counters and upload attempt.
+
+    ``iAttempt`` is the upload attempt under way, 0 when none is: a
+    dropped connection restarts the upload from zero, and a byte
+    counter that goes backwards unexplained reads as a fault.
+    """
     with _LOCK_DEPOSITS:
         tKey = _ftKeyOfLiveDeposit(sContainerId)
         if tKey is None:
@@ -104,6 +202,29 @@ def fnRecordProgress(sContainerId, sPhase, iBytesRead=0, iBytesTotal=0):
         dictEntry["sPhase"] = sPhase
         dictEntry["iBytesRead"] = iBytesRead
         dictEntry["iBytesTotal"] = iBytesTotal
+        dictEntry["iAttempt"] = iAttempt
+
+
+def fnRecordUploadAttemptFailed(sContainerId, dictAttempt):
+    """Keep one upload attempt that ended without Zenodo's answer.
+
+    Kept past the attempts after it and past the deposit's failure: a
+    researcher deciding whether to try again needs to see how far each
+    attempt got and how long it ran, not only the last one's reason.
+    Only the named fields are copied, so nothing else the upload knew
+    can reach the poll.
+    """
+    with _LOCK_DEPOSITS:
+        tKey = _ftKeyOfLiveDeposit(sContainerId)
+        if tKey is None:
+            return
+        dictEntry = DICT_DEPOSITS[tKey]
+        dictEntry.setdefault("listAttempts", []).append({
+            sKey: dictAttempt.get(sKey) for sKey in (
+                "iAttempt", "iBytesSent", "iBytesTotal", "fSeconds",
+                "sCause", "iStatus",
+            )
+        })
 
 
 def fnSettleDeposit(sContainerId):
@@ -121,6 +242,18 @@ def fnRecordFailure(sContainerId, sProjectRepoPath, sReason):
         dictEntry["task"] = None
         dictEntry["sPhase"] = S_PHASE_FAILED
         dictEntry["sReason"] = sReason
+
+
+def fnRecordStopped(sContainerId, sProjectRepoPath):
+    """Mark a project's deposit stopped by the researcher."""
+    with _LOCK_DEPOSITS:
+        dictEntry = DICT_DEPOSITS.setdefault(
+            (sContainerId, sProjectRepoPath), {},
+        )
+        dictEntry["sProjectRepoPath"] = sProjectRepoPath
+        dictEntry["task"] = None
+        dictEntry["sPhase"] = S_PHASE_STOPPED
+        dictEntry["sReason"] = ""
 
 
 def fnForgetDeposit(sContainerId, sProjectRepoPath):
@@ -145,5 +278,12 @@ def fdictReadDeposit(sContainerId, sProjectRepoPath):
             "sPhase": dictEntry.get("sPhase") or "",
             "iBytesRead": dictEntry.get("iBytesRead") or 0,
             "iBytesTotal": dictEntry.get("iBytesTotal") or 0,
+            "iAttempt": dictEntry.get("iAttempt") or 0,
             "sReason": dictEntry.get("sReason") or "",
+            "bStoppable": bool(dictEntry.get("bStoppable")),
+            "bStopRequested": bool(dictEntry.get("bStopRequested")),
+            "listAttempts": [
+                dict(dictAttempt)
+                for dictAttempt in dictEntry.get("listAttempts") or []
+            ],
         }

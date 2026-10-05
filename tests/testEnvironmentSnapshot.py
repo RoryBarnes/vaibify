@@ -67,7 +67,9 @@ def test_fdictCaptureContainerImageDigest_happy_path():
     assert dictResult["sImageDigest"] == sFakeDigest
     assert dictResult["bLocalImageOnly"] is False
     assert listCalls[0][-2:] == ["{{.Image}}", "vaibify-test"]
-    assert listCalls[1][-2:] == ["{{.RepoDigests}}", _S_FAKE_IMAGE_ID]
+    listTails = [saCall[-2:] for saCall in listCalls]
+    assert ["{{.RepoDigests}}", _S_FAKE_IMAGE_ID] in listTails
+    assert ["{{.RepoDigests}}", "vaibify-test"] not in listTails
 
 
 def test_fdictCaptureContainerImageDigest_local_image_falls_back():
@@ -107,6 +109,149 @@ def test_fdictCaptureContainerImageDigest_no_digest_returns_none():
     assert dictResult["sImageDigest"] is None
     assert dictResult["bLocalImageOnly"] is False
     assert dictResult["sContainerName"] == "vaibify-test"
+
+
+_S_AGENT_IMAGE_ID = "sha256:" + "a" * 64
+_S_ENVIRONMENT_IMAGE_ID = "sha256:" + "e" * 64
+
+
+class _FakeDaemon:
+    """Answer ``docker inspect --format`` the way a real daemon does.
+
+    Keyed by (format, target), so the agents' image and the
+    environment image it stands on are two DISTINCT images with
+    distinct layers, labels and digests -- a fixture in which the two
+    were one would pass against a capture that never resolved anything.
+    """
+
+    def __init__(self, dictImages, sContainerImage):
+        self.dictImages = dictImages
+        self.sContainerImage = sContainerImage
+
+    def __call__(self, saCommand, **dictKwargs):
+        sFormat, sTarget = saCommand[-2], saCommand[-1]
+        if sFormat == "{{.Image}}":
+            return _fnMakeCompletedProcess(0, self.sContainerImage + "\n")
+        dictImage = self.dictImages.get(sTarget)
+        if dictImage is None:
+            return _fnMakeCompletedProcess(1, sStderr="No such image")
+        if sFormat == "{{json .RootFS.Layers}}":
+            return _fnMakeCompletedProcess(0, json.dumps(dictImage["listLayers"]))
+        if sFormat == "{{.RepoDigests}}":
+            return _fnMakeCompletedProcess(0, "[]\n")
+        if sFormat == "{{.Architecture}}":
+            return _fnMakeCompletedProcess(0, dictImage["sArchitecture"] + "\n")
+        if sFormat.startswith("{{index .Config.Labels"):
+            sLabel = sFormat.split('"')[1]
+            return _fnMakeCompletedProcess(
+                0, dictImage["dictLabels"].get(sLabel, "<no value>") + "\n",
+            )
+        raise AssertionError(f"unexpected inspect {saCommand}")
+
+
+def _fdictAgentImages(listEnvironmentLayers=None, bEnvironmentHeld=True):
+    """An agents' image standing on a distinct agent-free environment."""
+    dictImages = {
+        _S_AGENT_IMAGE_ID: {
+            "listLayers": ["sha256:l1", "sha256:l2", "sha256:agent"],
+            "sArchitecture": "arm64",
+            "dictLabels": {
+                "vaibify-environment-image-id": _S_ENVIRONMENT_IMAGE_ID,
+                "vaibify-overlays": "jupyter,node,claude,codex,gemini",
+            },
+        },
+    }
+    if bEnvironmentHeld:
+        dictImages[_S_ENVIRONMENT_IMAGE_ID] = {
+            "listLayers": listEnvironmentLayers or ["sha256:l1", "sha256:l2"],
+            "sArchitecture": "amd64",
+            "dictLabels": {
+                "vaibify-environment-image-id": "",
+                "vaibify-overlays": "jupyter",
+            },
+        }
+    return dictImages
+
+
+def _fdictCaptureAgainst(dictImages):
+    with patch(
+        "vaibify.reproducibility.environmentSnapshot.shutil.which",
+        return_value="/usr/local/bin/docker",
+    ), patch(
+        "vaibify.reproducibility.environmentSnapshot.subprocess.run",
+        side_effect=_FakeDaemon(dictImages, _S_AGENT_IMAGE_ID),
+    ):
+        return fdictCaptureContainerImageDigest("vaibify-test")
+
+
+@pytest.mark.falsification
+def test_the_envelope_pins_the_environment_below_the_agents():
+    """The published pin is the agent-free image, never the agents' image.
+
+    The architecture is read off the ENVIRONMENT (the fixture gives the
+    two images different architectures so a capture reading the wrong
+    one cannot pass), and the agents above it ride as names only.
+
+    Kills: pinning the container's own image instead of the
+    environment it stands on.
+    """
+    dictResult = _fdictCaptureAgainst(_fdictAgentImages())
+    assert dictResult["sImageDigest"] == _S_ENVIRONMENT_IMAGE_ID
+    assert dictResult["sArchitecture"] == "amd64"
+    assert dictResult["listAgentOverlays"] == ["claude", "codex", "gemini"], (
+        "a prerequisite rides above the environment but is no agent"
+    )
+
+
+@pytest.mark.falsification
+def test_an_environment_the_image_is_not_built_on_pins_nothing():
+    """A label is a claim until the layers confirm it.
+
+    Kills: trusting the environment label without the prefix check.
+    """
+    dictResult = _fdictCaptureAgainst(
+        _fdictAgentImages(listEnvironmentLayers=["sha256:other"]),
+    )
+    assert dictResult["sImageDigest"] is None
+    assert "not built on that image" in dictResult["sUnpinnedReason"]
+
+
+def test_a_vanished_environment_pins_nothing_rather_than_the_agents():
+    dictResult = _fdictCaptureAgainst(
+        _fdictAgentImages(bEnvironmentHeld=False),
+    )
+    assert dictResult["sImageDigest"] is None
+    assert "no longer holds" in dictResult["sUnpinnedReason"]
+
+
+def test_an_image_without_agents_is_its_own_environment():
+    dictImages = _fdictAgentImages()
+    dictImages[_S_AGENT_IMAGE_ID]["dictLabels"] = {}
+    dictResult = _fdictCaptureAgainst(dictImages)
+    assert dictResult["sImageDigest"] == _S_AGENT_IMAGE_ID
+    assert "listAgentOverlays" not in dictResult
+
+
+def test_a_pin_on_the_environment_reads_as_derived_never_as_drift():
+    from vaibify.reproducibility.environmentSnapshot import (
+        fdictCompareEnvelopePin,
+    )
+    dictAnswer = fdictCompareEnvelopePin(
+        _S_ENVIRONMENT_IMAGE_ID, _S_AGENT_IMAGE_ID, _S_AGENT_IMAGE_ID,
+        _S_ENVIRONMENT_IMAGE_ID, _S_ENVIRONMENT_IMAGE_ID,
+    )
+    assert dictAnswer["bPinnedImageIsLive"] is None
+    assert dictAnswer["sRelation"] == "derived"
+    dictStale = fdictCompareEnvelopePin(
+        "sha256:" + "0" * 64, _S_AGENT_IMAGE_ID, _S_AGENT_IMAGE_ID,
+        _S_ENVIRONMENT_IMAGE_ID, _S_ENVIRONMENT_IMAGE_ID,
+    )
+    assert dictStale["bPinnedImageIsLive"] is False
+    assert fdictCompareEnvelopePin(
+        _S_ENVIRONMENT_IMAGE_ID, _S_AGENT_IMAGE_ID, _S_AGENT_IMAGE_ID,
+    )["bPinnedImageIsLive"] is False, (
+        "with no environment captured, nothing may read as derived"
+    )
 
 
 def test_digest_pinned_accepts_local_image_id(tmp_path):

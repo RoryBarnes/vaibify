@@ -91,6 +91,7 @@ __all__ = [
     "flistVerifyManifest",
     "flistVerifyManifestEntries",
     "flistParseManifestLines",
+    "flistParseManifestText",
     "fdictCompareManifestEntries",
     "flistDeclaredButMissingFromManifest",
     "flistManifestPathsToPin",
@@ -484,8 +485,17 @@ def flistParseManifestLines(filesRepo):
             fsRepoRootOf(filesRepo), _MANIFEST_FILENAME,
         )
         raise FileNotFoundError(f"manifest not found: '{sDisplayPath}'")
+    return flistParseManifestText(filesRepo.fsReadText(_MANIFEST_FILENAME))
+
+
+def flistParseManifestText(sManifestText):
+    """Return the entries of manifest TEXT, parsed as the file is.
+
+    For a manifest that is not on disk -- the one a commit holds, read
+    with ``git show`` -- so it is parsed by the same rules as the file.
+    """
     listEntries = []
-    listLines = filesRepo.fsReadText(_MANIFEST_FILENAME).splitlines(True)
+    listLines = sManifestText.splitlines(True)
     for iLineNumber, sLine in enumerate(listLines, start=1):
         dictEntry = _fdictParseManifestLine(sLine, iLineNumber)
         if dictEntry is not None:

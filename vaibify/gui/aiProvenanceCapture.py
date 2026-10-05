@@ -36,12 +36,27 @@ def _fsHashWorkspacePrompt(connectionDocker, sContainerId):
     return fsHashFileObjectSha256(io.BytesIO(baContent))
 
 
+# The command an agent overlay installs, where it differs from the name.
+_DICT_AGENT_COMMANDS = {"antigravity": "agy"}
+
+
 def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
-    """Return installed CLI versions observed inside the live container."""
+    """Return installed CLI versions observed inside the live container.
+
+    Asks for every agent the image builder knows, by the one list both
+    this capture and the stamp's validation read, so an agent added to
+    the builder cannot go unrecorded here.
+    """
+    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
+    sPairs = " ".join(
+        f"{sAgent}:{_DICT_AGENT_COMMANDS.get(sAgent, sAgent)}"
+        for sAgent in T_AGENT_OVERLAY_NAMES
+    )
     sCommand = (
-        'for sAgent in claude codex gemini opencode cline openhands pi; do '
-        'if command -v "${sAgent}" >/dev/null 2>&1; then '
-        'sVersion=$(timeout 5 "${sAgent}" --version 2>/dev/null | head -n 1); '
+        f'for sPair in {sPairs}; do '
+        'sAgent="${sPair%%:*}"; sBinary="${sPair#*:}"; '
+        'if command -v "${sBinary}" >/dev/null 2>&1; then '
+        'sVersion=$(timeout 5 "${sBinary}" --version 2>/dev/null | head -n 1); '
         'printf "%s\\t%s\\n" "${sAgent}" "${sVersion}"; fi; done'
     )
     try:
@@ -56,10 +71,7 @@ def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
     dictVersions = {}
     for sLine in tExecResult.sStdout.splitlines():
         sAgent, sSeparator, sVersion = sLine.partition("\t")
-        if sSeparator and sAgent in {
-            "claude", "codex", "gemini", "opencode", "cline",
-            "openhands", "pi",
-        }:
+        if sSeparator and sAgent in T_AGENT_OVERLAY_NAMES:
             dictVersions[sAgent] = sVersion[:200]
     return dictVersions
 

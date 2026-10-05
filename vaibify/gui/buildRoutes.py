@@ -320,7 +320,7 @@ def _fnRegisterAcquireImage(app, dictCtx):
         except Exception as error:
             logger.error("Acquisition failed for %s: %s", sName, error)
             raise HTTPException(
-                500, detail=_fdictBuildFailureDetail(error, "", sName),
+                500, detail=_fdictAcquisitionFailureDetail(error, sName),
             )
         return {
             "bSuccess": True, "sMessage": "Image obtained",
@@ -532,5 +532,26 @@ def _fdictBuildFailureDetail(error, sStderrTail, sName):
         # The one recovery a refusal offers, when it offers one (an
         # acquisition that cannot prove its baseline names the retry
         # without the added agents); empty for every other failure.
+        "sAction": str(getattr(error, "sAction", "") or ""),
+    }
+
+
+def _fdictAcquisitionFailureDetail(error, sName):
+    """Format the detail payload for a failed pinned-image acquisition.
+
+    NOT the build formatter: that one reads Docker build output and,
+    when it recognises none, keeps the first 240 characters of the
+    error -- which for an acquisition is the registry miss every
+    archived image produces, cut off before the reasons the archived
+    copy and the local copy gave (2026-09-26). The chain's refusal
+    names every source it tried, and all of it is the message.
+    """
+    return {
+        "sMessage": (
+            f"Obtaining the author's pinned image for '{sName}' failed: "
+            f"{error}"
+        ),
+        "sError": str(error),
+        "sStderrTail": "",
         "sAction": str(getattr(error, "sAction", "") or ""),
     }

@@ -18,6 +18,7 @@ from vaibify.cli.configLoader import fsDockerDir
 from vaibify.config.projectConfig import fconfigFromYamlDict
 from vaibify.docker import imageBuilder
 from vaibify.reproducibility.dockerfileComposer import (
+    S_ENVIRONMENT_IMAGE_LABEL,
     S_OVERLAYS_IMAGE_LABEL,
     S_RECIPE_IMAGE_LABEL,
 )
@@ -45,6 +46,7 @@ def fnReplaceSubprocess(monkeypatch, fnRun, fnPopen=None):
         run=fnRun,
         Popen=fnPopen or subprocess.Popen,
         PIPE=subprocess.PIPE,
+        STDOUT=subprocess.STDOUT,
         TimeoutExpired=subprocess.TimeoutExpired,
     )
     monkeypatch.setattr(imageBuilder, "subprocess", moduleFake)
@@ -78,8 +80,12 @@ def testAFullBuildChainsEveryOverlayOnThePreviousTag(monkeypatch, capsys):
     """
     listRunCalls = []
 
+    sEnvironmentImageId = "sha256:" + "e" * 64
+
     def fnRun(saCommand, **kwargs):
         listRunCalls.append(list(saCommand))
+        if saCommand[:3] == ["docker", "image", "inspect"]:
+            return _FakeCompletedProcess(0, sEnvironmentImageId + "\n")
         raise FileNotFoundError("docker")
 
     fnReplaceSubprocess(monkeypatch, fnRun)
@@ -98,14 +104,20 @@ def testAFullBuildChainsEveryOverlayOnThePreviousTag(monkeypatch, capsys):
         assert saOverlay[:2] == ["docker", "build"]
         assert f"BASE_IMAGE={listTags[iIndex - 1]}" in saOverlay
         assert "--no-cache" in saOverlay
-    listFingerprints = {
+    listFingerprints = [
         fsLabelValue(saBuild, S_RECIPE_IMAGE_LABEL)
         for saBuild in listBuilds[:-1]
-    }
-    assert len(listFingerprints) == 1 and None not in listFingerprints
-    assert fsLabelValue(listBuilds[1], S_OVERLAYS_IMAGE_LABEL) == fsLabelValue(
-        listBuilds[0], S_OVERLAYS_IMAGE_LABEL,
-    )
+    ]
+    assert len(set(listFingerprints)) == len(listFingerprints)
+    assert None not in listFingerprints
+    assert [
+        fsLabelValue(saBuild, S_OVERLAYS_IMAGE_LABEL)
+        for saBuild in listBuilds[:-1]
+    ] == ["", "node", "node,claude", "node,claude,gemini"]
+    assert [
+        fsLabelValue(saBuild, S_ENVIRONMENT_IMAGE_LABEL)
+        for saBuild in listBuilds[:-1]
+    ] == ["", sEnvironmentImageId, sEnvironmentImageId, sEnvironmentImageId]
     assert listBuilds[-1] == [
         "docker", "tag", f"{S_PROJECT_NAME}:gemini", f"{S_PROJECT_NAME}:latest",
     ]

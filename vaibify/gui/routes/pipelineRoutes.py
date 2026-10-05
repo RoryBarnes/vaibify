@@ -18,6 +18,10 @@ from ...reproducibility.manifestPaths import (
     fdictWorkflowTemplateValues,
     flistStepOutputRepoPaths,
 )
+from ...reproducibility.reproductionLabel import (
+    fdictBuildReproductionLabel,
+    fsRelativeWorkflowPath,
+)
 
 from .. import archiveProgress
 from .. import containerOwnership
@@ -1372,7 +1376,7 @@ async def _fdictFetchOutputStatus(
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     filesPoll = await asyncio.to_thread(
         _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
-        dictModTimes,
+        dictModTimes, sWorkflowPath,
     )
     if _fbReconcileUserVerificationByHash(
         dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
@@ -2113,58 +2117,56 @@ def _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
     return sorted(sPath for sPath in setPaths if sPath)
 
 
-def _fiCoercePollMtime(mtimeValue):
-    """Return the poll mtime as an int, or None when absent/malformed."""
-    try:
-        return int(float(mtimeValue))
-    except (TypeError, ValueError):
-        return None
+def _fdictCachedEntriesForSnapshot(dictShaCache):
+    """Return the cache entries the snapshot may trust, keyed by path.
+
+    An entry is offered only when it carries the four-integer stat key
+    it was hashed under and a hash. The program re-stats every path
+    itself and hashes anything whose key moved, so what is offered is a
+    claim to be checked, never an answer: an entry from before the key
+    existed (whole-second mtime only) is simply never offered, and its
+    file is hashed once more.
+    """
+    dictOffered = {}
+    for sRelPath, dictEntry in dictShaCache.items():
+        if not isinstance(dictEntry, dict):
+            continue
+        listKey = dictEntry.get("listStatKey")
+        if (
+            dictEntry.get("sSha256")
+            and isinstance(listKey, list) and len(listKey) == 4
+            and all(
+                isinstance(iPart, int) and not isinstance(iPart, bool)
+                for iPart in listKey
+            )
+        ):
+            dictOffered[sRelPath] = dictEntry
+    return dictOffered
 
 
-def _ftSplitCachedAndChanged(listRelPaths, dictMtimesRel, dictShaCache):
-    """Split outputs into cache-validated seed entries and a rehash list."""
-    dictSeed = {}
-    listNeedHash = []
-    for sRelPath in listRelPaths:
-        iMtime = _fiCoercePollMtime(dictMtimesRel.get(sRelPath))
-        dictEntry = dictShaCache.get(sRelPath) or {}
-        bCacheValid = (
-            iMtime is not None
-            and dictEntry.get("iMtime") == iMtime
-            and dictEntry.get("sSha256")
-        )
-        if bCacheValid:
-            dictSeed[sRelPath] = {
-                "sSha256": dictEntry["sSha256"],
-                "sSymlinkSegment": None, "bEscapesRoot": False,
-            }
-        else:
-            listNeedHash.append(sRelPath)
-    return dictSeed, listNeedHash
-
-
-def _fbUpdateShaCache(dictShaCache, filesPoll, listHashed, dictMtimesRel):
-    """Record freshly hashed outputs in the in-memory cache.
+def _fbUpdateShaCache(dictShaCache, filesPoll):
+    """Record every freshly hashed, steady file in the in-memory cache.
 
     Returns True iff any cache entry was added or refreshed; the
     caller uses the flag to decide whether the container-side
-    persistence layer needs a fresh write.
+    persistence layer needs a fresh write. A torn read (a file that
+    changed while it was hashed) and an unhashable path are never
+    cached.
     """
-    dictFresh = filesPoll.fdictHashFiles(listHashed)
     bAnyChange = False
-    for sRelPath in listHashed:
-        sSha256 = (dictFresh.get(sRelPath) or {}).get("sSha256")
-        iMtime = _fiCoercePollMtime(dictMtimesRel.get(sRelPath))
-        if sSha256 and iMtime is not None:
-            dictExisting = dictShaCache.get(sRelPath) or {}
-            if (
-                dictExisting.get("sSha256") != sSha256
-                or dictExisting.get("iMtime") != iMtime
-            ):
-                bAnyChange = True
-            dictShaCache[sRelPath] = {
-                "iMtime": iMtime, "sSha256": sSha256,
-            }
+    for sRelPath, dictEntry in filesPoll.fdictAllHashEntries().items():
+        sSha256 = dictEntry.get("sSha256")
+        listKey = dictEntry.get("listStatKey")
+        if (
+            not sSha256 or not listKey or dictEntry.get("bTornRead")
+            or dictEntry.get("sSymlinkSegment")
+            or dictEntry.get("bEscapesRoot")
+        ):
+            continue
+        dictNew = {"listStatKey": list(listKey), "sSha256": sSha256}
+        if dictShaCache.get(sRelPath) != dictNew:
+            bAnyChange = True
+            dictShaCache[sRelPath] = dictNew
     return bAnyChange
 
 
@@ -2186,8 +2188,26 @@ def _fnPersistShaCacheToContainer(
         )
 
 
+def _flistPollHashRelPaths(dictWorkflow, sRepoRoot, sWorkflowPath):
+    """Return the paths the poll hashes beside the manifest's own entries.
+
+    The declared outputs, and the workflow file itself: a reproduction
+    record binds the workflow it ran, and the label compares it with
+    the file as it is now.
+    """
+    from vaibify.reproducibility.reproductionLabel import (
+        fsRelativeWorkflowPath,
+    )
+    listPaths = _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot)
+    sWorkflowRelative = fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot)
+    if sWorkflowRelative:
+        listPaths.append(sWorkflowRelative)
+    return listPaths
+
+
 def _ffilesFetchPollSnapshot(
     dictCtx, sContainerId, dictWorkflow, dictModTimes,
+    sWorkflowPath="",
 ):
     """Fetch the one-exec container snapshot every poll gate reads.
 
@@ -2204,21 +2224,17 @@ def _ffilesFetchPollSnapshot(
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     if not sRepoRoot or dictCtx.get("files") is None:
         return sRepoRoot
-    dictMtimesRel = fdictAbsKeysToRepoRelative(
-        dict(dictModTimes), sRepoRoot,
-    )
     dictShaCache = _fdictManifestShaCache(dictCtx, sContainerId, sRepoRoot)
-    dictSeed, listNeedHash = _ftSplitCachedAndChanged(
-        _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot),
-        dictMtimesRel, dictShaCache,
-    )
     try:
         filesPoll = SnapshotRepoFiles.ffilesFetch(
             dictCtx["docker"], sContainerId, sRepoRoot,
             listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
-            listHashRelPaths=listNeedHash,
-            dictSeedHashes=dictSeed,
+            listHashRelPaths=_flistPollHashRelPaths(
+                dictWorkflow, sRepoRoot, sWorkflowPath,
+            ),
             listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
+            dictCachedEntries=_fdictCachedEntriesForSnapshot(dictShaCache),
+            bHashManifestEntries=True, bReadReproductions=True,
         )
     except OSError as errorSnapshot:
         # ONE conservative tick, said out loud. The fetch raises so
@@ -2233,10 +2249,7 @@ def _ffilesFetchPollSnapshot(
             ffilesConservativeSnapshot,
         )
         return ffilesConservativeSnapshot(sRepoRoot)
-    bShaCacheChanged = _fbUpdateShaCache(
-        dictShaCache, filesPoll, listNeedHash, dictMtimesRel,
-    )
-    if bShaCacheChanged:
+    if _fbUpdateShaCache(dictShaCache, filesPoll):
         _fnPersistShaCacheToContainer(
             dictCtx, sContainerId, sRepoRoot, dictShaCache,
         )
@@ -2282,7 +2295,7 @@ def _fdictBuildPollResponseRest(
         dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
         bHostProject,
     )
-    return _fdictAssemblePollResponse(
+    dictResponse = _fdictAssemblePollResponse(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
         bVerificationRunning=bVerificationRunning,
@@ -2291,6 +2304,11 @@ def _fdictBuildPollResponseRest(
         dictLastNoVerdict=dictLastNoVerdict,
         dictLockSatisfaction=dictLockSatisfaction,
     )
+    dictResponse["dictReproductionLabel"] = fdictBuildReproductionLabel(
+        filesPoll, fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot),
+        dictLastNoVerdict,
+    )
+    return dictResponse
 
 
 def _ftComputePollScriptContext(
@@ -2769,10 +2787,10 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # The recorded deposit and the declared target on DIFFERENT
         # Zenodo instances. A publish would ask one instance for a new
         # version of the other's record, so the archive flow refuses
-        # it -- and the remedy needs a control, not just a refusal
-        # naming one.
-        "sZenodoCrossInstanceRefusal":
-            syncBookkeeping.fsDescribeCrossInstanceParent(
+        # it -- and each remedy needs a control, labeled with the
+        # instance it acts on, not just a sentence naming them.
+        "dictZenodoCrossInstance":
+            syncBookkeeping.fdictDescribeCrossInstanceParent(
                 dictWorkflow,
                 (dictWorkflow or {}).get("sZenodoService") or "sandbox",
             ),

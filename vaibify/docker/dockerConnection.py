@@ -328,6 +328,46 @@ for sRel in dictArgs["listContentPaths"]:
         except (OSError, UnicodeDecodeError):
             dictEntry["sText"] = None
     dictOut["dictFiles"][sRel] = dictEntry
+def _flistStatKey(statResult):
+    # Nanosecond mtime AND ctime, size and inode: a program can set a
+    # file's mtime back but not its ctime, and a replaced file has a
+    # new inode. A whole-second mtime alone is a key a same-second
+    # rewrite does not move.
+    return [statResult.st_mtime_ns, statResult.st_ctime_ns,
+            statResult.st_size, statResult.st_ino]
+def _fdictReadOnceAgainstKey(sAbs, listCachedKey):
+    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        iFd = os.open(sAbs, iFlags)
+    except OSError:
+        return {"sSha256": None}
+    try:
+        listKey = _flistStatKey(os.fstat(iFd))
+        if listCachedKey and listKey == list(listCachedKey):
+            return {"sSha256": None, "listStatKey": listKey,
+                    "bCacheHit": True}
+        h = hashlib.sha256()
+        while True:
+            ba = os.read(iFd, 65536)
+            if not ba:
+                break
+            h.update(ba)
+        bSteady = (_flistStatKey(os.fstat(iFd)) == listKey
+                   and _flistStatKey(os.stat(sAbs)) == listKey)
+    except OSError:
+        return {"sSha256": None}
+    finally:
+        os.close(iFd)
+    if not bSteady:
+        return {"sSha256": None, "listStatKey": listKey, "bTornRead": True}
+    return {"sSha256": h.hexdigest(), "listStatKey": listKey}
+def _fdictHashAgainstKey(sAbs, listCachedKey):
+    # One immediate retry; a file still changing is reported as torn,
+    # never hashed and never matched.
+    dictRead = _fdictReadOnceAgainstKey(sAbs, listCachedKey)
+    if dictRead.get("bTornRead"):
+        dictRead = _fdictReadOnceAgainstKey(sAbs, listCachedKey)
+    return dictRead
 def _fdictEntry(sRel):
     d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
     if os.path.isabs(sRel):
@@ -344,14 +384,96 @@ def _fdictEntry(sRel):
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
         d["bEscapesRoot"] = True
         return d
-    d["sSha256"] = _fsHash(sReal)
+    d.update(_fdictHashAgainstKey(
+        sReal, dictArgs.get("dictCachedKeys", {}).get(sRel)))
     return d
-for sRel in dictArgs["listHashPaths"]:
+listHashPaths = list(dictArgs["listHashPaths"])
+if dictArgs.get("bHashManifestEntries"):
+    try:
+        with open(os.path.join(sRoot, "MANIFEST.sha256"), "r") as f:
+            sManifestText = f.read()
+    except (OSError, UnicodeDecodeError):
+        sManifestText = ""
+    for sLine in sManifestText.splitlines():
+        if not sLine or sLine.startswith("#"):
+            continue
+        if sLine.startswith("\\\\"):
+            dictOut["bManifestHasEscapedPaths"] = True
+            continue
+        sHashPart, sSeparator, sPathPart = sLine.partition("  ")
+        if sSeparator:
+            listHashPaths.append(sPathPart)
+for sRel in listHashPaths:
     dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
+if dictArgs.get("bReadReproductions"):
+    import subprocess
+    dictOut["dictReproductionRecords"] = {}
+    sRecordDir = os.path.join(sRoot, ".vaibify", "reproductions")
+    try:
+        listNames = sorted(
+            [s for s in os.listdir(sRecordDir) if s.endswith(".json")],
+            reverse=True)
+    except FileNotFoundError:
+        listNames = []
+    except OSError as error:
+        listNames = []
+        dictOut["sReproductionsError"] = type(error).__name__
+    if len(listNames) > 500:
+        listNames = []
+        dictOut["sReproductionsError"] = "TooManyRecords"
+    setWorkflowsDecided = set()
+    for sName in listNames:
+        try:
+            iFd = os.open(os.path.join(sRecordDir, sName),
+                          os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(iFd, "rb") as f:
+                baBody = f.read(4194305)
+            if len(baBody) > 4194304:
+                raise OSError("record too large")
+            sBody = baBody.decode("utf-8")
+            dictRecord = json.loads(sBody)
+            if not isinstance(dictRecord, dict):
+                raise ValueError("not a record")
+        except (OSError, UnicodeDecodeError, ValueError) as error:
+            dictOut["sReproductionsError"] = type(error).__name__
+            continue
+        sWorkflow = dictRecord.get("sWorkflowRelativePath")
+        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")
+                and sWorkflow and sWorkflow not in setWorkflowsDecided):
+            setWorkflowsDecided.add(sWorkflow)
+            dictOut["dictReproductionRecords"][sName] = sBody
+    if dictOut["dictReproductionRecords"]:
+        dictFacts = {}
+        for tQuestion in @@QUESTIONS@@:
+            try:
+                processGit = subprocess.run(
+                    ["git", "-C", sRoot] + @@HARDENING@@ + list(tQuestion),
+                    capture_output=True, text=True, timeout=15)
+                dictFacts[" ".join(tQuestion)] = [
+                    processGit.returncode, processGit.stdout]
+            except Exception:
+                dictFacts[" ".join(tQuestion)] = [None, ""]
+        dictOut["dictOwnershipFacts"] = dictFacts
 for sAbs in dictArgs.get("listAbsHashPaths", []):
     dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
 sys.stdout.write(json.dumps(dictOut))
 '''
+
+from vaibify.reproducibility.gitHardening import (  # noqa: E402
+    LIST_GIT_HARDENING_CONFIG as _LIST_SNAPSHOT_GIT_HARDENING,
+    T_MANIFEST_OWNERSHIP_GIT_QUESTIONS as _T_SNAPSHOT_GIT_QUESTIONS,
+)
+
+# The program is fixed text; the two lists it embeds are fixed too, and
+# are spelled in gitHardening so the predicate that reads the answers
+# and the program that gives them cannot drift.
+# A literal percent sign would be eaten by the legacy transport, which
+# %-formats the preamble and this body together, so each one is spelled
+# as an expression the program evaluates (chr(37)).
+S_REPO_SNAPSHOT_PROGRAM_CORE = S_REPO_SNAPSHOT_PROGRAM_CORE.replace(
+    "@@QUESTIONS@@",
+    repr(tuple(_T_SNAPSHOT_GIT_QUESTIONS)).replace("%", "' + chr(37) + '"),
+).replace("@@HARDENING@@", repr(list(_LIST_SNAPSHOT_GIT_HARDENING)))
 
 _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"
@@ -921,7 +1043,9 @@ _DICT_TYPED_READ_PROGRAMS = {
         "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
         "dictArgs = {\"sRoot\": \"\", \"listContentPaths\": [],\n"
         "            \"listSkipTextPaths\": [], \"listHashPaths\": [],\n"
-        "            \"listAbsHashPaths\": []}\n"
+        "            \"listAbsHashPaths\": [], \"dictCachedKeys\": {},\n"
+        "            \"bHashManifestEntries\": False,\n"
+        "            \"bReadReproductions\": False}\n"
         "dictKeyByPrefix = {\"c\": \"listContentPaths\",\n"
         "                   \"k\": \"listSkipTextPaths\",\n"
         "                   \"h\": \"listHashPaths\",\n"
@@ -929,6 +1053,14 @@ _DICT_TYPED_READ_PROGRAMS = {
         "for sArg in listArgs:\n"
         "    if sArg[:2] == \"r:\":\n"
         "        dictArgs[\"sRoot\"] = sArg[2:]\n"
+        "    elif sArg == \"f:manifestEntries\":\n"
+        "        dictArgs[\"bHashManifestEntries\"] = True\n"
+        "    elif sArg == \"f:reproductions\":\n"
+        "        dictArgs[\"bReadReproductions\"] = True\n"
+        "    elif sArg[:2] == \"x:\":\n"
+        "        sKeyText, _sSep, sKeyPath = sArg[2:].partition(\"|\")\n"
+        "        dictArgs[\"dictCachedKeys\"][sKeyPath] = [\n"
+        "            int(s) for s in sKeyText.split(\",\")]\n"
         "    elif sArg[1:2] == \":\" and sArg[:1] in dictKeyByPrefix:\n"
         "        dictArgs[dictKeyByPrefix[sArg[:1]]].append(sArg[2:])\n"
         + S_REPO_SNAPSHOT_PROGRAM_CORE
@@ -1289,6 +1421,15 @@ def _fdictParseJsonTypedRead(tExecResult, sWhat):
     except ValueError as errorParse:
         raise OSError(
             f"The {sWhat} read answered unparseable output: {errorParse}")
+
+
+def _fiRenderedSnapshotBytes(listArgs):
+    """Return the byte size of the snapshot program once its arguments are in."""
+    return len(
+        _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]
+        .replace(_S_TYPED_READ_PATH_SLOT, _fsTypedReadPathLiteral(listArgs))
+        .encode("utf-8")
+    )
 
 
 def _fsTypedReadPathLiteral(objPaths):
@@ -2083,6 +2224,8 @@ class DockerConnection:
     def ftReadRepoSnapshot(
         self, sContainerId, sRootPath, listContentPaths,
         listSkipTextPaths, listHashPaths, listAbsHashPaths,
+        dictCachedKeys=None, bHashManifestEntries=False,
+        bReadReproductions=False,
     ):
         """Run the one-exec poll snapshot as a DECLARED read.
 
@@ -2111,6 +2254,14 @@ class DockerConnection:
         ):
             for sPath in listGroup or []:
                 listArgs.append(sPrefix + ":" + sPath)
+        if bHashManifestEntries:
+            listArgs.append("f:manifestEntries")
+        if bReadReproductions:
+            listArgs.append("f:reproductions")
+        listKeyArgs = [
+            "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath
+            for sPath, listKey in sorted((dictCachedKeys or {}).items())
+        ]
         # The RENDERED single argument, not an estimate of the path
         # bytes going into it: repr() doubles every backslash and
         # escapes what it must, so an estimate admits a command the
@@ -2118,13 +2269,14 @@ class DockerConnection:
         # names rendering to twice their estimate (external review,
         # 2026-09-16). This renders the same program the typed read
         # will run, so the number is the argument's actual size.
-        iRenderedBytes = len(
-            _DICT_TYPED_READ_PROGRAMS[S_TYPED_READ_REPO_SNAPSHOT]
-            .replace(
-                _S_TYPED_READ_PATH_SLOT,
-                _fsTypedReadPathLiteral(listArgs),
-            ).encode("utf-8"),
-        )
+        iRenderedBytes = _fiRenderedSnapshotBytes(listArgs + listKeyArgs)
+        if listKeyArgs and iRenderedBytes <= I_EXEC_ARGUMENT_BUDGET_BYTES:
+            listArgs = listArgs + listKeyArgs
+        else:
+            # The cached keys are an optimisation: past the budget the
+            # program simply rehashes what it was not told it may skip,
+            # which is slower and correct.
+            iRenderedBytes = _fiRenderedSnapshotBytes(listArgs)
         if iRenderedBytes > I_EXEC_ARGUMENT_BUDGET_BYTES:
             raise ValueError(
                 f"the repository snapshot's {len(listArgs)} paths "

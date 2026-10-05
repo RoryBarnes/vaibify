@@ -146,9 +146,15 @@ def flistDescribeConfigurationDrift(dictComparison):
     if not dictComparison.get("bConfigurationChanged"):
         return []
     return [
-        "vaibify.yml has changed since this image was built, so the "
-        "container is still running the old recipe.",
-        "Rebuild the environment to apply it. Ports, mounts, secrets "
-        "and resource limits are not part of this — those apply on the "
-        "next start and never need a rebuild.",
+        "The environment's settings (its packages, repositories, "
+        "Python version or features) changed after this container was "
+        "built, so those changes are not in effect yet.",
+        "To apply them, open Admin \u2192 Environments and choose "
+        "Rebuild from the \u22ee menu on this environment's tile; the "
+        "container restarts on the new build when it finishes.",
+        "If this project is already verified, the rebuild changes its "
+        "environment: afterwards open Project \u2192 Artifacts \u2192 "
+        "Environment snapshot, click Regenerate now, and verify again.",
+        "Ports, shared folders, passwords and memory limits never need "
+        "a rebuild: they take effect the next time the container starts.",
     ]

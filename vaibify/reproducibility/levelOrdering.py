@@ -337,6 +337,15 @@ def fdictDescribeOrderedEndgame(
     remedy down there, and a circle-slash over the remedy is the
     dashboard refusing the researcher's next step.
 
+    This holds for a project RETURNING to Level 3 too. A 2026-09-28
+    extension let the endgame speak when the only Level 2 work was a
+    republish of a project that had attested before, to steer the
+    deposit and the rerun ahead of an immutable Zenodo version. It
+    grayed out the very push the researcher needed on a project they
+    had just dropped to Level 0, and they withdrew it the next day:
+    guiding a project back to Level 3 is not worth refusing its
+    remedy. Do not reintroduce it.
+
     A second condition -- Level 3 readiness -- gated the arrow for
     part of 2026-09-16 and was REMOVED the same day. Readiness is
     false precisely because the ordered rows are unmet, so the gate

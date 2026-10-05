@@ -128,7 +128,8 @@ def testASecondProjectsDepositDoesNotEraseTheFirstProjectsFailure(
     archiveProgress.fnRegisterDeposit("box", None, "/workspace/bravo")
     assert archiveProgress.fdictReadDeposit("box", "/workspace/alpha") == {
         "sPhase": archiveProgress.S_PHASE_FAILED, "iBytesRead": 0,
-        "iBytesTotal": 0, "sReason": "upload cut",
+        "iBytesTotal": 0, "iAttempt": 0, "sReason": "upload cut",
+        "bStoppable": False, "bStopRequested": False, "listAttempts": [],
     }
     assert archiveProgress.fdictReadDeposit(
         "box", "/workspace/bravo",

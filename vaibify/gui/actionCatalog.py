@@ -638,6 +638,25 @@ LIST_AGENT_ACTIONS = [
                      "isolated and logged; the response carries the "
                      "fresh L3 readiness gaps so the caller sees what "
                      "the regeneration achieved."},
+    {"sName": "list-committed-file-differences",
+     "sCategory": "verification",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}/committed-file-differences",
+     "bAgentSafe": True,
+     "sDescription": "List the files MANIFEST.sha256 pins (as committed "
+                     "at HEAD, plus the manifest) whose working copy "
+                     "differs from the last commit, with whose manifest "
+                     "it is. Changes nothing."},
+    # User-only: it discards the container's changes to those files.
+    {"sName": "restore-committed-files", "sCategory": "verification",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/restore-committed-files",
+     "bAgentSafe": False,
+     "sDescription": "Inside a container only, write the last commit's "
+                     "version of every pinned file that differs from "
+                     "it, so the manifest describes the files again. "
+                     "Discards the container's changes to those files; "
+                     "a project on this machine is refused."},
     {"sName": "verify-dependency-lock", "sCategory": "verification",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/dependencies/verify",
@@ -773,7 +792,12 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Save the container image the envelope pins, "
                      "upload it to Zenodo and publish it, then record "
                      "the version DOI and tarball hash in "
-                     ".vaibify/environment.json. Runs as durable "
+                     ".vaibify/environment.json. Args: {sChoice: "
+                     "new-version|new-record-permanent|"
+                     "new-record-sandbox}, one of the choices the "
+                     "poll's dictDepositPlan offers; it names the "
+                     "Zenodo and whether the earlier record is "
+                     "continued, and is never defaulted. Runs as durable "
                      "background work and reports progress; poll "
                      "check-l3-readiness for the outcome. User-only, "
                      "and this one is a security decision rather than "
@@ -781,6 +805,16 @@ LIST_AGENT_ACTIONS = [
                      "researcher's credentials is outward-facing and "
                      "irreversible, so a compromised container agent "
                      "must not be able to trigger it."},
+    {"sName": "stop-environment-archive-deposit",
+     "sCategory": "verification", "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}/environment-archive/"
+              "deposit/stop",
+     "bAgentSafe": False,
+     "sDescription": "Ask the running environment-archive deposit to "
+                     "stop at its next checkpoint; the Zenodo draft is "
+                     "discarded and nothing is published. Refused (409) "
+                     "once the publish has begun. User-only, like the "
+                     "deposit it stops."},
     {"sName": "reconcile-promotion", "sCategory": "sync",
      "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/promotions/"
@@ -844,6 +878,17 @@ LIST_AGENT_ACTIONS = [
                      "different Zenodo instances. User-only: it gives "
                      "up a version chain, which is not a judgement an "
                      "agent should make."},
+    {"sName": "publish-where-the-zenodo-record-is", "sCategory": "sync",
+     "sMethod": "POST",
+     "sPath": "/api/zenodo/{sContainerId}/publish-where-the-record-is",
+     "bAgentSafe": False,
+     "sDescription": "Set the project to publish on the Zenodo instance "
+                     "that holds its recorded deposit, so the next "
+                     "publish is a new version of that record. The "
+                     "other remedy for a project whose recorded deposit "
+                     "and declared target differ; refused (409) when "
+                     "they agree. Changes project.json. User-only: it "
+                     "decides where a permanent DOI is minted."},
     {"sName": "promote-environment-archive",
      "sCategory": "verification", "sMethod": "POST",
      "sPath": "/api/workflow/{sContainerId}/environment-archive/promote",

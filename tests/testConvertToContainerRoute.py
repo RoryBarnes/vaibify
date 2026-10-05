@@ -337,3 +337,54 @@ def testAnUppercaseContainerNameIsRefusedBeforeAnythingIsWritten(
     assert registryManager.fbIsHostProject(S_HOST_NAME)
     configHost = fconfigLoadFromFile(dictHost["sConfigPath"])
     assert configHost.sProjectName == S_HOST_NAME
+
+
+def _fsGit(listArguments, sDirectory):
+    import subprocess
+    return subprocess.run(
+        ["git", "-C", sDirectory, "-c", "user.email=author@example.invalid",
+         "-c", "user.name=Author", *listArguments],
+        capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def testAConversionMakesNoCommitAndTouchesNoFileTheManifestPins(
+    tclient, tmp_path,
+):
+    """Converting rewrites vaibify.yml and nothing the manifest lists.
+
+    The manifest is the author's claim about their bytes, and the
+    conversion carries the researcher's working tree into the container
+    as it is: it must not commit, and the one file it rewrites in place
+    is not a manifest entry.
+    """
+    import hashlib
+    sDirectory = os.path.join(str(tmp_path), S_HOST_NAME)
+    sDataPath = os.path.join(sDirectory, "data.txt")
+    with open(sDataPath, "w") as fileData:
+        fileData.write("1 2 3\n")
+    sDigest = hashlib.sha256(b"1 2 3\n").hexdigest()
+    with open(os.path.join(sDirectory, "MANIFEST.sha256"), "w") as fileManifest:
+        fileManifest.write(f"{sDigest}  data.txt\n")
+    _fsGit(["init", "-q"], sDirectory)
+    _fsGit(["add", "-A"], sDirectory)
+    _fsGit(["commit", "-q", "-m", "author publishes"], sDirectory)
+    sHeadBefore = _fsGit(["rev-parse", "HEAD"], sDirectory)
+    with open(sDataPath, "w") as fileData:
+        fileData.write("regenerated on the researcher's computer\n")
+    client, _ = tclient
+    response = client.post(_sConvertUrl(S_HOST_NAME), json=_fdictBody())
+    assert response.status_code == 200, response.text
+    assert _fsGit(["rev-parse", "HEAD"], sDirectory) == sHeadBefore
+    assert sorted(_fsGit(["diff", "--name-only"], sDirectory).split()) == [
+        "data.txt", "vaibify.yml",
+    ]
+    assert _fsGit(
+        ["ls-files", "--others", "--exclude-standard"], sDirectory,
+    ).split() == [
+        sLine for sLine in _fsGit(
+            ["ls-files", "--others", "--exclude-standard"], sDirectory,
+        ).split() if sLine.startswith(".vaibify/")
+    ]
+    with open(sDataPath) as fileData:
+        assert fileData.read() == "regenerated on the researcher's computer\n"

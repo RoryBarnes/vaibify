@@ -423,3 +423,75 @@ def test_the_confirm_names_the_attestation_otherwise(
     assert ".vaibify/reproductions" not in sText, sText
     assert "attestation" in sText.lower(), sText
     assert "copy" in sText.lower(), sText
+
+
+@pytest.mark.falsification
+def test_each_file_outcome_reads_at_the_panel_width(pageDashboard, serverHub):
+    """Kills: squeezing the path and the verdict into a sliver.
+
+    The outcomes were a four-column table in a narrow panel: the two
+    hash columns took their full width and the path and verdict were
+    broken to a character or two per line (researcher-reported,
+    2026-09-27). Measured on the live card: every path is at least a
+    third of the card wide, and every verdict sits on one line.
+    """
+    _fnOpenTheProofTab(
+        pageDashboard, serverHub,
+        _fdictAttestationPayload(_fdictAttestation(None)),
+    )
+    listRows = pageDashboard.evaluate("""() => {
+        const elCard = document.querySelector('.proof-attestation-card');
+        const fCard = elCard.getBoundingClientRect().width;
+        return Array.from(elCard.querySelectorAll('.file-outcome')).map(el => {
+            const elPath = el.querySelector('.file-outcome-path');
+            const elWord = el.querySelector('.file-outcome-word');
+            const fLine = parseFloat(getComputedStyle(elWord).lineHeight) || 16;
+            return {
+                fPathShare: elPath.getBoundingClientRect().width / fCard,
+                fWordHeight: elWord.getBoundingClientRect().height,
+                fLine: fLine,
+            };
+        });
+    }""")
+    assert listRows, "the card rendered no file outcomes"
+    for dictRow in listRows:
+        assert dictRow["fPathShare"] >= 0.33, dictRow
+        assert dictRow["fWordHeight"] <= dictRow["fLine"] * 1.5, dictRow
+    assert pageDashboard.listPageErrors == []
+
+
+def test_mismatches_against_the_authors_manifest_are_named_not_called_a_self_comparison(
+    pageDashboard, serverHub,
+):
+    """A freshly converted container's check lists what differs, plainly.
+
+    The reader's container holds the outputs their own computer made,
+    and the manifest is the author's, untouched: the toast names how
+    many files differ and the first of them, and says nothing about a
+    manifest this machine wrote.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    pageDashboard.route(
+        "**/api/workflow/**/manifest/verify",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "iTotal": 24, "iMatching": 22,
+                "listMismatches": [
+                    {"sPath": S_MATCHED_PATH}, {"sPath": S_DIVERGED_PATH},
+                ],
+                "saIncomplete": [], "sManifestOwnership": "foreign",
+                "bManifestDiffersFromHead": False,
+            }),
+        ),
+    )
+    pageDashboard.evaluate(
+        "() => VaibifyApp.fnRunProjectAction('verify-manifest', '', null)")
+    pageDashboard.wait_for_selector(
+        "#toastContainer .toast.warning", state="visible", timeout=5000,
+    )
+    sToast = pageDashboard.text_content("#toastContainer .toast.warning")
+    assert "2 of 24 files differ from the manifest" in sToast, sToast
+    assert S_MATCHED_PATH in sToast, sToast
+    assert "this machine wrote" not in sToast, sToast
+    assert pageDashboard.listPageErrors == []

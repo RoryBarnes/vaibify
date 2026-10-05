@@ -30,6 +30,7 @@ __all__ = [
     "S_ENV_PREFIX_KEY",
     "S_ENV_OVERLAY_KEY",
     "S_DETERMINISM_APPLIED_KEY",
+    "S_DETERMINISM_EPOCH_SOURCE_KEY",
     "S_MATPLOTLIB_CONFIG_ROOT",
     "S_MATPLOTLIB_DIRECTORY_PREFIX",
     "fsBuildMatplotlibSaltShell",
@@ -39,6 +40,7 @@ __all__ = [
 S_ENV_PREFIX_KEY = "__sEnvPrefix"
 S_ENV_OVERLAY_KEY = "__dictEnvOverlay"
 S_DETERMINISM_APPLIED_KEY = "__bDeterminismApplied"
+S_DETERMINISM_EPOCH_SOURCE_KEY = "__sDeterminismEpochSource"
 
 # matplotlib reads ``matplotlibrc`` from ``MPLCONFIGDIR`` only after a
 # working-directory ``matplotlibrc`` and after ``MATPLOTLIBRC``
@@ -187,19 +189,87 @@ async def _fiResolveRunEpoch(
     connectionDocker, sContainerId, sProjectRepoPath,
     iSourceDateEpochOverride,
 ):
-    """Return the run's epoch: the recorded override, else HEAD's.
+    """Return the run's epoch; see :func:`_ftResolveRunEpochAndSource`."""
+    iEpoch, _sSource = await _ftResolveRunEpochAndSource(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        iSourceDateEpochOverride,
+    )
+    return iEpoch
 
-    Shared by both lanes so the override contract cannot drift between
-    them. The tier 5 rerun lane passes the epoch recorded in the
-    envelope, because the commit that published the manifest moved
-    HEAD: re-deriving would salt the rerun's figures differently from
-    the pinned ones and every timestamped artefact would diverge.
+
+async def _ftResolveRunEpochAndSource(
+    connectionDocker, sContainerId, sProjectRepoPath,
+    iSourceDateEpochOverride,
+):
+    """Return ``(iEpoch, sSource)``: the one place a run's epoch is decided.
+
+    Every lane reaches it through ``_fnInjectDeterminismEnvPrefix``, so
+    Run All, Run Step, Run From, a plot-only run and the test runner
+    cannot disagree. In order: a positive explicit override (the tier 5
+    rerun, which passes the envelope's epoch because the commit that
+    published the manifest moved HEAD); else, in a container whose
+    manifest another identity committed, the epoch the author recorded
+    in the envelope, because a reader's run dated from HEAD can never
+    reproduce a vector figure the author's run dated otherwise; else
+    HEAD's commit epoch. ``sSource`` says which, and why HEAD when it
+    could have been the record.
     """
     if iSourceDateEpochOverride > 0:
-        return iSourceDateEpochOverride
-    return await _fiQueryHeadCommitEpoch(
+        return iSourceDateEpochOverride, "the explicit override"
+    iRecordedEpoch, sWhyNotRecorded = await asyncio.to_thread(
+        _ftDecideReplayOfRecordedEpoch,
         connectionDocker, sContainerId, sProjectRepoPath,
     )
+    if iRecordedEpoch > 0:
+        return iRecordedEpoch, "replaying the author's recorded epoch"
+    iHeadEpoch = await _fiQueryHeadCommitEpoch(
+        connectionDocker, sContainerId, sProjectRepoPath,
+    )
+    return iHeadEpoch, f"dating from HEAD ({sWhyNotRecorded})"
+
+
+def _ffilesOpenProjectRepoFiles(connectionDocker, sContainerId, sProjectRepoPath):
+    """Return the repo-files adapter that reads the project where it lives."""
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    return ContainerRepoFiles(connectionDocker, sContainerId, sProjectRepoPath)
+
+
+def _ftDecideReplayOfRecordedEpoch(
+    connectionDocker, sContainerId, sProjectRepoPath,
+):
+    """Return ``(iRecordedEpoch, sWhyNot)``; a positive epoch means replay it.
+
+    Replay needs all three: a container project, an envelope that
+    records an epoch, and a manifest another identity committed. An
+    ownership git cannot settle is not foreign: the run says so and
+    dates from HEAD, which is what it always did.
+    """
+    from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility import gitEvidence
+    from vaibify.reproducibility.environmentSnapshot import (
+        fiRecordedSourceDateEpoch,
+    )
+    if fbIsHostProject(sContainerId):
+        return 0, "this project runs on this machine"
+    if not sProjectRepoPath:
+        return 0, "no project repository"
+    try:
+        filesRepo = _ffilesOpenProjectRepoFiles(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        )
+        iRecordedEpoch = fiRecordedSourceDateEpoch(filesRepo)
+        if iRecordedEpoch <= 0:
+            return 0, "the environment records no epoch"
+        sOwnership = gitEvidence.fsManifestOwnershipForRepoFiles(filesRepo)
+    except Exception as error:  # noqa: BLE001 -- an unreadable record is not a replay
+        fnReRaiseControlPlaneRefusal(error)
+        return 0, f"the record could not be read: {type(error).__name__}"
+    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:
+        return iRecordedEpoch, ""
+    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
+        return 0, "the manifest is this project's own"
+    return 0, "whose manifest this is could not be determined"
 
 
 async def _fdictBuildHostDeterminismOverlay(
@@ -291,6 +361,14 @@ async def _fnInjectDeterminismEnvPrefix(
     sWorkflowSlug = fsWorkflowSlugFromPath(
         fsWorkflowLoadedFromPath(dictWorkflow),
     )
+    iSourceDateEpochOverride, sEpochSource = await _ftResolveRunEpochAndSource(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        iSourceDateEpochOverride,
+    )
+    dictVariables[S_DETERMINISM_EPOCH_SOURCE_KEY] = (
+        f"Run date pinned to epoch {iSourceDateEpochOverride}: {sEpochSource}"
+        if iSourceDateEpochOverride > 0 else ""
+    )
     if fbIsHostProject(sContainerId):
         dictOverlay = await _fdictBuildHostDeterminismOverlay(
             connectionDocker, sContainerId, sProjectRepoPath,
@@ -315,6 +393,13 @@ async def _fnInjectDeterminismEnvPrefix(
             + fsShellQuote(sWorkflowSlug) + " && "
         )
     dictVariables[S_ENV_PREFIX_KEY] = sEnvPrefix
+
+
+async def _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables):
+    """Write which epoch dated this run, and why, into the run log."""
+    sSource = dictVariables.get(S_DETERMINISM_EPOCH_SOURCE_KEY)
+    if sSource:
+        await fnLogging({"sType": "output", "sLine": sSource})
 
 
 async def _fnAnnounceDegradedDeterminism(fnLogging, dictVariables):

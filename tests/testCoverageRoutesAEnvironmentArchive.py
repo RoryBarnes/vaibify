@@ -198,6 +198,12 @@ def sProjectRepo(tmp_path):
     return sRepo
 
 
+DICT_SANDBOX_DEPOSIT_BODY = {"sChoice": "new-record-sandbox"}
+DICT_SANDBOX_DESTINATION = {
+    "sZenodoService": "sandbox", "dictParentArchive": {},
+}
+
+
 def _fclientBare(sProjectRepo, connectionDocker, dictWorkflow=None):
     """The bare-app pattern of the existing route tests; no lease exists."""
     dictWorkflow = dictWorkflow if dictWorkflow is not None else {
@@ -268,7 +274,9 @@ def testAWorkflowWithoutAProjectRepoHasNothingToArchive(
         sProjectRepo, _KeyringDocker(),
         dictWorkflow={"sProjectRepoPath": "", "listSteps": []},
     )
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 409
     assert "no project repository" in responseHttp.json()["detail"]
 
@@ -276,7 +284,9 @@ def testAWorkflowWithoutAProjectRepoHasNothingToArchive(
 def testASecondDepositWhileOneRunsIsRefused(sProjectRepo):
     archiveProgress.fnRegisterDeposit(S_BARE_CONTAINER_ID, None, sProjectRepo)
     clientTest, _dictWorkflow = _fclientBare(sProjectRepo, _KeyringDocker())
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 409
     assert "already running" in responseHttp.json()["detail"]
 
@@ -287,7 +297,9 @@ def testAKeyringThatCannotBeReadIsA409WithItsInstruction(
     clientTest, _dictWorkflow = _fclientBare(
         sProjectRepo, _KeyringDocker(bMissing=True),
     )
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 409
     assert "Repos panel" in responseHttp.json()["detail"]
 
@@ -296,9 +308,13 @@ def testADepositWithNoStoredTokenIsRefusedBeforeAnySave(
     sProjectRepo,
 ):
     clientTest, _dictWorkflow = _fclientBare(sProjectRepo, _KeyringDocker())
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 409
-    assert "No Zenodo token is stored" in responseHttp.json()["detail"]
+    dictDetail = responseHttp.json()["detail"]
+    assert dictDetail["sError"] == "ZENODO-TOKEN-MISSING"
+    assert "No sandbox Zenodo token is stored" in dictDetail["sMessage"]
     assert archiveProgress.fbDepositIsLive(S_BARE_CONTAINER_ID) is False
 
 
@@ -311,7 +327,9 @@ def testADepositWithoutALeaseIsRefusedByTheCarrier(sProjectRepo):
         sProjectRepo,
         _KeyringDocker({"zenodo_token_sandbox": S_SANDBOX_TOKEN}),
     )
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 403
     assert "claim or connect" in responseHttp.json()["detail"]
     assert S_SANDBOX_TOKEN not in responseHttp.text
@@ -326,7 +344,7 @@ def testAReferencedDoiZenodoCannotServeIsA502NamingIt(
     fakeZenodo.dictBody = {"message": "PID does not exist."}
     clientTest, _dictWorkflow = _fclientBare(sProjectRepo, _KeyringDocker())
     responseHttp = clientTest.post(_fsBarePath("answer"), json={
-        "sAnswer": "referenced", "sVersionDoi": "10.5281/zenodo.9000001",
+        "sAnswer": "referenced", "sVersionDoi": "10.5072/zenodo.9000001",
     })
     assert responseHttp.status_code == 502
     assert "9000001" in responseHttp.json()["detail"]
@@ -378,7 +396,9 @@ def testAnEnvelopeWithoutAnArchitectureIsRefusedBeforeTheSave(
     clientTest, _dictWorkflow = _fclientBare(
         sRepo, _KeyringDocker({"zenodo_token_sandbox": S_SANDBOX_TOKEN}),
     )
-    responseHttp = clientTest.post(_fsBarePath("deposit"))
+    responseHttp = clientTest.post(
+        _fsBarePath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+    )
     assert responseHttp.status_code == 409
     assert "not the architecture" in responseHttp.json()["detail"]
 
@@ -495,7 +515,9 @@ def testADepositLaunchIsRegisteredAsDurableWork(monkeypatch):
         {"zenodo_token_sandbox": S_SANDBOX_TOKEN},
     )
     try:
-        responseHttp = client.post(_fsServedPath("deposit"))
+        responseHttp = client.post(
+            _fsServedPath("deposit"), json=DICT_SANDBOX_DEPOSIT_BODY,
+        )
         assert responseHttp.status_code == 200, responseHttp.text
         assert responseHttp.json() == {
             "bAccepted": True, "sPhase": archiveProgress.S_PHASE_STARTING,
@@ -597,6 +619,7 @@ def testTheDepositWorkerReportsEachPhaseAndStampsTheRecord(
         clientZenodo, sImageReference, sArchitecture, sScratchDirectory,
         dictMetadata, fnReportProgress, dictAttestation,
         fnReportUploadStarted=None, fnReportVerifying=None,
+        **dictKeywords,
     ):
         dictCall.update({
             "sService": clientZenodo.sService,
@@ -621,12 +644,17 @@ def testTheDepositWorkerReportsEachPhaseAndStampsTheRecord(
         imageDeposit, "fdictDepositImageArchive",
         fdictDepositRecordingProgress,
     )
+    monkeypatch.setattr(
+        environmentArchiveRoutes, "_fnRefuseAgentsInTheEnvironment",
+        lambda sContainerId, dictContainer: None,
+    )
     archiveProgress.fnRegisterDeposit(S_CONTAINER_ID, None, sProjectRepo)
     dictWorkflow = {"sProjectRepoPath": sProjectRepo, "listSteps": [],
                     "sProjectTitle": "Project Golf"}
     asyncio.run(environmentArchiveRoutes._fnRunDepositWorker(
         S_CONTAINER_ID, dictWorkflow, _fdictContainerBlock(),
-        S_SANDBOX_TOKEN, ffilesEnsureRepoFiles(sProjectRepo),
+        DICT_SANDBOX_DESTINATION, S_SANDBOX_TOKEN,
+        ffilesEnsureRepoFiles(sProjectRepo),
     ))
     assert listPhasesSeen == [
         archiveProgress.S_PHASE_SAVING, archiveProgress.S_PHASE_UPLOADING,
@@ -665,10 +693,14 @@ def testAFailedDepositKeepsItsReasonAndRemovesItsScratch(
     monkeypatch.setattr(
         imageDeposit, "fdictDepositImageArchive", fdictFailAfterTheSave,
     )
+    monkeypatch.setattr(
+        environmentArchiveRoutes, "_fnRefuseAgentsInTheEnvironment",
+        lambda sContainerId, dictContainer: None,
+    )
     archiveProgress.fnRegisterDeposit(S_CONTAINER_ID, None, sProjectRepo)
     asyncio.run(environmentArchiveRoutes._fnRunDepositWorker(
         S_CONTAINER_ID, {"sProjectRepoPath": sProjectRepo},
-        _fdictContainerBlock(), S_SANDBOX_TOKEN,
+        _fdictContainerBlock(), DICT_SANDBOX_DESTINATION, S_SANDBOX_TOKEN,
         ffilesEnsureRepoFiles(sProjectRepo),
     ))
     dictEntry = archiveProgress.DICT_DEPOSITS[(S_CONTAINER_ID, sProjectRepo)]

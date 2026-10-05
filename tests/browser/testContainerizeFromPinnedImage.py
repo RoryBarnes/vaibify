@@ -42,6 +42,9 @@ def _fdictPinnedAnswer(bObtainable=True, bMatches=True):
             "sRequiredPlatform": "linux/amd64", "bArchitectureMatches": bMatches,
         },
         "dictAuthorFeatures": {"claude": True, "latex": True, "codex": False},
+        # What the route sends beside the feature toggles: the agents
+        # the conversion itself takes the author's image to hold.
+        "listAuthorOverlays": ["claude"],
         "listAgentOverlays": [
             "claude", "codex", "gemini", "antigravity", "opencode", "cline",
             "openhands", "pi",
@@ -198,6 +201,9 @@ def testChoosingThePinnedImageDropsTheBuildPagesAndPinsTheAuthorsAgents(
     assert S_PIN in pageDashboard.text_content(".wizard-environment-facts")
     # Emulation is offered only when the architectures differ.
     assert pageDashboard.query_selector("#wizardAllowEmulation") is not None
+    assert pageDashboard.query_selector(
+        '.wizard-environment-source[value="archive"]',
+    ).is_checked(), "the author's pinned image was not pre-selected"
     pageDashboard.check('.wizard-environment-source[value="archive"]')
     pageDashboard.wait_for_timeout(200)
     _fnNextTo(pageDashboard, "Features & Authentication")
@@ -225,7 +231,56 @@ def testChoosingThePinnedImageDropsTheBuildPagesAndPinsTheAuthorsAgents(
     _fnClickNextPastAnyAgentWarning(pageDashboard)
     assert _fsTitle(pageDashboard) == "Summary"
     assert "pinned image" in pageDashboard.text_content("#wizardStepContent")
+    sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "Python:" not in sSummary
+    assert "Python packages:" not in sSummary
+    assert "System packages:" not in sSummary
+    assert "Repositories:" not in sSummary
     assert pageDashboard.listPageErrors == []
+
+
+def testTheFivePagesAreNameEnvironmentFeaturesFilesSummary(
+    pageDashboard, serverHub,
+):
+    """The author's image leaves five pages, in this order."""
+    _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnOpenConvertWizard(pageDashboard)
+    listTitles = [_fsTitle(pageDashboard)]
+    for sTitle in ("Environment", "Features & Authentication"):
+        _fnNextTo(pageDashboard, sTitle)
+        listTitles.append(_fsTitle(pageDashboard))
+    for _iIndex in range(2):
+        _fnClickNextPastAnyAgentWarning(pageDashboard)
+        listTitles.append(_fsTitle(pageDashboard))
+    assert listTitles == [
+        "Project Name", "Environment", "Features & Authentication",
+        "Files to Copy", "Summary",
+    ]
+    assert pageDashboard.text_content(
+        "#btnWizardNext").strip() == "Convert and obtain"
+
+
+def testTheConversionSummaryHelpSaysConvertNotCreate(
+    pageDashboard, serverHub,
+):
+    """The Summary's help names the button it sits above, and the obtain."""
+    _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnOpenConvertWizard(pageDashboard)
+    _fnNextTo(pageDashboard, "Environment")
+    pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
+    _fnNextTo(pageDashboard, "Features & Authentication")
+    _fnClickNextPastAnyAgentWarning(pageDashboard)
+    _fnClickNextPastAnyAgentWarning(pageDashboard)
+    assert _fsTitle(pageDashboard) == "Summary"
+    pageDashboard.click("#btnWizardHelp")
+    pageDashboard.wait_for_selector("#modalInfo", state="visible", timeout=5000)
+    sHelp = pageDashboard.text_content("#modalInfo")
+    assert "Convert and obtain" in sHelp, sHelp
+    assert "immediately" in sHelp, sHelp
+    assert "not</em> built yet" not in sHelp
+    assert "Clicking Create" not in sHelp
 
 
 def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
@@ -248,16 +303,21 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     assert listRequests == [], (
         "a request left the page before the researcher clicked Convert"
     )
-    assert pageDashboard.text_content("#btnWizardNext").strip() == "Convert"
+    # The Summary is the only confirmation: it names what starts next
+    # -- an acquisition, not a build -- and where the image comes from.
+    sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "When you press Convert and obtain" in sSummary, sSummary
+    assert "pinned image" in sSummary
+    assert "Image comes from" in sSummary, sSummary
+    assert pageDashboard.text_content(
+        "#btnWizardNext").strip() == "Convert and obtain"
     pageDashboard.click("#btnWizardNext")
-    # The confirm modal sits between Convert and the request, and it
-    # names what starts next -- an acquisition, not a build.
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
-    assert listRequests == [], "a request left before the confirm"
-    sConfirmBody = pageDashboard.text_content("#modalConfirm")
-    assert "pinned image" in sConfirmBody
-    pageDashboard.click("#btnConfirmOk")
-    pageDashboard.wait_for_timeout(1500)
+    pageDashboard.wait_for_timeout(300)
+    elConfirm = pageDashboard.query_selector("#modalConfirm")
+    assert elConfirm is None or not elConfirm.is_visible(), (
+        "pressing Convert raised a second confirmation"
+    )
+    pageDashboard.wait_for_timeout(1200)
     listKinds = [tRequest[0] for tRequest in listRequests]
     assert listKinds[0] == "convert"
     dictBody = listRequests[0][1]

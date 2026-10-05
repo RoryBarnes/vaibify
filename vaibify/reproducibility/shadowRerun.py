@@ -67,6 +67,7 @@ from vaibify.docker import coherentExport
 from vaibify.docker import daemonCapacity
 from vaibify.docker import disposableContainer
 from vaibify.docker import disposableSpecification
+from vaibify.reproducibility import gitEvidence
 from vaibify.reproducibility.environmentSnapshot import (
     _fsExtractImageDigest,
     fdictReadEnvironmentJson,
@@ -517,11 +518,33 @@ def fdictRerunAndVerifyThroughShadow(
     construction.
     """
     dictEnvironmentPayload = fdictReadEnvironmentJson(filesRepoLive)
-    return fdictRerunInShadowContainer(
+    dictBaselineBefore = gitEvidence.fdictReadBaselineEvidence(filesRepoLive)
+    dictOutcome = fdictRerunInShadowContainer(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         dictWorkflow.get("sProjectRepoPath", ""), dictEnvironmentPayload,
         sContainerId, fnStatusCallback, dictImageOrigin=dictImageOrigin,
     )
+    dictOutcome["dictBaselineEvidence"] = _fdictBaselineStillHolding(
+        dictBaselineBefore,
+        gitEvidence.fdictReadBaselineEvidence(filesRepoLive),
+    )
+    return dictOutcome
+
+
+def _fdictBaselineStillHolding(dictBefore, dictAfter):
+    """Return the baseline read before the export, unless HEAD moved during it.
+
+    The export is coherent, so the tree it copied is the working tree
+    of whichever commit HEAD named while it ran. A HEAD that differs
+    between the two reads leaves the baseline unknown rather than
+    naming either commit.
+    """
+    if dictBefore.get("sResolvedCommit") != dictAfter.get("sResolvedCommit"):
+        return {
+            "sResolvedCommit": "", "listPathsDifferingFromBaseline": None,
+            "bBaselineKnown": False,
+        }
+    return dictBefore
 
 
 # Where a staged snapshot is placed for path resolution. It names no

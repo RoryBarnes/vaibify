@@ -35,6 +35,8 @@ is still told, which is what this record is for. It outlives its task
 readable after the run is gone.
 """
 
+from datetime import datetime, timezone
+
 __all__ = [
     "DICT_LAST_NO_VERDICT",
     "DICT_UNSETTLED_TEARDOWN",
@@ -135,6 +137,7 @@ def fnRecordNoVerdict(sContainerId, sProjectRepoPath, listReasons,
         "listReasons": list(listReasons or []),
         "fDurationSeconds": float(fDurationSeconds),
         "sManifestDigest": sManifestDigest,
+        "sRecordedIso": datetime.now(timezone.utc).isoformat(),
     }
 
 

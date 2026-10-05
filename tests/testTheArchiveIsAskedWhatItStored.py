@@ -136,7 +136,7 @@ def test_a_disagreeing_archive_costs_a_draft_and_never_a_doi(tmp_path):
         def fdictCreateDraft(self, dictMetadata):
             return {"id": 7, "links": {"bucket": "https://example/b"}}
 
-        def fnUploadToBucket(self, sBucketUrl, sPath):
+        def fnUploadToBucket(self, sBucketUrl, sPath, fnReportProgress=None, fnReportAttemptFailed=None):
             listPhases.append("upload")
 
         def fdictPublishDraft(self, iDepositId):

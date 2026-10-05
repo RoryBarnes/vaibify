@@ -64,6 +64,9 @@ const VaibifyApp = (function () {
             dictWorkflowScopeLevels: null,
             dictWorkflowLevelHighWater: {},
             dictWorkflowEnvelopeDetail: null,
+            /* The server's verdict on whether this reader's copy has
+               been reproduced; rendered, never re-derived. */
+            dictReproductionLabel: null,
             /* True when the latest poll shipped no envelope although an
                earlier one had: the rows still on screen are from that
                earlier poll and must say so. */
@@ -1063,6 +1066,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictWorkflowLevelHighWater = {};
         _dictWorkflowState.dictWorkflowEnvelopeDetail = null;
         _dictWorkflowState.bEnvelopeDetailStale = false;
+        _dictWorkflowState.dictReproductionLabel = null;
         _dictWorkflowState.dictRemoteChecks = {};
         _dictWorkflowState.iL1BlockerCount = 0;
         _dictWorkflowState.iL2BlockerCount = 0;
@@ -2178,6 +2182,8 @@ const VaibifyApp = (function () {
                 _dictWorkflowState.dictWorkflowEnvelopeDetail,
             bEnvelopeDetailStale:
                 _dictWorkflowState.bEnvelopeDetailStale,
+            dictReproductionLabel:
+                _dictWorkflowState.dictReproductionLabel,
             dictRemoteChecks:
                 _dictWorkflowState.dictRemoteChecks,
             bProjectBlockAwaitsFirstAnswer:
@@ -4151,21 +4157,31 @@ const VaibifyApp = (function () {
         },
         "deposit-environment-archive": {
             sPath: "/environment-archive/deposit",
+            fdictBodyFromElement: _fdictReadEnvironmentDepositChoice,
             dictConfirm: {
                 sTitle: "Deposit the container image",
-                sMessage: "Vaibify will save this project's " +
-                    "container image, compress it, and publish it to " +
-                    "Zenodo under a new DOI. Deleting a Zenodo " +
-                    "deposit later requires contacting Zenodo, and " +
-                    "the DOI is tombstoned rather than removed. The " +
-                    "image is " +
-                    "usually several gigabytes, so this takes " +
-                    "minutes and needs that much free disk space " +
-                    "while it runs.",
+                // The row composed this sentence from the same plan
+                // the route resolves the choice through, so the
+                // confirmation names the destination the upload uses.
+                fsMessageFromElement: _fsReadEnvironmentDepositConfirm,
             },
+            dictCredentialPrompt: {sError: "ZENODO-TOKEN-MISSING"},
             sToast: "Depositing the container image. Progress " +
                 "appears on the Environment archive row; the DOI is " +
                 "recorded when it finishes.",
+        },
+        "stop-environment-archive-deposit": {
+            sPath: "/environment-archive/deposit/stop",
+            dictConfirm: {
+                sTitle: "Stop the deposit",
+                sMessage: "Stop depositing the environment image? " +
+                    "Nothing will be published: vaibify discards the " +
+                    "Zenodo draft, and the upload so far is lost. You " +
+                    "can deposit again at any time. Once publishing " +
+                    "has begun it can no longer be stopped, because " +
+                    "the DOI is being minted.",
+            },
+            sToast: "Stopping the deposit at its next step.",
         },
         "reconcile-promotion": {
             sAbsolutePath: "/api/workflow/{sContainerId}/promotions/" +
@@ -4268,20 +4284,36 @@ const VaibifyApp = (function () {
             sAbsolutePath:
                 "/api/zenodo/{sContainerId}/start-new-concept",
             dictConfirm: {
-                sTitle: "Start a new Zenodo concept",
-                sMessage: "Your next Zenodo publish will create a " +
-                    "FRESH record rather than a new version of the " +
-                    "one on file, so the two will not be linked as a " +
-                    "version chain. The existing deposit is " +
-                    "untouched and its DOI keeps resolving to " +
-                    "exactly what it already holds; vaibify moves " +
-                    "its identifiers into a superseded note so you " +
-                    "can still see them. Use this when your recorded " +
-                    "deposit and the instance you want to publish to " +
-                    "are on different Zenodo sites.",
+                sTitle: "Start a new deposit",
+                sMessage: "Your next Zenodo publish will create a NEW " +
+                    "record, with a DOI of its own, rather than a new " +
+                    "version of the one on file, so the two will not " +
+                    "be linked. The existing record is untouched and " +
+                    "its DOI keeps resolving to exactly what it " +
+                    "already holds; vaibify keeps its identifiers in " +
+                    "a note so you can still see them. To keep adding " +
+                    "versions to the existing record instead, choose " +
+                    "\"Deposit a new version\".",
             },
-            sToast: "The recorded deposit was retired. Your next " +
-                "publish starts a new concept.",
+            sToast: "Your next Zenodo publish will start a new, " +
+                "separate record.",
+        },
+        "publish-where-the-zenodo-record-is": {
+            sAbsolutePath:
+                "/api/zenodo/{sContainerId}/publish-where-the-record-is",
+            dictConfirm: {
+                sTitle: "Deposit a new version of this record",
+                sMessage: "Vaibify will set this project to publish " +
+                    "to the Zenodo site that holds its record, so " +
+                    "your next Zenodo publish becomes a new version " +
+                    "of that record under the same record DOI. This " +
+                    "changes project.json, so push to GitHub as well " +
+                    "as publishing to Zenodo. Nothing is published " +
+                    "until you publish from the Zenodo row.",
+            },
+            sToast: "This project now publishes where its Zenodo " +
+                "record is. Publish from the Zenodo row to add the " +
+                "new version.",
         },
         "promote-environment-archive": {
             sPath: "/environment-archive/promote",
@@ -4441,6 +4473,27 @@ const VaibifyApp = (function () {
         return dictBody;
     }
 
+    function _felReadCheckedArchiveChoice(elButton) {
+        var elForm = elButton.closest(".environment-archive-form");
+        return elForm ? elForm.querySelector(
+            ".environment-archive-answer:checked") : null;
+    }
+
+    function _fdictReadEnvironmentDepositChoice(elButton) {
+        var elChecked = _felReadCheckedArchiveChoice(elButton);
+        if (!elChecked) {
+            fnShowToast(
+                "Choose where to deposit the image first.", "error");
+            return null;
+        }
+        return {sChoice: elChecked.value};
+    }
+
+    function _fsReadEnvironmentDepositConfirm(elButton) {
+        var elChecked = _felReadCheckedArchiveChoice(elButton);
+        return elChecked ? elChecked.dataset.archiveConfirm || "" : "";
+    }
+
     function _fdictReadBinaryRemoval(sBinaryPath) {
         // Re-declare the list minus the removed entry.
         var listRemaining = ((_dictWorkflowState.dictWorkflow || {})
@@ -4488,9 +4541,13 @@ const VaibifyApp = (function () {
         if (dictAction.dictConfirm) {
             var dictNoConfirm = _fdictFreezeFormBody(dictAction, elButton);
             if (!dictNoConfirm) return;
+            var sConfirmMessage = dictAction.dictConfirm
+                .fsMessageFromElement
+                ? dictAction.dictConfirm.fsMessageFromElement(elButton)
+                : dictAction.dictConfirm.sMessage;
             fnShowConfirmModal(
                 dictAction.dictConfirm.sTitle,
-                dictAction.dictConfirm.sMessage,
+                sConfirmMessage,
                 function () {
                     _fnExecuteProjectAction(
                         dictNoConfirm, sContainerId, sArg, elButton);
@@ -4709,8 +4766,11 @@ const VaibifyApp = (function () {
            refusal is reported rather than asked again. */
         fnShowToast(
             error.dictDetail.sMessage || error.message || "", "warning");
+        // A refusal that names its instance wins: a deposit can go
+        // to either Zenodo, and the prompt must ask for the one chosen.
         var bStored = await VaibifySyncManager
             .fpromiseConnectZenodoCredentialOnly(
+                error.dictDetail.sInstance ||
                 dictAction.dictCredentialPrompt.sInstance);
         if (!bStored) return;
         var dictOnce = Object.assign({}, dictAction);
@@ -5824,6 +5884,10 @@ const VaibifyApp = (function () {
                 dictReady.bImageMatchesDeclaredPackages === false ||
                 dictReady.bLockDoesNotBlockVerification === false ||
                 dictReady.bDockerfileDescribesPinnedImage === false)) {
+            if (await _fbOfferCommittedFileRestore(
+                    dictReady, fnOnConfirm, elButton)) {
+                return;
+            }
             _fnShowLevel3NotReadyModal(dictReady);
             return;
         }
@@ -5851,6 +5915,105 @@ const VaibifyApp = (function () {
                 sCancelLabel: "Not now",
             }
         );
+    }
+
+    async function _fbOfferCommittedFileRestore(
+        dictReady, fnOnConfirm, elButton,
+    ) {
+        /* The one refusal whose usual remedy is wrong on a clone. The
+           manifest misdescribes its files because the reader re-ran
+           the project somewhere else, and "Regenerate the envelope"
+           would replace the AUTHOR's manifest with the reader's own
+           bytes -- after which the verification compares the reader
+           with themselves. For a manifest someone else committed, in
+           a container, the remedy is the committed versions. The
+           gate is unchanged: this only names a different way through
+           it. Anything short of all three facts falls back to the
+           ordinary checklist. */
+        if (dictReady.bManifestMatchesTheFiles !== false) return false;
+        var dictDifferences = await _fdictFetchCommittedFileDifferences();
+        var listPaths = (dictDifferences || {}).listDifferingPaths || [];
+        if (!dictDifferences ||
+                dictDifferences.sManifestOwnership !== "foreign" ||
+                dictDifferences.bRestoreRunsInContainer !== true ||
+                listPaths.length === 0) {
+            return false;
+        }
+        fnShowConfirmModal(
+            "Restore the committed files first",
+            _fsDescribeCommittedFileRemedy(dictReady, listPaths),
+            function () {
+                _fnRestoreCommittedFilesThenVerify(fnOnConfirm, elButton);
+            },
+            {
+                sDetails: "Files that differ from the last commit: " +
+                    listPaths.join(", "),
+                sCommand: "git restore --source=HEAD --worktree -- " +
+                    listPaths.join(" "),
+                sConfirmLabel: "Restore the committed versions",
+                sCancelLabel: "Not now",
+            }
+        );
+        return true;
+    }
+
+    function _fsDescribeCommittedFileRemedy(dictReady, listPaths) {
+        var sLabel = _DICT_L3_READINESS_LABELS.bManifestMatchesTheFiles;
+        var listOthers = _flistNamePendingReadiness(dictReady).filter(
+            function (sItem) { return sItem !== sLabel; });
+        return listPaths.length + " file" +
+            (listPaths.length === 1 ? "" : "s") + " the author's " +
+            "manifest pins differ" + (listPaths.length === 1 ? "s" : "") +
+            " from the last commit, usually because the project was " +
+            "re-run outside the author's environment. Verification " +
+            "compares a fresh run against the author's manifest, so " +
+            "the manifest has to describe the files first.\n\n" +
+            "Restoring puts the committed versions back in this " +
+            "container and discards the container's changes to those " +
+            "files. Nothing outside the container is touched. " +
+            "(Regenerating the envelope instead would replace the " +
+            "author's manifest with your own results.)" +
+            (listOthers.length === 0 ? "" :
+                "\n\nAlso still to do before verifying:\n\u2022 " +
+                listOthers.join("\n\u2022 "));
+    }
+
+    async function _fdictFetchCommittedFileDifferences() {
+        try {
+            return await VaibifyApi.fdictGet(
+                "/api/workflow/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/committed-file-differences");
+        } catch (error) {
+            console.warn("[l3] committed-file check failed:",
+                error && error.message);
+            return null;
+        }
+    }
+
+    async function _fnRestoreCommittedFilesThenVerify(fnOnConfirm, elButton) {
+        /* Straight back into the verification once the files are
+           restored: the readiness is asked again rather than assumed,
+           so a remaining gap still gets its checklist. */
+        var fnRelease = _ffnHoldButtonBusy(elButton, "Restoring\u2026");
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/workflow/" +
+                encodeURIComponent(_dictSessionState.sContainerId) +
+                "/restore-committed-files", {});
+            var iRestored = (dictResult.listRestoredPaths || []).length;
+            fnShowToast("Restored the committed version" +
+                (iRestored === 1 ? "" : "s") + " of " + iRestored +
+                " file" + (iRestored === 1 ? "" : "s") + ".", "success");
+        } catch (error) {
+            fnShowToast("The committed files were not restored: " +
+                VaibifyUtilities.fsSanitizeErrorForUser(error.message),
+                "error");
+            return;
+        } finally {
+            fnRelease();
+        }
+        await fnConfirmLevel3Verification(fnOnConfirm, elButton);
     }
 
     function _fsDescribeRerunCost(dictReady) {
@@ -6680,10 +6843,18 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictStepLevelWarnings =
                 dictStatus.dictStepLevelWarnings;
         }
+        _dictWorkflowState.dictReproductionLabel =
+            dictStatus.dictReproductionLabel || null;
         if (dictStatus.dictWorkflowEnvelopeDetail) {
+            var bAttestationWasRunning = (
+                _dictWorkflowState.dictWorkflowEnvelopeDetail || {}
+            ).bRebuildAttestationRunning === true;
             _dictWorkflowState.dictWorkflowEnvelopeDetail =
                 dictStatus.dictWorkflowEnvelopeDetail;
             _dictWorkflowState.bEnvelopeDetailStale = false;
+            _fnRecheckRemotesWhenAttestationSettles(
+                bAttestationWasRunning,
+                dictStatus.dictWorkflowEnvelopeDetail);
         } else if (_dictWorkflowState.dictWorkflowEnvelopeDetail) {
             /* Keeping the earlier rows is right; keeping them
                UNMARKED is a claim that nothing changed. */
@@ -6697,6 +6868,26 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictRemoteChecks =
                 dictStatus.dictRemoteChecks;
         }
+    }
+
+    function _fnRecheckRemotesWhenAttestationSettles(
+        bWasRunning, dictEnvelopeDetail
+    ) {
+        /* A settled verification writes the attestation and the
+           reproduced manifest, so every published copy is behind it
+           the moment it lands. The badges kept the pre-run answer
+           until someone pressed Verify, and the Attestation row read
+           as passing beside a GitHub row that was quietly out of date
+           (researcher-reported, 2026-09-29). Only a run THIS tab saw
+           end triggers it -- a reload finds the run already settled
+           and changes nothing -- and the check is the same one opening
+           a project starts, whose badges pulse until each answers. */
+        if (!bWasRunning ||
+                dictEnvelopeDetail.bRebuildAttestationRunning !== false) {
+            return;
+        }
+        VaibifySyncManager.fnRefreshConfiguredRemotes(
+            _dictSessionState.sContainerId);
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {
@@ -6980,6 +7171,11 @@ const VaibifyApp = (function () {
         );
         if (fnOnClick) {
             el.addEventListener("click", function () {
+                /* A drag that selects the toast's text ends in a click;
+                   treating it as "act" made a failure impossible to
+                   copy, because the toast vanished into the action
+                   (researcher-reported, 2026-09-26). */
+                if (_fbSelectionEndsInside(el)) return;
                 fnOnClick();
                 el.remove();
             });
@@ -6988,6 +7184,12 @@ const VaibifyApp = (function () {
             setTimeout(function () { el.remove(); }, 4000);
         }
         document.getElementById("toastContainer").appendChild(el);
+    }
+
+    function _fbSelectionEndsInside(el) {
+        var selection = window.getSelection ? window.getSelection() : null;
+        return Boolean(selection && String(selection).length > 0 &&
+            el.contains(selection.focusNode));
     }
 
     var fnEscapeHtml = VaibifyUtilities.fnEscapeHtml;

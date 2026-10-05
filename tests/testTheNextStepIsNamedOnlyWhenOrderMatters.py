@@ -737,3 +737,54 @@ def test_an_unasked_lock_leaves_the_row_and_the_arrow_green(sProjectRepo):
             dictWorkflow, sProjectRepo, dictVerdict, dictCurrency,
         )
         assert dictRows["dependencyLock"] is True, sLabel
+
+
+def test_a_project_that_reached_level_three_before_is_not_held_back(
+    monkeypatch, sProjectRepo,
+):
+    """Below Level 2 the arrow is silent, however far the project got before.
+
+    A 2026-09-28 extension let the endgame speak for a project
+    RETURNING to Level 3 -- one whose only Level 2 work was a republish
+    and which carried an earlier deposit, an archive lineage and an
+    attestation. It grayed out the GitHub push as "premature" on a
+    project the researcher had just dropped to Level 0, and they needed
+    the push (2026-09-29). The researcher withdrew it: a returning
+    project climbs like any other, and publishing is simply next.
+
+    The evidence of the earlier endgame is written to disk, so this
+    fails against the withdrawn extension, which read exactly these
+    files.
+    """
+    import json
+    with open(os.path.join(sProjectRepo, ".vaibify", "environment.json"),
+              "w") as fileHandle:
+        json.dump({"dictContainer": {
+            "sImageDigest": "sha256:" + "e" * 64,
+            "dictImageArchiveLineage": {
+                "sVersionDoi": "10.5281/zenodo.1", "sConceptDoi": "",
+                "sZenodoService": "zenodo",
+            },
+        }}, fileHandle)
+    with open(os.path.join(sProjectRepo, ".vaibify", "l3_attestation.json"),
+              "w") as fileHandle:
+        json.dump({"sStatus": "passed"}, fileHandle)
+    monkeypatch.setattr(
+        levelOrdering.levelGates, "flistLevel2Blockers",
+        lambda dictWorkflow, filesRepo, **kwargs: [
+            {"iStepIndex": -1, "sCriterion": "github-verify-stale"},
+            {"iStepIndex": -1, "sCriterion": "zenodo-verify-stale"},
+        ],
+    )
+    monkeypatch.setattr(
+        levelOrdering, "fdictJudgeOrderedRequirements",
+        lambda dictWorkflow, filesRepo, dictLock=None,
+        dictCurrency=None: _fdictAllSatisfiedExcept(
+            "environmentArchive", "rebuildAttestation",
+            "envelopeMirror", "envelopeArchive",
+        ),
+    )
+    dictEndgame = levelOrdering.fdictDescribeOrderedEndgame(
+        {"sZenodoDepositionId": "123"}, sProjectRepo,
+    )
+    assert dictEndgame == {"dictNextStep": None, "dictBlockedRows": {}}

@@ -219,6 +219,8 @@ def flistCheckEnvelopeCurrency(connectionDocker, sContainerName, sRepoPath):
         sPinned,
         str(dictIdentity.get("sImageDigest") or ""),
         str(dictIdentity.get("sImageId") or ""),
+        str(dictIdentity.get("sEnvironmentImageDigest") or ""),
+        str(dictIdentity.get("sEnvironmentImageId") or ""),
     )
     return [_fpreflightEnvelopePin(dictAnswer)]
 
@@ -226,6 +228,16 @@ def flistCheckEnvelopeCurrency(connectionDocker, sContainerName, sRepoPath):
 def _fpreflightEnvelopePin(dictAnswer):
     """Render the three-state envelope comparison."""
     bIsLive = dictAnswer["bPinnedImageIsLive"]
+    if dictAnswer.get("sRelation") == "derived":
+        return PreflightResult(
+            sName="envelope-image-currency", sLevel=S_LEVEL_OK,
+            sScope=S_SCOPE_PROJECT,
+            sMessage=(
+                "the environment envelope pins the agent-free image this "
+                "container's image is built on; the coding agents above "
+                "it are not part of the published environment."
+            ),
+        )
     if bIsLive is None:
         return PreflightResult(
             sName="envelope-image-currency", sLevel=S_LEVEL_NOT_CHECKED,

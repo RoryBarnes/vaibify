@@ -61,7 +61,7 @@ class _FakeImages:
         raise LookupError("manifest unknown")
 
     def load(self, fileStream):
-        self._storeImages.listLoaded.append(fileStream.read())
+        self._storeImages.listLoaded.append(b"".join(fileStream))
         if self._storeImages.errorOnLoad is not None:
             raise self._storeImages.errorOnLoad
         imageLoaded = _FakeImage(S_LOADED_ID, "amd64")
@@ -302,6 +302,36 @@ def testAnArchiveTheDaemonLoadsIsRunByItsLoadedId(transportDouble):
     assert dictAnswer["sObtainedFrom"] != S_OBTAINED_REGISTRY
 
 
+@pytest.mark.falsification
+def testAFailedArchiveFollowedByALocalCopyReadsAsLocalNeverArchive(
+    transportDouble,
+):
+    """The outcome names the link that served, not the one that was tried.
+
+    Kills: reporting the archive as the source whichever link served.
+    """
+    fnServeViaDoiResolver(transportDouble, BA_TARBALL)
+    storeImages = FakeImageStore()
+    storeImages.errorOnLoad = RuntimeError("daemon refused the tarball")
+    storeImages.dictHeld[S_PINNED_REFERENCE] = _FakeImage(
+        S_LOCAL_ONLY_ID, "amd64",
+    )
+    dictAnswer = fdictAcquirePinnedImage(
+        fdictEnvironment(dictRecord=fdictRecord()), "amd64",
+        dockerDisposable=storeImages,
+    )
+    assert dictAnswer["sObtainedFrom"] == imageAcquisition.S_OBTAINED_LOCAL
+    assert dictAnswer["sObtainedFrom"] != imageAcquisition.S_OBTAINED_ARCHIVE
+    assert [
+        (dictAttempt["sLink"], dictAttempt["bSucceeded"])
+        for dictAttempt in dictAnswer["listAttempts"]
+    ] == [
+        (imageAcquisition.S_LINK_REGISTRY, False),
+        (imageAcquisition.S_LINK_ARCHIVE, False),
+        (imageAcquisition.S_LINK_LOCAL, True),
+    ]
+
+
 # ── downloading the deposit ──────────────────────────────────────
 
 
@@ -408,7 +438,7 @@ def testAZstdTarballWithoutACodecIsRefused(monkeypatch, tmp_path):
     pathTarball = tmp_path / "environment-image.tar.zst"
     pathTarball.write_bytes(b"zstd bytes")
     monkeypatch.setattr(imageDeposit, "_ftResolveZstdCodec", lambda: None)
-    with pytest.raises(ImageAcquisitionRefusedError, match="no zstd codec"):
+    with pytest.raises(ImageAcquisitionRefusedError, match="cannot decompress zstd"):
         imageAcquisition._ffileOpenByCodec(str(pathTarball))
 
 

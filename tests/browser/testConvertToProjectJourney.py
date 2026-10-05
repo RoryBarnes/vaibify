@@ -200,8 +200,9 @@ def testConvertSummaryNamesTheNewContainerAndOmitsTemplate(
     ).strip() == "Summary"
     assert pageDashboard.text_content(
         "#btnWizardNext",
-    ).strip() == "Convert"
+    ).strip() == "Convert and build"
     sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "When you press Convert and build" in sSummary, sSummary
     assert "New container name" in sSummary
     assert S_NEW_CONTAINER_NAME in sSummary
     assert "Template" not in sSummary, (
@@ -224,16 +225,20 @@ def testConvertingFlipsTheTileFromHostToContainer(
     _fnWaitForPicker(pageDashboard, serverHub)
     _fnOpenConvertMenuAndChooseContainer(pageDashboard)
     _fnWalkConvertWizardToSummary(pageDashboard)
-    pageDashboard.click("#btnWizardNext")
-    # The one confirm modal, warning before the irreversible-ish step.
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
-    sBody = pageDashboard.text_content("#modalConfirm")
-    assert "Re-register" in sBody
-    assert S_NEW_CONTAINER_NAME in sBody
+    # The Summary is the only confirmation: it says what the final
+    # button does before the irreversible-ish step, and no second
+    # dialog asks again.
+    sSummary = pageDashboard.text_content("#wizardStepContent")
+    assert "will become the containerized project" in sSummary
+    assert S_NEW_CONTAINER_NAME in sSummary
     assert pageDashboard.text_content(
-        "#btnConfirmOk",
+        "#btnWizardNext",
     ).strip() == "Convert and build"
-    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.click("#btnWizardNext")
+    pageDashboard.wait_for_timeout(300)
+    assert not pageDashboard.is_visible("#modalConfirm"), (
+        "a second dialog asked to convert again after the Summary"
+    )
     # The registry flip is the server-side truth: poll the isolated
     # registry until the host entry is gone and the new container exists.
     fDeadline = time.monotonic() + 15.0
@@ -377,8 +382,6 @@ def testOnlyTheTickedFilesAreCopiedIntoTheContainer(
         "an unticked file was still listed as crossing over: " + sSummary
     )
     pageDashboard.click("#btnWizardNext")
-    pageDashboard.wait_for_selector("#modalConfirm", timeout=5000)
-    pageDashboard.click("#btnConfirmOk")
     adapterDocker = serverHub.adapterDocker
     fDeadline = time.monotonic() + 20.0
     while time.monotonic() < fDeadline:
