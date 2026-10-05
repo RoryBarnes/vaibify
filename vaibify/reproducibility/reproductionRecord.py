@@ -41,7 +41,6 @@ __all__ = [
     "fbRepositoryCarriesForeignAttestation",
     "fdictBuildReproductionRecord",
     "fdictLatestReproductionRecord",
-    "fdictReadBaselineEvidence",
     "flistReadReproductionRecords",
     "flistWriteVerificationOutcome",
     "fsRecordKindForRepository",
@@ -144,13 +143,10 @@ def flistWriteVerificationOutcome(
     what a failed write means to its caller.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
-    # Read BEFORE anything is written: HEAD as it stands now is the
-    # baseline the exported tree is compared with, and the files this
-    # call writes would otherwise show up as differences from it.
-    dictBaseline = (
-        fdictReadBaselineEvidence(filesRepo)
-        if sRecordKind == S_RECORD_KIND_REPRODUCTION else None
-    )
+    # The baseline is the lane's, read before it exported the tree and
+    # carried on the outcome. Never re-read here: HEAD may have moved
+    # since, and a record must not name source it never verified.
+    dictBaseline = dictOutcome.get("dictBaselineEvidence")
     sStatus = S_STATUS_PASSED if dictOutcome.get("bPassed") else S_STATUS_FAILED
     sTimestampUtc = fsCurrentTimestampUtc()
     sReproducedPath = fsWriteReproducedManifest(
@@ -179,47 +175,6 @@ def flistWriteVerificationOutcome(
     )
     listPaths.append(_S_ATTESTATION_RELATIVE_PATH)
     return listPaths
-
-
-def fdictReadBaselineEvidence(filesRepo):
-    """Return what HEAD says about the tree a reproduction exported.
-
-    ``sResolvedCommit`` is HEAD as the BASELINE, and
-    ``listPathsDifferingFromBaseline`` the tracked paths whose bytes
-    differ from it plus the untracked ones: empty means the tree was
-    clean. ``sManifestOwnershipAtRun`` is the answer git gave about
-    whose manifest this is, kept on the record because the file-status
-    poll cannot run git and must not guess. A git that cannot answer
-    leaves ``bBaselineKnown`` False -- never an empty list that would
-    read as a clean tree.
-    """
-    ftRunGit = gitEvidence.ffnBuildGitRunnerForRepoFiles(filesRepo)
-    dictEvidence = {
-        "sResolvedCommit": "", "listPathsDifferingFromBaseline": None,
-        "bBaselineKnown": False,
-        "sManifestOwnershipAtRun": gitEvidence.fsManifestOwnershipForRepoFiles(
-            filesRepo),
-    }
-    try:
-        iHeadCode, sHead = ftRunGit(["rev-parse", "--verify", "--quiet", "HEAD"])
-        iDiffCode, sDiffering = ftRunGit(
-            ["-c", "core.quotepath=off", "diff", "--name-only", "HEAD"])
-        iOtherCode, sUntracked = ftRunGit(
-            ["-c", "core.quotepath=off", "ls-files", "--others",
-             "--exclude-standard"])
-    except Exception as error:  # noqa: BLE001 -- a git that cannot answer is unknown
-        gitEvidence.fnReRaiseControlPlaneRefusal(error)
-        return dictEvidence
-    if iHeadCode != 0 or iDiffCode != 0 or iOtherCode != 0:
-        return dictEvidence
-    dictEvidence.update({
-        "sResolvedCommit": (sHead or "").strip(),
-        "listPathsDifferingFromBaseline": sorted(set(
-            (sDiffering or "").split("\n") + (sUntracked or "").split("\n")
-        ) - {""}),
-        "bBaselineKnown": True,
-    })
-    return dictEvidence
 
 
 def fdictBuildReproductionRecord(
@@ -281,7 +236,7 @@ def _fnBindEvidence(dictRecord, dictOutcome, dictBaseline):
 
     Every digest comes from the EXPORTED SNAPSHOT the rerun froze
     before any step ran, never from a file read afterwards; the
-    baseline comes from HEAD read before the record's own commit.
+    baseline comes from the HEAD the lane read before it exported.
     """
     dictRecord["dictSource"]["sResolvedCommit"] = str(
         dictBaseline.get("sResolvedCommit") or "")
@@ -294,8 +249,6 @@ def _fnBindEvidence(dictRecord, dictOutcome, dictBaseline):
     dictRecord["listPathsDifferingFromBaseline"] = dictBaseline.get(
         "listPathsDifferingFromBaseline")
     dictRecord["bBaselineKnown"] = bool(dictBaseline.get("bBaselineKnown"))
-    dictRecord["sManifestOwnershipAtRun"] = str(
-        dictBaseline.get("sManifestOwnershipAtRun") or "")
 
 
 def fsWriteReproductionRecord(filesRepo, dictRecord, sTimestampUtc):

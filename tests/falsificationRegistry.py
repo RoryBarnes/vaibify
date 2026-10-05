@@ -28007,20 +28007,20 @@ def _fdictEntry(sRel):
             'tests/testReproductionLabelInPollResponse.py::'
             'test_unreadable_evidence_is_neither_absent_nor_reproduced'
         ),
-        # a failed read is treated as no records
-        source='vaibify/reproducibility/reproductionLabel.py',
-        old='    listRecords = _flistParseRecords(dictRecordTexts)\n    if listRecords is None:\n',
-        new='    listRecords = _flistParseRecords(dictRecordTexts) or []\n    if False:\n',
+        # The snapshot drops a record it cannot parse without saying so.
+        source='vaibify/docker/dockerConnection.py',
+        old='            dictOut["sReproductionsError"] = type(error).__name__\n            continue\n',
+        new='            continue\n',
     ),
     Falsification(
         nodeid=(
             'tests/testReproductionLabelInPollResponse.py::'
             'test_the_label_never_shows_for_ones_own_manifest'
         ),
-        # the ownership check is dropped
+        # The label shows for a manifest that is the viewer's own.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if dictRecord.get("sManifestOwnershipAtRun") != _S_OWNERSHIP_FOREIGN:\n',
-        new='    if False:\n',
+        old='    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return _fdictLabel(\n            S_STATE_ABSENT, "the manifest is this project\'s own",\n        )\n',
+        new='',
     ),
     Falsification(
         nodeid=(
@@ -28041,5 +28041,55 @@ def _fdictEntry(sRel):
         source='vaibify/gui/determinismEnvironment.py',
         old='    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return iRecordedEpoch, ""\n',
         new='    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return 0, "forced"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_snapshot_that_did_not_read_the_records_is_unreadable_not_absent'
+        ),
+        # a snapshot that did not read the records reads as a project with none
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if not isinstance(filesPoll, SnapshotRepoFiles):\n        return _fdictLabel(S_STATE_ABSENT)\n',
+        new='    if not isinstance(filesPoll, SnapshotRepoFiles) or filesPoll.dictReproductionRecords is None:\n        return _fdictLabel(S_STATE_ABSENT)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_many_newer_records_for_another_workflow_do_not_erase_a_label'
+        ),
+        # the read is limited to the newest records globally, not per workflow
+        source='vaibify/docker/dockerConnection.py',
+        old='                and sWorkflow and sWorkflow not in setWorkflowsDecided):\n',
+        new='                and sWorkflow and len(dictOut["dictReproductionRecords"]) < 40):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordBindsItsEvidence.py::'
+            'test_a_record_names_the_head_the_lane_read_not_the_one_at_write_time'
+        ),
+        # the record re-reads HEAD when it is written
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='    dictBaseline = dictOutcome.get("dictBaselineEvidence")\n',
+        new='    dictBaseline = gitEvidence.fdictReadBaselineEvidence(filesRepo)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordBindsItsEvidence.py::'
+            'test_a_head_that_moved_during_the_export_leaves_the_baseline_unknown'
+        ),
+        # a HEAD that moved during the export still names the pre-export commit
+        source='vaibify/reproducibility/shadowRerun.py',
+        old='    if dictBefore.get("sResolvedCommit") != dictAfter.get("sResolvedCommit"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testManifestOwnershipFromSnapshotFacts.py::'
+            'test_the_snapshot_facts_give_the_live_predicates_answer'
+        ),
+        # every ownership question is answered as exit 0 with no output
+        source='vaibify/reproducibility/gitEvidence.py',
+        old='        return int(listReply[0]), listReply[1] or ""\n',
+        new='        return 0, ""\n',
     ),
 ]

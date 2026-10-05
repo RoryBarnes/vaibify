@@ -407,11 +407,68 @@ def test_the_poll_still_makes_one_batched_snapshot_read(tmp_path):
 
 @pytest.mark.falsification
 def test_the_label_never_shows_for_ones_own_manifest(tmp_path):
-    """Kills: dropping the ownership check from the label."""
-    sRepo = _fsBuildReaderClone(tmp_path, sReaderEmail="author@example.invalid")
+    """Kills: dropping the live ownership check from the label.
+
+    The reader reproduces and the label shows; the repository's identity
+    then becomes the author's, so the manifest is the viewer's own, and
+    the label must go -- asked of git NOW, not remembered from the run.
+    """
+    sRepo = _fsBuildReaderClone(tmp_path)
     _fnWriteRecord(sRepo, _fdictOutcomeFor(sRepo))
     dictLabel, _c, _x = _fdictPollLabel(sRepo)
+    assert dictLabel["bShow"] is True
+    fsRunGit(["config", "user.email", "author@example.invalid"], sRepo)
+    dictLabel, _c, _x = _fdictPollLabel(sRepo)
     assert dictLabel["bShow"] is False
+    assert dictLabel["sState"] == "absent"
+
+
+@pytest.mark.falsification
+def test_a_snapshot_that_did_not_read_the_records_is_unreadable_not_absent(
+    tmp_path,
+):
+    """Kills: reading a failed snapshot as a project with no records."""
+    from vaibify.reproducibility.reproductionLabel import (
+        fdictBuildReproductionLabel,
+    )
+    from vaibify.reproducibility.repoFiles import ffilesConservativeSnapshot
+    dictLabel = fdictBuildReproductionLabel(
+        ffilesConservativeSnapshot(str(tmp_path)), S_FIXTURE_WORKFLOW_PATH)
+    assert dictLabel["sState"] == "unreadable"
+    assert dictLabel["bShow"] is False
+
+
+def test_a_failed_poll_snapshot_reads_unreadable_through_the_route(tmp_path):
+    sRepo = _fsBuildReaderClone(tmp_path)
+    _fnWriteRecord(sRepo, _fdictOutcomeFor(sRepo))
+
+    class FailingConnection:
+        def ftReadRepoSnapshot(self, *aArgs, **dictArgs):
+            return SimpleNamespace(iExitCode=1, sStdout="", sStderr="boom")
+
+    dictLabel, _c, _x = _fdictPollLabel(sRepo, FailingConnection())
+    assert dictLabel["sState"] == "unreadable"
+
+
+@pytest.mark.falsification
+def test_many_newer_records_for_another_workflow_do_not_erase_a_label(
+    tmp_path,
+):
+    """Kills: limiting the read to the newest records globally.
+
+    Fifty newer decisive records for workflow B must not push workflow
+    A's valid reproduction out of the snapshot.
+    """
+    sRepo = _fsBuildReaderClone(tmp_path)
+    dictGood = _fdictRecordAs(sRepo, "reproduced", "2026-10-01T10:00:00+00:00")
+    _fnWriteRecordAt(sRepo, "20261001T100000Z_reproduced.json", dictGood)
+    for iIndex in range(50):
+        dictOther = dict(dictGood, sVerdict="diverged",
+                         sWorkflowRelativePath=".vaibify/projects/b.json")
+        _fnWriteRecordAt(
+            sRepo, f"202611{iIndex:02d}T100000Z_diverged.json", dictOther)
+    dictLabel, _c, _x = _fdictPollLabel(sRepo)
+    assert dictLabel["bShow"] is True, dictLabel
 
 
 def test_cached_keys_past_the_exec_budget_are_dropped_not_refused(tmp_path):

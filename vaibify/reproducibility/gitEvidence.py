@@ -31,7 +31,10 @@ __all__ = [
     "fbRepositoryCarriesForeignTrackedFile",
     "fdictManifestProvenanceForRepoFiles",
     "ffnBuildGitRunnerForRepoFiles",
+    "fdictReadBaselineEvidence",
+    "fsManifestOwnershipForGitRunner",
     "fsManifestOwnershipForRepoFiles",
+    "fsManifestOwnershipFromSnapshotFacts",
 ]
 
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
@@ -225,17 +228,84 @@ def fsManifestOwnershipForRepoFiles(filesRepo):
     somebody else's record. Adapter failures are undetermined too.
     """
     try:
-        bForeign = fbRepositoryCarriesForeignManifest(
-            ffnBuildGitRunnerForRepoFiles(filesRepo),
-        )
+        ftRunGit = ffnBuildGitRunnerForRepoFiles(filesRepo)
+    except Exception as error:  # noqa: BLE001 -- an adapter that cannot ask is undetermined
+        fnReRaiseControlPlaneRefusal(error)
+        return S_MANIFEST_OWNERSHIP_UNDETERMINED
+    return fsManifestOwnershipForGitRunner(ftRunGit)
+
+
+def fsManifestOwnershipForGitRunner(ftRunGit):
+    """Answer the ownership predicate from any git runner."""
+    try:
+        bForeign = fbRepositoryCarriesForeignManifest(ftRunGit)
     except RecordKindUndeterminedError:
         return S_MANIFEST_OWNERSHIP_UNDETERMINED
-    except Exception as error:  # noqa: BLE001 -- an adapter that cannot ask is undetermined
+    except Exception as error:  # noqa: BLE001 -- a runner that cannot ask is undetermined
         fnReRaiseControlPlaneRefusal(error)
         return S_MANIFEST_OWNERSHIP_UNDETERMINED
     return (
         S_MANIFEST_OWNERSHIP_FOREIGN if bForeign else S_MANIFEST_OWNERSHIP_OWN
     )
+
+
+def fsManifestOwnershipFromSnapshotFacts(dictFacts):
+    """Answer the ownership predicate from the replies a snapshot carried.
+
+    The poll cannot run git, so the snapshot program asked the fixed
+    questions of ``gitHardening.T_MANIFEST_OWNERSHIP_GIT_QUESTIONS``
+    inside the container and keyed each reply by its arguments. A
+    question outside that set, or a reply the program could not get,
+    makes the predicate undetermined -- never "own".
+    """
+    if not isinstance(dictFacts, dict):
+        return S_MANIFEST_OWNERSHIP_UNDETERMINED
+
+    def ftAnswerFromFacts(listArguments):
+        listReply = dictFacts.get(" ".join(str(s) for s in listArguments))
+        if not listReply or listReply[0] is None:
+            raise RecordKindUndeterminedError(
+                "the snapshot carried no answer to this git question")
+        return int(listReply[0]), listReply[1] or ""
+
+    return fsManifestOwnershipForGitRunner(ftAnswerFromFacts)
+
+
+def fdictReadBaselineEvidence(filesRepo):
+    """Return what HEAD says about the tree a reproduction is about to export.
+
+    ``sResolvedCommit`` is HEAD as the BASELINE, and
+    ``listPathsDifferingFromBaseline`` the tracked paths whose bytes
+    differ from it plus the untracked ones: empty means the tree was
+    clean. A git that cannot answer leaves ``bBaselineKnown`` False --
+    never an empty list that would read as a clean tree. Read by the
+    lane BEFORE the export and carried through the outcome, never
+    re-read when the record is written: HEAD may have moved by then.
+    """
+    ftRunGit = ffnBuildGitRunnerForRepoFiles(filesRepo)
+    dictUnknown = {
+        "sResolvedCommit": "", "listPathsDifferingFromBaseline": None,
+        "bBaselineKnown": False,
+    }
+    try:
+        iHeadCode, sHead = ftRunGit(["rev-parse", "--verify", "--quiet", "HEAD"])
+        iDiffCode, sDiffering = ftRunGit(
+            ["-c", "core.quotepath=off", "diff", "--name-only", "HEAD"])
+        iOtherCode, sUntracked = ftRunGit(
+            ["-c", "core.quotepath=off", "ls-files", "--others",
+             "--exclude-standard"])
+    except Exception as error:  # noqa: BLE001 -- a git that cannot answer is unknown
+        fnReRaiseControlPlaneRefusal(error)
+        return dictUnknown
+    if iHeadCode != 0 or iDiffCode != 0 or iOtherCode != 0:
+        return dictUnknown
+    return {
+        "sResolvedCommit": (sHead or "").strip(),
+        "listPathsDifferingFromBaseline": sorted(set(
+            (sDiffering or "").split("\n") + (sUntracked or "").split("\n")
+        ) - {""}),
+        "bBaselineKnown": True,
+    }
 
 
 def fdictManifestProvenanceForRepoFiles(filesRepo):

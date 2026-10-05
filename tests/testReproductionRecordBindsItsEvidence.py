@@ -21,7 +21,7 @@ from tests.reproductionSourceFixtures import (
     fsBuildPublishedProject,
     fsRunGit,
 )
-from vaibify.reproducibility import reproductionRecord
+from vaibify.reproducibility import gitEvidence, reproductionRecord
 from vaibify.reproducibility.manifestWriter import flistParseManifestText
 from vaibify.reproducibility.rerunVerification import (
     fdictSnapshotWorkflowEvidence,
@@ -58,6 +58,8 @@ def _fdictOutcome(sRepo):
     dictEvidence = fdictSnapshotWorkflowEvidence(
         filesRepo, os.path.join(sRepo, S_FIXTURE_WORKFLOW_PATH))
     return {
+        "dictBaselineEvidence": gitEvidence.fdictReadBaselineEvidence(
+            filesRepo),
         "bPassed": True, "bRerunAttempted": True, "listFileOutcomes": listOutcomes,
         "iOutputHashesMatched": len(listOutcomes),
         "iOutputHashesTotal": len(listOutcomes), "listDivergedHashes": [],
@@ -98,7 +100,6 @@ def test_a_reader_record_binds_the_baseline_and_the_snapshots_digests(
     assert dictRecord["dictSource"]["sResolvedCommit"] == sHead
     assert dictRecord["bBaselineKnown"] is True
     assert dictRecord["listPathsDifferingFromBaseline"] == []
-    assert dictRecord["sManifestOwnershipAtRun"] == "foreign"
     assert dictRecord["sWorkflowRelativePath"] == S_FIXTURE_WORKFLOW_PATH
     assert dictRecord["dictSource"]["sWorkflowPath"] == S_FIXTURE_WORKFLOW_PATH
     with open(os.path.join(sRepo, "MANIFEST.sha256"), "rb") as fileIn:
@@ -126,11 +127,64 @@ def test_a_dirty_export_lists_its_differing_paths(tmp_path):
 def test_a_git_that_cannot_answer_leaves_the_baseline_unknown(tmp_path):
     sNotARepository = str(tmp_path / "plain")
     os.makedirs(sNotARepository)
-    dictEvidence = reproductionRecord.fdictReadBaselineEvidence(
+    dictEvidence = gitEvidence.fdictReadBaselineEvidence(
         ffilesEnsureRepoFiles(sNotARepository))
     assert dictEvidence["bBaselineKnown"] is False
     assert dictEvidence["listPathsDifferingFromBaseline"] is None
-    assert dictEvidence["sManifestOwnershipAtRun"] == "undetermined"
+
+
+@pytest.mark.falsification
+def test_a_record_names_the_head_the_lane_read_not_the_one_at_write_time(
+    tmp_path,
+):
+    """Kills: re-reading HEAD when the record is written.
+
+    The lane read HEAD before it exported. If HEAD advances before the
+    outcome is written, the record must still name the commit the
+    exported tree was compared with, never the later one.
+    """
+    sRepo = _fsClone(tmp_path)
+    sHeadAtExport = fsRunGit(["rev-parse", "HEAD"], sRepo)
+    dictOutcome = _fdictOutcome(sRepo)
+    fsRunGit(["commit", "--quiet", "--allow-empty", "-m", "later"], sRepo)
+    sHeadLater = fsRunGit(["rev-parse", "HEAD"], sRepo)
+    assert sHeadLater != sHeadAtExport
+    listWritten = reproductionRecord.flistWriteVerificationOutcome(
+        sRepo, reproductionRecord.S_RECORD_KIND_REPRODUCTION, dictOutcome,
+        1.0, {"sWorkflowName": "Demo"}, lambda *aArgs: {},
+    )
+    sRecordPath = [s for s in listWritten if s.endswith(".json")][0]
+    with open(os.path.join(sRepo, sRecordPath)) as fileIn:
+        dictRecord = json.load(fileIn)
+    assert dictRecord["dictSource"]["sResolvedCommit"] == sHeadAtExport
+
+
+def test_an_outcome_with_no_baseline_leaves_the_record_unverified(tmp_path):
+    sRepo = _fsClone(tmp_path)
+    dictOutcome = _fdictOutcome(sRepo)
+    del dictOutcome["dictBaselineEvidence"]
+    listWritten = reproductionRecord.flistWriteVerificationOutcome(
+        sRepo, reproductionRecord.S_RECORD_KIND_REPRODUCTION, dictOutcome,
+        1.0, {"sWorkflowName": "Demo"}, lambda *aArgs: {},
+    )
+    sRecordPath = [s for s in listWritten if s.endswith(".json")][0]
+    with open(os.path.join(sRepo, sRecordPath)) as fileIn:
+        dictRecord = json.load(fileIn)
+    assert dictRecord["bBaselineKnown"] is False
+    assert dictRecord["dictSource"]["sResolvedCommit"] == ""
+
+
+@pytest.mark.falsification
+def test_a_head_that_moved_during_the_export_leaves_the_baseline_unknown():
+    """Kills: naming the pre-export commit when HEAD moved while it ran."""
+    from vaibify.reproducibility import shadowRerun
+    dictBefore = {"sResolvedCommit": "a" * 40,
+                  "listPathsDifferingFromBaseline": [], "bBaselineKnown": True}
+    dictMoved = dict(dictBefore, sResolvedCommit="b" * 40)
+    assert shadowRerun._fdictBaselineStillHolding(
+        dictBefore, dictMoved)["bBaselineKnown"] is False
+    assert shadowRerun._fdictBaselineStillHolding(
+        dictBefore, dict(dictBefore)) == dictBefore
 
 
 def test_a_reproduced_record_never_raises_the_proof_level(tmp_path):

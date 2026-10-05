@@ -406,17 +406,22 @@ if dictArgs.get("bHashManifestEntries"):
 for sRel in listHashPaths:
     dictOut["dictHashes"][sRel] = _fdictEntry(sRel)
 if dictArgs.get("bReadReproductions"):
+    import subprocess
     dictOut["dictReproductionRecords"] = {}
     sRecordDir = os.path.join(sRoot, ".vaibify", "reproductions")
     try:
         listNames = sorted(
             [s for s in os.listdir(sRecordDir) if s.endswith(".json")],
-            reverse=True)[:40]
+            reverse=True)
     except FileNotFoundError:
         listNames = []
     except OSError as error:
         listNames = []
         dictOut["sReproductionsError"] = type(error).__name__
+    if len(listNames) > 500:
+        listNames = []
+        dictOut["sReproductionsError"] = "TooManyRecords"
+    setWorkflowsDecided = set()
     for sName in listNames:
         try:
             iFd = os.open(os.path.join(sRecordDir, sName),
@@ -425,13 +430,50 @@ if dictArgs.get("bReadReproductions"):
                 baBody = f.read(4194305)
             if len(baBody) > 4194304:
                 raise OSError("record too large")
-            dictOut["dictReproductionRecords"][sName] = baBody.decode("utf-8")
-        except (OSError, UnicodeDecodeError) as error:
+            sBody = baBody.decode("utf-8")
+            dictRecord = json.loads(sBody)
+            if not isinstance(dictRecord, dict):
+                raise ValueError("not a record")
+        except (OSError, UnicodeDecodeError, ValueError) as error:
             dictOut["sReproductionsError"] = type(error).__name__
+            continue
+        sWorkflow = dictRecord.get("sWorkflowRelativePath")
+        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")
+                and sWorkflow and sWorkflow not in setWorkflowsDecided):
+            setWorkflowsDecided.add(sWorkflow)
+            dictOut["dictReproductionRecords"][sName] = sBody
+    if dictOut["dictReproductionRecords"]:
+        dictFacts = {}
+        for tQuestion in @@QUESTIONS@@:
+            try:
+                processGit = subprocess.run(
+                    ["git", "-C", sRoot] + @@HARDENING@@ + list(tQuestion),
+                    capture_output=True, text=True, timeout=15)
+                dictFacts[" ".join(tQuestion)] = [
+                    processGit.returncode, processGit.stdout]
+            except Exception:
+                dictFacts[" ".join(tQuestion)] = [None, ""]
+        dictOut["dictOwnershipFacts"] = dictFacts
 for sAbs in dictArgs.get("listAbsHashPaths", []):
     dictOut["dictAbsHashes"][sAbs] = _fsHashFollow(sAbs)
 sys.stdout.write(json.dumps(dictOut))
 '''
+
+from vaibify.reproducibility.gitHardening import (  # noqa: E402
+    LIST_GIT_HARDENING_CONFIG as _LIST_SNAPSHOT_GIT_HARDENING,
+    T_MANIFEST_OWNERSHIP_GIT_QUESTIONS as _T_SNAPSHOT_GIT_QUESTIONS,
+)
+
+# The program is fixed text; the two lists it embeds are fixed too, and
+# are spelled in gitHardening so the predicate that reads the answers
+# and the program that gives them cannot drift.
+# A literal percent sign would be eaten by the legacy transport, which
+# %-formats the preamble and this body together, so each one is spelled
+# as an expression the program evaluates (chr(37)).
+S_REPO_SNAPSHOT_PROGRAM_CORE = S_REPO_SNAPSHOT_PROGRAM_CORE.replace(
+    "@@QUESTIONS@@",
+    repr(tuple(_T_SNAPSHOT_GIT_QUESTIONS)).replace("%", "' + chr(37) + '"),
+).replace("@@HARDENING@@", repr(list(_LIST_SNAPSHOT_GIT_HARDENING)))
 
 _S_TYPED_READ_PATH_SLOT = "<<PATH>>"
 S_TYPED_READ_FILE_BASE64 = "readFileBase64"

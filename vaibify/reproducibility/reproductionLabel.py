@@ -14,8 +14,11 @@ WHAT MUST HOLD, all of it, for the label to show:
 
 - the newest DECISIVE record (``reproduced`` or ``diverged``) among the
   records for the selected workflow says ``reproduced``;
-- that record was written for a manifest another identity committed,
-  asked of git when the record was written (a poll cannot run git);
+- the manifest is another identity's, asked of git NOW: the snapshot
+  program puts the fixed ownership questions to git inside the
+  container and this module answers the one predicate from the
+  replies, so an author who opens their own project never sees a
+  reader's label;
 - the live ``MANIFEST.sha256`` and the live workflow file hash to the
   digests the record bound, read from the snapshot taken before any
   step ran;
@@ -33,7 +36,9 @@ nor the absence of one.
 import json
 import posixpath
 
+from vaibify.reproducibility import gitEvidence
 from vaibify.reproducibility.manifestWriter import flistParseManifestText
+from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
 
 __all__ = [
     "S_STATE_ABSENT",
@@ -54,7 +59,6 @@ S_STATE_UNREADABLE = "unreadable"
 _S_VERDICT_REPRODUCED = "reproduced"
 _S_VERDICT_DIVERGED = "diverged"
 _S_MANIFEST_PATH = "MANIFEST.sha256"
-_S_OWNERSHIP_FOREIGN = "foreign"
 
 
 def fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot):
@@ -98,9 +102,15 @@ def fdictBuildReproductionLabel(
     filesPoll, sWorkflowRelativePath, dictLastNoVerdict=None,
 ):
     """Return the label payload for one poll of one workflow."""
-    dictRecordTexts = getattr(filesPoll, "dictReproductionRecords", None)
-    if dictRecordTexts is None:
+    if not isinstance(filesPoll, SnapshotRepoFiles):
         return _fdictLabel(S_STATE_ABSENT)
+    dictRecordTexts = filesPoll.dictReproductionRecords
+    if dictRecordTexts is None:
+        # A snapshot that did not carry the records did not READ them:
+        # a failed read is not a project with nothing in it.
+        return _fdictLabel(
+            S_STATE_UNREADABLE, "the reproduction records were not read",
+        )
     if getattr(filesPoll, "sReproductionsError", "") or getattr(
         filesPoll, "bManifestHasEscapedPaths", False,
     ):
@@ -139,6 +149,17 @@ def _fdictLabelFromRecords(
         return _fdictLabel(
             S_STATE_DIVERGED, "the newest reproduction did not match",
         )
+    sOwnership = gitEvidence.fsManifestOwnershipFromSnapshotFacts(
+        filesPoll.dictOwnershipFacts)
+    if sOwnership == gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:
+        return _fdictLabel(
+            S_STATE_UNREADABLE,
+            "git could not say whose manifest this is",
+        )
+    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:
+        return _fdictLabel(
+            S_STATE_ABSENT, "the manifest is this project's own",
+        )
     sStale = _fsReasonEvidenceChanged(filesPoll, dictNewest)
     if sStale:
         return _fdictLabel(S_STATE_STALE, sStale)
@@ -164,8 +185,6 @@ def _fdictLabelForReproduced(dictRecord, dictLastNoVerdict):
 
 def _fsReasonEvidenceChanged(filesPoll, dictRecord):
     """Return why the record's evidence no longer holds, or ``""`` if it does."""
-    if dictRecord.get("sManifestOwnershipAtRun") != _S_OWNERSHIP_FOREIGN:
-        return "the record was not written for a manifest the author committed"
     sBoundManifest = str(dictRecord.get("sManifestDigest") or "")
     if not sBoundManifest or _fsLiveDigest(
         filesPoll, _S_MANIFEST_PATH,

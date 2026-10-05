@@ -980,6 +980,7 @@ class SnapshotRepoFiles:
         self.dictReproductionRecords = None
         self.sReproductionsError = ""
         self.bManifestHasEscapedPaths = False
+        self.dictOwnershipFacts = None
 
     @classmethod
     def ffilesFetch(
@@ -1086,6 +1087,8 @@ class SnapshotRepoFiles:
             "sReproductionsError", "")
         filesSnapshot.bManifestHasEscapedPaths = bool(
             dictParsed.get("bManifestHasEscapedPaths"))
+        filesSnapshot.dictOwnershipFacts = dictParsed.get(
+            "dictOwnershipFacts")
         return filesSnapshot
 
     def fsLocalRootOrNone(self):
