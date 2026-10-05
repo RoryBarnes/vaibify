@@ -1,0 +1,89 @@
+name: published-reproduction
+
+# A weekly check that a real, published project still reproduces in its
+# author's own environment, on a native amd64 runner (no emulation).
+#
+# It is neither a merge gate nor a publisher. Its job name starts with
+# `weekly:` on purpose: the ruleset matches required checks by name, so
+# a name that cannot be mistaken for a `unit:` check keeps anyone from
+# adding a lane that never reports on a pull request to the required
+# set, which would block every merge on a check that cannot arrive. A
+# red week is a signal to read -- the published image, its deposit or
+# vaibify itself changed -- not a block.
+#
+# The project named below is the ONE shipped example that may appear in
+# vaibify's own tooling (tests/testPublishedReproductionWorkflow.py pins
+# this file as the only place it is named).
+#
+# No `push: [main]` and no `pull_request`:
+# testEveryWorkflowIsClassifiedOrDeliberatelyScheduled forbids an
+# event-driven lane outside the pre/post-merge split.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reproduce:
+    name: 'weekly:published-reproduction'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install vaibify from this checkout
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Check the Docker daemon
+        run: docker version
+
+      - name: Reproduce the published project
+        # The command exits non-zero unless its verdict is `reproduced`.
+        run: |
+          vaibify reproduce \
+            --from https://github.com/RoryBarnes/aigreenhouse.git \
+            --rerun
+
+      - name: Assert the report's verdict
+        # A second reading of the written report, so a change to the
+        # command's exit behaviour cannot turn a divergence green.
+        run: |
+          python - <<'PYEOF'
+          import glob, json, os, sys
+          sPattern = os.path.expanduser(
+              "~/.vaibify/reproductions/reports/*.json")
+          listReports = sorted(glob.glob(sPattern), key=os.path.getmtime)
+          if not listReports:
+              sys.exit("no reproduction report was written")
+          dictReport = json.load(open(listReports[-1]))
+          print("verdict:", dictReport.get("sVerdict"))
+          sys.exit(0 if dictReport.get("sVerdict") == "reproduced" else 1)
+          PYEOF
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reproduction-report
+          path: ~/.vaibify/reproductions/reports/*.json
+          if-no-files-found: warn

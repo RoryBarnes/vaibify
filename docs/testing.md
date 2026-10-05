@@ -356,6 +356,7 @@ doubles the wait for no extra signal.
 | `tests-macos-nightly.yml` | the full macOS unit matrix, macOS 15 and 26 × Python 3.9–3.14, so the four cells the pull-request lane leaves out (macOS 15 on 3.10–3.13) still run within a day | nightly + manual |
 | `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
 | `freshImageBuild.yml` | a full image build from scratch on an amd64 and an arm64 runner, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
+| `publishedReproduction.yml` | reproduces one real published project in its author's own environment on a native amd64 runner and fails unless the report's verdict is `reproduced` (job `weekly:published-reproduction`, never required) | weekly + manual |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change | monthly + manual |
 
 `tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
