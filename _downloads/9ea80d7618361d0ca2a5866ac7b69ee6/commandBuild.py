@@ -230,6 +230,29 @@ def _ftReadPinnedEnvironment():
     return (sPinnedDigest, fsReadImageRecipeLabel(sPinnedDigest))
 
 
+def _fsBuiltEnvironmentReference(sProjectName):
+    """Return the agent-free environment image the fresh build stands on.
+
+    The envelope pins the environment, never the coding agents stacked
+    on it, so the rebuild is compared on the same footing -- comparing
+    against ``:latest`` would report every build with agents as drift.
+    Degrades to ``:latest`` when the environment cannot be resolved:
+    this feeds a warning, which must never abort a finished build.
+    """
+    from vaibify.reproducibility.environmentSnapshot import (
+        fsResolveEnvironmentImageId,
+    )
+    sLatest = f"{sProjectName}:latest"
+    try:
+        sImageId = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", sLatest],
+            capture_output=True, text=True, encoding="utf-8", timeout=30,
+        ).stdout.strip()
+        return fsResolveEnvironmentImageId(sImageId) or sLatest
+    except Exception:  # noqa: BLE001 — a warning never aborts a build
+        return sLatest
+
+
 def fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore):
     """Tell the researcher when a rebuild moved the environment.
 
@@ -250,7 +273,7 @@ def fnWarnIfRebuildChangedEnvironment(config, tPinnedBefore):
     sPinnedDigest, sPinnedRecipe = tPinnedBefore
     if not sPinnedDigest:
         return
-    sImageReference = f"{config.sProjectName}:latest"
+    sImageReference = _fsBuiltEnvironmentReference(config.sProjectName)
     dictBuilt = fdictCaptureBuiltImageIdentity(sImageReference)
     listLines = flistDescribeEnvironmentDrift(
         fdictCompareRebuiltEnvironment(
@@ -435,18 +458,28 @@ def fnPruneDanglingImages():
 
 
 def fnPrepareBuildContext(config, sDockerDir, sProjectDirectory=None):
-    """Generate all config-derived files in the Docker build context."""
+    """Generate all config-derived files in the Docker build context.
+
+    Works on a COPY of ``config``. Adding the project's own repository
+    to the list the entrypoint clones is a fact about this build
+    context, never about the researcher's ``vaibify.yml``; added to the
+    caller's object it reached the configuration fingerprint the build
+    stamps next, so the stamp never matched the file and every freshly
+    built container announced it predated its own ``vaibify.yml``.
+    """
+    import copy
     from vaibify.config.containerConfig import (
         fnGenerateContainerConf,
     )
-    fnIncludeProjectRepo(config, sProjectDirectory)
+    configContext = copy.deepcopy(config)
+    fnIncludeProjectRepo(configContext, sProjectDirectory)
     fnGenerateContainerConf(
-        config, os.path.join(sDockerDir, "container.conf")
+        configContext, os.path.join(sDockerDir, "container.conf")
     )
-    fnWriteSystemPackages(config, sDockerDir)
-    fnWritePythonPackages(config, sDockerDir)
-    fnWritePipInstallFlags(config, sDockerDir)
-    fnWriteBinariesEnv(config, sDockerDir)
+    fnWriteSystemPackages(configContext, sDockerDir)
+    fnWritePythonPackages(configContext, sDockerDir)
+    fnWritePipInstallFlags(configContext, sDockerDir)
+    fnWriteBinariesEnv(configContext, sDockerDir)
     fnCopyContainerScripts(sDockerDir)
     fnStageCuratedDocs(sDockerDir)
 

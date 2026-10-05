@@ -25,6 +25,7 @@ from vaibify.reproducibility.repoFiles import (
 
 
 __all__ = [
+    "EnvironmentImageUnresolvedError",
     "fbBinaryCaptured",
     "fbEnvironmentDigestPinned",
     "fbImageDigestPullable",
@@ -33,9 +34,12 @@ __all__ = [
     "fdictCaptureLiveImageIdentity",
     "fdictCaptureBuiltImageIdentity",
     "fbImageExistsLocally",
+    "S_ARCHIVE_LINEAGE_KEY",
     "S_SUPERSEDED_ARCHIVE_KEY",
+    "fdictArchiveLineageOf",
     "fdictCarryImageArchiveForward",
     "fsReadImageRecipeLabel",
+    "fsResolveEnvironmentImageId",
     "fsReadContainerConfigurationLabel",
     "fsReadImageToolchainEpoch",
     "fdictCaptureSingleBinary",
@@ -55,6 +59,14 @@ _SCHEMA_VERSION = "1"
 # exists so a researcher can still see the identifiers of the deposit
 # their permanent one superseded.
 S_SUPERSEDED_ARCHIVE_KEY = "dictSupersededImageArchive"
+
+# Which Zenodo record the environment was last archived under, kept when
+# the image changes and the record stops covering the envelope. Also a
+# NOTE: no gate reads it. The next deposit of a new image is made a new
+# VERSION of that record, so an environment's images stay one lineage
+# on Zenodo instead of a string of unrelated records.
+S_ARCHIVE_LINEAGE_KEY = "dictImageArchiveLineage"
+_T_LINEAGE_FIELDS = ("sVersionDoi", "sConceptDoi", "sZenodoService")
 _OS_RELEASE_PATH = "/etc/os-release"
 _DOCKER_INSTALL_HINT = (
     "docker executable not found on PATH. Install Docker Desktop, "
@@ -83,9 +95,24 @@ def fdictCaptureContainerImageDigest(sContainerName):
     platforms and pins none of them — so a matching digest does not
     imply a matching platform, and the environment archive's gate
     compares both.
+
+    The image pinned is the agent-free ENVIRONMENT the container's
+    image stands on (``fsResolveEnvironmentImageId``), never the coding
+    agents stacked above it: they help write the code and compute no
+    result, so a reproduction must not need them. Their names ride as
+    ``listAgentOverlays``. An environment that cannot be vouched for
+    pins nothing, with ``sUnpinnedReason`` saying why.
     """
     _fnEnsureDockerAvailable()
-    sImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
+    sRunningImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
+    try:
+        sImageId = fsResolveEnvironmentImageId(sRunningImageId)
+    except EnvironmentImageUnresolvedError as errorUnresolved:
+        return {
+            "sContainerName": sContainerName, "sImageDigest": None,
+            "bLocalImageOnly": False, "sArchitecture": "",
+            "sUnpinnedReason": str(errorUnresolved),
+        }
     sRepoDigest = None
     if sImageId:
         sRepoDigest = _fsParseRepoDigests(
@@ -95,7 +122,107 @@ def fdictCaptureContainerImageDigest(sContainerName):
         sContainerName, sImageId, sRepoDigest,
     )
     dictEntry["sArchitecture"] = fsReadImageArchitecture(sImageId)
+    listAgentOverlays = _flistOverlaysAbove(sImageId, sRunningImageId)
+    if listAgentOverlays:
+        dictEntry["listAgentOverlays"] = listAgentOverlays
     return dictEntry
+
+
+class EnvironmentImageUnresolvedError(Exception):
+    """An image names an agent-free environment the daemon cannot vouch for."""
+
+
+def fsResolveEnvironmentImageId(sImageId):
+    """Return the ID of the agent-free image ``sImageId`` stands on.
+
+    An image vaibify stacked coding agents onto names the agent-free
+    stage below them in ``S_ENVIRONMENT_IMAGE_LABEL``; every other
+    image IS its own environment and answers with its own ID. A value
+    not shaped like an image ID is no claim at all -- a nil label map
+    renders as ``<no value>`` -- so it reads as absent.
+
+    A well-formed value is still only a claim until the daemon
+    confirms it: the named image must be held here, and its layers
+    must be a prefix of this image's, which is what "stacked on"
+    means. Either failing RAISES, because answering with the running
+    image instead would pin -- and publish -- the agents' image while
+    every record said it had not.
+    """
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_ENVIRONMENT_IMAGE_LABEL,
+    )
+    if not sImageId:
+        return sImageId
+    sNamed = _fsInspectFormatValue(
+        sImageId,
+        '{{index .Config.Labels "' + S_ENVIRONMENT_IMAGE_LABEL + '"}}',
+    ).strip()
+    if not _fbIsImageIdDigest(sNamed) or sNamed == sImageId:
+        return sImageId
+    try:
+        listEnvironmentLayers = _flistReadImageLayers(sNamed)
+    except subprocess.CalledProcessError as errorInspect:
+        raise EnvironmentImageUnresolvedError(
+            f"the image this container runs was built on the agent-free "
+            f"environment image {sNamed}, which this Docker no longer "
+            "holds, so there is no environment to pin. Rebuild the "
+            "project image and restart the container."
+        ) from errorInspect
+    listOwnLayers = _flistReadImageLayers(sImageId)
+    if listOwnLayers[:len(listEnvironmentLayers)] != listEnvironmentLayers:
+        raise EnvironmentImageUnresolvedError(
+            f"the image this container runs names {sNamed} as the "
+            "agent-free environment it was built on, but it is not built "
+            "on that image. Rebuild the project image and restart the "
+            "container."
+        )
+    return sNamed
+
+
+def _flistReadImageLayers(sImageReference):
+    """Return an image's layer diff IDs, bottom first."""
+    return json.loads(_fsInspectFormatValue(
+        sImageReference, "{{json .RootFS.Layers}}",
+    ) or "[]")
+
+
+def _flistOverlaysAbove(sEnvironmentImageId, sRunningImageId):
+    """Return the coding agents the running image holds above its environment.
+
+    Names only, read from the two images' own overlays labels, and
+    agents only -- a prerequisite such as Node.js rides above the
+    environment too but is no agent; the versions the researcher
+    actually used are captured separately, in the AI provenance stamp.
+    Empty when the two are one image or either label is unreadable -- a
+    list that cannot be read is not evidence of no agents, so nothing is
+    recorded rather than "none".
+    """
+    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
+    if not sRunningImageId or sRunningImageId == sEnvironmentImageId:
+        return []
+    listRunning = _flistReadOverlaysLabel(sRunningImageId)
+    listEnvironment = _flistReadOverlaysLabel(sEnvironmentImageId)
+    return [
+        s for s in listRunning
+        if s not in listEnvironment and s in T_AGENT_OVERLAY_NAMES
+    ]
+
+
+def _flistReadOverlaysLabel(sImageReference):
+    """Return one image's overlays label as a list, or ``[]``."""
+    from vaibify.reproducibility.dockerfileComposer import (
+        S_OVERLAYS_IMAGE_LABEL,
+    )
+    try:
+        sValue = _fsInspectFormatValue(
+            sImageReference,
+            '{{index .Config.Labels "' + S_OVERLAYS_IMAGE_LABEL + '"}}',
+        ).strip()
+    except subprocess.CalledProcessError:
+        return []
+    if sValue == "<no value>":
+        return []
+    return [s for s in sValue.split(",") if s]
 
 
 def fsReadImageArchitecture(sImageReference):
@@ -165,9 +292,32 @@ def fdictCaptureLiveImageIdentity(sContainerName):
     One capture at connect is truth for the whole session — a
     container's image cannot change while it runs; a rebuild creates a
     fresh container, which arrives through a fresh connect.
+
+    When the running image stands on an agent-free environment image,
+    that image's two identities travel too, as
+    ``sEnvironmentImageDigest`` / ``sEnvironmentImageId``: the envelope
+    pins the environment, so the comparison must be able to see it.
+    An environment that cannot be vouched for is simply left out,
+    which the comparison reads as "not this container's environment".
     """
     _fnEnsureDockerAvailable()
     sImageId = _fsInspectFormatValue(sContainerName, "{{.Image}}")
+    dictIdentity = _fdictImageIdentityForId(sContainerName, sImageId)
+    try:
+        sEnvironmentId = fsResolveEnvironmentImageId(sImageId)
+    except EnvironmentImageUnresolvedError:
+        sEnvironmentId = ""
+    if sEnvironmentId and sEnvironmentId != sImageId:
+        dictEnvironment = _fdictImageIdentityForId(
+            sContainerName, sEnvironmentId,
+        )
+        dictIdentity["sEnvironmentImageDigest"] = dictEnvironment["sImageDigest"]
+        dictIdentity["sEnvironmentImageId"] = dictEnvironment["sImageId"]
+    return dictIdentity
+
+
+def _fdictImageIdentityForId(sContainerName, sImageId):
+    """Return ``{sImageDigest, sImageId}`` for one image ID."""
     sRepoDigest = None
     if sImageId:
         sRepoDigest = _fsParseRepoDigests(
@@ -363,13 +513,49 @@ def fdictCarryImageArchiveForward(dictPrevious, dictFresh):
     for sField in ("sImageDigest", "sArchitecture"):
         sPrevious = str((dictPrevious or {}).get(sField) or "")
         if not sPrevious or sPrevious != str(dictFresh.get(sField) or ""):
-            return dictFresh
+            return _fdictWithArchiveLineage(dictPrevious, dictFresh)
     dictCarried = dict(dictFresh)
-    for sKey in ("dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY):
+    for sKey in (
+        "dictImageArchive", S_SUPERSEDED_ARCHIVE_KEY, S_ARCHIVE_LINEAGE_KEY,
+    ):
         dictRecord = (dictPrevious or {}).get(sKey)
         if isinstance(dictRecord, dict):
             dictCarried[sKey] = dictRecord
     return dictCarried if dictCarried != dict(dictFresh) else dictFresh
+
+
+def _fdictWithArchiveLineage(dictPrevious, dictFresh):
+    """Return ``dictFresh`` noting the record the previous image was archived under.
+
+    The record itself is dropped -- it covers the old image, not this
+    one -- but which Zenodo record it was is what lets the next deposit
+    continue that record's versions. A previous envelope with no record
+    of its own passes its lineage note on unchanged.
+    """
+    dictLineage = fdictArchiveLineageOf(dictPrevious)
+    if not dictLineage:
+        return dictFresh
+    dictNoted = dict(dictFresh)
+    dictNoted[S_ARCHIVE_LINEAGE_KEY] = dictLineage
+    return dictNoted
+
+
+def fdictArchiveLineageOf(dictContainer):
+    """Return ``{sVersionDoi, sConceptDoi, sZenodoService}`` or ``{}``.
+
+    The container block's own deposit record when it has one, else the
+    lineage note it already carries; empty when neither names a
+    version DOI.
+    """
+    dictContainer = dictContainer or {}
+    for sKey in ("dictImageArchive", S_ARCHIVE_LINEAGE_KEY):
+        dictRecord = dictContainer.get(sKey)
+        if isinstance(dictRecord, dict) and dictRecord.get("sVersionDoi"):
+            return {
+                sField: str(dictRecord.get(sField) or "")
+                for sField in _T_LINEAGE_FIELDS
+            }
+    return {}
 
 
 def _fnEnsureDockerAvailable():
@@ -825,7 +1011,10 @@ def fbImageDigestPullable(filesRepo):
     return not _fbIsImageIdDigest(sDigest)
 
 
-def fdictCompareEnvelopePin(sPinnedDigest, sLiveImageDigest, sLiveImageId):
+def fdictCompareEnvelopePin(
+    sPinnedDigest, sLiveImageDigest, sLiveImageId,
+    sEnvironmentImageDigest="", sEnvironmentImageId="",
+):
     """Compare an envelope's pinned image against the live one, as VALUES.
 
     The leaf both lanes call. The hub's caller reads the pin from a
@@ -843,6 +1032,13 @@ def fdictCompareEnvelopePin(sPinnedDigest, sLiveImageDigest, sLiveImageId):
     The pin matches EITHER identity form, because an image pushed to a
     registry after the capture gains a registry digest without
     changing.
+
+    A pin naming the agent-free ENVIRONMENT the live image stands on
+    is the ordinary state of a project with coding agents: the answer
+    is ``sRelation: "derived"`` with ``bPinnedImageIsLive`` None,
+    exactly as for agents stacked on an obtained image -- a note,
+    never a warning, and never a claim that the container runs the
+    pin.
     """
     dictAnswer = {
         "sPinnedImageDigest": sPinnedDigest,
@@ -854,6 +1050,13 @@ def fdictCompareEnvelopePin(sPinnedDigest, sLiveImageDigest, sLiveImageId):
     dictAnswer["bPinnedImageIsLive"] = sPinnedDigest in (
         sLiveImageDigest, sLiveImageId,
     )
+    if not dictAnswer["bPinnedImageIsLive"] and sPinnedDigest in (
+        sEnvironmentImageDigest or None, sEnvironmentImageId or None,
+    ):
+        dictAnswer["bPinnedImageIsLive"] = None
+        dictAnswer["sRelation"] = "derived"
+        dictAnswer["sPinnedBaseImageId"] = sEnvironmentImageId
+        dictAnswer["sRunningImageId"] = sLiveImageId
     return dictAnswer
 
 
