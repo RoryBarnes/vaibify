@@ -74,6 +74,7 @@ jobs:
         # the run below demands them (VAIBIFY_REQUIRE_SHELLS). zsh and
         # bash ship with macOS; fish does not. Nothing installed here is
         # a dependency of vaibify.
+        timeout-minutes: 10
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'

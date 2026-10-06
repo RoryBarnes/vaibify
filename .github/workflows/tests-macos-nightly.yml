@@ -64,6 +64,7 @@ jobs:
 
       - name: Install the shells the completion tests drive
         # TESTING ONLY, and the same step as tests-macos.yml; see there.
+        timeout-minutes: 10
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'

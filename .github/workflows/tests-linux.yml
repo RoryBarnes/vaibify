@@ -71,6 +71,7 @@ jobs:
         # for having tested nothing, so the shells are installed here and
         # the run below demands them (VAIBIFY_REQUIRE_SHELLS). Nothing
         # installed here is a dependency of vaibify.
+        timeout-minutes: 10
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fish zsh
