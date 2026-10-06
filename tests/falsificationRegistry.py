@@ -24770,6 +24770,12 @@ def _fdictEntry(sRel):
         old='        if bCreateParents:\n            os.makedirs(os.path.dirname(sRealPath), exist_ok=True)\n',
         new='        pass\n',
     ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAPathOutsideTheRootIsRefusedByTheRendererAsTheSameError',
+        source='vaibify/docker/dockerConnection.py',
+        old='        except ValueError as error:\n            raise confinedRead.ContainerReadRefusedError(\n                f"Read of {sPath} refused: {error}"\n            ) from error\n',
+        new='        except ValueError:\n            raise\n',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',

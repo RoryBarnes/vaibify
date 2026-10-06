@@ -242,7 +242,13 @@ def testARefusalAndAMissingFileRaiseBeforeAnyChunkIsYielded(dictProject):
         next(iterMissing)
 
 
+@pytest.mark.falsification
 def testAPathOutsideTheRootIsRefusedByTheRendererAsTheSameError(dictProject):
+    """A path the renderer rejects reaches a route as the SAME refusal.
+
+    Kills: letting the renderer's ``ValueError`` escape untranslated, so
+    a route would answer a researcher's out-of-root path with a 500.
+    """
     connection = _fconnectionOverDaemon(ExecProgramDaemon(), "cid-outside")
     with pytest.raises(ContainerReadRefusedError):
         next(connection.fiterReadFileConfined(
