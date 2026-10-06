@@ -1465,6 +1465,35 @@ takes an operation name from a fixed table plus a path or a flat
 sequence of paths, and BUILDS the command; it never accepts one. That
 distinction is what keeps the carve-out from becoming a general bypass.
 
+**An upload is received before it is carried.** The streamed upload
+(`vaibify/gui/routes/uploadRoutes.py`) is mode (b), and the order inside
+it is the contract. The route class authenticates the researcher and
+binds the request to the container's current owner, and every name and
+path is checked, before the handler reads a body byte; the in-container
+agent is refused here and keeps its repository-confined base64 route.
+The body is then spooled to a private file under `~/.vaibify/tmp/uploads`
+and hashed as it arrives, because the write-ahead journal records the
+sha256 of the bytes it is about to write and a stream's hash is known
+only when it has ended. A host project spools too, for the same reason;
+only the spool's disk differs. The request is bound to its owner a
+second time at the commit, since a spool can take minutes. The carrier
+then records `file-write` with the expected and prior hashes and copies
+the spool into place through the confined writer, so the lock is held
+for the copy and never for the researcher's network. A file the upload
+replaces that changed while the carrier waited is not replaced (the
+prior hash is read again inside the worker). "Already exists" (409) and
+"disk full" (507) are carried back as answers rather than raised: the
+writer removed its temporary file and left the old one, so the
+container's state is known and quarantining it would take a working
+container out of service. The free-space check is an upfront check, not
+a promise: for a container the destination is Docker's volume, inside a
+virtual machine whose disk sits on the host's, and whether the two draw
+on one pool cannot be read from outside. Downloads are the mirror image
+and carry no carrier at all: a read mutates nothing, so
+`downloadRoutes.py` streams from fixed read programs that run as the
+container user and walk the path without following a link they were not
+told to (`vaibify/docker/confinedRead.py`).
+
 **Scope, stated so the record is not read as more than it is.** The
 migration was scoped to the routes that mutate. 83 of 130
 container-scoped routes are declared; the 46 read-only ones stay on the
