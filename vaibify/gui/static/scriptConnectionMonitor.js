@@ -55,6 +55,7 @@ var VaibifyConnectionMonitor = (function () {
 
     function fnReportPollFailure(sPoller, dictError) {
         if (_bSurfaced) return;
+        if (VaibifyApi.fbErrorWasHandledByRecovery(dictError)) return;
         if (!_fbErrorIsDisconnectSignal(dictError)) {
             console.warn(
                 "[poll] " + sPoller + " failed:",
@@ -86,14 +87,36 @@ var VaibifyConnectionMonitor = (function () {
          * anything, which is what the other two messages claim. */
         var bWindowExhausted = Boolean(
             dictEvent && dictEvent.bWindowExhausted);
-        fnSurfaceServerUnreachable({
+        var dictError = {
             sKind: bWindowExhausted
                 ? "windowExhausted"
                 : _fsKindFromCloseCode(iCode),
             iCode: iCode,
             fWindowSeconds: dictEvent && dictEvent.fWindowSeconds,
             sMessage: "WebSocket closed (code " + (iCode || "?") + ")",
-        });
+        };
+        if (dictError.sKind === "unauthorized") {
+            _fnSurfaceAfterReadingEndingNotice(dictError);
+            return;
+        }
+        fnSurfaceServerUnreachable(dictError);
+    }
+
+    async function _fnSurfaceAfterReadingEndingNotice(dictError) {
+        /* A socket closed 4401 carries no reason, but the hub keeps the
+           one it recorded when it ended this session and answers it to
+           ANY request the revoked credential makes. Asking is what turns
+           "it restarted or expired" into the sentence that names what
+           happened and what to run, and it is asked before the notice
+           is raised so the researcher sees one. */
+        try {
+            await VaibifyApi.fdictGet("/api/session/lifetime");
+        } catch (error) {
+            if (error && error.dictDetail && error.dictDetail.sMessage) {
+                dictError.dictDetail = error.dictDetail;
+            }
+        }
+        fnSurfaceServerUnreachable(dictError);
     }
 
     function _fsDescribeHeldFor(fWindowSeconds) {
@@ -174,8 +197,7 @@ var VaibifyConnectionMonitor = (function () {
         if (dictDetail.sMessage) {
             return (
                 dictDetail.sMessage +
-                _fsDescribeEndingTime(dictDetail.sEndedWallClockIso) +
-                " Click to reload the dashboard."
+                _fsDescribeEndingTime(dictDetail.sEndedWallClockIso)
             );
         }
         return (

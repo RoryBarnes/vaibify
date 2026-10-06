@@ -110,6 +110,13 @@ html, body {
     margin-bottom: 12px;
 }
 
+.picker-environment-line {
+    margin: 0 0 8px;
+    padding-left: 2px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
 .picker-refresh {
     font-size: 18px !important;
     color: var(--text-muted);

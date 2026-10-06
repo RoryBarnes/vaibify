@@ -18,6 +18,10 @@ const VaibifyApp = (function () {
         dictDashboardMode: null,
         sLeaseId: "",
         sLeaseContainerName: null,
+        /* Advanced on every screen change and project switch. A request
+           records it when it is issued, so an answer that arrives after
+           the researcher moved on is recognised as theirs no longer. */
+        iViewGeneration: 0,
         fSessionExpiryWarnedFraction: 0,
         /* The server's answer, stored so panels that must speak
            differently about a host project ask one place rather than
@@ -363,6 +367,14 @@ const VaibifyApp = (function () {
 
     function fsGetLeaseId() {
         return _dictSessionState.sLeaseId || "";
+    }
+
+    function fnAdvanceViewGeneration() {
+        _dictSessionState.iViewGeneration += 1;
+    }
+
+    function fiGetViewGeneration() {
+        return _dictSessionState.iViewGeneration;
     }
 
     function fsGetLeaseForContainer(sName) {
@@ -1074,26 +1086,10 @@ const VaibifyApp = (function () {
         _dictWorkflowState.iCachedProofLevel = null;
     }
 
-    async function _fdictConnectReclaimingOnce(sId) {
-        /* Opening a Blank Project meets the same reaped-claim refusal
-           the workflow picker does, and its message names a control --
-           the project tile -- that is one screen away. Recover the way
-           the picker does rather than print an instruction the
-           researcher cannot follow from here; a reclaim the server
-           refuses rethrows, and the caller reports it. */
-        try {
-            return await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
-        } catch (error) {
-            if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
-                error
-            )) throw error;
-            return await VaibifyApi.fdictPostRaw("/api/connect/" + sId);
-        }
-    }
-
     async function fnEnterNoWorkflow(sId) {
         try {
-            var dictConnect = await _fdictConnectReclaimingOnce(sId);
+            var dictConnect = await VaibifyApi.fdictPostRaw(
+                "/api/connect/" + sId);
             _fnRecordViewerLeaseFromConnect(sId, dictConnect);
             _fnResetWorkflowState();
             _dictSessionState.sContainerId = sId;
@@ -1265,11 +1261,7 @@ const VaibifyApp = (function () {
     }
 
     function fnShowContainerLanding() {
-        var sActiveName = VaibifyContainerManager
-            .fsGetSelectedContainerName();
-        if (sActiveName) {
-            VaibifyContainerManager.fnReleaseClaim(sActiveName);
-        }
+        fnAdvanceViewGeneration();
         document.getElementById("containerLanding").style.display = "flex";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.remove("active");
@@ -1295,8 +1287,21 @@ const VaibifyApp = (function () {
                 : "Work directly in the container";
     }
 
+    function _fnApplyEnvironmentLine(sContainerName) {
+        /* Names the place the list below belongs to: the environment
+           tile the researcher chose, or the machine itself for a host
+           project, which has no container to name. */
+        var elLine = document.getElementById("pickerEnvironmentLine");
+        if (!elLine) return;
+        elLine.textContent = _dictSessionState.sProjectMode === "host"
+            ? "Environment: this computer"
+            : "Environment: " + (sContainerName || "");
+    }
+
     function fnShowWorkflowPicker(sContainerName) {
+        fnAdvanceViewGeneration();
         _fnApplyBlankProjectLocation();
+        _fnApplyEnvironmentLine(sContainerName);
         document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "flex";
         document.getElementById("mainLayout").classList.remove("active");
@@ -1308,6 +1313,7 @@ const VaibifyApp = (function () {
     }
 
     function fnShowMainLayout() {
+        fnAdvanceViewGeneration();
         document.getElementById("containerLanding").style.display = "none";
         document.getElementById("workflowPicker").style.display = "none";
         document.getElementById("mainLayout").classList.add("active");
@@ -1398,6 +1404,119 @@ const VaibifyApp = (function () {
             _dictWorkflowState.abortControllerFileCheck = null;
         }
         VaibifyPipelineRunner.fnCancelSentinelMonitor();
+    }
+
+    /* --- Leaving for the Environments page ---
+
+       The claim is given back BEFORE anything is torn down. Closing the
+       socket first left a claim held by a session with no socket, which
+       the hub revokes fifteen seconds later; and a release the hub
+       commits closes this page's own sockets with 4401 before it
+       answers, which the page would otherwise read as a rejected
+       credential. So the sockets are marked as expected to close, the
+       release is asked for, and its OUTCOME decides whether to go. */
+
+    var _bLeavingForEnvironments = false;
+    var _iClaimRecoverySuspensions = 0;
+
+    function _fbEnvironmentsScreenIsShown() {
+        var elLanding = document.getElementById("containerLanding");
+        return Boolean(elLanding) && elLanding.style.display === "flex";
+    }
+
+    function fnSuspendClaimRecovery() {
+        _iClaimRecoverySuspensions += 1;
+    }
+
+    function fnResumeClaimRecovery() {
+        _iClaimRecoverySuspensions = Math.max(
+            0, _iClaimRecoverySuspensions - 1);
+    }
+
+    function fbClaimRecoveryIsAllowed() {
+        /* A claim is taken again only for a container the researcher is
+           IN: on its Project Hub or its dashboard. Never while the claim
+           is being given up on purpose (a release, or a conversion that
+           releases it server-side), and never once the Environments page
+           is showing -- a poll still in flight at that moment was refused
+           for want of the claim the researcher gave up. */
+        return _iClaimRecoverySuspensions === 0 &&
+            !_fbEnvironmentsScreenIsShown();
+    }
+
+    async function fnLeaveToEnvironments() {
+        if (_bLeavingForEnvironments) return;
+        _bLeavingForEnvironments = true;
+        try {
+            if (await fbReleaseHeldClaimForLeaving()) fnDisconnect();
+        } finally {
+            _bLeavingForEnvironments = false;
+        }
+    }
+
+    async function fbReleaseHeldClaimForLeaving() {
+        /* True when this page may leave: the claim was released, or was
+           not held. False keeps the researcher where they are, with the
+           reason on screen. */
+        var sName = VaibifyContainerManager.fsGetSelectedContainerName();
+        if (!sName || !fsGetLeaseForContainer(sName)) return true;
+        fnSuspendClaimRecovery();
+        try {
+            return await _fbReleaseAndDecideToLeave(sName);
+        } finally {
+            fnResumeClaimRecovery();
+        }
+    }
+
+    async function _fbReleaseAndDecideToLeave(sName) {
+        VaibifyWebSocket.fnMarkClosingForRelease();
+        VaibifyTerminal.fnMarkClosingForRelease();
+        var dictOutcome = await VaibifyContainerManager
+            .fdictReleaseClaimOutcome(sName);
+        var bLeave = await _fbOutcomeAllowsLeaving(sName, dictOutcome);
+        if (bLeave) {
+            fnForgetLease();
+        } else {
+            VaibifyWebSocket.fnRestoreAfterRefusedRelease();
+            VaibifyTerminal.fnUnmarkClosingForRelease();
+        }
+        return bLeave;
+    }
+
+    async function _fbOutcomeAllowsLeaving(sName, dictOutcome) {
+        if (dictOutcome.sOutcome === "released") return true;
+        if (dictOutcome.sOutcome === "retained") {
+            fnShowToast(dictOutcome.sMessage, "warning");
+            return false;
+        }
+        return await _fbRegistryShowsClaimGone(sName, dictOutcome.sMessage);
+    }
+
+    async function _fbRegistryShowsClaimGone(sName, sServerSentence) {
+        /* A release can commit and lose its answer, or be answered in a
+           way that does not say whether the claim is still ours. Neither
+           is asserted: the hub's own list says whether this session
+           holds the container now. */
+        var dictRegistry;
+        try {
+            dictRegistry = await VaibifyApi.fdictGet("/api/registry");
+        } catch (error) {
+            fnShowToast(
+                "The hub is not answering, so it is not known whether '" +
+                sName + "' was released. This page stays where it is " +
+                "until the hub answers.", "warning");
+            return false;
+        }
+        var dictEntry = (dictRegistry.listContainers || []).find(
+            function (dictListed) { return dictListed.sName === sName; });
+        if (dictEntry && dictEntry.bOwnedByThisSession === true) {
+            fnShowToast(
+                sServerSentence || "The release of '" + sName +
+                "' could not be confirmed, and nothing changed: this " +
+                "session still holds it.", "warning");
+            return false;
+        }
+        return true;
     }
 
     function fnDisconnect() {
@@ -7227,6 +7346,8 @@ const VaibifyApp = (function () {
         fsGetLeaseForContainer: fsGetLeaseForContainer,
         fnRecordClaimedLease: fnRecordClaimedLease,
         fnForgetLease: fnForgetLease,
+        fnAdvanceViewGeneration: fnAdvanceViewGeneration,
+        fiGetViewGeneration: fiGetViewGeneration,
         fnAcknowledgeSourceFingerprint: function (sFingerprint) {
             if (sFingerprint) {
                 _dictWorkflowState.sAcknowledgedSourceFingerprint =
@@ -7380,6 +7501,11 @@ const VaibifyApp = (function () {
             return _dictUiState.iContextStepIndex;
         },
         fnDisconnect: fnDisconnect,
+        fnLeaveToEnvironments: fnLeaveToEnvironments,
+        fbReleaseHeldClaimForLeaving: fbReleaseHeldClaimForLeaving,
+        fbClaimRecoveryIsAllowed: fbClaimRecoveryIsAllowed,
+        fnSuspendClaimRecovery: fnSuspendClaimRecovery,
+        fnResumeClaimRecovery: fnResumeClaimRecovery,
         fnShowContainerLanding: fnShowContainerLanding,
         fnStopAllHubPolling: fnStopAllHubPolling,
         fnResumeHubPollingForCurrentView:

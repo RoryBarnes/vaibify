@@ -11289,14 +11289,20 @@ def _fdictEntry(sRel):
             '        browserSession.fsBrowserPresentedCredential(request),\n'
             '    )\n'
             '    if not sBrowserSessionId:\n'
-            '        return I_REJECT_FORBIDDEN\n'
+            '        return _fiRefuseAndLog(\n'
+            '            I_REJECT_FORBIDDEN, sTarget, "", '
+            '"no-browser-credential",\n'
+            '        )\n'
             '    if sName is None'
         ),
         new=(
             '        request.headers.get("x-session-token", ""),\n'
             '    )\n'
             '    if not sBrowserSessionId:\n'
-            '        return I_REJECT_FORBIDDEN\n'
+            '        return _fiRefuseAndLog(\n'
+            '            I_REJECT_FORBIDDEN, sTarget, "", '
+            '"no-browser-credential",\n'
+            '        )\n'
             '    if sName is None'
         ),
     ),
@@ -11359,18 +11365,16 @@ def _fdictEntry(sRel):
             'tests/browser/testLostClaimIsRecoverable.py::'
             'testALostClaimIsReclaimedAndTheWorkflowOpens'
         ),
-        source='vaibify/gui/static/scriptWorkflowManager.js',
-        # Drop the reclaim-and-retry: a reaped claim bounces the
-        # researcher to the Environment hub again -- the three-click
-        # toast dance of the 2026-08-20 live report restored.
+        source='vaibify/gui/static/scriptApiClient.js',
+        # Drop the recovery from the one place every request passes
+        # through: a reaped claim bounces the researcher to the
+        # Environment hub again -- the three-click toast dance of the
+        # 2026-08-20 live report restored, and every poller with it.
         old=(
-            '                if (await _fbReclaimAndRetryOnce(\n'
-            '                    error, sId, sWorkflowPathArg, '
-            'sWorkflowName,\n'
-            '                    iThisGeneration\n'
-            '                )) return true;\n'
+            '            await _fnRecoverOrThrow(error, dictIssued, sUrl);\n'
+            '            return await fnAttempt();\n'
         ),
-        new='',
+        new='            throw error;\n',
     ),
     Falsification(
         nodeid=(
@@ -11378,16 +11382,19 @@ def _fdictEntry(sRel):
             'testALostClaimIsReclaimedWhenABlankProjectOpens'
         ),
         source='vaibify/gui/static/scriptApplication.js',
-        # Connect without the reclaim: the Blank-Project open prints
-        # "Select it again on the project list" from a screen that is
-        # not the project list, naming a control out of reach.
+        # Connect around the central recovery: the Blank-Project open
+        # prints "Select it again on the project list" from a screen
+        # that is not the project list, naming a control out of reach.
         old=(
-            '            var dictConnect = '
-            'await _fdictConnectReclaimingOnce(sId);\n'
-        ),
-        new=(
             '            var dictConnect = await VaibifyApi.fdictPostRaw(\n'
             '                "/api/connect/" + sId);\n'
+        ),
+        new=(
+            '            var dictConnect = await VaibifyApi'
+            '.fdictPostConnectWhenReached(\n'
+            '                sId, function () {\n'
+            '                    return "/api/connect/" + sId;\n'
+            '                });\n'
         ),
     ),
     Falsification(
@@ -11395,11 +11402,11 @@ def _fdictEntry(sRel):
             'tests/browser/testLostClaimIsRecoverable.py::'
             'testAnInUseRefusalDoesNotBounceYouBackToTheTile'
         ),
-        source='vaibify/gui/static/scriptContainerManager.js',
+        source='vaibify/gui/static/scriptApiClient.js',
         # Treat any error as a lost claim: an in-use refusal then runs
         # a doomed reclaim and walks a researcher who cannot fix it
         # back to a tile that refuses them again. The predicate now
-        # serves every /api/connect caller, so this mutation reaches
+        # serves every request in the page, so this mutation reaches
         # the Blank-Project open and the workflow save too.
         old=(
             '        return dictDetail.sRefusal === '
@@ -28242,5 +28249,308 @@ def _fdictEntry(sRel):
             '            }\n'
         ),
         new='',
+    ),
+    # The lapsed-claim refusal carries its code, and ONLY that refusal does.
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_an_unowned_container_answers_claim_required'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    if dictContext.get("bIsHub"):\n'
+            '        return _fiRefuseAndLog(\n'
+            '            I_REJECT_CLAIM_REQUIRED, sTarget, '
+            'sBrowserSessionId,\n'
+        ),
+        new=(
+            '    if dictContext.get("bIsHub"):\n'
+            '        return _fiRefuseAndLog(\n'
+            '            I_REJECT_FORBIDDEN, sTarget, '
+            'sBrowserSessionId,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_a_container_held_by_another_session_stays_bare'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    return _fiRefuseAndLog(\n'
+            '        I_REJECT_FORBIDDEN, sTarget, sBrowserSessionId,\n'
+            '        "held-by-another-session",\n'
+            '    )\n'
+        ),
+        new=(
+            '    return _fiRefuseAndLog(\n'
+            '        I_REJECT_CLAIM_REQUIRED, sTarget, sBrowserSessionId,\n'
+            '        "held-by-another-session",\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_each_refusal_logs_one_line_that_names_no_secret'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old=(
+            '    logger.info(\n'
+            '        "REFUSED container request for %r (session %s): %s",\n'
+            '        sTarget, sBrowserSessionId[:8] or "<none>", sReason,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    # Drop the reconnect that follows a recovered claim: the container's agent keeps the token the new claim retired.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_lost_claim_on_the_open_dashboard_is_taken_again_by_the_next_poll'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
+        new='',
+    ),
+    # Forget which container the Project Hub selected: its list request names no container the recovery may claim.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_lost_claim_on_the_project_hub_is_taken_again_by_a_refresh'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        _sSelectedContainerName = _fsContainerNameById(sId);\n',
+        new='        _sSelectedContainerName = "";\n',
+    ),
+    # Claim by the id the refusal's URL carried: right for a host project, wrong for every container.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_the_recovery_claims_the_container_by_its_name_not_its_id'
+        ),
+        source='vaibify/gui/static/scriptApiClient.js',
+        old='            sName: sName,\n            iViewGeneration: VaibifyApp.fiGetViewGeneration(),\n',
+        new='            sName: sId,\n            iViewGeneration: VaibifyApp.fiGetViewGeneration(),\n',
+    ),
+    # Remove the single flight: each refused request claims for itself.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_four_pollers_refused_at_once_claim_exactly_once'
+        ),
+        source='vaibify/gui/static/scriptApiClient.js',
+        old='        if (dictInFlight &&\n                dictInFlight.iViewGeneration === dictIssued.iViewGeneration) {\n            return dictInFlight.promise;\n        }\n',
+        new='',
+    ),
+    # Read the container and view when the refusal ARRIVES rather than when the request was ISSUED.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_an_answer_that_arrives_after_a_switch_is_dropped_not_recovered'
+        ),
+        source='vaibify/gui/static/scriptApiClient.js',
+        old='        var dictIssued = _fdictCaptureRequestContext(sUrl);\n        try {\n            return await fnAttempt();\n        } catch (error) {\n',
+        new='        var dictIssued;\n        try {\n            return await fnAttempt();\n        } catch (error) {\n            dictIssued = _fdictCaptureRequestContext(sUrl);\n',
+    ),
+    # Recover on any refusal, not the code: a page hammers a lock it cannot take.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_project_held_by_another_session_is_never_claimed_over'
+        ),
+        source='vaibify/gui/static/scriptApiClient.js',
+        old='        return dictDetail.sRefusal === S_REFUSAL_CLAIM_REQUIRED;\n',
+        new='        return true;\n',
+    ),
+    # Report a refused recovery as a recovered one: the original request is sent again.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_claim_taken_during_the_recovery_is_reported_and_not_retried'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            return VaibifyApi.S_CLAIM_RECOVERY_REFUSED;\n',
+        new='            return VaibifyApi.S_CLAIM_RECOVERY_RECOVERED;\n',
+    ),
+    # Send the recovery's connect outside the queue: it lands after the researcher's switch.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_recovery_connect_never_outlasts_the_researchers_next_choice'
+        ),
+        source='vaibify/gui/static/scriptApiClient.js',
+        old='        return _fpromiseRunInConnectQueue(sContainerId, function () {\n            if ((_dictConnectCountById',
+        new='        return Promise.resolve().then(function () {\n            if ((_dictConnectCountById',
+    ),
+    # Tear the page down before the release is answered, as the dashboard used to.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_refused_release_keeps_the_session_alive_past_the_reconnect_window'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        if (await fbReleaseHeldClaimForLeaving()) fnDisconnect();\n',
+        new='        fnDisconnect();\n        await fbReleaseHeldClaimForLeaving();\n',
+    ),
+    # Never mark the socket: the hub's own close reads as a rejected credential.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_the_hubs_close_before_its_answer_is_the_expected_close'
+        ),
+        source='vaibify/gui/static/scriptWebSocket.js',
+        old='        _wsPipeline.bClosingForRelease = true;\n',
+        new='',
+    ),
+    # Clear the mark when the release's answer arrives instead of when the socket's close does.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_the_hubs_close_after_its_answer_is_the_expected_close_too'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        var dictOutcome = await VaibifyContainerManager\n            .fdictReleaseClaimOutcome(sName);\n',
+        new='        var dictOutcome = await VaibifyContainerManager\n            .fdictReleaseClaimOutcome(sName);\n        VaibifyWebSocket.fnRestoreAfterRefusedRelease();\n',
+    ),
+    # Ignore every 4401, not the marked socket's.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_close_nobody_asked_for_still_surfaces'
+        ),
+        source='vaibify/gui/static/scriptWebSocket.js',
+        old='        if (wsClosed.bClosingForRelease &&\n                event.code === I_CLOSE_SESSION_ENDED) {',
+        new='        if (event.code === I_CLOSE_SESSION_ENDED) {',
+    ),
+    # Leave the dashboard whatever the release answered.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_refused_release_stays_on_the_dashboard_with_its_socket'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='            fnShowToast(dictOutcome.sMessage, "warning");\n            return false;\n',
+        new='            fnShowToast(dictOutcome.sMessage, "warning");\n            return true;\n',
+    ),
+    # Treat any 200 as released.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_release_answered_not_released_is_not_taken_for_released'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            if (dictResult && dictResult.bReleased === true) {\n',
+        new='            if (dictResult) {\n',
+    ),
+    # Never note that a release is in progress: the polls it makes fail are recovered.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_poll_refused_while_the_release_is_answered_does_not_take_the_claim_back'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        fnSuspendClaimRecovery();\n        try {\n            return await _fbReleaseAndDecideToLeave(sName);\n',
+        new='        try {\n            return await _fbReleaseAndDecideToLeave(sName);\n',
+    ),
+    # Recover while the Environments page is showing.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_request_made_after_leaving_does_not_take_the_claim_back'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        return _iClaimRecoverySuspensions === 0 &&\n            !_fbEnvironmentsScreenIsShown();\n',
+        new='        return _iClaimRecoverySuspensions === 0;\n',
+    ),
+    # Treat an unconfirmed release as a refused one.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_release_that_committed_but_lost_its_answer_still_lets_you_leave'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        return await _fbRegistryShowsClaimGone(sName, dictOutcome.sMessage);\n',
+        new='        return false;\n',
+    ),
+    # Surface the bare 4401 close, which names nothing to run.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_socket_closed_4401_by_an_ended_session_names_what_happened'
+        ),
+        source='vaibify/gui/static/scriptConnectionMonitor.js',
+        old='            _fnSurfaceAfterReadingEndingNotice(dictError);\n            return;\n',
+        new='',
+    ),
+    # Ignore the hub's own ending notice: the page says the session 'restarted or expired'.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_session_whose_socket_was_lost_is_told_once_what_to_run'
+        ),
+        source='vaibify/gui/static/scriptConnectionMonitor.js',
+        old='        if (dictDetail.sMessage) {\n            return (\n                dictDetail.sMessage +',
+        new='        if (false) {\n            return (\n                dictDetail.sMessage +',
+    ),
+    # Drop the assignment of the environment line.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_the_project_hub_names_the_environment_from_a_tile'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnApplyEnvironmentLine(sContainerName);\n',
+        new='',
+    ),
+    # The viewer has no claim route: offering the cure there is a dead end.
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_the_viewer_never_offers_a_claim_it_has_no_route_for'
+        ),
+        source='vaibify/gui/routeScope.py',
+        old='    if dictContext.get("bIsHub"):\n',
+        new='    if True:\n',
+    ),
+    # Never note that a promotion releases the claim: the page recovers it.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPromotionDoesNotTakeItsOwnClaimBack.py::'
+            'test_a_poll_refused_while_a_promotion_is_answered_does_not_take_the_claim_back'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        if (bHeldByThisTab) VaibifyApp.fnSuspendClaimRecovery();\n        var elButton = document.getElementById("btnWizardNext");\n',
+        new='        var elButton = document.getElementById("btnWizardNext");\n',
+    ),
+    # Leave a claim in place once it has landed after the researcher left.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_recovery_claim_that_lands_after_leaving_is_given_back'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            await _fnGiveBackAClaimTakenTooLate(sName);\n',
+        new='',
+    ),
+    # Skip the reconnect when no workflow is open: a Blank Project's agent keeps the retired token.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_blank_dashboard_is_reconnected_so_the_agent_gets_the_new_token'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        if (!sPath) return "/api/connect/" + sContainerId;\n',
+        new='        if (!sPath) return "";\n',
+    ),
+    # Count a failed reconnect as a recovered claim and retry the request.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_reconnect_that_failed_is_not_a_recovery'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
+        new='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
     ),
 ]

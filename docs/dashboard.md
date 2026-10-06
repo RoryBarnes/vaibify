@@ -738,7 +738,10 @@ an earlier start, a full disk) with Docker's words kept in
 parentheses as evidence.
 
 The Project Hub, the list of Projects inside an opened environment,
-has the same **?** with three folding blocks: using the Project Hub,
+opens with a line above *Available Projects:* that names the environment
+it lists (**Environment: \<name\>**, the name its tile shows, or
+**Environment: this computer** for a project that lives on the host
+rather than in a container). It has the same **?** with three folding blocks: using the Project Hub,
 a legend, and troubleshooting. Its failures carry the same diagnosis
 click, its automatic list refresh says when it could not refresh, and
 a New Project whose directory or name the server refuses says why in
@@ -1115,6 +1118,13 @@ Reloading the owning tab is safe: its lease lives in `sessionStorage`,
 so the refreshed tab re-asserts the same ownership and is never locked
 out of its own container.
 
+A browser that cannot see a tab (a hidden tab, a locked screen, a closed
+laptop lid) may pause it for longer than vaibify waits for a sign of
+life, and vaibify then gives the container up. When you come back, the
+page claims it again by itself and carries on; you are told only if
+another session has taken it in the meantime, in which case the message
+says so.
+
 An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
@@ -1146,7 +1156,10 @@ with *"This browser session already holds container ..."*, and the
 refusal offers to release the first one and continue. You can also
 release it yourself from the tile's ⋮ menu (**Release**), and
 returning to the container list from an open dashboard releases in
-the same way. Releasing drops only the tab's hold: the container keeps
-running, and a release is refused while a pipeline run or an agent is
-live in it. To work in two containers at once, open a second vaibify
+the same way, **before** anything on screen is torn down. Releasing
+drops only the tab's hold: the container keeps running, and a release
+is refused while a pipeline run or an agent is live in it. When it is
+refused you stay in the dashboard, with the reason on screen, and your
+tab keeps its hold and its connection; when the hub does not say whether
+it released, vaibify asks the hub's own list before it decides. To work in two containers at once, open a second vaibify
 window.

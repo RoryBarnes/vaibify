@@ -936,6 +936,97 @@ never fire on a hard crash, which is why abandonment is decided by the
 socket closing without a reconnect rather than by anything the
 departing page claims about itself.
 
+### A lapsed claim is recovered by the page, in one place
+
+A claim whose browser has opened no socket lives on a presence window
+(`F_CLAIM_PRESENCE_WINDOW_SECONDS`, thirty seconds), fed by the page's
+own polling. Browsers throttle, freeze or discard a page they cannot
+see, so a researcher who returns to an open project can find the hub no
+longer holds the claim for it. Losing the claim does not revoke the
+credential (the orphan trigger needs a socket that once existed), so it
+is cured by claiming again.
+
+The hub says which refusal this is. `routeScope.fiAuthorizeContainerHttp`
+answers a valid browser session aimed at a container with no owner
+record with `403` carrying `sRefusal: "claim-required"`
+(`routeScope.S_REFUSAL_CLAIM_REQUIRED`, the same code `POST
+/api/connect` has always used). A container held by another session, a
+request with no credential and an agent-token mismatch keep the bare
+`403`: the code is an invitation to claim, and offering it to a session
+that cannot claim would send it into a refusal. Every refusal from that
+authority is logged once at INFO with the container name, the first
+eight characters of the session id and the reason, never the lease or
+the credential.
+
+The page recovers in `VaibifyApi`, once, for every request, and under
+five rules that each exist because the alternative shipped or nearly
+shipped:
+
+- A request records, when it is **issued**, the container the page had
+  selected (only if its URL names that container) and the view
+  generation (`VaibifyApp.fiGetViewGeneration`, advanced on every
+  screen change and project switch). An answer that arrives after the
+  view changed is dropped silently: no claim, no retry, no notice.
+- The cure is one claim per container name, however many pollers were
+  refused: a second claim sent before the first one's lease is stored
+  would be refused as another session's.
+- When a project is open on the dashboard (a Blank Project included,
+  connected without a workflow path) the claim is followed by a connect
+  of it, because a reclaim mints a **new** agent token and only
+  `/api/connect` writes it into the container. A recovery whose connect
+  failed is **incomplete**, not recovered: the claim stands but the agent
+  still holds the retired token, so the original request is not retried,
+  and the notice says to open the project again.
+- Every `POST /api/connect` for one container runs through one queue, so
+  the workflow the hub caches is the one the researcher chose last. A
+  slot is released as soon as its response arrives, a refusal included,
+  and a recovery enqueues afresh. A recovery's connect composes its URL
+  at the front of the queue and is skipped when the researcher has sent a
+  connect of their own since it was scheduled.
+- A request is retried at most once, and never while the Environments
+  page is showing or a release is in progress: a poll the researcher's
+  own release made fail must not take the claim back. A claim request
+  already on the wire when the researcher leaves cannot be recalled, so
+  when it lands after leaving the page releases it again.
+
+A refusal whose claim is held by someone else shows the claim route's
+own sentence, once per view, and the request is not retried.
+
+### Leaving for the Environments page releases first
+
+Leaving a project used to close the page's socket and then ask the hub
+to release, unawaited. A release the hub refused (a run or an agent is
+live), answered `bReleased: false`, or whose answer was lost left the
+claim held by a session with no socket, which the hub revokes one
+reconnect window later: every later request answered `401` and only
+`vaibify open` recovered. So the order is now fixed.
+
+1. The page's sockets are **marked** as expected to close, and the
+   release is sent. A committed release closes the releasing session's
+   sockets with `4401` before it answers, and the close and the answer
+   travel on separate connections and arrive in either order, so the
+   mark lives on the socket until its own close handler has run and is
+   never cleared by the HTTP answer. A `4401` on an unmarked socket
+   surfaces exactly as before.
+2. The release's **outcome** decides. `released` goes on to the
+   Environments page. `retained` (the hub refused with `409`) keeps the
+   researcher where they are, with the hub's own sentence, which names
+   the run or agent. An answer that does not settle the question
+   (`bReleased: false`, a lost answer, a server error) is reconciled
+   against the hub's own list (`GET /api/registry`,
+   `bOwnedByThisSession`): still owned means nothing changed and the page
+   stays; not owned means the release committed or the claim had already
+   lapsed, and the page goes on. An unreachable hub says so and stays.
+
+When the page stays, a marked socket that is still open is unmarked, and
+one the hub already closed is replaced.
+
+When the hub ends the session instead (a socket lost for a whole window
+orphans it and revokes the credential), a `4401` close carries no reason,
+so the page asks the hub for the one it recorded
+(`/api/session/lifetime` answers the revoked credential's ending notice)
+before it speaks: one sentence, naming what happened and `vaibify open`.
+
 ### Idle self-shutdown
 
 Modeled on JupyterHub's `ServerApp.shutdown_no_activity_timeout`, both

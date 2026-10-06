@@ -96,6 +96,207 @@ var VaibifyApi = (function () {
         };
     }
 
+    /* --- Lost-claim recovery ---
+
+       A claim that has no socket lives on a thirty-second presence
+       window, and a browser throttles or freezes a page it cannot see
+       for longer than that, so a researcher who returns to an open
+       project finds the hub no longer holds the claim for it. The hub
+       says so in a code (``claim-required``) and the cure is the claim
+       the page can make itself. It is done HERE, once, because every
+       request in the page can meet the refusal and four copies of the
+       cure had already drifted apart.
+
+       A request is recovered at most once, only while the view it was
+       issued from is still on screen, and only for the container the
+       page had selected when it was issued -- never one the selection
+       has since moved to. */
+
+    var S_REFUSAL_CLAIM_REQUIRED = "claim-required";
+    var S_CLAIM_RECOVERY_RECOVERED = "recovered";
+    var S_CLAIM_RECOVERY_REFUSED = "refused";
+    var S_CLAIM_RECOVERY_ABANDONED = "abandoned";
+    var S_CLAIM_RECOVERY_INCOMPLETE = "incomplete";
+    var S_CONNECT_PREFIX = "/api/connect/";
+
+    var _fsRecoverLostClaim = null;
+    var _dictRecoveryByName = {};
+    var _dictRefusedViewByName = {};
+    var _dictConnectTailById = {};
+    var _dictConnectCountById = {};
+
+    function fnRegisterClaimRecovery(fsRecover) {
+        _fsRecoverLostClaim = fsRecover;
+    }
+
+    function fbRefusalIsClaimRequired(error) {
+        var dictDetail = (error && error.dictDetail) || {};
+        return dictDetail.sRefusal === S_REFUSAL_CLAIM_REQUIRED;
+    }
+
+    function fbErrorWasHandledByRecovery(error) {
+        return Boolean(error && error.bHandledByRecovery);
+    }
+
+    function _fnMarkHandledByRecovery(error) {
+        error.bHandledByRecovery = true;
+        return error;
+    }
+
+    function _flistPathSegments(sUrl) {
+        return String(sUrl).split("?")[0].split("/").map(
+            function (sSegment) {
+                try {
+                    return decodeURIComponent(sSegment);
+                } catch (error) {
+                    return sSegment;
+                }
+            });
+    }
+
+    function _fdictCaptureRequestContext(sUrl) {
+        var dictNoTarget = {sName: "", iViewGeneration: 0};
+        if (typeof VaibifyApp === "undefined" ||
+                typeof VaibifyContainerManager === "undefined") {
+            return dictNoTarget;
+        }
+        var sName = VaibifyContainerManager.fsGetSelectedContainerName();
+        var sId = VaibifyContainerManager.fsGetSelectedContainerId();
+        var listSegments = _flistPathSegments(sUrl);
+        var bNamesSelected = [sName, sId].some(function (sIdentity) {
+            return Boolean(sIdentity) &&
+                listSegments.indexOf(sIdentity) !== -1;
+        });
+        if (!bNamesSelected) return dictNoTarget;
+        return {
+            sName: sName,
+            iViewGeneration: VaibifyApp.fiGetViewGeneration(),
+        };
+    }
+
+    function _fbViewIsUnchanged(dictIssued) {
+        return VaibifyApp.fiGetViewGeneration() ===
+            dictIssued.iViewGeneration && VaibifyApp.fbClaimRecoveryIsAllowed();
+    }
+
+    function _fpromiseRecoveryFor(dictIssued, bFailedRequestWasConnect) {
+        /* One recovery per container name: a second claim sent before
+           the first one's lease is stored would be refused as another
+           session's. A recovery begun from an older view finishes
+           before a newer view's begins, and one begun from THIS view
+           is simply joined. */
+        var sName = dictIssued.sName;
+        var dictInFlight = _dictRecoveryByName[sName];
+        if (dictInFlight &&
+                dictInFlight.iViewGeneration === dictIssued.iViewGeneration) {
+            return dictInFlight.promise;
+        }
+        var promisePrior = dictInFlight
+            ? dictInFlight.promise.catch(function () {})
+            : Promise.resolve();
+        var promiseRecovery = promisePrior.then(function () {
+            return _fsRecoverLostClaim(
+                sName, dictIssued.iViewGeneration, bFailedRequestWasConnect);
+        });
+        var dictRecord = {
+            promise: promiseRecovery,
+            iViewGeneration: dictIssued.iViewGeneration,
+        };
+        _dictRecoveryByName[sName] = dictRecord;
+        var fnForgetWhenSettled = function () {
+            if (_dictRecoveryByName[sName] === dictRecord) {
+                delete _dictRecoveryByName[sName];
+            }
+        };
+        promiseRecovery.then(fnForgetWhenSettled, fnForgetWhenSettled);
+        return promiseRecovery;
+    }
+
+    async function _fnRecoverOrThrow(errorRefused, dictIssued, sUrl) {
+        /* Silently drop what the researcher has already left: no
+           claim, no retry, no toast. A refusal that already earned its
+           sentence is not asked for again while the same view stays. */
+        var sName = dictIssued.sName;
+        if (!_fbViewIsUnchanged(dictIssued) ||
+                _dictRefusedViewByName[sName] === dictIssued.iViewGeneration) {
+            throw _fnMarkHandledByRecovery(errorRefused);
+        }
+        var sOutcome = await _fpromiseRecoveryFor(
+            dictIssued, sUrl.indexOf(S_CONNECT_PREFIX) === 0);
+        if (sOutcome === S_CLAIM_RECOVERY_REFUSED) {
+            _dictRefusedViewByName[sName] = dictIssued.iViewGeneration;
+        }
+        if (sOutcome !== S_CLAIM_RECOVERY_RECOVERED ||
+                !_fbViewIsUnchanged(dictIssued)) {
+            throw _fnMarkHandledByRecovery(errorRefused);
+        }
+    }
+
+    async function _fvalueWithClaimRecovery(sUrl, fnAttempt) {
+        var dictIssued = _fdictCaptureRequestContext(sUrl);
+        try {
+            return await fnAttempt();
+        } catch (error) {
+            if (!dictIssued.sName || !_fsRecoverLostClaim ||
+                    !fbRefusalIsClaimRequired(error)) {
+                throw error;
+            }
+            await _fnRecoverOrThrow(error, dictIssued, sUrl);
+            return await fnAttempt();
+        }
+    }
+
+    /* --- The connect queue ---
+
+       Every POST /api/connect for one container runs one at a time, in
+       the order it was asked for, because the hub caches the workflow
+       the LAST connect named and that must be the researcher's latest
+       choice. A slot is released the moment its response arrives, a
+       refusal included, and a recovery enqueues afresh: a refused
+       connect can never wait on one queued behind itself. */
+
+    function _fpromiseRunInConnectQueue(sContainerId, fnSend) {
+        var promisePrior = _dictConnectTailById[sContainerId] ||
+            Promise.resolve();
+        var promiseRun = promisePrior.then(fnSend);
+        var fnIgnore = function () {};
+        var promiseTail = promiseRun.then(fnIgnore, fnIgnore);
+        _dictConnectTailById[sContainerId] = promiseTail;
+        promiseTail.then(function () {
+            if (_dictConnectTailById[sContainerId] === promiseTail) {
+                delete _dictConnectTailById[sContainerId];
+            }
+        });
+        return promiseRun;
+    }
+
+    function _fsConnectQueueKey(sUrl) {
+        if (typeof sUrl !== "string" ||
+                sUrl.indexOf(S_CONNECT_PREFIX) !== 0) {
+            return "";
+        }
+        return sUrl.substring(S_CONNECT_PREFIX.length).split("?")[0];
+    }
+
+    function fdictPostConnectWhenReached(sContainerId, fsBuildUrl) {
+        /* For a recovery's connect, which renews what a lapsed claim left
+           behind and must never be the LAST word. The URL is composed
+           when the request reaches the FRONT of the queue, so it names
+           the workflow open then; an empty URL, or a connect the
+           researcher asked for since this one was scheduled, means there
+           is nothing left to renew and no request is made. */
+        var iCountWhenScheduled = _dictConnectCountById[sContainerId] || 0;
+        return _fpromiseRunInConnectQueue(sContainerId, function () {
+            if ((_dictConnectCountById[sContainerId] || 0) !==
+                    iCountWhenScheduled) {
+                return Promise.resolve(null);
+            }
+            var sUrl = fsBuildUrl();
+            if (!sUrl) return Promise.resolve(null);
+            return _fdictPostRawOnce(sUrl);
+        });
+    }
+
     function fdictAdoptSourceFingerprint(dictPayload) {
         /* Any response carrying the post-save exact-source
            fingerprint updates the dashboard's acknowledged value:
@@ -113,7 +314,7 @@ var VaibifyApi = (function () {
         return dictPayload;
     }
 
-    async function fdictGet(sUrl) {
+    async function _fdictGetOnce(sUrl) {
         var response = await _frResponseOrThrow(sUrl);
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
@@ -121,7 +322,7 @@ var VaibifyApi = (function () {
         return response.json().then(fdictAdoptSourceFingerprint);
     }
 
-    async function fdictPost(sUrl, dictBody) {
+    async function _fdictPostOnce(sUrl, dictBody) {
         var dictOptions = {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -136,7 +337,7 @@ var VaibifyApi = (function () {
         return response.json().then(fdictAdoptSourceFingerprint);
     }
 
-    async function fdictPostRaw(sUrl) {
+    async function _fdictPostRawOnce(sUrl) {
         var response = await _frResponseOrThrow(
             sUrl, {method: "POST"},
         );
@@ -146,7 +347,7 @@ var VaibifyApi = (function () {
         return response.json().then(fdictAdoptSourceFingerprint);
     }
 
-    async function fdictPut(sUrl, dictBody) {
+    async function _fdictPutOnce(sUrl, dictBody) {
         var response = await _frResponseOrThrow(sUrl, {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
@@ -158,7 +359,7 @@ var VaibifyApi = (function () {
         return response.json().then(fdictAdoptSourceFingerprint);
     }
 
-    async function fnDelete(sUrl) {
+    async function _fnDeleteOnce(sUrl) {
         var response = await _frResponseOrThrow(
             sUrl, {method: "DELETE"},
         );
@@ -168,12 +369,56 @@ var VaibifyApi = (function () {
         return response.json().then(fdictAdoptSourceFingerprint);
     }
 
-    async function fsGetText(sUrl) {
+    async function _fsGetTextOnce(sUrl) {
         var response = await _frResponseOrThrow(sUrl);
         if (!response.ok) {
             await _fnThrowForStatus(response, "Request failed");
         }
         return response.text();
+    }
+
+    function fdictGet(sUrl) {
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            return _fdictGetOnce(sUrl);
+        });
+    }
+
+    function fdictPost(sUrl, dictBody) {
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            return _fdictPostOnce(sUrl, dictBody);
+        });
+    }
+
+    function fdictPostRaw(sUrl) {
+        var sQueueKey = _fsConnectQueueKey(sUrl);
+        if (sQueueKey) {
+            _dictConnectCountById[sQueueKey] =
+                (_dictConnectCountById[sQueueKey] || 0) + 1;
+        }
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            if (!sQueueKey) return _fdictPostRawOnce(sUrl);
+            return _fpromiseRunInConnectQueue(sQueueKey, function () {
+                return _fdictPostRawOnce(sUrl);
+            });
+        });
+    }
+
+    function fdictPut(sUrl, dictBody) {
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            return _fdictPutOnce(sUrl, dictBody);
+        });
+    }
+
+    function fnDelete(sUrl) {
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            return _fnDeleteOnce(sUrl);
+        });
+    }
+
+    function fsGetText(sUrl) {
+        return _fvalueWithClaimRecovery(sUrl, function () {
+            return _fsGetTextOnce(sUrl);
+        });
     }
 
     async function fbHead(sUrl, dictOptions) {
@@ -188,6 +433,14 @@ var VaibifyApi = (function () {
     }
 
     return {
+        S_CLAIM_RECOVERY_RECOVERED: S_CLAIM_RECOVERY_RECOVERED,
+        S_CLAIM_RECOVERY_REFUSED: S_CLAIM_RECOVERY_REFUSED,
+        S_CLAIM_RECOVERY_ABANDONED: S_CLAIM_RECOVERY_ABANDONED,
+        S_CLAIM_RECOVERY_INCOMPLETE: S_CLAIM_RECOVERY_INCOMPLETE,
+        fnRegisterClaimRecovery: fnRegisterClaimRecovery,
+        fbRefusalIsClaimRequired: fbRefusalIsClaimRequired,
+        fbErrorWasHandledByRecovery: fbErrorWasHandledByRecovery,
+        fdictPostConnectWhenReached: fdictPostConnectWhenReached,
         fdictGet: fdictGet,
         fdictPost: fdictPost,
         fdictPostRaw: fdictPostRaw,

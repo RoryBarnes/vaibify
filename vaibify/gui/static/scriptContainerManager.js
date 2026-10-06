@@ -993,52 +993,72 @@ var VaibifyContainerManager = (function () {
         }
     }
 
-    async function fbClaimContainer(sName) {
+    async function fdictClaimContainer(sName) {
         /* Any re-claim lease rides the X-Vaibify-Lease header the
-           authenticated-fetch wrapper attaches, never a query param. */
+           authenticated-fetch wrapper attaches, never a query param.
+           Says what happened and shows nothing: the recovery that
+           claims on the researcher's behalf and the click that claims
+           at their request report a refusal differently. */
         try {
             var dictResult = await VaibifyApi.fdictPost(
                 "/api/registry/" + encodeURIComponent(sName) +
                 "/claim", {});
             VaibifyApp.fnRecordClaimedLease(sName, dictResult.sLeaseId);
-            return true;
+            return {bClaimed: true, error: null};
         } catch (error) {
-            _fnReportClaimRefusal(sName, error);
-            return false;
+            return {bClaimed: false, error: error};
         }
     }
 
-    /* The one connect refusal a researcher can act on, named by the
-       server so the recovery survives a reworded message. Mirrors
-       workflowRoutes.S_REFUSAL_CLAIM_REQUIRED. */
-    var S_REFUSAL_CLAIM_REQUIRED = "claim-required";
-
-    function fbConnectRefusalIsALostClaim(error) {
-        /* Keyed on the machine-readable code, never the prose: the
-           sibling 409 ("in use in another browser session") has no
-           recovery to offer, and a predicate keyed on the word
-           "claim" would fire for it too. */
-        var dictDetail = (error && error.dictDetail) || {};
-        return dictDetail.sRefusal === S_REFUSAL_CLAIM_REQUIRED;
+    async function fbClaimContainer(sName) {
+        var dictOutcome = await fdictClaimContainer(sName);
+        if (!dictOutcome.bClaimed) {
+            _fnReportClaimRefusal(sName, dictOutcome.error);
+        }
+        return dictOutcome.bClaimed;
     }
 
-    async function fbReclaimAfterLostClaim(error) {
-        /* The refusal's named recovery is "select the project again to
-           claim it" -- a claim the dashboard can perform itself. The
-           reaper collects a claim after thirty socket-less seconds, so
-           a researcher who paused to read a list meets this on their
-           very next click. Every caller of /api/connect needs it, not
-           only the workflow picker: opening a Blank Project and saving
-           the open workflow hit the same refusal and offered the
-           researcher an instruction they could not act on from where
-           they stood. Arbitration still governs the reclaim -- a
-           project another vaibify process holds refuses it, and the
-           caller falls back to its own walk-back. */
-        if (!fbConnectRefusalIsALostClaim(error)) return false;
-        var sName = fsGetSelectedContainerName();
-        if (!sName) return false;
-        return await fbClaimContainer(sName);
+    async function fsRecoverLostClaim(
+        sName, iViewGeneration, bFailedRequestWasConnect
+    ) {
+        /* The recovery VaibifyApi runs when the hub says a claim lapsed:
+           claim again, and when a project is open on the dashboard
+           connect it again, which is what hands the container's agent
+           the fresh token the new claim minted. A refusal is reported
+           in the claim route's own sentence, which names who holds the
+           project. A failed request that WAS a connect skips the
+           reconnect: its retry is the connect. A recovery whose
+           reconnect failed is INCOMPLETE, not recovered: the claim
+           stands but the agent still holds the retired token, so the
+           original request is not retried as though all were well. */
+        var dictClaim = await fdictClaimContainer(sName);
+        if (!dictClaim.bClaimed) {
+            _fnReportClaimRefusal(sName, dictClaim.error);
+            return VaibifyApi.S_CLAIM_RECOVERY_REFUSED;
+        }
+        if (!VaibifyApp.fbClaimRecoveryIsAllowed()) {
+            await _fnGiveBackAClaimTakenTooLate(sName);
+            return VaibifyApi.S_CLAIM_RECOVERY_ABANDONED;
+        }
+        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager
+                .fbReconnectOpenWorkflow(iViewGeneration)) {
+            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;
+        }
+        if (VaibifyApp.fiGetViewGeneration() !== iViewGeneration) {
+            return VaibifyApi.S_CLAIM_RECOVERY_ABANDONED;
+        }
+        return VaibifyApi.S_CLAIM_RECOVERY_RECOVERED;
     }
+
+    async function _fnGiveBackAClaimTakenTooLate(sName) {
+        /* A claim request already on the wire cannot be recalled: the
+           researcher left (or began giving the claim up) while it was
+           in flight, and it landed anyway. Taking it was the page's
+           doing, so giving it back is too. */
+        await fnReleaseClaim(sName);
+    }
+
+    VaibifyApi.fnRegisterClaimRecovery(fsRecoverLostClaim);
 
     function _fsHeldContainerNameFromRefusal(error) {
         var dictDetail = (error && error.dictDetail) || {};
@@ -1092,6 +1112,46 @@ var VaibifyContainerManager = (function () {
             _fsUnavailableRemedy(sReason), "warning");
     }
 
+    async function fdictReleaseClaimOutcome(sName) {
+        /* What the hub did with a release, in three words: "released"
+           (this tab no longer holds it), "retained" (the hub refused
+           and the claim is still ours -- a run or an agent is live) or
+           "uncertain" (the hub did not say, or its answer was lost).
+           bServerAnswered tells an answer that did not settle the
+           question apart from no answer at all. */
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                "/api/registry/" + encodeURIComponent(sName) +
+                "/release", {});
+            if (dictResult && dictResult.bReleased === true) {
+                return {sOutcome: "released", sMessage: "",
+                        bServerAnswered: true};
+            }
+            return {sOutcome: "uncertain",
+                    sMessage: (dictResult && dictResult.sMessage) || "",
+                    bServerAnswered: true};
+        } catch (error) {
+            return _fdictReleaseOutcomeFromError(error);
+        }
+    }
+
+    function _fdictReleaseOutcomeFromError(error) {
+        var iStatus = (error && error.iStatus) || 0;
+        var dictDetail = (error && error.dictDetail) || {};
+        if (iStatus === 409) {
+            return {sOutcome: "retained",
+                    sMessage: dictDetail.sMessage || error.message,
+                    bServerAnswered: true};
+        }
+        if (!iStatus || iStatus >= 500) {
+            return {sOutcome: "uncertain", sMessage: "",
+                    bServerAnswered: false};
+        }
+        /* A definite 4xx means the lease is already worthless. */
+        return {sOutcome: "released", sMessage: "",
+                bServerAnswered: true};
+    }
+
     async function fnReleaseClaim(sName) {
         if (!sName) return;
         /* No lease for this name means this tab cannot release it --
@@ -1101,42 +1161,24 @@ var VaibifyContainerManager = (function () {
            promotion re-entry hit exactly that: the stray release's
            completion wiped the freshly claimed lease). */
         if (!VaibifyApp.fsGetLeaseForContainer(sName)) return;
-        /* The owning lease rides the X-Vaibify-Lease header the
-           authenticated-fetch wrapper attaches, never a query param. */
-        try {
-            await VaibifyApi.fdictPost(
-                "/api/registry/" + encodeURIComponent(sName) +
-                "/release", {});
-        } catch (error) {
-            /* A 409 is a RETAINED refusal: the container is still
-               ours (a run is live, or an agent is working in it), so
-               dropping the lease here would leave this tab unable to
-               act on a container it still owns, and the picker would
-               render it as somebody else's. Say so and keep the
-               lease. Any other failure stays best-effort -- the grace
-               reaper cleans up. */
-            var iStatus = (error && error.iStatus) || 0;
-            if (iStatus === 409) {
-                VaibifyApp.fnShowToast(
-                    (error.dictDetail && error.dictDetail.sMessage) ||
-                    error.message, "warning");
-                return;
-            }
-            /* An AMBIGUOUS failure -- no status at all (timeout,
-               dropped connection) or a server error -- does not say
-               whether the release committed. Forgetting the lease on
-               a maybe stranded this tab exactly as a 409 would: it
-               could no longer act on a container it may still own.
-               Only a CONFIRMED outcome may drop the lease, so keep it
-               and let the grace reaper be the backstop. A definite
-               4xx below means the lease is already worthless. */
-            if (!iStatus || iStatus >= 500) {
-                VaibifyApp.fnShowToast(
-                    "Could not confirm the release of '" + sName +
-                    "'. Keeping this session's claim -- retry, or let " +
-                    "it time out.", "warning");
-                return;
-            }
+        var dictOutcome = await fdictReleaseClaimOutcome(sName);
+        /* A RETAINED release leaves the container ours (a run is live,
+           or an agent is working in it): dropping the lease would leave
+           this tab unable to act on a container it still owns, and the
+           picker would render it as somebody else's. Say so and keep
+           it. An UNANSWERED release does not say whether it committed,
+           so only a CONFIRMED outcome may drop the lease and the grace
+           reaper is the backstop. */
+        if (dictOutcome.sOutcome === "retained") {
+            VaibifyApp.fnShowToast(dictOutcome.sMessage, "warning");
+            return;
+        }
+        if (!dictOutcome.bServerAnswered) {
+            VaibifyApp.fnShowToast(
+                "Could not confirm the release of '" + sName +
+                "'. Keeping this session's claim -- retry, or let " +
+                "it time out.", "warning");
+            return;
         }
         VaibifyApp.fnForgetLease();
     }
@@ -2989,8 +3031,7 @@ var VaibifyContainerManager = (function () {
         fnRefreshContainerHub: fnRefreshContainerHub,
         fnConnectToContainer: fnConnectToContainer,
         fbClaimContainer: fbClaimContainer,
-        fbConnectRefusalIsALostClaim: fbConnectRefusalIsALostClaim,
-        fbReclaimAfterLostClaim: fbReclaimAfterLostClaim,
+        fdictClaimContainer: fdictClaimContainer,
         fsResolveContainerId: fsResolveContainerId,
         fnBindContainerLandingEvents: fnBindContainerLandingEvents,
         fnBindAddContainerModal: fnBindAddContainerModal,
@@ -3002,6 +3043,7 @@ var VaibifyContainerManager = (function () {
         fsGetSelectedContainerDirectory: fsGetSelectedContainerDirectory,
         fbGetSelectedContainerIsProject: fbGetSelectedContainerIsProject,
         fnReleaseClaim: fnReleaseClaim,
+        fdictReleaseClaimOutcome: fdictReleaseClaimOutcome,
         fnStartContainer: fnStartContainer,
         fnCancelStartContainer: fnCancelStartContainer,
         fnResumeInterruptedStart: fnResumeInterruptedStart,

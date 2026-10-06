@@ -23,6 +23,7 @@ from ..routeContext import (
 from ..routeScope import (
     S_CARRIER_MODE_B_LOCK_HELD,
     S_CARRIER_SEPARATE_AUTHORITY,
+    S_REFUSAL_CLAIM_REQUIRED,
     S_SCOPE_OWNER_ESTABLISHING,
     ffnDeclareCarrierMode,
     ffnRouteScope,
@@ -43,13 +44,6 @@ from ..pipelineServer import (
 _PATTERN_WORKFLOW_FILENAME = re.compile(
     r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
 )
-
-# The one connect refusal a researcher can act on themselves. The
-# dashboard reads this rather than the prose so the recovery survives
-# a reworded message; the other 409s here have no recovery to offer
-# and deliberately carry no code.
-S_REFUSAL_CLAIM_REQUIRED = "claim-required"
-
 
 def _fsValidateAndNormalizeFileName(sFileName):
     """Validate sFileName and return its normalized .json basename.

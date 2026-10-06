@@ -238,6 +238,7 @@ var VaibifyWorkflowManager = (function () {
             _fnShowLargeWorkflowLoadingBanner(sWorkflowName, iSize);
         }
         _iWorkflowGeneration += 1;
+        VaibifyApp.fnAdvanceViewGeneration();
         var iThisGeneration = _iWorkflowGeneration;
         try {
             var dictResult = await _fdictFetchWorkflow(
@@ -252,13 +253,11 @@ var VaibifyWorkflowManager = (function () {
             return true;
         } catch (error) {
             if (iThisGeneration !== _iWorkflowGeneration) return true;
-            if (VaibifyContainerManager
-                    .fbConnectRefusalIsALostClaim(error)) {
-                if (await _fbReclaimAndRetryOnce(
-                    error, sId, sWorkflowPathArg, sWorkflowName,
-                    iThisGeneration
-                )) return true;
-                _fnReturnToProjectList(error);
+            if (VaibifyApi.fbRefusalIsClaimRequired(error)) {
+                /* VaibifyApi already claimed again and retried once; a
+                   refusal that reaches here is the claim being
+                   unrecoverable, and the tile is the one place left. */
+                await _fnReturnToProjectList(error);
                 return false;
             }
             VaibifyDiagnosis.fnReportFailureFromError(error);
@@ -270,35 +269,7 @@ var VaibifyWorkflowManager = (function () {
         }
     }
 
-    async function _fbReclaimAndRetryOnce(
-        error, sId, sWorkflowPathArg, sWorkflowName, iThisGeneration
-    ) {
-        /* The reclaim itself is shared (VaibifyContainerManager); what
-           is local here is the RETRY, which re-fetches this workflow
-           and activates it. A reclaim the server refuses walks the
-           researcher back to the project list, as before. */
-        if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
-            error
-        )) return false;
-        var dictResult;
-        try {
-            dictResult = await _fdictFetchWorkflow(
-                sId, sWorkflowPathArg);
-        } catch (errorRetry) {
-            /* The retry's own reason used to be discarded, and the
-               researcher walked back a screen having read only the
-               original "no longer claimed" sentence. */
-            VaibifyDiagnosis.fnReportFailureFromError(errorRetry);
-            return false;
-        }
-        if (iThisGeneration !== _iWorkflowGeneration) return true;
-        VaibifyApp.fnActivateWorkflow(sId, dictResult, sWorkflowName);
-        // Drift check: on the open-time chain, same as the primary
-        // select path above.
-        return true;
-    }
-
-    function _fnReturnToProjectList(error) {
+    async function _fnReturnToProjectList(error) {
         /* A refusal that names an action must leave the researcher
            somewhere they can perform it: the project TILE is the
            claim control, one screen back. Reached only when the
@@ -307,6 +278,7 @@ var VaibifyWorkflowManager = (function () {
             VaibifyDiagnosis.fsExplainError(error) +
             " Open the environment again from the list to claim it.",
             "warning");
+        if (!await VaibifyApp.fbReleaseHeldClaimForLeaving()) return;
         VaibifyApp.fnShowContainerLanding();
         VaibifyContainerManager.fnLoadContainers();
     }
@@ -824,32 +796,64 @@ var VaibifyWorkflowManager = (function () {
         };
     }
 
+    function _fsOpenWorkflowConnectUrl(sContainerId) {
+        var sPath = VaibifyApp.fsGetWorkflowPath();
+        if (!sContainerId || !sPath) return "";
+        return "/api/connect/" + sContainerId + "?sWorkflowPath=" +
+            encodeURIComponent(sPath);
+    }
+
+    function _fsOpenDashboardConnectUrl(sContainerId) {
+        /* The dashboard open on a Blank Project has no workflow path, and
+           is connected the way it was entered: with none. */
+        var sPath = VaibifyApp.fsGetWorkflowPath();
+        if (!sContainerId) return "";
+        if (!sPath) return "/api/connect/" + sContainerId;
+        return _fsOpenWorkflowConnectUrl(sContainerId);
+    }
+
     async function fnSaveCurrentWorkflow() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-        var sWorkflowPath = VaibifyApp.fsGetWorkflowPath();
-        if (!sContainerId || !dictWorkflow || !sWorkflowPath) return;
-        var sUrl = "/api/connect/" + sContainerId + "?sWorkflowPath=" +
-            encodeURIComponent(sWorkflowPath);
+        if (!dictWorkflow) return;
+        var sUrl = _fsOpenWorkflowConnectUrl(sContainerId);
+        if (!sUrl) return;
         try {
             await VaibifyApi.fdictPostRaw(sUrl);
         } catch (error) {
-            /* A lapsed claim is recoverable and this save is the step
-               BEFORE a workflow switch: reporting it and moving on
-               discarded the researcher's state over a reaped claim
-               they never saw expire. Reclaim and save again; only a
-               reclaim the server refuses is reported. */
-            if (!await VaibifyContainerManager.fbReclaimAfterLostClaim(
-                error
-            )) {
-                _fnReportSaveFailure(error);
-                return;
-            }
-            try {
-                await VaibifyApi.fdictPostRaw(sUrl);
-            } catch (errorRetry) {
-                _fnReportSaveFailure(errorRetry);
-            }
+            _fnReportSaveFailure(error);
+        }
+    }
+
+    async function fbReconnectOpenWorkflow(iViewGeneration) {
+        /* After a claim is taken again, the hub's cached workflow and the
+           container's agent token are the ones the lapse left behind. The
+           project open on the dashboard (a Blank Project included) is
+           connected again to renew them; the URL is composed when this
+           reaches the front of the connect queue, so a project the
+           researcher has switched to since is never overwritten by the one
+           they left. True when nothing was left to connect or the connect
+           succeeded; a failure is reported with what to do about it. */
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        if (!sContainerId) return true;
+        if (sContainerId !== VaibifyContainerManager
+                .fsGetSelectedContainerId()) return true;
+        try {
+            await VaibifyApi.fdictPostConnectWhenReached(
+                sContainerId, function () {
+                    if (VaibifyApp.fiGetViewGeneration() !==
+                            iViewGeneration) return "";
+                    return _fsOpenDashboardConnectUrl(sContainerId);
+                });
+            return true;
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailure(
+                "This project's claim was taken again, but its connection " +
+                "to the container could not be refreshed: " +
+                VaibifyDiagnosis.fsExplainError(error) + " An agent working " +
+                "in the container may still hold a retired token; open the " +
+                "project again to refresh it.");
+            return false;
         }
     }
 
@@ -3048,6 +3052,7 @@ var VaibifyWorkflowManager = (function () {
            a workflow switch does, so the close reads as intentional. */
         var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
         if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
+        if (bHeldByThisTab) VaibifyApp.fnSuspendClaimRecovery();
         var dictConverted;
         try {
             dictConverted = await VaibifyApi.fdictPost(
@@ -3061,6 +3066,7 @@ var VaibifyWorkflowManager = (function () {
             if (bSocketWasOpen) {
                 VaibifyPipelineRunner.fnConnectPipelineWebSocket();
             }
+            if (bHeldByThisTab) VaibifyApp.fnResumeClaimRecovery();
             elButton.disabled = false;
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
@@ -3076,6 +3082,7 @@ var VaibifyWorkflowManager = (function () {
                the picker before the build starts. */
             VaibifyApp.fnForgetLease();
             VaibifyApp.fnDisconnect();
+            VaibifyApp.fnResumeClaimRecovery();
         }
         /* Branch on the CONVERSION'S answer here, once; every later
            click branches on the registry entry the tile renders from.
@@ -3152,6 +3159,7 @@ var VaibifyWorkflowManager = (function () {
            quiet the socket deliberately first. */
         var bSocketWasOpen = bHeldByThisTab && VaibifyWebSocket.fbIsOpen();
         if (bSocketWasOpen) VaibifyWebSocket.fnDisconnect();
+        if (bHeldByThisTab) VaibifyApp.fnSuspendClaimRecovery();
         var elButton = document.getElementById("btnWizardNext");
         elButton.disabled = true;
         elButton.textContent = "Promoting...";
@@ -3166,6 +3174,7 @@ var VaibifyWorkflowManager = (function () {
             if (bSocketWasOpen) {
                 VaibifyPipelineRunner.fnConnectPipelineWebSocket();
             }
+            if (bHeldByThisTab) VaibifyApp.fnResumeClaimRecovery();
             VaibifyApp.fnShowToast(
                 VaibifyUtilities.fsSanitizeErrorForUser(
                     error.message), "error");
@@ -3208,6 +3217,7 @@ var VaibifyWorkflowManager = (function () {
            about. */
         VaibifyApp.fnForgetLease();
         VaibifyApp.fnDisconnect();
+        VaibifyApp.fnResumeClaimRecovery();
         await VaibifyContainerManager.fnLoadContainers();
         var bClaimed =
             await VaibifyContainerManager.fbClaimContainer(sNewName);
@@ -3259,6 +3269,7 @@ var VaibifyWorkflowManager = (function () {
         fnToggleWorkflowDropdown: fnToggleWorkflowDropdown,
         fnHideWorkflowDropdown: fnHideWorkflowDropdown,
         fnSaveCurrentWorkflow: fnSaveCurrentWorkflow,
+        fbReconnectOpenWorkflow: fbReconnectOpenWorkflow,
         fnOpenCreateWizard: fnOpenCreateWizard,
         fnOpenConvertWizard: fnOpenConvertWizard,
         fnBindCreateWizardModal: fnBindCreateWizardModal,

@@ -610,3 +610,14 @@ correct approach.
   three shapes, check that the EMPTY one is not being read as the
   UNKNOWN one — they were told apart correctly one layer down and
   collapsed at the point of rendering.
+- **A recovery must know what the researcher gave up on purpose.** The
+  page now claims a lapsed project again by itself, and the first build
+  of that undid a release: the release removed the claim, a poll still
+  in flight was refused for want of it, and the recovery handed the
+  project back to a page that had just left. It showed only in a
+  whole-file run (the isolated test passed on timing), so the guard is a
+  deterministic pair: recovery is refused while a release is in progress
+  and while the Environments page is showing
+  (`tests/browser/testALostClaimRecoversWhereverItIsMet.py`). The
+  general form: an automatic cure for a refusal has to be told about
+  every deliberate act that makes the same refusal true.

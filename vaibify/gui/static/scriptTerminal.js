@@ -1179,6 +1179,12 @@ const VaibifyTerminal = (function () {
             if (dictTab.websocket !== ws) return;
             dictTab.websocket = null;
             _fnReleaseSocketDisposables(dictTab);
+            if (ws.bClosingForRelease && event.code === _I_REJECT_BAD_TOKEN) {
+                terminal.write(
+                    "\r\n[This container was released; the shell ended]" +
+                    "\r\n");
+                return;
+            }
             terminal.write(
                 "\r\n" + fsDescribeTerminalClose(event) + "\r\n");
             _fnScheduleShellRedial(dictTab, terminal, event);
@@ -1657,6 +1663,24 @@ const VaibifyTerminal = (function () {
 
     /* --- Public API Helpers --- */
 
+    function _fnSetClosingForRelease(bClosing) {
+        listPanes.forEach(function (dictPane) {
+            dictPane.listTabs.forEach(function (dictTab) {
+                if (dictTab.websocket) {
+                    dictTab.websocket.bClosingForRelease = bClosing;
+                }
+            });
+        });
+    }
+
+    function fnMarkClosingForRelease() {
+        _fnSetClosingForRelease(true);
+    }
+
+    function fnUnmarkClosingForRelease() {
+        _fnSetClosingForRelease(false);
+    }
+
     function fnCloseAll() {
         while (listPanes.length > 0) {
             var dictPane = listPanes[0];
@@ -1832,6 +1856,8 @@ const VaibifyTerminal = (function () {
         },
         fnCreatePane: fnCreatePane,
         fnCloseAll: fnCloseAll,
+        fnMarkClosingForRelease: fnMarkClosingForRelease,
+        fnUnmarkClosingForRelease: fnUnmarkClosingForRelease,
         fnFitActiveTerminal: fnFitAllTerminals,
         /* Returns whether the command reached a shell. The Boolean is
            load-bearing and survives the terminal coming back: a caller
