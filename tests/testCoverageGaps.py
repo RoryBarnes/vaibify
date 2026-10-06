@@ -757,8 +757,9 @@ def test_fnPushToContainer_never_shells_out_to_docker_cp(
         lambda *tArguments, **dictKeywords: connectionDouble,
     )
     monkeypatch.setattr(
-        fileTransfer, "fnRunDockerCommand",
-        lambda saCommand: listShellCommands.append(saCommand),
+        "subprocess.run",
+        lambda saCommand, *tArguments, **dictKeywords: (
+            listShellCommands.append(saCommand)),
     )
     fileTransfer.fnPushToContainer("proj", sSource, "/dest/file")
     assert connectionDouble.listCopies == [
@@ -821,21 +822,8 @@ def test_fnCopyHostPathIntoContainer_archives_a_directory_source(tmp_path):
     assert connectionDouble.listFileWrites == []
 
 
-@patch("subprocess.run")
-def test_fnPullFromContainer_calls_docker_cp(mockRun):
-    from vaibify.docker.fileTransfer import fnPullFromContainer
-    mockRun.return_value = MagicMock(returncode=0)
-    fnPullFromContainer("proj", "/container/f", "/host/f")
-    saCommand = mockRun.call_args[0][0]
-    assert "proj:/container/f" in saCommand
-
-
-@patch("subprocess.run")
-def test_fnRunDockerCp_failure_raises(mockRun):
-    from vaibify.docker.fileTransfer import _fnRunDockerCp
-    mockRun.return_value = MagicMock(returncode=1)
-    with pytest.raises(RuntimeError, match="Docker command failed"):
-        _fnRunDockerCp(["docker", "cp", "a", "b"])
+# The pull is no longer ``docker cp``: tests/testPullFromContainer.py
+# drives it over the real confined read programs.
 
 
 # =======================================================================

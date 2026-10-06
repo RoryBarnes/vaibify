@@ -11166,7 +11166,8 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
         new=(
-            '    _fnRunDockerCp(\n'
+            '    import subprocess\n'
+            '    subprocess.run(\n'
             '        ["docker", "cp", sHostSource,\n'
             '         f"{sProjectName}:{sContainerDest}"])\n'
         ),
@@ -24729,6 +24730,60 @@ def _fdictEntry(sRel):
         source='vaibify/host/hostConnection.py',
         old='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                os.fchmod(iDescriptor, iEffectiveMode)\n',
         new='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAFilePulledIntoAFolderLandsUnderItsOwnName',
+        source='vaibify/docker/fileTransfer.py',
+        old='    if os.path.isdir(sTarget):\n        sTarget = os.path.join(\n',
+        new='    if False:\n        sTarget = os.path.join(\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testALinkInsideTheProjectPullsTheTargetsBytesNotADanglingLink',
+        source='vaibify/docker/confinedRead.py',
+        old='    for iHop in range(I_MAX_LINK_HOPS + 1):\n',
+        new='    for iHop in range(1):\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testALinkLeadingOutOfTheProjectIsRefusedAndNothingLands',
+        source='vaibify/docker/fileTransfer.py',
+        old='    iterChunks = connectionDocker.fiterReadFileConfined(\n        sProjectName, sContainerSource, sAuthorizedRoot=sAuthorizedRoot)\n',
+        new='    iterChunks = connectionDocker.fiterReadFileConfined(\n        sProjectName, sContainerSource)\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAReadThatFailsMidStreamLeavesTheOldFileAndNoTemporary',
+        source='vaibify/docker/fileTransfer.py',
+        old='    except BaseException:\n        try:\n            os.unlink(sTemporary)\n        except OSError:\n            pass\n        raise\n',
+        new='    except BaseException:\n        raise\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAFolderPulledToANewNameTakesThatName',
+        source='vaibify/docker/fileTransfer.py',
+        old='        sRename = os.path.basename(os.path.abspath(sHostDest))\n',
+        new='        sRename = None\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAMemberNamedOutsideItsFolderIsRefusedAndNothingLands',
+        source='vaibify/host/archiveExtraction.py',
+        old='    if sMemberName.startswith("/") or any(\n        sPart in ("", ".", "..") for sPart in listParts\n    ):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testNothingIsWrittenThroughALinkTheArchiveItselfMade',
+        source='vaibify/host/archiveExtraction.py',
+        old='    _fnRequireNoSymlinkOnTheWay(sRoot, listParts)\n    os.makedirs(',
+        new='    os.makedirs(',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testHardLinksDevicesAndFifosAreSkippedAndCounted',
+        source='vaibify/host/archiveExtraction.py',
+        old='        _fnLandSymlink(sRoot, listParts, infoMember)\n        return True\n    return False\n',
+        new='        _fnLandSymlink(sRoot, listParts, infoMember)\n        return True\n    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testSetIdBitsAreNeverCarriedOntoTheHost',
+        source='vaibify/host/archiveExtraction.py',
+        old='    return iArchiveMode & _I_PERMISSION_MASK & ~iUmask\n',
+        new='    return iArchiveMode & ~iUmask\n',
     ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
