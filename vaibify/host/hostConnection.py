@@ -398,21 +398,25 @@ class HostConnection:
 
         Empty when unreadable, on the same terms as the container leg:
         no fingerprint means "cannot compare", which is the ordinary
-        answer for a workflow whose file does not exist yet — and, via
-        the cap below, for one too large to be a fingerprint target.
+        answer for a workflow whose file does not exist yet.
 
-        Reads through this class's own capped read rather than
-        streaming as the container program does. The asymmetry is
-        deliberate: the container program streams because it runs
-        somewhere with a memory ceiling nobody here can see, while this
-        leg already has one bounded reader and a second one would be a
-        second place to get the path guard right.
+        Hashed in chunks, as the container program does, so the answer
+        does not depend on the file's size. It used to read the file
+        through the capped fetch and answer ``''`` past 64 MiB, which
+        made the write-ahead journal's prior hash "unproven" for exactly
+        the large files a replacement is most likely to interrupt.
         """
+        sRealPath = self._fsValidateHostPath(sContainerId, sPath)
+        hashFile = hashlib.sha256()
         try:
-            baContent = self.fbaFetchFile(sContainerId, sPath)
-        except (OSError, ValueError):
+            with open(sRealPath, "rb") as fileHandle:
+                for baChunk in iter(
+                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",
+                ):
+                    hashFile.update(baChunk)
+        except OSError:
             return ""
-        return hashlib.sha256(baContent).hexdigest()
+        return hashFile.hexdigest()
 
     def fsReadClockUtc(self, sContainerId):
         """Return the host's wall clock as ``YYYY-MM-DD HH:MM:SS UTC``.

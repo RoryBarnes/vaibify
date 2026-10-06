@@ -24618,6 +24618,18 @@ def _fdictEntry(sRel):
         old='        del sAuthorizedRoot, tForbiddenNames\n        mutationAdmission.fnAssertContainerWriteAdmitted(\n            sContainerId, "fnWriteFileFromStream",\n        )\n',
         new='        del sAuthorizedRoot, tForbiddenNames\n',
     ),
+    Falsification(
+        nodeid='tests/testBoundedPriorHash.py::testAPriorHashComesFromTheChunkedReadNotTheCappedFetch',
+        source='vaibify/gui/routeContext.py',
+        old='        return dictCtx["docker"].fsHashContainerFileSha256(\n            sContainerId, sPath,\n        )\n',
+        new='        return dictCtx["docker"].fbaFetchFile(sContainerId, sPath) and ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testBoundedPriorHash.py::testTheHostHashesAFilePastTheRealFetchCapNotEmpty',
+        source='vaibify/host/hostConnection.py',
+        old='        sRealPath = self._fsValidateHostPath(sContainerId, sPath)\n        hashFile = hashlib.sha256()\n        try:\n            with open(sRealPath, "rb") as fileHandle:\n                for baChunk in iter(\n                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",\n                ):\n                    hashFile.update(baChunk)\n        except OSError:\n            return ""\n        return hashFile.hexdigest()',
+        new='        try:\n            baContent = self.fbaFetchFile(sContainerId, sPath)\n        except (OSError, ValueError):\n            return ""\n        return hashlib.sha256(baContent).hexdigest()',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',

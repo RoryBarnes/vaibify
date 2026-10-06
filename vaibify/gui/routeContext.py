@@ -43,7 +43,6 @@ __all__ = [
 ]
 
 import asyncio
-import hashlib
 import logging
 import time
 from contextlib import contextmanager
@@ -367,20 +366,24 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
     answers ``''``, which is the fail-safe direction — a wrongly-empty
     prior can only make the probe QUARANTINE a record it might have
     settled, never settle one it should have quarantined.
+
+    The hash is computed where the file lives, in chunks. It used to
+    fetch the whole file and was capped at 64 MiB, so replacing a larger
+    file recorded ``''`` and a crash during that replacement could never
+    be settled.
     """
     try:
-        baCurrent = dictCtx["docker"].fbaFetchFile(sContainerId, sPath)
-    except FileNotFoundError:
-        return ""
+        return dictCtx["docker"].fsHashContainerFileSha256(
+            sContainerId, sPath,
+        )
     except Exception as error:
         logger.warning(
-            "Could not read %s in container %s for the write-ahead "
+            "Could not hash %s in container %s for the write-ahead "
             "record's prior hash; recording it as absent, which reads "
             "as unproven rather than settled: %s",
             sPath, sContainerId, error,
         )
         return ""
-    return hashlib.sha256(baCurrent).hexdigest()
 
 
 def fdictStampDockerIdForJournal(sContainerId):
