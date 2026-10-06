@@ -409,6 +409,7 @@ def testTheCommandGateCoversTheDelegatingPrimitives():
     for sWrapper, sBase in (
         ("ftResultExecuteCommand", "ftRunInContainerStreamed"),
         ("fnWriteFile", "fnWriteFileViaTar"),
+        ("fnWriteFileViaTar", "fnWriteFileFromStream"),
     ):
         sSource = inspect.getsource(getattr(DockerConnection, sWrapper))
         assert f"self.{sBase}(" in sSource, (

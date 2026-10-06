@@ -4041,7 +4041,7 @@ def _fdictEntry(sRel):
         nodeid='tests/testCommitCarrier.py::test_route_write_without_carrier_admission_is_refused_mode_a',
         source='vaibify/docker/dockerConnection.py',
         old='''        mutationAdmission.fnAssertContainerWriteAdmitted(
-            sContainerId, "fnWriteFileViaTar",
+            sContainerId, "fnWriteFileFromStream",
         )''',
         new='''        pass''',
     ),
@@ -8705,8 +8705,12 @@ def _fdictEntry(sRel):
         # Without the pre-rename fchmod the temp file's 0600 lands as
         # the target's mode and a replaced script loses its
         # executable bit.
-        old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
-        new='',
+        old=(
+            '        try:\n'
+            '            os.fchmod(iDescriptor, iEffectiveMode)\n'
+            '            os.write(iDescriptor, baContent)\n'
+        ),
+        new='        try:\n            os.write(iDescriptor, baContent)\n',
     ),
     Falsification(
         nodeid=(
@@ -24509,6 +24513,283 @@ def _fdictEntry(sRel):
         source='vaibify/docker/dockerConnection.py',
         old='            sContainerId, listCommand=listCommand, bTty=False,\n        )',
         new='            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testALargeStreamIsCopiedInBoundedChunksNeverSlurped',
+        source='vaibify/docker/confinedWrite.py',
+        old='iter(lambda: sys.stdin.buffer.read(I_CHUNK_BYTES), b"")',
+        new='iter(lambda: sys.stdin.buffer.read(), b"")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAForbiddenReplacementIsRefusedAndTheOldBytesStay',
+        source='vaibify/docker/confinedWrite.py',
+        old='.replace(_S_REPLACE_SLOT, repr(bReplaceAllowed))',
+        new='.replace(_S_REPLACE_SLOT, "True")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAFileThatAppearsWhileTheUploadArrivesIsNotReplaced',
+        source='vaibify/docker/confinedWrite.py',
+        old='    if bReplaceAllowed:\n        os.rename(sTemporary, sFinal, src_dir_fd=iDirectory, dst_dir_fd=iDirectory)\n        return\n',
+        new='    os.rename(sTemporary, sFinal, src_dir_fd=iDirectory, dst_dir_fd=iDirectory)\n    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAShortBodyIsRefusedTheTemporaryRemovedAndTheOldBytesStay',
+        source='vaibify/docker/confinedWrite.py',
+        old='    fnRefuseWhenSizeDiffers(iReceived)\n    fileTemporary.flush()\n',
+        new='    fileTemporary.flush()\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAnOverlongStreamIsRefusedAtOnceNotDrainedToTheEnd',
+        source='vaibify/docker/confinedWrite.py',
+        old='        if iExpectedBytes is not None and iReceived > iExpectedBytes:\n            fnRefuseWhenSizeDiffers(iReceived)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testTheBytesAreFlushedToDiskBeforeTheRename',
+        source='vaibify/docker/confinedWrite.py',
+        old='    os.fsync(fileTemporary.fileno())\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAFullDiskExitsWithItsOwnStatusAndLeavesTheOldFileAlone',
+        source='vaibify/docker/confinedWrite.py',
+        old='    if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT):\n        fnStop(I_NO_SPACE, "failed: the container\'s disk is full")\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAFullDiskStatusBecomesAnOSErrorCarryingEnospc',
+        source='vaibify/docker/confinedWrite.py',
+        old='            errno.ENOSPC,\n            f"Cannot write {sFilePath} in the container: {sLastLine}",\n',
+        new='            errno.EIO,\n            f"Cannot write {sFilePath} in the container: {sLastLine}",\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testTheBytesEntryPointStatesItsLengthSoATruncatedTransferIsRefused',
+        source='vaibify/docker/dockerConnection.py',
+        old='            iExpectedBytes=len(baContent), iMode=iMode,\n',
+        new='            iMode=iMode,\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testALargeStreamIsCopiedInBoundedChunksNeverSlurped',
+        source='vaibify/host/hostConnection.py',
+        old='iter(lambda: fileSource.read(I_STREAM_CHUNK_BYTES), b"")',
+        new='iter(lambda: fileSource.read(), b"")',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAForbiddenReplacementIsRefusedAndTheOldBytesStay',
+        source='vaibify/host/hostConnection.py',
+        old='        del sAuthorizedRoot, tForbiddenNames\n        mutationAdmission.fnAssertContainerWriteAdmitted(\n            sContainerId, "fnWriteFileFromStream",\n        )\n',
+        new='        del sAuthorizedRoot, tForbiddenNames\n        bReplaceAllowed = True\n        mutationAdmission.fnAssertContainerWriteAdmitted(\n            sContainerId, "fnWriteFileFromStream",\n        )\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAFileThatAppearsWhileTheUploadArrivesIsNotReplaced',
+        source='vaibify/host/hostConnection.py',
+        old='    if bReplaceAllowed:\n        os.rename(sTempPath, sRealPath)\n        return\n    try:\n        os.link(',
+        new='    if True:\n        os.rename(sTempPath, sRealPath)\n        return\n    try:\n        os.link(',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAShortBodyIsRefusedTheStagingRemovedAndTheOldBytesStay',
+        source='vaibify/host/hostConnection.py',
+        old='    if iExpectedBytes is not None and iReceived != iExpectedBytes:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAnOverlongStreamIsRefusedAtOnceNotDrainedToTheEnd',
+        source='vaibify/host/hostConnection.py',
+        old='        if iExpectedBytes is not None and iReceived > iExpectedBytes:\n            break\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testASymlinkedFinalComponentIsRefusedAndItsTargetUntouched',
+        source='vaibify/host/hostConnection.py',
+        old='        if os.path.islink(sAsNamed) or os.path.isdir(sRealPath):\n',
+        new='        if os.path.isdir(sRealPath):\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testTheBytesAreStagedInTheDestinationDirectoryNotElsewhere',
+        source='vaibify/host/hostConnection.py',
+        old='            dir=os.path.dirname(sRealPath), prefix=S_STAGING_PREFIX,\n',
+        new='            prefix=S_STAGING_PREFIX,\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testTheBytesAreFlushedToDiskBeforeTheRename',
+        source='vaibify/host/hostConnection.py',
+        old='                fileStaged.flush()\n                os.fsync(iDescriptor)\n',
+        new='                fileStaged.flush()\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAnUnadmittedStreamedWriteIsRefusedBeforeAnyByteLands',
+        source='vaibify/host/hostConnection.py',
+        old='        del sAuthorizedRoot, tForbiddenNames\n        mutationAdmission.fnAssertContainerWriteAdmitted(\n            sContainerId, "fnWriteFileFromStream",\n        )\n',
+        new='        del sAuthorizedRoot, tForbiddenNames\n',
+    ),
+    Falsification(
+        nodeid='tests/testBoundedPriorHash.py::testAPriorHashComesFromTheChunkedReadNotTheCappedFetch',
+        source='vaibify/gui/routeContext.py',
+        old='        return dictCtx["docker"].fsHashContainerFileSha256(\n            sContainerId, sPath,\n        )\n',
+        new='        return dictCtx["docker"].fbaFetchFile(sContainerId, sPath) and ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testBoundedPriorHash.py::testTheHostHashesAFilePastTheRealFetchCapNotEmpty',
+        source='vaibify/host/hostConnection.py',
+        old='        sRealPath = self._fsValidateHostPath(sContainerId, sPath)\n        hasherFile = hashlib.sha256()\n        try:\n            with open(sRealPath, "rb") as fileHandle:\n                for baChunk in iter(\n                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",\n                ):\n                    hasherFile.update(baChunk)\n        except OSError:\n            return ""\n        return hasherFile.hexdigest()',
+        new='        try:\n            baContent = self.fbaFetchFile(sContainerId, sPath)\n        except (OSError, ValueError):\n            return ""\n        return hashlib.sha256(baContent).hexdigest()',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testALinkLeadingOutOfTheRootIsRefusedAndNoOutsideByteIsSent',
+        source='vaibify/docker/confinedRead.py',
+        old='    if listParts[:len(listRoot)] != listRoot:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testASymlinkedDirectoryInThePathIsRefusedAndNothingIsSent',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAComponentSwappedAfterTheCheckCannotRedirectTheRead',
+        source='vaibify/docker/confinedRead.py',
+        old='                return os.open(listParts[-1], iFlags | os.O_NOFOLLOW,\n                               dir_fd=iParent)\n',
+        new='                return os.open("/" + "/".join(listParts), iFlags | os.O_NOFOLLOW)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAFifoIsRefusedAndTheReadNeverBlocksWaitingForAWriter',
+        source='vaibify/docker/confinedRead.py',
+        old='    sFilePath, os.O_RDONLY | os.O_NONBLOCK, False)\n',
+        new='    sFilePath, os.O_RDONLY, False)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAnArchiveStoresALinkAsALinkAndNeverFollowsIt',
+        source='vaibify/docker/confinedRead.py',
+        old='        statEntry = os.stat(sName, dir_fd=iParent, follow_symlinks=False)\n',
+        new='        statEntry = os.stat(sName, dir_fd=iParent, follow_symlinks=True)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testASpecialFileInATreeIsSkippedAndCounted',
+        source='vaibify/docker/confinedRead.py',
+        old='        fnAddFile(tarOut, iParent, sArchivePath, sName)\n    else:\n        iSkipped += 1\n',
+        new='        fnAddFile(tarOut, iParent, sArchivePath, sName)\n    else:\n        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAReadThatFailsAfterSendingBytesRaisesAtTheEnd',
+        source='vaibify/docker/dockerConnection.py',
+        old='        confinedRead.fnRaiseWhenReadFailed(\n            self._fiAwaitExecExitCode(sExecId), sStderr, sPath,\n        )\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAnExecTheDaemonNeverSettlesIsAnErrorNotASuccess',
+        source='vaibify/docker/dockerConnection.py',
+        old='        raise OSError(\n            "The container did not report how the read ended, so the "\n            "bytes received cannot be trusted as complete"\n        )\n',
+        new='        return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testTheConfinedReadExecsAsTheContainerUserNeverRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+        new='        sExecId = self.fsExecCreate(\n            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testADownloadNeedsNoCarrierAdmissionBecauseAReadMutatesNothing',
+        source='vaibify/docker/dockerConnection.py',
+        old='        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+        new='        mutationAdmission.fnAssertContainerCommandAdmitted(\n            sContainerId, "fnRead",\n        )\n        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testALinkLeadingOutOfTheRootIsRefusedAndNoOutsideByteIsSent',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    if listParts[:len(listRoot)] != listRoot:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testASymlinkedDirectoryInThePathIsRefusedAndNothingIsSent',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAComponentSwappedAfterTheWalkCannotRedirectTheRead',
+        source='vaibify/host/hostConfinedRead.py',
+        old='            iOpened = _fiOpenOnce(iParent, listBelowRoot[-1], iFlags)\n',
+        new='            iOpened = _fiOpenOnce(None, sCurrent, iFlags)\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAnArchiveStoresALinkAsALinkAndNeverFollowsIt',
+        source='vaibify/host/hostConfinedRead.py',
+        old='        infoEntryStat = os.stat(sName, dir_fd=iParent, follow_symlinks=False)\n',
+        new='        infoEntryStat = os.stat(sName, dir_fd=iParent, follow_symlinks=True)\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testASpecialFileInATreeIsSkippedAndTheCountIsLogged',
+        source='vaibify/host/hostConfinedRead.py',
+        old='        yield from _fiterFileMember(dictProgress, iParent, sArchivePath, sName)\n    else:\n        dictProgress["iSkipped"] += 1\n',
+        new='        yield from _fiterFileMember(dictProgress, iParent, sArchivePath, sName)\n    else:\n        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAProjectRootSpelledThroughASymlinkStillReadsItsFiles',
+        source='vaibify/host/hostConnection.py',
+        old='            os.path.normpath(sAuthorizedRoot or sProjectRoot), sRealRoot,\n',
+        new='            sRealRoot,\n',
+    ),
+    Falsification(
+        nodeid='tests/testMakeDirectory.py::testTheContainerLegCreatesNestedDirectoriesBelowTheRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='            bCreateDestination=True,\n',
+        new='            bCreateDestination=False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testMakeDirectory.py::testTheContainerLegRefusesToCreateThroughASymlinkOrAForbiddenName',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testMissingParentsAreCreatedBelowTheRootWhenAsked',
+        source='vaibify/docker/confinedWrite.py',
+        old='.replace(_S_PARENTS_SLOT, repr(bCreateParents))',
+        new='.replace(_S_PARENTS_SLOT, "False")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAMissingParentWithoutTheFlagIsNotFoundAndNothingIsCreated',
+        source='vaibify/docker/confinedWrite.py',
+        old='.replace(_S_PARENTS_SLOT, repr(bCreateParents))',
+        new='.replace(_S_PARENTS_SLOT, "True")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAMissingDirectoryAtOrAboveTheRootIsNeverCreated',
+        source='vaibify/docker/confinedWrite.py',
+        old='        if not bCreateParents or iDepth < len(listRoot):\n',
+        new='        if not bCreateParents:\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testParentCreationNeverFollowsASymlinkOutOfTheRoot',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testMissingParentsAreCreatedInsideTheProjectWhenAsked',
+        source='vaibify/host/hostConnection.py',
+        old='        if bCreateParents:\n            os.makedirs(os.path.dirname(sRealPath), exist_ok=True)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAPathOutsideTheRootIsRefusedByTheRendererAsTheSameError',
+        source='vaibify/docker/dockerConnection.py',
+        old='        except ValueError as error:\n            raise confinedRead.ContainerReadRefusedError(\n                f"Read of {sPath} refused: {error}"\n            ) from error\n',
+        new='        except ValueError:\n            raise\n',
+    ),
+    Falsification(
+        nodeid='tests/testCoverageDockerConnectionTransfers.py::testPushingAFileStreamsItInsteadOfReadingItWhole',
+        source='vaibify/docker/dockerConnection.py',
+        old='        with open(sHostSource, "rb") as fileSource:\n            self.fnWriteFileFromStream(\n                sContainerId,\n                posixpath.join(\n                    sContainerDestination, os.path.basename(sHostSource),\n                ) if bDestinationIsDirectory else sContainerDestination,\n                fileSource,\n                iExpectedBytes=os.fstat(fileSource.fileno()).st_size,\n            )',
+        new='        with open(sHostSource, "rb") as fileSource:\n            baContent = fileSource.read()\n        self.fnWriteFileFromStream(\n            sContainerId,\n            posixpath.join(\n                sContainerDestination, os.path.basename(sHostSource),\n            ) if bDestinationIsDirectory else sContainerDestination,\n            io.BytesIO(baContent), iExpectedBytes=len(baContent),\n        )',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAReplacedFileKeepsItsModeAndANewFileIsReadable',
+        source='vaibify/host/hostConnection.py',
+        old='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                os.fchmod(iDescriptor, iEffectiveMode)\n',
+        new='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                pass\n',
     ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(

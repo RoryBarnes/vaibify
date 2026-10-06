@@ -596,6 +596,39 @@ def testCopyFileToANewPathWritesThatExactPath(monkeypatch, tmp_path):
     assert daemon.listExecCreateKeywords[0]["user"] == "researcher"
 
 
+@pytest.mark.falsification
+def testPushingAFileStreamsItInsteadOfReadingItWhole(monkeypatch, tmp_path):
+    """The file goes to the writer as an open file with its size stated.
+
+    Reading it whole first held the entire file in memory, and a push of a
+    multi-gigabyte file could not complete.
+
+    Kills: reading the file into memory (``read()``) before the write.
+    """
+    import io
+    pathSource = tmp_path / "big.bin"
+    baPayload = os.urandom(3 * (1 << 20))
+    pathSource.write_bytes(baPayload)
+    connection, clientDocker, container = ftBuildConnection(monkeypatch)
+    fnAnswerDirectoryProbe(container, True)
+    listCalls = []
+
+    def fnRecordStream(sContainerId, sFilePath, fileSource, **dictKeywords):
+        listCalls.append((
+            type(fileSource), sFilePath, dictKeywords.get("iExpectedBytes"),
+            fileSource.read()))
+
+    monkeypatch.setattr(connection, "fnWriteFileFromStream", fnRecordStream)
+    connection.fnCopyHostPathIntoContainer(
+        S_CONTAINER_ID, str(pathSource), "/workspace/inputs")
+    assert len(listCalls) == 1
+    typeSource, sPath, iExpected, baRead = listCalls[0]
+    assert typeSource is io.BufferedReader
+    assert sPath == "/workspace/inputs/big.bin"
+    assert iExpected == len(baPayload)
+    assert baRead == baPayload
+
+
 def ftCopyDirectoryThroughTheProgram(monkeypatch, tmp_path, sDestination, bExists):
     """Copy the sample tree and return what the receiver was asked to do."""
     pathTree = fnPopulateHostTree(tmp_path)

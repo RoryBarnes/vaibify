@@ -1313,8 +1313,12 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     import inspect
 
     from vaibify.docker.dockerConnection import DockerConnection
-    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
-    assert "put_archive" not in sFunnelSource, (
+    sBytesEntrySource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
+    assert "self.fnWriteFileFromStream(" in sBytesEntrySource, (
+        "the bytes entry point must delegate to the one streamed funnel"
+    )
+    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileFromStream)
+    assert "put_archive" not in sBytesEntrySource + sFunnelSource, (
         "the single-file write went back to handing the daemon an "
         "archive, which extracts as root and follows in-container "
         "symlinks"
@@ -1360,10 +1364,19 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     # shadow container and IS a host->container write, so it shares the
     # uid-1000 contract; its own default assertion is
     # ``_fnAssertDisposableArchiveStampsTheContainerUser`` below.
+    #
+    # confinedRead and hostConfinedRead build the archives of a folder
+    # DOWNLOAD (container -> host). Nothing they build is ever written
+    # into a container, so the uid-1000 contract does not apply; they
+    # claim no owner at all (uid 0, gid 0, empty names), pinned by
+    # ``testAnArchiveMemberClaimsNoOwner`` in
+    # ``tests/testConfinedReadParity.py``.
     assert sorted(listTarBuilders) == [
+        "vaibify/docker/confinedRead.py",
         "vaibify/docker/disposableSpecification.py",
         "vaibify/gui/agentCouncilContext.py",
         "vaibify/gui/agentCouncilRunner.py",
+        "vaibify/host/hostConfinedRead.py",
     ], (
         f"tar entries are built in {sorted(listTarBuilders)}; this "
         f"invariant pins the uid-1000 default of EVERY builder that can "
