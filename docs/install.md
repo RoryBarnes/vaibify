@@ -111,7 +111,12 @@ pytest tests/            # add -m docker for the Docker-dependent tests
 ## Shell Helpers
 
 Shell completions and helper commands are configured automatically the
-first time any `vaibify` command is run. No manual step is required.
+first time any `vaibify` command is run after an install or an upgrade.
+No manual step is required, and nothing needs to be installed beyond
+the shell you already use: bash, zsh and fish are supported on macOS
+and Linux. The setup only ever appends to your shell's configuration
+file (`~/.zshrc`, `~/.bash_profile` on macOS or `~/.bashrc` on Linux,
+`~/.config/fish/config.fish`); it never edits or removes a line.
 The following aliases are added to your shell configuration:
 
 | Alias | Shorthand | Equivalent |
@@ -131,6 +136,41 @@ vaibify_pull -p my-project /workspace/results.csv ./results.csv
 
 When only one project is registered, the `--project` flag can be
 omitted. See [CLI Reference](cli.md) for details.
+
+### Tab completion
+
+Press TAB after `vaibify push` or `vaibify pull` (or the aliases above)
+to complete a path:
+
+- `vaibify pull <TAB>` offers the paths inside the project's container;
+  the destination is a path on your computer, which the shell completes
+  as usual.
+- `vaibify push data.csv <TAB>` offers container paths for the
+  destination; the source is a file on your computer.
+- Paths inside the project may be relative (`Step01/output.csv`) or
+  absolute (`/workspace/Step01/output.csv`). A relative path is read
+  from the project's workspace root, and a completed path is accepted
+  as typed.
+- `-p NAME` is honored: the container that is listed is the one that
+  `vaibify push -p NAME` would use. A host project has no container, so
+  its container-side paths complete from the project's own directory.
+
+Nothing is offered while the container is stopped, and the completion
+never prints an error into your command line; run `vaibify start` and
+press TAB again. A name containing a control character is never
+offered, because it could move your terminal or split the list.
+
+In bash, a path containing `=` or `:` is not completed (bash itself
+splits the word there), and a directory completes with a trailing space
+in bash 3.2, the version macOS ships as `/bin/bash`.
+
+### If TAB does nothing
+
+Run `vaibify doctor`. Its `shell-completions` line reads the
+configuration file of the shell in `$SHELL` and, when it does not load
+vaibify's completion script, prints the exact line to add in that
+shell's syntax. Setup could not do it for you when the file was not
+writable, or when your login shell was a different one the first time.
 
 To force the setup to run again, remove the marker file and invoke any
 command:

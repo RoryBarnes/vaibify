@@ -382,6 +382,7 @@ def fresultRunDoctor(monkeypatch, listArguments, listShared):
         commandDoctor, "_flistSharedChecks", lambda: list(listShared),
     )
     monkeypatch.setattr(commandDoctor, "_flistInterpreterChecks", lambda: [])
+    monkeypatch.setattr(commandDoctor, "_flistLoginShellChecks", lambda: [])
     return CliRunner().invoke(fnDoctorCommand, listArguments)
 
 

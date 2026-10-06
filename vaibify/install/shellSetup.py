@@ -1,24 +1,56 @@
 """First-run shell configuration for Vaibify.
 
 Silently configures shell completions, helper commands, and (on macOS)
-the Colima Docker socket symlink.  Runs once, then writes a marker
-file so subsequent invocations skip all setup work.
+the Colima Docker socket symlink.  Runs once per setup VERSION, then
+writes a marker file so subsequent invocations skip all setup work.
+
+The marker records the version of setup that wrote it, and a marker
+older than ``I_SETUP_VERSION`` runs setup again. The first marker said
+only "setup complete", so a machine whose setup had configured nothing
+useful (the completion scripts were not yet packaged when it ran, and
+fish had no script at all) could never be repaired by shipping better
+scripts: the marker made every later run skip them. Raise the version
+whenever setup gains a step an existing installation must receive.
+Setup only ever APPENDS to a shell's configuration; it never edits or
+removes a line it, or the researcher, wrote earlier.
 """
 
 import logging
 import os
 import platform
-import sys
+import re
 
 _MARKER_DIR = os.path.expanduser("~/.vaibify")
 _MARKER_PATH = os.path.join(_MARKER_DIR, ".setup_done")
+I_SETUP_VERSION = 2
+_RE_MARKER_VERSION = re.compile(r"setup v(\d+)")
+_DICT_COMPLETION_FILE_FOR_SHELL = {
+    "bash": "vaibify.bash",
+    "zsh": "vaibify.zsh",
+    "fish": "vaibify.fish",
+}
 
 logger = logging.getLogger("vaibify")
 
 
+def fiReadSetupVersion():
+    """Return the setup version the marker records; 0 when there is none.
+
+    A marker this function cannot parse is the original "setup
+    complete" text, which is version 1 by definition.
+    """
+    try:
+        with open(_MARKER_PATH, "r", encoding="utf-8") as fileHandle:
+            sMarker = fileHandle.read().strip()
+    except (OSError, IOError):
+        return 0
+    matchVersion = _RE_MARKER_VERSION.fullmatch(sMarker)
+    return int(matchVersion.group(1)) if matchVersion else 1
+
+
 def fbIsSetupComplete():
-    """Return True when first-time setup has already run."""
-    return os.path.isfile(_MARKER_PATH)
+    """Return True when setup of the current version has already run."""
+    return fiReadSetupVersion() >= I_SETUP_VERSION
 
 
 def fnRunFirstTimeSetup():
@@ -31,7 +63,7 @@ def fnRunFirstTimeSetup():
     for the whole of vaibify's history, so this step configured nothing
     and then guaranteed it would never try again.
 
-    A shell with no completion script of its own (fish, sh) is not a
+    A shell with no completion script of its own (sh, csh) is not a
     defect and does not withhold the marker.
     """
     os.makedirs(_MARKER_DIR, exist_ok=True)
@@ -50,8 +82,17 @@ def fnRunFirstTimeSetup():
 
 
 def fbCompletionsArePresent():
-    """Return True when the installation carries its completion scripts."""
-    return os.path.isdir(_fsCompletionsDirectory())
+    """Return True when the installation carries ALL its completion scripts.
+
+    The directory alone is not evidence: a wheel that shipped two of
+    the three scripts would still have the directory, and the shell
+    missing its script would be told nothing.
+    """
+    sCompletionsDirectory = _fsCompletionsDirectory()
+    return all(
+        os.path.isfile(os.path.join(sCompletionsDirectory, sFileName))
+        for sFileName in _DICT_COMPLETION_FILE_FOR_SHELL.values()
+    )
 
 
 def _fsDetectShellName():
@@ -85,6 +126,7 @@ def _fbRcFileContainsLine(sRcPath, sNeedle):
 def _fnAppendToRcFile(sRcPath, sBlock):
     """Append *sBlock* to the RC file, preceded by a blank line."""
     try:
+        os.makedirs(os.path.dirname(sRcPath), exist_ok=True)
         with open(sRcPath, "a", encoding="utf-8") as fileHandle:
             fileHandle.write("\n# Added by Vaibify\n")
             fileHandle.write(sBlock + "\n")
@@ -106,26 +148,53 @@ def fnConfigureCompletions():
         logger.debug("Completion setup skipped", exc_info=True)
 
 
-def _fnConfigureCompletionsInner():
-    """Detect shell, locate completion file, append source line."""
+def ftInspectCompletionWiring():
+    """Return (shell name, rc file, completion script, bSourced) for $SHELL.
+
+    READS only, and is the one place that decides what "wired" means,
+    so that setup (which appends the missing line) and ``vaibify
+    doctor`` (which only reports it) cannot disagree. The rc file and
+    the script are empty strings for a shell vaibify has no script for.
+    """
     sShellName = _fsDetectShellName()
     sCompletionFile = _fsCompletionPathForShell(sShellName)
-    if not sCompletionFile:
-        return
     sRcPath = _fsDetectShellRcFile(sShellName)
-    if not sRcPath:
+    bSourced = bool(sCompletionFile and sRcPath) and _fbRcFileContainsLine(
+        sRcPath, sCompletionFile,
+    )
+    return sShellName, sRcPath, sCompletionFile, bSourced
+
+
+def fsBuildCompletionSourceLine(sShellName, sCompletionFile):
+    """Return the line that loads a completion script, in the shell's syntax.
+
+    fish does not read ``[ ... ] && .``: its conditional is ``test``
+    and its sourcing verb is ``source``.
+    """
+    if sShellName == "fish":
+        return (
+            f'test -f "{sCompletionFile}"; '
+            f'and source "{sCompletionFile}"'
+        )
+    return f'[ -f "{sCompletionFile}" ] && . "{sCompletionFile}"'
+
+
+def _fnConfigureCompletionsInner():
+    """Detect shell, locate completion file, append source line."""
+    sShellName, sRcPath, sCompletionFile, bSourced = (
+        ftInspectCompletionWiring()
+    )
+    if not sCompletionFile or not sRcPath or bSourced:
         return
-    if _fbRcFileContainsLine(sRcPath, sCompletionFile):
-        return
-    sSourceLine = f'[ -f "{sCompletionFile}" ] && . "{sCompletionFile}"'
-    _fnAppendToRcFile(sRcPath, sSourceLine)
+    _fnAppendToRcFile(
+        sRcPath, fsBuildCompletionSourceLine(sShellName, sCompletionFile),
+    )
 
 
 def _fsCompletionPathForShell(sShellName):
     """Return the completion file path if it exists, else empty string."""
     sCompletionsDir = _fsCompletionsDirectory()
-    dictShellFile = {"bash": "vaibify.bash", "zsh": "vaibify.zsh"}
-    sFileName = dictShellFile.get(sShellName, "")
+    sFileName = _DICT_COMPLETION_FILE_FOR_SHELL.get(sShellName, "")
     if not sFileName:
         return ""
     sFullPath = os.path.join(sCompletionsDir, sFileName)
@@ -210,6 +279,6 @@ def _fnWriteMarkerFile():
     """Write the marker file that prevents re-running setup."""
     try:
         with open(_MARKER_PATH, "w", encoding="utf-8") as fileHandle:
-            fileHandle.write("setup complete\n")
+            fileHandle.write(f"setup v{I_SETUP_VERSION}\n")
     except (OSError, IOError):
         logger.debug("Could not write marker file %s", _MARKER_PATH)

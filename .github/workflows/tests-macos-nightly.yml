@@ -62,9 +62,21 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Install the shells the completion tests drive
+        # TESTING ONLY, and the same step as tests-macos.yml; see there.
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew install fish
+          fish --version
+          zsh --version
+
       - name: Run tests
         # The same ceiling and the same selection as tests-macos.yml, so
         # a night's result is comparable with a pull request's.
         timeout-minutes: 50
+        env:
+          VAIBIFY_REQUIRE_SHELLS: '1'
         run: |
           python -m pytest tests/ -m "not docker and not docker_live and not browser" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term
