@@ -15,21 +15,25 @@ var VaibifyFilePull = (function () {
         return !VaibifyApp.fbExecutionHostIsTheEnvironment();
     }
 
-    function fnDownloadToThisComputer(sContainerPath) {
-        /* The canonical remote-to-observer path: the file is streamed
-           in an HTTP response and the BROWSER saves it, so it lands on
-           the computer the researcher is sitting at whether the
-           backend is here or across a tunnel. The token rides the
-           query string because a browser navigation carries no
-           headers; the middleware has a carve-out for exactly this
-           route and no other. */
+    function fsBuildDownloadPath(sContainerPath, bFolder) {
         var sContainerId = VaibifyApp.fsGetContainerId();
-        var sToken = VaibifyApp.fsGetSessionToken();
-        var sUrl = "/api/files/" + encodeURIComponent(sContainerId) +
+        return "/api/files/" + encodeURIComponent(sContainerId) +
             "/download/" + sContainerPath.split("/")
                 .map(encodeURIComponent).join("/") +
-            "?sToken=" + encodeURIComponent(sToken) +
+            (bFolder ? "?bFolder=true" : "");
+    }
+
+    function _fsAuthorizeDownloadPath(sDownloadPath) {
+        /* The token rides the query string because a browser
+           navigation carries no headers; the middleware has a
+           carve-out for exactly this route and no other. */
+        var sSeparator = sDownloadPath.indexOf("?") === -1 ? "?" : "&";
+        return sDownloadPath + sSeparator +
+            "sToken=" + encodeURIComponent(VaibifyApp.fsGetSessionToken()) +
             "&sLeaseId=" + encodeURIComponent(VaibifyApp.fsGetLeaseId());
+    }
+
+    function _fnClickDownloadAnchor(sUrl, sFilename) {
         /* An anchor click, never window.location: navigating the page
            to the file makes the browser fire `beforeunload` FIRST,
            and the dashboard blocks unload, so the researcher was
@@ -42,7 +46,7 @@ var VaibifyFilePull = (function () {
            navigation means no unload to block. */
         var elLink = document.createElement("a");
         elLink.href = sUrl;
-        elLink.download = sContainerPath.split("/").pop() || "";
+        elLink.download = sFilename;
         elLink.rel = "noopener";
         elLink.style.display = "none";
         document.body.appendChild(elLink);
@@ -55,6 +59,32 @@ var VaibifyFilePull = (function () {
         window.setTimeout(function () {
             elLink.remove();
         }, 0);
+    }
+
+    async function fnDownloadToThisComputer(sContainerPath, bFolder) {
+        /* The canonical remote-to-observer path: the file (or, for a
+           folder, a tar of it) is streamed in an HTTP response and the
+           BROWSER saves it, so it lands on the computer the researcher
+           is sitting at whether the backend is here or across a
+           tunnel. An anchor download cannot show an HTTP error, so the
+           server is asked first and its reason is toasted when it
+           would refuse. */
+        var sDownloadPath = fsBuildDownloadPath(sContainerPath, bFolder);
+        var dictProbe;
+        try {
+            dictProbe = await VaibifyApi.fdictProbeDownload(sDownloadPath);
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            return;
+        }
+        if (!dictProbe.bOk) {
+            VaibifyDiagnosis.fnReportFailure(dictProbe.sMessage);
+            return;
+        }
+        var sLeafName = sContainerPath.split("/").pop() || "";
+        _fnClickDownloadAnchor(
+            _fsAuthorizeDownloadPath(sDownloadPath),
+            bFolder ? sLeafName + ".tar" : sLeafName);
     }
 
     function fnPromptPullToHost(sContainerPath) {

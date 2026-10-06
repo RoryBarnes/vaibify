@@ -11,6 +11,28 @@ var VaibifyFiles = (function () {
        an unchanged directory untouched -- see fnRefreshCurrentDirectory. */
     var _sRenderedFingerprint = "";
     var _bRefreshInFlight = false;
+    /* The server's answer about the directory the list shows: whether
+       a drop there is accepted, and if not, why. Rendered, never
+       derived. bKnown is false while the question is in flight and
+       when it could not be asked, and an unasked question is never a
+       refusal. */
+    var _dictUploadVerdict = {
+        sDirectory: "", bKnown: false, bUploadAllowed: true,
+        sUploadRefusal: "", sNote: "",
+    };
+
+    function fsGetPanelOpeningDirectory() {
+        /* A researcher with a project open is working in its
+           repository, so that is where the panel opens; the workspace
+           root is where a researcher with no project open lands. */
+        var dictWorkflow = VaibifyApp.fdictGetWorkflow() || {};
+        return dictWorkflow.sProjectRepoPath ||
+            VaibifyApp.fsGetWorkspaceRoot();
+    }
+
+    function fnOpenPanel() {
+        return fnLoadDirectory(fsGetPanelOpeningDirectory());
+    }
 
     async function fnLoadDirectory(sPath) {
         sCurrentPath = sPath || VaibifyApp.fsGetWorkspaceRoot();
@@ -20,6 +42,7 @@ var VaibifyFiles = (function () {
         fnRenderBreadcrumb(sCurrentPath);
         _fnUpdateConvertButtonVisibility();
         _fnUpdateAdoptBarVisibility();
+        _fnRefreshUploadVerdict(sCurrentPath);
 
         try {
             var listEntries = await VaibifyApi.fdictGet(
@@ -186,11 +209,23 @@ var VaibifyFiles = (function () {
                 sIcon + "</span>" +
                 '<span class="file-name">' +
                 VaibifyUtilities.fnEscapeHtml(entry.sName) + "</span>" +
+                _fsRenderDownloadButton(entry) +
                 "</div>"
             );
         }).join("");
 
         fnBindFileItemDelegation(elList);
+    }
+
+    function _fsRenderDownloadButton(entry) {
+        /* A real button, so the keyboard reaches it; the stylesheet
+           shows it while the row is hovered or holds focus. */
+        var sAction = entry.bIsDirectory
+            ? "Download as .tar" : "Download to this computer";
+        return '<button type="button" class="file-download-button" ' +
+            'title="' + sAction + '" aria-label="' + sAction + ": " +
+            VaibifyUtilities.fnEscapeHtml(entry.sName) + '">' +
+            "&#8595;</button>";
     }
 
     var _bFileItemDelegationBound = false;
@@ -201,7 +236,10 @@ var VaibifyFiles = (function () {
         elList.addEventListener("click", function (event) {
             var elItem = event.target.closest(".file-item");
             if (!elItem) return;
-            if (elItem.dataset.isDir === "true") {
+            if (event.target.closest(".file-download-button")) {
+                VaibifyFilePull.fnDownloadToThisComputer(
+                    elItem.dataset.path, elItem.dataset.isDir === "true");
+            } else if (elItem.dataset.isDir === "true") {
                 fnLoadDirectory(elItem.dataset.path);
             } else {
                 VaibifyFigureViewer.fnDisplayInNextViewer(
@@ -218,18 +256,34 @@ var VaibifyFiles = (function () {
         });
         elList.addEventListener("contextmenu", function (event) {
             var elItem = event.target.closest(".file-item");
-            if (!elItem || elItem.dataset.isDir === "true") return;
+            if (!elItem) return;
             event.preventDefault();
-            /* Right-click meant "copy this to the backend's host",
-               which in host mode is a self-copy and through a tunnel
-               reaches the wrong machine entirely. The gesture now does
-               the thing a researcher almost always means: bring the
-               file to the computer they are sitting at. The
-               execution-host copy stays available from the sync
-               panel's menu, where it is named for what it does. */
-            VaibifyFilePull.fnDownloadToThisComputer(
-                elItem.dataset.path);
+            _fnOpenRowMenu(elItem, event);
         });
+    }
+
+    function _fnOpenRowMenu(elItem, event) {
+        /* Right-click once meant "copy this to the backend's host",
+           then silently "download it"; both were a guess about what
+           the researcher wanted. The menu names each action. "Download
+           to this computer" is the one that brings the file to the
+           machine they are sitting at; the execution-host copy stays
+           in the sync panel's menu, where it is named for what it
+           does. From the keyboard the context-menu key on the row's
+           download button opens the same menu under that button. */
+        var dictRow = {
+            sPath: elItem.dataset.path,
+            bIsDirectory: elItem.dataset.isDir === "true",
+        };
+        var elButton = event.target.closest(".file-download-button");
+        if (elButton) {
+            var rectButton = elButton.getBoundingClientRect();
+            VaibifyFileRowMenu.fnOpen(
+                dictRow, rectButton.left, rectButton.bottom + 4, elButton);
+            return;
+        }
+        VaibifyFileRowMenu.fnOpen(
+            dictRow, event.clientX, event.clientY, null);
     }
 
     function fnBindDropZone() {
@@ -262,16 +316,16 @@ var VaibifyFiles = (function () {
         elTarget.addEventListener("dragover", function (event) {
             if (!fbHasHostFiles(event)) return;
             event.preventDefault();
-            elTarget.classList.add("drag-over");
+            _fnMarkDropDestination(elTarget, event);
         });
         elTarget.addEventListener("dragleave", function () {
-            elTarget.classList.remove("drag-over");
+            _fnClearDropMarks(elTarget);
         });
         elTarget.addEventListener("drop", function (event) {
-            elTarget.classList.remove("drag-over");
+            _fnClearDropMarks(elTarget);
             if (!fbHasHostFiles(event)) return;
             event.preventDefault();
-            fnUploadDroppedFiles(event.dataTransfer.files);
+            _fnUploadDrop(event);
         });
     }
 
@@ -283,45 +337,139 @@ var VaibifyFiles = (function () {
         return false;
     }
 
-    async function fnUploadDroppedFiles(fileList) {
+    /* --- Where a drop lands ---
+
+       A drop on a folder's row lands in that folder; a drop anywhere
+       else on the list, or on the labelled zone, lands in the folder
+       the list shows. The rows are targets through the list's own
+       listeners (an event cancelled anywhere on its way up makes the
+       element under the pointer the target), so a row needs no
+       listeners of its own, only to be told apart. */
+
+    function _felFolderRowUnder(event) {
+        var elTargetNode = event.target;
+        if (!elTargetNode || !elTargetNode.closest) return null;
+        return elTargetNode.closest('.file-item[data-is-dir="true"]');
+    }
+
+    function _fbListedDirectoryRefusesDrops() {
+        return _dictUploadVerdict.sDirectory === sCurrentPath &&
+            _dictUploadVerdict.bKnown && !_dictUploadVerdict.bUploadAllowed;
+    }
+
+    function _fnMarkDropDestination(elTarget, event) {
+        var elRow = _felFolderRowUnder(event);
+        var bRefused = !elRow && _fbListedDirectoryRefusesDrops();
+        elTarget.querySelectorAll(".file-item.drop-target").forEach(
+            function (elMarked) {
+                if (elMarked !== elRow) elMarked.classList.remove("drop-target");
+            });
+        if (elRow) elRow.classList.add("drop-target");
+        elTarget.classList.toggle("drag-over", !elRow && !bRefused);
+        event.dataTransfer.dropEffect = bRefused ? "none" : "copy";
+    }
+
+    function _fnClearDropMarks(elTarget) {
+        elTarget.classList.remove("drag-over");
+        elTarget.querySelectorAll(".file-item.drop-target").forEach(
+            function (elMarked) { elMarked.classList.remove("drop-target"); });
+    }
+
+    function _fsetListedFileNames() {
+        var setNames = new Set();
+        document.querySelectorAll(
+            '#listFiles .file-item[data-is-dir="false"] .file-name'
+        ).forEach(function (elName) { setNames.add(elName.textContent); });
+        return setNames;
+    }
+
+    function _fnUploadDrop(event) {
+        /* Everything the drop means is read HERE, synchronously: the
+           dropped entries die when this handler returns, and the
+           folder under the pointer or the directory shown may be
+           something else by the time the first byte is sent. The batch
+           freezes it. */
         var sContainerId = VaibifyApp.fsGetContainerId();
-        if (!sContainerId || fileList.length === 0) return;
-        for (var i = 0; i < fileList.length; i++) {
-            await fnUploadOneFile(sContainerId, fileList[i]);
-        }
-        fnLoadDirectory(sCurrentPath);
-    }
-
-    async function fnUploadOneFile(sContainerId, file) {
-        var sContentBase64 = await fsEncodeFileBase64(file);
-        try {
-            await VaibifyApi.fdictPost(
-                "/api/files/" + sContainerId + "/upload",
-                {
-                    sFilename: file.name,
-                    sDestination: sCurrentPath,
-                    sContentBase64: sContentBase64,
+        var elRow = _felFolderRowUnder(event);
+        var listEntries = VaibifyFileDropWalker.flistCaptureEntries(
+            event.dataTransfer);
+        if (!sContainerId || listEntries.length === 0) return;
+        VaibifyFileUpload.fpromiseUploadDropped({
+            sContainerId: sContainerId,
+            sDestination: elRow ? elRow.dataset.path : sCurrentPath,
+            listEntries: listEntries,
+            setExistingNames: elRow ? new Set() : _fsetListedFileNames(),
+            fnOnFinished: function () {
+                if (VaibifyApp.fsGetContainerId() === sContainerId) {
+                    fnLoadDirectory(sCurrentPath);
                 }
-            );
-        } catch (error) {
-            VaibifyApp.fnShowConfirmModal(
-                "Upload Error",
-                "Failed to upload " + file.name,
-                function () {}
-            );
-        }
+            },
+        }).catch(function (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+        });
     }
 
-    function fsEncodeFileBase64(file) {
-        return new Promise(function (resolve, reject) {
-            var reader = new FileReader();
-            reader.onload = function () {
-                var sEncoded = reader.result.split(",")[1] || "";
-                resolve(sEncoded);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
+    /* --- The upload verdict --- */
+
+    function _fsDescribeUploadVerdict() {
+        if (_dictUploadVerdict.sNote) return _dictUploadVerdict.sNote;
+        if (!_dictUploadVerdict.bUploadAllowed) {
+            return _dictUploadVerdict.sUploadRefusal;
+        }
+        return "Files and folders dropped here are added to " +
+            _dictUploadVerdict.sDirectory + ".";
+    }
+
+    function _fnRenderUploadVerdict() {
+        var elZone = document.getElementById("fileUploadDropZone");
+        var elVerdict = document.getElementById("fileUploadVerdict");
+        if (!elZone || !elVerdict) return;
+        var bRefused = _dictUploadVerdict.bKnown &&
+            !_dictUploadVerdict.bUploadAllowed;
+        elZone.classList.toggle("file-drop-zone--refused", bRefused);
+        elZone.setAttribute("aria-disabled", bRefused ? "true" : "false");
+        elVerdict.textContent = _fsDescribeUploadVerdict();
+    }
+
+    async function _fnRefreshUploadVerdict(sDirectory) {
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        _dictUploadVerdict = {
+            sDirectory: sDirectory, bKnown: false, bUploadAllowed: true,
+            sUploadRefusal: "",
+            sNote: "Checking whether this folder takes uploads...",
+        };
+        _fnRenderUploadVerdict();
+        var dictAnswer;
+        try {
+            dictAnswer = await VaibifyApi.fdictGet(
+                "/api/upload/" + encodeURIComponent(sContainerId) +
+                "/verdict?sDirectory=" + encodeURIComponent(sDirectory));
+        } catch (error) {
+            _fnAdoptUploadVerdict(sDirectory, sContainerId, {
+                bKnown: false, bUploadAllowed: true, sUploadRefusal: "",
+                sNote: "Could not check whether this folder takes " +
+                    "uploads: " + VaibifyDiagnosis.fsExplainError(error),
+            });
+            return;
+        }
+        _fnAdoptUploadVerdict(sDirectory, sContainerId, {
+            bKnown: true,
+            bUploadAllowed: dictAnswer.bUploadAllowed,
+            sUploadRefusal: dictAnswer.sUploadRefusal,
+            sNote: "",
         });
+    }
+
+    function _fnAdoptUploadVerdict(sDirectory, sContainerId, dictVerdict) {
+        /* An answer for a directory the researcher has already left is
+           an answer to a question nobody is asking. */
+        if (sDirectory !== sCurrentPath ||
+            sContainerId !== VaibifyApp.fsGetContainerId()) {
+            return;
+        }
+        _dictUploadVerdict = Object.assign(
+            {sDirectory: sDirectory}, dictVerdict);
+        _fnRenderUploadVerdict();
     }
 
     /* --- Adopting a workspace directory as a Project --- */
@@ -462,6 +610,7 @@ var VaibifyFiles = (function () {
 
     return {
         fnLoadDirectory: fnLoadDirectory,
+        fnOpenPanel: fnOpenPanel,
         fnRefreshCurrentDirectory: fnRefreshCurrentDirectory,
         fsAdoptableDirectoryName: fsAdoptableDirectoryName,
     };

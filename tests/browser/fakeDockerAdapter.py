@@ -29,10 +29,22 @@ carries the id, and a ``name == id`` fixture once hid a bug that would
 have closed every real session.
 """
 
+import errno
+import hashlib
+import io
 import json
+import posixpath
+import tarfile
+
+from vaibify.config import mutationAdmission
+from vaibify.docker.confinedRead import ContainerReadRefusedError
+from vaibify.docker.confinedWrite import (
+    ContainerWriteExistsError,
+    ContainerWriteRefusedError,
+)
 
 
-S_CONTAINER_ID = "browserlane0container0id0000000000000000000000000000000000000000"
+S_CONTAINER_ID ="browserlane0container0id0000000000000000000000000000000000000000"
 S_CONTAINER_NAME = "browser-lane-project"
 # The immutable image id a real daemon reports for every running
 # container. The council credential gate compares it against the
@@ -153,6 +165,55 @@ LIST_MODELLED_COMMANDS = [
 ]
 
 
+# The typed operations the Files tab's upload and download reach, each
+# with the real-container test that shows a real container answers the
+# same way. They are adapter METHODS, not commands, so they are declared
+# here rather than in LIST_MODELLED_COMMANDS; the same rule holds: a row
+# with no sLaneTwoAssertion, or naming a test that does not exist in
+# tests/testConfinedStreamingLive.py, is a contract hole.
+LIST_MODELLED_FILE_OPERATIONS = [
+    {
+        "sMethod": "fnWriteFileFromStream",
+        "sPurpose": (
+            "streamed write: refuses an existing file unless replacing "
+            "was allowed, a body of the wrong length, a path outside "
+            "its root or through a forbidden name, and a full disk"
+        ),
+        "sLaneTwoAssertion":
+            "testReplacementAndShortBodiesAreRefusedByTheRealProgram",
+    },
+    {
+        "sMethod": "fnMakeDirectory",
+        "sPurpose": "folder creation below the authorized root",
+        "sLaneTwoAssertion":
+            "testANestedFileLandsWithItsParentsCreatedAsTheContainerUser",
+    },
+    {
+        "sMethod": "fiterReadFileConfined",
+        "sPurpose": (
+            "file read: follows a link that stays inside the root, "
+            "refuses one that leaves it, and reports a missing path"
+        ),
+        "sLaneTwoAssertion":
+            "testTheConfinedReadFollowsInRootLinksAndRefusesTheRest",
+    },
+    {
+        "sMethod": "fiterReadDirectoryAsTar",
+        "sPurpose": "folder read as a tar whose links stay links",
+        "sLaneTwoAssertion":
+            "testAFolderArchiveRoundTripsTheTreeAsTheContainerSeesIt",
+    },
+    {
+        "sMethod": "fdictReadFilesystemUsage",
+        "sPurpose": "free space behind a path, for the upfront check",
+        "sLaneTwoAssertion":
+            "testAFilePastTheFetchCeilingIsWrittenIntactInBoundedMemory",
+    },
+]
+
+I_FILE_STREAM_CHUNK_BYTES = 1 << 20
+I_DEFAULT_FREE_BYTES = 1 << 40
+
 # When the modelled Claude login expires, in epoch milliseconds. Zero
 # means the document states no expiry, which is what every journey but
 # the login-cap one wants. Set and reset by that test; kept here rather
@@ -211,6 +272,17 @@ class FailClosedDockerAdapter:
         self.setWorkspaceRepositories = {
             S_PROJECT_REPO[len(S_WORKSPACE_ROOT) + 1:],
         }
+        # The files and folders the Files tab lists, uploads into and
+        # downloads from. Kept apart from ``_dictFiles`` (what the
+        # product wrote through the older writers) so a listing shows
+        # only what a journey seeded or uploaded. Free space is a knob
+        # a journey lowers to drive the no-space refusals; every
+        # streamed write is recorded with the confinement it was handed.
+        self.dictProjectFiles = {}
+        self.dictProjectSymlinks = {}
+        self.setProjectDirectories = set()
+        self.iFreeBytes = I_DEFAULT_FREE_BYTES
+        self.listStreamedWrites = []
 
     def fdictReadDaemonCapacity(self):
         """Report an unmeasurable daemon, so the bounds are the floors.
@@ -404,6 +476,18 @@ class FailClosedDockerAdapter:
         }
 
     def fsHashContainerFileSha256(self, sContainerId, sPath):
+        """Hash a file the Files tab models; answer as before for the rest.
+
+        A modelled file answers its real digest, and a path inside a
+        modelled folder that holds nothing answers ``""`` (the typed
+        read's spelling of "absent"), so an upload's prior hash is a
+        real comparison. Every other path keeps the constant it always
+        had, which nothing compares.
+        """
+        if sPath in self.dictProjectFiles:
+            return hashlib.sha256(self.dictProjectFiles[sPath]).hexdigest()
+        if posixpath.dirname(sPath) in self.setProjectDirectories:
+            return ""
         return "0" * 64
 
     # The Repos panel's discovery, as TYPED READS. Two `find` execs
@@ -416,12 +500,16 @@ class FailClosedDockerAdapter:
     # the trap is a fake that answers WRONGLY for the journey that
     # finally arrives -- but claiming no coverage this lane lacks.
     def flistDirectoryEntries(self, sContainerId, sDirectoryPath):
-        if sDirectoryPath != S_WORKSPACE_ROOT:
+        if not self._fbIsInsideWorkspace(sDirectoryPath):
             raise UnmodelledContainerCall(
                 "The browser lane's adapter was asked to list a "
                 f"directory its contract does not model: {sDirectoryPath}"
             )
-        return sorted(self.setWorkspaceRepositories)
+        if not self._fbIsModelledDirectory(sDirectoryPath):
+            raise FileNotFoundError(
+                f"Cannot list directory in container: {sDirectoryPath}"
+            )
+        return self._flistChildNames(sDirectoryPath)
 
     def flistContainerPathsExist(self, sContainerId, listPaths):
         return [
@@ -438,8 +526,7 @@ class FailClosedDockerAdapter:
         and used to be offered as somewhere to run ``git init``.
         """
         return [
-            sPath[len(S_WORKSPACE_ROOT) + 1:]
-            in self.setWorkspaceRepositories
+            self._fbIsModelledDirectory(self._fsFollowLinkLexically(sPath))
             for sPath in listPaths
         ]
 
@@ -473,10 +560,291 @@ class FailClosedDockerAdapter:
         """
         if sPath == S_VAIBIFY_MARKER_DIRECTORY:
             return True
+        if (sPath in self.dictProjectFiles
+                or sPath in self.dictProjectSymlinks
+                or sPath in self.setProjectDirectories):
+            return True
         return (
             sPath[len(S_WORKSPACE_ROOT) + 1:].rsplit("/.git", 1)[0]
             in self.setWorkspaceRepositories
         )
+
+    # --- The Files tab's files -------------------------------------
+    #
+    # An in-memory project volume that REFUSES where the real programs
+    # refuse (LIST_MODELLED_FILE_OPERATIONS names the live test behind
+    # each). A fake that always succeeded would report every upload
+    # landed and every download whole.
+
+    def fnResetProjectFiles(self):
+        """Forget every modelled file, link, folder and write record."""
+        self.dictProjectFiles.clear()
+        self.dictProjectSymlinks.clear()
+        self.setProjectDirectories.clear()
+        self.listStreamedWrites.clear()
+        self.iFreeBytes = I_DEFAULT_FREE_BYTES
+
+    def fnSeedDirectory(self, sPath):
+        """Make a folder exist, with every folder above it."""
+        self._fnRequireInsideWorkspace(sPath)
+        self._fnRegisterDirectoryChain(sPath)
+
+    def fnSeedFile(self, sPath, baContent):
+        """Make a file exist, as an in-container writer would have."""
+        self._fnRequireInsideWorkspace(sPath)
+        self._fnRegisterDirectoryChain(posixpath.dirname(sPath))
+        self.dictProjectFiles[sPath] = baContent
+
+    def fnSeedSymlink(self, sPath, sTarget):
+        """Make a symlink exist; its target is text, as on a real disk."""
+        self._fnRequireInsideWorkspace(sPath)
+        self._fnRegisterDirectoryChain(posixpath.dirname(sPath))
+        self.dictProjectSymlinks[sPath] = sTarget
+
+    def _fbIsInsideWorkspace(self, sPath):
+        return sPath == S_WORKSPACE_ROOT or sPath.startswith(
+            S_WORKSPACE_ROOT + "/")
+
+    def _fnRequireInsideWorkspace(self, sPath):
+        if not self._fbIsInsideWorkspace(sPath):
+            raise UnmodelledContainerCall(
+                "A file operation outside the workspace volume, which "
+                f"this fake does not speak for: {sPath}"
+            )
+
+    def _fnRegisterDirectoryChain(self, sDirectory):
+        while sDirectory.startswith(S_WORKSPACE_ROOT + "/"):
+            self.setProjectDirectories.add(sDirectory)
+            sDirectory = posixpath.dirname(sDirectory)
+
+    def _fbIsModelledDirectory(self, sPath):
+        return (
+            sPath == S_WORKSPACE_ROOT
+            or sPath in self.setProjectDirectories
+            or sPath[len(S_WORKSPACE_ROOT) + 1:]
+            in self.setWorkspaceRepositories
+        )
+
+    def _flistChildNames(self, sDirectory):
+        setNames = set()
+        if sDirectory == S_WORKSPACE_ROOT:
+            setNames.update(self.setWorkspaceRepositories)
+        for sPath in (
+            list(self.dictProjectFiles) + list(self.dictProjectSymlinks)
+            + list(self.setProjectDirectories)
+        ):
+            if posixpath.dirname(sPath) == sDirectory:
+                setNames.add(posixpath.basename(sPath))
+        return sorted(setNames)
+
+    def _fsFollowLinkLexically(self, sPath):
+        """Resolve a chain of modelled links as text; any other path as is."""
+        for _ in range(8):
+            if sPath not in self.dictProjectSymlinks:
+                return sPath
+            sTarget = self.dictProjectSymlinks[sPath]
+            sPath = posixpath.normpath(posixpath.join(
+                posixpath.dirname(sPath), sTarget))
+        return sPath
+
+    def _fnRefuseBelowRootOrForbidden(
+        self, sPath, sAuthorizedRoot, tForbiddenNames, sVerb,
+    ):
+        sRoot = posixpath.normpath(sAuthorizedRoot or "/")
+        sBelow = posixpath.relpath(sPath, sRoot)
+        if sBelow.startswith("..") or sBelow == ".":
+            raise ContainerWriteRefusedError(
+                f"{sVerb} to {sPath} refused: refused: the path is not "
+                "below its authorized root")
+        for sName in sBelow.split("/"):
+            if sName in tForbiddenNames:
+                raise ContainerWriteRefusedError(
+                    f"{sVerb} to {sPath} refused: refused: writes "
+                    f"through '{sName}' are not permitted")
+
+    def _fnRequireParentFolders(self, sPath, sAuthorizedRoot, bCreate):
+        sParent = posixpath.dirname(sPath)
+        if self._fbIsModelledDirectory(sParent):
+            return
+        if not bCreate or not sParent.startswith(
+            posixpath.normpath(sAuthorizedRoot or "/") + "/"
+        ):
+            raise FileNotFoundError(
+                errno.ENOENT, f"Cannot write {sPath}: not found: "
+                f"'{posixpath.basename(sParent)}'")
+        self._fnRegisterDirectoryChain(sParent)
+
+    def _fnRefuseUnwritableFinal(self, sPath, bReplaceAllowed):
+        sName = posixpath.basename(sPath)
+        if (sPath in self.dictProjectSymlinks
+                or self._fbIsModelledDirectory(sPath)):
+            raise ContainerWriteRefusedError(
+                f"Write to {sPath} refused: refused: '{sName}' is a "
+                "symlink or a directory")
+        if sPath in self.dictProjectFiles and not bReplaceAllowed:
+            raise ContainerWriteExistsError(
+                f"Write to {sPath} refused: refused: '{sName}' already "
+                "exists")
+
+    def _fbaReceiveStream(self, fileSource, iExpectedBytes, sPath):
+        listChunks = []
+        iReceived = 0
+        for baChunk in iter(
+            lambda: fileSource.read(I_FILE_STREAM_CHUNK_BYTES), b""
+        ):
+            iReceived += len(baChunk)
+            listChunks.append(baChunk)
+        if iExpectedBytes is not None and iReceived != iExpectedBytes:
+            raise ContainerWriteRefusedError(
+                f"Write to {sPath} refused: refused: {iReceived} bytes "
+                f"arrived but {iExpectedBytes} were expected")
+        return b"".join(listChunks)
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sFilePath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
+    ):
+        """Write one file from a stream; the old bytes survive a refusal."""
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileFromStream")
+        self._fnRequireInsideWorkspace(sFilePath)
+        self._fnRefuseBelowRootOrForbidden(
+            sFilePath, sAuthorizedRoot, tForbiddenNames, "Write")
+        self._fnRequireParentFolders(
+            sFilePath, sAuthorizedRoot, bCreateParents)
+        self._fnRefuseUnwritableFinal(sFilePath, bReplaceAllowed)
+        baContent = self._fbaReceiveStream(
+            fileSource, iExpectedBytes, sFilePath)
+        if len(baContent) > self.iFreeBytes:
+            raise OSError(
+                errno.ENOSPC,
+                f"Cannot write {sFilePath} in the container: no space "
+                "left on device")
+        self.dictProjectFiles[sFilePath] = baContent
+        self.listStreamedWrites.append({
+            "sPath": sFilePath, "iBytes": len(baContent),
+            "bReplaceAllowed": bReplaceAllowed,
+            "sAuthorizedRoot": sAuthorizedRoot,
+            "tForbiddenNames": tuple(tForbiddenNames),
+            "bCreateParents": bCreateParents,
+        })
+
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Create a folder (and its missing parents below the root)."""
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnMakeDirectory")
+        self._fnRequireInsideWorkspace(sDirectoryPath)
+        self._fnRefuseBelowRootOrForbidden(
+            sDirectoryPath, sAuthorizedRoot, tForbiddenNames, "Write")
+        if (sDirectoryPath in self.dictProjectFiles
+                or sDirectoryPath in self.dictProjectSymlinks):
+            raise ContainerWriteRefusedError(
+                f"Write to {sDirectoryPath} refused: it is not a folder")
+        self._fnRegisterDirectoryChain(sDirectoryPath)
+
+    def fdictReadFilesystemUsage(self, sContainerId, sPath):
+        """Report the volume's space; ``iFreeBytes`` is the knob."""
+        self._fnRequireInsideWorkspace(sPath)
+        return {
+            "iTotalBytes": I_DEFAULT_FREE_BYTES,
+            "iUsedBytes": I_DEFAULT_FREE_BYTES - self.iFreeBytes,
+            "iFreeBytes": self.iFreeBytes,
+        }
+
+    def _fnRefuseReadOutsideRoot(self, sPath, sAuthorizedRoot):
+        sRoot = posixpath.normpath(sAuthorizedRoot or "/")
+        if not (sPath + "/").startswith(sRoot.rstrip("/") + "/"):
+            raise ContainerReadRefusedError(
+                f"Read of {sPath} refused: {sPath!r} is not below "
+                f"{sRoot!r}")
+
+    def _fsResolveReadableFile(self, sFilePath, sAuthorizedRoot):
+        """Follow in-root links as text; refuse one that leaves the root."""
+        sRoot = posixpath.normpath(sAuthorizedRoot or "/")
+        sCurrent = sFilePath
+        for _ in range(8):
+            if sCurrent not in self.dictProjectSymlinks:
+                return sCurrent
+            sTarget = self.dictProjectSymlinks[sCurrent]
+            sResolved = posixpath.normpath(posixpath.join(
+                posixpath.dirname(sCurrent), sTarget))
+            if not (sResolved + "/").startswith(sRoot.rstrip("/") + "/"):
+                raise ContainerReadRefusedError(
+                    f"Read of {sFilePath} refused: refused: "
+                    f"'{posixpath.basename(sCurrent)}' points to "
+                    f"'{sTarget}', which is outside the project")
+            sCurrent = sResolved
+        raise ContainerReadRefusedError(
+            f"Read of {sFilePath} refused: refused: more than 8 links "
+            "in a row")
+
+    def fiterReadFileConfined(
+        self, sContainerId, sFilePath, sAuthorizedRoot=None,
+    ):
+        """Yield a file's bytes; every refusal surfaces on the first pull."""
+        self._fnRequireInsideWorkspace(sFilePath)
+        self._fnRefuseReadOutsideRoot(sFilePath, sAuthorizedRoot)
+        sReal = self._fsResolveReadableFile(sFilePath, sAuthorizedRoot)
+        if self._fbIsModelledDirectory(sReal):
+            raise ContainerReadRefusedError(
+                f"Read of {sFilePath} refused: refused: "
+                f"'{sFilePath}' is not a regular file")
+        if sReal not in self.dictProjectFiles:
+            raise FileNotFoundError(
+                errno.ENOENT,
+                f"{sFilePath}: not found: '{posixpath.basename(sReal)}'")
+        baContent = self.dictProjectFiles[sReal]
+        for iStart in range(0, len(baContent), I_FILE_STREAM_CHUNK_BYTES):
+            yield baContent[iStart:iStart + I_FILE_STREAM_CHUNK_BYTES]
+
+    def _fnAddFolderToTar(self, tarOut, sFolder, sArchiveName):
+        tarOut.addfile(self._finfoDirectory(sArchiveName))
+        for sPath in sorted(self.setProjectDirectories):
+            if posixpath.dirname(sPath) == sFolder:
+                self._fnAddFolderToTar(
+                    tarOut, sPath,
+                    f"{sArchiveName}/{posixpath.basename(sPath)}")
+        for sPath, baContent in sorted(self.dictProjectFiles.items()):
+            if posixpath.dirname(sPath) == sFolder:
+                infoFile = tarfile.TarInfo(
+                    f"{sArchiveName}/{posixpath.basename(sPath)}")
+                infoFile.size = len(baContent)
+                tarOut.addfile(infoFile, io.BytesIO(baContent))
+        for sPath, sTarget in sorted(self.dictProjectSymlinks.items()):
+            if posixpath.dirname(sPath) == sFolder:
+                infoLink = tarfile.TarInfo(
+                    f"{sArchiveName}/{posixpath.basename(sPath)}")
+                infoLink.type = tarfile.SYMTYPE
+                infoLink.linkname = sTarget
+                tarOut.addfile(infoLink)
+
+    @staticmethod
+    def _finfoDirectory(sName):
+        infoDirectory = tarfile.TarInfo(sName)
+        infoDirectory.type = tarfile.DIRTYPE
+        infoDirectory.mode = 0o755
+        return infoDirectory
+
+    def fiterReadDirectoryAsTar(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+    ):
+        """Yield a folder as a tar whose links stay links."""
+        self._fnRequireInsideWorkspace(sDirectoryPath)
+        self._fnRefuseReadOutsideRoot(sDirectoryPath, sAuthorizedRoot)
+        if not self._fbIsModelledDirectory(sDirectoryPath):
+            raise FileNotFoundError(
+                errno.ENOENT, f"{sDirectoryPath}: not found")
+        bufferTar = io.BytesIO()
+        with tarfile.open(fileobj=bufferTar, mode="w") as tarOut:
+            self._fnAddFolderToTar(
+                tarOut, sDirectoryPath, posixpath.basename(sDirectoryPath))
+        baArchive = bufferTar.getvalue()
+        for iStart in range(0, len(baArchive), I_FILE_STREAM_CHUNK_BYTES):
+            yield baArchive[iStart:iStart + I_FILE_STREAM_CHUNK_BYTES]
 
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self._ftAnswerModelledCommand(sCommand)
@@ -488,6 +856,8 @@ class FailClosedDockerAdapter:
     def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]
+        if sPath in self.dictProjectFiles:
+            return self.dictProjectFiles[sPath]
         if sPath == S_WORKFLOW_PATH:
             return json.dumps(DICT_WORKFLOW).encode("utf-8")
         # The council's launch-time login-presence probe: the journey
