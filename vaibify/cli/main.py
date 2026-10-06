@@ -85,9 +85,32 @@ def _fnConfigureErrorLogging(sLogDirOverride=None):
         loggerVaibify.addHandler(rotatingHandler)
     _fnAttachHostIncidentHandler(loggerVaibify)
 
+
+def _fnServeCompletionRequestBeforeLoadingEveryCommand():
+    """Answer ``vaibify complete-path`` without importing the other commands.
+
+    The shell completion scripts run this once per TAB, and loading
+    every command module below is the largest cost of a TAB that can be
+    avoided (``python -X importtime -m vaibify.cli.main --version``
+    shows it). The helper needs only its own module, so it is served
+    here, ahead of the imports it does not need, and the process exits.
+    Registration with the group, further down, is what keeps it known
+    to the command-line machinery and to tests.
+    """
+    if sys.argv[1:2] != ["complete-path"]:
+        return
+    from .commandCompletePath import fnCompletePathCommand
+    fnCompletePathCommand.main(
+        args=sys.argv[2:], prog_name="vaibify complete-path",
+    )
+
+
+_fnServeCompletionRequestBeforeLoadingEveryCommand()
+
 from .actionCommands import fnDoCommand
 from .commandBuild import fnBuildCommand
 from .commandCat import fnCatCommand
+from .commandCompletePath import fnCompletePathCommand
 from .commandConfig import fnConfigCommand
 from .commandDestroy import fnDestroyCommand
 from .commandDoctor import fnDoctorCommand
@@ -308,6 +331,7 @@ main.add_command(fnWorkflowCommand)
 main.add_command(fnVerifyStepCommand)
 main.add_command(fnListCommand)
 main.add_command(fnCatCommand)
+main.add_command(fnCompletePathCommand)
 main.add_command(fnRegisterCommand)
 main.add_command(fnRevokeCommand)
 main.add_command(fnTestCommand)
@@ -429,9 +453,16 @@ def fnPushCommand(project, source, destination):
     configProject = fconfigResolveProject(project)
     if _fbCopiedWithinHostProject(configProject, source, destination):
         return
-    from vaibify.docker.fileTransfer import fnPushToContainer
+    from vaibify.docker.fileTransfer import (
+        fnPushToContainer, fsResolveContainerPath,
+    )
+    sContainerDestination = fsResolveContainerPath(
+        destination, configProject.sWorkspaceRoot,
+    )
     try:
-        fnPushToContainer(configProject.sProjectName, source, destination)
+        fnPushToContainer(
+            configProject.sProjectName, source, sContainerDestination,
+        )
     except OSError as error:
         raise click.ClickException(str(error))
     click.echo(f"Pushed {source} -> {destination}")
@@ -449,8 +480,15 @@ def fnPullCommand(project, source, destination):
     configProject = fconfigResolveProject(project)
     if _fbCopiedWithinHostProject(configProject, source, destination):
         return
-    from vaibify.docker.fileTransfer import fnPullFromContainer
-    fnPullFromContainer(configProject.sProjectName, source, destination)
+    from vaibify.docker.fileTransfer import (
+        fnPullFromContainer, fsResolveContainerPath,
+    )
+    sContainerSource = fsResolveContainerPath(
+        source, configProject.sWorkspaceRoot,
+    )
+    fnPullFromContainer(
+        configProject.sProjectName, sContainerSource, destination,
+    )
     click.echo(f"Pulled {source} -> {destination}")
 
 

@@ -74,7 +74,10 @@ def fsResolveContainerPath(sRelativePath, sWorkspaceRoot):
     Parameters
     ----------
     sRelativePath : str
-        Path relative to the workspace root.
+        Path relative to the workspace root. An absolute path is
+        returned unchanged. A trailing slash is kept, so that resolving
+        a path never edits the text the researcher typed beyond making
+        it absolute.
     sWorkspaceRoot : str
         Absolute path of the workspace root inside the container.
 
@@ -84,8 +87,10 @@ def fsResolveContainerPath(sRelativePath, sWorkspaceRoot):
         Absolute POSIX path inside the container.
     """
     pathWorkspace = PurePosixPath(sWorkspaceRoot)
-    pathResolved = pathWorkspace / sRelativePath
-    return str(pathResolved)
+    sResolved = str(pathWorkspace / sRelativePath)
+    if sRelativePath.endswith("/") and not sResolved.endswith("/"):
+        return sResolved + "/"
+    return sResolved
 
 
 _fnRunDockerCp = fnRunDockerCommand
