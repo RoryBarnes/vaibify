@@ -717,6 +717,13 @@ class _ConnectionRecordingWrites:
     def fnWriteFileViaTar(self, sName, sPath, baContent):
         self.listFileWrites.append((sName, sPath, baContent))
 
+    def fnWriteFileFromStream(
+        self, sName, sPath, fileSource, iExpectedBytes=None, **dictKeywords,
+    ):
+        baContent = fileSource.read()
+        assert iExpectedBytes == len(baContent)
+        self.listFileWrites.append((sName, sPath, baContent))
+
     def fnWriteTreeViaTar(
         self, sName, sDirectory, listHostPaths, sArchiveName=None,
     ):

@@ -24776,6 +24776,12 @@ def _fdictEntry(sRel):
         old='        except ValueError as error:\n            raise confinedRead.ContainerReadRefusedError(\n                f"Read of {sPath} refused: {error}"\n            ) from error\n',
         new='        except ValueError:\n            raise\n',
     ),
+    Falsification(
+        nodeid='tests/testCoverageDockerConnectionTransfers.py::testPushingAFileStreamsItInsteadOfReadingItWhole',
+        source='vaibify/docker/dockerConnection.py',
+        old='        with open(sHostSource, "rb") as fileSource:\n            self.fnWriteFileFromStream(\n                sContainerId,\n                posixpath.join(\n                    sContainerDestination, os.path.basename(sHostSource),\n                ) if bDestinationIsDirectory else sContainerDestination,\n                fileSource,\n                iExpectedBytes=os.fstat(fileSource.fileno()).st_size,\n            )',
+        new='        with open(sHostSource, "rb") as fileSource:\n            baContent = fileSource.read()\n        self.fnWriteFileFromStream(\n            sContainerId,\n            posixpath.join(\n                sContainerDestination, os.path.basename(sHostSource),\n            ) if bDestinationIsDirectory else sContainerDestination,\n            io.BytesIO(baContent), iExpectedBytes=len(baContent),\n        )',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',

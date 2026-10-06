@@ -3071,14 +3071,14 @@ class DockerConnection:
             )
             return
         with open(sHostSource, "rb") as fileSource:
-            baContent = fileSource.read()
-        self.fnWriteFileViaTar(
-            sContainerId,
-            posixpath.join(
-                sContainerDestination, os.path.basename(sHostSource),
-            ) if bDestinationIsDirectory else sContainerDestination,
-            baContent,
-        )
+            self.fnWriteFileFromStream(
+                sContainerId,
+                posixpath.join(
+                    sContainerDestination, os.path.basename(sHostSource),
+                ) if bDestinationIsDirectory else sContainerDestination,
+                fileSource,
+                iExpectedBytes=os.fstat(fileSource.fileno()).st_size,
+            )
 
     @staticmethod
     def _ffileBuildTreeTar(listHostPaths, sArchiveName=None):
