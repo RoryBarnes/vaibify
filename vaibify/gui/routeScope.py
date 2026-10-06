@@ -334,6 +334,11 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # writes nothing, and only the session that owns the container is
     # shown the host's socket path.
     ("GET", "/api/containers/{sContainerId}/vscode-link"),
+    # The Files tab's free-space answer before a drop. Reads the free
+    # bytes of the volume (or host directory) the files would land in
+    # and the destination names that already exist; writes nothing,
+    # and it is asked only after the claim minted the lease.
+    ("GET", "/api/upload/{sContainerId}/verdict"),
     ("GET", "/api/agent-councils/{sContainerId}"),
     ("GET", "/api/agent-councils/{sContainerId}/capabilities"),
     ("GET", "/api/agent-councils/{sContainerId}/snapshot-feasibility"),

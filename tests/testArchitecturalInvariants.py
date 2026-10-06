@@ -7578,7 +7578,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1076 -> 1145 (2026-10-05): the container authority names its refusal
     # (claim-required, hub only) and logs each one; both belong with the
     # verdict.
-    "routeScope.py": 1145,
+    # 1145 -> 1150 (2026-10-06): the Files tab's free-space verdict GET
+    # joins the container-read allowlist, with why it is a read.
+    "routeScope.py": 1150,
 }
 
 
