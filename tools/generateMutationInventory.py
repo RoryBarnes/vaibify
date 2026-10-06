@@ -170,6 +170,11 @@ DICT_PRIMITIVE_ACCESS = {
     # program fed from a readable instead of a buffer. The same write
     # authority, recorded on the same terms.
     "fnWriteFileFromStream": S_ACCESS_ARCHIVE_WRITE,
+    # Creates directories by handing the tree receiver an empty archive.
+    # It lands no member and writes no file, but it changes the
+    # container's filesystem through the same receiver, so it is recorded
+    # as the write it is.
+    "fnMakeDirectory": S_ACCESS_ARCHIVE_WRITE,
     # The bulk sibling: one put_archive carrying a whole host tree into
     # a container. Same access as the single-file writes and recorded
     # on the same terms -- a write primitive the vocabulary does not

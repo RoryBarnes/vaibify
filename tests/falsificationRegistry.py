@@ -24728,6 +24728,18 @@ def _fdictEntry(sRel):
         old='            os.path.normpath(sAuthorizedRoot or sProjectRoot), sRealRoot,\n',
         new='            sRealRoot,\n',
     ),
+    Falsification(
+        nodeid='tests/testMakeDirectory.py::testTheContainerLegCreatesNestedDirectoriesBelowTheRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='            bCreateDestination=True,\n',
+        new='            bCreateDestination=False,\n',
+    ),
+    Falsification(
+        nodeid='tests/testMakeDirectory.py::testTheContainerLegRefusesToCreateThroughASymlinkOrAForbiddenName',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',

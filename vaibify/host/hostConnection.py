@@ -655,6 +655,27 @@ class HostConnection:
             tForbiddenNames=tForbiddenNames,
         )
 
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Create a directory, and any missing parents, inside the project.
+
+        The host twin of the Docker leg's method: idempotent, and
+        confined by the same path guard as every host write. A symlinked
+        directory anywhere in the path resolves outside the project or
+        stays inside it, and in neither case does this follow one to
+        create something outside.
+        """
+        del sAuthorizedRoot, tForbiddenNames
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnMakeDirectory",
+        )
+        os.makedirs(
+            self._fsValidateHostPath(sContainerId, sDirectoryPath),
+            exist_ok=True,
+        )
+
     def fnWriteTreeViaTar(
         self, sResourceId, sDestinationDirectory, listHostPaths,
         iUid=None, iGid=None, sArchiveName=None,

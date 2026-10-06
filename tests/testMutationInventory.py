@@ -396,7 +396,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 276
 # asserted inside the gateway method it forwards to. A new public write
 # primitive on a duck-typed surface cannot avoid one new routing row; this
 # is not a new place a container can be changed from.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 224
+# 224 -> 225 (2026-10-06): the same, for fnMakeDirectory -- the router's
+# row for creating a directory (a dropped folder recreates its empty
+# directories). It forwards to a gateway method that delegates to the tree
+# receiver, which asserts the write admission and walks with O_NOFOLLOW.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
 
 
 # Every acquisition of a declared capability that still has no reviewed

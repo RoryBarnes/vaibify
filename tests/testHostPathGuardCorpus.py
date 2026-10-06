@@ -223,6 +223,9 @@ def _fdictBuildPathTakingCalls(connection):
         "fnWriteFileViaTar": lambda sPath: connection.fnWriteFileViaTar(
             S_PROJECT_NAME, sPath, b"nope",
         ),
+        "fnMakeDirectory": lambda sPath: connection.fnMakeDirectory(
+            S_PROJECT_NAME, sPath,
+        ),
         "fnWriteFileFromStream": (
             lambda sPath: connection.fnWriteFileFromStream(
                 S_PROJECT_NAME, sPath, io.BytesIO(b"nope"),

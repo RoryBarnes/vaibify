@@ -46,6 +46,7 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "fnWriteFileViaTar",
     "fnWriteFileFromStream",
     "fnWriteTreeViaTar",
+    "fnMakeDirectory",
     "fbaFetchFile",
     "fbaFetchCredentialFile",
     "flistDirectoryEntries",
@@ -140,6 +141,12 @@ class ConnectionRouter:
     def fnWriteFileFromStream(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         self.fconnectionForResource(sResourceId).fnWriteFileFromStream(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fnMakeDirectory(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        self.fconnectionForResource(sResourceId).fnMakeDirectory(
             sResourceId, *tArguments, **dictKeywords,
         )
 

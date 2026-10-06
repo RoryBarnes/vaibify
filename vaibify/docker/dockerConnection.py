@@ -3010,6 +3010,25 @@ class DockerConnection:
             tExecResult, sDestinationDirectory,
         )
 
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Create a directory, and any missing parents below the root.
+
+        The tree receiver already knows how to create a destination one
+        component at a time with ``O_NOFOLLOW`` against held descriptors,
+        refusing a symlinked component; handing it an EMPTY archive makes
+        it do exactly that and land nothing. An existing directory is
+        left as it is, so the call is idempotent. A folder upload uses
+        it for the folders it recreates, empty ones included.
+        """
+        self.fnWriteTreeViaTar(
+            sContainerId, sDirectoryPath, [],
+            sAuthorizedRoot=sAuthorizedRoot, tForbiddenNames=tForbiddenNames,
+            bCreateDestination=True,
+        )
+
     def fnCopyHostPathIntoContainer(
         self, sContainerId, sHostSource, sContainerDestination,
     ):
