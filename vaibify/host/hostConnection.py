@@ -574,7 +574,7 @@ class HostConnection:
     def fnWriteFileFromStream(
         self, sContainerId, sFilePath, fileSource,
         iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
-        sAuthorizedRoot=None, tForbiddenNames=(),
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
     ):
         """Write a file from a readable stream; the host sibling of the
         container's :meth:`DockerConnection.fnWriteFileFromStream`.
@@ -590,12 +590,16 @@ class HostConnection:
         must not silently rewrite whatever it points at.
         ``sAuthorizedRoot``/``tForbiddenNames`` are accepted for the duck
         type and not consulted, as in :meth:`fnWriteFile`.
+        ``bCreateParents`` makes the missing directories of a path the
+        guard has already proven to lie inside the project.
         """
         del sAuthorizedRoot, tForbiddenNames
         mutationAdmission.fnAssertContainerWriteAdmitted(
             sContainerId, "fnWriteFileFromStream",
         )
         sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
+        if bCreateParents:
+            os.makedirs(os.path.dirname(sRealPath), exist_ok=True)
         self._fnRefuseUnwritableFinalComponent(
             sContainerId, sFilePath, sRealPath, bReplaceAllowed,
         )

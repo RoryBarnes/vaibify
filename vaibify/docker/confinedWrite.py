@@ -54,6 +54,7 @@ __all__ = [
     "ContainerWriteRefusedError",
     "I_EXISTS_EXIT_CODE",
     "I_FAILED_EXIT_CODE",
+    "I_NOT_FOUND_EXIT_CODE",
     "I_NO_SPACE_EXIT_CODE",
     "I_REFUSED_EXIT_CODE",
     "S_SHARED_PROGRAM_HELPERS",
@@ -66,6 +67,7 @@ __all__ = [
 
 I_REFUSED_EXIT_CODE = 3
 I_EXISTS_EXIT_CODE = 4
+I_NOT_FOUND_EXIT_CODE = 5
 I_NO_SPACE_EXIT_CODE = 6
 I_FAILED_EXIT_CODE = 1
 S_LANDED_LINE_PREFIX = "vaibify-landed="
@@ -84,6 +86,7 @@ _S_FORBIDDEN_SLOT = "@@FORBIDDEN_NAMES@@"
 _S_DESTINATION_SLOT = "@@DESTINATION@@"
 _S_CREATE_SLOT = "@@CREATE_DESTINATION@@"
 _S_REPLACE_SLOT = "@@REPLACE_ALLOWED@@"
+_S_PARENTS_SLOT = "@@CREATE_PARENTS@@"
 _S_EXPECTED_BYTES_SLOT = "@@EXPECTED_BYTES@@"
 
 # The two helpers every confined program shares, the readers
@@ -111,8 +114,10 @@ iMode = @@FILE_MODE@@
 listForbiddenNames = @@FORBIDDEN_NAMES@@
 bReplaceAllowed = @@REPLACE_ALLOWED@@
 iExpectedBytes = @@EXPECTED_BYTES@@
+bCreateParents = @@CREATE_PARENTS@@
 I_REFUSED = @@REFUSED_EXIT_CODE@@
 I_EXISTS = @@EXISTS_EXIT_CODE@@
+I_NOT_FOUND = @@NOT_FOUND_EXIT_CODE@@
 I_NO_SPACE = @@NO_SPACE_EXIT_CODE@@
 I_CHUNK_BYTES = 1048576
 def fnStop(iExitCode, sReason):
@@ -127,9 +132,20 @@ if listParts[:len(listRoot)] != listRoot or len(listParts) <= len(listRoot):
 for sName in listParts[len(listRoot):]:
     if sName in listForbiddenNames:
         fnRefuse("refused: writes through '" + sName + "' are not permitted")
+def fiOpenParentDirectory(iParent, sName, iDepth):
+    try:
+        return fiOpenDirectoryWithoutFollowing(iParent, sName)
+    except FileNotFoundError:
+        if not bCreateParents or iDepth < len(listRoot):
+            fnStop(I_NOT_FOUND, "not found: '" + sName + "'")
+    try:
+        os.mkdir(sName, 0o755, dir_fd=iParent)
+    except FileExistsError:
+        pass
+    return fiOpenDirectoryWithoutFollowing(iParent, sName)
 iDirectory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
-for sName in listParts[:-1]:
-    iNext = fiOpenDirectoryWithoutFollowing(iDirectory, sName)
+for iDepth, sName in enumerate(listParts[:-1]):
+    iNext = fiOpenParentDirectory(iDirectory, sName, iDepth)
     os.close(iDirectory)
     iDirectory = iNext
 sFinal = listParts[-1]
@@ -383,7 +399,7 @@ def _fnRequireExpectedByteCount(iExpectedBytes):
 
 def fsRenderConfinedWriteProgram(
     sFilePath, iMode=None, sAuthorizedRoot=None, tForbiddenNames=(),
-    bReplaceAllowed=True, iExpectedBytes=None,
+    bReplaceAllowed=True, iExpectedBytes=None, bCreateParents=False,
 ):
     """Return the program text that writes ``sFilePath`` from stdin.
 
@@ -395,7 +411,10 @@ def fsRenderConfinedWriteProgram(
     ``bReplaceAllowed`` False refuses an existing target with
     ``I_EXISTS_EXIT_CODE``, atomically where the filesystem can hard
     link. ``iExpectedBytes`` refuses a stream whose length differs; in
-    both cases the old file is untouched.
+    both cases the old file is untouched. ``bCreateParents`` makes any
+    missing directory BELOW the authorized root, one component at a time
+    with ``O_NOFOLLOW`` against the descriptor already held; a missing
+    directory at or above the root is never created.
     """
     sRoot = _fsCheckedAbsolutePath(sAuthorizedRoot or "/", "the root")
     sPath = _fsCheckedAbsolutePath(sFilePath, "the file path")
@@ -407,6 +426,8 @@ def fsRenderConfinedWriteProgram(
     _fnRequireStringTuple(tForbiddenNames)
     if not isinstance(bReplaceAllowed, bool):
         raise TypeError("bReplaceAllowed must be a bool")
+    if not isinstance(bCreateParents, bool):
+        raise TypeError("bCreateParents must be a bool")
     _fnRequireExpectedByteCount(iExpectedBytes)
     return (
         _S_CONFINED_WRITE_PROGRAM
@@ -416,8 +437,10 @@ def fsRenderConfinedWriteProgram(
         .replace(_S_FORBIDDEN_SLOT, repr(list(tForbiddenNames)))
         .replace(_S_REPLACE_SLOT, repr(bReplaceAllowed))
         .replace(_S_EXPECTED_BYTES_SLOT, repr(iExpectedBytes))
+        .replace(_S_PARENTS_SLOT, repr(bCreateParents))
         .replace("@@REFUSED_EXIT_CODE@@", repr(I_REFUSED_EXIT_CODE))
         .replace("@@EXISTS_EXIT_CODE@@", repr(I_EXISTS_EXIT_CODE))
+        .replace("@@NOT_FOUND_EXIT_CODE@@", repr(I_NOT_FOUND_EXIT_CODE))
         .replace("@@NO_SPACE_EXIT_CODE@@", repr(I_NO_SPACE_EXIT_CODE))
     )
 
@@ -471,6 +494,10 @@ def fnRaiseWhenWriteFailed(tExecResult, sFilePath):
     if tExecResult.iExitCode == I_REFUSED_EXIT_CODE:
         raise ContainerWriteRefusedError(
             f"Write to {sFilePath} refused: {sLastLine}"
+        )
+    if tExecResult.iExitCode == I_NOT_FOUND_EXIT_CODE:
+        raise FileNotFoundError(
+            errno.ENOENT, f"Cannot write {sFilePath}: {sLastLine}",
         )
     if tExecResult.iExitCode == I_NO_SPACE_EXIT_CODE:
         raise OSError(

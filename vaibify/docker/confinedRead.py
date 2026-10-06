@@ -37,6 +37,7 @@ import posixpath
 
 from vaibify.docker.confinedWrite import (
     I_FAILED_EXIT_CODE,
+    I_NOT_FOUND_EXIT_CODE,
     I_REFUSED_EXIT_CODE,
     S_SHARED_PROGRAM_HELPERS,
 )
@@ -51,7 +52,6 @@ __all__ = [
     "fsRenderConfinedReadProgram",
 ]
 
-I_NOT_FOUND_EXIT_CODE = 5
 I_MAX_LINK_HOPS = 8
 I_MAX_ARCHIVE_DEPTH = 100
 S_SKIPPED_LINE_PREFIX = "vaibify-skipped="

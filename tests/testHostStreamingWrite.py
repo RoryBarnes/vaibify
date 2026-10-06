@@ -307,3 +307,24 @@ def testAnUnadmittedStreamedWriteIsRefusedBeforeAnyByteLands(
     finally:
         mutationAdmission.fnResetEnforcedLane(tokenLane)
     assert os.listdir(sProjectRoot) == []
+
+
+@pytest.mark.falsification
+def testMissingParentsAreCreatedInsideTheProjectWhenAsked(
+    tProjectAndConnection,
+):
+    """Kills: ignoring ``bCreateParents`` on the host leg."""
+    sProjectRoot, connection = tProjectAndConnection
+    sTarget = os.path.join(sProjectRoot, "a", "b", "file.txt")
+    connection.fnWriteFileFromStream(
+        S_PROJECT_NAME, sTarget, io.BytesIO(b"nested"), bCreateParents=True)
+    assert _fsReadFile(sTarget) == b"nested"
+
+
+def testAMissingParentWithoutTheFlagIsFileNotFound(tProjectAndConnection):
+    sProjectRoot, connection = tProjectAndConnection
+    with pytest.raises(FileNotFoundError):
+        connection.fnWriteFileFromStream(
+            S_PROJECT_NAME, os.path.join(sProjectRoot, "a", "file.txt"),
+            io.BytesIO(b"x"))
+    assert os.listdir(sProjectRoot) == []

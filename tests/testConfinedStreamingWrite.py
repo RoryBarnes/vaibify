@@ -15,6 +15,7 @@ a stand-in for standard input that records its calls can see.
 import errno
 import io
 import os
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from vaibify.docker.confinedWrite import (
     ContainerWriteExistsError,
     ContainerWriteRefusedError,
     I_EXISTS_EXIT_CODE,
+    I_NOT_FOUND_EXIT_CODE,
     I_NO_SPACE_EXIT_CODE,
     I_REFUSED_EXIT_CODE,
     fsRenderConfinedWriteProgram,
@@ -453,3 +455,75 @@ def testTheBytesEntryPointStatesItsLengthSoATruncatedTransferIsRefused(
         connection.fnWriteFileViaTar(
             "cid-wire", sTarget, b"0123456789", sAuthorizedRoot=sRoot)
     assert not os.path.exists(sTarget)
+
+
+# ---------------------------------------------------------------------
+# Creating the parents of a nested file (a dropped folder)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def testMissingParentsAreCreatedBelowTheRootWhenAsked(tmp_path):
+    """A nested file lands with its folders made, one component at a time.
+
+    Kills: ignoring ``bCreateParents``, which refuses every file whose
+    folder does not exist yet.
+    """
+    sRoot = _fsRealPath(tmp_path)
+    sTarget = os.path.join(sRoot, "a", "b", "file.txt")
+    resultProc = _fexecuteProgram(
+        fsRenderConfinedWriteProgram(
+            sTarget, sAuthorizedRoot=sRoot, bCreateParents=True), b"nested")
+    assert resultProc.returncode == 0, resultProc.stderr
+    assert _fsReadFile(sTarget) == b"nested"
+    assert stat.S_IMODE(os.stat(os.path.join(sRoot, "a")).st_mode) == 0o755
+
+
+@pytest.mark.falsification
+def testAMissingParentWithoutTheFlagIsNotFoundAndNothingIsCreated(tmp_path):
+    """Kills: creating directories whether or not the caller asked."""
+    sRoot = _fsRealPath(tmp_path)
+    sTarget = os.path.join(sRoot, "a", "file.txt")
+    resultProc = _fexecuteProgram(
+        fsRenderConfinedWriteProgram(sTarget, sAuthorizedRoot=sRoot), b"x")
+    assert resultProc.returncode == I_NOT_FOUND_EXIT_CODE, resultProc.stderr
+    assert os.listdir(sRoot) == []
+
+
+@pytest.mark.falsification
+def testAMissingDirectoryAtOrAboveTheRootIsNeverCreated(tmp_path):
+    """The root is the caller's boundary; the program does not extend it.
+
+    Kills: creating missing components without checking that they are
+    below the authorized root.
+    """
+    sRoot = _fsRealPath(tmp_path) + "/does/not/exist"
+    sTarget = sRoot + "/inner/file.txt"
+    resultProc = _fexecuteProgram(
+        fsRenderConfinedWriteProgram(
+            sTarget, sAuthorizedRoot=sRoot, bCreateParents=True), b"x")
+    assert resultProc.returncode == I_NOT_FOUND_EXIT_CODE, resultProc.stderr
+    assert not os.path.exists(_fsRealPath(tmp_path) + "/does")
+
+
+@pytest.mark.falsification
+def testParentCreationNeverFollowsASymlinkOutOfTheRoot(tmp_path):
+    """Kills: creating a directory through a planted link."""
+    sRoot = _fsRealPath(tmp_path / "project")
+    sOutside = _fsRealPath(tmp_path / "outside")
+    os.makedirs(sRoot)
+    os.makedirs(sOutside)
+    os.symlink(sOutside, os.path.join(sRoot, "linked"))
+    resultProc = _fexecuteProgram(
+        fsRenderConfinedWriteProgram(
+            os.path.join(sRoot, "linked", "new", "f.txt"),
+            sAuthorizedRoot=sRoot, bCreateParents=True), b"x")
+    assert resultProc.returncode == I_REFUSED_EXIT_CODE, resultProc.stderr
+    assert os.listdir(sOutside) == []
+
+
+def testTheNotFoundStatusBecomesFileNotFound():
+    with pytest.raises(FileNotFoundError):
+        confinedWrite.fnRaiseWhenWriteFailed(
+            _ftExecResult(confinedWrite.I_NOT_FOUND_EXIT_CODE,
+                          "not found: 'a'"), "/w/a/f")

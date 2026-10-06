@@ -244,3 +244,24 @@ def testNoOutsideByteIsEverReadWhileADirectoryIsSwappedForASymlink(
     container.exec_run(["pkill", "-f", "mv racing"], user=S_USER)
     _fsRunAsUser(container, "pkill -f 'while true' ; true")
     assert sum(dictOutcomes.values()) == iAttempt
+
+
+def testANestedFileLandsWithItsParentsCreatedAsTheContainerUser(liveContainer):
+    container, connection = liveContainer
+    _fsRunAsUser(container, f"rm -rf {S_PROJECT}/dropped")
+    connection.fnWriteFileFromStream(
+        container.id, f"{S_PROJECT}/dropped/inner/deeper/data.txt",
+        io.BytesIO(b"nested"), iExpectedBytes=6, bCreateParents=True,
+        sAuthorizedRoot=S_PROJECT, tForbiddenNames=T_WRITE_DENYLISTED_NAMES)
+    iExit, sStat = _fsRunAsUser(
+        container,
+        f"stat -c '%a %U' {S_PROJECT}/dropped {S_PROJECT}/dropped/inner/deeper")
+    assert iExit == 0, sStat
+    assert [sLine.split() for sLine in sStat.splitlines()] == [
+        ["755", S_USER], ["755", S_USER]]
+    assert connection.fbaFetchFile(
+        container.id, f"{S_PROJECT}/dropped/inner/deeper/data.txt") == b"nested"
+    with pytest.raises(FileNotFoundError):
+        connection.fnWriteFileFromStream(
+            container.id, f"{S_PROJECT}/nope/inner/data.txt",
+            io.BytesIO(b"x"), sAuthorizedRoot=S_PROJECT)

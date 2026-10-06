@@ -24740,6 +24740,36 @@ def _fdictEntry(sRel):
         old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
         new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
     ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testMissingParentsAreCreatedBelowTheRootWhenAsked',
+        source='vaibify/docker/confinedWrite.py',
+        old='.replace(_S_PARENTS_SLOT, repr(bCreateParents))',
+        new='.replace(_S_PARENTS_SLOT, "False")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAMissingParentWithoutTheFlagIsNotFoundAndNothingIsCreated',
+        source='vaibify/docker/confinedWrite.py',
+        old='.replace(_S_PARENTS_SLOT, repr(bCreateParents))',
+        new='.replace(_S_PARENTS_SLOT, "True")',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testAMissingDirectoryAtOrAboveTheRootIsNeverCreated',
+        source='vaibify/docker/confinedWrite.py',
+        old='        if not bCreateParents or iDepth < len(listRoot):\n',
+        new='        if not bCreateParents:\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedStreamingWrite.py::testParentCreationNeverFollowsASymlinkOutOfTheRoot',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testMissingParentsAreCreatedInsideTheProjectWhenAsked',
+        source='vaibify/host/hostConnection.py',
+        old='        if bCreateParents:\n            os.makedirs(os.path.dirname(sRealPath), exist_ok=True)\n',
+        new='        pass\n',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',

@@ -2859,7 +2859,7 @@ class DockerConnection:
     def fnWriteFileFromStream(
         self, sContainerId, sFilePath, fileSource,
         iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
-        sAuthorizedRoot=None, tForbiddenNames=(),
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
     ):
         """Write one file from a readable stream, symlink-safe, unprivileged.
 
@@ -2877,7 +2877,9 @@ class DockerConnection:
         ``bReplaceAllowed`` False refuses an existing target
         (:class:`~vaibify.docker.confinedWrite.ContainerWriteExistsError`);
         either way the old file is untouched. A full disk raises
-        ``OSError`` with ``errno.ENOSPC``.
+        ``OSError`` with ``errno.ENOSPC``. ``bCreateParents`` creates
+        missing directories below ``sAuthorizedRoot`` (never at or above
+        it); without it a missing parent raises ``FileNotFoundError``.
 
         This is the workspace-file-write funnel the commit-guard
         carrier guards (design §8): in an enforced lane (an HTTP
@@ -2894,6 +2896,7 @@ class DockerConnection:
             sFilePath, iMode=iMode, sAuthorizedRoot=sAuthorizedRoot,
             tForbiddenNames=tForbiddenNames,
             bReplaceAllowed=bReplaceAllowed, iExpectedBytes=iExpectedBytes,
+            bCreateParents=bCreateParents,
         )
         tExecResult = self._ftRunProgramWithStdin(
             sContainerId, ["python3", "-c", sProgram], fileStdin=fileSource,
