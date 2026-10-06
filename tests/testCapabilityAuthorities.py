@@ -406,6 +406,25 @@ DICT_NAMED_AUTHORITIES = {
             "It opens nothing and starts nothing; the socket it reads was "
             "created inside the gateway behind the write admission.",
         ),
+    "docker/dockerConnection.py|_fiterRunProgramStdout|docker-client|"
+    "docker.utils.socket.STDERR|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "The multiplexed-stream marker the confined READ programs' "
+            "exec uses to split stdout (yielded) from stderr (kept for the "
+            "exit diagnosis). Frame decoding only, inside the gateway, on "
+            "a socket the gateway's own exec created for a fixed read "
+            "program.",
+        ),
+    "docker/dockerConnection.py|_fiterRunProgramStdout|docker-client|"
+    "docker.utils.socket.frames_iter|import-from|0":
+        _fdictAuthority(
+            ["host-cli", "http", "websocket", "background"],
+            "Reads the frames of a confined read's exec output as they "
+            "arrive. It opens nothing and starts nothing; the socket it "
+            "reads was created inside the gateway for a fixed program that "
+            "only reads.",
+        ),
     "docker/dockerContext.py|<module>|process-launch|subprocess|import|0":
         _fdictAuthority(
             ["host-cli", "http", "websocket", "background"],

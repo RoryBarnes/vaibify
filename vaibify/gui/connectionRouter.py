@@ -44,7 +44,9 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "ftRunInContainerStreamedWithChunks",
     "fnWriteFile",
     "fnWriteFileViaTar",
+    "fnWriteFileFromStream",
     "fnWriteTreeViaTar",
+    "fnMakeDirectory",
     "fbaFetchFile",
     "fbaFetchCredentialFile",
     "flistDirectoryEntries",
@@ -59,6 +61,8 @@ TUPLE_RESOURCE_ROUTED_METHOD_NAMES = (
     "flistReadGitRepoStatuses",
     "fsHashContainerFileSha256",
     "fiterStreamFile",
+    "fiterReadFileConfined",
+    "fiterReadDirectoryAsTar",
     "fdictProbeProcessGroupMembers",
     "fnSignalProcessGroupMembers",
     "fdictLaunchTerminalShellSuspended",
@@ -131,6 +135,18 @@ class ConnectionRouter:
     def fnWriteFileViaTar(self, sResourceId, *tArguments, **dictKeywords):
         """Dispatch to the leg the resource id names."""
         self.fconnectionForResource(sResourceId).fnWriteFileViaTar(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fnWriteFileFromStream(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        self.fconnectionForResource(sResourceId).fnWriteFileFromStream(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fnMakeDirectory(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        self.fconnectionForResource(sResourceId).fnMakeDirectory(
             sResourceId, *tArguments, **dictKeywords,
         )
 
@@ -251,6 +267,20 @@ class ConnectionRouter:
         return self.fconnectionForResource(sResourceId).fiterStreamFile(
             sResourceId, *tArguments, **dictKeywords,
         )
+
+    def fiterReadFileConfined(self, sResourceId, *tArguments, **dictKeywords):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(sResourceId).fiterReadFileConfined(
+            sResourceId, *tArguments, **dictKeywords,
+        )
+
+    def fiterReadDirectoryAsTar(
+        self, sResourceId, *tArguments, **dictKeywords,
+    ):
+        """Dispatch to the leg the resource id names."""
+        return self.fconnectionForResource(
+            sResourceId,
+        ).fiterReadDirectoryAsTar(sResourceId, *tArguments, **dictKeywords)
 
     def fdictProbeProcessGroupMembers(
         self, sResourceId, *tArguments, **dictKeywords,

@@ -12,6 +12,7 @@ on a mock's call list alone.
 """
 
 import ast
+import io
 import os
 import socket
 import stat
@@ -292,21 +293,13 @@ def testAComponentSwappedForASymlinkAfterItWasOpenedCannotRedirect(
 
     monkeypatch.setattr(os, "open", fiOpenThenSwap)
     monkeypatch.setattr(
-        sys, "stdin", SimpleNamespace(buffer=_FakeBinaryStdin(b"payload")))
+        sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"payload")))
     exec(compile(sProgram, "<confined-write>", "exec"), {"__name__": "x"})
     monkeypatch.undo()
     assert dictState["bSwapped"]
     assert os.listdir(sOutside) == []
     with open(os.path.join(sRoot, "moved", "result.txt"), "rb") as fileLanded:
         assert fileLanded.read() == b"payload"
-
-
-class _FakeBinaryStdin:
-    def __init__(self, baContent):
-        self._baContent = baContent
-
-    def read(self):
-        return self._baContent
 
 
 # ---------------------------------------------------------------------

@@ -389,7 +389,18 @@ I_UNCLASSIFIED_ROW_BUDGET = 276
 # 225 -> 224 (2026-10-01): three Overleaf call sites became one.
 # 224 -> 223 (2026-10-03): the workspace seed's separate `mkdir -p` exec is
 # gone; the tree receiver creates the destination itself.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 223
+# 223 -> 224 (2026-10-06): the connection router's row for
+# fnWriteFileFromStream, the streamed funnel a large upload needs. It is
+# the routed twin of fnWriteFileViaTar's own row and grants the same
+# authority (a confined single-file write), and the admission it needs is
+# asserted inside the gateway method it forwards to. A new public write
+# primitive on a duck-typed surface cannot avoid one new routing row; this
+# is not a new place a container can be changed from.
+# 224 -> 225 (2026-10-06): the same, for fnMakeDirectory -- the router's
+# row for creating a directory (a dropped folder recreates its empty
+# directories). It forwards to a gateway method that delegates to the tree
+# receiver, which asserts the write admission and walks with O_NOFOLLOW.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
 
 
 # Every acquisition of a declared capability that still has no reviewed

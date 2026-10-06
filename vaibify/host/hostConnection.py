@@ -68,12 +68,17 @@ import time
 
 from vaibify.config import mutationAdmission
 from vaibify.config import processLiveness
+from vaibify.docker.confinedWrite import (
+    ContainerWriteExistsError,
+    ContainerWriteRefusedError,
+)
 from vaibify.docker.dockerConnection import (
     ExecResult,
     I_MAX_SMALL_FILE_BYTES,
     S_TYPED_READ_GIT_REPO_STATUS,
     fsRenderBatchedTypedReadProgram,
 )
+from vaibify.host import hostConfinedRead
 from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
     fnSignalSessionMembers,
@@ -90,6 +95,7 @@ F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS = 300.0
 # that it could not read.
 F_TYPED_READ_TIMEOUT_SECONDS = 60.0
 I_NEW_FILE_MODE = 0o644
+S_STAGING_PREFIX = ".vaibify-write-"
 
 # The child blocks on its stdin until the parent has journaled its
 # identity, then becomes the command via exec — so the command's first
@@ -139,6 +145,65 @@ class HostPathOutsideProjectError(RuntimeError):
 
 class UnknownHostProjectError(RuntimeError):
     """The resource id does not name a registered host project."""
+
+
+def _fiResolveWriteMode(sRealPath, iMode):
+    """Return ``iMode``, else the replaced file's own mode, else 0644."""
+    if iMode is not None:
+        return iMode
+    try:
+        return os.stat(sRealPath).st_mode & 0o7777
+    except FileNotFoundError:
+        return I_NEW_FILE_MODE
+
+
+def _fnUnlinkQuietly(sPath):
+    try:
+        os.unlink(sPath)
+    except OSError:
+        pass
+
+
+def _fnCopyStreamBounded(fileSource, fileStaged, iExpectedBytes):
+    """Copy in chunks; refuse a stream whose length differs from stated."""
+    iReceived = 0
+    for baChunk in iter(lambda: fileSource.read(I_STREAM_CHUNK_BYTES), b""):
+        iReceived += len(baChunk)
+        if iExpectedBytes is not None and iReceived > iExpectedBytes:
+            break
+        fileStaged.write(baChunk)
+    if iExpectedBytes is not None and iReceived != iExpectedBytes:
+        raise ContainerWriteRefusedError(
+            f"Write refused: {iReceived} bytes arrived but "
+            f"{iExpectedBytes} were expected"
+        )
+
+
+def _fnPublishStagedFile(sTempPath, sRealPath, bReplaceAllowed):
+    """Rename the staged file into place, atomically refusing a taken name.
+
+    Replacement is a rename. Forbidding it is a hard link, which fails if
+    the name exists at the instant of publishing -- an existence check
+    made earlier cannot see a file that appeared during a long upload.
+    A filesystem without hard links falls back to check-then-rename.
+    """
+    if bReplaceAllowed:
+        os.rename(sTempPath, sRealPath)
+        return
+    try:
+        os.link(sTempPath, sRealPath)
+    except FileExistsError as error:
+        raise ContainerWriteExistsError(
+            f"Write to {sRealPath} refused: it already exists"
+        ) from error
+    except OSError:
+        if os.path.lexists(sRealPath):
+            raise ContainerWriteExistsError(
+                f"Write to {sRealPath} refused: it already exists"
+            )
+        os.rename(sTempPath, sRealPath)
+        return
+    os.unlink(sTempPath)
 
 
 def _fsResolveRegisteredHostProjectRoot(sResourceId):
@@ -334,21 +399,25 @@ class HostConnection:
 
         Empty when unreadable, on the same terms as the container leg:
         no fingerprint means "cannot compare", which is the ordinary
-        answer for a workflow whose file does not exist yet — and, via
-        the cap below, for one too large to be a fingerprint target.
+        answer for a workflow whose file does not exist yet.
 
-        Reads through this class's own capped read rather than
-        streaming as the container program does. The asymmetry is
-        deliberate: the container program streams because it runs
-        somewhere with a memory ceiling nobody here can see, while this
-        leg already has one bounded reader and a second one would be a
-        second place to get the path guard right.
+        Hashed in chunks, as the container program does, so the answer
+        does not depend on the file's size. It used to read the file
+        through the capped fetch and answer ``''`` past 64 MiB, which
+        made the write-ahead journal's prior hash "unproven" for exactly
+        the large files a replacement is most likely to interrupt.
         """
+        sRealPath = self._fsValidateHostPath(sContainerId, sPath)
+        hasherFile = hashlib.sha256()
         try:
-            baContent = self.fbaFetchFile(sContainerId, sPath)
-        except (OSError, ValueError):
+            with open(sRealPath, "rb") as fileHandle:
+                for baChunk in iter(
+                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",
+                ):
+                    hasherFile.update(baChunk)
+        except OSError:
             return ""
-        return hashlib.sha256(baContent).hexdigest()
+        return hasherFile.hexdigest()
 
     def fsReadClockUtc(self, sContainerId):
         """Return the host's wall clock as ``YYYY-MM-DD HH:MM:SS UTC``.
@@ -389,6 +458,69 @@ class HostConnection:
                     return
                 yield baChunk
 
+    def fiterReadFileConfined(
+        self, sContainerId, sFilePath, sAuthorizedRoot=None,
+    ):
+        """Yield a host file's bytes in chunks; the twin of the Docker leg's.
+
+        The shared path guard runs first, so every hostile path is
+        refused exactly as every other host read refuses it. The read
+        itself then walks the path with ``O_NOFOLLOW`` against held
+        descriptors (:mod:`vaibify.host.hostConfinedRead`), so a
+        component swapped after the guard ran cannot redirect it. A
+        final link is followed only if it stays inside the root.
+        """
+        sRealRoot, sAbsolutePath = self._ftResolveConfinedReadTarget(
+            sContainerId, sFilePath, sAuthorizedRoot,
+        )
+        yield from hostConfinedRead.fiterStreamFileInsideRoot(
+            sRealRoot, sAbsolutePath,
+        )
+
+    def fiterReadDirectoryAsTar(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+    ):
+        """Yield a tar of a host directory; links stay links, none followed."""
+        sRealRoot, sAbsolutePath = self._ftResolveConfinedReadTarget(
+            sContainerId, sDirectoryPath, sAuthorizedRoot,
+        )
+        yield from hostConfinedRead.fiterStreamDirectoryAsTar(
+            sRealRoot, sAbsolutePath,
+        )
+
+    def _ftResolveConfinedReadTarget(
+        self, sContainerId, sPath, sAuthorizedRoot,
+    ):
+        """Return ``(real root, path spelled under it)`` for a confined read.
+
+        The path guard (:meth:`_fsValidateHostPath`) refuses anything
+        outside the project, links included. What it returns is a
+        resolved path, which would hide a final link from the walk, so
+        the path handed on is the one the caller NAMED, made absolute
+        and re-spelled under the real root.
+        """
+        self._fsValidateHostPath(sContainerId, sPath)
+        sProjectRoot = self._fnResolveProjectRoot(sContainerId)
+        sRealProjectRoot = os.path.realpath(sProjectRoot)
+        sRealRoot = (
+            self._fsValidateHostPath(sContainerId, sAuthorizedRoot)
+            if sAuthorizedRoot else sRealProjectRoot
+        )
+        sAbsolute = os.path.normpath(
+            sPath if os.path.isabs(sPath)
+            else os.path.join(sRealProjectRoot, sPath)
+        )
+        for sSpelling in (
+            os.path.normpath(sAuthorizedRoot or sProjectRoot), sRealRoot,
+        ):
+            if sAbsolute == sSpelling or sAbsolute.startswith(
+                sSpelling + os.sep,
+            ):
+                return sRealRoot, sRealRoot + sAbsolute[len(sSpelling):]
+        raise HostPathOutsideProjectError(
+            f"Path is outside the authorized root: {sPath!r}"
+        )
+
     # -----------------------------------------------------------------
     # File writes: atomic, mode-preserving, admission-gated.
     # -----------------------------------------------------------------
@@ -421,12 +553,7 @@ class HostConnection:
             sContainerId, "fnWriteFile",
         )
         sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
-        iEffectiveMode = iMode
-        if iEffectiveMode is None:
-            try:
-                iEffectiveMode = os.stat(sRealPath).st_mode & 0o7777
-            except FileNotFoundError:
-                iEffectiveMode = I_NEW_FILE_MODE
+        iEffectiveMode = _fiResolveWriteMode(sRealPath, iMode)
         iDescriptor, sTempPath = tempfile.mkstemp(
             dir=os.path.dirname(sRealPath),
         )
@@ -441,11 +568,83 @@ class HostConnection:
                 os.close(iDescriptor)
             except OSError:
                 pass
-            try:
-                os.unlink(sTempPath)
-            except OSError:
-                pass
+            _fnUnlinkQuietly(sTempPath)
             raise
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sFilePath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
+    ):
+        """Write a file from a readable stream; the host sibling of the
+        container's :meth:`DockerConnection.fnWriteFileFromStream`.
+
+        The same contract: bounded memory whatever the size,
+        ``iExpectedBytes`` refuses a stream that ends short or runs long,
+        ``bReplaceAllowed`` False refuses an existing target, and a
+        refusal leaves the old file untouched. The bytes are staged in
+        the DESTINATION directory, never in a scratch directory, so the
+        final rename stays on one filesystem and is atomic. A symlinked
+        final component is refused rather than written through: a link
+        in the project is something the researcher placed and an upload
+        must not silently rewrite whatever it points at.
+        ``sAuthorizedRoot``/``tForbiddenNames`` are accepted for the duck
+        type and not consulted, as in :meth:`fnWriteFile`.
+        ``bCreateParents`` makes the missing directories of a path the
+        guard has already proven to lie inside the project.
+        """
+        del sAuthorizedRoot, tForbiddenNames
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileFromStream",
+        )
+        sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
+        if bCreateParents:
+            os.makedirs(os.path.dirname(sRealPath), exist_ok=True)
+        self._fnRefuseUnwritableFinalComponent(
+            sContainerId, sFilePath, sRealPath, bReplaceAllowed,
+        )
+        iEffectiveMode = _fiResolveWriteMode(sRealPath, iMode)
+        iDescriptor, sTempPath = tempfile.mkstemp(
+            dir=os.path.dirname(sRealPath), prefix=S_STAGING_PREFIX,
+        )
+        try:
+            with os.fdopen(iDescriptor, "wb") as fileStaged:
+                os.fchmod(iDescriptor, iEffectiveMode)
+                _fnCopyStreamBounded(fileSource, fileStaged, iExpectedBytes)
+                fileStaged.flush()
+                os.fsync(iDescriptor)
+            _fnPublishStagedFile(sTempPath, sRealPath, bReplaceAllowed)
+        except BaseException:
+            _fnUnlinkQuietly(sTempPath)
+            raise
+
+    def _fnRefuseUnwritableFinalComponent(
+        self, sContainerId, sFilePath, sRealPath, bReplaceAllowed,
+    ):
+        """Raise when the target is a link, a directory, or taken.
+
+        ``_fsValidateHostPath`` resolves links, so the final component
+        is looked at UNRESOLVED here: its parent is resolved and the
+        name is examined as it stands.
+        """
+        sProjectRoot = os.path.realpath(
+            self._fnResolveProjectRoot(sContainerId),
+        )
+        sAbsolute = (sFilePath if os.path.isabs(sFilePath)
+                     else os.path.join(sProjectRoot, sFilePath))
+        sAsNamed = os.path.join(
+            os.path.realpath(os.path.dirname(sAbsolute)),
+            os.path.basename(sAbsolute),
+        )
+        if os.path.islink(sAsNamed) or os.path.isdir(sRealPath):
+            raise ContainerWriteRefusedError(
+                f"Write to {sFilePath} refused: it is a symlink or a "
+                "directory"
+            )
+        if not bReplaceAllowed and os.path.lexists(sAsNamed):
+            raise ContainerWriteExistsError(
+                f"Write to {sFilePath} refused: it already exists"
+            )
 
     def fnWriteFileViaTar(
         self, sContainerId, sFilePath, baContent,
@@ -458,6 +657,27 @@ class HostConnection:
             iMode=iMode, iUid=iUid, iGid=iGid,
             sAuthorizedRoot=sAuthorizedRoot,
             tForbiddenNames=tForbiddenNames,
+        )
+
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Create a directory, and any missing parents, inside the project.
+
+        The host twin of the Docker leg's method: idempotent, and
+        confined by the same path guard as every host write. A symlinked
+        directory anywhere in the path resolves outside the project or
+        stays inside it, and in neither case does this follow one to
+        create something outside.
+        """
+        del sAuthorizedRoot, tForbiddenNames
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnMakeDirectory",
+        )
+        os.makedirs(
+            self._fsValidateHostPath(sContainerId, sDirectoryPath),
+            exist_ok=True,
         )
 
     def fnWriteTreeViaTar(

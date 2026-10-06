@@ -166,6 +166,15 @@ DICT_PRIMITIVE_ACCESS = {
     "ftRunProgramWithStdin": S_ACCESS_ARBITRARY_COMMAND,
     "fnWriteFile": S_ACCESS_ARCHIVE_WRITE,
     "fnWriteFileViaTar": S_ACCESS_ARCHIVE_WRITE,
+    # The streamed funnel beneath fnWriteFileViaTar: the same confined
+    # program fed from a readable instead of a buffer. The same write
+    # authority, recorded on the same terms.
+    "fnWriteFileFromStream": S_ACCESS_ARCHIVE_WRITE,
+    # Creates directories by handing the tree receiver an empty archive.
+    # It lands no member and writes no file, but it changes the
+    # container's filesystem through the same receiver, so it is recorded
+    # as the write it is.
+    "fnMakeDirectory": S_ACCESS_ARCHIVE_WRITE,
     # The bulk sibling: one put_archive carrying a whole host tree into
     # a container. Same access as the single-file writes and recorded
     # on the same terms -- a write primitive the vocabulary does not
@@ -200,6 +209,13 @@ DICT_PRIMITIVE_ACCESS = {
     # rather than left invisible.
     "fsFetchKeyringSecret": S_ACCESS_TYPED_READ,
     "fiterStreamFile": S_ACCESS_TYPED_READ,
+    # The race-free reads that replace the daemon's get_archive on a
+    # download: a FIXED program (confinedRead) runs as the container
+    # user and writes the answer to stdout. They are reads for the same
+    # reason the typed reads are -- the caller supplies a path literal
+    # and never program text -- and they hold no mutation admission.
+    "fiterReadFileConfined": S_ACCESS_TYPED_READ,
+    "fiterReadDirectoryAsTar": S_ACCESS_TYPED_READ,
     # Bulk export through the SAME daemon archive API fiterStreamFile
     # uses, at repository scale instead of one file. Classified with the
     # typed reads because it shares their decisive property and not
