@@ -100,7 +100,12 @@ class _ContainerConnection:
         self.listEntries = listEntries or []
         self.listExists = listExists or []
         self.dictOwnership = dictOwnership or {"bAnswered": False}
+        self.dictOrphans = {
+            "bAnswered": True, "listFiles": [], "bTruncated": False}
         self.listProbeCalls = []
+
+    def fdictFindOrphanedWriteTemporaries(self, *args, **kwargs):
+        return self.dictOrphans
 
     def fbaFetchFile(self, sContainerName, sPath):
         if sPath == "/etc/resolv.conf":

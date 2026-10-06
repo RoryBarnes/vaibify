@@ -316,6 +316,80 @@ def flistCheckWorkspaceOwnership(connectionDocker, sContainerName, sRepoPath):
     return _flistOwnershipFindings(dictAnswer, listRootOwned, listOtherOwned)
 
 
+def flistCheckOrphanedWriteTemporaries(
+    connectionDocker, sContainerName, sWorkspaceRoot,
+):
+    """List the partial files a killed upload or write left in the workspace.
+
+    The confined writer stages every file under ``.vaibify-write-<hex>``
+    and renames it into place or removes it, so one that remains means
+    the writer was killed mid-write. Reported with its size and age and
+    NEVER removed: the bytes are the only copy of whatever arrived.
+    """
+    dictAnswer = connectionDocker.fdictFindOrphanedWriteTemporaries(
+        sContainerName, sWorkspaceRoot,
+    )
+    if not dictAnswer.get("bAnswered"):
+        return [_fpreflightOrphansUnassessed(
+            "the probe could not run inside the container: "
+            + str(dictAnswer.get("sError") or ""))]
+    listFiles = list(dictAnswer.get("listFiles") or [])
+    if not listFiles:
+        return [_fpreflightNoOrphans(dictAnswer)]
+    return [_fpreflightOrphansFound(listFiles, dictAnswer)]
+
+
+def _fpreflightOrphansUnassessed(sMessage):
+    return PreflightResult(
+        sName="orphaned-write-temporaries", sLevel=S_LEVEL_NOT_CHECKED,
+        sScope=S_SCOPE_PROJECT, sMessage=sMessage)
+
+
+def _fpreflightNoOrphans(dictAnswer):
+    if dictAnswer.get("bTruncated"):
+        return _fpreflightOrphansUnassessed(
+            "the walk stopped at its visit ceiling. Nothing was found in "
+            "the part of the workspace it reached, and nothing is known "
+            "about the rest.")
+    return PreflightResult(
+        sName="orphaned-write-temporaries", sLevel=S_LEVEL_OK,
+        sScope=S_SCOPE_PROJECT,
+        sMessage="no write was killed half-way: no partial files remain.")
+
+
+def _fpreflightOrphansFound(listFiles, dictAnswer):
+    sTotal = _fsFormatOrphanBytes(
+        sum(dictFile["iBytes"] for dictFile in listFiles))
+    sNamed = "; ".join(
+        f"{dictFile['sPath']} ({_fsFormatOrphanBytes(dictFile['iBytes'])})"
+        for dictFile in listFiles)
+    sMore = " The list is truncated." if dictAnswer.get("bTruncated") else ""
+    return PreflightResult(
+        sName="orphaned-write-temporaries", sLevel=S_LEVEL_WARN,
+        sScope=S_SCOPE_PROJECT,
+        sMessage=(
+            f"{len(listFiles)} partial file(s) from a write that was "
+            f"killed, {sTotal} in all: {sNamed}.{sMore}"),
+        sRemediation=(
+            "Each holds the bytes that had arrived before the write was "
+            "interrupted. Vaibify never deletes them; remove them from a "
+            "terminal in the container once you no longer need them, "
+            "then repeat the upload or write."),
+        sMechanism=(
+            "Walks the workspace inside the container (never into .git) "
+            "for names beginning .vaibify-write-, the private name the "
+            "writer gives a file until it is complete."))
+
+
+def _fsFormatOrphanBytes(iBytes):
+    fValue = float(iBytes)
+    for sUnit in ("B", "KB", "MB", "GB"):
+        if fValue < 1000.0 or sUnit == "GB":
+            return f"{fValue:.0f} {sUnit}" if sUnit == "B" else (
+                f"{fValue:.1f} {sUnit}")
+        fValue /= 1000.0
+
+
 def _fpreflightOwnershipClean(dictAnswer):
     """Return the pass -- or the unassessed answer for a partial walk.
 

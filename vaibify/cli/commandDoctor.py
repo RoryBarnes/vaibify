@@ -398,6 +398,9 @@ def _flistProjectScopeChecks(config):
     listResults.extend(doctorProjectChecks.flistReportStartupObservations(
         connectionDocker, sContainerName, config.sWorkspaceRoot,
     ))
+    listResults.extend(doctorProjectChecks.flistCheckOrphanedWriteTemporaries(
+        connectionDocker, sContainerName, config.sWorkspaceRoot,
+    ))
     sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath(
         connectionDocker, sContainerName, config.sWorkspaceRoot,
     )
@@ -441,7 +444,7 @@ def _flistUnassessedProjectScope(sReason=""):
         )
         for sName in (
             "envelope-image-currency", "workspace-ownership",
-            "startup-observations",
+            "startup-observations", "orphaned-write-temporaries",
         )
     ]
 

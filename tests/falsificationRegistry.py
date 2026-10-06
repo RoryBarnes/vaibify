@@ -18940,8 +18940,14 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/cli/doctorProjectChecks.py',
         # reports a partial look as a clean bill
-        old="    if dictAnswer.get(\"bTruncated\"):\n",
-        new="    if False:\n",
+        old=(
+            "    if dictAnswer.get(\"bTruncated\"):\n"
+            "        return PreflightResult(\n"
+        ),
+        new=(
+            "    if False:\n"
+            "        return PreflightResult(\n"
+        ),
     ),
     Falsification(
         nodeid=(
@@ -18957,11 +18963,8 @@ def _fdictEntry(sRel):
             '        connectionDocker, sContainerName, '
             'config.sWorkspaceRoot,\n'
             '    ))\n'
-            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
         ),
-        new=(
-            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
-        ),
+        new='',
     ),
     Falsification(
         nodeid=(
@@ -24790,6 +24793,42 @@ def _fdictEntry(sRel):
         source='vaibify/cli/main.py',
         old='            sAuthorizedRoot=configProject.sWorkspaceRoot,\n',
         new='',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkFindsEveryPartialFileWithItsSizeAndAge',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        if not sName.startswith(\'.vaibify-write-\'):\\n"\n        "            continue\\n"\n',
+        new='        "        if False:\\n"\n        "            continue\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkNeverDescendsIntoGit',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    if \'.git\' in listDirNames:\\n"\n        "        listDirNames.remove(\'.git\')\\n"\n',
+        new='        "    if False:\\n"\n        "        listDirNames.remove(\'.git\')\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkNamesNoMoreThanItWasAskedTo',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        if len(dictAnswer[\'listFiles\']) < iMaxNamed:\\n"\n',
+        new='        "        if True:\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkStopsAtItsVisitCeilingAndSaysSo',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    for sName in listFileNames:\\n"\n        "        iVisited += 1\\n"\n        "        if iVisited > iMaxVisits:\\n"\n',
+        new='        "    for sName in listFileNames:\\n"\n        "        iVisited += 1\\n"\n        "        if False:\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testAWalkThatStoppedEarlyAndFoundNothingIsNotOk',
+        source='vaibify/cli/doctorProjectChecks.py',
+        old='    if dictAnswer.get("bTruncated"):\n        return _fpreflightOrphansUnassessed(\n',
+        new='    if False:\n        return _fpreflightOrphansUnassessed(\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testPartialFilesAreNamedWithTheirSizesAndNeverDeleted',
+        source='vaibify/cli/doctorProjectChecks.py',
+        old='            "interrupted. Vaibify never deletes them; remove them from a "\n',
+        new='            "interrupted. Vaibify keeps them; remove them from a "\n',
     ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
