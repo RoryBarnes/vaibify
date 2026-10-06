@@ -230,21 +230,29 @@ def _fsRunRcInShell(sShellName, sExecutable, sRcPath, sQuery, dictEnvironment):
     )
 
 
-# Only the bash row is a falsification test: a falsification test must run
+def _fnAssertTheWrittenLineLoadsTheCompletion(
+    sHome, monkeypatch, sShellName, sQuery, sExpected,
+):
+    """Run setup, source the file it wrote in the real shell, ask the shell."""
+    sExecutable = fsRequireShell(sShellName)
+    monkeypatch.setenv("SHELL", f"/usr/bin/{sShellName}")
+    shellSetup.fnRunFirstTimeSetup()
+    sRcPath = shellSetup._fsDetectShellRcFile(sShellName)
+    dictEnvironment = {
+        "PATH": os.environ["PATH"], "HOME": sHome, "TERM": "xterm",
+    }
+    sOutput = _fsRunRcInShell(
+        sShellName, sExecutable, sRcPath, sQuery, dictEnvironment,
+    )
+    assert sExpected in sOutput, sOutput
+
+
+# Only the bash test is a falsification test: a falsification test must run
 # on every lane that replays it, and not every such lane carries zsh and
-# fish. The other two rows are required on the unit lanes instead.
-@pytest.mark.parametrize("sShellName, sQuery, sExpected", [
-    pytest.param(
-        "bash", "complete -p vaibify vaib_push", "_fnCompleteVaibify",
-        marks=pytest.mark.falsification, id="bash",
-    ),
-    pytest.param(
-        "zsh", "print -r -- ${_comps[vaibify]}", "_vaibify", id="zsh",
-    ),
-    pytest.param("fish", "complete -C 'vaibify pu'", "push", id="fish"),
-])
-def testTheLineSetupWroteLoadsTheCompletionInItsOwnShell(
-    fixtureSetupHome, monkeypatch, sShellName, sQuery, sExpected,
+# fish. The other two are required on the unit lanes instead.
+@pytest.mark.falsification
+def testTheLineSetupWroteLoadsTheCompletionInBash(
+    fixtureSetupHome, monkeypatch,
 ):
     """Source the file setup wrote; ask the shell whether it is wired.
 
@@ -254,18 +262,24 @@ def testTheLineSetupWroteLoadsTheCompletionInItsOwnShell(
     Kills: writing a line that its shell does not load, and a script that
     registers nothing when sourced from a configuration file.
     """
-    sExecutable = fsRequireShell(sShellName)
-    monkeypatch.setenv("SHELL", f"/usr/bin/{sShellName}")
-    shellSetup.fnRunFirstTimeSetup()
-    sRcPath = shellSetup._fsDetectShellRcFile(sShellName)
-    dictEnvironment = {
-        "PATH": os.environ["PATH"], "HOME": fixtureSetupHome,
-        "TERM": "xterm",
-    }
-    sOutput = _fsRunRcInShell(
-        sShellName, sExecutable, sRcPath, sQuery, dictEnvironment,
+    _fnAssertTheWrittenLineLoadsTheCompletion(
+        fixtureSetupHome, monkeypatch, "bash",
+        "complete -p vaibify vaib_push", "_fnCompleteVaibify",
     )
-    assert sExpected in sOutput, sOutput
+
+
+@pytest.mark.parametrize("sShellName, sQuery, sExpected", [
+    pytest.param(
+        "zsh", "print -r -- ${_comps[vaibify]}", "_vaibify", id="zsh",
+    ),
+    pytest.param("fish", "complete -C 'vaibify pu'", "push", id="fish"),
+])
+def testTheLineSetupWroteLoadsTheCompletionInTheOtherShells(
+    fixtureSetupHome, monkeypatch, sShellName, sQuery, sExpected,
+):
+    _fnAssertTheWrittenLineLoadsTheCompletion(
+        fixtureSetupHome, monkeypatch, sShellName, sQuery, sExpected,
+    )
 
 
 def testTheSuiteNeverRunsSetupAgainstTheResearchersOwnMarker():

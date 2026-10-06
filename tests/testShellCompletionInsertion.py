@@ -90,10 +90,7 @@ def testAHostileNameIsInsertedAsOneInertWordInTheOtherShells(
 
 
 @pytest.mark.falsification
-@pytest.mark.parametrize("sOpenQuote", [
-    pytest.param('"', id="doubleQuote"), pytest.param("'", id="singleQuote"),
-])
-def testAHostileNameStaysInertInsideAnOpenQuoteInBash(tmp_path, sOpenQuote):
+def testAHostileNameStaysInertInsideAnOpenDoubleQuoteInBash(tmp_path):
     """A quote the researcher already opened is not an escape hatch.
 
     Typing ``vaibify pull "`` and pressing TAB completes INSIDE the
@@ -102,11 +99,19 @@ def testAHostileNameStaysInertInsideAnOpenQuoteInBash(tmp_path, sOpenQuote):
     close the quote are the dangerous ones. A name that contains the
     very quote it is inserted into must still be one word.
 
-    Kills: escaping every name as a bare word regardless of the quote
-    the word began with, or not escaping inside a quote at all.
+    Kills: not escaping inside a double quote, so a name holding a quote,
+    ``$(`` or a backtick runs in the researcher's shell.
     """
     _fnAssertTheHostileNameArrivesAsOneInertWord(
-        tmp_path, "bash", f"vaibify pull {sOpenQuote}",
+        tmp_path, "bash", 'vaibify pull "',
+    )
+
+
+@pytest.mark.falsification
+def testAHostileNameStaysInertInsideAnOpenSingleQuoteInBash(tmp_path):
+    """Kills: not closing a single quote around a name that contains one."""
+    _fnAssertTheHostileNameArrivesAsOneInertWord(
+        tmp_path, "bash", "vaibify pull '",
     )
 
 

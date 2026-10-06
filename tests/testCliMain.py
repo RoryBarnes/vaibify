@@ -136,6 +136,7 @@ def test_connect_with_project_option(mockRun, mockConfig):
 def test_push_with_project_option(mockPush, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="myproj",
+        sWorkspaceRoot="/workspace",
     )
     runner = CliRunner()
     result = runner.invoke(
@@ -151,6 +152,7 @@ def test_push_with_project_option(mockPush, mockConfig):
 def test_pull_with_project_option(mockPull, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="myproj",
+        sWorkspaceRoot="/workspace",
     )
     runner = CliRunner()
     result = runner.invoke(
@@ -221,6 +223,7 @@ def test_gui_help_no_user_option():
 def test_push_calls_transfer(mockPush, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="proj",
+        sWorkspaceRoot="/workspace",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["push", "/src", "/dst"])
@@ -238,7 +241,9 @@ def test_a_refused_push_says_why_and_exits_nonzero(mockPush, mockConfig):
     researcher has to be told which one and that nothing was changed.
     """
     from vaibify.docker.confinedWrite import ContainerWriteRefusedError
-    mockConfig.return_value = SimpleNamespace(sProjectName="proj")
+    mockConfig.return_value = SimpleNamespace(
+        sProjectName="proj", sWorkspaceRoot="/workspace",
+    )
     mockPush.side_effect = ContainerWriteRefusedError(
         "Copy into /workspace/data refused: 'data' is a symlink or not "
         "a directory. Nothing was written.")
@@ -260,6 +265,7 @@ def test_a_refused_push_says_why_and_exits_nonzero(mockPush, mockConfig):
 def test_pull_calls_transfer(mockPull, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="proj",
+        sWorkspaceRoot="/workspace",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["pull", "/src", "/dst"])
