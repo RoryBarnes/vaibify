@@ -1,115 +1,100 @@
 #!/bin/zsh
-# Zsh tab-completion for vaibify (vc) and its push/pull helpers.
+# Tab completion for vaibify and its push/pull helpers, in zsh.
 #
-# Source this file from your shell configuration:
-#   [ -f "/path/to/Vaibify/completions/vaibify.zsh" ] \
-#       && . "/path/to/Vaibify/completions/vaibify.zsh"
+# vaibify's first-run setup adds the line below to your shell configuration.
+# To add it yourself:
+#   [ -f "/path/to/vaibify/completions/vaibify.zsh" ] \
+#       && . "/path/to/vaibify/completions/vaibify.zsh"
+#
+# This file knows POSITIONS only: which word is a subcommand, which
+# argument of push/pull is a container path and which is a file on this
+# machine. Everything else -- which project, where its workspace is, what
+# is in it -- is answered by `vaibify complete-path`, so nothing here can
+# drift from how the commands themselves resolve a path.
 
-# Ensure the completion system is initialized
 if ! typeset -f compdef > /dev/null 2>&1; then
     autoload -Uz compinit && compinit
 fi
 
+typeset -g _sVaibifySubcommands="build cat config connect destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup start status stop test verify verify-step workflow"
+
 # ---------------------------------------------------------------------------
-# _fnReadVcConfigZsh: Set VC_NAME and VC_WORKSPACE from vaibify.yml
+# _fnScanTypedArgumentsZsh: Read the project and count the typed paths
+# Arguments: iFirstArgument - index in $words where arguments start
+# Sets (in the caller's scope): sProject, iTypedCount
+#
+# Only words BEFORE the cursor count, and the value that follows -p or
+# --project is a project name, not a path.
 # ---------------------------------------------------------------------------
-_fnReadVcConfigZsh() {
-    VC_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('vaibify.yml'))['projectName'])" 2>/dev/null || true)
-    VC_WORKSPACE=$(python3 -c "import yaml; print(yaml.safe_load(open('vaibify.yml')).get('workspaceRoot','/workspace'))" 2>/dev/null || true)
-    if [ -z "${VC_NAME}" ]; then
-        VC_NAME="vaibify"
-    fi
-    if [ -z "${VC_WORKSPACE}" ]; then
-        VC_WORKSPACE="/workspace"
-    fi
+_fnScanTypedArgumentsZsh() {
+    local iIndex="$1"
+    local sWord
+    while (( iIndex < CURRENT )); do
+        sWord="${words[iIndex]}"
+        case "${sWord}" in
+            -p|--project)
+                iIndex=$(( iIndex + 1 ))
+                if (( iIndex < CURRENT )); then
+                    sProject="${(Q)words[iIndex]}"
+                fi
+                ;;
+            --project=*) sProject="${(Q)sWord#--project=}" ;;
+            -p?*) sProject="${(Q)sWord#-p}" ;;
+            -?*) ;;
+            *) iTypedCount=$(( iTypedCount + 1 )) ;;
+        esac
+        iIndex=$(( iIndex + 1 ))
+    done
 }
 
 # ---------------------------------------------------------------------------
-# _fnListContainerPathsZsh: Query the running container for matching paths
-# Arguments: sPartial - the partial path typed so far
-# Returns: 0 if matches were added, 1 otherwise
+# _fnOfferContainerPathsZsh: Offer the paths inside the project's container
+# Arguments: sProject - project named with -p, or empty
+#            sPartial - the word being completed, with its quoting removed
+#                       (the caller passes zsh's $PREFIX, which holds the
+#                       word up to the cursor with an enclosing quote
+#                       already stripped, through (Q) for the backslashes)
+#
+# Names go to compadd as data after `--`. compadd quotes whatever the
+# shell needs when it inserts a match (never pass -Q), so a file named
+# `a b; touch x` arrives on the command line as ONE word and runs nothing.
+# Directories get no trailing space, so the next TAB can go deeper.
 # ---------------------------------------------------------------------------
-_fnListContainerPathsZsh() {
-    local sPartial="$1"
-    _fnReadVcConfigZsh
-    if ! command -v docker > /dev/null 2>&1; then
-        return 1
-    fi
-    if ! docker container inspect "${VC_NAME}" > /dev/null 2>&1; then
-        return 1
+_fnOfferContainerPathsZsh() {
+    local sProject="$1"
+    local sPartial="$2"
+    local -a saHelperArguments
+    saHelperArguments=(complete-path --side container)
+    if [[ -n "${sProject}" ]]; then
+        saHelperArguments+=("--project=${sProject}")
     fi
     local sOutput
-    sOutput="$(docker exec "${VC_NAME}" sh -c "ls -1dp ${VC_WORKSPACE}/${sPartial}* 2>/dev/null" \
-        | sed "s|^${VC_WORKSPACE}/||")"
-    if [ -z "${sOutput}" ]; then
+    sOutput="$(vaibify "${saHelperArguments[@]}" -- "${sPartial}" 2>/dev/null)"
+    if [[ -z "${sOutput}" ]]; then
         return 1
     fi
-    local daMatches=("${(@f)sOutput}")
-    compadd -S '' -- "${daMatches[@]}"
-    return 0
-}
-
-# ---------------------------------------------------------------------------
-# _vaibify: Complete subcommands and flags for vaibify
-# ---------------------------------------------------------------------------
-_vaibify() {
-    local sCurrent="${words[CURRENT]}"
-    local sPrevious="${words[CURRENT-1]}"
-
-    case "${sPrevious}" in
-        vaibify|vc)
-            compadd -- init build start stop status destroy connect verify push pull setup gui config publish
-            return
-            ;;
-        config)
-            compadd -- export import edit
-            return
-            ;;
-        publish)
-            compadd -- archive workflow
-            return
-            ;;
-        init)
-            compadd -- --template --force
-            return
-            ;;
-        build)
-            compadd -- --no-cache
-            return
-            ;;
-        start)
-            compadd -- --gui --jupyter
-            return
-            ;;
-    esac
-
-    # The subcommand, not the previous word: `vaibify push a b` asks
-    # about position, and words[CURRENT-1] is the previous ARGUMENT
-    # once one has been typed.
-    local sSubcommand="${words[2]}"
-    if [[ "${sSubcommand}" == "push" || "${sSubcommand}" == "pull" ]]; then
-        _fnCompleteTransferArgumentZsh "${sSubcommand}" 3
-        return
+    local -a daMatches daDirectories daFiles
+    daMatches=("${(@f)sOutput}")
+    daDirectories=("${(@M)daMatches:#*/}")
+    daFiles=("${(@)daMatches:#*/}")
+    if (( ${#daDirectories} )); then
+        compadd -S '' -- "${daDirectories[@]}"
     fi
-
-    if [[ "${sCurrent}" == -* ]]; then
-        compadd -- --help -h
+    if (( ${#daFiles} )); then
+        compadd -- "${daFiles[@]}"
     fi
 }
-compdef _vaibify vaibify
-compdef _vaibify vc
 
 # ---------------------------------------------------------------------------
 # _fnCompleteTransferArgumentZsh: Complete one push/pull argument
-# Arguments: sDirection    - "push" or "pull"
+# Arguments: sDirection     - "push" or "pull"
 #            iFirstArgument - index in $words where arguments start
 #
-# push reads from the host and writes into the container, pull the
-# other way round, so the same position means opposite things. One
-# function serves `vaibify push`, `vaibify pull`, and the helper
-# aliases, which is why the argument offset is a parameter.
+# push reads from this machine and writes into the container, pull the
+# other way round, so the same position means opposite things.
 # ---------------------------------------------------------------------------
 _fnCompleteTransferArgumentZsh() {
+    emulate -L zsh
     local sDirection="$1"
     local iFirstArgument="$2"
     local sCurrent="${words[CURRENT]}"
@@ -117,36 +102,47 @@ _fnCompleteTransferArgumentZsh() {
         compadd -- --project -p --help -h
         return
     fi
+    local sProject=""
     local iTypedCount=0
-    local iIndex
-    for (( iIndex=iFirstArgument; iIndex < CURRENT; iIndex++ )); do
-        case "${words[iIndex]}" in
-            -*) ;;
-            *)  iTypedCount=$(( iTypedCount + 1 )) ;;
-        esac
-    done
-    local bWantsContainerPath=0
-    if [[ "${sDirection}" == "pull" && "${iTypedCount}" -eq 0 ]]; then
-        bWantsContainerPath=1
+    _fnScanTypedArgumentsZsh "${iFirstArgument}"
+    if [[ "${words[CURRENT-1]}" == (-p|--project) ]]; then
+        return 1
     fi
-    if [[ "${sDirection}" == "push" && "${iTypedCount}" -ge 1 ]]; then
-        bWantsContainerPath=1
-    fi
-    if [ "${bWantsContainerPath}" -eq 1 ]; then
-        _fnListContainerPathsZsh "${sCurrent}" || _files
+    if [[ "${sDirection}" == "pull" && "${iTypedCount}" -eq 0 ]] \
+        || [[ "${sDirection}" == "push" && "${iTypedCount}" -ge 1 ]]; then
+        _fnOfferContainerPathsZsh "${sProject}" "${(Q)PREFIX}"
     else
         _files
     fi
 }
 
-# The helper aliases are `vaibify push` / `vaibify pull` by another
-# name, so their arguments begin one word earlier than the subcommand
-# form. Bound to the names shellSetup.py actually creates: these were
-# `vc_push` / `vc_pull` until they were renamed, and the completions
-# kept registering against the retired names, which is how both
-# helpers silently stopped completing anything.
+# ---------------------------------------------------------------------------
+# _vaibify: Complete the subcommand, then hand push/pull on
+# ---------------------------------------------------------------------------
+_vaibify() {
+    emulate -L zsh
+    if (( CURRENT == 2 )); then
+        if [[ "${words[CURRENT]}" == -* ]]; then
+            compadd -- --help --version
+        else
+            compadd -- ${=_sVaibifySubcommands}
+        fi
+        return
+    fi
+    case "${words[2]}" in
+        push|pull) _fnCompleteTransferArgumentZsh "${words[2]}" 3 ;;
+    esac
+}
+
+# The helper aliases are `vaibify push` / `vaibify pull` by another name,
+# so their arguments begin one word earlier. The names are the ones
+# first-run setup creates (shellSetup.py); testShellCompletionWiring binds
+# the two.
 _vaibify_push() { _fnCompleteTransferArgumentZsh push 2 }
 _vaibify_pull() { _fnCompleteTransferArgumentZsh pull 2 }
+
+compdef _vaibify vaibify
+compdef _vaibify vaib
 compdef _vaibify_push vaibify_push
 compdef _vaibify_push vaib_push
 compdef _vaibify_pull vaibify_pull
