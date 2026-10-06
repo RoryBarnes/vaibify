@@ -4488,7 +4488,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # marker is never the implementation council's seed.
     # 1574 -> 1580 (2026-10-01): the participant model id is validated
     # against the shared plain-id pattern.
-    "routes/councilRoutes.py": 1580,
+    # 1580 -> 1581 (2026-10-06): the capabilities answer carries each
+    # provider's own reason it has no copyable login.
+    "routes/councilRoutes.py": 1581,
     # NEW at 845 (2026-08-20, remediation R5): agentCouncilContext
     # crossed the cap when the coherence check became a real algorithm —
     # two independent pre/post per-path observations plus archive-member

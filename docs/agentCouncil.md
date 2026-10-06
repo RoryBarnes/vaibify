@@ -61,6 +61,15 @@ use the separate Gemini CLI feature. If Antigravity reports an expired
 login, `agy models` refreshes the project credential without giving a
 council runner the refresh token.
 
+The council reads the login from the project container's workspace
+volume, never from the computer running the dashboard, so a login on
+the host does not count. One provider with a usable login is enough to
+open the council; each provider you name as a participant needs its own.
+When the **Agent Council** button reports that no login was found, it
+says why for each provider (no login file at the path it looked at, a
+file it could not read, or a token that has lapsed). Clicking the button
+re-checks, so there is no need to reload after logging in.
+
 1. Open a containerized project in the dashboard.
 2. Click **Agent Council** in the toolbar (between the project name and
    the Run menu). The first time, one or two questions come first:

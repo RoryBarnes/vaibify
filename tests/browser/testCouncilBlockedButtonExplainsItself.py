@@ -80,7 +80,8 @@ def _fnRemoveTheProjectLogin(monkeypatch):
     monkeypatch.setattr(
         councilRoutes, "fdictReadProjectLoginState",
         lambda dictCtx, sContainerId, sProvider="claude": {
-            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0})
+            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,
+            "sLoginProblem": "no persisted login was found"})
 
 
 def _fdictActivateCouncilToolbar(page, serverHub):
@@ -330,6 +331,97 @@ def testTheExplanationDoesNotSelfDestructBeforeItCanBeRead(
     assert pageDashboard.locator(".toast").count() == 1, (
         "the refusal vanished before it could be read or acted on"
     )
+
+
+def _fnLetTheClaudeLoginAppearLater(serverHub, monkeypatch):
+    """Model a researcher who logs in AFTER the dashboard has loaded.
+
+    Only the container read is replaced, so the real route and the real
+    adapters decide what the absent and the present login mean. Returns
+    the switch the test flips; nothing reloads the page when it does.
+    """
+    dictSwitch = {"bLoggedIn": False}
+    dockerFake = serverHub.app.state.dictRouteContext["docker"]
+    fnRealRead = dockerFake.fbaFetchCredentialFile
+
+    def _fbaReadLoginWhenPresent(sContainerId, sPath):
+        if not dictSwitch["bLoggedIn"]:
+            raise FileNotFoundError(sPath)
+        return fnRealRead(sContainerId, sPath)
+
+    monkeypatch.setattr(
+        dockerFake, "fbaFetchCredentialFile", _fbaReadLoginWhenPresent)
+    return dictSwitch
+
+
+@pytest.mark.falsification
+def testTheBlockedToastNamesWhyThereIsNoLogin(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """Not "no provider is logged in" for every cause alike.
+
+    The researcher reported logging in to the container and the host and
+    still reading that sentence, with nothing to say which of several
+    different things had gone wrong. The toast must carry the adapter's
+    own sentence and the path it looked at, and the click must have
+    asked the server again rather than reading a cached answer.
+
+    Kills: a click on the blocked button speaking the verdict cached at
+    the last read instead of asking the server again.
+    """
+    _fnLetTheClaudeLoginAppearLater(serverHub, monkeypatch)
+    _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+
+    with pageDashboard.expect_response(
+        lambda response: response.url.split("?")[0].endswith("/capabilities")
+    ):
+        pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector(".toast", timeout=8000)
+    sToast = pageDashboard.inner_text(".toast")
+
+    assert ".claude/.credentials.json" in sToast, (
+        f"the toast never says where the login was looked for: {sToast!r}")
+    assert "no persisted Claude login was found" in sToast, (
+        f"the toast never says WHY there is no login: {sToast!r}")
+    assert "Log in from the project's terminal" in sToast, (
+        f"the toast lost its remedy: {sToast!r}")
+    assert "No provider is logged in" not in sToast, (
+        f"the toast is still the one sentence for every cause: {sToast!r}")
+
+
+@pytest.mark.falsification
+def testALoginMadeAfterThePageLoadedIsSeenByOneClick(
+    pageDashboard, serverHub, monkeypatch,
+):
+    """The blocked verdict is as old as the last read; a click re-reads.
+
+    Nothing else re-fetches capabilities, so before this a researcher who
+    logged in after opening the project was told "no login" on every
+    click until they reloaded. The premise is asserted first: the button
+    really is blocked, so the stale answer is what the click would have
+    spoken.
+
+    Kills: the re-read answer being shown as a refusal even when it now
+    offers a way forward, so a login made after the page loaded is
+    still refused until a reload.
+    """
+    dictSwitch = _fnLetTheClaudeLoginAppearLater(serverHub, monkeypatch)
+    dictState = _fdictActivateCouncilToolbar(pageDashboard, serverHub)
+    assert dictState["bBlockedClass"] is True, (
+        "the premise failed: the button was not blocked before the login "
+        f"appeared, so this test proves nothing ({dictState!r})")
+
+    dictSwitch["bLoggedIn"] = True
+    pageDashboard.click("#btnAgentCouncil")
+    pageDashboard.wait_for_selector("#btnCouncilConsentRun", timeout=8000)
+
+    assert pageDashboard.locator(".toast").count() == 0, (
+        "the click spoke the stale refusal instead of following the "
+        "login that now exists")
+    assert pageDashboard.evaluate(
+        "() => document.getElementById('btnAgentCouncil')"
+        ".classList.contains('council-blocked')") is False, (
+        "the toolbar kept its blocked look after the re-read")
 
 
 def testAnOversizedFileIsOfferedForExclusionNotJustRefused(

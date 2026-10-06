@@ -662,6 +662,7 @@ async def _fdictContainerCapabilities(dictCtx, sContainerId):
             "sReason": dictEnablement["sReason"],
             "sCredentialState": dictEnablement.get("sState", ""),
             "bHasProjectLogin": dictLogin["bHasLogin"],
+            "sLoginProblem": dictLogin["sLoginProblem"],
             "dictModelDiscovery": dictContract["dictModelDiscovery"],
         })
     listEnabled = [dictProvider for dictProvider in listProviders

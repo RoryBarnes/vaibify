@@ -362,6 +362,27 @@ var VaibifyAgentCouncil = (function () {
             }).length;
     }
 
+    async function _fnReReadThenExplainBlockedClick() {
+        /* The verdict on screen is as old as the last read, and nothing
+           else re-reads it: a researcher who logs in AFTER opening the
+           project would otherwise be told, on every click, that there
+           is no login, until a reload. The click is the moment they are
+           asking, so it asks the server again. If the answer changed,
+           follow it; if not, explain the fresh one. */
+        await fnRefreshCapabilities();
+        var dictFresh = _dictState.dictCapabilities;
+        if (dictFresh && (dictFresh.bAvailable ||
+                _fbReadinessOffersAStep(dictFresh))) {
+            fnHandleToolbarClick();
+            return;
+        }
+        /* "warning", not "info": an info toast self-destructs after
+           four seconds, which is not long enough to read a refusal
+           and act on it. A warning stays until dismissed. */
+        VaibifyApp.fnShowToast(
+            _fsUnavailableExplanation(dictFresh || {}), "warning");
+    }
+
     function fnHandleToolbarClick() {
         /* Every early return below MUST say something. A click that
            returns in silence is the defect this handler exists to
@@ -376,12 +397,7 @@ var VaibifyAgentCouncil = (function () {
             return;
         }
         if (!dictCapabilities || !dictCapabilities.bAvailable) {
-            /* "warning", not "info": an info toast self-destructs after
-               four seconds, which is not long enough to read a refusal
-               and act on it. A warning stays until dismissed. */
-            VaibifyApp.fnShowToast(
-                _fsUnavailableExplanation(dictCapabilities || {}),
-                "warning");
+            _fnReReadThenExplainBlockedClick();
             return;
         }
         /* Available but unusable: the toolbar makes this case clickable
