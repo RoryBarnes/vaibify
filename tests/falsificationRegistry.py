@@ -9301,10 +9301,9 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
         new='        sProjectRoot = sWorkspaceRoot\n',
-        # Two copies since the download route began resolving the root
-        # before it resolves the path, rather than after. "The guard is
-        # gone" means both, or the surviving copy scores the mutation.
-        iExpectedOccurrences=2,
+        # One copy since the download route moved to downloadRoutes.py
+        # (2026-10-06); its own copy is killed by
+        # tests/testDownloadRoutes.py.
     ),
     Falsification(
         nodeid=(
@@ -9326,7 +9325,6 @@ def _fdictEntry(sRel):
             '            sContainerId) or {}).get('
             '"sDirectory", sWorkspaceRoot)\n'
         ),
-        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -24791,6 +24789,126 @@ def _fdictEntry(sRel):
         old='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                os.fchmod(iDescriptor, iEffectiveMode)\n',
         new='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                pass\n',
     ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testADropAtTheWorkspaceRootLandsUnderALockHeldAdmission',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n        requestHttp.app.state, dictLaneTuple["sContainerName"],\n        sContainerId, dictLaneTuple, "file-write", sTarget,\n        _ffnBuildUploadWorker(\n            dictCtx, sContainerId, dictSpool, sTarget, bReplaceAllowed,\n            sWritableRoot, bCreateParents, sPriorSha256),\n        dictHolderIdentity=dictIdentity,\n    )\n    dictCarried = dictOutcome["result"]\n',
+        new='    del commitCarrier, dictIdentity\n    dictCarried = _ffnBuildUploadWorker(\n        dictCtx, sContainerId, dictSpool, sTarget, bReplaceAllowed,\n        sWritableRoot, bCreateParents, sPriorSha256)()\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheJournalRecordCarriesBothHashesBeforeTheWrite',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        "sExpectedSha256": dictSpool["hasherContent"].hexdigest(),\n',
+        new='        "sExpectedSha256": "",\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFolderIsCreatedUnderTheDrainAndNeedsNoBody',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictWorker, S_UPLOAD_FOLDER_OPERATION, requestHttp)\n',
+        new='    fdictWorker()\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testHostileTargetsAreRefusedBeforeAnyByteIsRead',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        uploadStaging.fnRequireUploadAllowed(sTarget, sWritableRoot)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAnUnconfirmedOverwriteIsRefusedAndTheOldBytesStay',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='                bReplaceAllowed=bReplaceAllowed,\n                bCreateParents=bCreateParents,\n',
+        new='                bReplaceAllowed=True,\n                bCreateParents=bCreateParents,\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testABodyThatDisagreesWithItsDeclaredSizeWritesNothing',
+        source='vaibify/gui/uploadStaging.py',
+        old='    if iReceived > iSizeBytes or (bFinished and iReceived != iSizeBytes):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testNoSpaceIsRefusedUpfrontNamingTheShortDisk',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if iBytes < uploadStaging.I_PER_FILE_SPACE_PROBE_MIN_BYTES:\n        return\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFailedWriteLeavesNoSpoolBehind',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        finally:\n            uploadStaging.fnDiscardSpool(dictSpool)\n',
+        new='        finally:\n            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFullContainerDiskAnswers507AndTheContainerStaysUsable',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='setAlsoCarriedStatusCodes=frozenset({I_STATUS_NO_SPACE}),',
+        new='setAlsoCarriedStatusCodes=frozenset(),',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFileThatChangedWhileTheUploadQueuedIsNotReplaced',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if not sPriorSha256:\n        return\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheVerdictRefusesWhatTheUploadWouldRefuseWithItsReason',
+        source='vaibify/gui/uploadStaging.py',
+        old='    sRefusal = fsDescribeUploadRefusal(sDirectory, sWritableRoot)\n',
+        new='    sRefusal = ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheHubSweepsAbandonedSpoolsBeforeItServes',
+        source='vaibify/gui/appFactory.py',
+        old='    _fnRegisterHubStartupSweepAbandonedSpools(app)\n    _fnRegisterHubShutdownReleaseLocks(app)\n',
+        new='    _fnRegisterHubShutdownReleaseLocks(app)\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testALinkInsideTheProjectDownloadsTheTargetsBytesNotAnEmptyFile',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    for _ in range(I_MAX_LINK_HOPS + 1):\n',
+        new='    for _ in range(1):\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testALinkLeadingOutOfTheProjectIsRefusedNamingIt',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    if isinstance(error, (ContainerReadRefusedError,\n                          HostPathOutsideProjectError)):\n',
+        new='    if isinstance(error, ContainerReadRefusedError):\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testAFolderDownloadsAsATarNamedForIt',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    fiterOpen = (connectionDocker.fiterReadDirectoryAsTar if bFolder\n                 else connectionDocker.fiterReadFileConfined)\n',
+        new='    fiterOpen = connectionDocker.fiterReadFileConfined\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testHeadAnswersWhatAGetWouldWithoutSendingTheBody',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        sAbsPath, _, iterChunks = await _ftOpenDownload(\n            sContainerId, sFilePath, bFolder)\n        await asyncio.to_thread(iterChunks.close)\n',
+        new='        sAbsPath = sFilePath\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testHeadClosesTheReadItOpenedInsteadOfLeavingItRunning',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        await asyncio.to_thread(iterChunks.close)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testAnUnreadableProjectRootNeverFallsBackToTheWorkspaceConstant',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        sProjectRoot = projectRoots.fsResolveProjectRoot(\n            sContainerId, sWorkspaceRoot)\n',
+        new='        sProjectRoot = sWorkspaceRoot\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFileNameThatIsNotOnePathComponentIsRefused',
+        source='vaibify/gui/uploadStaging.py',
+        old=' or "/" in sName or bControl',
+        new=' or bControl',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAWriteTheContainerRefusesIsA403ThatSaysWhy',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if isinstance(error, ContainerWriteRefusedError):\n        raise HTTPException(403, str(error))\n',
+        new='',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',
@@ -25032,13 +25150,13 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='            "Content-Disposition": fsBuildContentDisposition(sFilename),',
-        new='            "Content-Disposition": f\'attachment; filename="{sFilename}"\',',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    return {"Content-Disposition": fsBuildContentDisposition(sFilename)}',
+        new='    return {"Content-Disposition": f\'attachment; filename="{sFilename}"\'}',
     ),
     Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testAQuoteInAFilenameCannotEndTheQuotedString',
-        source='vaibify/gui/routes/fileRoutes.py',
+        source='vaibify/gui/routes/downloadRoutes.py',
         old=".replace('\"', '\\\\\"')",
         new="",
     ),
@@ -26062,9 +26180,9 @@ def _fdictEntry(sRel):
     # --- Path jail call sites: fileRoutes download ---
     Falsification(
         nodeid='tests/testCoverageRoutesAFileRoutes.py::testADownloadOutsideTheWorkspaceIsRefused',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n        baFirst, iterChunks',
-        new='        baFirst, iterChunks',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n    return sAbsPath\n',
+        new='    return sAbsPath\n',
     ),
     # --- Path jail call sites: fileRoutes pull ---
     Falsification(

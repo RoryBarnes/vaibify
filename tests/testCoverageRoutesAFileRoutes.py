@@ -84,6 +84,12 @@ class _GatedDockerWithFileSystem(DockerDoubleThatCallsTheRealGates):
         for iStart in range(0, len(baContent), 4):
             yield baContent[iStart:iStart + 4]
 
+    def fiterReadFileConfined(
+        self, sContainerId, sPath, sAuthorizedRoot=None,
+    ):
+        """The download's confined read, answering as the stream does."""
+        yield from self.fiterStreamFile(sContainerId, sPath)
+
     def fnWriteFile(
         self, sContainerId, sPath, baContent,
         iMode=None, iUid=None, iGid=None,
@@ -421,14 +427,17 @@ def testADownloadThatCannotOpenFailsBeforeTheStatusIsSent(
         f"/api/files/{S_CONTAINER_ID}/download/data/result.csv",
     )
     assert responseHttp.status_code == 500
-    assert "No such container" in responseHttp.json()["detail"]
+    sDetail = responseHttp.json()["detail"]
+    assert "result.csv" in sDetail
+    assert "Container not found. It may have stopped." in sDetail
+    assert "No such container" not in sDetail
 
 
 @pytest.mark.falsification
 def testADownloadOutsideTheWorkspaceIsRefused(tclientFiles):
     """A download of a path outside the workspace is refused.
 
-    Kills: fileRoutes download route (the streaming handler): the call
+    Kills: downloadRoutes download route (the streaming handler): the call
     `fsValidatePathWithinRoot(sAbsPath, sProjectRoot)` deleted.
     """
     client, _connectionDocker = tclientFiles
