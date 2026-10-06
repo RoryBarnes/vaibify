@@ -17,6 +17,7 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import io
 import json
 import shlex
 import warnings
@@ -2717,16 +2718,44 @@ class DockerConnection:
         iMode=None, iUid=None, iGid=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
     ):
-        """Write one file through the symlink-safe, unprivileged primitive.
+        """Write ``baContent`` to one file; the bytes-in-memory entry point.
 
-        The name is historical: this no longer builds a tarball. Handing
-        the daemon an archive made the write run as root and follow every
-        symlink the in-container agent had planted, so the funnel now
-        execs a fixed program (see :mod:`vaibify.docker.confinedWrite`)
-        as the container user and streams the bytes on its stdin. The
-        program opens each path component with ``O_NOFOLLOW`` against the
-        descriptor it already holds, so a swapped component is refused
-        and cannot redirect the write.
+        The name is historical: this no longer builds a tarball. It is
+        :meth:`fnWriteFileFromStream` over a buffer, stating the byte
+        count so a transfer that ends short is refused rather than
+        renamed into place. ``iUid`` and ``iGid`` are accepted for the
+        duck type shared with the host connection and are ignored.
+        """
+        del iUid, iGid
+        self.fnWriteFileFromStream(
+            sContainerId, sFilePath, io.BytesIO(baContent),
+            iExpectedBytes=len(baContent), iMode=iMode,
+            sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
+        )
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sFilePath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Write one file from a readable stream, symlink-safe, unprivileged.
+
+        Handing the daemon an archive made a write run as root and
+        follow every symlink the in-container agent had planted, so the
+        funnel execs a fixed program (see
+        :mod:`vaibify.docker.confinedWrite`) as the container user and
+        streams the bytes on its stdin in chunks: a file of any size is
+        written in bounded memory. The program opens each path
+        component with ``O_NOFOLLOW`` against the descriptor it already
+        holds, so a swapped component is refused and cannot redirect
+        the write.
+
+        ``iExpectedBytes`` refuses a stream whose length differs and
+        ``bReplaceAllowed`` False refuses an existing target
+        (:class:`~vaibify.docker.confinedWrite.ContainerWriteExistsError`);
+        either way the old file is untouched. A full disk raises
+        ``OSError`` with ``errno.ENOSPC``.
 
         This is the workspace-file-write funnel the commit-guard
         carrier guards (design §8): in an enforced lane (an HTTP
@@ -2737,15 +2766,15 @@ class DockerConnection:
         text a caller chose, so it needs no second admission.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
-            sContainerId, "fnWriteFileViaTar",
+            sContainerId, "fnWriteFileFromStream",
         )
-        del iUid, iGid
         sProgram = confinedWrite.fsRenderConfinedWriteProgram(
             sFilePath, iMode=iMode, sAuthorizedRoot=sAuthorizedRoot,
             tForbiddenNames=tForbiddenNames,
+            bReplaceAllowed=bReplaceAllowed, iExpectedBytes=iExpectedBytes,
         )
         tExecResult = self._ftRunProgramWithStdin(
-            sContainerId, ["python3", "-c", sProgram], baContent,
+            sContainerId, ["python3", "-c", sProgram], fileStdin=fileSource,
         )
         confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
 

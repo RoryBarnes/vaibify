@@ -39,6 +39,7 @@ until its first ``next()``, so a test that merely calls it passes
 against a completely unguarded implementation.
 """
 
+import io
 import os
 
 import pytest
@@ -217,6 +218,11 @@ def _fdictBuildPathTakingCalls(connection):
         ),
         "fnWriteFileViaTar": lambda sPath: connection.fnWriteFileViaTar(
             S_PROJECT_NAME, sPath, b"nope",
+        ),
+        "fnWriteFileFromStream": (
+            lambda sPath: connection.fnWriteFileFromStream(
+                S_PROJECT_NAME, sPath, io.BytesIO(b"nope"),
+            )
         ),
         "ftRunInContainerStreamed": fnRunWithWorkdir,
         "ftRunInContainerStreamedWithChunks": fnRunChunkedWithWorkdir,

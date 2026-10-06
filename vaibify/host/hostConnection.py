@@ -68,6 +68,10 @@ import time
 
 from vaibify.config import mutationAdmission
 from vaibify.config import processLiveness
+from vaibify.docker.confinedWrite import (
+    ContainerWriteExistsError,
+    ContainerWriteRefusedError,
+)
 from vaibify.docker.dockerConnection import (
     ExecResult,
     I_MAX_SMALL_FILE_BYTES,
@@ -90,6 +94,7 @@ F_DEFAULT_HOST_EXEC_TIMEOUT_SECONDS = 300.0
 # that it could not read.
 F_TYPED_READ_TIMEOUT_SECONDS = 60.0
 I_NEW_FILE_MODE = 0o644
+S_STAGING_PREFIX = ".vaibify-write-"
 
 # The child blocks on its stdin until the parent has journaled its
 # identity, then becomes the command via exec — so the command's first
@@ -139,6 +144,65 @@ class HostPathOutsideProjectError(RuntimeError):
 
 class UnknownHostProjectError(RuntimeError):
     """The resource id does not name a registered host project."""
+
+
+def _fiResolveWriteMode(sRealPath, iMode):
+    """Return ``iMode``, else the replaced file's own mode, else 0644."""
+    if iMode is not None:
+        return iMode
+    try:
+        return os.stat(sRealPath).st_mode & 0o7777
+    except FileNotFoundError:
+        return I_NEW_FILE_MODE
+
+
+def _fnUnlinkQuietly(sPath):
+    try:
+        os.unlink(sPath)
+    except OSError:
+        pass
+
+
+def _fnCopyStreamBounded(fileSource, fileStaged, iExpectedBytes):
+    """Copy in chunks; refuse a stream whose length differs from stated."""
+    iReceived = 0
+    for baChunk in iter(lambda: fileSource.read(I_STREAM_CHUNK_BYTES), b""):
+        iReceived += len(baChunk)
+        if iExpectedBytes is not None and iReceived > iExpectedBytes:
+            break
+        fileStaged.write(baChunk)
+    if iExpectedBytes is not None and iReceived != iExpectedBytes:
+        raise ContainerWriteRefusedError(
+            f"Write refused: {iReceived} bytes arrived but "
+            f"{iExpectedBytes} were expected"
+        )
+
+
+def _fnPublishStagedFile(sTempPath, sRealPath, bReplaceAllowed):
+    """Rename the staged file into place, atomically refusing a taken name.
+
+    Replacement is a rename. Forbidding it is a hard link, which fails if
+    the name exists at the instant of publishing -- an existence check
+    made earlier cannot see a file that appeared during a long upload.
+    A filesystem without hard links falls back to check-then-rename.
+    """
+    if bReplaceAllowed:
+        os.rename(sTempPath, sRealPath)
+        return
+    try:
+        os.link(sTempPath, sRealPath)
+    except FileExistsError as error:
+        raise ContainerWriteExistsError(
+            f"Write to {sRealPath} refused: it already exists"
+        ) from error
+    except OSError:
+        if os.path.lexists(sRealPath):
+            raise ContainerWriteExistsError(
+                f"Write to {sRealPath} refused: it already exists"
+            )
+        os.rename(sTempPath, sRealPath)
+        return
+    os.unlink(sTempPath)
 
 
 def _fsResolveRegisteredHostProjectRoot(sResourceId):
@@ -421,12 +485,7 @@ class HostConnection:
             sContainerId, "fnWriteFile",
         )
         sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
-        iEffectiveMode = iMode
-        if iEffectiveMode is None:
-            try:
-                iEffectiveMode = os.stat(sRealPath).st_mode & 0o7777
-            except FileNotFoundError:
-                iEffectiveMode = I_NEW_FILE_MODE
+        iEffectiveMode = _fiResolveWriteMode(sRealPath, iMode)
         iDescriptor, sTempPath = tempfile.mkstemp(
             dir=os.path.dirname(sRealPath),
         )
@@ -441,11 +500,79 @@ class HostConnection:
                 os.close(iDescriptor)
             except OSError:
                 pass
-            try:
-                os.unlink(sTempPath)
-            except OSError:
-                pass
+            _fnUnlinkQuietly(sTempPath)
             raise
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sFilePath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Write a file from a readable stream; the host sibling of the
+        container's :meth:`DockerConnection.fnWriteFileFromStream`.
+
+        The same contract: bounded memory whatever the size,
+        ``iExpectedBytes`` refuses a stream that ends short or runs long,
+        ``bReplaceAllowed`` False refuses an existing target, and a
+        refusal leaves the old file untouched. The bytes are staged in
+        the DESTINATION directory, never in a scratch directory, so the
+        final rename stays on one filesystem and is atomic. A symlinked
+        final component is refused rather than written through: a link
+        in the project is something the researcher placed and an upload
+        must not silently rewrite whatever it points at.
+        ``sAuthorizedRoot``/``tForbiddenNames`` are accepted for the duck
+        type and not consulted, as in :meth:`fnWriteFile`.
+        """
+        del sAuthorizedRoot, tForbiddenNames
+        mutationAdmission.fnAssertContainerWriteAdmitted(
+            sContainerId, "fnWriteFileFromStream",
+        )
+        sRealPath = self._fsValidateHostPath(sContainerId, sFilePath)
+        self._fnRefuseUnwritableFinalComponent(
+            sContainerId, sFilePath, sRealPath, bReplaceAllowed,
+        )
+        iEffectiveMode = _fiResolveWriteMode(sRealPath, iMode)
+        iDescriptor, sTempPath = tempfile.mkstemp(
+            dir=os.path.dirname(sRealPath), prefix=S_STAGING_PREFIX,
+        )
+        try:
+            with os.fdopen(iDescriptor, "wb") as fileStaged:
+                os.fchmod(iDescriptor, iEffectiveMode)
+                _fnCopyStreamBounded(fileSource, fileStaged, iExpectedBytes)
+                fileStaged.flush()
+                os.fsync(iDescriptor)
+            _fnPublishStagedFile(sTempPath, sRealPath, bReplaceAllowed)
+        except BaseException:
+            _fnUnlinkQuietly(sTempPath)
+            raise
+
+    def _fnRefuseUnwritableFinalComponent(
+        self, sContainerId, sFilePath, sRealPath, bReplaceAllowed,
+    ):
+        """Raise when the target is a link, a directory, or taken.
+
+        ``_fsValidateHostPath`` resolves links, so the final component
+        is looked at UNRESOLVED here: its parent is resolved and the
+        name is examined as it stands.
+        """
+        sProjectRoot = os.path.realpath(
+            self._fnResolveProjectRoot(sContainerId),
+        )
+        sAbsolute = (sFilePath if os.path.isabs(sFilePath)
+                     else os.path.join(sProjectRoot, sFilePath))
+        sAsNamed = os.path.join(
+            os.path.realpath(os.path.dirname(sAbsolute)),
+            os.path.basename(sAbsolute),
+        )
+        if os.path.islink(sAsNamed) or os.path.isdir(sRealPath):
+            raise ContainerWriteRefusedError(
+                f"Write to {sFilePath} refused: it is a symlink or a "
+                "directory"
+            )
+        if not bReplaceAllowed and os.path.lexists(sAsNamed):
+            raise ContainerWriteExistsError(
+                f"Write to {sFilePath} refused: it already exists"
+            )
 
     def fnWriteFileViaTar(
         self, sContainerId, sFilePath, baContent,

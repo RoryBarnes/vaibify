@@ -1313,8 +1313,12 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
     import inspect
 
     from vaibify.docker.dockerConnection import DockerConnection
-    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
-    assert "put_archive" not in sFunnelSource, (
+    sBytesEntrySource = inspect.getsource(DockerConnection.fnWriteFileViaTar)
+    assert "self.fnWriteFileFromStream(" in sBytesEntrySource, (
+        "the bytes entry point must delegate to the one streamed funnel"
+    )
+    sFunnelSource = inspect.getsource(DockerConnection.fnWriteFileFromStream)
+    assert "put_archive" not in sBytesEntrySource + sFunnelSource, (
         "the single-file write went back to handing the daemon an "
         "archive, which extracts as root and follows in-container "
         "symlinks"
