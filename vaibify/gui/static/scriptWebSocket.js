@@ -12,6 +12,11 @@ var VaibifyWebSocket = (function () {
     var _bIntentionalDisconnect = false;
     var _iReconnectAttempt = 0;
     var _iReconnectTimer = null;
+    /* The socket this page marked as about to be closed by the hub's
+     * own release of the claim, kept so a release that is refused can
+     * give it back. The mark itself lives on the socket object. */
+    var _wsMarkedForRelease = null;
+    var I_CLOSE_SESSION_ENDED = 4401;
     /* The ladder is SIZED FROM the server's hold window, never
      * hardcoded beside it. A fixed [1,2,4,8,16] ladder ran 31 seconds
      * against a window that revoked the credential at about 20, so its
@@ -150,7 +155,7 @@ var VaibifyWebSocket = (function () {
                 return;
             }
             _wsPipeline = null;
-            _fnHandleSocketClose(event);
+            _fnHandleSocketClose(event, wsNew);
         };
         wsNew.onerror = function () {
             /* onclose always follows onerror; defer dispatch to it. */
@@ -158,7 +163,14 @@ var VaibifyWebSocket = (function () {
         return wsNew;
     }
 
-    function _fnHandleSocketClose(event) {
+    function _fnHandleSocketClose(event, wsClosed) {
+        /* The hub closes a releasing session's sockets with 4401 before
+         * it answers the release. For a socket this page marked, that
+         * close is the one it asked for, not a rejected credential. */
+        if (wsClosed.bClosingForRelease &&
+                event.code === I_CLOSE_SESSION_ENDED) {
+            return;
+        }
         var bNormal = event.code === 1000 || event.code === 1001;
         /* 4xxx codes are the server's deliberate refusals (bad token
          * 4401, foreign lease 4403, duplicate session 4409). Retrying
@@ -278,6 +290,32 @@ var VaibifyWebSocket = (function () {
         _listPendingActions.length = 0;
     }
 
+    function fnMarkClosingForRelease() {
+        /* Marked BEFORE the release is sent, and cleared only by this
+         * socket's own onclose: the close and the HTTP answer travel on
+         * separate connections and arrive in either order. */
+        if (!_wsPipeline) return;
+        _wsPipeline.bClosingForRelease = true;
+        _wsMarkedForRelease = _wsPipeline;
+    }
+
+    function fnRestoreAfterRefusedRelease() {
+        /* The release was refused, so the claim and this socket stay.
+         * A marked socket still open is simply unmarked; one the hub
+         * already closed is replaced, because the page is staying. */
+        var wsMarked = _wsMarkedForRelease;
+        _wsMarkedForRelease = null;
+        if (!wsMarked) return;
+        if (wsMarked.readyState === WebSocket.OPEN ||
+                wsMarked.readyState === WebSocket.CONNECTING) {
+            wsMarked.bClosingForRelease = false;
+            return;
+        }
+        if (_sActiveContainerId && _sActiveSessionToken) {
+            fnConnect(_sActiveContainerId, _sActiveSessionToken);
+        }
+    }
+
     function fbIsOpen() {
         return _wsPipeline &&
             _wsPipeline.readyState === WebSocket.OPEN;
@@ -295,6 +333,8 @@ var VaibifyWebSocket = (function () {
         fnSend: fnSend,
         fnSendDirect: fnSendDirect,
         fnDisconnect: fnDisconnect,
+        fnMarkClosingForRelease: fnMarkClosingForRelease,
+        fnRestoreAfterRefusedRelease: fnRestoreAfterRefusedRelease,
         fbIsOpen: fbIsOpen,
         fiGetReadyState: fiGetReadyState,
     };

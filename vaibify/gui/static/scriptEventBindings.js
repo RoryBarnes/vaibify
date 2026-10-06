@@ -849,7 +849,7 @@ var VaibifyEventBindings = (function () {
         if (elLogo) {
             elLogo.style.cursor = "pointer";
             elLogo.addEventListener("click", function () {
-                VaibifyApp.fnDisconnect();
+                VaibifyApp.fnLeaveToEnvironments();
             });
         }
     }
@@ -1030,7 +1030,7 @@ var VaibifyEventBindings = (function () {
                     "Leave Dashboard",
                     "This will leave the project and end any " +
                     "running sessions. Continue?",
-                    VaibifyApp.fnDisconnect);
+                    VaibifyApp.fnLeaveToEnvironments);
             },
             btnAdminWorkflows: function () {
                 VaibifyModals.fnShowConfirmModal(
@@ -1149,7 +1149,8 @@ var VaibifyEventBindings = (function () {
 
     function fnBindWorkflowPickerEvents() {
         document.getElementById("btnWorkflowBack").addEventListener(
-            "click", function () {
+            "click", async function () {
+                if (!await VaibifyApp.fbReleaseHeldClaimForLeaving()) return;
                 VaibifyApp.fnShowContainerLanding();
                 VaibifyContainerManager.fnLoadContainers();
             }

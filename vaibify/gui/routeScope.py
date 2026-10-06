@@ -42,6 +42,7 @@ unscoped route can never ship (default-deny).
 """
 
 import json
+import logging
 
 from fastapi.routing import APIRoute
 from starlette.responses import Response
@@ -50,8 +51,11 @@ from . import actionCatalog
 from . import browserSession
 from . import containerOwnership
 
+logger = logging.getLogger("vaibify")
+
 __all__ = [
     "S_LEASE_HEADER_NAME",
+    "S_REFUSAL_CLAIM_REQUIRED",
     "S_SCOPE_PUBLIC_STATIC",
     "S_SCOPE_BOOTSTRAP_CAPABILITY",
     "S_SCOPE_BROWSER_HUB",
@@ -135,6 +139,17 @@ _SET_AUTHORIZED_CONTAINER_SCOPES = (
 
 I_AUTHORIZED = 0
 I_REJECT_FORBIDDEN = 403
+# The one refusal a researcher can act on themselves: a browser session
+# the hub knows, aimed at a container no owner record names. The claim
+# lapsed (or was never made) and claiming again is the whole remedy.
+# A distinct VERDICT rather than a distinct status -- it is answered as
+# 403 with a structured body (see ``_fresponseRefused``) -- so every
+# caller that reads a nonzero code as "refused" keeps working unchanged.
+I_REJECT_CLAIM_REQUIRED = 4030
+# The connect route's identical refusal reads this same code. The
+# dashboard keys its recovery on the code rather than the prose, so a
+# reworded message cannot strand it.
+S_REFUSAL_CLAIM_REQUIRED = "claim-required"
 # A mutation aimed at a Supervised workflow opened in HOST mode.
 # Supervised mode's claim is that every change to the repository has a
 # recorded cause; vaibify can only make it while it mediates every path
@@ -758,7 +773,7 @@ def _ftResolveOwnerTarget(dictContainerOwners, dictScope, sTargetValue):
 
 
 def fiAuthorizeContainerHttp(request, appState, dictScope):
-    """Return ``0`` when the request may act on its target container, else 403.
+    """Return ``0`` when the request may act on its target container, else a refusal.
 
     The strong predicate on the HTTP boundary. The in-container agent lane
     is decided first: an ``X-Vaibify-Session`` header present but not
@@ -767,7 +782,10 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
     per-session credential and a lease bound to that session
     (:func:`containerOwnership.fbBrowserSessionOwnsLease`), so a second tab
     replaying a copied lease is refused even though the lease value is
-    genuine. A container with no owner record answers "claim first".
+    genuine. A container with no owner record answers "claim first" with
+    its own verdict, :data:`I_REJECT_CLAIM_REQUIRED`. Every refusal is
+    logged once, naming the container, the session prefix and the reason,
+    and never the lease or the credential.
     """
     dictContainerOwners = getattr(appState, "dictContainerOwners", {}) or {}
     dictBrowserSessions = getattr(appState, "dictBrowserSessions", {}) or {}
@@ -775,6 +793,7 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
     sName, sContainerId = _ftResolveOwnerTarget(
         dictContainerOwners, dictScope, sTargetValue,
     )
+    sTarget = sName or sTargetValue
     sAgentToken = request.headers.get(
         actionCatalog.S_SESSION_HEADER_NAME.lower(), "",
     )
@@ -783,21 +802,60 @@ def fiAuthorizeContainerHttp(request, appState, dictScope):
             dictContainerOwners, sAgentToken, sContainerId,
         ):
             return I_AUTHORIZED
-        return I_REJECT_FORBIDDEN
+        return _fiRefuseAndLog(
+            I_REJECT_FORBIDDEN, sTarget, "", "agent-token-rejected",
+        )
     sBrowserSessionId = browserSession.fsSessionIdForCredential(
         dictBrowserSessions,
         browserSession.fsBrowserPresentedCredential(request),
     )
     if not sBrowserSessionId:
-        return I_REJECT_FORBIDDEN
+        return _fiRefuseAndLog(
+            I_REJECT_FORBIDDEN, sTarget, "", "no-browser-credential",
+        )
     if sName is None or dictContainerOwners.get(sName) is None:
-        return I_REJECT_FORBIDDEN
+        return _fiRefuseUnowned(appState, sTarget, sBrowserSessionId)
     if containerOwnership.fbBrowserSessionOwnsLease(
         dictContainerOwners, sName, sBrowserSessionId,
         fsLeaseFromRequest(request),
     ):
         return I_AUTHORIZED
-    return I_REJECT_FORBIDDEN
+    return _fiRefuseAndLog(
+        I_REJECT_FORBIDDEN, sTarget, sBrowserSessionId,
+        "held-by-another-session",
+    )
+
+
+def _fiRefuseUnowned(appState, sTarget, sBrowserSessionId):
+    """Refuse a request for a container nobody owns, naming the cure.
+
+    Only the hub offers the cure: the single-container viewer has no
+    claim route (it mints its lease inside connect), so telling it to
+    claim would send it to a route that does not exist.
+    """
+    dictContext = getattr(appState, "dictRouteContext", None) or {}
+    if dictContext.get("bIsHub"):
+        return _fiRefuseAndLog(
+            I_REJECT_CLAIM_REQUIRED, sTarget, sBrowserSessionId,
+            S_REFUSAL_CLAIM_REQUIRED,
+        )
+    return _fiRefuseAndLog(
+        I_REJECT_FORBIDDEN, sTarget, sBrowserSessionId, "no-owner-record",
+    )
+
+
+def _fiRefuseAndLog(iVerdict, sTarget, sBrowserSessionId, sReason):
+    """Log one refusal line and return its verdict.
+
+    The session is named by its first eight characters only, the same
+    way ownership events name it; the lease and the credential never
+    reach a log record.
+    """
+    logger.info(
+        "REFUSED container request for %r (session %s): %s",
+        sTarget, sBrowserSessionId[:8] or "<none>", sReason,
+    )
+    return iVerdict
 
 
 def fiAuthorizeContainerLifecycleHttp(request, appState, dictScope):
@@ -1011,6 +1069,14 @@ def _fresponseRefused(iStatusCode):
             "This container is still starting; wait for the start to "
             "finish or cancel it, then try again."
         ))
+    if iStatusCode == I_REJECT_CLAIM_REQUIRED:
+        return _fresponseJson(I_REJECT_FORBIDDEN, {
+            "sMessage": (
+                "This project is no longer claimed by this session. "
+                "Select it again to claim it."
+            ),
+            "sRefusal": S_REFUSAL_CLAIM_REQUIRED,
+        })
     return _fresponseForbidden(iStatusCode)
 
 
@@ -1022,11 +1088,14 @@ def _fresponseForbidden(iStatusCode):
     ))
 
 
-def _fresponseJson(iStatusCode, sDetail):
-    """Return a JSON ``detail`` body — the shape the client's reader wants."""
+def _fresponseJson(iStatusCode, jsonDetail):
+    """Return a JSON ``detail`` body — the shape the client's reader wants.
+
+    ``jsonDetail`` is a sentence, or a dict the client reads field by field.
+    """
     return Response(
         status_code=iStatusCode,
-        content=json.dumps({"detail": sDetail}),
+        content=json.dumps({"detail": jsonDetail}),
         media_type="application/json",
     )
 

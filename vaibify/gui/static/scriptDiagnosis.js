@@ -60,6 +60,9 @@ var VaibifyDiagnosis = (function () {
     }
 
     function fnReportFailureFromError(error) {
+        /* A refusal VaibifyApi already recovered, or already reported in
+           the claim route's own sentence, is not reported a second time. */
+        if (VaibifyApi.fbErrorWasHandledByRecovery(error)) return;
         fnReportFailure(fsExplainError(error));
     }
 

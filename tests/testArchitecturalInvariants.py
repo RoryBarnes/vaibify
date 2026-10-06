@@ -7558,7 +7558,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container read, with why it is one.
     # 1058 -> 1076 (2026-10-04): measured after merging the agent-free
     # environment archive branch into main; both sides' growth.
-    "routeScope.py": 1076,
+    # 1076 -> 1145 (2026-10-05): the container authority names its refusal
+    # (claim-required, hub only) and logs each one; both belong with the
+    # verdict.
+    "routeScope.py": 1145,
 }
 
 
