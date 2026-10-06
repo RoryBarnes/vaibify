@@ -30,6 +30,25 @@ without discussion:
   longer uses `put_archive` either: it streams a tar to a fixed receiver
   program (the same module) that lands each member relative to directory
   descriptors, so a planted symlink is refused rather than followed.
+  `fnWriteFileViaTar` is now a thin wrapper over
+  `fnWriteFileFromStream`, the streamed funnel: the program copies
+  stdin in 1 MiB chunks, fsyncs, refuses a stream whose length differs
+  from the stated size, and can refuse to replace an existing file
+  (atomically, by hard link, where the filesystem has one). The host
+  connection has the same method. `put_archive` must never come back
+  for streaming; the streaming write is this one.
+- Downloads no longer ask the daemon for an archive. `get_archive` and
+  `docker cp` read as root, so a component an agent swapped for a
+  symlink after the path check redirected the read.
+  `DockerConnection.fiterReadFileConfined` and `fiterReadDirectoryAsTar`
+  run fixed programs as the container user
+  (`vaibify/docker/confinedRead.py`); the host leg is
+  `vaibify/host/hostConfinedRead.py`, held to the same contract by
+  `tests/testConfinedReadParity.py`. A final symlink is followed only
+  lexically and only inside the authorized root; a folder archive never
+  follows a link and holds no member beneath one. The older
+  `fiterStreamFile` (daemon archive) still serves callers that have not
+  moved.
 - `scriptFigureViewer.js` was not part of the 2026-01 frontend
   refactor. Kept as a single cohesive module.
 - Re-export blocks exist across `pipelineRunner`, `pipelineServer`,

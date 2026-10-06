@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Known technical debt &mdash; Vaibify 0.0.14.dev374 documentation</title>
+  <title>Known technical debt &mdash; Vaibify 0.0.14.dev385 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ee071234"></script>
+      <script src="_static/documentation_options.js?v=3ffd2f12"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -126,7 +126,26 @@ registry and sixty-odd call sites key on it; renaming it is a
 mechanical follow-up, not a behavior change. <code class="docutils literal notranslate"><span class="pre">fnWriteTreeViaTar</span></code> no
 longer uses <code class="docutils literal notranslate"><span class="pre">put_archive</span></code> either: it streams a tar to a fixed receiver
 program (the same module) that lands each member relative to directory
-descriptors, so a planted symlink is refused rather than followed.</p></li>
+descriptors, so a planted symlink is refused rather than followed.
+<code class="docutils literal notranslate"><span class="pre">fnWriteFileViaTar</span></code> is now a thin wrapper over
+<code class="docutils literal notranslate"><span class="pre">fnWriteFileFromStream</span></code>, the streamed funnel: the program copies
+stdin in 1 MiB chunks, fsyncs, refuses a stream whose length differs
+from the stated size, and can refuse to replace an existing file
+(atomically, by hard link, where the filesystem has one). The host
+connection has the same method. <code class="docutils literal notranslate"><span class="pre">put_archive</span></code> must never come back
+for streaming; the streaming write is this one.</p></li>
+<li><p>Downloads no longer ask the daemon for an archive. <code class="docutils literal notranslate"><span class="pre">get_archive</span></code> and
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">cp</span></code> read as root, so a component an agent swapped for a
+symlink after the path check redirected the read.
+<code class="docutils literal notranslate"><span class="pre">DockerConnection.fiterReadFileConfined</span></code> and <code class="docutils literal notranslate"><span class="pre">fiterReadDirectoryAsTar</span></code>
+run fixed programs as the container user
+(<code class="docutils literal notranslate"><span class="pre">vaibify/docker/confinedRead.py</span></code>); the host leg is
+<code class="docutils literal notranslate"><span class="pre">vaibify/host/hostConfinedRead.py</span></code>, held to the same contract by
+<code class="docutils literal notranslate"><span class="pre">tests/testConfinedReadParity.py</span></code>. A final symlink is followed only
+lexically and only inside the authorized root; a folder archive never
+follows a link and holds no member beneath one. The older
+<code class="docutils literal notranslate"><span class="pre">fiterStreamFile</span></code> (daemon archive) still serves callers that have not
+moved.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">scriptFigureViewer.js</span></code> was not part of the 2026-01 frontend
 refactor. Kept as a single cohesive module.</p></li>
 <li><p>Re-export blocks exist across <code class="docutils literal notranslate"><span class="pre">pipelineRunner</span></code>, <code class="docutils literal notranslate"><span class="pre">pipelineServer</span></code>,
