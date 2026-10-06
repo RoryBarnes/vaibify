@@ -273,7 +273,9 @@ def testAFullDiskRaisesEnospcAndLeavesTheOldFileAlone(
     assert _flistStagingFiles(sProjectRoot) == []
 
 
+@pytest.mark.falsification
 def testAReplacedFileKeepsItsModeAndANewFileIsReadable(tProjectAndConnection):
+    """Kills: dropping the staged file's ``fchmod``, which lands 0600."""
     sProjectRoot, connection = tProjectAndConnection
     sScript = os.path.join(sProjectRoot, "run.sh")
     with open(sScript, "wb") as fileScript:

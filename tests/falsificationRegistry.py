@@ -8705,9 +8705,12 @@ def _fdictEntry(sRel):
         # Without the pre-rename fchmod the temp file's 0600 lands as
         # the target's mode and a replaced script loses its
         # executable bit.
-        old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
-        new='',
-        iExpectedOccurrences=2,
+        old=(
+            '        try:\n'
+            '            os.fchmod(iDescriptor, iEffectiveMode)\n'
+            '            os.write(iDescriptor, baContent)\n'
+        ),
+        new='        try:\n            os.write(iDescriptor, baContent)\n',
     ),
     Falsification(
         nodeid=(
@@ -24781,6 +24784,12 @@ def _fdictEntry(sRel):
         source='vaibify/docker/dockerConnection.py',
         old='        with open(sHostSource, "rb") as fileSource:\n            self.fnWriteFileFromStream(\n                sContainerId,\n                posixpath.join(\n                    sContainerDestination, os.path.basename(sHostSource),\n                ) if bDestinationIsDirectory else sContainerDestination,\n                fileSource,\n                iExpectedBytes=os.fstat(fileSource.fileno()).st_size,\n            )',
         new='        with open(sHostSource, "rb") as fileSource:\n            baContent = fileSource.read()\n        self.fnWriteFileFromStream(\n            sContainerId,\n            posixpath.join(\n                sContainerDestination, os.path.basename(sHostSource),\n            ) if bDestinationIsDirectory else sContainerDestination,\n            io.BytesIO(baContent), iExpectedBytes=len(baContent),\n        )',
+    ),
+    Falsification(
+        nodeid='tests/testHostStreamingWrite.py::testAReplacedFileKeepsItsModeAndANewFileIsReadable',
+        source='vaibify/host/hostConnection.py',
+        old='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                os.fchmod(iDescriptor, iEffectiveMode)\n',
+        new='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                pass\n',
     ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
