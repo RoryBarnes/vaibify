@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev371 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev374 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b60e8c8a"></script>
+      <script src="_static/documentation_options.js?v=ee071234"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -931,7 +931,10 @@ been built, a port another program holds, a container name left from
 an earlier start, a full disk) with Docker’s words kept in
 parentheses as evidence.</p>
 <p>The Project Hub, the list of Projects inside an opened environment,
-has the same <strong>?</strong> with three folding blocks: using the Project Hub,
+opens with a line above <em>Available Projects:</em> that names the environment
+it lists (<strong>Environment: &lt;name&gt;</strong>, the name its tile shows, or
+<strong>Environment: this computer</strong> for a project that lives on the host
+rather than in a container). It has the same <strong>?</strong> with three folding blocks: using the Project Hub,
 a legend, and troubleshooting. Its failures carry the same diagnosis
 click, its automatic list refresh says when it could not refresh, and
 a New Project whose directory or name the server refuses says why in
@@ -1293,6 +1296,12 @@ trust boundary, not a defense against a hostile in-page script.</p>
 <p>Reloading the owning tab is safe: its lease lives in <code class="docutils literal notranslate"><span class="pre">sessionStorage</span></code>,
 so the refreshed tab re-asserts the same ownership and is never locked
 out of its own container.</p>
+<p>A browser that cannot see a tab (a hidden tab, a locked screen, a closed
+laptop lid) may pause it for longer than vaibify waits for a sign of
+life, and vaibify then gives the container up. When you come back, the
+page claims it again by itself and carries on; you are told only if
+another session has taken it in the meantime, in which case the message
+says so.</p>
 <p>An abandoned session does not hold a container forever. A hub or
 viewer left with no connected tab and nothing running self-retires
 after an idle timeout (see
@@ -1323,9 +1332,12 @@ with <em>“This browser session already holds container …”</em>, and the
 refusal offers to release the first one and continue. You can also
 release it yourself from the tile’s ⋮ menu (<strong>Release</strong>), and
 returning to the container list from an open dashboard releases in
-the same way. Releasing drops only the tab’s hold: the container keeps
-running, and a release is refused while a pipeline run or an agent is
-live in it. To work in two containers at once, open a second vaibify
+the same way, <strong>before</strong> anything on screen is torn down. Releasing
+drops only the tab’s hold: the container keeps running, and a release
+is refused while a pipeline run or an agent is live in it. When it is
+refused you stay in the dashboard, with the reason on screen, and your
+tab keeps its hold and its connection; when the hub does not say whether
+it released, vaibify asks the hub’s own list before it decides. To work in two containers at once, open a second vaibify
 window.</p>
 </section>
 </section>

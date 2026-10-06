@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev371 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev374 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b60e8c8a"></script>
+      <script src="_static/documentation_options.js?v=ee071234"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -702,6 +702,17 @@ when nothing is listed either. The general form: when a record has
 three shapes, check that the EMPTY one is not being read as the
 UNKNOWN one — they were told apart correctly one layer down and
 collapsed at the point of rendering.</p></li>
+<li><p><strong>A recovery must know what the researcher gave up on purpose.</strong> The
+page now claims a lapsed project again by itself, and the first build
+of that undid a release: the release removed the claim, a poll still
+in flight was refused for want of it, and the recovery handed the
+project back to a page that had just left. It showed only in a
+whole-file run (the isolated test passed on timing), so the guard is a
+deterministic pair: recovery is refused while a release is in progress
+and while the Environments page is showing
+(<code class="docutils literal notranslate"><span class="pre">tests/browser/testALostClaimRecoversWhereverItIsMet.py</span></code>). The
+general form: an automatic cure for a refusal has to be told about
+every deliberate act that makes the same refusal true.</p></li>
 </ul>
 </section>
 

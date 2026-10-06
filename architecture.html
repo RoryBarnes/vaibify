@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev371 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev374 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b60e8c8a"></script>
+      <script src="_static/documentation_options.js?v=ee071234"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -84,6 +84,8 @@
 <li class="toctree-l3"><a class="reference internal" href="#where-the-hub-listens">Where the hub listens</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-lapsed-claim-is-recovered-by-the-page-in-one-place">A lapsed claim is recovered by the page, in one place</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#leaving-for-the-environments-page-releases-first">Leaving for the Environments page releases first</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#session-lifetime-two-windows-three-tiers-one-honest-notice">Session lifetime: two windows, three tiers, one honest notice</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sleep-prevention-follows-the-work-not-the-tab">Sleep prevention follows the work, not the tab</a></li>
@@ -1100,6 +1102,93 @@ is load-bearing, because none is sent. <code class="docutils literal notranslate
 never fire on a hard crash, which is why abandonment is decided by the
 socket closing without a reconnect rather than by anything the
 departing page claims about itself.</p>
+</section>
+<section id="a-lapsed-claim-is-recovered-by-the-page-in-one-place">
+<h3>A lapsed claim is recovered by the page, in one place<a class="headerlink" href="#a-lapsed-claim-is-recovered-by-the-page-in-one-place" title="Link to this heading"></a></h3>
+<p>A claim whose browser has opened no socket lives on a presence window
+(<code class="docutils literal notranslate"><span class="pre">F_CLAIM_PRESENCE_WINDOW_SECONDS</span></code>, thirty seconds), fed by the page’s
+own polling. Browsers throttle, freeze or discard a page they cannot
+see, so a researcher who returns to an open project can find the hub no
+longer holds the claim for it. Losing the claim does not revoke the
+credential (the orphan trigger needs a socket that once existed), so it
+is cured by claiming again.</p>
+<p>The hub says which refusal this is. <code class="docutils literal notranslate"><span class="pre">routeScope.fiAuthorizeContainerHttp</span></code>
+answers a valid browser session aimed at a container with no owner
+record with <code class="docutils literal notranslate"><span class="pre">403</span></code> carrying <code class="docutils literal notranslate"><span class="pre">sRefusal:</span> <span class="pre">&quot;claim-required&quot;</span></code>
+(<code class="docutils literal notranslate"><span class="pre">routeScope.S_REFUSAL_CLAIM_REQUIRED</span></code>, the same code <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/connect</span></code> has always used). A container held by another session, a
+request with no credential and an agent-token mismatch keep the bare
+<code class="docutils literal notranslate"><span class="pre">403</span></code>: the code is an invitation to claim, and offering it to a session
+that cannot claim would send it into a refusal. Every refusal from that
+authority is logged once at INFO with the container name, the first
+eight characters of the session id and the reason, never the lease or
+the credential.</p>
+<p>The page recovers in <code class="docutils literal notranslate"><span class="pre">VaibifyApi</span></code>, once, for every request, and under
+five rules that each exist because the alternative shipped or nearly
+shipped:</p>
+<ul class="simple">
+<li><p>A request records, when it is <strong>issued</strong>, the container the page had
+selected (only if its URL names that container) and the view
+generation (<code class="docutils literal notranslate"><span class="pre">VaibifyApp.fiGetViewGeneration</span></code>, advanced on every
+screen change and project switch). An answer that arrives after the
+view changed is dropped silently: no claim, no retry, no notice.</p></li>
+<li><p>The cure is one claim per container name, however many pollers were
+refused: a second claim sent before the first one’s lease is stored
+would be refused as another session’s.</p></li>
+<li><p>When a project is open on the dashboard (a Blank Project included,
+connected without a workflow path) the claim is followed by a connect
+of it, because a reclaim mints a <strong>new</strong> agent token and only
+<code class="docutils literal notranslate"><span class="pre">/api/connect</span></code> writes it into the container. A recovery whose connect
+failed is <strong>incomplete</strong>, not recovered: the claim stands but the agent
+still holds the retired token, so the original request is not retried,
+and the notice says to open the project again.</p></li>
+<li><p>Every <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/connect</span></code> for one container runs through one queue, so
+the workflow the hub caches is the one the researcher chose last. A
+slot is released as soon as its response arrives, a refusal included,
+and a recovery enqueues afresh. A recovery’s connect composes its URL
+at the front of the queue and is skipped when the researcher has sent a
+connect of their own since it was scheduled.</p></li>
+<li><p>A request is retried at most once, and never while the Environments
+page is showing or a release is in progress: a poll the researcher’s
+own release made fail must not take the claim back. A claim request
+already on the wire when the researcher leaves cannot be recalled, so
+when it lands after leaving the page releases it again.</p></li>
+</ul>
+<p>A refusal whose claim is held by someone else shows the claim route’s
+own sentence, once per view, and the request is not retried.</p>
+</section>
+<section id="leaving-for-the-environments-page-releases-first">
+<h3>Leaving for the Environments page releases first<a class="headerlink" href="#leaving-for-the-environments-page-releases-first" title="Link to this heading"></a></h3>
+<p>Leaving a project used to close the page’s socket and then ask the hub
+to release, unawaited. A release the hub refused (a run or an agent is
+live), answered <code class="docutils literal notranslate"><span class="pre">bReleased:</span> <span class="pre">false</span></code>, or whose answer was lost left the
+claim held by a session with no socket, which the hub revokes one
+reconnect window later: every later request answered <code class="docutils literal notranslate"><span class="pre">401</span></code> and only
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code> recovered. So the order is now fixed.</p>
+<ol class="arabic simple">
+<li><p>The page’s sockets are <strong>marked</strong> as expected to close, and the
+release is sent. A committed release closes the releasing session’s
+sockets with <code class="docutils literal notranslate"><span class="pre">4401</span></code> before it answers, and the close and the answer
+travel on separate connections and arrive in either order, so the
+mark lives on the socket until its own close handler has run and is
+never cleared by the HTTP answer. A <code class="docutils literal notranslate"><span class="pre">4401</span></code> on an unmarked socket
+surfaces exactly as before.</p></li>
+<li><p>The release’s <strong>outcome</strong> decides. <code class="docutils literal notranslate"><span class="pre">released</span></code> goes on to the
+Environments page. <code class="docutils literal notranslate"><span class="pre">retained</span></code> (the hub refused with <code class="docutils literal notranslate"><span class="pre">409</span></code>) keeps the
+researcher where they are, with the hub’s own sentence, which names
+the run or agent. An answer that does not settle the question
+(<code class="docutils literal notranslate"><span class="pre">bReleased:</span> <span class="pre">false</span></code>, a lost answer, a server error) is reconciled
+against the hub’s own list (<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/registry</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bOwnedByThisSession</span></code>): still owned means nothing changed and the page
+stays; not owned means the release committed or the claim had already
+lapsed, and the page goes on. An unreachable hub says so and stays.</p></li>
+</ol>
+<p>When the page stays, a marked socket that is still open is unmarked, and
+one the hub already closed is replaced.</p>
+<p>When the hub ends the session instead (a socket lost for a whole window
+orphans it and revokes the credential), a <code class="docutils literal notranslate"><span class="pre">4401</span></code> close carries no reason,
+so the page asks the hub for the one it recorded
+(<code class="docutils literal notranslate"><span class="pre">/api/session/lifetime</span></code> answers the revoked credential’s ending notice)
+before it speaks: one sentence, naming what happened and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span></code>.</p>
 </section>
 <section id="idle-self-shutdown">
 <h3>Idle self-shutdown<a class="headerlink" href="#idle-self-shutdown" title="Link to this heading"></a></h3>
