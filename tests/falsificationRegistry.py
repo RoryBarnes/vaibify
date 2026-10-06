@@ -8707,6 +8707,7 @@ def _fdictEntry(sRel):
         # executable bit.
         old='            os.fchmod(iDescriptor, iEffectiveMode)\n',
         new='',
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -24509,6 +24510,7 @@ def _fdictEntry(sRel):
         source='vaibify/docker/dockerConnection.py',
         old='            sContainerId, listCommand=listCommand, bTty=False,\n        )',
         new='            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )',
+        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid='tests/testConfinedStreamingWrite.py::testALargeStreamIsCopiedInBoundedChunksNeverSlurped',
@@ -24627,8 +24629,104 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testBoundedPriorHash.py::testTheHostHashesAFilePastTheRealFetchCapNotEmpty',
         source='vaibify/host/hostConnection.py',
-        old='        sRealPath = self._fsValidateHostPath(sContainerId, sPath)\n        hashFile = hashlib.sha256()\n        try:\n            with open(sRealPath, "rb") as fileHandle:\n                for baChunk in iter(\n                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",\n                ):\n                    hashFile.update(baChunk)\n        except OSError:\n            return ""\n        return hashFile.hexdigest()',
+        old='        sRealPath = self._fsValidateHostPath(sContainerId, sPath)\n        hasherFile = hashlib.sha256()\n        try:\n            with open(sRealPath, "rb") as fileHandle:\n                for baChunk in iter(\n                    lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",\n                ):\n                    hasherFile.update(baChunk)\n        except OSError:\n            return ""\n        return hasherFile.hexdigest()',
         new='        try:\n            baContent = self.fbaFetchFile(sContainerId, sPath)\n        except (OSError, ValueError):\n            return ""\n        return hashlib.sha256(baContent).hexdigest()',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testALinkLeadingOutOfTheRootIsRefusedAndNoOutsideByteIsSent',
+        source='vaibify/docker/confinedRead.py',
+        old='    if listParts[:len(listRoot)] != listRoot:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testASymlinkedDirectoryInThePathIsRefusedAndNothingIsSent',
+        source='vaibify/docker/confinedWrite.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAComponentSwappedAfterTheCheckCannotRedirectTheRead',
+        source='vaibify/docker/confinedRead.py',
+        old='                return os.open(listParts[-1], iFlags | os.O_NOFOLLOW,\n                               dir_fd=iParent)\n',
+        new='                return os.open("/" + "/".join(listParts), iFlags | os.O_NOFOLLOW)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAFifoIsRefusedAndTheReadNeverBlocksWaitingForAWriter',
+        source='vaibify/docker/confinedRead.py',
+        old='    sFilePath, os.O_RDONLY | os.O_NONBLOCK, False)\n',
+        new='    sFilePath, os.O_RDONLY, False)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAnArchiveStoresALinkAsALinkAndNeverFollowsIt',
+        source='vaibify/docker/confinedRead.py',
+        old='        statEntry = os.stat(sName, dir_fd=iParent, follow_symlinks=False)\n',
+        new='        statEntry = os.stat(sName, dir_fd=iParent, follow_symlinks=True)\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testASpecialFileInATreeIsSkippedAndCounted',
+        source='vaibify/docker/confinedRead.py',
+        old='        fnAddFile(tarOut, iParent, sArchivePath, sName)\n    else:\n        iSkipped += 1\n',
+        new='        fnAddFile(tarOut, iParent, sArchivePath, sName)\n    else:\n        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAReadThatFailsAfterSendingBytesRaisesAtTheEnd',
+        source='vaibify/docker/dockerConnection.py',
+        old='        confinedRead.fnRaiseWhenReadFailed(\n            self._fiAwaitExecExitCode(sExecId), sStderr, sPath,\n        )\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testAnExecTheDaemonNeverSettlesIsAnErrorNotASuccess',
+        source='vaibify/docker/dockerConnection.py',
+        old='        raise OSError(\n            "The container did not report how the read ended, so the "\n            "bytes received cannot be trusted as complete"\n        )\n',
+        new='        return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testTheConfinedReadExecsAsTheContainerUserNeverRoot',
+        source='vaibify/docker/dockerConnection.py',
+        old='        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+        new='        sExecId = self.fsExecCreate(\n            sContainerId, sUser="root", listCommand=listCommand,\n            bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+    ),
+    Falsification(
+        nodeid='tests/testConfinedRead.py::testADownloadNeedsNoCarrierAdmissionBecauseAReadMutatesNothing',
+        source='vaibify/docker/dockerConnection.py',
+        old='        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+        new='        mutationAdmission.fnAssertContainerCommandAdmitted(\n            sContainerId, "fnRead",\n        )\n        sExecId = self.fsExecCreate(\n            sContainerId, listCommand=listCommand, bTty=False,\n        )\n        socketExec = self.fsocketExecStart(sExecId, bTty=False)\n        baStderr = bytearray()\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testALinkLeadingOutOfTheRootIsRefusedAndNoOutsideByteIsSent',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    if listParts[:len(listRoot)] != listRoot:\n        return False\n',
+        new='    if False:\n        return False\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testASymlinkedDirectoryInThePathIsRefusedAndNothingIsSent',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    iFlags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n',
+        new='    iFlags = os.O_RDONLY | os.O_DIRECTORY\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAComponentSwappedAfterTheWalkCannotRedirectTheRead',
+        source='vaibify/host/hostConfinedRead.py',
+        old='            iOpened = _fiOpenOnce(iParent, listBelowRoot[-1], iFlags)\n',
+        new='            iOpened = _fiOpenOnce(None, sCurrent, iFlags)\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAnArchiveStoresALinkAsALinkAndNeverFollowsIt',
+        source='vaibify/host/hostConfinedRead.py',
+        old='        infoEntryStat = os.stat(sName, dir_fd=iParent, follow_symlinks=False)\n',
+        new='        infoEntryStat = os.stat(sName, dir_fd=iParent, follow_symlinks=True)\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testASpecialFileInATreeIsSkippedAndTheCountIsLogged',
+        source='vaibify/host/hostConfinedRead.py',
+        old='        yield from _fiterFileMember(dictProgress, iParent, sArchivePath, sName)\n    else:\n        dictProgress["iSkipped"] += 1\n',
+        new='        yield from _fiterFileMember(dictProgress, iParent, sArchivePath, sName)\n    else:\n        pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testHostConfinedRead.py::testAProjectRootSpelledThroughASymlinkStillReadsItsFiles',
+        source='vaibify/host/hostConnection.py',
+        old='            os.path.normpath(sAuthorizedRoot or sProjectRoot), sRealRoot,\n',
+        new='            sRealRoot,\n',
     ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(

@@ -365,12 +365,9 @@ def fsHashContainerFileOrEmpty(dictCtx, sContainerId, sPath):
     not exist" as the empty string. Anything this cannot read also
     answers ``''``, which is the fail-safe direction — a wrongly-empty
     prior can only make the probe QUARANTINE a record it might have
-    settled, never settle one it should have quarantined.
-
-    The hash is computed where the file lives, in chunks. It used to
-    fetch the whole file and was capped at 64 MiB, so replacing a larger
-    file recorded ``''`` and a crash during that replacement could never
-    be settled.
+    settled, never settle one it should have quarantined. The hash is
+    computed where the file lives, in chunks, so a file past the 64 MiB
+    fetch cap still gets a real prior.
     """
     try:
         return dictCtx["docker"].fsHashContainerFileSha256(

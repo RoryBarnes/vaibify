@@ -78,6 +78,7 @@ from vaibify.docker.dockerConnection import (
     S_TYPED_READ_GIT_REPO_STATUS,
     fsRenderBatchedTypedReadProgram,
 )
+from vaibify.host import hostConfinedRead
 from vaibify.host.hostCancellation import (
     fbProcessGroupProvedEmpty,
     fnSignalSessionMembers,
@@ -407,16 +408,16 @@ class HostConnection:
         the large files a replacement is most likely to interrupt.
         """
         sRealPath = self._fsValidateHostPath(sContainerId, sPath)
-        hashFile = hashlib.sha256()
+        hasherFile = hashlib.sha256()
         try:
             with open(sRealPath, "rb") as fileHandle:
                 for baChunk in iter(
                     lambda: fileHandle.read(I_STREAM_CHUNK_BYTES), b"",
                 ):
-                    hashFile.update(baChunk)
+                    hasherFile.update(baChunk)
         except OSError:
             return ""
-        return hashFile.hexdigest()
+        return hasherFile.hexdigest()
 
     def fsReadClockUtc(self, sContainerId):
         """Return the host's wall clock as ``YYYY-MM-DD HH:MM:SS UTC``.
@@ -456,6 +457,69 @@ class HostConnection:
                 if not baChunk:
                     return
                 yield baChunk
+
+    def fiterReadFileConfined(
+        self, sContainerId, sFilePath, sAuthorizedRoot=None,
+    ):
+        """Yield a host file's bytes in chunks; the twin of the Docker leg's.
+
+        The shared path guard runs first, so every hostile path is
+        refused exactly as every other host read refuses it. The read
+        itself then walks the path with ``O_NOFOLLOW`` against held
+        descriptors (:mod:`vaibify.host.hostConfinedRead`), so a
+        component swapped after the guard ran cannot redirect it. A
+        final link is followed only if it stays inside the root.
+        """
+        sRealRoot, sAbsolutePath = self._ftResolveConfinedReadTarget(
+            sContainerId, sFilePath, sAuthorizedRoot,
+        )
+        yield from hostConfinedRead.fiterStreamFileInsideRoot(
+            sRealRoot, sAbsolutePath,
+        )
+
+    def fiterReadDirectoryAsTar(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+    ):
+        """Yield a tar of a host directory; links stay links, none followed."""
+        sRealRoot, sAbsolutePath = self._ftResolveConfinedReadTarget(
+            sContainerId, sDirectoryPath, sAuthorizedRoot,
+        )
+        yield from hostConfinedRead.fiterStreamDirectoryAsTar(
+            sRealRoot, sAbsolutePath,
+        )
+
+    def _ftResolveConfinedReadTarget(
+        self, sContainerId, sPath, sAuthorizedRoot,
+    ):
+        """Return ``(real root, path spelled under it)`` for a confined read.
+
+        The path guard (:meth:`_fsValidateHostPath`) refuses anything
+        outside the project, links included. What it returns is a
+        resolved path, which would hide a final link from the walk, so
+        the path handed on is the one the caller NAMED, made absolute
+        and re-spelled under the real root.
+        """
+        self._fsValidateHostPath(sContainerId, sPath)
+        sProjectRoot = self._fnResolveProjectRoot(sContainerId)
+        sRealProjectRoot = os.path.realpath(sProjectRoot)
+        sRealRoot = (
+            self._fsValidateHostPath(sContainerId, sAuthorizedRoot)
+            if sAuthorizedRoot else sRealProjectRoot
+        )
+        sAbsolute = os.path.normpath(
+            sPath if os.path.isabs(sPath)
+            else os.path.join(sRealProjectRoot, sPath)
+        )
+        for sSpelling in (
+            os.path.normpath(sAuthorizedRoot or sProjectRoot), sRealRoot,
+        ):
+            if sAbsolute == sSpelling or sAbsolute.startswith(
+                sSpelling + os.sep,
+            ):
+                return sRealRoot, sRealRoot + sAbsolute[len(sSpelling):]
+        raise HostPathOutsideProjectError(
+            f"Path is outside the authorized root: {sPath!r}"
+        )
 
     # -----------------------------------------------------------------
     # File writes: atomic, mode-preserving, admission-gated.

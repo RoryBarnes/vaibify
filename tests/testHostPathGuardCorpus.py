@@ -213,6 +213,10 @@ def _fdictBuildPathTakingCalls(connection):
             )
         ),
         "fiterStreamFile": fnStreamAndConsume,
+        "fiterReadFileConfined": lambda sPath: next(
+            connection.fiterReadFileConfined(S_PROJECT_NAME, sPath), None),
+        "fiterReadDirectoryAsTar": lambda sPath: next(
+            connection.fiterReadDirectoryAsTar(S_PROJECT_NAME, sPath), None),
         "fnWriteFile": lambda sPath: connection.fnWriteFile(
             S_PROJECT_NAME, sPath, b"nope",
         ),
