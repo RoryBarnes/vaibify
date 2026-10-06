@@ -17,6 +17,7 @@ on their own schedule (audit finding F-R-01).
 """
 
 import base64
+import io
 import json
 import shlex
 import warnings
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from vaibify.config import mutationAdmission
+from vaibify.docker import confinedRead
 from vaibify.docker import confinedWrite
 from vaibify.docker.execArgumentBudget import (
     I_EXEC_ARGUMENT_BUDGET_BYTES,
@@ -160,6 +162,9 @@ _I_TREE_TAR_SPOOL_BYTES = 32 * 1024 * 1024
 
 # How much of the spooled archive goes onto the exec socket per send.
 _I_STDIN_CHUNK_BYTES = 1024 * 1024
+_I_MAX_READ_STDERR_BYTES = 64 * 1024
+_I_EXEC_SETTLE_ATTEMPTS = 50
+_F_EXEC_SETTLE_INTERVAL_SECONDS = 0.1
 
 
 def _fsResolveContainerUser(container):
@@ -2688,6 +2693,124 @@ class DockerConnection:
             iterTarStream, iChunkSizeBytes,
         )
 
+    def fiterReadFileConfined(
+        self, sContainerId, sFilePath, sAuthorizedRoot=None,
+    ):
+        """Yield a container file's bytes in chunks, read as the container user.
+
+        The race-free replacement for :meth:`fiterStreamFile` on a
+        download. ``get_archive`` reads as root through the daemon, so a
+        component an agent swapped for a symlink after the caller's path
+        check redirected the read anywhere in the container. This execs
+        a fixed program (see :mod:`vaibify.docker.confinedRead`) that
+        walks the path with ``O_NOFOLLOW`` against descriptors it holds.
+
+        A final symlink is followed only when its target, resolved as
+        text against ``sAuthorizedRoot``, is inside it. A refusal or a
+        missing path raises BEFORE the first chunk is yielded, so a route
+        that pulls once can still answer an HTTP error. Memory is bounded
+        by the chunk whatever the file's size.
+        """
+        sProgram = self._fsRenderReadProgramOrRefuse(
+            confinedRead.fsRenderConfinedReadProgram, sFilePath,
+            sAuthorizedRoot,
+        )
+        yield from self._fiterRunProgramStdout(
+            sContainerId, ["python3", "-c", sProgram], sFilePath,
+        )
+
+    def fiterReadDirectoryAsTar(
+        self, sContainerId, sDirectoryPath, sAuthorizedRoot=None,
+    ):
+        """Yield a tar of a container directory, read as the container user.
+
+        The folder sibling of :meth:`fiterReadFileConfined`: a fixed
+        program walks the tree with held descriptors, stores links as
+        links without ever following one, and skips and counts devices,
+        sockets and FIFOs. The archive holds no member beneath a link.
+        """
+        sProgram = self._fsRenderReadProgramOrRefuse(
+            confinedRead.fsRenderConfinedArchiveProgram, sDirectoryPath,
+            sAuthorizedRoot,
+        )
+        yield from self._fiterRunProgramStdout(
+            sContainerId, ["python3", "-c", sProgram], sDirectoryPath,
+        )
+
+    @staticmethod
+    def _fsRenderReadProgramOrRefuse(fsRender, sPath, sAuthorizedRoot):
+        """Render a read program; a path the renderer rejects is a refusal.
+
+        The renderer raises ``ValueError`` for a path that is not below
+        its root, which a researcher can supply; it is answered with the
+        same refusal the program gives, so a route handles one error.
+        """
+        try:
+            return fsRender(sPath, sAuthorizedRoot)
+        except ValueError as error:
+            raise confinedRead.ContainerReadRefusedError(
+                f"Read of {sPath} refused: {error}"
+            ) from error
+
+    def _fiterRunProgramStdout(self, sContainerId, listCommand, sPath):
+        """Exec a fixed read program as the container user; yield its stdout.
+
+        Not a general exec: it is private, it takes a program the
+        confined-read renderer built, and it only reads. The output is
+        yielded as the daemon delivers it, never collected, and the
+        program's exit status is checked once the stream ends: a program
+        that failed after sending bytes raises here, which aborts the
+        caller's response rather than letting a truncated body pass for
+        a whole one.
+        """
+        import logging
+        import socket
+        from docker.utils.socket import STDERR, frames_iter
+        sExecId = self.fsExecCreate(
+            sContainerId, listCommand=listCommand, bTty=False,
+        )
+        socketExec = self.fsocketExecStart(sExecId, bTty=False)
+        baStderr = bytearray()
+        try:
+            getattr(socketExec, "_sock", socketExec).shutdown(socket.SHUT_WR)
+            for iStream, baChunk in frames_iter(socketExec, tty=False):
+                if iStream != STDERR:
+                    yield baChunk
+                elif len(baStderr) < _I_MAX_READ_STDERR_BYTES:
+                    baStderr.extend(baChunk)
+        finally:
+            socketExec.close()
+        sStderr = bytes(baStderr).decode("utf-8", errors="replace")
+        confinedRead.fnRaiseWhenReadFailed(
+            self._fiAwaitExecExitCode(sExecId), sStderr, sPath,
+        )
+        iSkipped = confinedRead.fiParseSkippedCount(sStderr)
+        if iSkipped:
+            logging.getLogger("vaibify").warning(
+                "Archived %s without %d special or too-deep entries",
+                sPath, iSkipped,
+            )
+
+    def _fiAwaitExecExitCode(self, sExecId):
+        """Return an exec's exit status once the daemon says it settled.
+
+        The stream ends when the program closes its output, which can be
+        a moment before the daemon records how it exited. Treating that
+        gap as exit status 0 would let a failed read pass as a complete
+        one, so an unsettled exec is an error, never a success.
+        """
+        import time
+        for _ in range(_I_EXEC_SETTLE_ATTEMPTS):
+            dictInspect = self.fdictInspectExec(sExecId)
+            if (not dictInspect.get("Running")
+                    and dictInspect.get("ExitCode") is not None):
+                return int(dictInspect["ExitCode"])
+            time.sleep(_F_EXEC_SETTLE_INTERVAL_SECONDS)
+        raise OSError(
+            "The container did not report how the read ended, so the "
+            "bytes received cannot be trusted as complete"
+        )
+
     def fnWriteFile(
         self, sContainerId, sFilePath, baContent,
         iMode=None, iUid=None, iGid=None,
@@ -2717,16 +2840,46 @@ class DockerConnection:
         iMode=None, iUid=None, iGid=None,
         sAuthorizedRoot=None, tForbiddenNames=(),
     ):
-        """Write one file through the symlink-safe, unprivileged primitive.
+        """Write ``baContent`` to one file; the bytes-in-memory entry point.
 
-        The name is historical: this no longer builds a tarball. Handing
-        the daemon an archive made the write run as root and follow every
-        symlink the in-container agent had planted, so the funnel now
-        execs a fixed program (see :mod:`vaibify.docker.confinedWrite`)
-        as the container user and streams the bytes on its stdin. The
-        program opens each path component with ``O_NOFOLLOW`` against the
-        descriptor it already holds, so a swapped component is refused
-        and cannot redirect the write.
+        The name is historical: this no longer builds a tarball. It is
+        :meth:`fnWriteFileFromStream` over a buffer, stating the byte
+        count so a transfer that ends short is refused rather than
+        renamed into place. ``iUid`` and ``iGid`` are accepted for the
+        duck type shared with the host connection and are ignored.
+        """
+        del iUid, iGid
+        self.fnWriteFileFromStream(
+            sContainerId, sFilePath, io.BytesIO(baContent),
+            iExpectedBytes=len(baContent), iMode=iMode,
+            sAuthorizedRoot=sAuthorizedRoot,
+            tForbiddenNames=tForbiddenNames,
+        )
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sFilePath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
+    ):
+        """Write one file from a readable stream, symlink-safe, unprivileged.
+
+        Handing the daemon an archive made a write run as root and
+        follow every symlink the in-container agent had planted, so the
+        funnel execs a fixed program (see
+        :mod:`vaibify.docker.confinedWrite`) as the container user and
+        streams the bytes on its stdin in chunks: a file of any size is
+        written in bounded memory. The program opens each path
+        component with ``O_NOFOLLOW`` against the descriptor it already
+        holds, so a swapped component is refused and cannot redirect
+        the write.
+
+        ``iExpectedBytes`` refuses a stream whose length differs and
+        ``bReplaceAllowed`` False refuses an existing target
+        (:class:`~vaibify.docker.confinedWrite.ContainerWriteExistsError`);
+        either way the old file is untouched. A full disk raises
+        ``OSError`` with ``errno.ENOSPC``. ``bCreateParents`` creates
+        missing directories below ``sAuthorizedRoot`` (never at or above
+        it); without it a missing parent raises ``FileNotFoundError``.
 
         This is the workspace-file-write funnel the commit-guard
         carrier guards (design §8): in an enforced lane (an HTTP
@@ -2737,15 +2890,16 @@ class DockerConnection:
         text a caller chose, so it needs no second admission.
         """
         mutationAdmission.fnAssertContainerWriteAdmitted(
-            sContainerId, "fnWriteFileViaTar",
+            sContainerId, "fnWriteFileFromStream",
         )
-        del iUid, iGid
         sProgram = confinedWrite.fsRenderConfinedWriteProgram(
             sFilePath, iMode=iMode, sAuthorizedRoot=sAuthorizedRoot,
             tForbiddenNames=tForbiddenNames,
+            bReplaceAllowed=bReplaceAllowed, iExpectedBytes=iExpectedBytes,
+            bCreateParents=bCreateParents,
         )
         tExecResult = self._ftRunProgramWithStdin(
-            sContainerId, ["python3", "-c", sProgram], baContent,
+            sContainerId, ["python3", "-c", sProgram], fileStdin=fileSource,
         )
         confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
 
@@ -2859,6 +3013,25 @@ class DockerConnection:
             tExecResult, sDestinationDirectory,
         )
 
+    def fnMakeDirectory(
+        self, sContainerId, sDirectoryPath,
+        sAuthorizedRoot=None, tForbiddenNames=(),
+    ):
+        """Create a directory, and any missing parents below the root.
+
+        The tree receiver already knows how to create a destination one
+        component at a time with ``O_NOFOLLOW`` against held descriptors,
+        refusing a symlinked component; handing it an EMPTY archive makes
+        it do exactly that and land nothing. An existing directory is
+        left as it is, so the call is idempotent. A folder upload uses
+        it for the folders it recreates, empty ones included.
+        """
+        self.fnWriteTreeViaTar(
+            sContainerId, sDirectoryPath, [],
+            sAuthorizedRoot=sAuthorizedRoot, tForbiddenNames=tForbiddenNames,
+            bCreateDestination=True,
+        )
+
     def fnCopyHostPathIntoContainer(
         self, sContainerId, sHostSource, sContainerDestination,
     ):
@@ -2898,14 +3071,14 @@ class DockerConnection:
             )
             return
         with open(sHostSource, "rb") as fileSource:
-            baContent = fileSource.read()
-        self.fnWriteFileViaTar(
-            sContainerId,
-            posixpath.join(
-                sContainerDestination, os.path.basename(sHostSource),
-            ) if bDestinationIsDirectory else sContainerDestination,
-            baContent,
-        )
+            self.fnWriteFileFromStream(
+                sContainerId,
+                posixpath.join(
+                    sContainerDestination, os.path.basename(sHostSource),
+                ) if bDestinationIsDirectory else sContainerDestination,
+                fileSource,
+                iExpectedBytes=os.fstat(fileSource.fileno()).st_size,
+            )
 
     @staticmethod
     def _ffileBuildTreeTar(listHostPaths, sArchiveName=None):
