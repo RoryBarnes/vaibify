@@ -160,7 +160,8 @@ def test_pull_with_project_option(mockPull, mockConfig):
     )
     assert result.exit_code == 0
     mockConfig.assert_called_once_with("myproj")
-    mockPull.assert_called_once_with("myproj", "/src", "/dst")
+    mockPull.assert_called_once_with(
+        "myproj", "/src", "/dst", sAuthorizedRoot="/workspace")
 
 
 # -----------------------------------------------------------------------
@@ -271,7 +272,8 @@ def test_pull_calls_transfer(mockPull, mockConfig):
     result = runner.invoke(main, ["pull", "/src", "/dst"])
     assert result.exit_code == 0
     assert "Pulled" in result.output
-    mockPull.assert_called_once_with("proj", "/src", "/dst")
+    mockPull.assert_called_once_with(
+        "proj", "/src", "/dst", sAuthorizedRoot="/workspace")
 
 
 # -----------------------------------------------------------------------

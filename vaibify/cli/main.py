@@ -486,9 +486,13 @@ def fnPullCommand(project, source, destination):
     sContainerSource = fsResolveContainerPath(
         source, configProject.sWorkspaceRoot,
     )
-    fnPullFromContainer(
-        configProject.sProjectName, sContainerSource, destination,
-    )
+    try:
+        fnPullFromContainer(
+            configProject.sProjectName, sContainerSource, destination,
+            sAuthorizedRoot=configProject.sWorkspaceRoot,
+        )
+    except OSError as error:
+        raise click.ClickException(str(error))
     click.echo(f"Pulled {source} -> {destination}")
 
 

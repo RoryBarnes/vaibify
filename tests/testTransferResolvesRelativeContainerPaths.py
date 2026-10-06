@@ -38,8 +38,12 @@ def _fnInstallProject(monkeypatch, sWorkspaceRoot):
     )
 
 
+listPullRoots = []
+
+
 def _flistRecordTransfers(monkeypatch):
     """Replace both transfer functions with recorders; return the log."""
+    listPullRoots.clear()
     listCalls = []
     monkeypatch.setattr(
         fileTransfer, "fnPushToContainer",
@@ -47,7 +51,10 @@ def _flistRecordTransfers(monkeypatch):
     )
     monkeypatch.setattr(
         fileTransfer, "fnPullFromContainer",
-        lambda *tArguments: listCalls.append(("pull", tArguments)),
+        lambda *tArguments, **dictKeywords: (
+            listCalls.append(("pull", tArguments)),
+            listPullRoots.append(dictKeywords.get("sAuthorizedRoot")),
+        ),
     )
     return listCalls
 
@@ -156,3 +163,18 @@ def testATrailingSlashSurvivesResolution(sTyped, sExpected):
     Kills: letting ``PurePosixPath`` normalise the slash away.
     """
     assert fsResolveContainerPath(sTyped, "/workspace") == sExpected
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sRoot", ["/workspace", "/srv/work"])
+def testPullBoundsTheReadByTheProjectsWorkspaceRoot(monkeypatch, sRoot):
+    """A link followed by a pull may not leave the project's workspace.
+
+    Kills: omitting the authorized root, which lets the confined read
+    follow a symlink to any file the container user can read.
+    """
+    _fnInstallProject(monkeypatch, sRoot)
+    _flistRecordTransfers(monkeypatch)
+    resultRun = _fresultRun("pull", ["Step01/out.csv", "somewhere/"])
+    assert resultRun.exit_code == 0, resultRun.output
+    assert listPullRoots == [sRoot]

@@ -24785,6 +24785,12 @@ def _fdictEntry(sRel):
         old='    return iArchiveMode & _I_PERMISSION_MASK & ~iUmask\n',
         new='    return iArchiveMode & ~iUmask\n',
     ),
+    Falsification(
+        nodeid='tests/testTransferResolvesRelativeContainerPaths.py::testPullBoundsTheReadByTheProjectsWorkspaceRoot',
+        source='vaibify/cli/main.py',
+        old='            sAuthorizedRoot=configProject.sWorkspaceRoot,\n',
+        new='',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',
