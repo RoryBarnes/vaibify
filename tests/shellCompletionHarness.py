@@ -201,7 +201,9 @@ def _flistBuildInteractiveCommand(sShellName, sExecutable, dictWorld):
                 "autoload -Uz compinit && compinit -u\n"
                 f"source {sScript}\n"
             )
-        return [sExecutable, "-i"]
+        # -d: no global rc files. Debian's /etc/zsh/zshrc runs its own
+        # plain compinit, which stops to ask about any insecure directory.
+        return [sExecutable, "-d", "-i"]
     sRcFile = os.path.join(sHome, ".bashrc")
     with open(sRcFile, "w") as fileRc:
         fileRc.write(f"PS1='> '\nsource {sScript}\n")

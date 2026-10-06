@@ -19,7 +19,9 @@ import os
 
 import pytest
 
-from tests.shellCompletionHarness import fsRequireShell, fsRunShellProgram
+from tests.shellCompletionHarness import (
+    fsCompletionScript, fsRequireShell, fsRunShellProgram,
+)
 from vaibify.install import shellSetup
 
 
@@ -280,6 +282,34 @@ def testTheLineSetupWroteLoadsTheCompletionInTheOtherShells(
     _fnAssertTheWrittenLineLoadsTheCompletion(
         fixtureSetupHome, monkeypatch, sShellName, sQuery, sExpected,
     )
+
+
+def testTheScriptLoadsWhenAnInsecureDirectoryIsOnTheFunctionPath(tmp_path):
+    """An insecure completion directory is skipped, not a reason to load nothing.
+
+    Homebrew's completion directories are often writable by a group, and
+    zsh's ``compinit`` stops to ask about such a directory; with no one to
+    answer it initializes nothing, so the script's ``compdef`` calls failed
+    and no completion was registered. ``compinit -i`` skips the directory
+    and carries on.
+
+    Kills: calling plain ``compinit`` in the script.
+    """
+    sExecutable = fsRequireShell("zsh")
+    sInsecure = str(tmp_path / "insecure")
+    os.mkdir(sInsecure)
+    os.chmod(sInsecure, 0o777)
+    dictEnvironment = {
+        "PATH": os.environ["PATH"], "HOME": str(tmp_path), "TERM": "xterm",
+    }
+    sOutput = fsRunShellProgram(
+        sExecutable, ["-f", "-c"],
+        f"fpath=('{sInsecure}' $fpath); "
+        f"source '{fsCompletionScript('zsh')}'; "
+        "print -r -- ${_comps[vaibify]}",
+        dictEnvironment,
+    )
+    assert "_vaibify" in sOutput, sOutput
 
 
 def testTheSuiteNeverRunsSetupAgainstTheResearchersOwnMarker():

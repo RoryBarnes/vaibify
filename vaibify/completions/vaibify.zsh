@@ -12,8 +12,11 @@
 # is in it -- is answered by `vaibify complete-path`, so nothing here can
 # drift from how the commands themselves resolve a path.
 
+# -i skips an insecure completion directory (one writable by its group or
+# by anyone, as Homebrew's often is) instead of asking about it at every
+# shell start, or loading nothing when no one can answer.
 if ! typeset -f compdef > /dev/null 2>&1; then
-    autoload -Uz compinit && compinit
+    autoload -Uz compinit && compinit -i
 fi
 
 typeset -g _sVaibifySubcommands="build cat config connect destroy do doctor generate-standards gui init ls open pull push reconcile register remote remote-helper repair reproduce revoke run secret sessions setup start status stop test verify verify-step workflow"
