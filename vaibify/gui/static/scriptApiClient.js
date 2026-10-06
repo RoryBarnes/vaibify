@@ -116,6 +116,7 @@ var VaibifyApi = (function () {
     var S_CLAIM_RECOVERY_RECOVERED = "recovered";
     var S_CLAIM_RECOVERY_REFUSED = "refused";
     var S_CLAIM_RECOVERY_ABANDONED = "abandoned";
+    var S_CLAIM_RECOVERY_INCOMPLETE = "incomplete";
     var S_CONNECT_PREFIX = "/api/connect/";
 
     var _fsRecoverLostClaim = null;
@@ -435,6 +436,7 @@ var VaibifyApi = (function () {
         S_CLAIM_RECOVERY_RECOVERED: S_CLAIM_RECOVERY_RECOVERED,
         S_CLAIM_RECOVERY_REFUSED: S_CLAIM_RECOVERY_REFUSED,
         S_CLAIM_RECOVERY_ABANDONED: S_CLAIM_RECOVERY_ABANDONED,
+        S_CLAIM_RECOVERY_INCOMPLETE: S_CLAIM_RECOVERY_INCOMPLETE,
         fnRegisterClaimRecovery: fnRegisterClaimRecovery,
         fbRefusalIsClaimRequired: fbRefusalIsClaimRequired,
         fbErrorWasHandledByRecovery: fbErrorWasHandledByRecovery,

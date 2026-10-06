@@ -803,6 +803,15 @@ var VaibifyWorkflowManager = (function () {
             encodeURIComponent(sPath);
     }
 
+    function _fsOpenDashboardConnectUrl(sContainerId) {
+        /* The dashboard open on a Blank Project has no workflow path, and
+           is connected the way it was entered: with none. */
+        var sPath = VaibifyApp.fsGetWorkflowPath();
+        if (!sContainerId) return "";
+        if (!sPath) return "/api/connect/" + sContainerId;
+        return _fsOpenWorkflowConnectUrl(sContainerId);
+    }
+
     async function fnSaveCurrentWorkflow() {
         var sContainerId = VaibifyApp.fsGetContainerId();
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
@@ -818,14 +827,15 @@ var VaibifyWorkflowManager = (function () {
 
     async function fbReconnectOpenWorkflow(iViewGeneration) {
         /* After a claim is taken again, the hub's cached workflow and the
-           container's agent token are the ones the lapse left behind. A
-           project open on the dashboard is connected again to renew them;
-           the URL is composed when this reaches the front of the connect
-           queue, so a project the researcher has switched to since is
-           never overwritten by the one they left. True when nothing was
-           left to connect or the connect succeeded. */
+           container's agent token are the ones the lapse left behind. The
+           project open on the dashboard (a Blank Project included) is
+           connected again to renew them; the URL is composed when this
+           reaches the front of the connect queue, so a project the
+           researcher has switched to since is never overwritten by the one
+           they left. True when nothing was left to connect or the connect
+           succeeded; a failure is reported with what to do about it. */
         var sContainerId = VaibifyApp.fsGetContainerId();
-        if (!sContainerId || !VaibifyApp.fsGetWorkflowPath()) return true;
+        if (!sContainerId) return true;
         if (sContainerId !== VaibifyContainerManager
                 .fsGetSelectedContainerId()) return true;
         try {
@@ -833,11 +843,16 @@ var VaibifyWorkflowManager = (function () {
                 sContainerId, function () {
                     if (VaibifyApp.fiGetViewGeneration() !==
                             iViewGeneration) return "";
-                    return _fsOpenWorkflowConnectUrl(sContainerId);
+                    return _fsOpenDashboardConnectUrl(sContainerId);
                 });
             return true;
         } catch (error) {
-            VaibifyDiagnosis.fnReportFailureFromError(error);
+            VaibifyDiagnosis.fnReportFailure(
+                "This project's claim was taken again, but its connection " +
+                "to the container could not be refreshed: " +
+                VaibifyDiagnosis.fsExplainError(error) + " An agent working " +
+                "in the container may still hold a retired token; open the " +
+                "project again to refresh it.");
             return false;
         }
     }

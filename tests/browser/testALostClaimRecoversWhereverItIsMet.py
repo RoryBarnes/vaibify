@@ -44,6 +44,7 @@ from tests.browser.fakeDockerAdapter import (
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
 )
+from vaibify.gui.actionCatalog import S_SESSION_ENV_PATH
 from tests.browser.testLostClaimIsRecoverable import (  # noqa: F401
     _fnHandTheClaimToAnotherSession,
     _fnReachTheWorkflowPicker,
@@ -160,6 +161,15 @@ def _fdictAwaitProbe(pageDashboard, sKey):
         timeout=20000)
     return pageDashboard.evaluate(
         "(sKey) => window.__dictProbes[sKey]", sKey)
+
+
+def _fnStopTheDashboardPollers(pageDashboard):
+    """Stop every poller so the one request a test sends is the only one."""
+    pageDashboard.evaluate("""() => {
+        Object.keys(VaibifyPolling).forEach(function (sName) {
+            if (sName.startsWith('fnStop')) VaibifyPolling[sName]();
+        });
+    }""")
 
 
 def _fnClickEnvironments(pageDashboard):
@@ -712,6 +722,114 @@ def test_a_poll_refused_while_the_release_is_answered_does_not_take_the_claim_ba
     pageDashboard.unroute_all(behavior="ignoreErrors")
     pageDashboard.wait_for_timeout(1500)
     assert S_HOST_PROJECT_READY not in serverHub.app.state.dictContainerOwners
+
+
+@pytest.mark.falsification
+def test_a_recovery_claim_that_lands_after_leaving_is_given_back(
+    pageDashboard, serverHub,
+):
+    """A claim already on the wire cannot be recalled; the page undoes it.
+
+    The recovery's claim request is held, the researcher leaves for the
+    Environments page, and only then does the claim land. The page took
+    it, so the page gives it back: the hub holds nothing and the page
+    keeps no lease.
+
+    Kills: leaving the claim in place once it has landed after leaving.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    _fnStopTheDashboardPollers(pageDashboard)
+    listHeld = []
+    _fnHoldRequests(
+        pageDashboard, "**/api/registry/*/claim", listHeld,
+        lambda request: not listHeld)
+    _fnTakeTheClaimAway(serverHub)
+    _fnProbeWithoutWaiting(
+        pageDashboard,
+        f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=late", "late")
+    _fnAwaitHeld(pageDashboard, listHeld)
+    _fnClickEnvironments(pageDashboard)
+    _fnAwaitLanding(pageDashboard)
+    listHeld[0].continue_()
+    _fdictAwaitProbe(pageDashboard, "late")
+    pageDashboard.unroute_all(behavior="ignoreErrors")
+    for _ in range(50):
+        if S_HOST_PROJECT_READY not in serverHub.app.state.dictContainerOwners:
+            break
+        pageDashboard.wait_for_timeout(100)
+    assert S_HOST_PROJECT_READY not in serverHub.app.state.dictContainerOwners
+    assert pageDashboard.evaluate("() => VaibifyApp.fsGetLeaseId()") == ""
+
+
+@pytest.mark.falsification
+def test_a_blank_dashboard_is_reconnected_so_the_agent_gets_the_new_token(
+    pageDashboard, serverHub,
+):
+    """A Blank Project is open on the dashboard too, and its agent needs the token.
+
+    A reclaim mints a new agent token and only a connect writes it into
+    the container. The container in this lane has a name that differs
+    from its id, and its session file is the thing the agent reads, so
+    that is what is asserted.
+
+    Kills: skipping the reconnect when no workflow is open.
+    """
+    from vaibify.config.containerLock import fnReleaseContainerLock
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]', timeout=15000)
+    pageDashboard.evaluate(
+        "(sId) => VaibifyContainerManager.fnConnectToContainer(sId)",
+        S_CONTAINER_ID)
+    pageDashboard.wait_for_selector("#workflowPicker", state="visible")
+    pageDashboard.click("#btnNoWorkflow")
+    pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    assert pageDashboard.evaluate(
+        "() => VaibifyApp.fsGetWorkflowPath()") is None
+    _fnStopTheDashboardPollers(pageDashboard)
+    dictOwners = serverHub.app.state.dictContainerOwners
+    recordOriginal = dictOwners[S_CONTAINER_NAME]
+    assert recordOriginal.sAgentToken.encode() in (
+        serverHub.adapterDocker._dictFiles[S_SESSION_ENV_PATH])
+    dictOwners.pop(S_CONTAINER_NAME)
+    fnReleaseContainerLock(recordOriginal.fileHandleLock)
+    _fnProbeWithoutWaiting(
+        pageDashboard, f"/api/workflows/{S_CONTAINER_ID}?probe=blank", "blank")
+    assert _fdictAwaitProbe(pageDashboard, "blank")["bOk"] is True
+    recordRecovered = dictOwners[S_CONTAINER_NAME]
+    assert recordRecovered.sAgentToken != recordOriginal.sAgentToken
+    assert recordRecovered.sAgentToken.encode() in (
+        serverHub.adapterDocker._dictFiles[S_SESSION_ENV_PATH]), (
+        "the agent in the container still holds the retired token")
+
+
+@pytest.mark.falsification
+def test_a_reconnect_that_failed_is_not_a_recovery(pageDashboard, serverHub):
+    """The claim was taken again but the agent's token was not renewed.
+
+    The reconnect is refused, so the recovery is INCOMPLETE: the original
+    request is not retried as though all were well, and the researcher
+    is told what to do about the agent.
+
+    Kills: counting a failed reconnect as a recovered claim.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    _fnStopTheDashboardPollers(pageDashboard)
+    pageDashboard.route("**/api/connect/**", lambda routeConnect: (
+        routeConnect.fulfill(
+            status=502, content_type="application/json",
+            body=json.dumps({"detail": "The reconnect could not complete."}))))
+    _fnTakeTheClaimAway(serverHub)
+    sProbeUrl = f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=reconnect"
+    listRequests = _flistRecordRequests(pageDashboard)
+    _fnProbeWithoutWaiting(pageDashboard, sProbeUrl, "reconnect")
+    dictOutcome = _fdictAwaitProbe(pageDashboard, "reconnect")
+    pageDashboard.unroute_all(behavior="ignoreErrors")
+    assert dictOutcome["bOk"] is False and dictOutcome["bHandled"] is True
+    assert len([
+        sUrl for sMethod, sUrl in listRequests if sUrl.endswith(sProbeUrl)
+    ]) == 1, "the request was retried although the reconnect failed"
+    assert "open the project again" in _fsToastText(pageDashboard).lower()
 
 
 @pytest.mark.falsification

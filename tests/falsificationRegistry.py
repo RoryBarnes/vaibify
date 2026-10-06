@@ -28310,7 +28310,7 @@ def _fdictEntry(sRel):
             'test_a_lost_claim_on_the_open_dashboard_is_taken_again_by_the_next_poll'
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
+        old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
         new='',
     ),
     # Forget which container the Project Hub selected: its list request names no container the recovery may claim.
@@ -28522,5 +28522,35 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptWorkflowManager.js',
         old='        if (bHeldByThisTab) VaibifyApp.fnSuspendClaimRecovery();\n        var elButton = document.getElementById("btnWizardNext");\n',
         new='        var elButton = document.getElementById("btnWizardNext");\n',
+    ),
+    # Leave a claim in place once it has landed after the researcher left.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_recovery_claim_that_lands_after_leaving_is_given_back'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            await _fnGiveBackAClaimTakenTooLate(sName);\n',
+        new='',
+    ),
+    # Skip the reconnect when no workflow is open: a Blank Project's agent keeps the retired token.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_blank_dashboard_is_reconnected_so_the_agent_gets_the_new_token'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='        if (!sPath) return "/api/connect/" + sContainerId;\n',
+        new='        if (!sPath) return "";\n',
+    ),
+    # Count a failed reconnect as a recovered claim and retry the request.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_reconnect_that_failed_is_not_a_recovery'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
+        new='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
     ),
 ]

@@ -970,9 +970,13 @@ shipped:
 - The cure is one claim per container name, however many pollers were
   refused: a second claim sent before the first one's lease is stored
   would be refused as another session's.
-- When a project is open on the dashboard the claim is followed by a
-  connect of that project, because a reclaim mints a **new** agent token
-  and only `/api/connect` writes it into the container.
+- When a project is open on the dashboard (a Blank Project included,
+  connected without a workflow path) the claim is followed by a connect
+  of it, because a reclaim mints a **new** agent token and only
+  `/api/connect` writes it into the container. A recovery whose connect
+  failed is **incomplete**, not recovered: the claim stands but the agent
+  still holds the retired token, so the original request is not retried,
+  and the notice says to open the project again.
 - Every `POST /api/connect` for one container runs through one queue, so
   the workflow the hub caches is the one the researcher chose last. A
   slot is released as soon as its response arrives, a refusal included,
@@ -981,7 +985,9 @@ shipped:
   connect of their own since it was scheduled.
 - A request is retried at most once, and never while the Environments
   page is showing or a release is in progress: a poll the researcher's
-  own release made fail must not take the claim back.
+  own release made fail must not take the claim back. A claim request
+  already on the wire when the researcher leaves cannot be recalled, so
+  when it lands after leaving the page releases it again.
 
 A refusal whose claim is held by someone else shows the claim route's
 own sentence, once per view, and the request is not retried.

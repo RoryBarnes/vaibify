@@ -1027,20 +1027,35 @@ var VaibifyContainerManager = (function () {
            the fresh token the new claim minted. A refusal is reported
            in the claim route's own sentence, which names who holds the
            project. A failed request that WAS a connect skips the
-           reconnect: its retry is the connect. */
+           reconnect: its retry is the connect. A recovery whose
+           reconnect failed is INCOMPLETE, not recovered: the claim
+           stands but the agent still holds the retired token, so the
+           original request is not retried as though all were well. */
         var dictClaim = await fdictClaimContainer(sName);
         if (!dictClaim.bClaimed) {
             _fnReportClaimRefusal(sName, dictClaim.error);
             return VaibifyApi.S_CLAIM_RECOVERY_REFUSED;
         }
-        if (!bFailedRequestWasConnect) {
-            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(
-                iViewGeneration);
+        if (!VaibifyApp.fbClaimRecoveryIsAllowed()) {
+            await _fnGiveBackAClaimTakenTooLate(sName);
+            return VaibifyApi.S_CLAIM_RECOVERY_ABANDONED;
+        }
+        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager
+                .fbReconnectOpenWorkflow(iViewGeneration)) {
+            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;
         }
         if (VaibifyApp.fiGetViewGeneration() !== iViewGeneration) {
             return VaibifyApi.S_CLAIM_RECOVERY_ABANDONED;
         }
         return VaibifyApi.S_CLAIM_RECOVERY_RECOVERED;
+    }
+
+    async function _fnGiveBackAClaimTakenTooLate(sName) {
+        /* A claim request already on the wire cannot be recalled: the
+           researcher left (or began giving the claim up) while it was
+           in flight, and it landed anyway. Taking it was the page's
+           doing, so giving it back is too. */
+        await fnReleaseClaim(sName);
     }
 
     VaibifyApi.fnRegisterClaimRecovery(fsRecoverLostClaim);
