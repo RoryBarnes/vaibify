@@ -28102,4 +28102,145 @@ def _fdictEntry(sRel):
         old='    return sText[len("sha256:"):] if sText.startswith("sha256:") else sText\n',
         new='    return sText\n',
     ),
+    # --- 2026-10-05: the poll's markers are read in ONE batched,
+    # bounded exec, off the hub's event loop ---
+    Falsification(
+        nodeid=(
+            'tests/testBatchedSmallFileRead.py::'
+            'test_an_absent_file_is_answered_as_none_not_omitted'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        dictFiles[sPath]=None\\n"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBatchedSmallFileRead.py::'
+            'test_an_oversized_file_costs_the_ceiling_and_is_refused'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='str(I_MAX_SMALL_FILE_BYTES + 1)',
+        new='str(-1)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBatchedSmallFileRead.py::'
+            'test_an_answer_missing_a_requested_path_is_a_failed_read'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='    if set(dictEncoded) != set(listPaths):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBatchedSmallFileRead.py::'
+            'test_a_large_request_is_split_to_fit_one_exec_argument'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        for listBatch in flistBatchPathsForOneExec(list(listPaths)):\n'
+            '            dictFiles.update(_fdictDecodeSmallFilesBatch(\n'
+        ),
+        new=(
+            '        for listBatch in [list(listPaths)]:\n'
+            '            dictFiles.update(_fdictDecodeSmallFilesBatch(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBatchedSmallFileRead.py::'
+            'test_the_poll_reads_markers_off_the_event_loop'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    dictMarkersByStep = await asyncio.to_thread(\n'
+            '        _fdictLoadMarkersForPoll, dictCtx, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictMarkersByStep = _fdictLoadMarkersForPoll(\n'
+            '        dictCtx, sContainerId, dictWorkflow,\n'
+            '    )\n'
+        ),
+    ),
+    # --- 2026-10-05: the project menu, a switch, and Admin -> Projects
+    # show progress while the hub answers ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_the_project_menu_opens_before_the_list_arrives'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '        _fnRenderWorkflowDropdown(null);\n'
+            '        elDropdown.classList.add("active");\n'
+            '        try {\n'
+            '            var listWorkflows = await VaibifyApi.fdictGet(\n'
+            '                "/api/workflows/" + sContainerId);\n'
+            '            if (!_fbDropdownAwaits(iThisRequest)) return;\n'
+            '            _fnRenderWorkflowDropdown(listWorkflows);\n'
+        ),
+        new=(
+            '        try {\n'
+            '            var listWorkflows = await VaibifyApi.fdictGet(\n'
+            '                "/api/workflows/" + sContainerId);\n'
+            '            _fnRenderWorkflowDropdown(listWorkflows);\n'
+            '            elDropdown.classList.add("active");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_a_switch_names_the_project_it_is_opening'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            '                var fnEndSwitchProgress =\n'
+            '                    _ffnShowSwitchInProgress(sNewName);\n'
+        ),
+        new='                var fnEndSwitchProgress = function () {};\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_a_failed_switch_puts_the_open_projects_name_back'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old='            if (!bOpened) elName.textContent = sPriorName;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_admin_projects_shows_the_list_screen_while_it_searches'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '        VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);\n'
+            '        VaibifyWorkflowManager.fnShowWorkflowListStatus(\n'
+            '            "Finding projects\\u2026", true);\n'
+            '        try {\n'
+            '            var listWorkflows = await VaibifyApi.fdictGet(\n'
+            '                "/api/workflows/" + sId);\n'
+        ),
+        new=(
+            '        try {\n'
+            '            var listWorkflows = await VaibifyApi.fdictGet(\n'
+            '                "/api/workflows/" + sId);\n'
+            '            VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testProjectSwitchShowsItsProgress.py::'
+            'test_a_late_failed_search_never_replaces_a_list_already_shown'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '            if (!VaibifyWorkflowManager.fbWorkflowListAwaitsAnswer()) {\n'
+            '                return;\n'
+            '            }\n'
+        ),
+        new='',
+    ),
 ]

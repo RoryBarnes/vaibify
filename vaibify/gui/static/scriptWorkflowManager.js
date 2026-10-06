@@ -37,6 +37,20 @@ var VaibifyWorkflowManager = (function () {
     var _sRenderedWorkflowCardsHtml = null;
     var _sRenderedWorkflowContainerId = null;
 
+    function fnShowWorkflowListStatus(sText, bInProgress) {
+        /* The memo is cleared because the cards below compare against
+           it: left set, the next identical listing would skip the
+           render and leave this status line standing in its place. */
+        document.getElementById("listWorkflows").innerHTML =
+            _fsStatusRowHtml(
+                "workflow-loading-banner", sText, bInProgress);
+        _sRenderedWorkflowCardsHtml = "";
+    }
+
+    function fbWorkflowListAwaitsAnswer() {
+        return _sRenderedWorkflowCardsHtml === "";
+    }
+
     function fnRenderWorkflowList(listWorkflows, sId) {
         var elList = document.getElementById("listWorkflows");
         var sCardsHtml = "";
@@ -638,6 +652,8 @@ var VaibifyWorkflowManager = (function () {
 
     /* --- Workflow Dropdown (Switcher) --- */
 
+    var _iDropdownRequest = 0;
+
     async function fnToggleWorkflowDropdown() {
         var elDropdown = document.getElementById(
             "workflowDropdown");
@@ -645,18 +661,54 @@ var VaibifyWorkflowManager = (function () {
             elDropdown.classList.remove("active");
             return;
         }
+        if (_fbSwitchInProgress()) return;
         var sContainerId = VaibifyApp.fsGetContainerId();
         if (!sContainerId) return;
+        /* The menu opens at once and fills in when the list arrives:
+           the list is a search of the container, and a menu that
+           waited for it read as a click that had done nothing. */
+        _iDropdownRequest += 1;
+        var iThisRequest = _iDropdownRequest;
+        _fnRenderWorkflowDropdown(null);
+        elDropdown.classList.add("active");
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
                 "/api/workflows/" + sContainerId);
+            if (!_fbDropdownAwaits(iThisRequest)) return;
             _fnRenderWorkflowDropdown(listWorkflows);
-            elDropdown.classList.add("active");
         } catch (error) {
+            if (!_fbDropdownAwaits(iThisRequest)) return;
+            _fnSetDropdownStatus(
+                "The project list could not be loaded.", false);
             VaibifyDiagnosis.fnReportFailure(
                 "The project list could not be loaded: " +
                 VaibifyUtilities.fsSanitizeErrorForUser(error.message));
         }
+    }
+
+    function _fbDropdownAwaits(iRequest) {
+        return iRequest === _iDropdownRequest &&
+            document.getElementById("workflowDropdown")
+                .classList.contains("active");
+    }
+
+    function _fsStatusRowHtml(sClassName, sText, bInProgress) {
+        return '<div class="' + sClassName + '" role="status"' +
+            ' aria-live="polite">' +
+            (bInProgress
+                ? '<span class="workflow-loading-spinner"' +
+                  ' aria-hidden="true"></span>'
+                : '') +
+            '<span>' + VaibifyUtilities.fnEscapeHtml(sText) +
+            '</span></div>';
+    }
+
+    function _fnSetDropdownStatus(sText, bInProgress) {
+        var elStatus = document.querySelector(
+            "#workflowDropdown .workflow-dropdown-status");
+        if (!elStatus) return;
+        elStatus.outerHTML = _fsStatusRowHtml(
+            "workflow-dropdown-status", sText, bInProgress);
     }
 
     function fnHideWorkflowDropdown() {
@@ -678,7 +730,11 @@ var VaibifyWorkflowManager = (function () {
             (bInNoWorkflow ? " current" : "") +
             '" data-action="noWorkflow">' +
             '<span class="wf-name">Blank Project</span></div>';
-        sHtml += listWorkflows.map(function (dictWf) {
+        sHtml += listWorkflows === null
+            ? _fsStatusRowHtml(
+                "workflow-dropdown-status", "Finding projects\u2026",
+                true)
+            : listWorkflows.map(function (dictWf) {
             var bCurrent = dictWf.sPath === sWorkflowPath;
             return (
                 '<div class="workflow-dropdown-item' +
@@ -735,12 +791,37 @@ var VaibifyWorkflowManager = (function () {
             "in the current project keeps running; open that project " +
             "again to follow or stop it.",
             async function () {
+                var fnEndSwitchProgress =
+                    _ffnShowSwitchInProgress(sNewName);
                 await fnSaveCurrentWorkflow();
-                fnSelectWorkflow(
+                fnEndSwitchProgress(await fnSelectWorkflow(
                     VaibifyApp.fsGetContainerId(),
-                    sNewPath, sNewName);
+                    sNewPath, sNewName));
             }
         );
+    }
+
+    function _fbSwitchInProgress() {
+        return document.getElementById("activeWorkflowName")
+            .classList.contains("switching");
+    }
+
+    function _ffnShowSwitchInProgress(sNewName) {
+        /* Saving the open project and loading the next one are two
+           round trips; the toolbar says so from the moment the switch
+           is confirmed. Activation writes the new name on success; a
+           failed switch puts the old one back. */
+        var elName = document.getElementById("activeWorkflowName");
+        var sPriorName = elName.textContent;
+        elName.classList.add("switching");
+        elName.innerHTML =
+            '<span class="workflow-loading-spinner"' +
+            ' aria-hidden="true"></span>Opening ' +
+            VaibifyUtilities.fnEscapeHtml(sNewName) + "\u2026";
+        return function (bOpened) {
+            elName.classList.remove("switching");
+            if (!bOpened) elName.textContent = sPriorName;
+        };
     }
 
     async function fnSaveCurrentWorkflow() {
@@ -3159,6 +3240,8 @@ var VaibifyWorkflowManager = (function () {
         fnRenderWorkflowList: fnRenderWorkflowList,
         fnCreateNewWorkflow: fnCreateNewWorkflow,
         fnShowProjectHubHelp: fnShowProjectHubHelp,
+        fnShowWorkflowListStatus: fnShowWorkflowListStatus,
+        fbWorkflowListAwaitsAnswer: fbWorkflowListAwaitsAnswer,
         S_NO_ENVIRONMENT_OPEN: _S_NO_ENVIRONMENT_OPEN,
         fnSelectWorkflow: fnSelectWorkflow,
         fnRefreshWorkflow: fnRefreshWorkflow,

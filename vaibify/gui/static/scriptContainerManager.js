@@ -2665,17 +2665,33 @@ var VaibifyContainerManager = (function () {
     }
 
     async function fnConnectToContainer(sId) {
+        /* The project list screen appears at once and the search of
+           the container fills it in; waiting for the search first left
+           the researcher on the previous screen with no sign that the
+           click had registered. */
+        _sSelectedContainerId = sId;
+        _sSelectedContainerName = _fsContainerNameById(sId);
+        _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);
+        _bSelectedContainerIsProject = _fbIsProjectById(sId);
+        VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
+        VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
+        VaibifyWorkflowManager.fnShowWorkflowListStatus(
+            "Finding projects\u2026", true);
         try {
             var listWorkflows = await VaibifyApi.fdictGet(
                 "/api/workflows/" + sId);
-            _sSelectedContainerId = sId;
-            _sSelectedContainerName = _fsContainerNameById(sId);
-            _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);
-            _bSelectedContainerIsProject = _fbIsProjectById(sId);
-            VaibifyApp.fnApplyProjectMode(_fsContainerModeById(sId));
-            VaibifyApp.fnShowWorkflowPicker(_sSelectedContainerName);
             fnRenderWorkflowList(listWorkflows, sId);
         } catch (error) {
+            /* The screen's own refresh may have drawn the list while
+               this search was in flight; its answer is newer, and a
+               failure that arrives after it describes nothing on
+               screen. Overwriting the cards with it left a researcher's
+               click landing on nothing (Firefox lane, 2026-10-05). */
+            if (!VaibifyWorkflowManager.fbWorkflowListAwaitsAnswer()) {
+                return;
+            }
+            VaibifyWorkflowManager.fnShowWorkflowListStatus(
+                "The project list could not be loaded.", false);
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
     }

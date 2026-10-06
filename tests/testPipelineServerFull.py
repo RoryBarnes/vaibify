@@ -135,6 +135,16 @@ class MockDockerFull:
         """
         return ["analyze.py", "plot.py"]
 
+    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+        """The batched read, answered from this fake's per-file read."""
+        dictFiles = {}
+        for sPath in listPaths:
+            try:
+                dictFiles[sPath] = self.fbaFetchFile(sContainerId, sPath)
+            except FileNotFoundError:
+                dictFiles[sPath] = None
+        return dictFiles
+
     def fbaFetchFile(self, sContainerId, sPath):
         if sPath in self._dictFiles:
             return self._dictFiles[sPath]

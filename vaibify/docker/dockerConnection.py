@@ -485,6 +485,11 @@ S_TYPED_READ_DIRECTORY_EXISTS = "directoryExists"
 S_TYPED_READ_PATHS_EXIST = "pathsExist"
 S_TYPED_READ_DIRECTORIES_EXIST = "directoriesExist"
 S_TYPED_READ_PATH_MTIMES = "pathMtimes"
+# Many small documents in ONE exec. The poll read each step's test
+# marker with its own round trip -- 73 of them took 4.95 s on the hub's
+# event loop, every poll (measured 2026-10-05) -- so this exists to
+# make "read N small files" one container exec per argument batch.
+S_TYPED_READ_SMALL_FILES_BASE64 = "smallFilesBase64"
 S_TYPED_READ_FILE_SHA256 = "fileSha256"
 S_TYPED_READ_REPO_HASHES = "repoRelativeHashes"
 S_TYPED_READ_REPO_SNAPSHOT = "repoSnapshot"
@@ -578,6 +583,11 @@ S_TYPED_READ_KEYRING_SECRET = "keyringSecretValue"
 # the 64 MB general-file cap, which can only reject after the bytes
 # have already crossed the socket and been decoded.
 I_MAX_CREDENTIAL_FILE_BYTES = 256 * 1024
+# The per-file ceiling of the batched small-file read, enforced IN the
+# container for the same reason as the credential ceiling: the read
+# stops one byte past it, so an oversized file costs the ceiling, never
+# its own size, and the extra byte tells "at the limit" from "over".
+I_MAX_SMALL_FILE_BYTES = 4 * 1024 * 1024
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
@@ -945,6 +955,23 @@ _DICT_TYPED_READ_PROGRAMS = {
         "sys.stdout.write(json.dumps("
         "[os.path.isdir(s) for s in "
         + _S_TYPED_READ_PATH_SLOT + "]))"
+    ),
+    # One answer per requested path: base64 of the first
+    # I_MAX_SMALL_FILE_BYTES + 1 bytes, or null when the file cannot be
+    # opened. The host decoder refuses an answer that omits a path.
+    S_TYPED_READ_SMALL_FILES_BASE64: (
+        "import base64,json,sys\n"
+        "dictFiles={}\n"
+        "for sPath in " + _S_TYPED_READ_PATH_SLOT + ":\n"
+        "    try:\n"
+        "        with open(sPath,'rb') as fileIn:\n"
+        "            baHead=fileIn.read(" + str(I_MAX_SMALL_FILE_BYTES + 1)
+        + ")\n"
+        "    except OSError:\n"
+        "        dictFiles[sPath]=None\n"
+        "        continue\n"
+        "    dictFiles[sPath]=base64.b64encode(baHead).decode('ascii')\n"
+        "sys.stdout.write(json.dumps(dictFiles))\n"
     ),
     # The file panel's five-second poll, which is the hottest read in
     # the product. It replaced a WRITE plus an exec: the old shape
@@ -1481,6 +1508,44 @@ def _flistInterpretBooleanBatch(tExecResult, listPaths, sProbeName):
             "realign the answers onto the wrong paths."
         )
     return [bool(bAnswer) for bAnswer in listAnswers]
+
+
+def _fdictDecodeSmallFilesBatch(tExecResult, listPaths):
+    """Decode one batch of the small-file read into ``{sPath: bytes}``.
+
+    Every requested path must be answered: a missing key would read as
+    "absent" without the container ever having said so.
+    """
+    if tExecResult.iExitCode != 0:
+        raise OSError(
+            "Cannot read files in container "
+            f"({tExecResult.sStderr.strip()})"
+        )
+    try:
+        dictEncoded = json.loads(tExecResult.sStdout.strip() or "{}")
+    except ValueError as errorParse:
+        raise OSError(
+            f"The batched file read answered unparseable output: "
+            f"{errorParse}"
+        )
+    if set(dictEncoded) != set(listPaths):
+        raise OSError(
+            f"The batched file read answered {len(dictEncoded)} of "
+            f"{len(set(listPaths))} paths."
+        )
+    dictFiles = {}
+    for sPath, sEncoded in dictEncoded.items():
+        if sEncoded is None:
+            dictFiles[sPath] = None
+            continue
+        baContent = base64.b64decode(sEncoded)
+        if len(baContent) > I_MAX_SMALL_FILE_BYTES:
+            raise ValueError(
+                f"{sPath} exceeds the {I_MAX_SMALL_FILE_BYTES}-byte "
+                "small-file ceiling."
+            )
+        dictFiles[sPath] = baContent
+    return dictFiles
 
 
 def _fbInterpretPathProbe(tExecResult, sPath):
@@ -2436,6 +2501,28 @@ class DockerConnection:
                 f"The batched stat answered unparseable output: "
                 f"{errorParse}"
             )
+
+    def fdictFetchSmallFiles(self, sContainerId, listPaths):
+        """Return ``{sPath: bytes or None}`` for small files, batched.
+
+        The many-file sibling of :meth:`fbaFetchFile`, for documents
+        bounded by design (test markers, state JSON). ``None`` means the
+        file could not be opened -- absent or unreadable -- exactly the
+        case in which :meth:`fbaFetchFile` raises ``FileNotFoundError``.
+        A file over :data:`I_MAX_SMALL_FILE_BYTES` raises ``ValueError``
+        naming it, and a failed batch raises ``OSError``: a partial map
+        would read as "these files are absent" for the ones it omits.
+        """
+        dictFiles = {}
+        for listBatch in flistBatchPathsForOneExec(list(listPaths)):
+            dictFiles.update(_fdictDecodeSmallFilesBatch(
+                self._ftRunTypedRead(
+                    sContainerId, S_TYPED_READ_SMALL_FILES_BASE64,
+                    listBatch,
+                ),
+                listBatch,
+            ))
+        return dictFiles
 
     def fsHashContainerFileSha256(self, sContainerId, sPath):
         """Return a file's sha256 hex digest, or ``''`` when unreadable.

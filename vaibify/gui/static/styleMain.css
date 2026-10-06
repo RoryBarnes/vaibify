@@ -959,6 +959,32 @@ body.proof-level-3 .toolbar-label {
     color: var(--text-muted);
 }
 
+.workflow-dropdown-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.workflow-dropdown-status .workflow-loading-spinner,
+.toolbar-workflow .workflow-loading-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    vertical-align: middle;
+}
+
+.toolbar-workflow .workflow-loading-spinner {
+    margin-right: 6px;
+}
+
+.toolbar-workflow.switching {
+    cursor: progress;
+}
+
 #workflowPicker {
     display: none;
     flex-direction: column;

@@ -1365,9 +1365,12 @@ async def _fdictFetchOutputStatus(
     )
     if dictReload["bReplaced"]:
         dictWorkflow = dictReload["dictWorkflow"]
+    dictMarkersByStep = await asyncio.to_thread(
+        _fdictLoadMarkersForPoll, dictCtx, sContainerId, dictWorkflow,
+    )
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-        bPipelineRunning=bPipelineRunning,
+        dictMarkersByStep, bPipelineRunning=bPipelineRunning,
     )
     if await _fbApplyRandomnessLintAsync(
         dictCtx, sContainerId, dictWorkflow,
@@ -1613,23 +1616,21 @@ def _fnPersistMtimeCacheForPoll(dictWorkflow, dictCache):
 
 def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-    bPipelineRunning=False,
+    dictMarkersByStep, bPipelineRunning=False,
 ):
     """Apply stale-check, invalidate, reconcile; return invalidated steps.
 
-    Does NOT run the unseeded-randomness lint — that blocks on a docker
-    exec round-trip and must be awaited via
-    :func:`_fbApplyRandomnessLintAsync` from the async caller (audit
-    HIGH #14). The async caller persists any randomness-flag change.
+    Does NOT run the unseeded-randomness lint or read the test markers —
+    both block on a docker exec round-trip, so the async caller runs
+    them off the event loop (audit HIGH #14; the marker read froze the
+    whole hub for ~5 s per poll on a 73-step project, 2026-10-05). The
+    async caller persists any randomness-flag change.
     """
     if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
         logger.info(
             "POLL stale-check reset sUser for container=%s", sContainerId,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
-    dictMarkersByStep = _fdictLoadMarkersForPoll(
-        dictCtx, sContainerId, dictWorkflow,
-    )
     dictMtimeCache = _fdictLoadMtimeCacheForPoll(dictWorkflow)
     listInvalidated = _fdictDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,

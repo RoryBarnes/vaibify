@@ -284,6 +284,8 @@ DICT_PRIMITIVE_ACCESS = {
     # list into /tmp because a shell argv would not hold it, and that
     # write was the dashboard's only mutation on a timer.
     "fdictStatPathMtimes": S_ACCESS_TYPED_READ,
+    # The poll's test markers, many small files in one exec (2026-10-05).
+    "fdictFetchSmallFiles": S_ACCESS_TYPED_READ,
     "fsHashContainerFileSha256": S_ACCESS_TYPED_READ,
     # The remote verify's hash batch, on the same terms as the mtime
     # and existence migrations above: it replaced an embedded script

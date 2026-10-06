@@ -574,6 +574,9 @@ async def testThePollNamesItsProjectAndTheOtherRun():
     # markers for real; a project with none answers FileNotFoundError.
     mockDocker = MagicMock()
     mockDocker.fbaFetchFile.side_effect = FileNotFoundError
+    mockDocker.fdictFetchSmallFiles.side_effect = (
+        lambda sContainerId, listPaths: dict.fromkeys(listPaths)
+    )
     dictCtx = {
         "docker": mockDocker,
         "save": MagicMock(),

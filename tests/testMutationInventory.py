@@ -160,7 +160,9 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # 279 -> 277 (2026-10-01): the Overleaf CLI runs through one stdin-fed
 # call site instead of three shell-text ones, and its router delegate is
 # classified.
-I_UNCLASSIFIED_ROW_BUDGET = 277
+# 277 -> 276 (2026-10-05): the poll's test markers are read through one
+# batched typed read, and the per-marker read it replaced is gone.
+I_UNCLASSIFIED_ROW_BUDGET = 276
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
