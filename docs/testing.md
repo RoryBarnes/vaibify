@@ -455,6 +455,16 @@ and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
 failure in CI, because the guard they replaced (`docker info || exit 0`)
 reported success for having run nothing.
 
+The shell-completion tests follow the same contract with
+`VAIBIFY_REQUIRE_SHELLS`. They run the shipped scripts in the real bash,
+zsh and fish (including a pseudo-terminal lane that presses TAB and Enter
+in an interactive shell, because only a real shell can say whether an
+inserted name stays one word). A shell that is missing skips its tests on
+a developer's machine and FAILS them on the unit workflows, which install
+fish and zsh for that purpose and set the variable. Only the bash tests
+are falsification tests: the lanes that replay falsification entries do
+not carry the other two shells.
+
 The harness runs on a *subset* because whether a test catches its
 mutation is deterministic and OS/Python-independent; the full-matrix
 coverage of the tests themselves already comes from the unit-test

@@ -67,6 +67,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Install the shells the completion tests drive
+        # TESTING ONLY. The shell-completion tests drive the real shells,
+        # and a test that skips when its shell is missing reports success
+        # for having tested nothing, so the shells are installed here and
+        # the run below demands them (VAIBIFY_REQUIRE_SHELLS). zsh and
+        # bash ship with macOS; fish does not. Nothing installed here is
+        # a dependency of vaibify.
+        timeout-minutes: 10
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          brew install fish
+          fish --version
+          zsh --version
+
       - name: Run tests
         # RAISED from 25 (2026-09-08). These jobs measure 17-21 minutes
         # median and 26 max (6 runs), so the ceiling sat at ~1.1x the worst
@@ -75,5 +91,7 @@ jobs:
         # blocked on a stdin gate -- not to budget work that is legitimately
         # slow. 50 still kills a hang inside the hour.
         timeout-minutes: 50
+        env:
+          VAIBIFY_REQUIRE_SHELLS: '1'
         run: |
           python -m pytest tests/ -m "not docker and not docker_live and not browser" --tb=short -v --junitxml=junit/test-results.xml --cov --cov-report=xml --cov-report=term

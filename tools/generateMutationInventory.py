@@ -343,6 +343,7 @@ DICT_PRIMITIVE_ACCESS = {
     "fdictResolveHostnameInContainer": S_ACCESS_TYPED_READ,
     "fdictProbeTcpHandshakeInContainer": S_ACCESS_TYPED_READ,
     "fdictFindForeignOwnedPaths": S_ACCESS_TYPED_READ,
+    "fdictFindOrphanedWriteTemporaries": S_ACCESS_TYPED_READ,
     # --- vaibify/docker/containerManager.py: lifecycle ---
     "fnStartContainer": S_ACCESS_LIFECYCLE,
     "fsStartContainerDetached": S_ACCESS_LIFECYCLE,
