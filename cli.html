@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.14.dev388 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.14.dev410 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=446782a3"></script>
+      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -698,6 +698,11 @@ registered, the flag can be omitted.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
 </pre></div>
 </div>
+<p>The source is a path on the host. The destination is a path inside the
+container; a relative destination is read from the project’s workspace
+root, so <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">Step01/</span></code> and
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">/workspace/Step01/</span></code> are the same command for a
+project whose workspace root is <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>
@@ -717,6 +722,9 @@ registered, the flag can be omitted.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
 </pre></div>
 </div>
+<p>The source is a path inside the container; a relative source is read
+from the project’s workspace root. The destination is a path on the
+host.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>

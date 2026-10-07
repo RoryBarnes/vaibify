@@ -3624,7 +3624,9 @@ def _fnRegisterAllRoutes(app, dictCtx, sWorkspaceRoot):
     from . import routes
 
     routes.workflowRoutes.fnRegisterAll(app, dictCtx)
+    routes.downloadRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
     routes.fileRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
+    routes.uploadRoutes.fnRegisterAll(app, dictCtx, sWorkspaceRoot)
     routes.draftRoutes.fnRegisterAll(app, dictCtx)
     routes.syncRoutes.fnRegisterAll(app, dictCtx)
     routes.scriptRoutes.fnRegisterAll(app, dictCtx)

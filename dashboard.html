@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev388 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev410 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=446782a3"></script>
+      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#viewing-window">Viewing Window</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#moving-files-in-and-out">Moving files in and out</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#opening-the-container-in-vs-code">Opening the container in VS Code</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#repos-panel">Repos panel</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-main-tab">The Main tab</a><ul>
@@ -257,6 +258,33 @@ see <a class="reference internal" href="#agent-actions">Agent actions</a> below.
 <section id="viewing-window">
 <h2>Viewing Window<a class="headerlink" href="#viewing-window" title="Link to this heading"></a></h2>
 <p>The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.</p>
+</section>
+<section id="moving-files-in-and-out">
+<h2>Moving files in and out<a class="headerlink" href="#moving-files-in-and-out" title="Link to this heading"></a></h2>
+<p><strong>Into a project.</strong> Drag files, or whole folders, from your computer onto
+the <strong>Files</strong> tab. Drop onto the drop zone to upload into the folder you
+are viewing, or onto a folder row to upload into that folder. A dropped
+folder is recreated with its subfolders and its empty folders; any
+<code class="docutils literal notranslate"><span class="pre">.git</span></code> or <code class="docutils literal notranslate"><span class="pre">.vaibify</span></code> folders inside it are left out and counted in the
+summary. A file of the same name is only replaced after you confirm it,
+and a name that appeared while the upload was running is reported rather
+than overwritten.</p>
+<p>There is no fixed size limit: the limit is the space the disks have. Vaibify
+checks there is room, and says which disk is short, before it sends the first
+byte. That is an upfront check, not a promise: a disk that fills while the
+file is being placed stops the upload and leaves the previous file
+untouched. The drop zone is disabled, with the reason, for a folder uploads
+cannot go into (git’s own folders, Vaibify’s metadata folder, or anywhere
+outside the workspace).</p>
+<p><strong>Out of a project.</strong> Right-click a file and choose <strong>Download to this
+computer</strong>, or a folder and choose <strong>Download as .tar</strong>. Files land in your
+browser’s downloads folder, on the computer you are sitting at, whether or
+not Vaibify runs there. A symbolic link inside the project downloads as the
+file it points to; one that points outside the project is refused and the
+message names it. A folder’s tar keeps its links as links.</p>
+<p><strong>From the terminal.</strong> <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code> copy the same
+way, and paths inside the project may be relative. See
+<a class="reference internal" href="install.html#shell-helpers"><span class="std std-ref">Shell helpers</span></a> for TAB completion.</p>
 </section>
 <section id="opening-the-container-in-vs-code">
 <h2>Opening the container in VS Code<a class="headerlink" href="#opening-the-container-in-vs-code" title="Link to this heading"></a></h2>

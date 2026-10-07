@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev388 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev410 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=446782a3"></script>
+      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -1612,6 +1612,34 @@ failure paths, never by inferring from the shape.</p>
 takes an operation name from a fixed table plus a path or a flat
 sequence of paths, and BUILDS the command; it never accepts one. That
 distinction is what keeps the carve-out from becoming a general bypass.</p>
+<p><strong>An upload is received before it is carried.</strong> The streamed upload
+(<code class="docutils literal notranslate"><span class="pre">vaibify/gui/routes/uploadRoutes.py</span></code>) is mode (b), and the order inside
+it is the contract. The route class authenticates the researcher and
+binds the request to the container’s current owner, and every name and
+path is checked, before the handler reads a body byte; the in-container
+agent is refused here and keeps its repository-confined base64 route.
+The body is then spooled to a private file under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/tmp/uploads</span></code>
+and hashed as it arrives, because the write-ahead journal records the
+sha256 of the bytes it is about to write and a stream’s hash is known
+only when it has ended. A host project spools too, for the same reason;
+only the spool’s disk differs. The request is bound to its owner a
+second time at the commit, since a spool can take minutes. The carrier
+then records <code class="docutils literal notranslate"><span class="pre">file-write</span></code> with the expected and prior hashes and copies
+the spool into place through the confined writer, so the lock is held
+for the copy and never for the researcher’s network. A file the upload
+replaces that changed while the carrier waited is not replaced (the
+prior hash is read again inside the worker). “Already exists” (409) and
+“disk full” (507) are carried back as answers rather than raised: the
+writer removed its temporary file and left the old one, so the
+container’s state is known and quarantining it would take a working
+container out of service. The free-space check is an upfront check, not
+a promise: for a container the destination is Docker’s volume, inside a
+virtual machine whose disk sits on the host’s, and whether the two draw
+on one pool cannot be read from outside. Downloads are the mirror image
+and carry no carrier at all: a read mutates nothing, so
+<code class="docutils literal notranslate"><span class="pre">downloadRoutes.py</span></code> streams from fixed read programs that run as the
+container user and walk the path without following a link they were not
+told to (<code class="docutils literal notranslate"><span class="pre">vaibify/docker/confinedRead.py</span></code>).</p>
 <p><strong>Scope, stated so the record is not read as more than it is.</strong> The
 migration was scoped to the routes that mutate. 83 of 130
 container-scoped routes are declared; the 46 read-only ones stay on the

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installing Vaibify &mdash; Vaibify 0.0.14.dev388 documentation</title>
+  <title>Installing Vaibify &mdash; Vaibify 0.0.14.dev410 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=446782a3"></script>
+      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -53,7 +53,11 @@
 <li class="toctree-l2"><a class="reference internal" href="#users">Users</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#developers">Developers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#data-format-libraries">Data Format Libraries</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell Helpers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#tab-completion">Tab completion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#if-tab-does-nothing">If TAB does nothing</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#vaibify-command-not-found-after-an-upgrade"><code class="docutils literal notranslate"><span class="pre">vaibify:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code> after an upgrade</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installing-for-remote-access">Installing for remote access</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#browser-compatibility">Browser Compatibility</a></li>
@@ -224,7 +228,12 @@ pytest<span class="w"> </span>tests/<span class="w">            </span><span cla
 <section id="shell-helpers">
 <h2>Shell Helpers<a class="headerlink" href="#shell-helpers" title="Link to this heading"></a></h2>
 <p>Shell completions and helper commands are configured automatically the
-first time any <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command is run. No manual step is required.
+first time any <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command is run after an install or an upgrade.
+No manual step is required, and nothing needs to be installed beyond
+the shell you already use: bash, zsh and fish are supported on macOS
+and Linux. The setup only ever appends to your shell’s configuration
+file (<code class="docutils literal notranslate"><span class="pre">~/.zshrc</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.bash_profile</span></code> on macOS or <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code> on Linux,
+<code class="docutils literal notranslate"><span class="pre">~/.config/fish/config.fish</span></code>); it never edits or removes a line.
 The following aliases are added to your shell configuration:</p>
 <table class="docutils align-default">
 <thead>
@@ -257,12 +266,46 @@ vaibify_pull<span class="w"> </span>-p<span class="w"> </span>my-project<span cl
 </div>
 <p>When only one project is registered, the <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag can be
 omitted. See <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a> for details.</p>
+<section id="tab-completion">
+<h3>Tab completion<a class="headerlink" href="#tab-completion" title="Link to this heading"></a></h3>
+<p>Press TAB after <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code> (or the aliases above)
+to complete a path:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span> <span class="pre">&lt;TAB&gt;</span></code> offers the paths inside the project’s container;
+the destination is a path on your computer, which the shell completes
+as usual.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">&lt;TAB&gt;</span></code> offers container paths for the
+destination; the source is a file on your computer.</p></li>
+<li><p>Paths inside the project may be relative (<code class="docutils literal notranslate"><span class="pre">Step01/output.csv</span></code>) or
+absolute (<code class="docutils literal notranslate"><span class="pre">/workspace/Step01/output.csv</span></code>). A relative path is read
+from the project’s workspace root, and a completed path is accepted
+as typed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">NAME</span></code> is honored: the container that is listed is the one that
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">-p</span> <span class="pre">NAME</span></code> would use. A host project has no container, so
+its container-side paths complete from the project’s own directory.</p></li>
+</ul>
+<p>Nothing is offered while the container is stopped, and the completion
+never prints an error into your command line; run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code> and
+press TAB again. A name containing a control character is never
+offered, because it could move your terminal or split the list.</p>
+<p>In bash, a path containing <code class="docutils literal notranslate"><span class="pre">=</span></code> or <code class="docutils literal notranslate"><span class="pre">:</span></code> is not completed (bash itself
+splits the word there), and a directory completes with a trailing space
+in bash 3.2, the version macOS ships as <code class="docutils literal notranslate"><span class="pre">/bin/bash</span></code>.</p>
+</section>
+<section id="if-tab-does-nothing">
+<h3>If TAB does nothing<a class="headerlink" href="#if-tab-does-nothing" title="Link to this heading"></a></h3>
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>. Its <code class="docutils literal notranslate"><span class="pre">shell-completions</span></code> line reads the
+configuration file of the shell in <code class="docutils literal notranslate"><span class="pre">$SHELL</span></code> and, when it does not load
+vaibify’s completion script, prints the exact line to add in that
+shell’s syntax. Setup could not do it for you when the file was not
+writable, or when your login shell was a different one the first time.</p>
 <p>To force the setup to run again, remove the marker file and invoke any
 command:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rm<span class="w"> </span>~/.vaibify/.setup_done
 vaibify<span class="w"> </span>--version
 </pre></div>
 </div>
+</section>
 </section>
 <section id="vaibify-command-not-found-after-an-upgrade">
 <h2><code class="docutils literal notranslate"><span class="pre">vaibify:</span> <span class="pre">command</span> <span class="pre">not</span> <span class="pre">found</span></code> after an upgrade<a class="headerlink" href="#vaibify-command-not-found-after-an-upgrade" title="Link to this heading"></a></h2>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.14.dev388 documentation</title>
+  <title>Testing &mdash; Vaibify 0.0.14.dev410 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=446782a3"></script>
+      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -676,6 +676,15 @@ builds.</p>
 and <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_BROWSER</span></code> turn each lane’s convenience skip into a
 failure in CI, because the guard they replaced (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span> <span class="pre">||</span> <span class="pre">exit</span> <span class="pre">0</span></code>)
 reported success for having run nothing.</p>
+<p>The shell-completion tests follow the same contract with
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_SHELLS</span></code>. They run the shipped scripts in the real bash,
+zsh and fish (including a pseudo-terminal lane that presses TAB and Enter
+in an interactive shell, because only a real shell can say whether an
+inserted name stays one word). A shell that is missing skips its tests on
+a developer’s machine and FAILS them on the unit workflows, which install
+fish and zsh for that purpose and set the variable. Only the bash tests
+are falsification tests: the lanes that replay falsification entries do
+not carry the other two shells.</p>
 <p>The harness runs on a <em>subset</em> because whether a test catches its
 mutation is deterministic and OS/Python-independent; the full-matrix
 coverage of the tests themselves already comes from the unit-test
