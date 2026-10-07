@@ -1,6 +1,6 @@
 # Vaibify website
 
-The standalone homepage for `vaibify.com`. Only `public/` is published.
+The standalone homepage for `www.vaibify.com`. Only `public/` is published.
 The site uses HTML, CSS, and local assets; there is no build step, JavaScript,
 application server, analytics, or credential configuration in the page.
 The existing documentation and its GitHub Pages deployment stay separate.
@@ -62,7 +62,7 @@ from the repository without adding a GitHub Actions workflow.
    If choosing another project name, update `name` in `wrangler.toml` to match.
 
 5. Deploy and review the assigned `*.pages.dev` address before connecting
-   `vaibify.com`. Cloudflare assigns the address; do not assume a particular
+   `www.vaibify.com`. Cloudflare assigns the address; do not assume a particular
    project name or address is available.
 6. In the project's build watch paths, include `website/*` so unrelated
    application and documentation commits do not trigger website builds.
@@ -79,10 +79,10 @@ Git workflow: Cloudflare does not allow converting a Direct Upload project
 to Git integration. There is no need to send anyone a password or API token
 for the Git integration setup.
 
-## Connect vaibify.com
+## Connect www.vaibify.com
 
-For an apex domain such as `vaibify.com`, Pages requires the domain's DNS
-zone to be on Cloudflare. The domain can remain registered with its current
+The primary address is `www.vaibify.com`. The other addresses redirect to
+it through Cloudflare. The domains can remain registered with their current
 registrar; changing DNS hosting does not require transferring registration.
 
 1. Add `vaibify.com` to your Cloudflare account and review the imported DNS
@@ -91,15 +91,18 @@ registrar; changing DNS hosting does not require transferring registration.
 2. Follow Cloudflare's zone onboarding instructions, including any DNSSEC
    steps, and set the assigned nameservers at your registrar. Wait until
    Cloudflare reports the zone active.
-3. In the Pages project, add `vaibify.com` under **Custom domains** and
-   follow the DNS setup. Add `www.vaibify.com` there too if it should serve
-   the site. Configure a Cloudflare redirect from `www` to the apex, retaining
-   the path and query string, to keep one canonical address.
-4. Check HTTPS, the homepage, a missing page, and documentation links on the
+3. In the Pages project, add `www.vaibify.com` under **Custom domains** and
+   follow the DNS setup.
+4. Configure 301 redirects from `vaibify.com`, `vaibify.org`, and
+   `www.vaibify.org` to `https://www.vaibify.com`, retaining the path and query
+   string. Configure each rule in its source domain's Cloudflare zone, with
+   proxied DNS records for the redirecting hostnames. The `.com` rule must
+   match only the apex, so it does not redirect `www` back to itself.
+5. Check HTTPS, the homepage, a missing page, and documentation links on the
    live domain. Domain attachment and DNS changes are a separate launch step.
 
 No `docs.vaibify.com` record or documentation migration is part of this setup.
-The homepage's canonical URL and sitemap point to `https://vaibify.com/`.
+The homepage's canonical URL and sitemap point to `https://www.vaibify.com/`.
 Cloudflare marks branch previews `noindex` by default; the project's initial
 production `pages.dev` deployment is distinct from a branch preview. Once
 the custom domain is live, use Cloudflare's documented redirect for that

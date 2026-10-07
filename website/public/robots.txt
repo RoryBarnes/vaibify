@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://vaibify.com/sitemap.xml
+Sitemap: https://www.vaibify.com/sitemap.xml
