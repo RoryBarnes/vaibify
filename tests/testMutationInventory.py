@@ -2030,6 +2030,12 @@ _SET_GATEWAY_NAMES_OUT_OF_SCOPE = {
     # is module-level rather than a method precisely so the host leg
     # can share the one table instead of growing a second copy.
     "fsRenderBatchedTypedReadProgram",
+    # Pure argument assembly for the poll snapshot: builds the flat
+    # prefixed list and measures its rendered size against the exec
+    # budget. It makes no call, and it is module-level so the host leg
+    # hands the one fixed program the same encoding instead of growing a
+    # second copy of the assembly.
+    "flistBuildRepoSnapshotArguments",
     # Reads about an IMAGE and about the DAEMON, not a container: the
     # launch guard for a project whose image was obtained asks what
     # the project's tag resolves to (with its labels) and which

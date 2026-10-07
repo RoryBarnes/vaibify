@@ -2412,6 +2412,19 @@ body.proof-level-3 .toolbar-label {
     color: var(--color-orange);
 }
 
+/* Neither green nor red: the tests passed, and the poll could not
+   check the files against that run. A pass nobody could confirm must
+   not wear the passing color. */
+.verification-badge.state-unchecked {
+    background: rgba(128, 128, 160, 0.2);
+    color: var(--color-orange);
+    cursor: pointer;
+}
+
+.freshness-unchecked-diagnose {
+    cursor: pointer;
+}
+
 .verification-badge.state-outputs-missing {
     background: rgba(230, 60, 60, 0.2);
     color: #e84040;
@@ -6704,6 +6717,10 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
 }
 
 .step-blocker-glyph-attestation-stale {
+    color: var(--color-orange);
+}
+
+.step-blocker-glyph-freshness-unchecked {
     color: var(--color-orange);
 }
 

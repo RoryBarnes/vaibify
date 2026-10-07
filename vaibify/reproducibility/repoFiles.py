@@ -926,21 +926,41 @@ def _fdictSnapshotExtras(
 
 
 def _fdictFillCacheHits(dictAnswered, dictCachedEntries):
-    """Replace each ``bCacheHit`` answer with the hash its key vouches for.
+    """Replace each ``bCacheHit`` answer with the hashes its key vouches for.
 
     The program answered a hit only for a path whose stat key equalled
-    the key it was handed, so the cached hash is the one taken under
-    that very key. A hit the cache cannot back is a hash of ``None``:
-    never a guess, and never a match.
+    the key it was handed, so the cached SHA-256 and git blob digest are
+    the ones taken under that very key. A hit the cache cannot back is a
+    hash of ``None``: never a guess, and never a match.
     """
     dictFilled = {}
     for sRelPath, dictEntry in dictAnswered.items():
         dictEntry = dict(dictEntry)
         if dictEntry.get("bCacheHit"):
-            dictEntry["sSha256"] = (
-                dictCachedEntries.get(sRelPath) or {}).get("sSha256")
+            dictCached = dictCachedEntries.get(sRelPath) or {}
+            dictEntry["sSha256"] = dictCached.get("sSha256")
+            dictEntry["sBlobSha"] = dictCached.get("sBlobSha")
         dictFilled[sRelPath] = dictEntry
     return dictFilled
+
+
+def _fconnectionServingResource(connectionDocker, sContainerId):
+    """Return the connection that actually holds a resource.
+
+    A connection router owns a Docker leg and a host leg and picks one
+    by the resource id; its ``__getattr__`` hands every call it does
+    not route to the Docker leg. The typed snapshot read left to that
+    default went, for a host project, to a Docker leg that has no
+    container of that name, so every poll read conservative -- and with
+    no Docker daemon it raised an error the poll does not catch. The
+    leg is asked directly instead, which also keeps the "no typed read,
+    use the legacy transport" duck-typing of a leg that predates it.
+    Any other connection serves every resource itself.
+    """
+    from vaibify.gui.connectionRouter import ConnectionRouter
+    if isinstance(connectionDocker, ConnectionRouter):
+        return connectionDocker.fconnectionForResource(sContainerId)
+    return connectionDocker
 
 
 def ffilesConservativeSnapshot(sRootPath):
@@ -1000,23 +1020,25 @@ class SnapshotRepoFiles:
         binaries) hashed in the same exec and answered later via
         ``fdictHashAbsolutePaths``.
 
-        ``dictCachedEntries`` maps a path to ``{listStatKey, sSha256}``:
-        the ``[mtime_ns, ctime_ns, size, inode]`` key a cached hash was
-        taken under, and the hash. The program stats each path itself,
-        hashes only when the key moved, and answers ``bCacheHit`` when
-        it did not, which this method fills from the cache. Containment
-        is checked on every path whether or not it is hashed. ``bHashManifestEntries``
-        adds every ``MANIFEST.sha256`` entry to the batch and
-        ``bReadReproductions`` reads the reproduction records, in the
-        same single exec.
+        ``dictCachedEntries`` maps a path to ``{listStatKey, sSha256,
+        sBlobSha}``: the ``[mtime_ns, ctime_ns, size, inode]`` key a
+        cached hash was taken under, and both digests. The program
+        stats each path itself, hashes only when the key moved, and
+        answers ``bCacheHit`` when it did not, which this method fills
+        from the cache. Containment is checked on every path whether or
+        not it is hashed. ``bHashManifestEntries`` adds every
+        ``MANIFEST.sha256`` entry to the batch and ``bReadReproductions``
+        reads the reproduction records, in the same single exec.
         """
         dictCachedKeys = {
             sRelPath: dictEntry["listStatKey"]
             for sRelPath, dictEntry in (dictCachedEntries or {}).items()
-            if dictEntry.get("sSha256") and dictEntry.get("listStatKey")
+            if dictEntry.get("sSha256") and dictEntry.get("sBlobSha")
+            and dictEntry.get("listStatKey")
         }
         fnTypedSnapshot = getattr(
-            connectionDocker, "ftReadRepoSnapshot", None,
+            _fconnectionServingResource(connectionDocker, sContainerId),
+            "ftReadRepoSnapshot", None,
         )
         if fnTypedSnapshot is not None:
             # The DECLARED read: no admission needed, so the fetch

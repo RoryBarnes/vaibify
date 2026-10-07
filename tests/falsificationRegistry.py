@@ -2623,7 +2623,8 @@ def _fdictEntry(sRel):
         # read; both transports now run this one constant.
         source='vaibify/docker/dockerConnection.py',
         old="""def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    d = {"sSha256": None, "sBlobSha": None, "sSymlinkSegment": None,
+         "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
         return d
@@ -2637,7 +2638,8 @@ def _fdictEntry(sRel):
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):""",
         new="""def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    d = {"sSha256": None, "sBlobSha": None, "sSymlinkSegment": None,
+         "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
         return d
@@ -21579,7 +21581,8 @@ def _fdictEntry(sRel):
         # parking it inside the pausable probe.
         old=(
             '        fnTypedSnapshot = getattr(\n'
-            '            connectionDocker, "ftReadRepoSnapshot", None,\n'
+            '            _fconnectionServingResource(connectionDocker, sContainerId),\n'
+            '            "ftReadRepoSnapshot", None,\n'
             '        )\n'
         ),
         new='        fnTypedSnapshot = None\n',
@@ -29324,5 +29327,511 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/styleMain.css',
         old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
         new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
+    # --- 2026-10-07: the marker lane judges digests against the poll
+    # snapshot (hashed inside the container), never by opening files on
+    # the host; unknown is not drift and reaches Level 1 as a blocker ---
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_the_snapshot_blob_sha_is_the_digest_the_conftest_records'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            ("blob " + str(listKey[2]) + chr(0)).encode("ascii"))\n',
+        new='            ("blob " + "0" + chr(0)).encode("ascii"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_deleted_file_is_reported_missing_and_nothing_else_is'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        return {"sSha256": None, "sBlobSha": None, "bMissing": True}\n',
+        new='        return {"sSha256": None, "sBlobSha": None}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_an_unreadable_file_is_not_reported_missing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    except FileNotFoundError:\n'
+            '        # The ONLY failure that proves a deletion.'
+        ),
+        new=(
+            '    except OSError:\n'
+            '        # The ONLY failure that proves a deletion.'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_file_changing_during_the_hash_yields_neither_digest'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        return {"sSha256": None, "sBlobSha": None,\n'
+            '                "listStatKey": listKey, "bTornRead": True}\n'
+        ),
+        new=(
+            '        return {"sSha256": None, "sBlobSha": hBlob.hexdigest(),\n'
+            '                "listStatKey": listKey, "bTornRead": True}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_cache_hit_carries_both_digests_and_an_old_entry_is_rehashed'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old='            dictEntry["sBlobSha"] = dictCached.get("sBlobSha")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_each_kind_of_evidence_gets_its_own_verdict'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='        return S_VERDICT_UNKNOWN\n',
+        new='        return S_VERDICT_DRIFT\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_an_empty_baseline_cannot_match_and_is_drift'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not sBaselineSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+        new=(
+            '    if not sBaselineSha:\n'
+            '        return S_VERDICT_MATCH\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_outputs_and_inputs_are_both_judged_and_listed_sorted'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='_T_MARKER_HASH_KEYS = ("dictOutputHashes", "dictInputHashes")\n',
+        new='_T_MARKER_HASH_KEYS = ("dictOutputHashes",)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_only_a_poll_snapshot_answers_digests'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_an_unchecked_pass_never_reads_attained_anywhere'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n',
+        new='    listUnchecked = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_scalar_level_and_the_gate_withhold_level_one'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        if not fbAtLeastLevel1(\n'
+            '            dictWorkflow, filesRepo, dictScriptStatus,\n'
+            '            dictUnknownFreshnessByStep,\n'
+            '        ):\n'
+        ),
+        new=(
+            '        if not fbAtLeastLevel1(\n'
+            '            dictWorkflow, filesRepo, dictScriptStatus,\n'
+            '        ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_verdict_is_part_of_the_blocker_cache_key'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),\n'
+            '    )\n'
+            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+        ),
+        new=(
+            '    )\n'
+            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_criterion_ranks_below_red_axes_and_above_attestation'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if not fbStepTestsPassing(dictStep):\n'
+            '        return _fdictAxisNotGreenBlocker(\n'
+            '            dictWorkflow, iStepIndex, dictStep, filesRepo,\n'
+            '        )\n'
+            '    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n'
+            '    if listUnchecked:\n'
+            '        return _fdictFreshnessUncheckedBlocker(\n'
+            '            dictWorkflow, iStepIndex, listUnchecked,\n'
+            '        )\n'
+        ),
+        new=(
+            '    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n'
+            '    if listUnchecked:\n'
+            '        return _fdictFreshnessUncheckedBlocker(\n'
+            '            dictWorkflow, iStepIndex, listUnchecked,\n'
+            '        )\n'
+            '    if not fbStepTestsPassing(dictStep):\n'
+            '        return _fdictAxisNotGreenBlocker(\n'
+            '            dictWorkflow, iStepIndex, dictStep, filesRepo,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_test_rows_read_unknown_even_when_script_stale_dominates'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        dictV, bool(listUncheckedFreshnessFiles),\n'
+            '    )\n'
+        ),
+        new=(
+            '        dictV, "test-freshness-unchecked" in setCriteria,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_a_red_axis_stays_unmet_and_a_checked_pass_stays_met'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='            (sAxisKey, None if bGreen and bFreshnessUnchecked else bGreen))\n',
+        new='            (sAxisKey, None if bFreshnessUnchecked else bGreen))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_container_project_whose_files_match_stays_passed'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_drifted_output_invalidates_its_step_and_the_steps_downstream'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_deletion_the_container_reports_invalidates_the_step'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_path_absent_from_the_answer_is_unknown_and_invalidates_nothing'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_UNKNOWN\n'
+        ),
+        new=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_path_a_marker_recorded_but_the_workflow_no_longer_declares_is_judged'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_failed_snapshot_is_unknown_never_drift'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='        return S_VERDICT_UNKNOWN\n',
+        new='        return S_VERDICT_DRIFT\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_an_unchanged_project_is_a_fixed_point_of_the_poll'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if sCurrentSha == sBaselineSha:\n'
+            '        return S_VERDICT_MATCH\n'
+        ),
+        new=(
+            '    if sCurrentSha == sBaselineSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_the_flag_reconcile_runs_after_the_drift_is_applied'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    listInvalidated = _fdictDetectAndInvalidate(\n'
+            '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
+            '        dictHashStaleByStep=dictHashStaleByStep,\n'
+            '        bPipelineRunning=bPipelineRunning,\n'
+            '    )\n'
+            '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
+            '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
+            '    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(\n'
+            '        dictPathsByStep, dictModTimes,\n'
+            '    )\n'
+            '    bAnyReconciled = (\n'
+            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
+            '    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(\n'
+            '        dictPathsByStep, dictModTimes,\n'
+            '    )\n'
+            '    bAnyReconciled = (\n'
+            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
+            '    )\n'
+            '    listInvalidated = _fdictDetectAndInvalidate(\n'
+            '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
+            '        dictHashStaleByStep=dictHashStaleByStep,\n'
+            '        bPipelineRunning=bPipelineRunning,\n'
+            '    )\n'
+            '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_the_host_leg_answers_the_digest_a_marker_records'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '        return self._ftRunTypedReadProgram(\n'
+            '            sContainerId, S_TYPED_READ_REPO_SNAPSHOT, listArgs,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return self._ftRunTypedReadProgram(\n'
+            '            sContainerId, S_TYPED_READ_GIT_REPO_STATUS, listArgs,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_path_leaving_the_project_is_not_hashed_on_the_host'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):\n'
+            '        d["bEscapesRoot"] = True\n'
+            '        return d\n'
+            '    d.update(_fdictHashAgainstKey('
+        ),
+        new='    d.update(_fdictHashAgainstKey(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_root_outside_the_project_is_refused_before_anything_runs'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '        sRootReal = self._fsValidateHostPath(sContainerId, sRootPath)\n'
+            '        listArgs = flistBuildRepoSnapshotArguments(\n'
+        ),
+        new=(
+            '        sRootReal = sRootPath\n'
+            '        listArgs = flistBuildRepoSnapshotArguments(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_absolute_binary_paths_are_never_read_on_the_host'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '            sRootReal, listContentPaths, listSkipTextPaths,\n'
+            '            listHashPaths, [], dictCachedKeys,\n'
+        ),
+        new=(
+            '            sRootReal, listContentPaths, listSkipTextPaths,\n'
+            '            listHashPaths, listAbsHashPaths, dictCachedKeys,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_the_router_sends_a_host_projects_snapshot_to_the_host_leg'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '    if isinstance(connectionDocker, ConnectionRouter):\n'
+            '        return connectionDocker.fconnectionForResource(sContainerId)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_host_project_polls_with_no_docker_daemon'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '    if isinstance(connectionDocker, ConnectionRouter):\n'
+            '        return connectionDocker.fconnectionForResource(sContainerId)\n'
+        ),
+        new='',
+    ),
+    # An entry missing either digest must never be offered back to the
+    # snapshot: a hit would answer a digest of None, which the marker
+    # lane reads as unknown on every poll.
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestCachedEntriesForSnapshot::test_an_entry_missing_either_digest_is_never_offered'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            dictEntry.get("sSha256") and dictEntry.get("sBlobSha")\n'
+            '            and isinstance(listKey, list) and len(listKey) == 4'
+        ),
+        new=(
+            '            dictEntry.get("sSha256")\n'
+            '            and isinstance(listKey, list) and len(listKey) == 4'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestUpdateShaCacheSingleFieldChange::test_blob_digest_only_change_signals_persistence'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            "listStatKey": list(listKey), "sSha256": sSha256,\n'
+            '            "sBlobSha": sBlobSha,\n'
+            '        }'
+        ),
+        new=(
+            '            "listStatKey": list(listKey), "sSha256": sSha256,\n'
+            '        }'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestUpdateShaCacheSingleFieldChange::test_an_entry_missing_the_blob_digest_is_not_cached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            not sSha256 or not sBlobSha or not listKey\n'
+        ),
+        new=(
+            '            not sSha256 or not listKey\n'
+        ),
+    ),
+    # An unchecked pass is drawn as unchecked in every place the screen
+    # shows the pass, never as a plain Passed.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_an_unchecked_pass_is_not_shown_as_passed'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old=(
+            '        if (_fbStepAxisPassIsUnchecked(dictContext, iIndex, sApprover)) {\n'
+            '            sBadge = _fsBuildUncheckedBadge();\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_the_requirement_rows_read_unknown_and_say_why'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old=(
+            '        if (_fbIsTestAxisRequirement(sName)) {\n'
+            '            return "(hollow circle = the tests passed, but could not " +\n'
+        ),
+        new=(
+            '        if (false) {\n'
+            '            return "(hollow circle = the tests passed, but could not " +\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_clicking_the_unchecked_badge_runs_the_diagnosis_it_promises'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old=(
+            '        ".freshness-unchecked-diagnose":\n'
+            '            _fnHandleFreshnessUncheckedDiagnose,\n'
+        ),
+        new='',
     ),
 ]

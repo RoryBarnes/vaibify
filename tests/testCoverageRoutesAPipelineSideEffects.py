@@ -515,17 +515,23 @@ def testMarkersMapOntoLiveStepIndicesByDirectory():
     assert dictResult == {1: {"iPassed": 1}}
 
 
-def testACacheThatCannotBePersistedIsLoggedNotRaised(
-    tmp_path, caplog,
-):
-    sNotADirectory = str(tmp_path / "plainFile")
-    with open(sNotADirectory, "w") as fileOut:
-        fileOut.write("x")
-    with caplog.at_level(logging.WARNING, logger="vaibify"):
-        pipelineRoutes._fnPersistMtimeCacheForPoll(
-            {"sProjectRepoPath": sNotADirectory}, {"stepA/out.csv": 1.0},
+def testACacheThatCannotBePersistedIsLoggedNotRaised(caplog):
+    """The poll's one persisted cache is the container's; it never raises.
+
+    The host-side mtime cache this test once covered is gone with the
+    host read it served. What remains is the sha cache the poll writes
+    back into the container, whose contract is the same: a failed write
+    costs a rehash next poll and is logged, never raised into the poll.
+    """
+    dictCtx = {"docker": _DockerThatCannotAnswer()}
+    with caplog.at_level(logging.INFO, logger="vaibify"):
+        pipelineRoutes._fnPersistShaCacheToContainer(
+            dictCtx, S_CONTAINER, "/workspace/project",
+            {"stepA/out.csv": {
+                "listStatKey": [1, 2, 3, 4], "sSha256": "a" * 64,
+                "sBlobSha": "b" * 40}},
         )
-    assert "mtime cache persist failed" in caplog.text
+    assert "sha cache save failed" in caplog.text
 
 
 class _DockerThatCannotAnswer:

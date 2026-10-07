@@ -74,6 +74,7 @@ from ..fileStatusManager import (
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fdictHandleCollectMarkerPathsByStep,
+    fdictMarkerVerdictsByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -1368,9 +1369,8 @@ async def _fdictFetchOutputStatus(
     dictMarkersByStep = await asyncio.to_thread(
         _fdictLoadMarkersForPoll, dictCtx, sContainerId, dictWorkflow,
     )
-    listInvalidated = _flistRunPollSideEffects(
+    _fnRunPollStaleUserCheck(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-        dictMarkersByStep, bPipelineRunning=bPipelineRunning,
     )
     if await _fbApplyRandomnessLintAsync(
         dictCtx, sContainerId, dictWorkflow,
@@ -1379,7 +1379,17 @@ async def _fdictFetchOutputStatus(
     sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
     filesPoll = await asyncio.to_thread(
         _ffilesFetchPollSnapshot, dictCtx, sContainerId, dictWorkflow,
-        dictModTimes, sWorkflowPath,
+        dictModTimes, sWorkflowPath, dictMarkersByStep,
+    )
+    # After the snapshot, because the marker digests are judged against
+    # what the snapshot hashed inside the container.
+    dictMarkerVerdicts = fdictMarkerVerdictsByStep(
+        dictWorkflow, dictMarkersByStep, filesPoll,
+    )
+    listInvalidated = _flistRunPollSideEffects(
+        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+        _fdictPathsByStepForVerdict(dictMarkerVerdicts, "listDrifted"),
+        bPipelineRunning=bPipelineRunning,
     )
     if _fbReconcileUserVerificationByHash(
         dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
@@ -1399,6 +1409,9 @@ async def _fdictFetchOutputStatus(
         dictWorkflow, dictModTimes, dictVars, dictReload,
         sWorkflowPath, listInvalidated, sRepoRoot, filesPoll,
         fbIsHostProject(sContainerId),
+        dictUnknownFreshnessByStep=_fdictPathsByStepForVerdict(
+            dictMarkerVerdicts, "listUnknown",
+        ),
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
             sContainerId, sRepoRoot,
         ),
@@ -1590,35 +1603,38 @@ def _fdictMarkersByStepIndex(listMarkers, listSteps):
     return dictResult
 
 
-def _fdictLoadMtimeCacheForPoll(dictWorkflow):
-    """Load the persistent mtime cache from the project repo, if available."""
-    from .. import mtimeCache
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if not sProjectRepoPath:
-        return {}
-    return mtimeCache.fdictLoadCache(sProjectRepoPath)
-
-
-def _fnPersistMtimeCacheForPoll(dictWorkflow, dictCache):
-    """Save the mtime cache atomically; absent project repo is a no-op."""
-    from .. import mtimeCache
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
-    if not sProjectRepoPath or not dictCache:
-        return
-    try:
-        mtimeCache.fnSaveCache(sProjectRepoPath, dictCache)
-    except OSError as error:
-        logger.warning(
-            "POLL mtime cache persist failed for %s: %s",
-            sProjectRepoPath, error,
+def _fnRunPollStaleUserCheck(
+    dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
+):
+    """Reset ``sUser`` where an attested step's outputs outran its sign-off."""
+    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
+        logger.info(
+            "POLL stale-check reset sUser for container=%s", sContainerId,
         )
+        dictCtx["save"](sContainerId, dictWorkflow)
+
+
+def _fdictPathsByStepForVerdict(dictMarkerVerdicts, sVerdictKey):
+    """Project ``{iStep: {sVerdictKey: [paths]}}`` onto ``{iStep: [paths]}``."""
+    return {
+        iStep: dictVerdicts[sVerdictKey]
+        for iStep, dictVerdicts in dictMarkerVerdicts.items()
+        if dictVerdicts[sVerdictKey]
+    }
 
 
 def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-    dictMarkersByStep, bPipelineRunning=False,
+    dictHashStaleByStep, bPipelineRunning=False,
 ):
-    """Apply stale-check, invalidate, reconcile; return invalidated steps.
+    """Invalidate on mtime and hash drift, log, reconcile; return invalidated.
+
+    Runs AFTER the poll snapshot, whose hashes decide
+    ``dictHashStaleByStep``, and in this order: ``fbReconcileUpstreamFlags``
+    clears ``bUpstreamModified`` wherever mtimes say nothing is stale,
+    including on downstream steps the invalidation has just flagged, so
+    it must follow the invalidation or a persistent drift would be
+    flagged by one poll and cleared by the next.
 
     Does NOT run the unseeded-randomness lint or read the test markers —
     both block on a docker exec round-trip, so the async caller runs
@@ -1626,19 +1642,11 @@ def _flistRunPollSideEffects(
     whole hub for ~5 s per poll on a 73-step project, 2026-10-05). The
     async caller persists any randomness-flag change.
     """
-    if _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, dictVars):
-        logger.info(
-            "POLL stale-check reset sUser for container=%s", sContainerId,
-        )
-        dictCtx["save"](sContainerId, dictWorkflow)
-    dictMtimeCache = _fdictLoadMtimeCacheForPoll(dictWorkflow)
     listInvalidated = _fdictDetectAndInvalidate(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-        dictMarkersByStep=dictMarkersByStep,
-        dictCache=dictMtimeCache,
+        dictHashStaleByStep=dictHashStaleByStep,
         bPipelineRunning=bPipelineRunning,
     )
-    _fnPersistMtimeCacheForPoll(dictWorkflow, dictMtimeCache)
     _fnLogInvalidations(sContainerId, listInvalidated)
     dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
     dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(
@@ -2122,11 +2130,12 @@ def _fdictCachedEntriesForSnapshot(dictShaCache):
     """Return the cache entries the snapshot may trust, keyed by path.
 
     An entry is offered only when it carries the four-integer stat key
-    it was hashed under and a hash. The program re-stats every path
+    it was hashed under and BOTH digests (the SHA-256 and the git blob
+    digest a test marker records). The program re-stats every path
     itself and hashes anything whose key moved, so what is offered is a
     claim to be checked, never an answer: an entry from before the key
-    existed (whole-second mtime only) is simply never offered, and its
-    file is hashed once more.
+    existed (whole-second mtime only), or before the blob digest did, is
+    simply never offered, and its file is hashed once more.
     """
     dictOffered = {}
     for sRelPath, dictEntry in dictShaCache.items():
@@ -2134,7 +2143,7 @@ def _fdictCachedEntriesForSnapshot(dictShaCache):
             continue
         listKey = dictEntry.get("listStatKey")
         if (
-            dictEntry.get("sSha256")
+            dictEntry.get("sSha256") and dictEntry.get("sBlobSha")
             and isinstance(listKey, list) and len(listKey) == 4
             and all(
                 isinstance(iPart, int) and not isinstance(iPart, bool)
@@ -2152,19 +2161,24 @@ def _fbUpdateShaCache(dictShaCache, filesPoll):
     caller uses the flag to decide whether the container-side
     persistence layer needs a fresh write. A torn read (a file that
     changed while it was hashed) and an unhashable path are never
-    cached.
+    cached, and neither is an entry that lacks either digest.
     """
     bAnyChange = False
     for sRelPath, dictEntry in filesPoll.fdictAllHashEntries().items():
         sSha256 = dictEntry.get("sSha256")
+        sBlobSha = dictEntry.get("sBlobSha")
         listKey = dictEntry.get("listStatKey")
         if (
-            not sSha256 or not listKey or dictEntry.get("bTornRead")
+            not sSha256 or not sBlobSha or not listKey
+            or dictEntry.get("bTornRead")
             or dictEntry.get("sSymlinkSegment")
             or dictEntry.get("bEscapesRoot")
         ):
             continue
-        dictNew = {"listStatKey": list(listKey), "sSha256": sSha256}
+        dictNew = {
+            "listStatKey": list(listKey), "sSha256": sSha256,
+            "sBlobSha": sBlobSha,
+        }
         if dictShaCache.get(sRelPath) != dictNew:
             bAnyChange = True
             dictShaCache[sRelPath] = dictNew
@@ -2189,26 +2203,32 @@ def _fnPersistShaCacheToContainer(
         )
 
 
-def _flistPollHashRelPaths(dictWorkflow, sRepoRoot, sWorkflowPath):
+def _flistPollHashRelPaths(
+    dictWorkflow, sRepoRoot, sWorkflowPath, dictMarkersByStep=None,
+):
     """Return the paths the poll hashes beside the manifest's own entries.
 
-    The declared outputs, and the workflow file itself: a reproduction
-    record binds the workflow it ran, and the label compares it with
-    the file as it is now.
+    The declared outputs; the workflow file itself, because a
+    reproduction record binds the workflow it ran and the label
+    compares it with the file as it is now; and every path a test
+    marker recorded a digest for, declared or not, so a marker's
+    claim is always judged against what the container hashed.
     """
     from vaibify.reproducibility.reproductionLabel import (
         fsRelativeWorkflowPath,
     )
+    from .. import hashStaleness
     listPaths = _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot)
     sWorkflowRelative = fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot)
     if sWorkflowRelative:
         listPaths.append(sWorkflowRelative)
+    listPaths.extend(hashStaleness.flistMarkerHashedPaths(dictMarkersByStep))
     return listPaths
 
 
 def _ffilesFetchPollSnapshot(
     dictCtx, sContainerId, dictWorkflow, dictModTimes,
-    sWorkflowPath="",
+    sWorkflowPath="", dictMarkersByStep=None,
 ):
     """Fetch the one-exec container snapshot every poll gate reads.
 
@@ -2231,16 +2251,18 @@ def _ffilesFetchPollSnapshot(
             dictCtx["docker"], sContainerId, sRepoRoot,
             listScriptRelPaths=_flistAllStepScriptPaths(dictWorkflow),
             listHashRelPaths=_flistPollHashRelPaths(
-                dictWorkflow, sRepoRoot, sWorkflowPath,
+                dictWorkflow, sRepoRoot, sWorkflowPath, dictMarkersByStep,
             ),
             listAbsHashPaths=flistWorkflowBinaryPaths(dictWorkflow),
             dictCachedEntries=_fdictCachedEntriesForSnapshot(dictShaCache),
             bHashManifestEntries=True, bReadReproductions=True,
         )
-    except OSError as errorSnapshot:
+    except (OSError, ValueError) as errorSnapshot:
         # ONE conservative tick, said out loud. The fetch raises so
         # each caller owns its degradation; the poll's is "not
         # verified until the next tick", never a fabricated answer.
+        # A ValueError is the over-budget refusal: more marker paths
+        # make it likelier, and the verdicts then read unknown.
         logger.warning(
             "Poll snapshot failed for %s (%s); this tick reads "
             "conservative and the next poll asks again",
@@ -2264,8 +2286,8 @@ def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
     bHostProject=False, *, bVerificationRunning, dictImageCurrency,
-    dictImageArchive, dictLastNoVerdict=None,
-    dictLockSatisfaction=None,
+    dictImageArchive, dictUnknownFreshnessByStep,
+    dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Return every poll-response key except ``dictModTimes``.
 
@@ -2284,7 +2306,9 @@ def _fdictBuildPollResponseRest(
     pulses, and every function in the chain still reads correctly.
     Requiring it makes a dropped hop a TypeError instead.
     ``dictImageCurrency`` and ``dictImageArchive`` travel the same way
-    and for the same reason.
+    and for the same reason, and so does ``dictUnknownFreshnessByStep``
+    (``{iStepIndex: [paths]}``): a dropped hop would read as "every
+    marker's freshness was checked", which is the claim it denies.
     """
     if filesPoll is None:
         filesPoll = sRepoRoot
@@ -2294,11 +2318,12 @@ def _fdictBuildPollResponseRest(
     )
     dictGates = _fdictComputePollLevelGates(
         dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
-        bHostProject,
+        bHostProject, dictUnknownFreshnessByStep,
     )
     dictResponse = _fdictAssemblePollResponse(
         dictWorkflow, dictModTimes, dictReload, listInvalidated,
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
+        dictUnknownFreshnessByStep=dictUnknownFreshnessByStep,
         bVerificationRunning=bVerificationRunning,
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=dictImageArchive,
@@ -2333,7 +2358,7 @@ def _ftComputePollScriptContext(
 
 def _fdictComputePollLevelGates(
     dictWorkflow, dictMtimes, dictScriptStatus, filesPoll,
-    bHostProject,
+    bHostProject, dictUnknownFreshnessByStep,
 ):
     """Evaluate the PROOF level and the three blocker lists for one poll."""
     from vaibify.reproducibility.levelGates import (
@@ -2343,11 +2368,12 @@ def _fdictComputePollLevelGates(
     dictWorkflow["iProofLevel"] = fiProofLevel(
         dictWorkflow, filesPoll, dictScriptStatus,
         bHostProject=bHostProject,
+        dictUnknownFreshnessByStep=dictUnknownFreshnessByStep,
     )
     return {
         "listBlockers": flistLevel1Blockers(
             dictWorkflow, dictMtimes["dictMaxMtimeByStep"], filesPoll,
-            dictScriptStatus,
+            dictScriptStatus, dictUnknownFreshnessByStep,
         ),
         "listLevel2Blockers": flistLevel2Blockers(
             dictWorkflow, filesPoll,
@@ -2362,12 +2388,14 @@ def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
     *, bVerificationRunning, dictImageCurrency, dictImageArchive,
-    dictLastNoVerdict=None, dictLockSatisfaction=None,
+    dictUnknownFreshnessByStep, dictLastNoVerdict=None,
+    dictLockSatisfaction=None,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
-    ``bVerificationRunning`` is keyword-only with no default, for
-    the reason given in ``_fdictBuildPollResponseRest``.
+    ``bVerificationRunning`` and ``dictUnknownFreshnessByStep`` are
+    keyword-only with no default, for the reason given in
+    ``_fdictBuildPollResponseRest``.
     """
     from vaibify.reproducibility.levelGates import fdictBinaryStaleByStep
     from .. import workflowManager
@@ -2378,6 +2406,7 @@ def _fdictAssemblePollResponse(
         dictWorkflow, dictGates["listBlockers"],
         dictGates["listLevel2Blockers"], dictGates["listLevel3Blockers"],
         dictMtimes["dictMaxMtimeByStep"], dictBinaryStaleByStep,
+        dictUnknownFreshnessByStep,
     )
     return {
         **dictLevelPayload,
@@ -2440,7 +2469,7 @@ _S_LEVEL_RATCHET_FLAG_KEY = "_bLevelHighWaterChanged"
 
 def _ftComputeLevelStates(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
-    dictMaxMtimeByStep=None,
+    dictMaxMtimeByStep=None, dictUnknownFreshnessByStep=None,
 ):
     """Project blocker lists into per-step and workflow-scope states."""
     from vaibify.reproducibility.levelGates import (
@@ -2450,6 +2479,7 @@ def _ftComputeLevelStates(
     dictStepStates = fdictComputeStepLevelStates(
         dictWorkflow, listBlockers, listLevel2Blockers,
         listLevel3Blockers, dictMaxMtimeByStep,
+        dictUnknownFreshnessByStep,
     )
     dictScopeStates = fdictComputeWorkflowScopeLevelStates(
         dictWorkflow, listLevel2Blockers, listLevel3Blockers,
@@ -2485,6 +2515,7 @@ def _fdictProjectStepLevelHighWater(dictWorkflow):
 def _fdictBuildLevelStatePayload(
     dictWorkflow, listBlockers, listLevel2Blockers, listLevel3Blockers,
     dictMaxMtimeByStep=None, dictBinaryStaleByStep=None,
+    dictUnknownFreshnessByStep=None,
 ):
     """Build the level-state wire keys plus the private ratchet flag.
 
@@ -2505,6 +2536,7 @@ def _fdictBuildLevelStatePayload(
     dictStepStates, dictScopeStates = _ftComputeLevelStates(
         dictWorkflow, listBlockers, listLevel2Blockers,
         listLevel3Blockers, dictMaxMtimeByStep,
+        dictUnknownFreshnessByStep,
     )
     bChanged = stateManager.fbRatchetLevelHighWater(
         dictWorkflow, dictStepStates, dictScopeStates,

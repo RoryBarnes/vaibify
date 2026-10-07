@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from tests.snapshotProgramHarness import fsetDriftedAgainstRealSnapshot
 from vaibify.gui import hashStaleness, mtimeCache
 
 
@@ -38,55 +39,45 @@ def test_fbMarkerHasHashes_false_when_not_a_dict():
     assert not hashStaleness.fbMarkerHasHashes("not-a-dict")
 
 
-def test_fsetStaleOutputsForStep_empty_when_no_baseline(tmp_path):
+def test_verdicts_empty_when_no_baseline(tmp_path):
     dictMarker = {"dictResults": {"sUnitTest": "passed"}}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), {},
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == set()
 
 
-def test_fsetStaleOutputsForStep_returns_mismatched_files(tmp_path):
+def test_verdicts_return_mismatched_files(tmp_path):
     _fsWrite(str(tmp_path), "step1/f.csv", "current")
-    dictCache = {}
     dictMarker = {
         "dictOutputHashes": {
             "step1/f.csv": "0" * 40,
         },
     }
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), dictCache,
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == {"step1/f.csv"}
 
 
-def test_fsetStaleOutputsForStep_clean_when_hashes_match(tmp_path):
+def test_verdicts_clean_when_hashes_match(tmp_path):
+    """The host helper's digest and the snapshot's are the same digest."""
     _fsWrite(str(tmp_path), "step1/f.csv", "content")
-    dictCache = {}
     sSha = mtimeCache.fsBlobShaForFile(
-        str(tmp_path), "step1/f.csv", dictCache,
+        str(tmp_path), "step1/f.csv", {},
     )
     dictMarker = {"dictOutputHashes": {"step1/f.csv": sSha}}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), dictCache,
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == set()
 
 
-def test_fsetStaleOutputsForStep_missing_files_marked_stale(tmp_path):
+def test_verdicts_missing_files_marked_stale(tmp_path):
     dictMarker = {"dictOutputHashes": {"step1/ghost.csv": "a" * 40}}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), {},
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == {"step1/ghost.csv"}
 
 
-def test_fsetStaleOutputsForStep_mixed_results(tmp_path):
+def test_verdicts_mixed_results(tmp_path):
     _fsWrite(str(tmp_path), "step1/clean.csv", "clean")
     _fsWrite(str(tmp_path), "step1/dirty.csv", "dirty")
-    dictCache = {}
     sCleanSha = mtimeCache.fsBlobShaForFile(
-        str(tmp_path), "step1/clean.csv", dictCache,
+        str(tmp_path), "step1/clean.csv", {},
     )
     dictMarker = {
         "dictOutputHashes": {
@@ -95,7 +86,5 @@ def test_fsetStaleOutputsForStep_mixed_results(tmp_path):
             "step1/ghost.csv": "f" * 40,
         },
     }
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), dictCache,
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == {"step1/dirty.csv", "step1/ghost.csv"}

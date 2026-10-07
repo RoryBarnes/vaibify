@@ -136,7 +136,7 @@ class _FakeFilesAnswering:
 
     def __init__(self, sSha256, listKey):
         self._dictEntry = {
-            "sSha256": sSha256, "listStatKey": listKey,
+            "sSha256": sSha256, "sBlobSha": "bb", "listStatKey": listKey,
             "sSymlinkSegment": None, "bEscapesRoot": False,
         }
 
@@ -147,7 +147,7 @@ class _FakeFilesAnswering:
 def test_persist_only_runs_on_update():
     """An identical sha and stat key should not trigger a write."""
     dictCache = {"out/a.dat": {
-        "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
+        "listStatKey": [1, 2, 3, 4], "sSha256": "aa", "sBlobSha": "bb"}}
     bChanged = pipelineRoutes._fbUpdateShaCache(
         dictCache, _FakeFilesAnswering("aa", [1, 2, 3, 4]),
     )
@@ -157,10 +157,10 @@ def test_persist_only_runs_on_update():
 def test_persist_runs_when_sha_changes():
     """A fresh sha or key advances the cache and signals persistence."""
     dictCache = {"out/a.dat": {
-        "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
+        "listStatKey": [1, 2, 3, 4], "sSha256": "aa", "sBlobSha": "bb"}}
     bChanged = pipelineRoutes._fbUpdateShaCache(
         dictCache, _FakeFilesAnswering("bb", [1, 2, 3, 5]),
     )
     assert bChanged is True
     assert dictCache["out/a.dat"] == {
-        "listStatKey": [1, 2, 3, 5], "sSha256": "bb"}
+        "listStatKey": [1, 2, 3, 5], "sSha256": "bb", "sBlobSha": "bb"}

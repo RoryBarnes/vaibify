@@ -423,6 +423,19 @@ the **Last run** line below the Run Step button; the modification
 times of the step's data and plot files are shown beside their
 sections.
 
+A **Passed** badge is a claim about files. Every poll compares the
+content digests recorded by the last test run with the files as the
+container holds them, hashed inside the container. When that comparison
+could not be made — the container's answer was missing, a file changed
+while it was being read, or the snapshot itself failed — nothing is
+marked stale and no test result is invalidated, but the badge reads
+**? Passed, couldn't check freshness** rather than Passed, the step's
+Level 1 requirement rows for its tests read unknown, the Level 1 cell
+cannot be attained, and the ⚠ column explains why. It is not a failure.
+Click the badge to run a diagnosis. The condition is recomputed on every
+poll and is never saved, so it clears by itself as soon as a poll can
+answer.
+
 The expanded quantitative-tests block additionally carries a
 **Falsification** row with a **Check test teeth** button. It
 mutation-tests the step's own Python code against its quantitative

@@ -93,13 +93,13 @@ def test_marker_has_hashes(dictMarker, bExpected):
     assert hashStaleness.fbMarkerHasHashes(dictMarker) is bExpected
 
 
-def test_stale_outputs_for_step_empty_without_hashes():
-    assert hashStaleness.fsetStaleOutputsForStep(
-        {"dictOutputHashes": {}}, "/root", {},
-    ) == set()
+def test_verdicts_empty_without_hashes():
+    assert hashStaleness.fdictVerdictsForMarker(
+        {"dictOutputHashes": {}}, {},
+    ) == {"listDrifted": [], "listUnknown": []}
 
 
-def test_stale_outputs_for_step_flags_drifted_files(tmp_path):
+def test_verdicts_flag_drifted_files(tmp_path):
     from vaibify.gui import mtimeCache
     (tmp_path / "match.dat").write_text("same\n")
     (tmp_path / "drift.dat").write_text("changed\n")
@@ -113,9 +113,8 @@ def test_stale_outputs_for_step_flags_drifted_files(tmp_path):
         "drift.dat": sWrongSha,
         "gone.dat": sWrongSha,
     }}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), {},
-    )
+    from tests.snapshotProgramHarness import fsetDriftedAgainstRealSnapshot
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert "drift.dat" in setStale
     assert "gone.dat" in setStale
     assert "match.dat" not in setStale

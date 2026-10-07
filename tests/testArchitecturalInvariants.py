@@ -2798,11 +2798,14 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         "save": _fnSave,
         "dictPreviousModTimes": {"cid": {sLivePath: sMtime}},
     }
+    from tests.snapshotProgramHarness import (
+        fdictHashStaleFromRealSnapshot,
+    )
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     for sKey in (
@@ -5156,7 +5159,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the pinned-input counts.
     # 4057 -> 4066 (2026-09-30): the poll maps markers by the step dict
     # the fetch returns, and names its namespace from the loaded file.
-    "routes/pipelineRoutes.py": 4066,
+    # 4066 -> 4094 (2026-10-07): the poll judges each test marker
+    # against the snapshot the container hashed instead of opening the
+    # files on the host, so the side-effect block moves after the
+    # snapshot and the unchecked-freshness verdict travels to the level
+    # gates. The host-side mtime-cache helpers it replaces are deleted.
+    "routes/pipelineRoutes.py": 4094,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

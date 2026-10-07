@@ -1586,7 +1586,6 @@ _LIST_EMPTY_DICT_POLL_PATCH_NAMES = [
     "fdictHandleCollectMarkerPathsByStep",
     "_fdictDetectAndInvalidate",
     "_fdictLoadMarkersForPoll",
-    "_fdictLoadMtimeCacheForPoll",
     "_fdictComputeMaxMtimeByStep",
     "_fdictComputeMaxPlotMtimeByStep",
     "_fdictComputeMaxDataMtimeByStep",
