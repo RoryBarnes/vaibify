@@ -162,7 +162,9 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # classified.
 # 277 -> 276 (2026-10-05): the poll's test markers are read through one
 # batched typed read, and the per-marker read it replaced is gone.
-I_UNCLASSIFIED_ROW_BUDGET = 276
+# 276 -> 275 (2026-10-06): the download route moved to downloadRoutes and
+# its one unclassified stream row became two classified confined reads.
+I_UNCLASSIFIED_ROW_BUDGET = 275
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -400,7 +402,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 276
 # row for creating a directory (a dropped folder recreates its empty
 # directories). It forwards to a gateway method that delegates to the tree
 # receiver, which asserts the write admission and walks with O_NOFOLLOW.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 225
+# 225 -> 227 (2026-10-06): the streamed upload route's two call sites, each
+# classified at birth under the lock-held carrier -- the copy of a spooled
+# file into place (journal kind file-write, both hashes recorded) and the
+# creation of a dropped folder. Nothing the carrier does not already admit.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
 
 
 # Every acquisition of a declared capability that still has no reviewed

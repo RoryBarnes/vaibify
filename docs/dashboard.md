@@ -120,6 +120,36 @@ see [Agent actions](#agent-actions) below.
 
 The Viewing Windows above the terminal strip display plots and ASCII text files in the container. Supported formats include PDF, PNG, SVG, and JPG. In Project mode, the log is displayed in a window.
 
+## Moving files in and out
+
+**Into a project.** Drag files, or whole folders, from your computer onto
+the **Files** tab. Drop onto the drop zone to upload into the folder you
+are viewing, or onto a folder row to upload into that folder. A dropped
+folder is recreated with its subfolders and its empty folders; any
+`.git` or `.vaibify` folders inside it are left out and counted in the
+summary. A file of the same name is only replaced after you confirm it,
+and a name that appeared while the upload was running is reported rather
+than overwritten.
+
+There is no fixed size limit: the limit is the space the disks have. Vaibify
+checks there is room, and says which disk is short, before it sends the first
+byte. That is an upfront check, not a promise: a disk that fills while the
+file is being placed stops the upload and leaves the previous file
+untouched. The drop zone is disabled, with the reason, for a folder uploads
+cannot go into (git's own folders, Vaibify's metadata folder, or anywhere
+outside the workspace).
+
+**Out of a project.** Right-click a file and choose **Download to this
+computer**, or a folder and choose **Download as .tar**. Files land in your
+browser's downloads folder, on the computer you are sitting at, whether or
+not Vaibify runs there. A symbolic link inside the project downloads as the
+file it points to; one that points outside the project is refused and the
+message names it. A folder's tar keeps its links as links.
+
+**From the terminal.** `vaibify push` and `vaibify pull` copy the same
+way, and paths inside the project may be relative. See
+[Shell helpers](install.md#shell-helpers) for TAB completion.
+
 ## Opening the container in VS Code
 
 **View > Open in VS Code** opens the running container in a **new** VS Code window, so the window you already have, and any unsaved files in it, are left alone. It needs the Dev Containers extension. The button is hidden in a remote session, because the link names a container that exists only on the remote machine's Docker daemon.

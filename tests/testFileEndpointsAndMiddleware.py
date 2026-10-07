@@ -100,6 +100,11 @@ class MockDockerTransfer:
         for iOffset in range(0, len(baBytes), iChunkSizeBytes):
             yield baBytes[iOffset:iOffset + iChunkSizeBytes]
 
+    def fiterReadFileConfined(
+        self, sContainerId, sPath, sAuthorizedRoot=None,
+    ):
+        yield from self.fiterStreamFile(sContainerId, sPath)
+
     def fnWriteFile(self, sContainerId, sPath, baContent,
                     iMode=None, iUid=None, iGid=None,
                     sAuthorizedRoot=None, tForbiddenNames=()):
@@ -527,7 +532,9 @@ def test_session_token_via_query_param_on_download(clientHttp):
         f"/api/files/{S_CONTAINER_ID}/download/"
         "workspace/stepA/output.dat",
     )
-    assert responseOwner.status_code in (200, 500)
+    # Past the lease gate and into the handler; the fixture holds no such
+    # file, which a missing path now answers as 404 rather than a 500.
+    assert responseOwner.status_code in (200, 404)
 
 
 def test_session_token_query_param_rejected_non_download(clientHttp):

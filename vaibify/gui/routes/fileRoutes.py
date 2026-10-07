@@ -5,10 +5,8 @@ __all__ = ["fnRegisterAll"]
 import hashlib
 import os
 import posixpath
-from urllib.parse import quote
 
 from fastapi import HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 
@@ -395,102 +393,6 @@ def _fnCommitUploadedFile(
             "sPriorSha256": sPriorSha256,
         },
     )
-
-
-def _ftProbeFirstChunk(connectionDocker, sContainerId, sAbsPath):
-    """Open the streaming iterator and pull the first chunk eagerly.
-
-    docker-py raises ``NotFound`` / ``APIError`` from
-    ``container.get_archive`` synchronously; that error must surface as
-    HTTP 500 *before* the StreamingResponse starts writing, otherwise
-    FastAPI has already committed the 200 status and the client sees a
-    truncated body instead of an error. Pulling one chunk here forces
-    the iterator to materialise the get_archive call.
-    """
-    iterChunks = connectionDocker.fiterStreamFile(
-        sContainerId, sAbsPath,
-    )
-    try:
-        baFirst = next(iterChunks)
-    except StopIteration:
-        baFirst = b""
-    return baFirst, iterChunks
-
-
-async def _ftIterStreamOrRaiseHttp(
-    connectionDocker, sContainerId, sAbsPath,
-):
-    """Begin streaming the file via a worker thread; map errors to HTTP 500."""
-    import asyncio
-    try:
-        return await asyncio.to_thread(
-            _ftProbeFirstChunk,
-            connectionDocker, sContainerId, sAbsPath,
-        )
-    except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error))
-
-
-def _fiterReplayThenRest(baFirst, iterChunks):
-    """Re-yield ``baFirst`` then drain ``iterChunks`` for StreamingResponse."""
-    if baFirst:
-        yield baFirst
-    yield from iterChunks
-
-
-def fsBuildContentDisposition(sFilename):
-    """Return an attachment header safe for any filename (RFC 6266).
-
-    HTTP header values are Latin-1, so the quoted form carries an ASCII
-    fallback with the quote and backslash escaped, and the exact name
-    travels percent-encoded in the ``filename*`` parameter.
-    """
-    sFallback = "".join(
-        sCharacter if 32 <= ord(sCharacter) < 127 else "_"
-        for sCharacter in sFilename
-    ).replace("\\", "\\\\").replace('"', '\\"')
-    return (
-        f'attachment; filename="{sFallback}"; '
-        f"filename*=UTF-8''{quote(sFilename, safe='')}"
-    )
-
-
-def _fresponseStreamDownload(iterBytes, sAbsPath):
-    """Wrap a byte iterator as an attachment StreamingResponse."""
-    sFilename = posixpath.basename(sAbsPath)
-    return StreamingResponse(
-        iterBytes,
-        media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": fsBuildContentDisposition(sFilename),
-        },
-    )
-
-
-def _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot):
-    """Register GET /api/files/{id}/download."""
-
-    @app.get(
-        "/api/files/{sContainerId}/download/{sFilePath:path}"
-    )
-    async def fresponseDownloadFile(
-        sContainerId: str, sFilePath: str
-    ):
-        dictCtx["require"](sContainerId)
-        sProjectRoot = projectRoots.fsResolveProjectRoot(
-            sContainerId, sWorkspaceRoot,
-        )
-        sAbsPath = fsResolveFigurePath(
-            dictCtx["workflowDir"](sContainerId), sFilePath,
-            sProjectRoot,
-        )
-        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)
-        baFirst, iterChunks = await _ftIterStreamOrRaiseHttp(
-            dictCtx["docker"], sContainerId, sAbsPath,
-        )
-        return _fresponseStreamDownload(
-            _fiterReplayThenRest(baFirst, iterChunks), sAbsPath,
-        )
 
 
 S_AGENT_EXPORT_DIRECTORY = os.path.join("~", ".vaibify", "exports")
@@ -1000,7 +902,6 @@ def fnRegisterAll(app, dictCtx, sWorkspaceRoot):
     and the batched existence endpoint must be registered before the
     catch-all directory listing route to prevent incorrect matching.
     """
-    _fnRegisterFileDownload(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFilePull(app, dictCtx, sWorkspaceRoot)
     _fnRegisterFileUpload(app, dictCtx, sWorkspaceRoot)
     _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot)

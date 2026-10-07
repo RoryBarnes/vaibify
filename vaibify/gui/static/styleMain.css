@@ -5112,6 +5112,113 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     background: rgba(19, 174, 213, 0.05);
 }
 
+.file-drop-zone-label,
+.file-drop-zone-verdict {
+    display: block;
+}
+
+.file-drop-zone-verdict {
+    margin-top: 4px;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.file-drop-zone--refused {
+    border-color: var(--color-red);
+    color: var(--color-red-text);
+    cursor: not-allowed;
+}
+
+.file-item.drop-target {
+    background: rgba(19, 174, 213, 0.18);
+    outline: 1px dashed var(--highlight-color);
+    outline-offset: -1px;
+}
+
+.file-item .file-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-download-button {
+    flex-shrink: 0;
+    opacity: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 6px;
+}
+
+.file-item:hover .file-download-button,
+.file-item:focus-within .file-download-button,
+.file-download-button:focus {
+    opacity: 1;
+}
+
+.file-download-button:hover,
+.file-download-button:focus {
+    border-color: var(--highlight-color);
+    color: var(--highlight-color);
+    outline: none;
+}
+
+.file-upload-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.file-upload-status[hidden],
+.file-upload-summary[hidden] {
+    display: none;
+}
+
+.file-upload-progress-label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.file-upload-summary {
+    margin: 4px 8px 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 12px;
+    line-height: 1.4;
+    max-height: 10em;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+}
+
+.file-upload-summary--problem {
+    border-color: var(--color-orange);
+}
+
+.file-upload-summary-headline {
+    font-weight: 600;
+}
+
+.file-upload-summary-heading {
+    margin-top: 6px;
+    color: var(--text-secondary);
+}
+
+.file-upload-summary ul {
+    margin: 2px 0 0;
+    padding-left: 18px;
+}
+
+.file-upload-dismiss {
+    margin-top: 6px;
+}
+
 /* --- Pull to host directory picker --- */
 
 .pull-dir-entry {

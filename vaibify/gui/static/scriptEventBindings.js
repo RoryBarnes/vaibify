@@ -1273,8 +1273,7 @@ var VaibifyEventBindings = (function () {
                             "active", sPanel === "proof");
                     }
                     if (sPanel === "files") {
-                        VaibifyFiles.fnLoadDirectory(
-                            VaibifyApp.fsGetWorkspaceRoot());
+                        VaibifyFiles.fnOpenPanel();
                     } else if (sPanel === "logs") {
                         VaibifyApp.fnLoadLogs();
                     } else if (sPanel === "repos") {
