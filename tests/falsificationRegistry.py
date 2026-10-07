@@ -28834,4 +28834,14 @@ def _fdictEntry(sRel):
         old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
         new='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
     ),
+    # Swallow the locked tile's click so it never explains itself.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALockedTileExplainsOnClick.py::'
+            'testClickingALockedTileNamesTheHolderAndTheRemedy'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
+        new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
 ]
