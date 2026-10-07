@@ -29315,4 +29315,14 @@ def _fdictEntry(sRel):
         old='        with fcontextLimitWallClockTime(I_COMPLETION_TIME_LIMIT_SECONDS):\n            return _flistCompleteForProject(configProject, sSide, sPartial)\n',
         new='        return _flistCompleteForProject(configProject, sSide, sPartial)\n',
     ),
+    # Swallow the locked tile's click so it never explains itself.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALockedTileExplainsOnClick.py::'
+            'testClickingALockedTileNamesTheHolderAndTheRemedy'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
+        new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
 ]

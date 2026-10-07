@@ -655,8 +655,11 @@ html, body {
     cursor: not-allowed;
 }
 
+/* The click must still land: fnHandleContainerClick answers a locked
+   tile with the reason and the remedy. Swallowing pointer events here
+   left the researcher a grey tile that explained nothing. */
 .container-tile--locked .container-tile-main {
-    pointer-events: none;
+    cursor: not-allowed;
 }
 
 .container-tile--locked .container-tile-actions,
