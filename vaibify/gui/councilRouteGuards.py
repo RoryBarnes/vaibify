@@ -63,6 +63,13 @@ S_COUNCIL_CAPABILITY = "Convening a council"
 # response, a rejection reason, an ask-the-chairbot message.
 I_MAX_RESPONSE_LENGTH = 20000
 
+# Said when the container itself could not be read, so no adapter had a
+# login to describe. Deliberately free of the daemon's own words, which
+# are the Docker boundary's to translate, not this probe's.
+S_LOGIN_UNREADABLE_PROBLEM = (
+    "the project container could not be read to look for a login — "
+    "check that it is running")
+
 
 def fdictCampaignStore(requestHttp):
     """Return the app-owned campaign store from ``app.state``."""
@@ -420,30 +427,38 @@ def ffnBuildImageResolver(dictCtx, sContainerId):
 
 
 def fdictReadProjectLoginState(dictCtx, sContainerId, sProvider="claude"):
-    """Return whether this project holds a copyable login, and its expiry.
+    """Return whether this project holds a copyable login, why not, and its expiry.
 
-    One read answers both, so the capabilities poll never fetches a login
-    twice. ``iExpiresAtEpochMilliseconds`` is the ABSOLUTE timestamp,
-    never a remaining duration, so the convene form computes the life
-    left at the moment it renders; 0 means "this cannot be said" — a
-    login with no stated expiry is still a login. ``bHasLogin`` is what
-    readiness asks: is there anything a consent modal could offer?
+    One read answers all three, so the capabilities poll never fetches a
+    login twice. ``iExpiresAtEpochMilliseconds`` is the ABSOLUTE
+    timestamp, never a remaining duration, so the convene form computes
+    the life left at the moment it renders; 0 means "this cannot be
+    said" — a login with no stated expiry is still a login.
+    ``bHasLogin`` is what readiness asks: is there anything a consent
+    modal could offer? ``sLoginProblem`` is the reviewed adapter's own
+    sentence for why not — a missing file, an unreadable one and a lapsed
+    token are three different remedies, and a boolean alone made every
+    one of them read "no provider is logged in".
 
     Never a downgrade of availability, and never the refusal. An
     unreadable, missing or lapsed login answers ``bHasLogin`` False and
     :func:`fnRefuseStartWithoutAProjectLogin` remains the single
     authority that refuses a launch. The credential is discarded here;
-    only the boolean and the timestamp return.
+    only the boolean, the sentence and the timestamp return.
     """
     from . import agentCouncilProviders
     try:
         dictCredential = _fdictExtractProjectCredential(
             dictCtx, sContainerId, sProvider)
-    except (agentCouncilProviders.RunnerCredentialError,
-            OSError, ValueError, KeyError):
-        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0}
+    except agentCouncilProviders.RunnerCredentialError as errorCredential:
+        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,
+                "sLoginProblem": str(errorCredential)}
+    except (OSError, ValueError, KeyError):
+        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,
+                "sLoginProblem": S_LOGIN_UNREADABLE_PROBLEM}
     try:
-        return {"bHasLogin": True, "iExpiresAtEpochMilliseconds":
+        return {"bHasLogin": True, "sLoginProblem": "",
+                "iExpiresAtEpochMilliseconds":
                 int(dictCredential.get("iExpiresAtEpochMilliseconds") or 0)}
     finally:
         dictCredential.clear()

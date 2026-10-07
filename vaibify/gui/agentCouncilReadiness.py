@@ -34,6 +34,8 @@ __all__ = [
     "S_NEEDS_BOTH",
     "S_BLOCKED",
     "SET_BLOCKING_MARKERS",
+    "fsSummarizeLoginProblems",
+    "fsComposeNoLoginReason",
     "fdictComposeCouncilReadiness",
     "fnApplyCouncilReadiness",
 ]
@@ -54,20 +56,46 @@ SET_BLOCKING_MARKERS = frozenset({
     "image-unresolvable",
 })
 
-S_NO_LOGIN_REASON = (
-    "No provider is logged in inside this project's container, so there "
-    "is no login a council could use. Log in from the project's "
-    "terminal first (claude, codex login, or agy), then convene.")
+S_NO_LOGIN_HEADLINE = (
+    "No login a council can copy was found in this project's container.")
+S_NO_LOGIN_REMEDY = (
+    "Log in from the project's terminal first (claude, codex login, or "
+    "agy), then convene.")
+
+
+def fsSummarizeLoginProblems(listProviders):
+    """Return each provider's own reason it has no copyable login.
+
+    The sentences are the reviewed adapters', carried on the
+    capabilities answer; nothing here decides WHY a login is unusable.
+    A missing file, an unreadable one and a lapsed token have different
+    remedies, so the reason names which, provider by provider.
+    """
+    return " ".join(
+        f"{dictProvider['sProvider']}: "
+        f"{dictProvider['sLoginProblem'].rstrip('.')}."
+        for dictProvider in listProviders
+        if dictProvider.get("sLoginProblem"))
+
+
+def fsComposeNoLoginReason(sLoginProblems):
+    """Return the blocked-button explanation for a project with no login."""
+    return " ".join(
+        sSentence for sSentence in (
+            S_NO_LOGIN_HEADLINE, sLoginProblems, S_NO_LOGIN_REMEDY)
+        if sSentence)
 
 
 def fdictComposeCouncilReadiness(bCredentialAuthorized, bAnyProviderHasLogin,
                                  bNeedsSnapshotChoice, sBlockingMarker,
-                                 sBlockingReason):
+                                 sBlockingReason, sLoginProblems=""):
     """Return ``{"sCouncilReadiness", "sReadinessReason"}`` from the facts.
 
-    Pure: the five inputs are everything the table above depends on.
+    Pure: the six inputs are everything the table above depends on.
     A blocking marker wins over every need, because a researcher who
     consented and chose a scope would still meet the same wall at start.
+    ``sLoginProblems`` only words the no-login wall; it never decides
+    whether there is one.
     """
     if sBlockingMarker:
         return {"sCouncilReadiness": S_BLOCKED,
@@ -75,7 +103,7 @@ def fdictComposeCouncilReadiness(bCredentialAuthorized, bAnyProviderHasLogin,
     bNeedsCredentialTest = not bCredentialAuthorized
     if bNeedsCredentialTest and not bAnyProviderHasLogin:
         return {"sCouncilReadiness": S_BLOCKED,
-                "sReadinessReason": S_NO_LOGIN_REASON}
+                "sReadinessReason": fsComposeNoLoginReason(sLoginProblems)}
     if bNeedsCredentialTest and bNeedsSnapshotChoice:
         sState = S_NEEDS_BOTH
     elif bNeedsCredentialTest:
@@ -96,12 +124,14 @@ def fnApplyCouncilReadiness(dictCapabilities, bCredentialAuthorized):
     """
     sMarker = dictCapabilities.get("sUnavailableIn", "")
     bBlocking = sMarker in SET_BLOCKING_MARKERS
+    listProviders = dictCapabilities.get("listProviders", [])
     dictCapabilities.update(fdictComposeCouncilReadiness(
         bCredentialAuthorized,
         any(dictProvider.get("bHasProjectLogin")
-            for dictProvider in dictCapabilities.get("listProviders", [])),
+            for dictProvider in listProviders),
         bool(dictCapabilities.get("bNeedsSnapshotChoice")),
         sMarker if bBlocking else "",
-        dictCapabilities.get("sReason", "") if bBlocking else ""))
+        dictCapabilities.get("sReason", "") if bBlocking else "",
+        fsSummarizeLoginProblems(listProviders)))
     dictCapabilities["bAvailable"] = (
         dictCapabilities["sCouncilReadiness"] == S_READY)
