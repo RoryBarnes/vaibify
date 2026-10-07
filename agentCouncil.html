@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.0.14.dev410 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.0.14.dev415 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=1dfc1e84"></script>
+      <script src="_static/documentation_options.js?v=45f5803a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -182,6 +182,14 @@ project container. The council provider name is <code class="docutils literal no
 use the separate Gemini CLI feature. If Antigravity reports an expired
 login, <code class="docutils literal notranslate"><span class="pre">agy</span> <span class="pre">models</span></code> refreshes the project credential without giving a
 council runner the refresh token.</p>
+<p>The council reads the login from the project container’s workspace
+volume, never from the computer running the dashboard, so a login on
+the host does not count. One provider with a usable login is enough to
+open the council; each provider you name as a participant needs its own.
+When the <strong>Agent Council</strong> button reports that no login was found, it
+says why for each provider (no login file at the path it looked at, a
+file it could not read, or a token that has lapsed). Clicking the button
+re-checks, so there is no need to reload after logging in.</p>
 <ol class="arabic simple">
 <li><p>Open a containerized project in the dashboard.</p></li>
 <li><p>Click <strong>Agent Council</strong> in the toolbar (between the project name and
