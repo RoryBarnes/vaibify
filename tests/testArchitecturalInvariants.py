@@ -5999,7 +5999,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # plan -- where a deposit can go and which is recommended.
     # 3671 -> 3770 (2026-10-04): measured after merging the agent-free
     # environment archive branch into main; both sides' growth.
-    "pipelineServer.py": 3770,
+    # 3770 -> 3771 (2026-10-06): one registration line for uploadRoutes.
+    # 3771 -> 3772 (2026-10-06): one registration line for downloadRoutes.
+    "pipelineServer.py": 3772,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -7079,7 +7081,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # it decides where a permanent DOI is minted).
     # 1440 -> 1462 (2026-10-04): measured after merging the agent-free
     # environment archive branch into main; both sides' growth.
-    "actionCatalog.py": 1462,
+    # 1462 -> 1475 (2026-10-06): the streamed upload's catalog entry,
+    # declared not agent-safe, with the reason beside it.
+    "actionCatalog.py": 1475,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7574,7 +7578,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1076 -> 1145 (2026-10-05): the container authority names its refusal
     # (claim-required, hub only) and logs each one; both belong with the
     # verdict.
-    "routeScope.py": 1145,
+    # 1145 -> 1150 (2026-10-06): the Files tab's free-space verdict GET
+    # joins the container-read allowlist, with why it is a read.
+    "routeScope.py": 1150,
 }
 
 

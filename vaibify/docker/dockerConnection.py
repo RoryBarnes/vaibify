@@ -572,6 +572,7 @@ S_TYPED_READ_RESOLVE_HOSTNAME = "resolveHostname"
 # unreadable, so a file owned by some third uid survives exactly the
 # restart a naive finding would recommend.
 S_TYPED_READ_FOREIGN_OWNED_PATHS = "foreignOwnedPaths"
+S_TYPED_READ_ORPHANED_WRITE_TEMPORARIES = "orphanedWriteTemporaries"
 S_TYPED_READ_TCP_HANDSHAKE = "probeTcpHandshake"
 
 S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
@@ -627,6 +628,44 @@ _DICT_TYPED_READ_PROGRAMS = {
         "except Exception as errorLookup:\n"
         "    dictAnswer['sError'] = (type(errorLookup).__name__ + ': '\n"
         "                            + str(errorLookup))\n"
+        "sys.stdout.write(json.dumps(dictAnswer))\n"
+    ),
+    # The private names the confined writer gives a file while it is
+    # being written (``.vaibify-write-<hex>``). It renames or removes
+    # one in every outcome but a kill, so one that is still there is a
+    # crashed write's partial bytes -- which can be gigabytes. Bounded
+    # in the paths named and the files visited, and it never descends
+    # into ``.git``.
+    S_TYPED_READ_ORPHANED_WRITE_TEMPORARIES: (
+        "import json,os,sys,time\n"
+        "listArgs = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "sRoot = listArgs[0]\n"
+        "iMaxNamed = int(listArgs[1])\n"
+        "iMaxVisits = int(listArgs[2])\n"
+        "dictAnswer = {'listFiles': [], 'bTruncated': False}\n"
+        "iVisited = 0\n"
+        "fNow = time.time()\n"
+        "for sDirectory, listDirNames, listFileNames in os.walk(sRoot):\n"
+        "    if '.git' in listDirNames:\n"
+        "        listDirNames.remove('.git')\n"
+        "    for sName in listFileNames:\n"
+        "        iVisited += 1\n"
+        "        if iVisited > iMaxVisits:\n"
+        "            dictAnswer['bTruncated'] = True\n"
+        "            break\n"
+        "        if not sName.startswith('.vaibify-write-'):\n"
+        "            continue\n"
+        "        sPath = os.path.join(sDirectory, sName)\n"
+        "        try:\n"
+        "            statFile = os.lstat(sPath)\n"
+        "        except OSError:\n"
+        "            continue\n"
+        "        if len(dictAnswer['listFiles']) < iMaxNamed:\n"
+        "            dictAnswer['listFiles'].append({\n"
+        "                'sPath': sPath, 'iBytes': statFile.st_size,\n"
+        "                'fAgeSeconds': fNow - statFile.st_mtime})\n"
+        "    if dictAnswer['bTruncated']:\n"
+        "        break\n"
         "sys.stdout.write(json.dumps(dictAnswer))\n"
     ),
     S_TYPED_READ_FOREIGN_OWNED_PATHS: (
@@ -2109,6 +2148,20 @@ class DockerConnection:
                 str(sRootPath), str(int(iExpectedUid)),
                 str(int(iMaxNamed)), str(int(iMaxVisits)),
             ],
+        ))
+
+    def fdictFindOrphanedWriteTemporaries(
+        self, sContainerId, sRootPath, iMaxNamed=20, iMaxVisits=200000,
+    ):
+        """List the confined writer's temporaries a crash left behind.
+
+        Reported, never deleted: whether the partial bytes in one are
+        worth keeping is the researcher's call, and the program that left
+        it is gone. ``bAnswered`` False means the walk could not run.
+        """
+        return _fdictDecodeProbeAnswer(self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_ORPHANED_WRITE_TEMPORARIES,
+            [str(sRootPath), str(int(iMaxNamed)), str(int(iMaxVisits))],
         ))
 
     def fbaFetchFile(

@@ -503,6 +503,7 @@ def testTheCliStillUsesDockerCpForAContainerProject(
         cliMain, "fconfigResolveProject",
         lambda sName: type("Config", (), {
             "sProjectName": "credentialContainerProject",
+            "sWorkspaceRoot": "/workspace",
         })(),
     )
     tResult = _fnRunCliCommand(

@@ -254,6 +254,7 @@ def _fnRegisterHubLockLifecycle(app):
     """Reap stale claims at startup; release held locks at shutdown."""
     _fnRegisterHubStartupReapStaleClaims(app)
     _fnRegisterHubStartupSweepHostScratch(app)
+    _fnRegisterHubStartupSweepAbandonedSpools(app)
     _fnRegisterHubShutdownReleaseLocks(app)
 
 
@@ -273,6 +274,21 @@ def _fnRegisterHubStartupSweepHostScratch(app):
         from vaibify.host.hostScratch import fnSweepStaleHostScratch
         fnSweepStaleHostScratch()
     app.state.listLifespanStartup.append(fnSweepHostScratch)
+
+
+def _fnRegisterHubStartupSweepAbandonedSpools(app):
+    """Delete upload spools a crashed hub left behind, before serving.
+
+    A ``finally`` does not survive a crash. The owner is read from each
+    spool's name, so a second hub starting beside a live one leaves the
+    live one's spool alone.
+    """
+
+    async def fnSweepSpools(app):
+        del app
+        from .uploadStaging import fiSweepAbandonedSpools
+        fiSweepAbandonedSpools()
+    app.state.listLifespanStartup.append(fnSweepSpools)
 
 
 def _fnRegisterHubStartupReapStaleClaims(app):

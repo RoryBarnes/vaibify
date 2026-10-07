@@ -286,6 +286,9 @@ def _runDoctor(saArgs, listShared=None, listBuild=None, listStart=None):
     ), patch(
         "vaibify.cli.commandDoctor._flistInterpreterChecks",
         return_value=[],
+    ), patch(
+        "vaibify.cli.commandDoctor._flistLoginShellChecks",
+        return_value=[],
     ), contextScope[0] as mockBuild, contextScope[1] as mockStart:
         result = CliRunner().invoke(fnDoctorCommand, saArgs)
     return result, mockBuild, mockStart
@@ -486,6 +489,8 @@ def test_doctor_runs_environment_checks_without_any_project():
         return_value=[_fresultOk("docker-daemon")],
     ), patch.object(
         commandDoctor, "_flistInterpreterChecks", return_value=[],
+    ), patch.object(
+        commandDoctor, "_flistLoginShellChecks", return_value=[],
     ):
         result = CliRunner().invoke(fnDoctorCommand, [])
     assert result.exit_code == 0, result.output

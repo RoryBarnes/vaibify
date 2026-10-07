@@ -9301,10 +9301,9 @@ def _fdictEntry(sRel):
             '        )\n'
         ),
         new='        sProjectRoot = sWorkspaceRoot\n',
-        # Two copies since the download route began resolving the root
-        # before it resolves the path, rather than after. "The guard is
-        # gone" means both, or the surviving copy scores the mutation.
-        iExpectedOccurrences=2,
+        # One copy since the download route moved to downloadRoutes.py
+        # (2026-10-06); its own copy is killed by
+        # tests/testDownloadRoutes.py.
     ),
     Falsification(
         nodeid=(
@@ -9326,7 +9325,6 @@ def _fdictEntry(sRel):
             '            sContainerId) or {}).get('
             '"sDirectory", sWorkspaceRoot)\n'
         ),
-        iExpectedOccurrences=2,
     ),
     Falsification(
         nodeid=(
@@ -11166,70 +11164,10 @@ def _fdictEntry(sRel):
             '    )\n'
         ),
         new=(
-            '    _fnRunDockerCp(\n'
+            '    import subprocess\n'
+            '    subprocess.run(\n'
             '        ["docker", "cp", sHostSource,\n'
             '         f"{sProjectName}:{sContainerDest}"])\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testShellCompletionWiring.py::'
-            'testTheBashScriptRunsUnderTheBashMacOsShips'
-        ),
-        source='vaibify/completions/vaibify.bash',
-        # Use mapfile again -- a bash 4 builtin absent from the bash
-        # macOS ships as /bin/bash. Inside a completion function it
-        # fails silently, so container-path completion offers nothing
-        # and reports nothing, which is how it stayed broken.
-        old=(
-            '    local daMatches=()\n'
-            '    local sMatch\n'
-            '    while IFS= read -r sMatch; do\n'
-            '        daMatches+=("${sMatch}")\n'
-            '    done < <(_fnListContainerPaths "${sCurrent}" '
-            '"${VC_NAME}" "${VC_WORKSPACE}")\n'
-        ),
-        new=(
-            '    local daMatches\n'
-            '    mapfile -t daMatches < <(_fnListContainerPaths '
-            '"${sCurrent}" "${VC_NAME}" "${VC_WORKSPACE}")\n'
-        ),
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testShellCompletionWiring.py::'
-            'testPushCompletesContainerPathsOnlyForItsDestination'
-        ),
-        source='vaibify/completions/vaibify.bash',
-        # Drop the push/pull case out of the vaibify completer, which
-        # is the state `vaibify push <TAB>` actually shipped in: the
-        # argument completers existed and nothing reached them.
-        old=(
-            '    local sSubcommand="${COMP_WORDS[1]}"\n'
-            '    if [[ "${sSubcommand}" == "push" || '
-            '"${sSubcommand}" == "pull" ]]; then\n'
-            '        _fnCompleteTransferArgument "${sSubcommand}" 2\n'
-            '        return\n'
-            '    fi\n'
-        ),
-        new='',
-    ),
-    Falsification(
-        nodeid=(
-            'tests/testShellCompletionWiring.py::'
-            'testPullCompletesContainerPathsOnlyForItsSource'
-        ),
-        source='vaibify/completions/vaibify.bash',
-        # Give pull push's position logic: container paths offered for
-        # the HOST destination and local files for the container
-        # source, which is backwards in both arguments.
-        old=(
-            '    if [[ "${sDirection}" == "pull" && '
-            '"${iTypedCount}" -eq 0 ]]; then\n'
-        ),
-        new=(
-            '    if [[ "${sDirection}" == "pull" && '
-            '"${iTypedCount}" -ge 1 ]]; then\n'
         ),
     ),
     Falsification(
@@ -19000,8 +18938,14 @@ def _fdictEntry(sRel):
         ),
         source='vaibify/cli/doctorProjectChecks.py',
         # reports a partial look as a clean bill
-        old="    if dictAnswer.get(\"bTruncated\"):\n",
-        new="    if False:\n",
+        old=(
+            "    if dictAnswer.get(\"bTruncated\"):\n"
+            "        return PreflightResult(\n"
+        ),
+        new=(
+            "    if False:\n"
+            "        return PreflightResult(\n"
+        ),
     ),
     Falsification(
         nodeid=(
@@ -19017,11 +18961,8 @@ def _fdictEntry(sRel):
             '        connectionDocker, sContainerName, '
             'config.sWorkspaceRoot,\n'
             '    ))\n'
-            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
         ),
-        new=(
-            '    sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath('
-        ),
+        new='',
     ),
     Falsification(
         nodeid=(
@@ -24791,6 +24732,306 @@ def _fdictEntry(sRel):
         old='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                os.fchmod(iDescriptor, iEffectiveMode)\n',
         new='            with os.fdopen(iDescriptor, "wb") as fileStaged:\n                pass\n',
     ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testADropAtTheWorkspaceRootLandsUnderALockHeldAdmission',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    dictOutcome = await commitCarrier.fdictRunLockHeldMutation(\n        requestHttp.app.state, dictLaneTuple["sContainerName"],\n        sContainerId, dictLaneTuple, "file-write", sTarget,\n        _ffnBuildUploadWorker(\n            dictCtx, sContainerId, dictSpool, sTarget, bReplaceAllowed,\n            sWritableRoot, bCreateParents, sPriorSha256),\n        dictHolderIdentity=dictIdentity,\n    )\n    dictCarried = dictOutcome["result"]\n',
+        new='    del commitCarrier, dictIdentity\n    dictCarried = _ffnBuildUploadWorker(\n        dictCtx, sContainerId, dictSpool, sTarget, bReplaceAllowed,\n        sWritableRoot, bCreateParents, sPriorSha256)()\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheJournalRecordCarriesBothHashesBeforeTheWrite',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        "sExpectedSha256": dictSpool["hasherContent"].hexdigest(),\n',
+        new='        "sExpectedSha256": "",\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFolderIsCreatedUnderTheDrainAndNeedsNoBody',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    await fgenericRunWorkerUnderTheDrain(\n        sContainerId, fdictWorker, S_UPLOAD_FOLDER_OPERATION, requestHttp)\n',
+        new='    fdictWorker()\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testHostileTargetsAreRefusedBeforeAnyByteIsRead',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        uploadStaging.fnRequireUploadAllowed(sTarget, sWritableRoot)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAnUnconfirmedOverwriteIsRefusedAndTheOldBytesStay',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='                bReplaceAllowed=bReplaceAllowed,\n                bCreateParents=bCreateParents,\n',
+        new='                bReplaceAllowed=True,\n                bCreateParents=bCreateParents,\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testABodyThatDisagreesWithItsDeclaredSizeWritesNothing',
+        source='vaibify/gui/uploadStaging.py',
+        old='    if iReceived > iSizeBytes or (bFinished and iReceived != iSizeBytes):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testNoSpaceIsRefusedUpfrontNamingTheShortDisk',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if iBytes < uploadStaging.I_PER_FILE_SPACE_PROBE_MIN_BYTES:\n        return\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFailedWriteLeavesNoSpoolBehind',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='        finally:\n            uploadStaging.fnDiscardSpool(dictSpool)\n',
+        new='        finally:\n            pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFullContainerDiskAnswers507AndTheContainerStaysUsable',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='setAlsoCarriedStatusCodes=frozenset({I_STATUS_NO_SPACE}),',
+        new='setAlsoCarriedStatusCodes=frozenset(),',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFileThatChangedWhileTheUploadQueuedIsNotReplaced',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if not sPriorSha256:\n        return\n',
+        new='    return\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheVerdictRefusesWhatTheUploadWouldRefuseWithItsReason',
+        source='vaibify/gui/uploadStaging.py',
+        old='    sRefusal = fsDescribeUploadRefusal(sDirectory, sWritableRoot)\n',
+        new='    sRefusal = ""\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testTheHubSweepsAbandonedSpoolsBeforeItServes',
+        source='vaibify/gui/appFactory.py',
+        old='    _fnRegisterHubStartupSweepAbandonedSpools(app)\n    _fnRegisterHubShutdownReleaseLocks(app)\n',
+        new='    _fnRegisterHubShutdownReleaseLocks(app)\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testALinkInsideTheProjectDownloadsTheTargetsBytesNotAnEmptyFile',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    for _ in range(I_MAX_LINK_HOPS + 1):\n',
+        new='    for _ in range(1):\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testALinkLeadingOutOfTheProjectIsRefusedNamingIt',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    if isinstance(error, (ContainerReadRefusedError,\n                          HostPathOutsideProjectError)):\n',
+        new='    if isinstance(error, ContainerReadRefusedError):\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testAFolderDownloadsAsATarNamedForIt',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    fiterOpen = (connectionDocker.fiterReadDirectoryAsTar if bFolder\n                 else connectionDocker.fiterReadFileConfined)\n',
+        new='    fiterOpen = connectionDocker.fiterReadFileConfined\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testHeadAnswersWhatAGetWouldWithoutSendingTheBody',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        sAbsPath, _, iterChunks = await _ftOpenDownload(\n            sContainerId, sFilePath, bFolder)\n        await asyncio.to_thread(iterChunks.close)\n',
+        new='        sAbsPath = sFilePath\n',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testHeadClosesTheReadItOpenedInsteadOfLeavingItRunning',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        await asyncio.to_thread(iterChunks.close)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testDownloadRoutes.py::testAnUnreadableProjectRootNeverFallsBackToTheWorkspaceConstant',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        sProjectRoot = projectRoots.fsResolveProjectRoot(\n            sContainerId, sWorkspaceRoot)\n',
+        new='        sProjectRoot = sWorkspaceRoot\n',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAFileNameThatIsNotOnePathComponentIsRefused',
+        source='vaibify/gui/uploadStaging.py',
+        old=' or "/" in sName or bControl',
+        new=' or bControl',
+    ),
+    Falsification(
+        nodeid='tests/testUploadRoutes.py::testAWriteTheContainerRefusesIsA403ThatSaysWhy',
+        source='vaibify/gui/routes/uploadRoutes.py',
+        old='    if isinstance(error, ContainerWriteRefusedError):\n        raise HTTPException(403, str(error))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testAFileDroppedOnTheZoneLandsInTheFolderThatIsOpen',
+        source='vaibify/gui/static/scriptFiles.js',
+        old='            sDestination: elRow ? elRow.dataset.path : sCurrentPath,\n',
+        new='            sDestination: elRow ? elRow.dataset.path : VaibifyApp.fsGetWorkspaceRoot(),\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testAFileDroppedOnAFolderRowLandsInThatFolder',
+        source='vaibify/gui/static/scriptFiles.js',
+        old='            sDestination: elRow ? elRow.dataset.path : sCurrentPath,\n',
+        new='            sDestination: sCurrentPath,\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testAFolderThatTakesNoUploadsSaysWhyAndWritesNothing',
+        source='vaibify/gui/static/scriptFiles.js',
+        old='        elZone.setAttribute("aria-disabled", bRefused ? "true" : "false");\n',
+        new='        elZone.setAttribute("aria-disabled", "false");\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testADroppedFolderIsRecreatedWithItsEmptyFoldersAndWithoutItsGit',
+        source='vaibify/gui/static/scriptFileDropWalker.js',
+        old='    var _LIST_SKIPPED_NAMES = [".git", ".vaibify"];\n',
+        new='    var _LIST_SKIPPED_NAMES = [];\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testOpeningAnotherFolderMidBatchDoesNotRedirectTheFilesStillWaiting',
+        source='vaibify/gui/static/scriptFileUpload.js',
+        old='            sDestination: dictBatch.sDestination,\n            sFilename: dictItem.sFilename,\n',
+        new="            sDestination: document.querySelector('#listFiles .file-item').dataset.path.replace(/\\/[^\\/]*$/, ''),\n            sFilename: dictItem.sFilename,\n",
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testAFileThatAppearedAfterTheListingIsNotReplacedAndSaysSo',
+        source='vaibify/gui/static/scriptFileUpload.js',
+        old='            bReplaceAllowed: dictItem.bReplaceConfirmed,\n',
+        new='            bReplaceAllowed: true,\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testABatchThatCannotFitIsRefusedUpfrontNamingTheDisk',
+        source='vaibify/gui/static/scriptFileUpload.js',
+        old='            "&iTotalBytes=" + dictBatch.iTotalBytes;\n',
+        new='            "&iTotalBytes=0";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabUpload.py::testAHostProjectReceivesAFileAndAFolderOnDisk',
+        source='vaibify/gui/static/scriptFileUpload.js',
+        old='            bDirectory: dictItem.bDirectory,\n        };\n',
+        new='            bDirectory: false,\n        };\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testARowMenuOffersTheActionsByName',
+        source='vaibify/gui/static/scriptFileRowMenu.js',
+        old='                {sLabel: "Download as .tar", fnRun: function () {\n',
+        new='                {sLabel: "Download folder", fnRun: function () {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testAFileDownloadsAsItselfFromTheMenu',
+        source='vaibify/gui/static/scriptFileRowMenu.js',
+        old='            {sLabel: "Download to this computer", fnRun: function () {\n                VaibifyFilePull.fnDownloadToThisComputer(\n                    dictRow.sPath, false);\n            }},\n',
+        new='            {sLabel: "Download to this computer", fnRun: function () {\n            }},\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testAFolderDownloadsAsATarKeepingItsLinks',
+        source='vaibify/gui/static/scriptFilePull.js',
+        old='            (bFolder ? "?bFolder=true" : "");\n',
+        new='            "";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testALinkLeadingOutOfTheProjectToastsWhyAndDownloadsNothing',
+        source='vaibify/gui/static/scriptFilePull.js',
+        old='        if (!dictProbe.bOk) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testTheDownloadButtonIsReachableAndWorksFromTheKeyboard',
+        source='vaibify/gui/static/scriptFiles.js',
+        old='        return \'<button type="button" class="file-download-button" \' +\n            \'title="\' + sAction + \'" aria-label="\' + sAction + ": " +\n            VaibifyUtilities.fnEscapeHtml(entry.sName) + \'">\' +\n            "&#8595;</button>";\n',
+        new='        return \'<div role="presentation" class="file-download-button" \' +\n            \'title="\' + sAction + \'" aria-label="\' + sAction + ": " +\n            VaibifyUtilities.fnEscapeHtml(entry.sName) + \'">\' +\n            "&#8595;</div>";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testFilesTabDownload.py::testAHostProjectsSymlinkedFileAndFolderDownloadRealBytes',
+        source='vaibify/host/hostConfinedRead.py',
+        old='    for _ in range(I_MAX_LINK_HOPS + 1):\n',
+        new='    for _ in range(1):\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAFilePulledIntoAFolderLandsUnderItsOwnName',
+        source='vaibify/docker/fileTransfer.py',
+        old='    if os.path.isdir(sTarget):\n        sTarget = os.path.join(\n',
+        new='    if False:\n        sTarget = os.path.join(\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testALinkInsideTheProjectPullsTheTargetsBytesNotADanglingLink',
+        source='vaibify/docker/confinedRead.py',
+        old='    for iHop in range(I_MAX_LINK_HOPS + 1):\n',
+        new='    for iHop in range(1):\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testALinkLeadingOutOfTheProjectIsRefusedAndNothingLands',
+        source='vaibify/docker/fileTransfer.py',
+        old='    iterChunks = connectionDocker.fiterReadFileConfined(\n        sProjectName, sContainerSource, sAuthorizedRoot=sAuthorizedRoot)\n',
+        new='    iterChunks = connectionDocker.fiterReadFileConfined(\n        sProjectName, sContainerSource)\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAReadThatFailsMidStreamLeavesTheOldFileAndNoTemporary',
+        source='vaibify/docker/fileTransfer.py',
+        old='    except BaseException:\n        try:\n            os.unlink(sTemporary)\n        except OSError:\n            pass\n        raise\n',
+        new='    except BaseException:\n        raise\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAFolderPulledToANewNameTakesThatName',
+        source='vaibify/docker/fileTransfer.py',
+        old='        sRename = os.path.basename(os.path.abspath(sHostDest))\n',
+        new='        sRename = None\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testAMemberNamedOutsideItsFolderIsRefusedAndNothingLands',
+        source='vaibify/host/archiveExtraction.py',
+        old='    if sMemberName.startswith("/") or any(\n        sPart in ("", ".", "..") for sPart in listParts\n    ):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testNothingIsWrittenThroughALinkTheArchiveItselfMade',
+        source='vaibify/host/archiveExtraction.py',
+        old='    _fnRequireNoSymlinkOnTheWay(sRoot, listParts)\n    os.makedirs(',
+        new='    os.makedirs(',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testHardLinksDevicesAndFifosAreSkippedAndCounted',
+        source='vaibify/host/archiveExtraction.py',
+        old='        _fnLandSymlink(sRoot, listParts, infoMember)\n        return True\n    return False\n',
+        new='        _fnLandSymlink(sRoot, listParts, infoMember)\n        return True\n    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testPullFromContainer.py::testSetIdBitsAreNeverCarriedOntoTheHost',
+        source='vaibify/host/archiveExtraction.py',
+        old='    return iArchiveMode & _I_PERMISSION_MASK & ~iUmask\n',
+        new='    return iArchiveMode & ~iUmask\n',
+    ),
+    Falsification(
+        nodeid='tests/testTransferResolvesRelativeContainerPaths.py::testPullBoundsTheReadByTheProjectsWorkspaceRoot',
+        source='vaibify/cli/main.py',
+        old='            sAuthorizedRoot=configProject.sWorkspaceRoot,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkFindsEveryPartialFileWithItsSizeAndAge',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        if not sName.startswith(\'.vaibify-write-\'):\\n"\n        "            continue\\n"\n',
+        new='        "        if False:\\n"\n        "            continue\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkNeverDescendsIntoGit',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    if \'.git\' in listDirNames:\\n"\n        "        listDirNames.remove(\'.git\')\\n"\n',
+        new='        "    if False:\\n"\n        "        listDirNames.remove(\'.git\')\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkNamesNoMoreThanItWasAskedTo',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "        if len(dictAnswer[\'listFiles\']) < iMaxNamed:\\n"\n',
+        new='        "        if True:\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testTheWalkStopsAtItsVisitCeilingAndSaysSo',
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    for sName in listFileNames:\\n"\n        "        iVisited += 1\\n"\n        "        if iVisited > iMaxVisits:\\n"\n',
+        new='        "    for sName in listFileNames:\\n"\n        "        iVisited += 1\\n"\n        "        if False:\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testAWalkThatStoppedEarlyAndFoundNothingIsNotOk',
+        source='vaibify/cli/doctorProjectChecks.py',
+        old='    if dictAnswer.get("bTruncated"):\n        return _fpreflightOrphansUnassessed(\n',
+        new='    if False:\n        return _fpreflightOrphansUnassessed(\n',
+    ),
+    Falsification(
+        nodeid='tests/testOrphanedWriteTemporaries.py::testPartialFilesAreNamedWithTheirSizesAndNeverDeleted',
+        source='vaibify/cli/doctorProjectChecks.py',
+        old='            "interrupted. Vaibify never deletes them; remove them from a "\n',
+        new='            "interrupted. Vaibify keeps them; remove them from a "\n',
+    ),
     # --- The setup wizard carries the dashboard's request guards ---
     Falsification(
         nodeid='tests/testSetupWizardIsGuarded.py::testAnUnauthenticatedSaveIsRefusedAndWritesNothing',
@@ -25032,13 +25273,13 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testANonLatinOneFilenameDownloadsWithItsExactName',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='            "Content-Disposition": fsBuildContentDisposition(sFilename),',
-        new='            "Content-Disposition": f\'attachment; filename="{sFilename}"\',',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    return {"Content-Disposition": fsBuildContentDisposition(sFilename)}',
+        new='    return {"Content-Disposition": f\'attachment; filename="{sFilename}"\'}',
     ),
     Falsification(
         nodeid='tests/testFileEdgesAreSafe.py::testAQuoteInAFilenameCannotEndTheQuotedString',
-        source='vaibify/gui/routes/fileRoutes.py',
+        source='vaibify/gui/routes/downloadRoutes.py',
         old=".replace('\"', '\\\\\"')",
         new="",
     ),
@@ -26062,9 +26303,9 @@ def _fdictEntry(sRel):
     # --- Path jail call sites: fileRoutes download ---
     Falsification(
         nodeid='tests/testCoverageRoutesAFileRoutes.py::testADownloadOutsideTheWorkspaceIsRefused',
-        source='vaibify/gui/routes/fileRoutes.py',
-        old='        fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n        baFirst, iterChunks',
-        new='        baFirst, iterChunks',
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='    fsValidatePathWithinRoot(sAbsPath, sProjectRoot)\n    return sAbsPath\n',
+        new='    return sAbsPath\n',
     ),
     # --- Path jail call sites: fileRoutes pull ---
     Falsification(
@@ -28833,6 +29074,246 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/scriptContainerManager.js',
         old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
         new='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
+    ),
+    # --- 2026-10-06: terminal file transfer, completion in three
+    # shells, versioned setup ---
+    # Use mapfile again -- a bash 4 builtin absent from the bash macOS ships
+    # as /bin/bash. Inside a completion function it fails silently, so
+    # container-path completion offers nothing and reports nothing.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testTheBashScriptRunsUnderTheBashMacOsShips'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='    while IFS= read -r sMatch; do\n        _fnEscapeOfferedName "${sMatch}" "${sCurrent}"\n        daMatches+=("${sEscaped}")\n    done < <(vaibify "${saHelperArguments[@]}" -- "$(_fsRemoveTypedQuoting "${sCurrent}")" 2>/dev/null)\n',
+        new='    mapfile -t daMatches < <(vaibify "${saHelperArguments[@]}" -- "$(_fsRemoveTypedQuoting "${sCurrent}")" 2>/dev/null)\n',
+    ),
+    # Drop the push/pull case out of the vaibify completer, which is the
+    # state `vaibify push <TAB>` actually shipped in: the argument
+    # completers existed and nothing reached them.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPushCompletesContainerPathsOnlyForItsDestination'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='    case "${COMP_WORDS[1]}" in\n        push|pull) _fnCompleteTransferArgument "${COMP_WORDS[1]}" 2 ;;\n    esac\n',
+        new='',
+    ),
+    # Give pull push's position logic: container paths offered for the HOST
+    # destination and local files for the container source, which is
+    # backwards in both arguments.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testPullCompletesContainerPathsOnlyForItsSource'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='"pull" && "${iTypedCount}" -eq 0 ]]',
+        new='"pull" && "${iTypedCount}" -ge 1 ]]',
+    ),
+    # Stop recognising -p NAME: the project name is then counted as the
+    # first typed path, so the SOURCE position is taken for the destination,
+    # and the project never reaches the helper.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testTheProjectIsReadFromTypedWordsAndNeverCountedAsAPath'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='            -p|--project)\n                iIndex=$(( iIndex + 1 ))\n                if [[ "${COMP_WORDS[iIndex]}" == "=" ]]; then\n                    iIndex=$(( iIndex + 1 ))\n                fi\n                if (( iIndex < COMP_CWORD )); then\n                    sProject="${COMP_WORDS[iIndex]}"\n                fi\n                ;;\n',
+        new='',
+    ),
+    # Offer the raw name instead of the escaped one: a file called $(...)
+    # becomes a command the researcher runs by pressing TAB and Enter.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionWiring.py::'
+            'testEveryOfferedNameIsOneInertWordWhenTheShellReadsIt'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='        *) printf -v sEscaped \'%q\' "${sName}" ;;\n',
+        new='        *) sEscaped="${sName}" ;;\n',
+    ),
+    # Offer the raw name in the real shell: the same defect, observed where
+    # it hurts -- after the shell has inserted the name and run the line.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionInsertion.py::'
+            'testAHostileNameIsInsertedAsOneInertWordInBash'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='        *) printf -v sEscaped \'%q\' "${sName}" ;;\n',
+        new='        *) sEscaped="${sName}" ;;\n',
+    ),
+    # Stop backslash-escaping inside an open double quote: a name containing
+    # a quote, $( or a backtick then runs in the researcher's shell.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionInsertion.py::'
+            'testAHostileNameStaysInertInsideAnOpenDoubleQuoteInBash'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='                     [\\\\\\"\\$\\`]) sEscaped+="\\\\${sCharacter}" ;;\n',
+        new='                     [\\\\\\"\\$\\`]) sEscaped+="${sCharacter}" ;;\n',
+    ),
+    # Stop closing the single quote around a name that contains one: the
+    # rest of the name is then outside the quote, in the researcher's shell.
+    Falsification(
+        nodeid=(
+            'tests/testShellCompletionInsertion.py::'
+            'testAHostileNameStaysInertInsideAnOpenSingleQuoteInBash'
+        ),
+        source='vaibify/completions/vaibify.bash',
+        old='                     sEscaped+="\'\\\\\'\'"\n',
+        new='                     sEscaped+="\'"\n',
+    ),
+    # Let the resolver's explanation through: an unknown or ambiguous
+    # project prints a list of projects on stdout, which the completion
+    # script would paste into the researcher's command line.
+    Falsification(
+        nodeid=(
+            'tests/testCompletePathCommand.py::'
+            'testAnUnknownProjectIsSilentAndSoIsAnAmbiguousOne'
+        ),
+        source='vaibify/cli/commandCompletePath.py',
+        old='    with contextlib.redirect_stdout(io.StringIO()):\n        try:\n            return fconfigResolveProject(sProjectName)\n        except (SystemExit, Exception):\n            return None\n',
+        new='    try:\n        return fconfigResolveProject(sProjectName)\n    except (SystemExit, Exception):\n        return None\n',
+    ),
+    # Offer every name regardless of its characters: a newline splits one
+    # candidate into two and an escape sequence reaches the terminal that
+    # draws the menu.
+    Falsification(
+        nodeid=(
+            'tests/testCompletePathCommand.py::'
+            'testNamesThatCouldMoveTheTerminalAreNeverOffered'
+        ),
+        source='vaibify/cli/commandCompletePath.py',
+        old='    return not any(\n        unicodedata.category(sCharacter) == S_CONTROL_CHARACTER_CATEGORY\n        for sCharacter in sName\n    )\n',
+        new='    return True\n',
+    ),
+    # Never serve the helper early: every TAB then imports the whole command
+    # set (and first-run setup) before answering.
+    Falsification(
+        nodeid=(
+            'tests/testCompletePathCommand.py::'
+            'testTheHelperIsServedWithoutLoadingEveryOtherCommand'
+        ),
+        source='vaibify/cli/main.py',
+        old='    if sys.argv[1:2] != ["complete-path"]:\n        return\n',
+        new='    return\n',
+    ),
+    # Pass the push destination to the transfer as typed, so a relative
+    # container path reaches docker unresolved.
+    Falsification(
+        nodeid=(
+            'tests/testTransferResolvesRelativeContainerPaths.py::'
+            'testPushResolvesTheContainerDestinationAgainstTheProjectRoot'
+        ),
+        source='vaibify/cli/main.py',
+        old='    sContainerDestination = fsResolveContainerPath(\n        destination, configProject.sWorkspaceRoot,\n    )\n',
+        new='    sContainerDestination = destination\n',
+    ),
+    # Pass the pull source to the transfer as typed, so a relative container
+    # path reaches docker unresolved (and a completed candidate is not one
+    # pull can read).
+    Falsification(
+        nodeid=(
+            'tests/testTransferResolvesRelativeContainerPaths.py::'
+            'testPullResolvesTheContainerSourceAgainstTheProjectRoot'
+        ),
+        source='vaibify/cli/main.py',
+        old='    sContainerSource = fsResolveContainerPath(\n        source, configProject.sWorkspaceRoot,\n    )\n',
+        new='    sContainerSource = source\n',
+    ),
+    # Let PurePosixPath drop the trailing slash again, so resolving a path
+    # edits what the researcher typed.
+    Falsification(
+        nodeid=(
+            'tests/testTransferResolvesRelativeContainerPaths.py::'
+            'testATrailingSlashSurvivesResolution'
+        ),
+        source='vaibify/docker/fileTransfer.py',
+        old='    if sRelativePath.endswith("/") and not sResolved.endswith("/"):\n        return sResolved + "/"\n',
+        new='',
+    ),
+    # Read the marker's mere presence as completion again: a machine whose
+    # setup configured nothing stays that way forever.
+    Falsification(
+        nodeid=(
+            'tests/testShellSetupVersioning.py::'
+            'testAnOlderMarkerIsNotCompleteAndACurrentOneIs'
+        ),
+        source='vaibify/install/shellSetup.py',
+        old='    return fiReadSetupVersion() >= I_SETUP_VERSION\n',
+        new='    return fiReadSetupVersion() >= 1\n',
+    ),
+    # Check for the completions directory alone: a wheel that shipped two of
+    # the three scripts is recorded as finished.
+    Falsification(
+        nodeid=(
+            'tests/testShellSetupVersioning.py::'
+            'testAnInstallationMissingOneScriptIsNotComplete'
+        ),
+        source='vaibify/install/shellSetup.py',
+        old='    return all(\n        os.path.isfile(os.path.join(sCompletionsDirectory, sFileName))\n        for sFileName in _DICT_COMPLETION_FILE_FOR_SHELL.values()\n    )\n',
+        new='    return os.path.isdir(sCompletionsDirectory)\n',
+    ),
+    # Write the POSIX line for fish too, which fish cannot parse.
+    Falsification(
+        nodeid=(
+            'tests/testShellSetupVersioning.py::'
+            'testTheLineForFishIsFishSyntaxAndTheOthersArePosix'
+        ),
+        source='vaibify/install/shellSetup.py',
+        old='    if sShellName == "fish":\n        return (\n            f\'test -f "{sCompletionFile}"; \'\n            f\'and source "{sCompletionFile}"\'\n        )\n',
+        new='',
+    ),
+    # Rewrite the shell configuration file instead of appending to it: the
+    # researcher's own lines are lost.
+    Falsification(
+        nodeid=(
+            'tests/testShellSetupVersioning.py::'
+            'testSetupOnlyAppendsAndNeverRemovesWhatWasThere'
+        ),
+        source='vaibify/install/shellSetup.py',
+        old='        with open(sRcPath, "a", encoding="utf-8") as fileHandle:\n',
+        new='        with open(sRcPath, "w", encoding="utf-8") as fileHandle:\n',
+    ),
+    # Write a line that does not load the script: the file reads fine and
+    # the shell is not wired.
+    Falsification(
+        nodeid=(
+            'tests/testShellSetupVersioning.py::'
+            'testTheLineSetupWroteLoadsTheCompletionInBash'
+        ),
+        source='vaibify/install/shellSetup.py',
+        old='    return f\'[ -f "{sCompletionFile}" ] && . "{sCompletionFile}"\'\n',
+        new='    return f\'[ -f "{sCompletionFile}" ] && echo "{sCompletionFile}"\'\n',
+    ),
+    # Report every shell as wired whatever its configuration file says: a
+    # researcher pressing TAB at a dead prompt is told all is well.
+    Falsification(
+        nodeid=(
+            'tests/testDoctorShellCompletions.py::'
+            'testAnUnsourcedScriptIsAWarningThatNamesTheExactLine'
+        ),
+        source='vaibify/cli/doctorHostChecks.py',
+        old='    if bSourced:\n        return PreflightResult(\n            sName="shell-completions", sLevel=S_LEVEL_OK,\n',
+        new='    if True:\n        return PreflightResult(\n            sName="shell-completions", sLevel=S_LEVEL_OK,\n',
+    ),
+    # Remove the time limit around the listing: a daemon that accepts a
+    # connection and never answers holds the researcher's prompt for the
+    # Docker client's ten-minute read timeout.
+    Falsification(
+        nodeid=(
+            'tests/testCompletePathCommand.py::'
+            'testADaemonThatNeverAnswersCannotFreezeThePrompt'
+        ),
+        source='vaibify/cli/commandCompletePath.py',
+        old='        with fcontextLimitWallClockTime(I_COMPLETION_TIME_LIMIT_SECONDS):\n            return _flistCompleteForProject(configProject, sSide, sPartial)\n',
+        new='        return _flistCompleteForProject(configProject, sSide, sPartial)\n',
     ),
     # Swallow the locked tile's click so it never explains itself.
     Falsification(

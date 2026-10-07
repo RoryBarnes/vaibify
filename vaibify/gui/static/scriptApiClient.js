@@ -432,6 +432,137 @@ var VaibifyApi = (function () {
         return response.ok;
     }
 
+    /* --- Streamed upload ---
+
+       The one place in the page that speaks XMLHttpRequest, because it
+       is the only way a browser reports how much of a request BODY has
+       been sent. An XHR does not pass through the fetch wrapper that
+       gives every other request its credentials, so this function sets
+       the session token and the lease itself, reading both when the
+       request is SENT (the wrapper reads the lease inside the call for
+       the same reason: a value captured earlier can be empty or
+       stale). No other XHR in the page may bypass the wrapper; the
+       source scan in tests/testUploadTransportContract.py holds the
+       line. */
+
+    function _fnSetUploadCredentials(xhrUpload) {
+        xhrUpload.setRequestHeader(
+            "X-Session-Token", VaibifyApp.fsGetSessionToken());
+        var sLease = VaibifyApp.fsGetLeaseId();
+        if (sLease) xhrUpload.setRequestHeader("X-Vaibify-Lease", sLease);
+    }
+
+    function _fdictParseUploadBody(xhrUpload) {
+        try {
+            return JSON.parse(xhrUpload.responseText);
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function _fdictDescribeUploadAnswer(xhrUpload) {
+        var dictBody = _fdictParseUploadBody(xhrUpload);
+        var dictDetail = _fdictExtractDetail(dictBody);
+        var bOk = xhrUpload.status >= 200 && xhrUpload.status < 300;
+        return {
+            bOk: bOk,
+            iStatus: xhrUpload.status,
+            dictBody: dictBody,
+            dictDetail: dictDetail,
+            sMessage: bOk ? "" : (dictDetail.sMessage ||
+                "The server refused the upload (" +
+                xhrUpload.status + ") without saying why."),
+            bAborted: false,
+            bNetworkFailure: false,
+        };
+    }
+
+    function _fdictDescribeUploadInterruption(bAborted) {
+        return {
+            bOk: false,
+            iStatus: 0,
+            dictBody: {},
+            dictDetail: {},
+            sMessage: bAborted
+                ? "The upload was cancelled."
+                : "Cannot reach Vaibify server: the connection was " +
+                  "lost during the upload.",
+            bAborted: bAborted,
+            bNetworkFailure: !bAborted,
+        };
+    }
+
+    function fdictStartUpload(sUrl, blobBody, fnOnProgress) {
+        /* PUT one body to sUrl. Returns {promiseOutcome, fnAbort}; the
+           promise always RESOLVES, to {bOk, iStatus, sMessage,
+           dictDetail, dictBody, bAborted, bNetworkFailure}, so a batch
+           reads every answer, the server's own sentence included, the
+           same way. fnOnProgress receives the bytes sent so far. A null
+           body sends none (a folder to create). */
+        var xhrUpload = new XMLHttpRequest();
+        var promiseOutcome = new Promise(function (fnResolve) {
+            xhrUpload.open("PUT", sUrl);
+            xhrUpload.setRequestHeader(
+                "Content-Type", "application/octet-stream");
+            _fnSetUploadCredentials(xhrUpload);
+            xhrUpload.upload.onprogress = function (event) {
+                if (fnOnProgress) fnOnProgress(event.loaded);
+            };
+            xhrUpload.onload = function () {
+                fnResolve(_fdictDescribeUploadAnswer(xhrUpload));
+            };
+            xhrUpload.onerror = function () {
+                fnResolve(_fdictDescribeUploadInterruption(false));
+            };
+            xhrUpload.onabort = function () {
+                fnResolve(_fdictDescribeUploadInterruption(true));
+            };
+            xhrUpload.send(blobBody || null);
+        });
+        return {
+            promiseOutcome: promiseOutcome,
+            fnAbort: function () { xhrUpload.abort(); },
+        };
+    }
+
+    /* --- Download probe ---
+
+       An anchor download cannot show an HTTP error: the browser would
+       save the error page as the file. So the page asks first. HEAD is
+       the cheap question; it answers with the status, but HTTP gives a
+       HEAD response no body, so the SERVER'S REASON (a link that leads
+       out of the project, a path that no longer exists) cannot arrive
+       with it. When HEAD says no, the same request as a GET carries the
+       sentence: the route refuses before it streams a byte, and if the
+       answer has changed and the GET succeeds it is abandoned at once. */
+
+    async function _fdictExplainRefusedDownload(sUrl, iHeadStatus) {
+        var controllerAbort = new AbortController();
+        var response = await _frResponseOrThrow(
+            sUrl, {signal: controllerAbort.signal});
+        if (response.ok) {
+            controllerAbort.abort();
+            return {bOk: true, iStatus: response.status, sMessage: ""};
+        }
+        var dictDetail = _fdictExtractDetail(
+            await fdictParseJsonSafely(response));
+        return {
+            bOk: false,
+            iStatus: response.status,
+            sMessage: dictDetail.sMessage || (
+                "The download was refused (" + iHeadStatus + ")."),
+        };
+    }
+
+    async function fdictProbeDownload(sUrl) {
+        var responseHead = await _frResponseOrThrow(
+            sUrl, {method: "HEAD"});
+        if (responseHead.ok) {
+            return {bOk: true, iStatus: responseHead.status, sMessage: ""};
+        }
+        return _fdictExplainRefusedDownload(sUrl, responseHead.status);
+    }
+
     return {
         S_CLAIM_RECOVERY_RECOVERED: S_CLAIM_RECOVERY_RECOVERED,
         S_CLAIM_RECOVERY_REFUSED: S_CLAIM_RECOVERY_REFUSED,
@@ -448,5 +579,7 @@ var VaibifyApi = (function () {
         fnDelete: fnDelete,
         fsGetText: fsGetText,
         fbHead: fbHead,
+        fdictStartUpload: fdictStartUpload,
+        fdictProbeDownload: fdictProbeDownload,
     };
 })();

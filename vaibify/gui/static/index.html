@@ -671,9 +671,25 @@
                  listed above. Static, like "Download to this computer"
                  and unlike "Copy to execution-host path": the direction
                  is fixed, so there is no lane in which it misleads. -->
-            <div id="fileUploadDropZone" class="file-drop-zone">
-                Upload from this computer — drop files here
+            <div id="fileUploadDropZone" class="file-drop-zone"
+                 aria-disabled="false">
+                <span class="file-drop-zone-label">
+                    Upload from this computer — drop files or folders
+                    here</span>
+                <span id="fileUploadVerdict"
+                      class="file-drop-zone-verdict" role="status"
+                      aria-live="polite"></span>
             </div>
+            <div id="fileUploadStatus" class="file-upload-status" hidden>
+                <progress id="fileUploadProgress" max="1"
+                          value="0"></progress>
+                <span id="fileUploadProgressLabel"
+                      class="file-upload-progress-label"></span>
+                <button type="button" class="btn" id="btnCancelUpload">
+                    Cancel</button>
+            </div>
+            <div id="fileUploadSummary" class="file-upload-summary"
+                 role="status" aria-live="polite" hidden></div>
         </div>
 
         <!-- Repos sub-panel -->
@@ -844,6 +860,10 @@
     <ul class="picklist-items"></ul>
 </div>
 <div id="rowOverflowMenu" class="picklist-menu" hidden role="menu">
+    <ul class="picklist-items"></ul>
+</div>
+<div id="fileRowMenu" class="picklist-menu" hidden role="menu"
+     aria-label="File actions">
     <ul class="picklist-items"></ul>
 </div>
 
@@ -1373,6 +1393,9 @@
 <script src="/static/scriptLegendPanel.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptTestManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptPipelineRunner.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptFileDropWalker.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptFileUpload.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptFileRowMenu.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFiles.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDirectoryBrowser.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFilePull.js?v=__CACHE_VERSION__"></script>

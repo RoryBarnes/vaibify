@@ -216,7 +216,7 @@ claiming the server restarted.
 ```
 vaibify/
   cli/                Command-line interface (Click)
-  completions/        Bash and zsh tab-completion scripts
+  completions/        Bash, zsh and fish tab-completion scripts
   config/             Configuration dataclasses and parsers
   containerImage/     Docker build context (Dockerfiles, entrypoint,
                       overlays, in-container skills and CLI)

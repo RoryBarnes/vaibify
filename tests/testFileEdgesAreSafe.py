@@ -21,7 +21,7 @@ from tests.testFileEndpointsAndMiddleware import (  # noqa: F401
     clientHttp,
 )
 from vaibify.gui import syncDispatcher
-from vaibify.gui.routes import fileRoutes
+from vaibify.gui.routes import downloadRoutes, fileRoutes
 
 
 class _RecordingConnection:
@@ -104,5 +104,5 @@ def testANonLatinOneFilenameDownloadsWithItsExactName(clientHttp):
 @pytest.mark.falsification
 def testAQuoteInAFilenameCannotEndTheQuotedString():
     """Kills: interpolating the filename into the quoted form unescaped."""
-    sHeader = fileRoutes.fsBuildContentDisposition('a".txt; x="y')
+    sHeader = downloadRoutes.fsBuildContentDisposition('a".txt; x="y')
     assert sHeader.startswith('attachment; filename="a\\".txt; x=\\"y"')

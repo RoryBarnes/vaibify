@@ -235,7 +235,6 @@ LIST_SEEDED_OFFENDERS = [
     "vaibify/gui/routes/environmentArchiveRoutes.py::_fnRunPromotionWorker::1",
     "vaibify/gui/routes/fileRoutes.py::_fnRegisterFilePull.fdictHandlePullFile::1",
     "vaibify/gui/routes/fileRoutes.py::_fnRegisterFileUpload.fdictUploadFile::1",
-    "vaibify/gui/routes/fileRoutes.py::_ftIterStreamOrRaiseHttp::1",
     "vaibify/gui/routes/pipelineRoutes.py::_fdictFetchTestMarkers::1",
     "vaibify/gui/routes/pipelineRoutes.py::_fdictHydrateShaCacheFromContainer::1",
     "vaibify/gui/routes/pipelineRoutes.py::_fnMaintainAiProvenanceStamp::1",

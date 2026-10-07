@@ -1088,6 +1088,19 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Copy selected files from the project's own host "
                      "directory into the container workspace. "
                      "Args: {saRelativePaths}."},
+    # NOT agent-safe: the streamed upload writes anywhere under the
+    # researcher's workspace root, which is wider than the in-container
+    # agent's repository-confined `upload-file`. The handler additionally
+    # calls fnRejectAgentTokenLane; the catalog cannot express "wider
+    # write root" on its own.
+    {"sName": "upload-file-stream", "sCategory": "files",
+     "sMethod": "PUT",
+     "sPath": "/api/upload/{sContainerId}/stream",
+     "bAgentSafe": False,
+     "saQueryFields": ["sDestination", "sFilename", "iSizeBytes",
+                       "sRelativePath", "bReplaceAllowed", "bDirectory"],
+     "sDescription": "Stream raw bytes into a file, or create a folder, "
+                     "anywhere under the researcher's writable root."},
     {"sName": "write-file", "sCategory": "files",
      "sMethod": "PUT",
      "sPath": "/api/file/{sContainerId}/{sFilePath:path}",

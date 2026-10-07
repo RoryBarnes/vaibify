@@ -220,6 +220,16 @@ def _flistInterpreterChecks():
     return [] if preflightResult is None else [preflightResult]
 
 
+def _flistLoginShellChecks():
+    """Run the checks about the shell the researcher types vaibify into.
+
+    Beside the interpreter checks for the same reason: they describe the
+    machine, not the project, so a host project is asked too.
+    """
+    from .doctorHostChecks import fpreflightShellCompletions
+    return [fpreflightShellCompletions()]
+
+
 def _fdictHostProjectOrNone(config):
     """Return the registry record when config names a HOST project."""
     if config is None:
@@ -388,6 +398,9 @@ def _flistProjectScopeChecks(config):
     listResults.extend(doctorProjectChecks.flistReportStartupObservations(
         connectionDocker, sContainerName, config.sWorkspaceRoot,
     ))
+    listResults.extend(doctorProjectChecks.flistCheckOrphanedWriteTemporaries(
+        connectionDocker, sContainerName, config.sWorkspaceRoot,
+    ))
     sRepoPath = doctorProjectChecks.fsDiscoverProjectRepoPath(
         connectionDocker, sContainerName, config.sWorkspaceRoot,
     )
@@ -431,7 +444,7 @@ def _flistUnassessedProjectScope(sReason=""):
         )
         for sName in (
             "envelope-image-currency", "workspace-ownership",
-            "startup-observations",
+            "startup-observations", "orphaned-write-temporaries",
         )
     ]
 
@@ -454,6 +467,7 @@ def flistRunDoctorChecks(
     """
     listResults = [fpreflightInstalledCheckout()]
     listResults.extend(_flistInterpreterChecks())
+    listResults.extend(_flistLoginShellChecks())
     dictHostProject = _fdictHostProjectOrNone(config)
     if dictHostProject is not None:
         listResults.extend(_flistHostProjectChecks(dictHostProject))
