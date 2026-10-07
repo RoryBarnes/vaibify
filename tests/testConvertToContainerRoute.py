@@ -37,6 +37,10 @@ def fixtureIsolateHostState(tmp_path, monkeypatch):
         os.path.join(sRegistryDirectory, "registry.json"),
     )
     monkeypatch.setattr(
+        registryManager, "_S_LOCK_PATH",
+        os.path.join(sRegistryDirectory, "registry.lock"),
+    )
+    monkeypatch.setattr(
         containerLock, "_S_LOCK_DIRECTORY", str(tmp_path / "locks"),
     )
     monkeypatch.setattr(

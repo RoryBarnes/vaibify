@@ -39,15 +39,15 @@ from vaibify.docker.runtimeRemedies import (
     ftRemedyForSituation,
 )
 from .preflightResult import (
-    S_LEVEL_NOT_CHECKED, S_LEVEL_OK, S_LEVEL_WARN, S_SCOPE_HOST,
-    PreflightResult,
+    S_LEVEL_INFO, S_LEVEL_NOT_CHECKED, S_LEVEL_OK, S_LEVEL_WARN,
+    S_SCOPE_HOST, PreflightResult,
 )
 
 
 __all__ = [
     "fbInterpreterRunsTranslated",
     "flistCheckDepositScratchSpace", "flistCheckResourceAllocation",
-    "fpreflightInterpreterArchitecture",
+    "fpreflightInterpreterArchitecture", "fpreflightShellCompletions",
 ]
 
 
@@ -329,4 +329,69 @@ def fpreflightInterpreterArchitecture():
         ),
         sCommand='file "$(command -v python3)"',
         sMechanism=sMechanism,
+    )
+
+
+def fpreflightShellCompletions():
+    """Report whether the login shell loads vaibify's tab completion.
+
+    READS the shell's configuration file and writes nothing: setup
+    appends the missing line on its own, and when it could not -- an
+    unwritable file, a shell that was not the login shell at the time --
+    this is where the researcher learns that TAB does nothing and why.
+    The remedy is the exact line, in the syntax of the shell, because
+    the one thing a researcher cannot be expected to know is that fish
+    does not read what bash and zsh do.
+    """
+    from vaibify.install.shellSetup import (
+        fsBuildCompletionSourceLine, ftInspectCompletionWiring,
+    )
+    sShellName, sRcPath, sCompletionFile, bSourced = (
+        ftInspectCompletionWiring()
+    )
+    sMechanism = (
+        "Reads the configuration file of the shell named by $SHELL and "
+        "looks for the path of the completion script packaged with this "
+        "installation. A shell other than the login shell is not seen."
+    )
+    if not sRcPath:
+        return PreflightResult(
+            sName="shell-completions", sLevel=S_LEVEL_INFO,
+            sScope=S_SCOPE_HOST, sMechanism=sMechanism,
+            sMessage=(
+                f"tab completion is provided for bash, zsh and fish; "
+                f"the login shell here is '{sShellName}'."
+            ),
+        )
+    if not sCompletionFile:
+        return PreflightResult(
+            sName="shell-completions", sLevel=S_LEVEL_WARN,
+            sScope=S_SCOPE_HOST, sMechanism=sMechanism,
+            sMessage=(
+                f"this installation has no completion script for "
+                f"{sShellName}."
+            ),
+            sRemediation=(
+                "The installation is incomplete; reinstall vaibify."
+            ),
+        )
+    if bSourced:
+        return PreflightResult(
+            sName="shell-completions", sLevel=S_LEVEL_OK,
+            sScope=S_SCOPE_HOST, sMechanism=sMechanism,
+            sMessage=f"{sRcPath} loads vaibify's tab completion.",
+        )
+    return PreflightResult(
+        sName="shell-completions", sLevel=S_LEVEL_WARN,
+        sScope=S_SCOPE_HOST, sMechanism=sMechanism,
+        sMessage=(
+            f"{sRcPath} does not load vaibify's tab completion, so TAB "
+            "will not complete paths for `vaibify push` and "
+            "`vaibify pull`."
+        ),
+        sRemediation=(
+            f"Add this line to {sRcPath}, then open a new terminal "
+            "(running it here tries it in this one):"
+        ),
+        sCommand=fsBuildCompletionSourceLine(sShellName, sCompletionFile),
     )

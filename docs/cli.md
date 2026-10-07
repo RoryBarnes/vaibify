@@ -418,6 +418,12 @@ Copy files from the host into the container workspace.
 vaibify push [--project/-p NAME] <source> <destination>
 ```
 
+The source is a path on the host. The destination is a path inside the
+container; a relative destination is read from the project's workspace
+root, so `vaibify push data.csv Step01/` and
+`vaibify push data.csv /workspace/Step01/` are the same command for a
+project whose workspace root is `/workspace`.
+
 | Option             | Description                              |
 |--------------------|------------------------------------------|
 | `--project`, `-p`  | Target project name (optional if only one exists) |
@@ -429,6 +435,10 @@ Copy files from the container workspace to the host.
 ```bash
 vaibify pull [--project/-p NAME] <source> <destination>
 ```
+
+The source is a path inside the container; a relative source is read
+from the project's workspace root. The destination is a path on the
+host.
 
 | Option             | Description                              |
 |--------------------|------------------------------------------|

@@ -171,7 +171,7 @@ class TestShellSetupCompletions:
 
     def test_fsCompletionPathForShell_unknown_shell(self):
         from vaibify.install.shellSetup import _fsCompletionPathForShell
-        assert _fsCompletionPathForShell("fish") == ""
+        assert _fsCompletionPathForShell("csh") == ""
 
     def test_fsCompletionPathForShell_bash_missing_file(self):
         from vaibify.install.shellSetup import _fsCompletionPathForShell
@@ -401,16 +401,18 @@ class TestShellSetupMarker:
     def test_fbIsSetupComplete_false(self):
         from vaibify.install.shellSetup import fbIsSetupComplete
         with patch(
-            "vaibify.install.shellSetup.os.path.isfile",
-            return_value=False,
+            "vaibify.install.shellSetup.fiReadSetupVersion",
+            return_value=0,
         ):
             assert fbIsSetupComplete() is False
 
     def test_fbIsSetupComplete_true(self):
-        from vaibify.install.shellSetup import fbIsSetupComplete
+        from vaibify.install.shellSetup import (
+            I_SETUP_VERSION, fbIsSetupComplete,
+        )
         with patch(
-            "vaibify.install.shellSetup.os.path.isfile",
-            return_value=True,
+            "vaibify.install.shellSetup.fiReadSetupVersion",
+            return_value=I_SETUP_VERSION,
         ):
             assert fbIsSetupComplete() is True
 
@@ -423,7 +425,7 @@ class TestShellSetupMarker:
             shellSetup._fnWriteMarkerFile()
             assert os.path.isfile(sTestMarker)
             with open(sTestMarker) as fileHandle:
-                assert "setup complete" in fileHandle.read()
+                assert "setup v" in fileHandle.read()
         finally:
             shellSetup._MARKER_PATH = sOldMarker
 

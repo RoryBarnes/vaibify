@@ -43,6 +43,9 @@ class _ConnectionStub:
     def fdictFindForeignOwnedPaths(self, *args, **kwargs):
         return self.dictOwnership
 
+    def fdictFindOrphanedWriteTemporaries(self, *args, **kwargs):
+        return {"bAnswered": True, "listFiles": [], "bTruncated": False}
+
 
 @pytest.mark.falsification
 def test_a_project_without_an_envelope_still_has_its_repository_found():
@@ -154,7 +157,10 @@ def test_a_missing_repository_names_the_checks_it_cost():
         return_value=[],
     ):
         listResults = commandDoctor._flistProjectScopeChecks(_ConfigStub())
-    setNames = {r.sName for r in listResults}
+    listCost = [r for r in listResults if r.sLevel == "not-checked"]
+    setNames = {r.sName for r in listCost}
     assert setNames == {"envelope-image-currency", "workspace-ownership"}
-    assert all(r.sLevel == "not-checked" for r in listResults)
-    assert all("no git repository" in r.sMessage for r in listResults)
+    assert all("no git repository" in r.sMessage for r in listCost)
+    dictOrphans = {r.sName: r for r in listResults}[
+        "orphaned-write-temporaries"]
+    assert dictOrphans.sLevel == "ok"

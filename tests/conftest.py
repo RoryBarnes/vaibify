@@ -10,8 +10,11 @@ the null backend in every child process (so no test can read,
 overwrite, or delete the researcher's real stored credentials).
 """
 
+import atexit
 import logging
 import os
+import shutil
+import tempfile
 
 import pytest
 
@@ -38,6 +41,32 @@ import pytest
 # prompts, reads, nor destroys. No test needs a real stored
 # credential; the live lanes carry their own fake tokens.
 os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+
+
+def _fnKeepFirstTimeSetupOffTheResearchersShellConfiguration():
+    """Record setup as done, in a scratch marker, before collection.
+
+    ``vaibify.cli.main`` runs first-time setup when it is imported, and
+    setup APPENDS to the researcher's real shell configuration file. A
+    marker older than the current setup version runs it again, so a
+    suite started on a machine that has not yet upgraded would edit
+    the researcher's rc file during collection -- from whichever
+    checkout the suite ran in, including a disposable worktree whose
+    completion-script path vanishes with it. The marker constants are
+    read at call time, so pointing them at a current-version marker in a
+    scratch directory makes every in-process import a no-op. A CHILD
+    process still resolves the real marker, and only a test that gives
+    the child its own HOME avoids that.
+    """
+    from vaibify.install import shellSetup
+    sMarkerDirectory = tempfile.mkdtemp(prefix="vaibifySetupMarker")
+    atexit.register(shutil.rmtree, sMarkerDirectory, ignore_errors=True)
+    shellSetup._MARKER_DIR = sMarkerDirectory
+    shellSetup._MARKER_PATH = os.path.join(sMarkerDirectory, ".setup_done")
+    shellSetup._fnWriteMarkerFile()
+
+
+_fnKeepFirstTimeSetupOffTheResearchersShellConfiguration()
 
 
 def _fnRemoveFileHandlersFromVaibifyLogger():
