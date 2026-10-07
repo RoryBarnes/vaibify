@@ -5164,7 +5164,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # files on the host, so the side-effect block moves after the
     # snapshot and the unchecked-freshness verdict travels to the level
     # gates. The host-side mtime-cache helpers it replaces are deleted.
-    "routes/pipelineRoutes.py": 4094,
+    # 4094 -> 4125 (2026-10-07): the poll's sha cache remembers a digest
+    # only once its file has settled for a second (git's racy-clean
+    # rule), with the rule and what it cannot see written beside it.
+    "routes/pipelineRoutes.py": 4125,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record

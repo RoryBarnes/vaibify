@@ -137,6 +137,7 @@ class _FakeFilesAnswering:
     def __init__(self, sSha256, listKey):
         self._dictEntry = {
             "sSha256": sSha256, "sBlobSha": "bb", "listStatKey": listKey,
+            "iHashedAtNs": max(listKey[0], listKey[1]) + 5 * 10 ** 9,
             "sSymlinkSegment": None, "bEscapesRoot": False,
         }
 

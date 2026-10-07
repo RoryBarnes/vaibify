@@ -293,7 +293,8 @@ def _fnEnsureDockerHost():
 # repoFiles, which imports this constant so the two lanes cannot
 # drift. Everything the snapshot reads is also hashed -- the
 # reasoning lives with repoFiles._fsBuildSnapshotScriptCommand.
-S_REPO_SNAPSHOT_PROGRAM_CORE = '''sRoot = dictArgs["sRoot"]
+S_REPO_SNAPSHOT_PROGRAM_CORE = '''import time
+sRoot = dictArgs["sRoot"]
 setSkipText = set(dictArgs.get("listSkipTextPaths", []))
 dictOut = {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}}
 def _fsHash(sAbs):
@@ -375,8 +376,10 @@ def _fdictReadOnceAgainstKey(sAbs, listCachedKey):
     if not bSteady:
         return {"sSha256": None, "sBlobSha": None,
                 "listStatKey": listKey, "bTornRead": True}
+    # The container's clock, read AFTER the steady check: how long the
+    # file had been settled when it was hashed (the racy-clean rule).
     return {"sSha256": h.hexdigest(), "sBlobSha": hBlob.hexdigest(),
-            "listStatKey": listKey}
+            "listStatKey": listKey, "iHashedAtNs": time.time_ns()}
 def _fdictHashAgainstKey(sAbs, listCachedKey):
     # One immediate retry; a file still changing is reported as torn,
     # never hashed and never matched.

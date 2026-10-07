@@ -14,6 +14,7 @@ import hashlib
 import os
 import subprocess
 import sys
+import time
 import types
 
 import pytest
@@ -192,8 +193,9 @@ def test_a_cache_hit_carries_both_digests_and_an_old_entry_is_rehashed(
 ):
     """The cache returns what it stored; an entry missing one is not offered.
 
-    The first poll hashes and the cache keeps both digests under the
-    stat key. The second offers that entry and the program answers a
+    The first poll hashes (a second after the write, so the digest has
+    settled and may be remembered) and the cache keeps both digests under
+    the stat key. The second offers that entry and the program answers a
     hit, which the fetch fills with BOTH. A cache written before the
     blob digest existed holds a SHA-256 only, so it is never offered and
     the file is hashed once more.
@@ -204,6 +206,7 @@ def test_a_cache_hit_carries_both_digests_and_an_old_entry_is_rehashed(
     """
     sRoot = str(tmp_path)
     _fnWriteBytes(sRoot, "out/data.bin", b"settled bytes")
+    time.sleep(1.2)
     dictShaCache = {}
     filesFirst = SnapshotRepoFiles.ffilesFetch(
         LocalSnapshotConnection(), S_CONTAINER_ID, sRoot,

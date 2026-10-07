@@ -2154,14 +2154,44 @@ def _fdictCachedEntriesForSnapshot(dictShaCache):
     return dictOffered
 
 
+I_RACY_CLEAN_WINDOW_NS = 1_000_000_000
+
+
+def _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey):
+    """Return True iff the digest was taken a whole second after the last change.
+
+    The racy-clean rule (J. C. Hamano, git ``Documentation/technical/
+    racy-git.txt``): a stat key cannot see a same-size in-place rewrite
+    that lands in the clock tick the cached hash was taken in, because
+    no timestamp has advanced yet. Caching only a digest taken at least
+    one second after the newer of the file's mtime and ctime means any
+    later write must move a timestamp, so the key can tell. The hash
+    time is the CONTAINER's clock (``iHashedAtNs``); an entry without
+    one cannot be judged and is not settled.
+    """
+    iHashedAtNs = dictEntry.get("iHashedAtNs")
+    if not isinstance(iHashedAtNs, int):
+        return False
+    return iHashedAtNs - max(listKey[0], listKey[1]) >= I_RACY_CLEAN_WINDOW_NS
+
+
 def _fbUpdateShaCache(dictShaCache, filesPoll):
-    """Record every freshly hashed, steady file in the in-memory cache.
+    """Record every freshly hashed, settled, steady file in the cache.
 
     Returns True iff any cache entry was added or refreshed; the
     caller uses the flag to decide whether the container-side
     persistence layer needs a fresh write. A torn read (a file that
     changed while it was hashed) and an unhashable path are never
-    cached, and neither is an entry that lacks either digest.
+    cached, neither is an entry that lacks either digest, and neither
+    is a digest taken within a second of the file's last change
+    (``_fbHashWasTakenAfterTheFileSettled``): such a digest is still
+    USED for the poll that took it, only not remembered.
+
+    What stays undetectable, by design: a change that keeps all four
+    key fields equal, which needs the system clock set back or a write
+    to the raw block device; and a filesystem whose timestamps are
+    coarser than one second, on which the one-second window is not
+    enough.
     """
     bAnyChange = False
     for sRelPath, dictEntry in filesPoll.fdictAllHashEntries().items():
@@ -2173,6 +2203,7 @@ def _fbUpdateShaCache(dictShaCache, filesPoll):
             or dictEntry.get("bTornRead")
             or dictEntry.get("sSymlinkSegment")
             or dictEntry.get("bEscapesRoot")
+            or not _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey)
         ):
             continue
         dictNew = {

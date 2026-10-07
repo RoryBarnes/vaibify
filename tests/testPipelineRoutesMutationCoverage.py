@@ -320,6 +320,7 @@ class _FakeFilesAnswering:
 def _fdictSteadyEntry(sSha256, listKey, sBlobSha="bb"):
     return {
         "sSha256": sSha256, "sBlobSha": sBlobSha, "listStatKey": listKey,
+        "iHashedAtNs": max(listKey[0], listKey[1]) + 5 * 10 ** 9,
         "sSymlinkSegment": None, "bEscapesRoot": False,
     }
 

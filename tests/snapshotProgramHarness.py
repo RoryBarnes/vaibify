@@ -96,9 +96,10 @@ def fsContainerRootAbsentFromThisHost():
 
 def fdictSteadyHashEntry(sBlobSha, sSha256="0" * 64, listStatKey=None):
     """Return the entry the real program writes for a settled file."""
+    listKey = listStatKey or [1, 2, 3, 4]
     return {
-        "sSha256": sSha256, "sBlobSha": sBlobSha,
-        "listStatKey": listStatKey or [1, 2, 3, 4],
+        "sSha256": sSha256, "sBlobSha": sBlobSha, "listStatKey": listKey,
+        "iHashedAtNs": max(listKey[0], listKey[1]) + 5 * 10 ** 9,
         "sSymlinkSegment": None, "bEscapesRoot": False,
     }
 

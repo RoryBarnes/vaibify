@@ -29834,4 +29834,33 @@ def _fdictEntry(sRel):
         ),
         new='',
     ),
+    # --- 2026-10-07: the snapshot cache remembers a digest only once
+    # the file has settled for a second (git's racy-clean rule) ---
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_digest_taken_within_a_second_of_the_write_is_used_not_cached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            or not _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_settled_file_is_cached_and_then_hit'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='I_RACY_CLEAN_WINDOW_NS = 1_000_000_000\n',
+        new='I_RACY_CLEAN_WINDOW_NS = 10 ** 30\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_same_tick_rewrite_with_an_unchanged_key_is_rehashed'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            or not _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey)\n',
+        new='',
+    ),
 ]
