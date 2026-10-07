@@ -28894,4 +28894,14 @@ def _fdictEntry(sRel):
         old='        if (dictFresh && (dictFresh.bAvailable ||\n                _fbReadinessOffersAStep(dictFresh))) {\n            fnHandleToolbarClick();\n            return;\n        }\n',
         new='',
     ),
+    # Swallow the locked tile's click so it never explains itself.
+    Falsification(
+        nodeid=(
+            'tests/browser/testALockedTileExplainsOnClick.py::'
+            'testClickingALockedTileNamesTheHolderAndTheRemedy'
+        ),
+        source='vaibify/gui/static/styleMain.css',
+        old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
+        new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
 ]
