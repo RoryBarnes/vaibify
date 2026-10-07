@@ -29075,6 +29075,66 @@ def _fdictEntry(sRel):
         old='        if (!bFailedRequestWasConnect && !await VaibifyWorkflowManager\n                .fbReconnectOpenWorkflow(iViewGeneration)) {\n            return VaibifyApi.S_CLAIM_RECOVERY_INCOMPLETE;\n        }\n',
         new='        if (!bFailedRequestWasConnect) {\n            await VaibifyWorkflowManager.fbReconnectOpenWorkflow(\n                iViewGeneration);\n        }\n',
     ),
+    # Drop the adapter's own sentence for why a login is unusable, so every cause reads alike.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_the_unusable_logins_are_told_apart_not_one_sentence'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='                "sLoginProblem": str(errorCredential)}\n',
+        new='                "sLoginProblem": ""}\n',
+    ),
+    # Stop the capabilities route forwarding each provider's login problem to the button.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_blocked_over_http_names_the_path_and_every_provider'
+        ),
+        source='vaibify/gui/routes/councilRoutes.py',
+        old='            "sLoginProblem": dictLogin["sLoginProblem"],\n',
+        new='            "sLoginProblem": "",\n',
+    ),
+    # Let an unreadable container's own exception text become the reason shown to the researcher.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_an_unreadable_container_does_not_leak_the_daemons_words'
+        ),
+        source='vaibify/gui/councilRouteGuards.py',
+        old='    except (OSError, ValueError, KeyError):\n        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,\n                "sLoginProblem": S_LOGIN_UNREADABLE_PROBLEM}\n',
+        new='    except (OSError, ValueError, KeyError) as errorRead:\n        return {"bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,\n                "sLoginProblem": str(errorRead)}\n',
+    ),
+    # Stop trimming a trailing full stop, so the composed reason carries doubled full stops.
+    Falsification(
+        nodeid=(
+            'tests/testCouncilReadiness.py::'
+            'test_the_reason_names_each_providers_own_problem'
+        ),
+        source='vaibify/gui/agentCouncilReadiness.py',
+        old='        f"{dictProvider[\'sLoginProblem\'].rstrip(\'.\')}."\n',
+        new='        f"{dictProvider[\'sLoginProblem\']}."\n',
+    ),
+    # Speak the cached verdict when the blocked button is clicked instead of re-reading it.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilBlockedButtonExplainsItself.py::'
+            'testTheBlockedToastNamesWhyThereIsNoLogin'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='            _fnReReadThenExplainBlockedClick();\n            return;\n',
+        new='            VaibifyApp.fnShowToast(\n                _fsUnavailableExplanation(dictCapabilities || {}),\n                "warning");\n            return;\n',
+    ),
+    # Re-read on click but show the fresh answer as a refusal even when it now offers a way forward.
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilBlockedButtonExplainsItself.py::'
+            'testALoginMadeAfterThePageLoadedIsSeenByOneClick'
+        ),
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old='        if (dictFresh && (dictFresh.bAvailable ||\n                _fbReadinessOffersAStep(dictFresh))) {\n            fnHandleToolbarClick();\n            return;\n        }\n',
+        new='',
+    ),
     # --- 2026-10-06: terminal file transfer, completion in three
     # shells, versioned setup ---
     # Use mapfile again -- a bash 4 builtin absent from the bash macOS ships

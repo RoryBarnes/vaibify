@@ -200,7 +200,8 @@ def testNoLoginIsAWallWithTheLoginRemedy(pageDashboard, serverHub,
     monkeypatch.setattr(
         councilRoutes, "fdictReadProjectLoginState",
         lambda dictCtx, sContainerId, sProvider="claude": {
-            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0})
+            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,
+            "sLoginProblem": "no persisted login was found"})
     _fdictClaimAndActivate(pageDashboard, serverHub)
     assert pageDashboard.evaluate(
         "() => document.getElementById('btnAgentCouncil')"

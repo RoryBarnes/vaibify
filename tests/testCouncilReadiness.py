@@ -202,11 +202,164 @@ def test_no_login_anywhere_is_blocked_with_the_login_remedy(
     monkeypatch.setattr(
         councilRoutes, "fdictReadProjectLoginState",
         lambda dictCtx, sContainerId, sProvider="claude": {
-            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0})
+            "bHasLogin": False, "iExpiresAtEpochMilliseconds": 0,
+            "sLoginProblem": f"{sProvider} has a stubbed problem"})
     _, clientHttp = _tBuildClient(tmp_path, monkeypatch)
     dictCapabilities = _fdictCapabilities(clientHttp)
     assert dictCapabilities["sCouncilReadiness"] == "blocked"
     assert "Log in" in dictCapabilities["sReadinessReason"]
+    assert "claude: claude has a stubbed problem." in (
+        dictCapabilities["sReadinessReason"])
+
+
+# ----- WHY there is no login must reach the button --------------------------------------
+
+
+class _LoginFileConnection:
+    """A container whose login file is whatever the test says it is."""
+
+    def __init__(self, fnRead):
+        self.fnRead = fnRead
+
+    def fbaFetchCredentialFile(self, sContainerId, sPath):
+        return self.fnRead(sPath)
+
+
+def _fdictReadClaudeLogin(sEvidencePath, fnRead):
+    from vaibify.gui import councilRouteGuards
+    return councilRouteGuards.fdictReadProjectLoginState(
+        {"docker": _LoginFileConnection(fnRead)}, "anyContainer", "claude")
+
+
+def _fnRaiseFileNotFound(sPath):
+    raise FileNotFoundError(sPath)
+
+
+def _fnRaiseDaemonDown(sPath):
+    raise OSError("daemon down at /var/run/docker.sock")
+
+
+def _fbaLapsedLogin(sPath):
+    import json
+    import time
+    return json.dumps({"claudeAiOauth": {
+        "accessToken": "fixture-access-token",
+        "expiresAt": int((time.time() - 3600) * 1000)}}).encode("utf-8")
+
+
+DICT_UNUSABLE_LOGINS = {
+    "missing": (_fnRaiseFileNotFound, "no persisted Claude login was found"),
+    "unparseable": (lambda sPath: b"not json", "not readable JSON"),
+    "withoutToken": (lambda sPath: b"{}", "no access token"),
+    "lapsed": (_fbaLapsedLogin, "expired"),
+}
+
+
+@pytest.mark.parametrize("sCase", sorted(DICT_UNUSABLE_LOGINS))
+def test_each_unusable_login_says_which_way_it_is_unusable(
+        sEvidencePath, sCase):
+    fnRead, sExpectedFragment = DICT_UNUSABLE_LOGINS[sCase]
+    dictLogin = _fdictReadClaudeLogin(sEvidencePath, fnRead)
+    assert dictLogin["bHasLogin"] is False
+    assert sExpectedFragment in dictLogin["sLoginProblem"], dictLogin
+
+
+@pytest.mark.falsification
+def test_the_unusable_logins_are_told_apart_not_one_sentence(sEvidencePath):
+    """A boolean made all of these read alike; the sentences must differ.
+
+    Kills: every failure collapsing back to one generic reason, which is
+    the reported "I logged in and it still says no provider is logged
+    in" with nothing to tell the researcher which of these it was.
+    """
+    setReasons = {
+        _fdictReadClaudeLogin(sEvidencePath, fnRead)["sLoginProblem"]
+        for fnRead, _ in DICT_UNUSABLE_LOGINS.values()}
+    assert len(setReasons) == len(DICT_UNUSABLE_LOGINS)
+
+
+def test_a_missing_login_names_the_path_the_hub_looked_at(sEvidencePath):
+    dictLogin = _fdictReadClaudeLogin(sEvidencePath, _fnRaiseFileNotFound)
+    assert "/workspace/.claude/.credentials.json" in (
+        dictLogin["sLoginProblem"])
+
+
+@pytest.mark.falsification
+def test_an_unreadable_container_does_not_leak_the_daemons_words(
+        sEvidencePath):
+    """The daemon's own words are the Docker boundary's to translate.
+
+    Kills: the unreadable-container reason carrying the exception text,
+    which would put a socket path or daemon message in front of the
+    researcher where the remedy belongs.
+    """
+    from vaibify.gui import councilRouteGuards
+    dictLogin = _fdictReadClaudeLogin(sEvidencePath, _fnRaiseDaemonDown)
+    assert dictLogin["bHasLogin"] is False
+    assert dictLogin["sLoginProblem"] == (
+        councilRouteGuards.S_LOGIN_UNREADABLE_PROBLEM)
+    assert "docker.sock" not in dictLogin["sLoginProblem"]
+
+
+def test_a_usable_login_has_no_problem_and_holds_no_secret(sEvidencePath):
+    import json
+    dictLogin = _fdictReadClaudeLogin(
+        sEvidencePath, lambda sPath: json.dumps({"claudeAiOauth": {
+            "accessToken": "the-secret-token",
+            "refreshToken": "the-refresh-token"}}).encode("utf-8"))
+    assert dictLogin["bHasLogin"] is True
+    assert dictLogin["sLoginProblem"] == ""
+    assert "the-secret-token" not in repr(dictLogin)
+
+
+@pytest.mark.falsification
+def test_the_reason_names_each_providers_own_problem():
+    """Each sentence stands alone: provider, reason, one full stop.
+
+    Kills: the reasons run together with doubled full stops, which reads
+    as a message assembled from fragments rather than a diagnosis.
+    """
+    sReason = agentCouncilReadiness.fsComposeNoLoginReason(
+        agentCouncilReadiness.fsSummarizeLoginProblems([
+            {"sProvider": "claude", "sLoginProblem": "the login expired."},
+            {"sProvider": "codex", "sLoginProblem": "no login was found"},
+            {"sProvider": "gemini", "sLoginProblem": ""}]))
+    assert "claude: the login expired." in sReason
+    assert "codex: no login was found." in sReason
+    assert "gemini:" not in sReason
+    assert ".." not in sReason
+    assert sReason.endswith("then convene.")
+
+
+def test_a_reason_without_problems_is_still_the_remedy():
+    sReason = agentCouncilReadiness.fsComposeNoLoginReason("")
+    assert "Log in" in sReason
+    assert "  " not in sReason
+
+
+@pytest.mark.falsification
+def test_blocked_over_http_names_the_path_and_every_provider(
+        tmp_path, monkeypatch, sEvidencePath):
+    """The real route, the real extractors, no stub of the function.
+
+    Only the container read is replaced, so a reason that was dropped
+    anywhere between the adapter and the button fails here.
+
+    Kills: the capabilities route not forwarding each provider's own
+    login problem, which leaves the button saying only that nothing was
+    found.
+    """
+    app, clientHttp = _tBuildClient(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        app.state.dictRouteContext["docker"], "fbaFetchCredentialFile",
+        lambda sContainerId, sPath: _fnRaiseFileNotFound(sPath))
+    dictCapabilities = _fdictCapabilities(clientHttp)
+    sReason = dictCapabilities["sReadinessReason"]
+    assert dictCapabilities["sCouncilReadiness"] == "blocked"
+    assert "/workspace/.claude/.credentials.json" in sReason
+    for sProvider in ("claude", "codex", "gemini"):
+        assert f"{sProvider}:" in sReason, sReason
+    assert "Log in" in sReason
 
 
 # ----- the snapshot half (plan contract C, scope from B) --------------------------------
