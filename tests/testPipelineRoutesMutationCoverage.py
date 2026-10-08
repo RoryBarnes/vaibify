@@ -279,7 +279,11 @@ class TestCachedEntriesForSnapshot:
 
     def test_an_entry_without_a_stat_key_is_never_offered(self):
         """Kills: Drop the listStatKey conjunct in _fdictCachedEntriesForSnapshot."""
-        dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
+        # Both digests are present so that only the missing key can
+        # decline the entry; with one absent, the digest check declines
+        # it first and this test kills nothing.
+        dictShaCache = {"out/a.dat": {
+            "iMtime": 1700, "sSha256": "aa", "sBlobSha": "bb"}}
         assert pipelineRoutes._fdictCachedEntriesForSnapshot(
             dictShaCache) == {}
 
