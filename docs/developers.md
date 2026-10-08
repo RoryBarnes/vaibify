@@ -246,7 +246,7 @@ AGENTS.md             Repo-wide rules that apply to every edit, and
 For the full architectural narrative including module responsibilities,
 dependency graph, state machine, and known technical debt, see
 [architecture.md](architecture.md). For the methodology behind the
-agent documentation system, see [vibeCoding.md](vibeCoding.md).
+agent documentation system, see [For Agents](forAgents.md).
 
 Run `python tools/listModules.py <subtree>` to print the current
 module layout with `__all__` exports and docstring summaries, rather

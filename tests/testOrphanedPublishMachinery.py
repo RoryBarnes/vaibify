@@ -1,7 +1,8 @@
 """Keep the publish story and the code telling the same story.
 
-`docs/cli.md` claimed the publishing machinery was "already available
-through the GUI's Settings → Publish pane". No such pane exists, and
+The CLI reference (`docs/install.md`) once claimed the publishing
+machinery was "already available through the GUI's Settings → Publish
+pane". No such pane exists, and
 `vaibify/reproducibility/githubWorkflow.py` -- the GitHub Actions
 generator behind the claim -- has no caller in the product. A reader
 budgeting on that sentence would look for a feature that was never
@@ -46,11 +47,11 @@ def _flistProductImporters():
 
 def testDocsDoNotAdvertiseAPublishPaneThatDoesNotExist():
     """The GUI has no Publish pane; the CLI docs must not claim one."""
-    sDoc = (_PATH_REPO / "docs" / "cli.md").read_text()
+    sDoc = (_PATH_REPO / "docs" / "install.md").read_text()
     # The corrected text mentions the pane in order to deny it, so the
     # forbidden thing is the CLAIM, not the words.
     assert "already available through the GUI" not in sDoc, (
-        "docs/cli.md advertises publishing machinery as available "
+        "docs/install.md advertises publishing machinery as available "
         "through the GUI. No Publish pane exists in the frontend."
     )
 
@@ -66,7 +67,7 @@ def testPublishPaneIsAbsentFromTheFrontend():
     ]
     assert not listHits, (
         "A Publish pane now exists in " + ", ".join(listHits)
-        + " -- update docs/cli.md and this test together."
+        + " -- update docs/install.md and this test together."
     )
 
 

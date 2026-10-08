@@ -12,12 +12,12 @@ server (Python); the frontend is plain JavaScript using IIFE modules
 
 For the human contributor workflow (how to run tests, submit PRs, follow
 the style guide) see [developers.md](developers.md). For the methodology
-behind the agent documentation, see [vibeCoding.md](vibeCoding.md). 
+behind the agent documentation, see [For Agents](forAgents.md). 
 
 ## Preface
 
 For the full argument of why vaibify exists and what it believes about
-AI-assisted scientific computing, see [philosophy.md](philosophy.md).
+AI-assisted scientific computing, see [Vibe Coding Scientific Software](vibeCoding.md).
 The short version: the tagline *"Vibe boldly. Verify everything."* is
 the architecture specification. Bold vibing happens inside a Docker
 container the agent cannot escape. Verification happens in a browser
@@ -363,7 +363,7 @@ location. This constraint is enforced at discovery time
 (`flistFindWorkflowsInContainer` drops any candidate not inside a git
 work tree) and at creation time (`_fsValidateRepoDirectory` rejects
 target directories that are not git repos). It maps directly to L1 of
-the reproducibility ladder in [vision.md](vision.md): a project that
+the [PROOF Ladder](proofLadder.md): a project that
 cannot be committed cannot be reproduced.
 
 `/workspace` itself is a Docker-managed named volume, not a repo. It
@@ -488,7 +488,7 @@ identical.
 ## Single browser session per container
 
 This section is normative: it is the single source of truth for the
-container-access model. `docs/dashboard.md` and `docs/cli.md` describe
+container-access model. `docs/environmentsAndProjects.md` and `docs/install.md` describe
 the user-facing surface and point here for the mechanism.
 
 Vaibify's concurrency model is borrowed from JupyterHub, which solves
@@ -1276,7 +1276,7 @@ fall back to the bare PID-existence check, so a live genuine holder is
 never reaped. No new dependency is introduced; the probe shells out to
 `ps`, which is present on both platforms.
 
-The `vaibify sessions` CLI (see [CLI Reference](cli.md)) is the
+The `vaibify sessions` CLI (see [Advanced Installation](install.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
 
@@ -1286,7 +1286,7 @@ A project is either **containerized** or **host**. A host project has
 no image, no container and no volume: its pipeline runs directly on the
 researcher's machine, in the directory they registered. It exists
 because the image build ends most first encounters with vaibify before
-they begin (see [philosophy.md](philosophy.md) for the stance, which is
+they begin (see [Vibe Coding Scientific Software](vibeCoding.md) for the stance, which is
 that the container remains the default and the destination).
 
 Almost nothing above changes, and that is the design. The ownership
@@ -3271,7 +3271,7 @@ source for structural rules about the codebase (leaf modules, route
 contracts, path-module conventions, science-agnostic source). When a
 rule there changes, the test changes. When the code violates a rule,
 the test fails. This is the deterministic half of the documentation
-system — see [vibeCoding.md](vibeCoding.md) for the broader methodology.
+system — see [For Agents](forAgents.md) for the broader methodology.
 
 ## Known technical debt
 

@@ -8,7 +8,7 @@ are implemented here: L1 (Self-Consistent), L2 (Publication) via
 workflow-scope check ``_fdictL3WorkflowChecks`` returns (attestation, published
 envelope, archives). L4 (Traceable), L5 (Regenerated) and L6 (Attested) are
 outside vaibify's scope by design; see ``docs/reproducibility.md`` for the
-ceiling and ``docs/vision.md`` for the full six-rung ladder.
+ceiling and ``docs/proofLadder.md`` for the full six-rung ladder.
 
 Per-step L1 predicates live in ``stepPredicates`` (pure leaf module);
 L2 predicates are split across this module and ``scheduledReverify``

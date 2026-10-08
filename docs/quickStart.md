@@ -76,7 +76,7 @@ Note, however, that the research field still says "Untested". You have not decla
 
 ### Doing the same thing with an agent
 
-Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like "Run all steps and their unit tests." `vaibify` includes an [agent action catalog](dashboard.md#agent-actions) that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the `vaibify` to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.
+Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like "Run all steps and their unit tests." `vaibify` includes an [agent action catalog](forAgents.md#agent-actions) that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the `vaibify` to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.
 
 ## 6. Check the bytes again
 
@@ -290,16 +290,16 @@ knows is exactly the claim this tool exists not to make.
 
 - **[The three templates: sandbox, toolkit, workflow](templates.md)** —
   starting your own project rather than driving someone else's.
-- **[The dashboard tour](dashboard.md)** — every panel, the status
-  colors, and the verification state machine.
-- **[The reproducibility ladder](reproducibility.md)** — what Levels 1
-  through 3 each certify, and what none of them do.
+- **[Environments and Projects](environmentsAndProjects.md)** — every
+  panel of the dashboard, the status colors, and how steps are verified.
+- **[The PROOF Ladder](proofLadder.md)** — what Levels 1 through 3 each
+  certify, and what none of them do.
 - **[Security model](security.md)** — what a container protects against
   and what host mode does not. Worth reading before you let an agent
   write code anywhere.
-- **[Install guide](install.md)** — Docker and Colima, plus
-  platform-specific troubleshooting.
-- **[Command line interface](cli.md)** — everything above, scriptable.
+- **[Advanced Installation](install.md)** — Docker and Colima,
+  platform-specific troubleshooting, the configuration reference, and
+  the command line that makes everything above scriptable.
 
 A note on what you will see in `git status` afterwards: opening a
 project can refresh the small `conftest.py` that vaibify installs in

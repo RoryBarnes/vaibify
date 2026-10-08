@@ -1,413 +1,384 @@
-# Vibe coding with verification
-
-Vaibify's tagline is *Vibe boldly. Verify everything.* This document
-is about the second half. It describes a methodology for writing
-agent-facing documentation so that an AI coding agent can contribute
-safely to a scientific software repository, and so that the
-documentation itself never drifts away from the code it describes.
-
-The principles are repository-agnostic. Vaibify is used as a worked
-example because it is a mid-sized Python and JavaScript codebase with
-more than two thousand unit tests, frequent refactors, and several
-collaborators of mixed software backgrounds. 
-
-This is a methodology guide, not a quick reference. Expect to read it
-in one sitting, then come back to individual sections when you are
-setting up a new repository.
-
-## 1. Motivation: why agent docs drift
-
-AI coding agents are stochastic. The same prompt, run twice, can
-produce different code, different file names, and different imports.
-This is not a defect of any particular model; it is a property of how
-these systems sample from a distribution of plausible completions.
-
-Scientific software tolerates stochasticity poorly. A simulation that
-gives a slightly different answer each time it runs is not a
-simulation, it is a hazard. The same is true for a codebase: if an
-agent silently rewrites a helper function the wrong way on Tuesday
-because Monday's prompt happened to produce a different result, a
-human reviewer will not catch it until a test fails months later. The
-most dangerous mistakes are the ones that are plausible.
-
-The natural response is to write more documentation. Tell the agent
-where everything lives, what the modules are called, how many files
-are in each package, what the imports look like. This works for one
-afternoon. Then somebody refactors a module, or adds a new route, or
-splits a file in two, and the documentation quietly becomes wrong.
-
-Vaibify's previous `CLAUDE.md` hard-coded line counts for more than
-thirty-five Python modules. Within a few weeks the counts were off by
-ten to forty percent, and a newly added `scriptReposPanel.js` module
-was missing entirely from the map. An agent reading that file had two
-bad choices: trust the stale data and generate confidently wrong code,
-or ignore the map and re-derive the architecture from scratch every
-session, producing inconsistent results. Neither is acceptable in a
-scientific setting where reproducibility is a primary value.
-
-The root cause is that the documentation was trying to do two jobs at
-once: it was stating rules that cannot be tested, and it was reciting
-facts that should never have been typed by hand. Untangling those two
-jobs is the core of the methodology.
-
-## 2. Deterministic versus stochastic documentation
-
-There are two fundamentally different kinds of content in any
-architecture document.
-
-**Deterministic signals** are facts that the code unambiguously is:
-the list of modules in a package, the symbols each module exports,
-the type of an argument, the presence or absence of a test, the
-result of running a linter. Machines extract these reliably. They
-cannot drift relative to the code because they are derived from the
-code. If you write them down by hand, you are creating a second
-source of truth that is guaranteed to diverge.
-
-**Stochastic signals** are rules, contracts, intents, hazards, and
-invariants that span multiple files. They cannot be extracted from
-any single file or from any mechanical scan. They have to be written
-by humans who know the system. They are load-bearing *precisely
-because* an agent cannot infer them from reading the code.
-
-Examples of stochastic signals in vaibify:
-
-- "Container paths use `posixpath`; host paths use `os.path`."
-- "Never reassign `setExpandedSteps`; mutate it in place."
-- "A host-path module may duplicate two functions from
-  `workflowManager.py` rather than share them, because the two operate
-  on different filesystems."
-
-None of those rules are visible by reading any one file. All three
-have caused real bugs when an agent or a new developer ignored them.
-
-A documentation system that mixes these two categories in one
-hand-written file gets the worst of both worlds. The deterministic
-parts drift, training the reader to distrust the file. The stochastic
-parts, which are the whole point, get buried under rotting module
-maps and stale line counts.
-
-The analogy to scientific computing is almost too on-the-nose.
-Deterministic components of a physical model (conservation laws,
-boundary conditions, unit conversions) are handled by code and
-checked by tests. Stochastic components (priors, parameter ranges,
-stopping criteria) are handled by the researcher. You do not ask
-your simulation to invent its own priors and you should not ask your
-documentation to invent its own module map.
-
-## 3. The four-layer framework
-
-Vaibify's agent documentation is organized into four layers. Each
-layer has a different trigger (when the agent sees it), a different
-source of truth, and a different failure mode. Keeping them separate
-is what makes the whole system stable.
-
-### Layer 1: always-on, semantic
-
-Short prose files stating rules that cannot be tested. These live
-at `AGENTS.md` in the repository root, with nested `AGENTS.md` files
-in subtrees that have their own conventions (for example,
-`vaibify/gui/AGENTS.md` for the FastAPI backend and
-`vaibify/gui/static/AGENTS.md` for the JavaScript frontend).
-
-These files are loaded every turn of an agent session. They should
-contain only content that is load-bearing and cannot be expressed as
-a test: style contracts, the handful of cross-cutting rules a
-newcomer would miss, the traps listed in section 5.
-
-**Failure mode:** silent. When a Layer 1 file is wrong, the agent
-trusts it and produces subtly wrong code. This is why Layer 1 should
-stay small.
-
-### Layer 2: enforced, deterministic
-
-Architectural invariants expressed as pytest assertions. A single
-file like `tests/testArchitecturalInvariants.py` contains tests that
-assert things like "no module under `vaibify/gui/routes/` imports
-from `pipelineServer`" or "every route module defines
-`fnRegisterAll`" or "no JavaScript file in `static/` exceeds two
-thousand lines".
-
-These cannot drift. When the rule changes, the test changes in the
-same commit. The test name, docstring, and assertion together *are*
-the rule, which means the rule is self-documenting and executable at
-the same time.
-
-**Failure mode:** loud. When a Layer 2 invariant breaks, CI turns
-red. This is exactly what you want.
-
-### Layer 3: on-demand, deterministic
-
-Discovery scripts that extract structural facts from the current
-code. Vaibify ships `tools/listModules.py`, which walks the package
-with Python's `ast` module and prints the current module map — path,
-public symbols (from `__all__`), and a one-line purpose from each
-module's docstring. Line counts and import edges are deliberately
-excluded as drift bait; if an agent needs either, it should run a
-targeted tool at the moment of need rather than read a persisted
-summary. An agent runs this script when it needs the current state of
-the codebase.
-
-Nothing is persisted. The output is regenerated on every invocation
-from the live source tree, so it cannot be stale. Other examples
-include a script that lists all pytest markers, a script that
-prints the route graph, or a grep that enumerates TODOs.
-
-**Failure mode:** rare. When a discovery script is wrong, it fails at
-the moment of use and the agent notices immediately.
-
-### Layer 4: conditional, semantic
-
-Multi-step recipes for recurring tasks, loaded only when the task
-matches. Anthropic Skills (`.claude/skills/*/SKILL.md`), Cursor
-rules, and similar tool-specific formats belong here. A skill might
-encode the steps for adding a new module, reviewing a pull request,
-or running a security audit.
-
-**Failure mode:** silent, like Layer 1, because skills are prose. Use
-sparingly and only for genuinely recurring multi-step work. A skill
-that fires on every task is just Layer 1 wearing a costume.
-
-### Summary
-
-| Layer | Trigger       | Source of truth      | Failure mode |
-|-------|---------------|----------------------|--------------|
-| 1     | Every turn    | Hand-written prose   | Silent       |
-| 2     | Every commit  | The assertion itself | Loud (CI)    |
-| 3     | On demand     | The live source tree | At point of use |
-| 4     | Task match    | Hand-written prose   | Silent       |
-
-The important property is that Layers 2 and 3, which cannot drift,
-carry most of the deterministic content, while Layers 1 and 4,
-which can drift, carry only the irreducibly stochastic content.
-
-## 4. The scoping test
-
-When you are tempted to add content to an agent-facing document, run
-it through four questions in order.
-
-1. **Would a new developer, reading the code alone for twenty
-   minutes, miss this?** If the answer is no, do not write it at all.
-   A document full of content that a careful reader could have
-   inferred trains its readers (human and agent) to skim.
-
-2. **Can the rule be expressed as an assertion on the code?** If yes,
-   it belongs in Layer 2. Promote aggressively. Tests are the only
-   documentation artifact that cannot lie.
-
-3. **Is the fact extractable from the code?** If yes, it belongs in
-   Layer 3. Write a script, do not persist the output. If you catch
-   yourself typing a module list or a line count, stop.
-
-4. **Otherwise, is it a single-step rule or a multi-step recipe?**
-   Single-step rules go in Layer 1. Multi-step recurring recipes go
-   in Layer 4.
-
-The common failure is to skip straight to Layer 1 for everything,
-because prose is easy to write and tests are hard. Resist this. The
-cost of writing a test once is far less than the cost of a stale
-paragraph misleading an agent every day for a year.
-
-## 5. Traps over rules
-
-The highest-value prose content in an `AGENTS.md` is almost never a
-list of rules. It is a list of *traps*: places where the code does
-the opposite of what a careful reader would expect, or where two
-things look alike but behave differently.
-
-Traps are what a new contributor cannot discover by reading
-carefully. They have to be told. A good trap entry names the two
-things that look alike, says which one does what, and gives the
-consequence of getting it wrong.
-
-Examples from vaibify:
-
-- Container paths use `posixpath`; host paths use `os.path`. A module
-  on each side will grow similarly named functions, and unifying them
-  silently produces wrong file paths on Windows, or on any host where
-  the separator differs. (Vaibify carried exactly this pair until the
-  host-side runner was withdrawn in August 2026 — the trap outlived
-  the example, which is why it is stated as a shape rather than as
-  two filenames.)
-
-- A test double that answers a call is not a stand-in for the thing it
-  doubles. Vaibify's Docker mocks accept a file write and store the
-  bytes; the real connection also asks an admission gate whether the
-  write was authorized. Twenty-seven test files defined such a mock
-  and not one called the gate, so a route could lose its authorization
-  entirely and its whole test file still passed. The mock looks like
-  the real object at the surface the test reads and differs at the
-  boundary the test exists to protect.
-
-- `_dictUiState` contains several `Set` objects. These sets are
-  captured by reference in the render closure. Reassigning a set
-  (`_dictUiState.setExpandedSteps = new Set()`) silently breaks the
-  render, which continues to read the old set. Always call
-  `.clear()` instead.
-
-- `introspectionScript.py` duplicates format-handling logic from
-  `dataLoaders.py`. This is not a refactoring opportunity; the
-  introspection script runs inside Docker containers that cannot
-  import from the host environment.
-
-The exercise, when starting an `AGENTS.md`, is to ask: what are the
-five mistakes I would be most annoyed to see an agent make in this
-repository next week? Write those. Everything else can wait.
-
-## 6. The feedback principle
-
-When an agent makes the same mistake twice, the documentation system
-should absorb the lesson. There are three ways to do that, in order
-of preference.
-
-First, promote the mistake into a Layer 2 test. If the mistake is
-"an agent keeps importing from `pipelineServer` in a route module,"
-add an architectural invariant that fails when any route module
-imports from `pipelineServer`. The mistake becomes a permanent guard
-rail; no future agent can repeat it without turning CI red.
-
-Second, if the mistake cannot be tested, write it down. One paragraph
-per lesson: state the mistake, state the correct behavior, state the
-consequence of getting it wrong. Where it goes depends on its reach --
-a lesson about one subsystem belongs in that subsystem's skill, a war
-story belongs in [lessons.md](lessons.md), and only a rule that
-governs *every* edit earns a place in `AGENTS.md`. That file is read
-in full on every task, so its length is a tax on all of them.
-
-Third, if the mistake is a multi-step task being done inconsistently,
-add a Layer 4 skill.
-
-Without this loop, documentation stagnates at initial quality. The
-test-promotion path is the most valuable because it converts
-stochastic prose (which can be ignored) into deterministic enforcement
-(which cannot). Over time, a repository that uses the feedback loop
-well will find that most of its Layer 1 content slowly migrates into
-Layer 2 tests, leaving behind only the rules that genuinely resist
-mechanization.
-
-One qualification, learned the hard way. Promoting a rule into a test
-converts it into enforcement *only if the test can observe the
-failure*. Vaibify built a rule that a container mutation must be
-opened through a commit carrier, and relied for proof on the
-primitive raising when a carrier was missing — a refusal that is real,
-loud, and in the right place. It was also invisible: the suite's Docker
-doubles never consulted the gate, so deleting a route's carrier call
-outright left its entire test file green. The rule had been promoted
-to Layer 2 in form and remained prose in effect, and it would have
-governed a hundred-and-thirty-route migration in that state.
-
-The check on this is cheap and worth making a habit: after writing a
-test for a rule, break the rule on purpose and watch that specific
-test fail. If it does not, the test's premise is wrong, not the
-rule's. Two further sharpenings follow from repeating this often
-enough. Assert on the *state* the rule is about, never merely that
-nothing raised — "no exception" is equally true of code that satisfies
-the rule and code the harness cannot see. And if a mutation kills two
-tests, the shape is protected by two guards and neither is proven, so
-split until each isolates one. A guard nobody has watched fail is a
-guard nobody has tested, and a green suite full of them reads exactly
-like a green suite that means something.
-
-## 7. Tradeoffs and limits
-
-Honest caveats, because nothing in this space is free.
-
-Tests cover maybe forty percent of the rules in a typical research
-codebase. The rest stays as prose. It is tempting to over-promise
-determinism and claim that the right architecture can test
-everything, but invariants about intent, taste, and scientific
-meaning resist assertion. Do not pretend otherwise.
-
-One-line module docstrings drift less than paragraph-length ones.
-Keep docstrings short for routine modules; reserve longer docstrings
-for the modules that encode emergent semantics a reader cannot infer
-by reading the functions in order. `fileStatusManager.py` in vaibify
-has a long module docstring because it documents a state machine that
-spans five files; most modules have one-line docstrings because
-their behavior is visible in their function signatures.
-
-Context-window economics matter less at frontier-model scale than
-they did a year ago. A two-hundred-line `AGENTS.md` that is correct
-beats a sixty-line `AGENTS.md` that omits load-bearing context.
-Optimize for correctness, not brevity. That said, every sentence you
-add is a future drift liability, so only add content that is
-load-bearing.
-
-Skills are tool-specific. Claude Code's skill format differs from
-Cursor's rules format, and both differ from whatever the next tool
-will ship. If cross-tool portability matters, stick to `AGENTS.md`
-plus tests plus scripts. Skills are a convenience on top, not a
-foundation.
-
-## 8. Practical playbook
-
-Here is a checklist for applying this methodology to your own
-repository. Do the items in order.
-
-1. List the three to five traps you would be most annoyed to see an
-   agent fall into. Write those first as the core of your
-   `AGENTS.md`. Do not start with style rules or module maps.
-
-2. List the architectural invariants you rely on. For each, ask
-   "can this be a test?" Promote the ones that can. Create a file
-   like `tests/testArchitecturalInvariants.py` even if it only
-   contains three tests on day one.
-
-3. Do not write a module map. Write a `tools/listModules.py` (or
-   equivalent) that prints the current state on demand. If you
-   cannot resist persisting a map somewhere, persist the *script's
-   output* rather than a hand-written version, and regenerate it on
-   every commit via a pre-commit hook.
-
-4. Symlink `CLAUDE.md` to `AGENTS.md` so every agent tool reads the
-   same file. If your tool of choice uses yet another filename,
-   symlink that too. One source of truth per repository.
-
-5. Set up a CI path check that greps your `AGENTS.md` files for
-   file paths and fails on dangling references. This catches the
-   most common silent drift: a module gets moved and the doc still
-   points at the old location.
-
-6. Iterate on `AGENTS.md` every time you catch yourself correcting
-   an agent on the same thing twice. Apply the feedback principle:
-   promote to a test if possible, otherwise add a Lessons entry.
-
-7. Resist the urge to add everything. Each new sentence is a future
-   drift liability. Read the scoping test in section 4 before
-   adding content.
-
-## 9. Worked examples: vaibify as reference
-
-The patterns in this document are visible in vaibify's own repository.
-Cross-references so you can see how they look in practice:
-
-- [AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/AGENTS.md): the Layer 1 semantic doc at the
-  repository root.
-- [vaibify/gui/AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/vaibify/gui/AGENTS.md) and
-  [vaibify/gui/static/AGENTS.md](https://github.com/RoryBarnes/Vaibify/blob/main/vaibify/gui/static/AGENTS.md):
-  nested subtree docs that state conventions specific to the
-  FastAPI backend and the JavaScript frontend.
-- [tests/testArchitecturalInvariants.py](../tests/testArchitecturalInvariants.py):
-  the Layer 2 file that encodes every testable invariant.
-- [tools/listModules.py](../tools/listModules.py): the Layer 3
-  discovery script. Run it when you need a module map; do not paste
-  its output anywhere.
-- [.claude/skills/](https://github.com/RoryBarnes/Vaibify/blob/main/.claude/skills): Layer 4 recipes for
-  recurring multi-step tasks.
-
-Some of these files are being checked in alongside this document, so
-a reference may briefly fail to resolve. Once the full set lands,
-each link above points at the concrete artifact that corresponds to
-the abstract layer.
-
-## 10. A closing thought
-
-This methodology is not really about agents. It is about making code
-legible to any reader, human or machine, without sacrificing the
-honesty that scientific software requires. In a scientific context,
-documentation that drifts from code is a reproducibility hazard:
-future readers (including future you) use the docs to understand what
-the code did, and a docs-code gap quietly corrupts the record.
-Agent-friendly docs and reproducibility-friendly docs turn out to be
-the same thing. The discipline required to keep an `AGENTS.md`
-correct is the same discipline required to keep a methods section
-correct. Vibe boldly. Verify everything.
+# Vibe Coding Scientific Software
+
+AI coding agents write functioning code at remarkable speed, and their
+training on the scientific and statistical literature lets them quickly
+"understand" a research problem. They are also stochastic: there is a
+non-zero probability that their code is wrong or, worse, that critical
+files are erased without authorization. A researcher may trust an agent
+too much and not fully validate a numerical experiment, or trust it too
+little and never submit accurate and compelling research. When agents
+write the code, the bottleneck shifts from *writing* code to *verifying*
+it.
+
+This page describes the properties of scientific software development
+that change when agents do the writing, and how vaibify addresses each
+one. Safety, verification, and reproducibility appear to be the most
+critical: nobody wants a tool that could cause permanent harm, and
+scientists strive to publish results their colleagues can trust and
+build upon. Most of these goals already align with the scientific method
+and open-science practice, and many design constraints are unchanged,
+such as how quantifiable, tractable, iterable, parallelizable, and
+archivable a project is. What agents change is the methodology and the
+priorities. The list is assuredly partial.
+
+## Fundamental assumptions
+
+Vaibify's animating assumption is:
+
+> *Visually verifying the outputs of AI-written software, partnered with
+> continuous integration, is a faster path to good science than
+> human-only code and analysis.*
+
+The value proposition follows: after an hour of setup, a researcher can
+generate and verify byte-reproducible results in less time than without
+agents. The claim is falsifiable. If human-only code reliably
+outperforms agent-written, human-verified code, vaibify's architecture
+is wasted effort. The bet is that verifying outputs is the part of
+science that most benefits from human attention, and that delegating
+the mechanical code-writing frees the researcher to ask the right
+questions, inspect the results, and decide what to do next. The tagline
+*Vibe boldly. Verify everything.* is the specification: bold vibing
+happens inside a container the agent cannot escape, and verification
+happens in a dashboard that makes the researcher's "yes, I looked at
+this" a first-class artifact alongside the code and the data.
+
+**A dashboard instead of an IDE.** Researchers prompt agents to write
+the code, so an integrated development environment is unnecessary. A
+minimal text editor handles small tweaks, such as changing an input
+parameter, and **Open in VS Code** attaches the full IDE to the
+container when one is wanted. The researcher's main work is examining
+plots and data files to validate the results.
+
+**The Linux file tree is ground truth.** Vaibify treats a Linux
+directory and file structure as the authoritative record, and the output
+of the Linux command line as always accurate. The dashboard reports what
+the files say; it never substitutes its own memory for them.
+
+**A fully scriptable core.** Although vaibify looks like a GUI
+application, its core operates independently of the GUI. The `vaibify`
+command line builds and starts environments, runs and tests steps, and
+reports a project's PROOF level and its blockers
+(`vaibify status --proof`), so any part of the workflow can be
+automated. Inside the container, a library of scripts gives agents the
+same deterministic actions the dashboard's buttons perform.
+
+**An always-current dashboard.** The researcher must see immediately
+when something has gone amiss. At regular intervals vaibify checks file
+timestamps and confirms that the dependencies between steps are intact.
+The polling interval defaults to 5 seconds and is adjustable in the
+settings. Checks against remote services run on their own, slower
+schedule: vaibify re-verifies them every few hours while the hub runs, a
+GitHub or Zenodo verdict older than a day is shown as unknown rather than
+passing, and the researcher can verify on demand at any time. State is
+never cached beyond its natural lifetime, and no step is marked passed
+optimistically.
+
+**A defensive security posture.** The container's user is unprivileged
+(uid 1000) with no `sudo`. A container can be built with full network
+isolation. Credentials are held by hardened mechanisms, such as
+`gh auth`, the operating system's keyring, or Docker secrets, never in
+environment variables. Each container has its own agent token, so one
+vaibify container cannot act on another on the same host. See
+[Security Model](security.md).
+
+**"Verified" is not "accurate."** Vaibify monitors the contents of
+files. It can show that results are self-consistent and match their
+published copies; interpreting them remains the researcher's job.
+
+## Containable
+
+Agents that write code and manage directories can cause serious and
+permanent harm to a computing environment through a poorly constructed
+prompt or reckless behavior, and even harmless agents can introduce
+security vulnerabilities. Such events appear rare with modern agents,
+but the failure modes are catastrophic. Agents should therefore reach
+only the files a research task needs, with no access to critical files
+or machines. A contained agent also sees only the data and packages the
+researcher approves, so it is less likely to search for spurious
+information and insert dubious code.
+
+**In vaibify.** Agents run inside Docker containers whose processes
+cannot modify files on the host, and the container doubles as a
+well-defined environment for reproducible research. Researchers add
+software and data at build time, reach the web from inside, and let
+agents modify files freely, which is why an agent such as Claude Code
+can safely run long tasks with its permission prompts disabled. Much of
+vaibify itself (the "back end") runs on the host, outside the agent's
+reach. A setup wizard walks through the build: language support, agent
+harnesses, storage, CPU count. A package found missing later can be
+added with standard tools such as `pip`, and added to the configuration
+for future builds.
+
+Exploration needs no structure. A sandbox or toolkit environment, or a
+Blank Project, offers a terminal and file tree with no required
+outcomes; these provide containment only and sit below Level 1 of the
+[PROOF Ladder](proofLadder.md). When the work looks promising,
+**+ New Project** turns it into a Project with steps. Vaibify can also
+run a project directly on the host ("host mode"), which skips the image
+build but gives up containment; it suits machines dedicated to running
+simulations, and a host project cannot reach Level 3. See
+[Environments and Projects](environmentsAndProjects.md).
+
+## Translatable
+
+At its core, an agent maps natural-language prompts into source code
+and shell scripts. Code is more predictable than natural language, which
+is why prompts translate into code so effectively, but the translation
+is approximate and its accuracy partly dictates the value of the
+result. Large projects challenge an agent's context window, and some
+styles are more efficient than others, such as naming variables with
+full, descriptive words.
+
+In an ideal project, a design document paired with the same agent
+harness always reproduces the same source code, *and vice versa*. Strict
+semantic rules improve translatability and speed development.
+Agent-written code should follow style standards that minimize the
+"perplexity" of its token patterns, that is, how unusual a sequence of
+tokens is compared to the model's training corpus. Code that ignores
+style invariants is harder for a model to parse and predict, so its
+translation is more prone to error.
+
+**In vaibify.** Vaibify does not impose a naming convention on
+researchers' code. Researchers declare their rules in the project
+context file (`.vaibify/AGENTS.md`), the standing instructions the
+in-container agent reads; vaibify links it to the names the supported
+agents look for at the repository root (`AGENTS.md`, `CLAUDE.md`,
+`GEMINI.md`). Vaibify's own source follows Martin (2008) and Hunt and
+Thomas (2020): readability independent of comments, short orthogonal
+single-purpose functions (a guideline of roughly 20 to 30 lines), little
+duplication, and modest, verifiable changes. Names use camel-case
+Hungarian notation, function names begin with "f" and contain a verb,
+and words are spelled out, so that functions read like paragraphs and
+lines read like sentences.
+
+## Localizable
+
+An agent's limited context window is best used when concepts and scopes
+are confined to small blocks of code, so the agent can grasp a
+function's goal. Agent-assisted code should avoid global variables and
+dependencies spread across files; where that is unavoidable, comments
+should explain the dependency and its wider scope.
+
+**In vaibify.** Localizability is hard to guarantee for an arbitrary
+problem, so vaibify addresses it through its agent harness, the
+natural-language instructions that accompany the container. The harness
+directs agents to avoid global variables, keep functions short, build
+modular architectures, and use names that are easy to search for. Since
+harnesses are fallible, a researcher should periodically ask an agent
+for an architectural review. Vaibify's own repository also enforces
+localizability deterministically; see [Enforceable](#enforceable).
+
+## Contestable
+
+Several high-quality coding agents can debate ideas and review each
+other's work, contesting each other's findings. The value is mixed:
+some studies suggest that a well-formed prompt to one agent is as
+effective as a poorly worded prompt to several. A discussion between
+agents should do at least as well as one agent, but at a higher cost,
+so it is best reserved for the hardest problems.
+
+**In vaibify.** In the Agent Council, the researcher picks several
+agents from the available models, designates one as the chairbot that
+drafts the final report, writes the prompt, and sets limits such as the
+maximum number of rounds. Each member works in its own disposable copy
+of the container, so it can run scripts and move files without touching
+the real one. Members analyze the repository independently, their
+anonymous reports are critiqued, the chairbot synthesizes them, and the
+Council iterates until the members agree, the round limit is reached,
+or the chairbot needs more information from the researcher. A planning
+Council produces a roadmap; an implementation Council writes code from
+a plan and reviews it. The researcher can watch, answer clarifying
+questions, and question the chairbot along the way. Councils are
+container-only, token-intensive, and need disk and memory for the
+copies, so they are not available for every project. A Council can also
+sharpen a vague prompt ("make the results statistically robust") into a
+quantifiable one, though judging whether it converged on a sound
+approach remains the researcher's job.
+
+## Decomposable
+
+Agents have limited context, so only projects that split into small
+enough pieces are viable, and the dependencies between pieces must be
+identifiable so that no step relies on unverified data. Decomposing a
+problem into a pipeline is a classic technique, stated here for
+completeness.
+
+**In vaibify.** Each component is a **Step** and the full set is a
+**Project**; where the divisions fall is the researcher's choice. Steps
+are *automated* (inputs are on disk and a script runs unattended,
+labeled A01, A02, ...) or *interactive* (the researcher decides specific
+quantities, labeled I01, I02, ...). Each step can carry a short
+description of its goal, which helps agents write better scripts and
+helps readers see how it fits the Project. Steps also support
+iteration: agents revise and rerun them at the researcher's direction
+until the results are accepted. Steps run one at a time, so parallelism
+lives inside a step; by default a container gets every host CPU but
+one.
+
+## Verifiable
+
+Scientists must validate agent-assisted results before publishing.
+Examining plots and raw data still works and should not be replaced. But
+agents can unexpectedly modify data that was already verified: a script
+in Step 2 creates a file used in Step 8, an agent later edits the Step 2
+script without telling the researcher, and the Step 8 result is out of
+date. The timing of output files must therefore be monitored, and unit
+tests are a critical requirement, so that later modifications do not
+break verified functionality. Verification may be replacing code
+development as the bottleneck: thousands of lines of working code take
+minutes to write, but days or weeks to validate as accurate and
+sustainable.
+
+**In vaibify.** A step counts toward Level 1 only when it has declared
+its input data, its integrity, qualitative, and quantitative tests pass,
+nothing has changed since verification, and the researcher has signed
+off. Vaibify generates tests deterministically by default, watches every
+declared input, script, output, and test file on each poll, and saves
+plot standards so a restructured script can be compared against the
+figure it should preserve. It detects cross-step dependencies by
+scanning step scripts for files that other steps produce, and lets the
+researcher declare dependencies no scanner could see. When an upstream
+step changes, every downstream step is flagged. The per-step sign-off
+keeps a human in the loop and makes accountability granular, which
+distinguishes vaibify from tools built for fully autonomous
+investigation. The requirement rows are listed on the
+[PROOF Ladder](proofLadder.md) page.
+
+## Observable
+
+Code should produce enough output, and only enough, for the outcome and
+any errors to be interpreted unambiguously. This matters more for
+agent-written code, because neither the researcher nor the agent is
+likely to remember where a failure could occur. Software should exit
+gracefully with a message that guides humans and agents to the
+offending function.
+
+**In vaibify.** The dashboard makes dependency and output problems
+visible at a glance. Every warning glyph names its reason and remedy,
+file names change style when a file is missing or stale, and a failed
+step's exit code is explained in plain language where it has a standard
+meaning. The **?** Help panel explains the status vocabulary.
+
+## Reproducible
+
+All scientific work should strive for full reproducibility, and
+agent-assisted work makes the goal more urgent. The crucial issue is
+stochasticity: quantitative output should depend as little as possible
+on a particular model's particular output. A step's unit tests, for
+example, should come from deterministic processing of its results, such
+as a Python script, not from a prompt; deterministic methods are always
+preferable to prompting. Data, scripts, and output should be tracked and
+available so that others can recover the claimed results independently
+of the AI and the original authors, and the use of AI, including the
+specific tasks and models, should be reported.
+
+**In vaibify.** Vaibify integrates with GitHub, Overleaf, arXiv, and
+Zenodo. The researcher chooses which files to publish, and vaibify
+monitors the SHA-256 hashes of local files and their remote copies, so
+anyone can confirm that the files on disk are the ones in the paper, on
+GitHub, and in the archive, and an agent cannot silently change an
+archived file. Every AI model used is declared with its vendor, model
+identifier, and dates of use. See
+[Connecting to External Resources](externalResources.md) and
+[Reproducibility](reproducibility.md).
+
+## Falsifiable
+
+Unit tests confirm a project's behavior, but cannot show on their own
+that they catch incorrect behavior. Each test is a hypothesis that it
+catches a failure, and a deliberate breakage of the code is a
+"falsification test" of that hypothesis. The approach is usually called
+mutation testing (DeMillo et al. 1978): change the code, for example by
+flipping a `<` to a `>`, and check that a test fails. Because the
+changes are deliberate, "falsification test" is the more accurate name.
+It matters most when a single agent writes the code, writes the tests,
+and judges the suite's success.
+
+Packages such as `mutmut` and `cosmic-ray` automate the tedium.
+Falsification can be ambiguous, since broken code sometimes still
+produces the expected outcome ("equivalent mutants"), but the larger the
+falsifiable fraction of the code, the more likely it works as intended.
+Parallel runs are hard, because mutations on the same branch interfere,
+so falsification is likely the slowest part of a comprehensive suite.
+
+**In vaibify.** The harness instructs agents to write falsifiable code
+wherever possible. Each deterministic pure-Python step offers **Check
+test teeth**, which mutates the step's code, runs its quantitative tests,
+and records the fraction of mutants caught. The result describes the
+tests' sensitivity, never the result's accuracy, and it never gates a
+level, because equivalent mutants make a hard pass/fail dishonest.
+Vaibify itself was developed this way, and its falsification tests
+regularly reveal mistakes the unit tests miss. See
+[Testing Model](testing.md).
+
+## Enforceable
+
+All code embodies design decisions, and well-written code enforces them
+for modularity, readability, and consistency. Agents' context windows
+are short compared with legacy codebases, so a fresh agent will not know
+the design choices unless they are documented *and* enforced.
+Agent-friendly code should specify its architecture, source style, and
+network connections (for example, whether file paths are relative or
+absolute), and include tests that hold the code to these invariants.
+Then no agent can break an established design decision, even when its
+output is correct and the unit and falsification tests pass.
+
+**In vaibify.** Design decisions in a researcher's own code belong to
+the researcher, so vaibify does not enforce them. Vaibify's repository
+enforces its own through continuous integration, and those tests can
+serve as a template. Three classes of invariants run on every change:
+architectural (how the code treats the file tree and how the back end
+connects to the front end), security (how the package handles
+credentials, paths, and remote services), and style (Hungarian
+notation, descriptive names, and function size). See
+[Testing Model](testing.md).
+
+## Replayable
+
+The ideal project lets future researchers reconstruct both the code and
+the results. It publishes its standing agent instructions (for example,
+`AGENTS.md`) and the transcript of the conversation with the agents,
+and records the model used with each prompt; open-weight models are
+preferable, so that their biases can also be probed. A transcript lets
+others search the original prompts for misconceptions that introduced
+incorrect methods, teaches newcomers which prompt styles work, and
+builds the transparency that makes agent-written code trustworthy.
+Combined with the git history, a timestamped prompt history explains
+the motivation behind each decision. Some decisions are made by hand,
+outside the transcript, so true replayability also needs a
+"supervision log" that records every file change with a timestamp,
+regardless of who or what made it.
+
+A code that adopted agents partway through should acknowledge it and
+record when; agent co-authored commits and stored chat histories can
+help reconstruct the date.
+
+**In vaibify.** Full replayability belongs to Level 4 of the PROOF
+Ladder, which vaibify does not implement. But a transcript must exist
+*before* Level 1 for a project ever to reach Level 4, so vaibify
+collects the evidence from the start. The opt-in **Prompt Record**
+copies the in-container agent's session transcripts into the
+repository, redacts secrets at capture time, and hash-chains the
+captures so that editing or removing one breaks the chain. **Supervised
+mode** adds the supervision log: every repository change must be
+attributable to a recorded action, and unexplained changes are flagged
+permanently. Both are tracked on the Replay axis, described on the
+[PROOF Ladder](proofLadder.md) page.
+
+## Synthesizing the properties
+
+These properties cover the scientific method from conception through
+archiving to reproduction, for research developed on a local machine and
+stored remotely. They deliberately do not address accuracy; their scope
+is the development of software and the verification that results are
+reproducible.
+
+The properties guide a researcher in bringing agents into research, but
+they are not enough alone. Without clear rules and procedures for
+development and reproducibility, a skeptical reader of a manuscript
+describing agent-assisted research would reasonably set it aside if the
+authors did not fully explain how the AI was used. The
+[PROOF Ladder](proofLadder.md) is a scale for assessing exactly that.
+
+For how vaibify's own agent guide applies the Localizable and
+Enforceable properties, see [For Agents](forAgents.md).

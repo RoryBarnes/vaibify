@@ -3,41 +3,37 @@ Vaibify Documentation
 
 **Vibe boldly. Verify everything.**
 
-Vaibify is a secure, containerized environment for AI-assisted data science.
-It decomposes projects into pipeline steps, executes them inside isolated
-Docker containers, verifies the outputs, and publishes the results -- all
-with minimal IDE interaction.
+AI coding agents can write functioning scientific code in minutes, but
+their mistakes can harm a researcher's computer and invite skepticism of
+AI-assisted results. Vaibify addresses both concerns. It builds a secure
+environment, usually a Docker container, connected to a graphical
+dashboard where researchers prompt command-line coding agents, decompose
+an analysis into Steps, watch the status of every local and remote file,
+inspect figures, and approve each result by hand.
 
-Vaibify grew out of efforts to make scientific computing workflows
-reproducible and generalizes that approach so that any data science
-pipeline can benefit from containerized reproducibility.
+Vaibify also guides a Project up the first three rungs of the PROOF
+Ladder, a six-level scale that classifies AI-assisted numerical
+experiments by their provenance, reproducibility, openness, oversight,
+and falsifiability. The veracity of a scientific result remains the
+researcher's responsibility. Vaibify ensures that the digital artifacts
+were generated in the correct order, that local files match their remote
+copies, and that the results can be reproduced byte for byte.
+
+New users should start with the QuickStart.
 
 .. toctree::
    :maxdepth: 1
 
    conduct
-   vision
-   philosophy
    quickStart
    install
-   configuration
-   cli
-   pipelines
-   dashboard
-   agentCouncil
-   remoteAccess
-   testFormats
+   vibeCoding
+   proofLadder
+   environmentsAndProjects
+   externalResources
+   reproducibility
    templates
    security
-   reproducibility
-   architecture
-   externalServices
-   vibeCoding
-   developers
    testing
-   knownDebt
-   lessons
-   skillTesting
-   releaseNotes
+   forAgents
    GitHub <https://github.com/RoryBarnes/Vaibify>
-   PyPI <https://pypi.org/project/vaibify/>

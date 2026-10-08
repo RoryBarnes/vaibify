@@ -1,93 +1,135 @@
 # Project Templates
 
-Vaibify ships with three project templates that provide starting
-configurations for common use cases. Select a template when initializing a
-new project:
+Every vaibify environment starts from a **template**: a small starter
+set of files copied into the environment's directory when it is
+created. You pick one on the **Template** page of the **Create New**
+wizard (the **+** on the environments page), or from a terminal:
 
 ```bash
-vaibify init --template <name>
+vaibify init                     # list the installed templates
+vaibify init --template <name>   # scaffold the current directory
 ```
 
-Each template contains `container.conf` and `project.json` (plus any
-starter files, such as the workflow template's step directories). `vaibify
-init` copies those into the current directory, moves `project.json` into
-`.vaibify/projects/`, and then generates `vaibify.yml` from the built-in
-defaults — the template does not supply it.
+`vaibify init` copies the template's files into the current directory,
+moves any `project.json` into `.vaibify/projects/`, and writes a
+`vaibify.yml` from the built-in defaults. It refuses, before writing
+anything, when `.vaibify/projects/project.json` already exists.
 
-## sandbox
+## The shipped templates
 
-An empty starting point for exploration, prototyping, and interactive use.
-No pipeline steps are defined — you work directly inside the container.
+Three templates ship with vaibify, one for each way of working: free
+exploration, co-developing software, and a reproducible Project.
 
-**Includes:**
+| Template | Contains | Use it when |
+|---|---|---|
+| `sandbox` | `container.conf` only; no Project file. | You want a clean environment for free-form exploration: write code, make plots, try ideas. |
+| `toolkit` | `container.conf`, a `project.json` with no steps, and a `README.md` explaining repository tracking. | You are developing several code repositories that must work together and want each one's git status and push controls side by side. |
+| `workflow` | `container.conf`, a two-step example `project.json`, and the two step directories with their scripts. | You already know the analysis is a sequence of steps that must be reproducible. |
 
-- Empty `container.conf` (no repositories).
-- Empty `project.json` (no pipeline steps).
+If you are unsure, start with `sandbox`. Nothing about the choice is
+permanent: exploratory work can be promoted to a Project later (see
+[Promoting exploratory work to a Project](#promoting-exploratory-work-to-a-project)).
 
-Use this template when you want a containerized environment without a
-predefined project.
+### sandbox
 
-## toolkit
+A sandbox asks nothing of your work. There are no steps, no tests, and
+no self-consistency requirement, so it sits below Level 1 of
+[the PROOF Ladder](proofLadder.md): its only property is containment.
+Opening a sandbox environment lands on its **Project Hub**, where
+**Blank Project** opens the dashboard with a terminal and the file tree
+but no pipeline. Without a Project file the left panel shows the
+**Files**, **Repos**, and **Logs** tabs.
 
-A workspace for editing several peer code repositories side-by-side —
-the right choice when you want to hack on more than one package at once
-while iterating on a change that spans them.
+### toolkit
 
-**Includes:**
+A toolkit is a sandbox for co-developing software. The wizard asks for
+the repositories to clone and requires at least one URL. Each listed
+repository is cloned into the workspace on first start and tracked
+automatically, so it appears in the **Repos** panel with its branch,
+uncommitted changes, and push controls. A repository you clone later
+from the terminal is detected on the next poll, and the panel asks
+whether to **Track** or **Ignore** it. As with a sandbox, vaibify
+requires no particular outcome.
 
-- Empty `container.conf` (add your repository URLs).
-- Empty `project.json` (no pipeline steps).
-- A README explaining how repository tracking and push controls work.
+### workflow
 
-Toolkit containers have no workflow. Instead, the Repos panel in the
-dashboard provides per-repository git status, dirty-file listings, and
-push controls for every repository in `/workspace/`.
+The workflow template is a runnable two-step Project, so a new
+environment produces a figure on its first **Run**:
 
-## workflow
+| Step | Command | Output |
+|---|---|---|
+| `GenerateSamples` | `python3 generateSamples.py --count 500 --seed 12345 --output samples.json` | `samples.json` |
+| `PlotHistogram` | `python3 plotHistogram.py --samples {step:generate-samples.samples} --output {sPlotDirectory}/histogram.{sFigureType}` | `{sPlotDirectory}/histogram.{sFigureType}` |
 
-A starting point for reproducible data analysis pipelines. Includes a
-runnable two-step example — data generation feeding a plot — that you
-replace with your own steps.
+Both scripts use only the Python standard library, because a fresh
+environment has no extra packages installed. The second step receives
+the first step's output through the `{step:generate-samples.samples}`
+token rather than a path written inside the script. That token is what
+tells vaibify the second step depends on the first, so the histogram
+is marked stale whenever the samples change. Replace both steps with
+your own; [Environments and Projects](environmentsAndProjects.md)
+describes the step format and the token rules.
 
-**Includes:**
+## Promoting exploratory work to a Project
 
-- Empty `container.conf` (add your repositories).
-- Example `project.json` with two steps: `GenerateSamples`, which runs
-  `python generateSamples.py` to produce `samples.json`, and
-  `PlotHistogram`, which runs `python plotHistogram.py` with the samples
-  file passed via a `{step:generate-samples.samples}` token.
-- The two step directories with the scripts those commands invoke.
+A **Project** is a Project file (JSON, in `.vaibify/projects/`) kept
+inside a git repository: the steps vaibify tracks, tests, and grades
+on the PROOF Ladder. Exploratory
+work becomes a Project with a button, and which button depends on
+where the work lives.
 
-Use this template when your project follows a defined sequence of analysis
-steps that should be reproducible.
+**In a container.** Open the **Files** tab and navigate into a
+directory directly under the workspace root. A **Make this directory a
+Project** bar appears; give the Project a name and press **Make
+Project**. Vaibify makes the directory a git repository if it is not
+one, adds a first commit if it has none (existing history is never
+rewritten), writes a Project file named after the Project, and tracks
+the repository so the dashboard lists it. Running it again reports what was already true.
+An in-container agent can request the same action.
 
-**Adding LaTeX compilation:** If you compile your manuscript inside the
-container rather than using an external tool like Overleaf, add a step
-to `project.json`. Note that a step's directory basename must equal the
-slug derived from its name — `CompileManuscript` here — so the manuscript
-sources live in a directory named after the step:
+**A new Project in an existing environment.** **New Project** on the
+Project Hub, or **+ New Project…** in the toolbar's project list, opens
+a three-step wizard: a display name, a location (an existing git
+directory, or a new directory vaibify creates and initializes), and a
+confirmation. One environment can hold several Projects.
 
-```json
-{
-    "sName": "CompileManuscript",
-    "sStepId": "compile-manuscript",
-    "sDirectory": "CompileManuscript",
-    "bRunEnabled": true,
-    "bPlotOnly": false,
-    "saDataCommands": [],
-    "saOutputDataFiles": [],
-    "saPlotCommands": ["latexmk -pdf manuscript.tex"],
-    "saPlotFiles": []
-}
-```
+**On this computer (host mode).** Every host environment starts as a
+sandbox, whichever template created it, and shows a **Convert to Project…** bar on its **Files** tab. The wizard
+first asks for a destination:
 
-## Creating Custom Templates
+- **Host Project** keeps running directly on this machine. It gains a
+  name and is tracked as a Project, but no container is built.
+- **Containerized Project** collects container settings, lets you
+  choose which of the directory's files to copy into the container,
+  and builds an image.
 
-Templates are stored in the `vaibify/templates/` directory of the
-Vaibify package, so they ship inside the installed distribution.
-Each template is a subdirectory containing `container.conf` and
-`project.json`, plus any starter step directories. To create a custom
-template, add a new subdirectory with these files and reinstall the
-package. Do not place a `vaibify.yml` in a template: `vaibify init`
-always generates that file itself, so one shipped in a template would
-be overwritten.
+A host environment can also be containerized from its tile's **⋮**
+menu with **Containerize Environment**. That path skips the
+destination question, and it writes a starter `project.json` if the
+directory has none, because a container is always a Project.
+
+## Creating custom templates
+
+Templates are directories inside the installed package, under
+`vaibify/templates/`. Every subdirectory there is offered as a
+template, under its directory name, both by `vaibify init` and on the
+wizard's Template page. To add one:
+
+1. Create `vaibify/templates/<name>/` in a vaibify source checkout.
+2. Add a `container.conf`, as every shipped template does: one
+   repository per line in the form `name|url|branch|install_method`,
+   with `#` starting a comment. The repositories an environment
+   actually clones come from its `vaibify.yml`, which the wizard fills
+   from its **Repositories** page, so treat this file as a record of
+   the format rather than as build input.
+3. Optionally add a `project.json` at the template's top level, and the
+   step directories its commands use. Scaffolding moves the file into
+   `.vaibify/projects/`. Write every cross-step file reference as a
+   `{step:<sStepId>.<stem>}` token.
+4. Reinstall the package (`pip install .`). An editable install
+   (`pip install -e .`) picks up the new directory without reinstalling.
+
+Do not put a `vaibify.yml` in a template. `vaibify init` and the wizard
+always write that file themselves, so a copy shipped in a template
+would be overwritten. `__pycache__` directories are skipped when a
+template is copied.

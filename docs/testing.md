@@ -1,484 +1,638 @@
-# Testing
+# Testing Model
 
-Vaibify's test suite has **three kinds of test**, distinguished not by
-where they live (they are all `pytest` tests under `tests/`) but by the
-question each one answers.
+AI agents can write thousands of lines of working code in minutes, but a
+researcher may need days to be convinced that those lines are accurate.
+Verification, not code generation, is the bottleneck. Unit tests
+help, because they stop a later change from silently breaking a result
+that was already checked. But a passing test suite proves only that the
+tests and the code **agree**, not that the code is **correct**. When one
+agent writes the code, writes the tests and reviews the result, a single
+blind spot can author all three.
+
+This page has two halves. The first describes the tests vaibify writes
+and runs for **your project**: per-step tests generated from your own
+output files, the data formats they can read, and an optional check that
+those tests would notice a broken step. The second describes how
+**vaibify itself** is tested, as a worked example you can adapt for your
+own research code.
+
+## Testing your project
+
+Every step in a project can carry three categories of test. Each lives
+in the step's `tests/` directory, with file names suffixed by the step
+directory's name (so steps never collide in a flat archive), and each
+reads its expectations from a JSON **test standards** file beside it.
+
+| Category | What it checks | Files |
+|---|---|---|
+| **Integrity** | Each declared output file exists and is not empty. NumPy, CSV, JSON, JSON Lines, HDF5, whitespace-delimited and key-value files are also loaded and checked for the expected shape and, where it held at generation time, for the absence of NaN and infinity. Catches a file an agent wrote in the wrong format or left truncated. | `test_integrity_<step>.py`, `integrity_standards_<step>.json` |
+| **Qualitative** | The categorical structure of each output is unchanged: the column names of a table, the top-level keys of a JSON file. | `test_qualitative_<step>.py`, `qualitative_standards_<step>.json` |
+| **Quantitative** | Numerical outputs (single values, means, and for stochastic steps, standard deviations and percentiles) match the stored benchmarks within a relative and absolute tolerance. | `test_quantitative_<step>.py`, `quantitative_standards_<step>.json` |
+
+An output in any other format is read by the integrity test as UTF-8
+text and checked only for being non-empty, so a binary output in such a
+format (an image, FITS or Parquet file, for example) fails its
+integrity test.
+
+The step's **Unit Tests** row in the dashboard expands to show the three
+categories, with buttons to generate and run them. In-container agents
+reach the same operations through `vaibify-do` (`run-unit-tests` for
+all categories, `run-test-category` for one). Test files and standards
+are part of the step's Level 1 surface; see
+[The PROOF Ladder](proofLadder.md) for how their state feeds the
+project's level.
+
+### Test standards
+
+A quantitative standards file holds a default relative tolerance
+(`fDefaultRtol`) and a list of entries. Each entry names the value
+(`sName`), the file it comes from (`sDataFile`), how to find it in that
+file (`sAccessPath`, see [Access path syntax](#access-path-syntax)), the
+expected value (`fValue`) and its unit (`sUnit`). Optional fields set a
+per-entry relative tolerance (`fRtol`), an absolute tolerance (`fAtol`,
+default `1e-8`), an explicit file format (`sFormat`), and a note
+(`sNote`). The default relative tolerance comes from the project's
+tolerance setting, `1e-6` unless you change it.
+
+When tests are regenerated, the per-entry `fRtol`, `fAtol`, `sNote` and
+`sUnit` you edited by hand are kept for every entry whose `sName` still
+exists. A test file you have customized is never overwritten without
+asking: generation stops and names the edited files, and only an
+explicit confirmation replaces them.
+
+### How tests are generated
+
+Test generation is **deterministic**. Unit tests should not be produced
+by prompting a model, whose output varies from run to run; they should
+be computed from the results. When you press **Generate**, a
+self-contained Python introspection script runs inside the container,
+reads each of the step's declared output files, and records what it
+finds: shape, data type, NaN and infinity counts, column names, JSON
+keys, and benchmark values. vaibify then writes the three standards
+files and the three test files mechanically from that report. No
+language model is involved.
+
+The generator also classifies each step's randomness, because a
+tolerance that suits a deterministic calculation is meaningless for a
+sampler:
+
+| Classification | When | Quantitative entries and tolerance |
+|---|---|---|
+| `deterministic` | No random-number framework is used in the step's scripts, or no array is large enough to summarize | Single values and means, at the default tolerance |
+| `stochastic` | A random-number framework is used and an output array holds at least 64 samples | Means, standard deviations and percentiles, each with a tolerance derived from its sampling standard error at three sigma (following Oberkampf & Roy 2010 and Vehtari et al. 2021) |
+| `stochastic_unseeded` | As above, and the step's randomness is flagged as unseeded | Mean and median only, at a placeholder 10% tolerance with a note asking you to seed the source of randomness |
+| `unintrospectable` | Output files exist but yield no numeric benchmark | None; the introspector's errors are recorded instead |
+
+The generator is a foundation, not a complete answer. Generating
+meaningful tests for arbitrary data structures is hard, so you, or an
+agent you direct, are expected to extend the standards for what matters
+in your science. An agent asked for tests is steered to the
+deterministic generator (`generate-tests-deterministic`), which pins
+what is actually in the data and never overwrites an edited file.
+
+Two other paths exist. The command `vaibify generate-standards`
+refreshes a quantitative standards file from live data outside the
+dashboard (for one step directory, or by step label from a workflow
+file). And the generation route can still ask a language model (the
+in-container Claude Code, or a provider API key you have stored) to
+write tests, but only when a caller explicitly turns the deterministic
+mode off; the dashboard's **Generate** button does not. That route is
+researcher-only, because model-written test content must be reviewed.
+
+### Checking that your tests have teeth
+
+A test that passes is not evidence that it would fail on broken code.
+The expanded quantitative-tests block carries a **Falsification** row
+with a **Check test teeth** button. It mutation-tests the step's own
+Python code with `cosmic-ray` (deliberately breaking it, for example by
+flipping a `<` to a `>`), re-runs the step and its quantitative tests
+for each mutant, and records the **kill rate**: the fraction of
+mutations the tests noticed.
+
+- The kill rate measures the tests' sensitivity to faults, never the
+  accuracy of the result.
+- It is **non-gating**: no PROOF level reads it. Some mutations change
+  nothing observable (equivalent mutants), so 100% is unreachable in
+  general and a hard pass/fail would be dishonest.
+- It applies only to a step whose computation is Python source and
+  whose quantitative standards are classified `deterministic` with at
+  least one benchmark. Any other step reads **not applicable**, never
+  green, with the reason named.
+- The record is keyed to a digest of the step's scripts and standards,
+  so any edit to either invalidates it.
+- Runs happen only on demand; the cost is roughly the number of mutants
+  times the step's run time, with a per-mutant time limit.
+
+The applicability check and the mutation run look for the unsuffixed
+names `tests/quantitative_standards.json` and
+`tests/test_quantitative.py`, so a step whose generated tests carry the
+step-name suffix reads **not applicable**.
+
+## Supported data formats
+
+The test generator and the quantitative tests read output files through
+a common set of loaders. This section is the reference for which files
+they can read and how to point a benchmark at a value inside one.
+
+### Format table
+
+| Format | Extensions | Library required | Domain |
+|---|---|---|---|
+| NumPy array | `.npy` | numpy | General |
+| NumPy archive | `.npz` | numpy | General |
+| JSON | `.json` | (standard library) | General |
+| JSON Lines | `.jsonl`, `.ndjson` | (standard library) | General |
+| CSV | `.csv` | (standard library) | General |
+| HDF5 | `.h5`, `.hdf5` | h5py | General |
+| Whitespace-delimited | `.dat`, `.txt` | (standard library) | General |
+| Key-value text | detected in `.dat`/`.txt`, or `sFormat: keyvalue` | (standard library) | General |
+| Fixed-width text | `sFormat: fixedwidth` only | (standard library) | General |
+| Multi-table text | `sFormat: multitable` only | (standard library) | General |
+| Excel | `.xlsx`, `.xls` | openpyxl | General |
+| Parquet | `.parquet` | pyarrow | Data science |
+| Image | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif` | Pillow | General |
+| FITS | `.fits`, `.fit` | astropy | Astronomy |
+| VOTable | `.vot` | astropy | Astronomy |
+| IPAC table | `.ipac` | astropy | Astronomy |
+| MATLAB | `.mat` | scipy | Engineering |
+| Fortran unformatted | `.unf` | scipy | Engineering |
+| VTK mesh | `.vtk`, `.vtu` | pyvista | Engineering |
+| CGNS | `.cgns` | h5py | Engineering |
+| FASTA | `.fasta`, `.fa` | (standard library) | Biology |
+| FASTQ | `.fastq`, `.fq` | (standard library) | Biology |
+| VCF | `.vcf` | (standard library) | Biology |
+| BED | `.bed` | (standard library) | Biology |
+| GFF/GTF | `.gff`, `.gtf`, `.gff3` | (standard library) | Biology |
+| SAM | `.sam` | (standard library) | Biology |
+| BAM | `.bam` | pysam | Biology |
+| SPSS | `.sav` | pyreadstat | Social science |
+| Stata | `.dta` | pyreadstat | Social science |
+| SAS | `.sas7bdat` | pyreadstat | Social science |
+| R data | `.rds`, `.rdata`, `.rda` | pyreadr | Social science |
+| Safetensors | `.safetensors` | safetensors | AI/ML |
+| TFRecord | `.tfrecord` | tfrecord | AI/ML |
+| Syslog | `.log` | (standard library) | Security |
+| CEF | `.cef` | (standard library) | Security |
+| PCAP | `.pcap`, `.pcapng` | scapy | Security |
+
+Extensions are matched without regard to case, so `.RData` and `.FITS`
+are recognized.
+
+### How format detection works
+
+1. The file's extension, lower-cased, is looked up in the table above.
+2. A `.txt` or `.dat` file is checked for key-value structure. Ignoring
+   blank lines, `#` comments and divider lines (a line of one repeated
+   character), if more than a third of the lines contain `=`, the file
+   is treated as key-value rather than whitespace-delimited. At test
+   time, a `.txt` or `.dat` benchmark whose access path uses `key:` is
+   also read as key-value.
+3. An unknown extension is inspected: if any of its first four bytes
+   lies outside the ASCII range, it is reported as an unsupported binary
+   format; otherwise it is read as whitespace-delimited text.
+
+### Optional libraries
+
+Formats marked "(standard library)" need no extra packages. Every other
+library is imported only when a file of that format is read, so a
+missing library never breaks generation: that file is reported with an
+error naming the package to install, and the remaining files are
+processed normally.
+
+### Overriding format detection
+
+When an extension is ambiguous (for example, a `.txt` file with
+fixed-width columns), set `sFormat` on the entry in the quantitative
+standards file to override detection:
+
+```json
+{
+    "sName": "fFinalValue",
+    "sDataFile": "results.txt",
+    "sAccessPath": "column:value,index:-1",
+    "sFormat": "fixedwidth",
+    "fValue": 1.25,
+    "sUnit": ""
+}
+```
+
+Valid `sFormat` values are `npy`, `npz`, `json`, `jsonl`, `csv`,
+`hdf5`, `whitespace`, `keyvalue`, `fixedwidth`, `multitable`, `excel`,
+`parquet`, `image`, `fits`, `votable`, `ipac`, `matlab`, `fortran`,
+`vtk`, `cgns`, `fasta`, `fastq`, `vcf`, `bed`, `gff`, `sam`, `bam`,
+`spss`, `stata`, `sas`, `rdata`, `safetensors`, `tfrecord`, `syslog`,
+`cef` and `pcap`.
+
+### Access path syntax
+
+Each quantitative benchmark carries an access path, a comma-separated
+list of `name:value` fields that tells the test where a value lives in
+its file. The fields are `key:`, `column:`, `dataset:`, `hdu:`,
+`section:` and `index:`.
+
+`index:` takes either an integer position (negative counts from the
+end; several comma-separated integers address a multi-dimensional
+array) or an aggregate: `mean`, `min`, `max`, `std`, `p5`, `p25`, `p50`,
+`p75` or `p95`. Without `index:`, a tabular or array value defaults to
+the last element.
+
+| Format family | Example | Meaning |
+|---|---|---|
+| CSV, whitespace, Excel, SPSS, Stata, SAS, VOTable, IPAC | `column:value,index:-1` | Last row of the `value` column |
+| CSV, whitespace | `column:value,index:mean` | Mean of the `value` column |
+| NumPy archive, MATLAB, safetensors | `key:arrayName,index:0` | First element of the named array |
+| NumPy archive, MATLAB, safetensors | `key:arrayName,index:mean` | Mean of the named array |
+| NumPy array (`.npy`) | `index:0` | First element (flattened) |
+| JSON | `key:path.to.field` | Nested key traversal; a numeric segment indexes a list |
+| JSON | `key:listName,index:0` | First element of a JSON list |
+| JSON | `key:listName,index:mean` | Mean of a JSON list |
+| HDF5, CGNS | `dataset:/group/name,index:0` | First element of a dataset |
+| FITS | `hdu:1,column:flux,index:0` | First row of a column in HDU 1 |
+| FITS | `hdu:0,index:mean` | Mean of the image data in HDU 0 |
+| FASTA, FASTQ | `index:mean` | Mean sequence length |
+| VCF, BED, GFF, SAM | `column:POS,index:0` | First value in a column |
+| Key-value | `key:parameterName` | Value associated with the key |
+| PCAP | `index:mean` | Mean packet length |
+| Syslog, CEF | `index:0` | Line or record count |
+| Multi-table | `section:0,column:x,index:0` | First value in column `x` of the first table |
+
+A `key:` value may itself contain commas; it extends until the next
+recognized field name.
+
+### Security limits
+
+- NumPy files are always loaded with `allow_pickle=False`, so a
+  malicious `.npy` or `.npz` cannot execute code.
+- PyTorch checkpoints (`.pt`, `.pth`) are deliberately unsupported,
+  because they deserialize with pickle. Use safetensors instead.
+- The introspection script refuses any output path that resolves
+  outside the step directory.
+- Files larger than 500 MB are not introspected.
+- JSON traversal during introspection stops at ten levels of nesting.
+- Each file contributes at most 250 benchmark entries, so a wide
+  dataset cannot explode the test suite.
+
+### Unsupported files
+
+A file that cannot be introspected (an unrecognized binary format, one
+over the size limit, or one whose loader fails) is reported as not
+loadable with the reason, and no benchmarks are generated from it. If
+every output of a step is like this, the quantitative standards are
+classified `unintrospectable` and carry the collected errors. A text
+file with an unknown extension falls back to whitespace-delimited
+parsing.
+
+Adding a new format takes a loader in `vaibify/gui/dataLoaders.py`, a
+matching benchmarker in the container-side introspection script, and
+integrity and no-NaN support; the two format maps must be kept in step
+by hand, because the container script cannot import from the host.
+Every new library import must degrade gracefully when the library is
+absent.
+
+## How vaibify is tested
+
+vaibify was written entirely by AI agents, so its own test suite
+carries the weight a human author's understanding would otherwise
+carry. Its tests fall into kinds distinguished not by where they live
+(nearly all are `pytest` tests under `tests/`) but by the question each
+answers.
 
 | Kind | Question it answers | Where |
 |---|---|---|
-| **Unit / behavior tests** | Does input *X* produce output *Y*? | `tests/` |
+| **Unit tests** | Does input *X* produce output *Y*? | `tests/` |
 | **Architectural invariants** | Is the codebase wired together the way it must be? | `tests/testArchitecturalInvariants.py` |
-| **Falsification tests** | If a safety guard broke, would any test *notice*? | marked `@pytest.mark.falsification` across `tests/` |
+| **Security invariants** | Do the security boundaries hold? | the suite named in `security.yml` |
+| **Style invariants** | Do names and signatures follow the style contract? | `tests/testStyleInvariants.py` |
+| **Browser tests** | Does the real dashboard behave in a real browser? | `tests/browser/`, marked `browser` |
+| **Falsification tests** | If a safety guard broke, would any test notice? | marked `@pytest.mark.falsification` across `tests/` |
 
-Counts are deliberately not written here. They were, and they went
-stale: this table claimed ~146 falsification tests long after the real
-number passed 290, which is the same prose-drifts-from-code failure the
-falsification tests themselves exist to catch. The live numbers are on
-the README badges, refreshed by `badges.yml` on every push to `main`.
-To count them yourself:
+Counts are deliberately not written here, because a hand-typed count
+drifts from the code. The live numbers are on the README badges, which
+`badges.yml` recomputes after every merge by collecting the suites. To
+count them yourself:
 
 ```bash
 python -m pytest tests/ -m "not docker and not docker_live" --collect-only -q | grep -c "::"
 python -m pytest tests/testArchitecturalInvariants.py --collect-only -q | grep -c "::"
 python -m pytest -m falsification --collect-only -q | grep -c "::"
+python -m pytest tests/browser -m browser --collect-only -q | grep -c "::"
 ```
 
-The first two are conventional. The third is the one that needs
-explaining.
+**Unit tests** check individual outcomes along a code path, on every
+supported operating system and Python version; line coverage is
+reported to Codecov (the README badge).
 
-## Why falsification tests exist
+**Invariant tests** enforce design decisions rather than behavior. A new
+agent, with a short context window, will not know a decision exists
+unless it is written down *and* enforced, so these tests stop an agent
+from breaking a design choice even when its output is correct.
+Architectural invariants govern how modules may import one another, how
+paths are handled, how routes are registered and which routes an agent
+may reach, and keep science-specific identifiers out of the source.
+Security invariants cover authorization at the browser, agent and
+WebSocket boundaries (see [Security Model](security.md)). Style
+invariants enforce the naming contract (type-prefixed variable and
+function names) against a frozen inventory of grandfathered exceptions
+whose budget may only fall. All three live under `tests/`, so they run
+in every unit-test cell; each also has its own named lane so that its
+result is visible on its own line. A separate `lint` check runs
+error-grade static analysis (pyflakes and `pylint --errors-only`)
+against a recorded baseline.
 
-A passing test suite proves that the tests and the code **agree** — not
-that the code is **correct**. When an AI agent writes the code, the
-tests, *and* the review, a single blind spot can author all three, and a
-green suite can hide a serious bug. (This is not hypothetical: a refactor
-once passed the entire suite while carrying a defect that would have
-broken every real session, because the fixtures used a degenerate input
-and never drove the real path.)
+**Browser tests** drive the dashboard with Playwright in Chromium,
+Firefox and WebKit against a real hub; see
+[The three execution lanes](#the-three-execution-lanes).
+
+## Falsification tests
 
 A **falsification test** is the software equivalent of a laboratory
 **negative control**. An ordinary test is a positive result: "given good
-code, the answer is right." A falsification test additionally proves the
-*negative control*: "given deliberately **broken** code, the test
+code, the answer is right." A falsification test also proves the
+negative control: "given deliberately **broken** code, the test
 **fails**." A test that stays green when its guard is sabotaged is an
-assay with no working negative control — it would never catch the real
-bug either.
+assay with no working negative control; it would never catch the real
+bug either. This is mutation testing (DeMillo, Lipton & Sayward 1978),
+but the breaks are chosen deliberately rather than at random, hence the
+name.
 
-Concretely, a falsification test is **kill-confirmed**: it has been
-proven to *fail* when a specific one-line mutation is applied to the code
-it defends, then to pass again once that mutation is reverted.
+Each falsification test is **kill-confirmed**: it has been shown to fail
+when one specific mutation is applied to the code it defends, and to
+pass again once the mutation is reverted. Four pieces keep that
+guarantee re-checkable:
 
-## How the falsification suite is built
+1. **The marker.** Falsification tests carry
+   `@pytest.mark.falsification`. Dedicated files mark every test at
+   module level; mixed files mark only the falsification tests.
+2. **The `Kills:` line.** Every falsification test names, in its
+   docstring, the mutation it is proven to catch.
+3. **The registry.** `tests/falsificationRegistry.py` records each
+   mutation in machine-applicable form:
+   `Falsification(nodeid, source, old, new)`, where `old` is the exact
+   text to replace and `new` is the break. `old` must occur exactly
+   `iExpectedOccurrences` times (default one). A guard checked
+   deliberately in more than one place needs every copy mutated, or the
+   other copy still refuses and the entry reads as undefended.
+4. **The re-kill harness.** `tools/reconfirmFalsification.py` is the
+   standing negative control. For each registry entry it requires the
+   test to pass on clean code, applies the mutation in a disposable git
+   worktree, requires the test then to fail in its call phase, and
+   restores the source. A collection error, a fixture error, a mutant
+   that does not compile (or, for JavaScript, does not pass
+   `node --check`) and a hang are each reported as not a kill. Each
+   entry has a wall-clock limit (`--entry-timeout`, 600 seconds by
+   default). The harness also reports any marked test with no registry
+   entry, and exits nonzero on any gap.
 
-Four pieces make "every falsification test still has teeth" an
-enforceable, re-checkable guarantee:
+Entries are divided by what they hold. An entry whose test binds a port,
+opens a Unix socket, drives the Docker daemon or starts a browser is
+`exclusive` and runs alone; every other entry is `shareable` and may run
+under parallel workers (`--workers`), each in its own worktree. The
+`exclusive` marker is applied per file and enforced: a file that binds a
+port without it fails the build. In CI the shareable class is also split
+across machines (`--shard I/N`). A single shard cannot speak for the
+whole registry and says so; the `falsification:summary` job adds the
+shards up, checks registry completeness, requires every declared shard
+to have reported, and names any surviving mutation by leg and shard.
 
-1. **The marker.** Falsification tests carry `@pytest.mark.falsification`.
-   Dedicated files (`tests/test*MutationCoverage.py` and the tier-1
-   dedicated files) mark every test via a module-level
-   `pytestmark = pytest.mark.falsification`; files that mix falsification
-   tests with ordinary unit tests mark only the falsification ones with a
-   per-test decorator. Run just this class with `pytest -m falsification`.
+An entry whose test drives a real container cannot be judged without
+a Docker daemon; the harness reports it by name as NOT EVALUATED rather
+than counting a skip as a survivor. The Linux CI legs set
+`VAIBIFY_REQUIRE_DOCKER_DAEMON`, so there a missing daemon is a red
+lane, not a deferral.
 
-2. **The `Kills:` docstring line.** Every falsification test names, in its
-   docstring, the exact mutation it is proven to catch.
-
-3. **The registry** — `tests/falsificationRegistry.py` — records that
-   mutation in a *machine-applicable* form: one
-   `Falsification(nodeid, source, old, new)` entry per test, where `old`
-   is the exact text to replace and `new` is the break.
-
-   `old` must occur exactly `iExpectedOccurrences` times (default 1). A
-   guard that is deliberately checked in more than one place — the
-   ownership-transfer conditions run once before anything is minted and
-   again at the commit point — needs **every** copy mutated: disabling
-   one changes nothing a caller can observe, so the entry reports
-   SURVIVED and reads as an undefended guard. Stating the count makes a
-   copy appearing or vanishing an error rather than a quiet
-   half-mutation.
-
-4. **The re-kill harness** — `tools/reconfirmFalsification.py` — is the
-   standing negative control. For every registry entry it requires the
-   test to pass on clean code, applies the mutation, requires the test to
-   then fail **in its call phase**, and restores the source. The verdict
-   is read from the JUnit XML pytest writes: a collection error, a
-   fixture-setup or teardown error, a mutant that does not compile (or,
-   for JavaScript, does not pass `node --check`) and a hang are each
-   reported as "not a kill". Every replayed entry has a wall-clock limit
-   (`--entry-timeout`, 600 seconds by default) enforced on its whole
-   process group, and the entry that timed out is named. Results are
-   flushed as they are known, so a job stopped at its ceiling leaves a
-   log. The harness reports any marked test with no entry and exits
-   nonzero on any gap. It
-   mutates source, so it is deliberately **not** collected by
-   `pytest tests/`; run it directly:
-
-   ```bash
-   python tools/reconfirmFalsification.py
-   ```
-
-   In CI the work is divided twice: **across machines** with
-   `--shard I/N`, and **within a machine** with `--workers W`, each
-   worker a child harness holding its own disposable worktree. The
-   union of a leg's shards is that leg's whole registry, so every entry
-   is still re-confirmed on every OS and Python in the matrix.
-
-   Workers are only safe for entries that hold nothing the machine
-   owns, so the registry splits into two classes. An entry whose test
-   binds a port, opens a unix socket, drives the Docker daemon or
-   starts a browser is `exclusive` and runs in a lane of its own at one
-   worker; the other ~92% are `shareable`. Sharding across machines
-   never needed this — every runner has its own daemon and its own
-   ports — which is why the class split arrives only alongside workers.
-   The `exclusive` marker is applied per file and enforced: a file that
-   binds a port and forgets it fails the build rather than colliding
-   weeks later in an unrelated test. A single shard says so in its own report and
-   declines the whole-registry coverage check, because a slice cannot
-   speak for the registry. The `falsification:summary` job is the only
-   place the union exists: it runs that coverage check, requires every
-   declared shard to have reported, and names any surviving mutation by
-   leg and shard so a red lane never means opening jobs one at a time.
-   Locally the flag is for machines, not people — `--only SUBSTRING` is
-   what you want when re-confirming a chunk you just wrote.
-
-   Entries whose test drives a real container (`docker_live`) cannot be
-   judged on a host with no Docker daemon: the harness demands a daemon
-   for every run it judges, precisely so a skip is never miscounted as a
-   surviving mutant, and that same demand turns those entries into
-   errors where no daemon can exist. They are reported by name as NOT
-   EVALUATED and left out of the denominator instead. That is safe only
-   because they *are* judged wherever a daemon exists, so the Linux CI
-   legs set `VAIBIFY_REQUIRE_DOCKER_DAEMON`, which refuses the deferral
-   outright — losing Docker there turns the lane red rather than
-   silently shrinking what it reports against.
-
-Three architectural invariants keep the class from silently decaying:
+Three architectural invariants keep the class from decaying:
 `testFalsificationFilesDeclareMarker`,
-`testFalsificationTestsRecordTheKilledMutation`, and
+`testFalsificationTestsRecordTheKilledMutation` and
 `testFalsificationRegistryIsWellFormed`.
 
-### The independent-oracle rule (important)
+### The independent-oracle rule
 
-Kill-confirmation proves a test is **sensitive** to change; it does
-**not** prove the test's asserted value is **correct**. If a test is
-written against code that is itself buggy, its oracle freezes the bug —
-and the test will still catch a deliberate break, so it passes
-kill-confirmation while certifying the wrong answer. A falsification test
-is therefore trustworthy only when its expected value is derived
-**independently of the code** (a specification, an analytic result, a
-conservation law, a published benchmark) **and** it is kill-confirmed.
-Neither condition alone is enough. This rule lives in the
-`falsificationRegistry.py` docstring; do not weaken it.
+Kill-confirmation proves a test is **sensitive** to change; it does not
+prove that the value it asserts is **correct**. A test written against
+buggy code freezes the bug in its oracle, and it will still catch a
+deliberate break. A falsification test is trustworthy only when its
+expected value comes from somewhere independent of the code (a
+specification, an analytic result, a conservation law, a published
+benchmark) **and** it is kill-confirmed. Neither alone is enough. The
+rule is stated in the registry's docstring; do not weaken it.
 
-## Falsification testing vs. the mutation gate — two different jobs
+## The mutation gate
 
-Both use mutation testing, but they point at different things, and the CI
-runs them as two separate workflows:
+The mutation gate and the falsification suite both use mutation
+testing, but they answer different questions:
 
 | | **Falsification** (`falsification.yml`) | **Mutation gate** (`mutation.yml`, cosmic-ray) |
 |---|---|---|
-| What it mutates | the guards our *existing* falsification tests already defend | the code a branch changed against a chosen base |
-| What it answers | "do our existing guard-tests still catch their known breaks?" | "did this branch add a guard with **no** defending test?" |
-| Direction | backward-looking — maintains the committed suite | forward-looking — discovers new gaps |
-| When it runs | automatically, on every pull request | **manually only** — see below |
-| On failure | **fails the job** (a guard lost its test) | **warns only** — never fails the build |
+| What it mutates | guards that existing falsification tests already defend | the lines a branch changed against a chosen base |
+| What it answers | "do our guard tests still catch their known breaks?" | "did this branch add code that no test defends?" |
+| Direction | backward-looking: maintains the committed suite | forward-looking: discovers new gaps |
+| When it runs | on every pull request | manually only |
+| On failure | fails the job | warns only |
 
-**The mutation gate is manual, and that is a real gap.** It triggers on
-`workflow_dispatch` only. It used to run per-PR, but mutation-testing a
-large feature-branch diff exceeded the 60-minute ceiling and was
-canceled before it could post any signal — an advisory gate that dies
-on the PRs that matter most is pure friction. So it was made on-demand
-(commit `94abe35`), which means **Python can merge with no mutation
-feedback at all**. Falsification and the architectural invariants are
-still graded for real on every PR; the mutation gate is not.
-
-Run it deliberately from the Actions tab or with
+The mutation gate runs only on `workflow_dispatch`, so Python can merge
+with no mutation feedback at all; falsification and the invariants are
+the per-PR guarantees. Run it from the Actions tab or with
 `gh workflow run mutation.yml`, choosing `base_ref` (default `main`) and
-`max_mutants` (default 300, `0` = uncapped). Any mutants dropped by the
+`max_mutants` (default 300; `0` means uncapped). Mutants dropped by the
 cap are reported, never silently discarded.
 
-**Why warn-only.** Mutation testing inevitably produces *equivalent
-mutants* — code changes with no observable effect (e.g. reordering a
-commutative comparison) — that *no* test could ever catch, so failing
-the build on every survivor would cry wolf and train everyone to ignore
-it. Surviving mutants are surfaced as `::warning::` annotations on the
-changed lines and as a job-summary table (module, line, operator,
-function). The sticky-PR-comment step is still in the workflow but is
-inert while the trigger is manual: it is guarded on
-`event_name == pull_request`, kept only so re-enabling the per-PR mode
-is a one-line change.
+It warns rather than fails because mutation testing inevitably produces
+equivalent mutants, changes no test could ever detect, and failing on
+every survivor would train everyone to ignore it. Survivors appear as
+warning annotations on the changed lines and as a job-summary table.
 
-**Do the two gates overlap?** Barely, and by design. They mutate
-*different* sets of lines: falsification re-checks only lines that already
-carry a committed falsification test, while the mutation gate touches only
-lines a branch *changed*. The two intersect just when a branch edits an
-already-guarded line — where the double coverage is harmless. Otherwise
-they are complementary: falsification stops old guarantees from decaying,
-the mutation gate flags new code that arrived without a guarantee.
+They overlap only where a branch edits an already-guarded line:
+falsification stops old guarantees from decaying, and the mutation gate
+flags new code that arrived without one.
 
-## Running the suites locally
+## The three execution lanes
 
-```bash
-pip install -e ".[dev]"
+Most of the suite runs in one process, with no Docker daemon and no
+browser. That leaves two real boundaries unexercised, and three lanes
+exist to cover them.
 
-# everything (unit + invariants + falsification tests):
-pytest tests/ -m "not docker and not docker_live"
+**The browser lanes** (`browser-chromium.yml`, `browser-firefox.yml`,
+`browser-webkit.yml`) load the real dashboard in a real browser against
+a real uvicorn hub, recording every console error and page error. Each
+runs on one Linux and Python cell: a browser journey does not become
+more trustworthy by running across the whole operating-system and
+Python matrix. Their Docker adapter is a **fail-closed fake**: every
+command it answers is declared in its contract, and anything else
+raises rather than returning a default. Firefox and WebKit deselect the
+tests marked `clipboardPermissions`, which need permissions only
+Chromium grants; those tests still run on Chromium for every pull
+request.
 
-# just the falsification tests:
-pytest -m falsification
+**The container-acceptance lane** (`containerAcceptance.yml`) puts each
+command the fake models to a real container, so a fake that drifts from
+the daemon is caught rather than believed. Every entry in the fake's
+contract names an assertion in `tests/testContainerAcceptance.py`, and
+`testEveryNamedLaneTwoAssertionExists` fails if one of those names is
+fiction. It also checks repository and workflow discovery, missing-file
+behavior, atomic copy and rename, the unprivileged container-user
+declaration, file modification times and SHA-256 reads, Python
+execution, and rerun-manifest verification. It runs nightly, so drift
+is caught up to a day late.
 
-# just the architectural invariants:
-pytest tests/testArchitecturalInvariants.py
+**The fresh-image lane** (`freshImageBuild.yml`) builds the image from
+scratch, with no cache, on an amd64 and an arm64 runner, then runs the
+acceptance assertions against it and confirms that the image's default
+user is not root. The nightly acceptance lane reuses a cached image
+keyed by a hash of every build input (`tools/computeBuildInputHash.py`),
+so on its own it says nothing about whether the image still builds.
 
-# the standing negative control (re-break each guard, confirm it's caught):
-python tools/reconfirmFalsification.py
+No lane may skip itself green. `VAIBIFY_REQUIRE_DOCKER_DAEMON` and
+`VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
+failure in CI, because a skipped lane that reports success has run
+nothing. The shell-completion tests follow the same rule with
+`VAIBIFY_REQUIRE_SHELLS`: they drive the shipped scripts in real bash,
+zsh and fish, skip a missing shell on a developer's machine, and fail
+on the unit workflows, which install the shells.
 
-# the mutation gate on a module, for the curious (heavier; separate extra):
-pip install -e ".[mutation]"
-cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.toml session.sqlite && cr-rate session.sqlite
-```
+A green browser lane does **not** mean the frontend is verified. Its
+fake says nothing about container launch, file ownership on write, the
+real transport, terminal content or figure rendering.
 
 ## Continuous integration
 
-Every workflow runs **either** before a merge or after it, never both.
-The test suites gate the merge; documentation, badges and distributions
-are built from `main` once the merge has happened. Until 2026-07-28 six
-workflows did both, so the whole suite ran a second time on the merge
-commit, where its answer could no longer change anything.
+Every merge into `main` goes through GitHub Actions, which starts each
+run on a fresh machine and blocks the merge if any required check
+fails. Each workflow runs **either** before a merge or after it, never
+both: the test suites gate the merge, and documentation, badges and
+distributions are built from `main` afterwards.
+`tests/testWorkflowMergeGateSplit.py` fails if a workflow drifts onto
+both sides. Running the gates only before the merge is safe only while
+the branch ruleset requires branches to be up to date with `main`
+before merging, so two individually green pull requests cannot merge
+onto a combination that never ran.
 
-Branch protection is what makes the pre-merge half sufficient. It is the
-reason the test workflows no longer need a `push: [main]` trigger, and
-it is why `main` is not left unverified by their absence. That claim
-holds only while the ruleset also requires branches to be **up to date**
-before merging (enabled 2026-07-29): without it, two individually-green
-pull requests that conflict semantically can both merge on stale checks,
-and the broken merge commit runs no CI at all — the exact safety net the
-removed `push: [main]` duplication used to provide.
-`tools/syncRequiredChecks.py --apply` re-asserts the up-to-date
-requirement on every run, so a UI change cannot silently reopen the
-window.
-
-**Before a merge — these decide whether a change may land:**
+**Before a merge.** These decide whether a change may land. Each runs on
+every pull request (and can be started by hand):
 
 | Workflow | Runs | Matrix |
 |---|---|---|
-| `tests-linux.yml` / `tests-macos.yml` | the full `pytest` suite (incl. invariants and falsification tests) | Ubuntu 22/24 and macOS 26 × Python 3.9–3.14, plus macOS 15 × Python 3.9 and 3.14 |
-| `falsification.yml` | the invariants, the falsification tests, and the re-kill harness | a representative subset (Ubuntu + macOS × Python 3.9 & 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union |
-| `browser-chromium.yml` | the dashboard in real Chromium against a real uvicorn hub | on pull requests (one Linux/Python cell) |
-| `browser-firefox.yml` | the same suite in Firefox, minus the five `clipboardPermissions` tests Playwright can only grant in Chromium | on pull requests |
-| `browser-webkit.yml` | the same suite in WebKit (Safari's engine), same deselection | on pull requests |
-| `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` resolves | one Linux cell |
-| `security.yml` | the security-boundary suite, in its own named lane so a green architectural badge can never launder a red security one | Ubuntu 24 + macOS 26 × Python 3.9 & 3.14 |
+| `tests-linux.yml` | the unit suite (including the invariants and falsification tests); a named `invariants` check; a `lint` check; and `docker-smoke`, the tests that need a live Docker daemon | Ubuntu 22.04 and 24.04 × Python 3.9–3.14 for the unit suite; one cell for each named check |
+| `tests-macos.yml` | the same unit suite | macOS 26 × Python 3.9–3.14, and macOS 15 × Python 3.9 and 3.14 |
+| `falsification.yml` | the architectural invariants, the falsification tests, and the re-kill harness, with a summary job over the union | Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, the exclusive class in its own Linux job |
+| `security.yml` | the security-boundary suite, in its own named lane so a green architectural badge can never hide a red security one | Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14 |
 | `styleContract.yml` | `tests/testStyleInvariants.py`, then `tools/generateStyleInventory.py --check` for inventory drift | one Linux cell |
+| `browser-chromium.yml` | the dashboard in real Chromium against a real hub | one Linux cell |
+| `browser-firefox.yml` | the same suite in Firefox, minus the `clipboardPermissions` tests | one Linux cell |
+| `browser-webkit.yml` | the same suite in WebKit (Safari's engine), same deselection | one Linux cell |
+| `agentDocsPathCheck.yml` | that every path referenced in an `AGENTS.md` or skill file resolves | one Linux cell |
 | `remoteSsh.yml` | the remote transport against a real `sshd`, with `VAIBIFY_REQUIRE_REMOTE_SSH` turning the no-daemon skip into a failure | one Linux cell |
 
-**After a merge — these publish what `main` now is:**
+**After a merge.** These publish the state of `main`:
 
 | Workflow | Runs | Matrix |
 |---|---|---|
-| `docs.yml` | the Sphinx build (`-W`), published to `gh-pages` | one Linux cell |
-| `badges.yml` | recomputes the live test / falsification / invariant counts | one Linux cell |
+| `docs.yml` | the Sphinx build (warnings are errors), published to `gh-pages` | one Linux cell, on push to `main` |
+| `badges.yml` | recomputes the count badges and resolves the status badges | one Linux cell, on push to `main` (and manual) |
 
 **When a version is cut:**
 
 | Workflow | Runs | Matrix |
 |---|---|---|
-| `pip-install.yml` | builds the sdist and wheel, runs `tools/checkInstalledDistribution.py` against each, then uploads to PyPI | the full support matrix on a release; the corners on a manual run |
+| `pip-install.yml` | builds the source and wheel distributions, runs `tools/checkInstalledDistribution.py` against each, then uploads to PyPI | the full Ubuntu and macOS × Python 3.9–3.14 matrix on a published release; Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14 on a manual run |
 
-This matches `vspace`, `bigplanet` and `multi-planet`, whose
-`pip-install.yml` is likewise `release`-only.
+The upload needs both the build and the install test, so a packaging
+break blocks the release rather than being published. Run it by hand
+after touching packaging, `vaibify/resources.py`, the template tree or
+the image's file set, and never make it a required check: it cannot
+report on a pull request.
 
-The cost is that a packaging regression can sit on `main` until the
-next version is cut. What makes that acceptable is that `upload_pypi`
-needs `build` and `test`, so the break is caught while cutting the
-release and blocks the upload — nothing broken is published, but the
-diagnosis lands during a release rather than beside the change that
-caused it. After touching packaging, `vaibify/resources.py`, the
-template tree or the Dockerfile `COPY` set, run `pip-install` by hand
-(`workflow_dispatch`) rather than waiting for release day.
+**On their own schedule.** Neither gate nor publisher:
 
-```{warning}
-Never add `pip-install` to the required status checks for `main`. It
-does not run on pull requests, so a required check by that name can
-never report and every PR waits on it forever. This happened the day
-the split landed: two `pip-install` job names
-(`Test py3.9 on macos-26`, `Test py3.14 on macos-26`) were left in the
-branch ruleset and blocked an otherwise fully green pull request.
-```
+| Workflow | Runs | Matrix |
+|---|---|---|
+| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
+| `tests-macos-nightly.yml` | the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 on Python 3.10–3.13) still run within a day | macOS 15 and 26 × Python 3.9–3.14; nightly and manual |
+| `containerAcceptance.yml` | the modeled container commands and core container behavior, against a real container | one Linux cell; nightly and manual |
+| `freshImageBuild.yml` | a full image build from scratch, then acceptance | amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it |
+| `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `reproduced` | one Linux cell; weekly and manual |
+| `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change | one Linux cell; monthly and manual |
 
-### Check names
+### Check names and required checks
 
-A ruleset matches checks by **job name**, and the required-checks picker
-searches those names — not workflow names. So the name is not cosmetic:
-an unfindable name is an unprotected lane.
+A branch ruleset matches checks by **job name**, so a check nobody can
+find in the required-checks picker is an unprotected lane. Names that
+vary across a matrix follow `<kind>:<os>:python-<version>` (for example
+`unit:ubuntu-24.04:python-3.14`); single checks use a bare noun
+(`invariants`, `lint`, `docker-smoke`, `style`, `ssh`, `agent-docs`).
+`testNoTwoMergeGateLanesProduceTheSameCheckName` fails if two workflows
+emit the same name, because a requirement satisfied by whichever
+reports first gates neither.
 
-The scheme is `<test-type>:<os>:python-<version>` for anything that
-varies across the matrix, and a bare noun for anything that does not:
-
-| Check | Lane |
-|---|---|
-| `unit:ubuntu-22.04:python-3.9` … `unit:macos-26:python-3.14` | `tests-linux`, `tests-macos` |
-| `nightly:<os>:python-<version>` | `tests-macos-nightly` (never required) |
-| `falsification:ubuntu-24.04:python-3.9` … | `falsification` |
-| `results:<os>:python-<version>` | the test-results report published by `tests-linux` |
-| `browser` | `browser` |
-| `invariants` | `tests-linux` |
-| `docker-smoke` | `tests-linux` |
-| `agent-docs` | `agentDocsPathCheck` |
-| `security:<os>:python-<version>` | `security` |
-| `style` | `styleContract` |
-| `ssh` | `remoteSsh` |
-
-Two failures forced this, both invisible in the workflow file. `browser`'s
-job was called `frontend (chromium)`, so searching "browser" returned
-nothing and the entire lane sat unprotected while appearing to gate
-every pull request. And `falsification` reused the tests matrix
-template, so `ubuntu-24.04:python-3.14` was emitted by two workflows —
-requiring it is satisfied by whichever reports, gating neither.
-`testNoTwoMergeGateLanesProduceTheSameCheckName` now fails if any name
-has two owners.
-
-`invariants` exists purely to give the architectural invariants a name.
-They already run inside every matrix leg; the separate job adds about
-ten seconds and a check a reviewer can actually see.
-
-### Required status checks
-
-**Requiring only some checks lets a pull request merge while the rest
-are still running** — GitHub blocks on required checks alone. Derive the
-full set from the workflows rather than picking names by hand:
+Requiring only some checks lets a pull request merge while the rest are
+still running, so the required set is derived from the workflows:
 
 ```bash
 python tools/syncRequiredChecks.py           # print, change nothing
 python tools/syncRequiredChecks.py --apply   # write the ruleset
 ```
 
-```{warning}
-Renaming a job invalidates the ruleset entry that named it: the old name
-stops being reported and every pull request waits forever on a check
-that no longer exists. Run `syncRequiredChecks.py --apply` **before**
-merging a rename, not after — otherwise the renaming pull request is
-itself blocked by the names it is replacing. The same holds when a
-matrix cell is dropped: the pull-request macOS lane left out macOS 15
-on Python 3.10–3.13, and those four names had to leave the ruleset
-before the change could merge.
-```
-
-`results:*` is deliberately excluded from the required set: it reports
-the same run the matching `unit:` job already gates, so requiring both
-doubles the wait for no extra signal.
-
-**On their own schedule — neither gate nor publisher:**
-
-| Workflow | Runs | Matrix |
-|---|---|---|
-| `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
-| `tests-macos-nightly.yml` | the full macOS unit matrix, macOS 15 and 26 × Python 3.9–3.14, so the four cells the pull-request lane leaves out (macOS 15 on 3.10–3.13) still run within a day | nightly + manual |
-| `containerAcceptance.yml` | the modeled container commands, against a real container | nightly + manual |
-| `freshImageBuild.yml` | a full image build from scratch on an amd64 and an arm64 runner, then acceptance | weekly, manual, and on `vaibify/containerImage/**` pull requests |
-| `publishedReproduction.yml` | reproduces one real published project in its author's own environment on a native amd64 runner and fails unless the report's verdict is `reproduced` (job `weekly:published-reproduction`, never required) | weekly + manual |
-| `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change | monthly + manual |
-
-`tests/testWorkflowMergeGateSplit.py` fails if any workflow drifts back
-into running on both sides of the merge.
-
-**`toolchainEpoch.yml` deliberately opens an issue, not a pull
-request, and never runs on one.** Moving the epoch changes the
-compiler a researcher's binaries are built against, so it is a
-maintainer's decision on a chosen cadence. Asking it from a
-pull-request lane is what used to paint every unrelated pull request
-red while it waited for an answer nobody reviewing that PR could
-give. `testTheLiveArchiveComparisonIsNotOnThePullRequestPath` fails if
-the live-archive comparison moves back onto the PR path.
+`--apply` also re-asserts the up-to-date requirement. Renaming a job or
+dropping a matrix cell orphans the ruleset entry that named it, so run
+`--apply` **before** merging such a change. The `results:*` checks from
+the test-results action are deliberately not required: they report the
+same run the matching `unit:` check already gates.
 
 ### What the README badges mean
 
-Two different mechanisms, which fail in different ways:
+**Count badges** are computed by `badges.yml` after every merge by
+*collecting* each suite, not running it. They say how much test there
+is, never whether it passed. A count of zero fails the workflow instead
+of publishing, because zero means a marker was renamed or a directory
+moved.
 
-**Count badges** (`unit tests`, `falsification tests`, `architectural
-invariants`, `browser tests`) are computed by `badges.yml` after every
-merge, by *collecting* the suite rather than running it. They say how
-much test there is, never whether it passed. A count that collected
-zero fails the workflow instead of publishing, because zero is never a
-true answer here — it means a marker was renamed or a directory moved,
-and the badge would otherwise state that absence as fact.
+**Status badges** for the merge gates report the checks that gated
+**the last merge into `main`**, read from the runs on the merged pull
+request's head commit; nothing is re-run. A lane with no run against
+that pull request renders **did not run** in gray, never green. GitHub's
+own workflow badges are not used for these lanes, because they show the
+newest run on any branch, so one contributor's failing pull request
+would redden the README while `main` is healthy. The scheduled
+container-acceptance and fresh-image lanes do keep GitHub's badges,
+because they run on `main`, and for a nightly or weekly run the badge is
+often the only place a failure becomes visible.
 
-**Merge-gate status badges** (`tests-linux`, `tests-macos`,
-`falsification`, `browser`, `agent-docs-path-check`) report the checks
-that gated **the last merge into `main`**. `badges.yml` resolves them
-after each merge: the merge commit names the pull request it came from,
-that pull request's head commit carries the runs that decided the merge
-was allowed, and their conclusions become the badges. Nothing is
-re-run — the merge gate already ran them, and re-running post-merge is
-the duplication this split removed.
+## Running the suites locally
 
-GitHub's own workflow badges are deliberately *not* used for these
-lanes. They show the newest run of a workflow on **any** branch, so a
-contributor's failing pull request would redden the README while `main`
-is perfectly healthy. (That is genuinely how they behave, and it is not
-what the docs imply: on a workflow with only pull-request runs,
-`?branch=main` renders *no status* while the unqualified badge renders
-the latest PR run.)
+```bash
+pip install -e ".[dev]"
 
-A lane with no run against the merged pull request renders **did not
-run** in gray, never green. That is the case worth having: it is what a
-bypassed merge, a skipped lane, or a workflow that silently stopped
-triggering looks like.
+# the unit suite, with the invariants and falsification tests:
+python -m pytest tests/ -m "not docker and not docker_live and not browser"
 
-On a direct push to `main` — no pull request to resolve — the status
-badges are left exactly as they were, because an absence of information
-is not a change of state. They continue to describe the last real
-merge.
+# just the falsification tests, or just the invariants:
+python -m pytest -m falsification
+python -m pytest tests/testArchitecturalInvariants.py
+python -m pytest tests/testStyleInvariants.py
 
-The two **scheduled** lanes keep GitHub's own badges, because they
-really do run on `main` on a timer, so "the latest run" is `main`'s
-state. They are on the README because nobody watches a nightly or
-weekly run: for `containerAcceptance` and `freshImageBuild` the badge
-is realistically the only place a failure becomes visible.
+# the browser lane:
+pip install -e ".[browser]" && python -m playwright install chromium
+python -m pytest tests/browser -m browser
 
-## The three execution lanes
+# the standing negative control (re-break each guard, confirm it is caught):
+python tools/reconfirmFalsification.py
 
-Most of this suite runs in one process with the Docker daemon and the
-browser both absent. Three lanes exist because that leaves two real
-boundaries unexercised, and both have shipped bugs a green suite could
-not see.
+# re-confirm only the entries you just wrote, then check completeness:
+python tools/reconfirmFalsification.py --only <substring>
+python tools/reconfirmFalsification.py --completeness-only
 
-**The browser lanes (`browser-chromium.yml`, `browser-firefox.yml`,
-`browser-webkit.yml`)** load the real dashboard in a real browser
-against a real uvicorn hub and fails on any console error, uncaught
-promise rejection, or failed asset. It runs on one cell — a browser
-journey does not become more trustworthy by running 24 times across
-the OS/Python matrix. Its Docker adapter is a **fail-closed fake**:
-every command it answers is declared in `LIST_MODELLED_COMMANDS`, and
-anything else raises rather than returning a default. That rule exists
-because this suite already carries ~20 permissive Docker mocks, one of
-which answers success to any command it does not recognize.
+# the mutation gate (a separate extra):
+pip install -e ".[mutation]"
+cosmic-ray init cosmic-ray.toml session.sqlite && cosmic-ray exec cosmic-ray.toml session.sqlite && cr-rate session.sqlite
+```
 
-**The container-acceptance lane (`containerAcceptance.yml`)** puts each of those modeled
-commands to a real container, so a fake that drifts from the daemon is
-caught rather than believed. Every entry in the fake's contract names
-an assertion in `tests/testContainerAcceptance.py`, and
-`testEveryNamedLaneTwoAssertionExists` fails if one of those names is
-fiction. It runs nightly, which means **drift is caught up to a day
-late**: the browser lane failing blocks merge, container acceptance blocks the next
-release, not retroactively.
+The re-kill harness mutates source in disposable worktrees, so it is not
+collected by `pytest tests/`. It refuses a checkout with uncommitted
+changes, because it would otherwise verify code you do not have; pass
+`--include-local-diff` to replay your edits into the worktree. `--only`
+re-confirms a subset and says so: its result is not the standing
+negative control, and it does not check registry completeness.
 
-**The fresh-image lane (`freshImageBuild.yml`)** builds the image from scratch. Lane
-2 reuses a cached image keyed by `tools/computeBuildInputHash.py` —
-which hashes every build input, including the entrypoint, the agent
-CLI, the overlays, the skills, the staged-doc *sources*, and the
-generator itself — so it says nothing about whether the image still
-builds.
-
-None of the three may skip itself green. `VAIBIFY_REQUIRE_DOCKER_DAEMON`
-and `VAIBIFY_REQUIRE_BROWSER` turn each lane's convenience skip into a
-failure in CI, because the guard they replaced (`docker info || exit 0`)
-reported success for having run nothing.
-
-The shell-completion tests follow the same contract with
-`VAIBIFY_REQUIRE_SHELLS`. They run the shipped scripts in the real bash,
-zsh and fish (including a pseudo-terminal lane that presses TAB and Enter
-in an interactive shell, because only a real shell can say whether an
-inserted name stays one word). A shell that is missing skips its tests on
-a developer's machine and FAILS them on the unit workflows, which install
-fish and zsh for that purpose and set the variable. Only the bash tests
-are falsification tests: the lanes that replay falsification entries do
-not carry the other two shells.
-
-The harness runs on a *subset* because whether a test catches its
-mutation is deterministic and OS/Python-independent; the full-matrix
-coverage of the tests themselves already comes from the unit-test
-workflows. The count badges in the README are refreshed by `badges.yml`,
-which writes shields.io endpoint JSON to an orphan `badges` branch.
-
-## Background
-
-The falsification methodology, its limits, and the literature it draws on
-(mutation testing since DeMillo, Lipton & Sayward 1978; the LLM-era work
-on test-suite adequacy; metamorphic testing for oracle-free scientific
-code) are written up for reference outside the repository. In short:
-mutation-style falsification fits vaibify's *plumbing*, where the correct
-behavior is definitional; the science code (vplanet), where there is no
-known answer to assert against, is better tested with **metamorphic
-relations** (e.g. "halve the timestep and the conserved energy must not
-change") — a future direction, not yet part of this suite.
+Running everything on one machine is slow. That cost buys two things:
+an agent cannot silently break behavior outside the context of its
+prompt, and because the checks are deterministic, a failure points
+straight at the problem without spending model tokens to find it.
