@@ -1,6 +1,7 @@
 """CLI subcommand: vaibify generate-standards.
 
-Refreshes a step's ``tests/quantitative_standards.json`` from live data
+Refreshes a step's quantitative standards file
+(``tests/quantitative_standards_<stepName>.json``) from live data
 files. Two modes:
 
 * ``--step-dir <path>`` — operates on a step directory directly. If the
@@ -43,7 +44,8 @@ def _fnReportStochasticInDir(sStepDir):
 
 def _fnRefreshOrGenerateForStepDir(sStepDir, fRtol):
     """Regenerate values in an existing standards file, or build from scratch."""
-    sStandardsPath = os.path.join(sStepDir, "tests", "quantitative_standards.json")
+    from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
+    sStandardsPath = fsQuantitativeStandardsPath(sStepDir)
     if os.path.isfile(sStandardsPath):
         click.echo(f"Refreshing fValue entries in {sStandardsPath}")
         try:
@@ -129,7 +131,7 @@ def _fiResolveStepIndexFromLabel(sWorkflowPath, sStepLabel):
 def fnGenerateStandardsCommand(
     sStepDir, sWorkflowPath, sStepLabel, fRtol, bDetectStochastic,
 ):
-    """Refresh or generate a step's quantitative_standards.json from live data."""
+    """Refresh or generate a step's quantitative standards file from live data."""
     if sStepDir is None and not (sWorkflowPath and sStepLabel):
         click.echo(
             "Error: provide either --step-dir or "

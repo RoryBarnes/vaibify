@@ -14,6 +14,7 @@ from vaibify.testing.standards import (
     fnWriteStandards,
 )
 from vaibify.testing import standards as standardsModule
+from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
 
 
 @pytest.fixture
@@ -329,10 +330,8 @@ def test_fnUpdateWorkflowStandards_persists_blob(fixtureWorkflow):
 def test_fnGenerateFromWorkflow_writes_standards_file(fixtureWorkflow):
     """End-to-end: workflow → step standards JSON written under tests/."""
     fnGenerateFromWorkflow(fixtureWorkflow, 0)
-    sStandardsPath = os.path.join(
-        os.path.dirname(fixtureWorkflow), "stepA", "tests",
-        "quantitative_standards.json",
-    )
+    sStandardsPath = fsQuantitativeStandardsPath(
+        os.path.join(os.path.dirname(fixtureWorkflow), "stepA"))
     assert os.path.isfile(sStandardsPath)
     with open(sStandardsPath) as fileHandle:
         dictStandards = json.load(fileHandle)
@@ -413,9 +412,7 @@ def test_resolve_step_dir_handles_nested_workflow_layout(tmp_path):
     with open(sWorkflowPath, "w") as fileHandle:
         json.dump(dictWorkflow, fileHandle)
     fnGenerateFromWorkflow(sWorkflowPath, 0)
-    sStandardsPath = os.path.join(
-        str(sStepDir), "tests", "quantitative_standards.json",
-    )
+    sStandardsPath = fsQuantitativeStandardsPath(str(sStepDir))
     assert os.path.isfile(sStandardsPath)
 
 

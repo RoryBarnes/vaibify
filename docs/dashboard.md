@@ -823,16 +823,20 @@ displayed in each step's expanded view.
 
 The **Unit Tests** row is expandable to show detailed information
 about the step's unit tests, including generating and running them.
-Three categories of unit tests exist:
+Three categories of unit tests exist. Each step's files carry the
+step's directory name with its first letter lowered (step
+`AiPowerOverTime` generates `test_integrity_aiPowerOverTime.py`), which
+keeps files from different steps distinct in a flat archive such as a
+Zenodo deposit:
 
-1. **Integrity tests** (`test_integrity.py`) — output files exist, are
+1. **Integrity tests** (`test_integrity_<stepName>.py`) — output files exist, are
    non-empty, load in their expected format, have the correct shape,
    and contain no NaN or infinity values.
-2. **Qualitative tests** (`test_qualitative.py`) — column names, JSON
+2. **Qualitative tests** (`test_qualitative_<stepName>.py`) — column names, JSON
    keys, parameter names, and other categorical content match
    expectations.
-3. **Quantitative tests** (`test_quantitative.py` plus
-   `quantitative_standards.json`) — numerical output values match
+3. **Quantitative tests** (`test_quantitative_<stepName>.py` plus
+   `quantitative_standards_<stepName>.json`) — numerical output values match
    stored benchmarks at full double precision, with configurable
    relative and absolute tolerances.
 

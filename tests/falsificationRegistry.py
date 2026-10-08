@@ -30295,6 +30295,14 @@ def _fdictEntry(sRel):
     ),
     Falsification(
         nodeid=(
+            'tests/testGeneratedFileNamesAreStepNamed.py::testNoModuleHardCodesAnUnsuffixedGeneratedFileName'
+        ),
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='    sTestFileName = posixpath.basename(\n        fsQuantitativeTestPath(dictStep.get("sDirectory", "")))\n',
+        new='    sTestFileName = "test_quantitative.py"\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testStepVerdictFromRuns.py::test_a_matching_run_does_not_vouch_for_another_runs_unchecked_paths'
         ),
         source='vaibify/gui/hashStaleness.py',

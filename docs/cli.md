@@ -549,8 +549,8 @@ vaibify verify-step --step N --status STATUS [--project/-p NAME]
 
 ### `vaibify generate-standards`
 
-Refresh or generate a step's `tests/quantitative_standards.json` from
-live data files. If a curated standards file already exists, only each
+Refresh or generate a step's
+`tests/quantitative_standards_<stepName>.json` from live data files. If a curated standards file already exists, only each
 entry's value is recomputed and the schema is preserved; otherwise a
 fresh file is generated from the data files found under the step
 directory.

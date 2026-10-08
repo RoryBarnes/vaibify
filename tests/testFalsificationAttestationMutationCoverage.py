@@ -10,6 +10,7 @@ under the corresponding mutation (recorded in
 """
 
 import json
+import posixpath
 
 import pytest
 
@@ -24,11 +25,19 @@ from vaibify.reproducibility.falsificationAttestation import (
     fsCurrentFalsificationDigest,
 )
 
+from vaibify.gui.testGenerator import (
+    fsQuantitativeStandardsPath, fsQuantitativeTestPath,
+)
+
 pytestmark = pytest.mark.falsification
 
 
 S_STEP_DIRECTORY = "analysisStage"
 S_SCRIPT_NAME = "computeSummary.py"
+S_QUANTITATIVE_TEST_FILE = posixpath.basename(
+    fsQuantitativeTestPath(S_STEP_DIRECTORY))
+S_QUANTITATIVE_STANDARDS_FILE = posixpath.basename(
+    fsQuantitativeStandardsPath(S_STEP_DIRECTORY))
 
 
 def _fdictBuildStepRepo(tmp_path, sClassification):
@@ -38,10 +47,10 @@ def _fdictBuildStepRepo(tmp_path, sClassification):
     (tmp_path / S_STEP_DIRECTORY / S_SCRIPT_NAME).write_text(
         "print(2.0 + 3.0)\n",
     )
-    (pathTests / "test_quantitative.py").write_text(
+    (pathTests / S_QUANTITATIVE_TEST_FILE).write_text(
         "def test_summary_value():\n    assert True\n",
     )
-    (pathTests / "quantitative_standards.json").write_text(json.dumps({
+    (pathTests / S_QUANTITATIVE_STANDARDS_FILE).write_text(json.dumps({
         "fDefaultRtol": 1.0e-6,
         "sStochasticityClassification": sClassification,
         "listStandards": [{"sName": "fMeanValue", "fValue": 5.0}],

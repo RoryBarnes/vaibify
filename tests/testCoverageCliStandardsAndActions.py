@@ -12,6 +12,7 @@ ends in a sentence and a nonzero exit rather than a Python traceback.
 
 import json
 import os
+import pathlib
 from types import SimpleNamespace
 
 import click
@@ -24,6 +25,7 @@ from vaibify.cli.commandGenerateStandards import (
     fnGenerateStandardsCommand,
 )
 from vaibify.gui.actionCatalog import LIST_AGENT_ACTIONS
+from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
 
 S_CONTAINER_NAME = "projectAlpha"
 S_CONTAINER_ID = "cid-fedcba987654"
@@ -78,9 +80,7 @@ def testFreshStandardsAreGeneratedFromDiscoveredFilesAtTheGivenTolerance(
     )
     fnAssertCleanExit(resultInvoke, 0)
     assert "No standards file at" in resultInvoke.output
-    with open(os.path.join(
-        sStepDir, "tests", "quantitative_standards.json",
-    )) as fileHandle:
+    with open(fsQuantitativeStandardsPath(sStepDir)) as fileHandle:
         dictWritten = json.load(fileHandle)
     assert dictWritten["fDefaultRtol"] == 0.001
     setDataFiles = {
@@ -122,9 +122,7 @@ def testDetectStochasticReportsAnUnseededScriptBeforeGenerating(tmp_path):
     fnAssertCleanExit(resultInvoke, 0)
     assert "dataAlpha.py" in resultInvoke.output
     assert "numpy legacy random" in resultInvoke.output
-    assert os.path.isfile(os.path.join(
-        sStepDir, "tests", "quantitative_standards.json",
-    ))
+    assert os.path.isfile(fsQuantitativeStandardsPath(sStepDir))
 
 
 def fsWriteWorkflow(tmp_path, listSteps):
@@ -188,7 +186,7 @@ def testMalformedWorkflowFileExitsWithASentence(tmp_path):
 def testRefreshNamingAMissingDataFileExitsWithASentence(tmp_path):
     pathStep = tmp_path / "stepAlpha"
     (pathStep / "tests").mkdir(parents=True)
-    (pathStep / "tests" / "quantitative_standards.json").write_text(
+    pathlib.Path(fsQuantitativeStandardsPath(str(pathStep))).write_text(
         json.dumps({"listStandards": [{
             "sName": "firstValue", "sDataFile": "removedFile.csv",
             "sAccessPath": "index:0", "fValue": 1.0,
