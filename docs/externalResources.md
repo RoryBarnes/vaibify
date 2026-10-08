@@ -115,7 +115,9 @@ GitHub remote, and push.
   through the file selection above.
 - Before every push, vaibify asks GitHub which account the token
   belongs to and refuses unless that account name matches the owner
-  named in the remote's URL.
+  named in the remote's URL. A repository owned by an organization
+  therefore cannot be pushed from vaibify; push it from a terminal with
+  your own git credentials.
 - A container with no git author configured asks for one (**Set Git
   Identity**). The name and email are written into the project
   repository only, never into a global git configuration.

@@ -390,6 +390,12 @@ def fbVerifyTier3(sProjectRepo):
         return True
     _fnPrintFail("docker pull failed")
     click.echo(processCompleted.stderr.rstrip())
+    click.echo(
+        "This tier pulls only from a registry. If the image exists only "
+        "in the project's environment archive, run `vaibify reproduce "
+        "--from <the published project's URL> --prepare`, which also "
+        "tries the archived deposit and a copy already on this computer."
+    )
     return False
 
 

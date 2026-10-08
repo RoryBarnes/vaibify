@@ -29,10 +29,9 @@ reads its expectations from a JSON **test standards** file beside it.
 | **Qualitative** | The categorical structure of each output is unchanged: the column names of a table, the top-level keys of a JSON file. | `test_qualitative_<step>.py`, `qualitative_standards_<step>.json` |
 | **Quantitative** | Numerical outputs (single values, means, and for stochastic steps, standard deviations and percentiles) match the stored benchmarks within a relative and absolute tolerance. | `test_quantitative_<step>.py`, `quantitative_standards_<step>.json` |
 
-An output in any other format is read by the integrity test as UTF-8
-text and checked only for being non-empty, so a binary output in such a
-format (an image, FITS or Parquet file, for example) fails its
-integrity test.
+An output in any other format is checked only for being non-empty: a
+text file must hold something besides whitespace, and a binary file (an
+image, FITS or Parquet file, for example) must hold at least one byte.
 
 The step's **Unit Tests** row in the dashboard expands to show the three
 categories, with buttons to generate and run them. In-container agents
