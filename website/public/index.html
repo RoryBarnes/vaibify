@@ -46,11 +46,7 @@
           />
         </a>
         <nav class="mainNavigation" aria-label="Main navigation">
-          <a href="#workflow">Workflow</a>
-          <a href="#reproducibility">Reproducibility</a>
-          <a href="https://RoryBarnes.github.io/vaibify/"
-            >Documentation <span aria-hidden="true">↗</span></a
-          >
+          
           <a href="https://github.com/RoryBarnes/vaibify"
             >GitHub <span aria-hidden="true">↗</span></a
           >
@@ -61,21 +57,18 @@
       <section class="introduction pageWidth" aria-labelledby="pageTitle">
         <h1 id="pageTitle">Vibe boldly. Verify everything.</h1>
         <p class="introductionSubtitle">
-          AI-assisted scientific computing with <em>you</em> in the loop
+          Integrate AI coding agents into your scientific research.
         </p>
         <p class="introductionText">
-          Vaibify is a browser-based application for developing, running, and
-          verifying scientific workflows. Work with coding agents in secure
+          Vaibify empowers you to develop, run, verify, publish, and reproduce
+          AI-assisted data analysis. Work with coding agents in secure
           Docker containers, visually inspect figures and data, verify your
-          pipeline steps are accurate, and enable others to reproduce your
-          results at the byte level.
+          pipeline steps were completed in order, and enable others to reproduce your
+          results at the bit level.
         </p>
         <div class="introductionLinks">
           <a href="https://RoryBarnes.github.io/vaibify/quickStart.html"
             >Quickstart guide <span aria-hidden="true">↗</span></a
-          >
-          <a href="#installation"
-            >Installation <span aria-hidden="true">↓</span></a
           >
           <span class="platformNote">Python 3.9+ · macOS &amp; Linux</span>
         </div>
@@ -104,11 +97,9 @@
               >The dashboard shows the up-to-date status of a research project
               in the secured computing environment.</strong
             >
-            The selected step has passing dependencies and pending researcher
-            approval. Verification is still in progress.
-            <a href="/assets/vaibifyDashboard.png"
-              >View full-resolution image <span aria-hidden="true">↗</span></a
-            >
+            The selected step has passing dependencies but is pending researcher
+            approval. Work with agents in the terminal and view outputs in the 
+            viewing windows.            
           </p>
           <dl class="figureGuide">
             <div>
@@ -147,20 +138,61 @@
 
       <section
         class="contentSection pageWidth sectionGrid"
+        aria-labelledby="motivationTitle"
+      >
+        <div class="sectionIntroduction">
+          <p class="sectionLabel">Motivation and Goals</p>
+          <h2 id="motivationTitle">
+            Keep your computer safe and verify the AI’s work
+          </h2>
+        </div>
+        <div class="prose">
+          <p>
+            Because AI agents are more capable software engineers than humans,
+            researchers no longer write or inspect source code. The
+            new bottleneck is verification. vaibify brings the agents, the 
+            figures, the data analysis pipeline, and the remote repositories
+            into one view, significantly reducing the time needed to verify AI-generated code.
+          </p>
+          <p>
+            Docker containers keep AI agents contained in a locked-down
+            computing environment, which has a specific set of
+            dependencies that facilitates reproduction. From the host machine's terminal, you can access
+            the container, but Docker containers restrict agents’ access to the host machine, allowing 
+            longer agent runs with less direct supervision.
+          </p> 
+          <p>
+            Establishing an analysis's veracity still requires
+            inspecting the data, testing the calculations, and understanding the
+            assumptions. AI agents add a 
+            new level of uncertainty because they can behave stochastically.
+            Continual monitoring of files in the container alerts the
+            researcher to changes.
+          </p>
+          <p>
+            Since reproducing a computation does not establish its scientific
+            accuracy, each step must be approved by a researcher for the entire
+            workflow to be declared complete.
+          </p>
+        </div>
+      </section>
+
+      <section
+        class="contentSection pageWidth sectionGrid"
         id="workflow"
         aria-labelledby="workflowTitle"
       >
         <div class="sectionIntroduction">
-          <p class="sectionLabel">Working with Vaibify</p>
+          <p class="sectionLabel">Researching with Vaibify</p>
           <h2 id="workflowTitle">
-            From an exploratory analysis to a verified workflow
+            From exploration to verified workflow
           </h2>
           <p>
-            Start in a sandbox, develop a reusable toolkit, or organize an
-            investigation as a Project with explicit steps and dependencies.
+            Start in a sandbox, develop a software toolkit, and organize an
+            investigation into a Project with explicit steps and dependencies.
           </p>
           <a href="https://RoryBarnes.github.io/vaibify/dashboard.html"
-            >Dashboard reference <span aria-hidden="true">↗</span></a
+            >Learn more about the Dashboard <span aria-hidden="true">↗</span></a
           >
         </div>
         <dl class="capabilities">
@@ -191,9 +223,17 @@
           <div>
             <dt>Track what changed</dt>
             <dd>
-              Vaibify monitors the workflow’s files and declared dependencies.
+              vaibify monitors the workflow’s files and declared dependencies.
               When an input or script changes, the dashboard identifies stale
               results and affected downstream steps that need attention.
+            </dd>
+          </div>
+          <div>
+            <dt>Convene an Agent Council</dt>
+            <dd>
+              Task multiple agents with generating independent plans for difficult
+              tasks, empower them to work for multiple rounds, and chat with the chairbot
+              when questions arise. 
             </dd>
           </div>
           <div>
@@ -204,45 +244,16 @@
               whether manuscript figures match the local results.
             </dd>
           </div>
+          <div>
+            <dt>Enable bit-level reproducibility</dt>
+            <dd>
+              vaibify guides you through the steps to permanently store your
+              data and computing environment for exact reproducibility. It 
+              also provides guidance on how to reproduce other vaibify archives
+              at the bit level.
+            </dd>
+          </div>
         </dl>
-      </section>
-
-      <section
-        class="contentSection pageWidth sectionGrid"
-        aria-labelledby="motivationTitle"
-      >
-        <div class="sectionIntroduction">
-          <p class="sectionLabel">Scientific motivation</p>
-          <h2 id="motivationTitle">
-            Keep your computer safe while you verify the AI’s work
-          </h2>
-        </div>
-        <div class="prose">
-          <p>
-            Docker containers give coding agents a dedicated environment for the
-            project’s code and dependencies. Within that environment,
-            establishing that an analysis is meaningful still requires
-            inspecting the data, testing the calculations, and understanding the
-            assumptions. An agent can also revise a script after its outputs
-            have been reviewed, leaving earlier figures and conclusions out of
-            date.
-          </p>
-          <p>
-            Vaibify brings the code’s execution, its outputs, and their
-            verification status into the same view. Explicit dependencies and
-            recorded checks help researchers see what needs to be examined
-            again, while archived files and a pinned environment provide a basis
-            for reproducing the computation.
-          </p>
-          <p class="researchPrinciple">
-            Reproducing a computation does not establish that its scientific
-            interpretation is correct. That judgment remains with the
-            researcher.
-          </p>
-          <a href="https://RoryBarnes.github.io/vaibify/philosophy.html"
-            >Read the design philosophy <span aria-hidden="true">↗</span></a
-          >
-        </div>
       </section>
 
       <section
@@ -254,26 +265,22 @@
           <div class="sectionIntroduction">
             <p class="sectionLabel">Reproducibility</p>
             <h2 id="proofTitle">The PROOF ladder</h2>
-            <p>
-              The PROOF tab lists the evidence required for each level and shows
-              which requirements a project has met.
-            </p>
             <p class="proofExpansion">
               Provenance, Reproducibility, Openness, Oversight, Falsifiability.
+            vaibify enables 
+            quantitative analyses to reach PROOF Level 3 of 6.
             </p>
+            
             <a href="https://RoryBarnes.github.io/vaibify/reproducibility.html"
-              >Reproducibility reference <span aria-hidden="true">↗</span></a
+              >Learn more about the PROOF Ladder<span aria-hidden="true">↗</span></a
             >
           </div>
           <div>
             <table class="proofTable">
-              <caption>
-                Levels currently implemented in Vaibify
-              </caption>
               <thead>
                 <tr>
                   <th scope="col">Level</th>
-                  <th scope="col">Evidence checked</th>
+                  <th scope="col">Evidence</th>
                 </tr>
               </thead>
               <tbody>
@@ -292,7 +299,7 @@
                   </th>
                   <td>
                     Matching copies on GitHub and Zenodo, together with
-                    declarations of AI use.
+                    a declaration of AI usage.
                   </td>
                 </tr>
                 <tr>
@@ -304,17 +311,37 @@
                     artifacts, and a recorded rerun whose output hashes match
                     the manifest.
                   </td>
+                  <tr>
+                  <th scope="row">
+                    <span>4</span> Traceable
+                  </th>
+                  <td>
+                    The public presentation of all system prompts, prompt transcripts,
+                    and a public changelog of all modifications to the digital
+                    artifacts from Level 1 to Level 3.
+                  </td>
+                  </tr>
+                  <tr>
+                  <th scope="row">
+                    <span>5</span> Regenerated
+                  </th>
+                  <td>
+                    An independent Level 4 reproduction of the results to within scientific
+                    tolerances by a different set of agents and system prompts.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <span>6</span> Attested
+                  </th>
+                  <td>
+                    Multiple public and cryptographically verifiable statements by trusted
+                    entities that they achieved Level 5.  
+                  </td>
                 </tr>
               </tbody>
             </table>
-            <p class="tableNote">
-              Each level includes the requirements of the preceding levels. The
-              full framework has six levels; Vaibify currently implements the
-              first three.
-              <a href="https://RoryBarnes.github.io/vaibify/vision.html"
-                >Read the framework <span aria-hidden="true">↗</span></a
-              >
-            </p>
+            
           </div>
         </div>
       </section>
@@ -325,35 +352,28 @@
         aria-labelledby="installationTitle"
       >
         <div class="sectionIntroduction">
-          <p class="sectionLabel">Using the software</p>
-          <h2 id="installationTitle">Install Vaibify</h2>
+          <p class="sectionLabel">Get started</p>
+          <h2 id="installationTitle">Try Vaibify</h2>
           <p>Python 3.9 or later, on macOS or Linux.</p>
         </div>
         <div class="prose">
           <pre aria-label="Install and launch Vaibify"><code>pip install vaibify
 vaibify</code></pre>
           <p>
-            The application opens locally in your browser. You can work on your
-            own machine, or use Docker for container isolation and Level 3
-            reproducibility.
-          </p>
-          <p>
-            Follow the
+            The application opens locally in your browser and guides you through 
+            container and project creation. Follow the
             <a href="https://RoryBarnes.github.io/vaibify/quickStart.html"
               >Quickstart guide</a
             >
-            for setup and a first reproduction. The
-            <a href="https://RoryBarnes.github.io/vaibify/">documentation</a>
-            covers environments, workflows, verification, and external services.
+            to reproduce the AI Greenhouse example.
           </p>
         </div>
       </section>
     </main>
     <footer class="siteFooter pageWidth">
       <p>
-        Vaibify · Developed by
-        <a href="https://github.com/RoryBarnes">Rory Barnes</a> for scientific
-        research.
+        Vaibify · Copyrighted in 2026 by
+        <a href="http://faculty.washington.edu/rkb9">Rory Barnes</a>.
       </p>
       <nav aria-label="Project links">
         <a href="https://github.com/RoryBarnes/vaibify">Source code</a>
