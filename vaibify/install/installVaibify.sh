@@ -419,6 +419,24 @@ if [ -n "${VC_TESTING:-}" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# fnRefuseUnsupportedInstall: This script cannot produce a working install
+# ---------------------------------------------------------------------------
+# It links vaibify/cli/main.py, which has no interpreter line, as the
+# vaibify command, so the command it creates does not run. Stop before
+# anything is installed or reconfigured, and name the supported path.
+fnRefuseUnsupportedInstall() {
+    fnPrintError "installVaibify.sh does not produce a working installation."
+    echo "Install vaibify with pip instead:" >&2
+    echo "    python3 -m pip install vaibify" >&2
+    echo "Docker, Colima, and shell completion are covered in the" >&2
+    echo "Advanced Installation guide:" >&2
+    echo "    https://RoryBarnes.github.io/vaibify/install.html" >&2
+    echo "Nothing was installed or changed." >&2
+    exit 1
+}
+
+fnRefuseUnsupportedInstall
 fnamespaceParseArguments "$@"
 fnDetectPlatform
 echo "[install] Detected platform: ${sPlatform}"
