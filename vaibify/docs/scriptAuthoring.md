@@ -19,17 +19,24 @@ JSON to:
 The parser at
 `vaibify/gui/workflowManager.py::fdictBuildDirectDependencies` uses one
 mechanism to find dependencies: it scans command strings for
-`{StepNN.varname}` tokens. Anything that token-references another step
-is part of the graph. Anything else is not.
+`{step:<sStepId>.<stem>}` tokens. Anything that token-references another
+step is part of the graph. Anything else is not.
 
 This is the contract: **every cross-step file your script reads must
 arrive as a CLI argument, and the project JSON command must reference
-it via a `{StepNN.varname}` token.**
+it via a `{step:<sStepId>.<stem>}` token.**
+
+`sStepId` is the step's stable identifier: a kebab-case slug of the
+step name, assigned once when the step is created, stored in the
+project file, and never regenerated. Renaming, inserting, or reordering
+steps therefore leaves every reference intact. The positional form
+`{StepNN.stem}` is deprecated; vaibify rewrites it to the symbolic form
+when it loads a project file, so never write it.
 
 ## Why hardcoded cross-step paths break vaibify
 
-Suppose step A02 produces `posterior_samples.npy` and step A03 needs to
-read it. The "wrong" pattern looks like this:
+Suppose step A02 (`sStepId` `posterior-samples`) produces
+`posterior_samples.npy` and step A03 needs to read it. The "wrong" pattern looks like this:
 
 ```python
 # A03/plotCorner.py
@@ -41,7 +48,9 @@ vaibify's parser cannot introspect arbitrary Python source. The
 `"../PosteriorSamples/posterior_samples.npy"` literal is invisible. So the A02 →
 A03 edge does not exist in the dependency graph. The consequences:
 
-- The dashboard's `Update Dependencies` button never finds the edge.
+- The dashboard's dependency scanner may notice the literal and
+  suggest the edge, but a suggestion is not an edge until it is written
+  into the command as a token.
 - When A02 is re-run, A03's `bUpstreamModified` flag does not fire —
   the dashboard thinks A03 is still consistent with A02 even though it
   isn't.
@@ -76,10 +85,10 @@ samples = np.load(dictArgs["posterior_samples"])
 
 ```json
 {
-  "iIndex": 3,
   "sName": "PosteriorCorner",
+  "sStepId": "posterior-corner",
   "saPlotCommands": [
-    "python plotCorner.py --posterior-samples {Step02.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"
+    "python plotCorner.py --posterior-samples {step:posterior-samples.posterior_samples} {sPlotDirectory}/corner.{sFigureType}"
   ]
 }
 ```
@@ -87,16 +96,17 @@ samples = np.load(dictArgs["posterior_samples"])
 Three conventions matter:
 
 - **CLI arguments are kebab-case** (`--posterior-samples`).
-- **The token variable name is snake_case** (`{Step02.posterior_samples}`)
-  — it matches the basename (without extension) of the producer step's
-  `saOutputDataFiles` entry. So `posterior_samples.npy` in `saOutputDataFiles` becomes
-  `{Step02.posterior_samples}` in any consumer's command.
+- **The token stem is the basename without extension** of the
+  producer step's `saOutputDataFiles` entry. So `posterior_samples.npy`
+  in the `posterior-samples` step's `saOutputDataFiles` becomes
+  `{step:posterior-samples.posterior_samples}` in any consumer's
+  command.
 - **Use `argparse`, not raw `sys.argv` indexing.** The CLI is part of
   the project contract; argparse makes it explicit and self-documenting.
 
-Vaibify substitutes `{Step02.posterior_samples}` at runtime with the
-actual repo-relative path to the producer's output. Your script never
-needs to know where A02 lives.
+Vaibify substitutes `{step:posterior-samples.posterior_samples}` at
+runtime with the absolute path to the producer's output. Your script
+never needs to know where A02 lives.
 
 ## `saDependencies` — the escape hatch
 
@@ -107,15 +117,15 @@ argument (for instance, the script reads many sibling outputs whose
 names follow a pattern).
 
 For those cases, the project JSON has an explicit `saDependencies`
-field. List one or more `{StepNN.*}` tokens there and the parser will
-register the edge:
+field. List one or more `{step:<sStepId>.<stem>}` tokens there and the
+parser will register the edge:
 
 ```json
 {
-  "iIndex": 4,
   "sName": "AggregatePlots",
+  "sStepId": "aggregate-plots",
   "saPlotCommands": ["python plotAggregate.py {sPlotDirectory}/agg.{sFigureType}"],
-  "saDependencies": ["{Step02.posterior_samples}", "{Step03.age_samples}"]
+  "saDependencies": ["{step:posterior-samples.posterior_samples}", "{step:age-samples.age_samples}"]
 }
 ```
 
@@ -126,18 +136,21 @@ to anyone reading the command.
 
 ## Handling colliding basenames
 
-The runtime resolver keys `{StepNN.varname}` lookups by the basename
-(without extension) of each entry in the producer step's `saOutputDataFiles`.
+The runtime resolver keys token lookups by the basename (without
+extension) of each entry in the producer step's `saOutputDataFiles`.
 When a single step declares two outputs with the same basename — for
-example, `EngleBarnes/output/Converged_Param_Dictionary.json` and
-`RibasBarnes/output/Converged_Param_Dictionary.json` — each colliding
-entry registers under a QUALIFIED token instead: the leading path
-segment joined to the stem with an underscore. Consumers reference
-`{Step10.EngleBarnes_Converged_Param_Dictionary}` and
-`{Step10.RibasBarnes_Converged_Param_Dictionary}` unambiguously, and
-the bare colliding stem is deliberately not registered, so a stale
-bare reference fails loudly in reference validation rather than
-silently resolving to the last writer.
+example, `ModelA/output/summary.json` and `ModelB/output/summary.json`
+— each colliding entry registers under a QUALIFIED stem instead: the
+leading path segment joined to the stem with an underscore. If the
+leading segments also collide (`output/run1/summary.json` and
+`output/run2/summary.json`), the whole directory qualifies the stem,
+with every non-alphanumeric character replaced by an underscore.
+Consumers of a step with id `fit-models` reference
+`{step:fit-models.ModelA_summary}` and
+`{step:fit-models.ModelB_summary}` unambiguously, and the bare
+colliding stem is deliberately not registered, so a stale bare
+reference fails loudly in reference validation rather than silently
+resolving to the last writer.
 
 Do NOT rename scientific output files to dodge token collisions —
 output filenames are part of a scientific code's public interface, and
@@ -186,25 +199,25 @@ plt.savefig(dictArgs["sPlotPath"])
   "sName": "minimal-example",
   "listSteps": [
     {
-      "iIndex": 1,
       "sName": "Sampler",
+      "sStepId": "sampler",
       "sDirectory": "Sampler",
       "saDataCommands": ["python dataSample.py --output samples.npy"],
       "saOutputDataFiles": ["samples.npy"]
     },
     {
-      "iIndex": 2,
       "sName": "Plot",
+      "sStepId": "plot",
       "sDirectory": "Plot",
       "saPlotCommands": [
-        "python plotHistogram.py --samples {Step01.samples} {sPlotDirectory}/hist.{sFigureType}"
+        "python plotHistogram.py --samples {step:sampler.samples} {sPlotDirectory}/hist.{sFigureType}"
       ]
     }
   ]
 }
 ```
 
-The token `{Step01.samples}` makes the Sampler → Plot edge explicit in
+The token `{step:sampler.samples}` makes the Sampler → Plot edge explicit in
 the JSON. The parser finds it. The dashboard tracks it. When Sampler
 re-runs, Plot's `bUpstreamModified` flag fires correctly. The project
 can honestly claim Self-Consistent status because the contract is
@@ -229,7 +242,7 @@ before the pipeline runs are **input data**, declared per step in
 
 - Entries are **repo-relative** — they resolve against the project
   repository root, never the step directory.
-- Entries must NOT be step products. A `{StepNN.*}` token in
+- Entries must NOT be step products. A step token in
   `saInputDataFiles` is rejected at load time: cross-step files stay
   tokens in commands so the dependency parser sees the edge.
 - The same file may be declared by several steps — shared inputs are
@@ -288,11 +301,11 @@ after an explicit yes). A first-ever pull never prompts.
 
 Everything above applies unchanged to a host project (one that runs
 on your own machine instead of in a container). Paths in
-`project.json` — step directories, `saOutputDataFiles`, `saPlotFiles`,
-`{step:...}` tokens — are **repo-relative in both modes**; nothing in
-a well-formed project file names `/workspace`, so nothing changes
-when the project root is a directory in your home instead of a
-container volume.
+`project.json` — step directories, `saOutputDataFiles`, `saPlotFiles`
+— are **repo-relative in both modes**, and `{step:...}` tokens resolve
+against whichever project root is in use; nothing in a well-formed
+project file names `/workspace`, so nothing changes when the project
+root is a directory in your home instead of a container volume.
 
 What DOES differ is the substrate your commands run on:
 
