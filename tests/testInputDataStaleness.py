@@ -12,6 +12,7 @@ import os
 
 import pytest
 
+from tests.snapshotProgramHarness import fdictHashStaleFromRealSnapshot
 from vaibify.gui import mtimeCache
 from vaibify.gui.fileStatusManager import (
     _ftStepIsPencilStale,
@@ -276,13 +277,14 @@ def test_input_content_drift_with_same_mtime_invalidates(tmp_path):
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictNewModTimes = {sAbsLive: str(int(fSharedMtime))}
     dictCtx = _fdictBuildCtx({"cid": dict(dictNewModTimes)})
+    dictMarkers = {
+        0: _fdictBuildInputMarker({"data/raw.csv": sBaselineSha}),
+    }
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": sRepoRoot},
-        dictMarkersByStep={
-            0: _fdictBuildInputMarker({"data/raw.csv": sBaselineSha}),
-        },
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, dictMarkers, sRepoRoot),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "untested"
@@ -298,14 +300,15 @@ def test_fresh_clone_matching_input_content_stays_passed(tmp_path):
     )
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictCtx = _fdictBuildCtx()
+    dictMarkers = {
+        0: _fdictBuildInputMarker({"data/raw.csv": sBaselineSha}),
+    }
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow,
         {sAbsLive: str(int(os.path.getmtime(sAbsLive)))},
         dictVars={"sRepoRoot": sRepoRoot},
-        dictMarkersByStep={
-            0: _fdictBuildInputMarker({"data/raw.csv": sBaselineSha}),
-        },
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, dictMarkers, sRepoRoot),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "passed"
@@ -317,13 +320,14 @@ def test_missing_declared_input_counts_as_hash_drift(tmp_path):
     sRepoRoot = str(tmp_path)
     dictWorkflow = _fdictOneStepWorkflow(sRepoRoot, ["data/raw.csv"])
     dictCtx = _fdictBuildCtx()
+    dictMarkers = {
+        0: _fdictBuildInputMarker({"data/raw.csv": "0" * 40}),
+    }
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, {},
         dictVars={"sRepoRoot": sRepoRoot},
-        dictMarkersByStep={
-            0: _fdictBuildInputMarker({"data/raw.csv": "0" * 40}),
-        },
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, dictMarkers, sRepoRoot),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "untested"

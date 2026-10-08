@@ -10,6 +10,7 @@ pytest.importorskip("click")
 from click.testing import CliRunner  # noqa: E402
 
 from vaibify.cli.commandGenerateStandards import fnGenerateStandardsCommand
+from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
 
 
 @pytest.fixture
@@ -19,8 +20,7 @@ def fixtureStepDirWithStandards(tmp_path):
     os.makedirs(os.path.join(sStepDir, "tests"))
     np.save(os.path.join(sStepDir, "samples.npy"),
             np.array([10.0, 20.0, 30.0]))
-    sStandardsPath = os.path.join(sStepDir, "tests",
-                                  "quantitative_standards.json")
+    sStandardsPath = fsQuantitativeStandardsPath(sStepDir)
     with open(sStandardsPath, "w") as fileHandle:
         json.dump({
             "fDefaultRtol": 1e-12,
@@ -61,8 +61,7 @@ def test_generate_standards_generate_fresh(tmp_path):
     result = runner.invoke(fnGenerateStandardsCommand,
                            ["--step-dir", sStepDir, "--rtol", "1e-9"])
     assert result.exit_code == 0, result.output
-    sStandardsPath = os.path.join(
-        sStepDir, "tests", "quantitative_standards.json")
+    sStandardsPath = fsQuantitativeStandardsPath(sStepDir)
     assert os.path.isfile(sStandardsPath)
     with open(sStandardsPath) as fileHandle:
         dictResult = json.load(fileHandle)

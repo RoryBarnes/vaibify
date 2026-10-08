@@ -76,6 +76,8 @@ from vaibify.docker.dockerConnection import (
     ExecResult,
     I_MAX_SMALL_FILE_BYTES,
     S_TYPED_READ_GIT_REPO_STATUS,
+    S_TYPED_READ_REPO_SNAPSHOT,
+    flistBuildRepoSnapshotArguments,
     fsRenderBatchedTypedReadProgram,
 )
 from vaibify.host import hostConfinedRead
@@ -903,6 +905,41 @@ class HostConnection:
                 "The repository status read answered unparseable "
                 f"output: {errorParse}"
             )
+
+    def ftReadRepoSnapshot(
+        self, sContainerId, sRootPath, listContentPaths,
+        listSkipTextPaths, listHashPaths, listAbsHashPaths,
+        dictCachedKeys=None, bHashManifestEntries=False,
+        bReadReproductions=False,
+    ):
+        """Run the poll snapshot program on the host, inside the project.
+
+        The host twin of the Docker leg's method of the same name: the
+        SAME fixed program text, handed the same argument encoding, so
+        the caller above cannot tell which leg answered. It exists
+        because the router delegated this method to the Docker leg
+        verbatim, which has no container by a host project's name, so a
+        host project read a conservative snapshot on every poll -- and,
+        with no Docker daemon, met an error the poll did not catch.
+
+        The program is confined by its own containment check (every
+        hashed path is realpath-resolved and refused if it leaves the
+        project root), the root is vetted by this leg's guard first, and
+        the launch is gated and journaled like every host subprocess.
+        ``listAbsHashPaths`` (declared binaries outside the project) are
+        deliberately NOT read: this leg's guard admits exactly two
+        roots, and the answer for an unread binary is the honest "not
+        measured".
+        """
+        sRootReal = self._fsValidateHostPath(sContainerId, sRootPath)
+        listArgs = flistBuildRepoSnapshotArguments(
+            sRootReal, listContentPaths, listSkipTextPaths,
+            listHashPaths, [], dictCachedKeys,
+            bHashManifestEntries, bReadReproductions,
+        )
+        return self._ftRunTypedReadProgram(
+            sContainerId, S_TYPED_READ_REPO_SNAPSHOT, listArgs,
+        )
 
     def _ftRunTypedReadProgram(self, sResourceId, sOperationName, listPaths):
         """Run one NAMED read program; the host leg's single grant point.

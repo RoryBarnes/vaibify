@@ -42,12 +42,12 @@ and a follow-on cross-system analysis that share the same dependency
 clones); the active project determines the scope of every per-file
 badge.
 
-Test markers (the JSON files that record the last pytest outcome +
-output-file hashes for each step) live inside the repository under
-`.vaibify/test_markers/` and are committed alongside `project.json`.
-This makes a project's verification state — which tests have run,
-what they produced, whether the outputs have drifted — reproducible
-from a fresh clone without rerunning anything.
+Test markers (the JSON files that record each test's outcome and the
+output-file hashes of the run that produced it, for each step) live
+inside the repository under `.vaibify/test_markers/` and are committed
+alongside `project.json`. This makes a project's verification state —
+which tests have run, what they produced, whether the outputs have
+drifted — reproducible from a fresh clone without rerunning anything.
 
 ### L1 requires a declared input contract
 

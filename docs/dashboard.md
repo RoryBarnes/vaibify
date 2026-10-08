@@ -423,6 +423,19 @@ the **Last run** line below the Run Step button; the modification
 times of the step's data and plot files are shown beside their
 sections.
 
+A **Passed** badge is a claim about files. Every poll compares the
+content digests recorded by the last test run with the files as the
+container holds them, hashed inside the container. When that comparison
+could not be made — the container's answer was missing, a file changed
+while it was being read, or the snapshot itself failed — nothing is
+marked stale and no test result is invalidated, but the badge reads
+**? Passed, couldn't check freshness** rather than Passed, the step's
+Level 1 requirement rows for its tests read unknown, the Level 1 cell
+cannot be attained, and the ⚠ column explains why. It is not a failure.
+Click the badge to run a diagnosis. The condition is recomputed on every
+poll and is never saved, so it clears by itself as soon as a poll can
+answer.
+
 The expanded quantitative-tests block additionally carries a
 **Falsification** row with a **Check test teeth** button. It
 mutation-tests the step's own Python code against its quantitative
@@ -810,16 +823,20 @@ displayed in each step's expanded view.
 
 The **Unit Tests** row is expandable to show detailed information
 about the step's unit tests, including generating and running them.
-Three categories of unit tests exist:
+Three categories of unit tests exist. Each step's files carry the
+step's directory name with its first letter lowered (step
+`AiPowerOverTime` generates `test_integrity_aiPowerOverTime.py`), which
+keeps files from different steps distinct in a flat archive such as a
+Zenodo deposit:
 
-1. **Integrity tests** (`test_integrity.py`) — output files exist, are
+1. **Integrity tests** (`test_integrity_<stepName>.py`) — output files exist, are
    non-empty, load in their expected format, have the correct shape,
    and contain no NaN or infinity values.
-2. **Qualitative tests** (`test_qualitative.py`) — column names, JSON
+2. **Qualitative tests** (`test_qualitative_<stepName>.py`) — column names, JSON
    keys, parameter names, and other categorical content match
    expectations.
-3. **Quantitative tests** (`test_quantitative.py` plus
-   `quantitative_standards.json`) — numerical output values match
+3. **Quantitative tests** (`test_quantitative_<stepName>.py` plus
+   `quantitative_standards_<stepName>.json`) — numerical output values match
    stored benchmarks at full double precision, with configurable
    relative and absolute tolerances.
 

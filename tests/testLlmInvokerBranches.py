@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vaibify.gui.llmInvoker import (
+    _CLAUDE_MD_MARKER,
+    _CLAUDE_MD_VERSION_TAG,
     _fbOutputLooksValid,
     _fnRaiseClaudeError,
     _fsInvokeLlm,
@@ -57,7 +59,7 @@ def test_fsGenerateViaApi_calls_client_and_returns_text():
 def test_fnEnsureClaudeMdInstructions_skips_when_marker_present():
     """Line 238: if marker already in file, return without writing."""
     mockDocker = MagicMock()
-    sExistingContent = "existing text\n<!-- vaibify-test-instructions-v11 -->\n"
+    sExistingContent = "existing text\n" + _CLAUDE_MD_VERSION_TAG + "\n"
     with patch(
         "vaibify.gui.llmInvoker.fsReadFileFromContainer",
         return_value=sExistingContent,
@@ -76,7 +78,33 @@ def test_fnEnsureClaudeMdInstructions_writes_when_marker_absent():
     mockDocker.fnWriteFile.assert_called_once()
     _tArgs, _dictKw = mockDocker.fnWriteFile.call_args
     sContent = _tArgs[2].decode("utf-8")
-    assert "<!-- vaibify-test-instructions-v11 -->" in sContent
+    assert _CLAUDE_MD_VERSION_TAG in sContent
+
+
+def test_a_claude_md_written_for_the_unsuffixed_names_is_refreshed():
+    """The protected-file list must name the files vaibify really writes.
+
+    Instructions written before generated files carried the step's name
+    list ``tests/test_quantitative.py`` and its siblings, which no step
+    has, so the real files had no protection note. They carry the
+    previous version's tag, so they are rewritten, not skipped.
+    """
+    mockDocker = MagicMock()
+    sStale = (
+        "project notes\n<!-- vaibify-test-instructions-v11 -->\n"
+        + _CLAUDE_MD_MARKER + "\n- tests/test_quantitative.py\n"
+    )
+    with patch(
+        "vaibify.gui.llmInvoker.fsReadFileFromContainer",
+        return_value=sStale,
+    ):
+        fnEnsureClaudeMdInstructions(mockDocker, "cid")
+    mockDocker.fnWriteFile.assert_called_once()
+    sWritten = mockDocker.fnWriteFile.call_args[0][2].decode("utf-8")
+    assert "project notes" in sWritten
+    assert "tests/test_quantitative_<stepName>.py" in sWritten
+    assert "- tests/test_quantitative.py" not in sWritten
+    assert _CLAUDE_MD_VERSION_TAG in sWritten
 
 
 # ---------------------------------------------------------------

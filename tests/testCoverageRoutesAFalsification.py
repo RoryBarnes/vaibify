@@ -36,6 +36,9 @@ from tests.testDraftRoutes import S_CONTAINER_ID, S_WORKFLOW_PATH
 from vaibify.config import mutationAdmission
 from vaibify.gui import pipelineServer
 from vaibify.gui.routes import falsificationRoutes
+from vaibify.gui.testGenerator import (
+    fsQuantitativeStandardsPath, fsQuantitativeTestPath,
+)
 from vaibify.reproducibility import falsificationAttestation
 from vaibify.reproducibility.repoFiles import (
     HostRepoFiles,
@@ -45,6 +48,10 @@ from vaibify.reproducibility.repoFiles import (
 
 S_REPO = "/workspace"
 S_STEP_DIRECTORY = "stepA"
+S_QUANTITATIVE_TEST_FILE = posixpath.basename(
+    fsQuantitativeTestPath(S_STEP_DIRECTORY))
+S_QUANTITATIVE_STANDARDS_FILE = posixpath.basename(
+    fsQuantitativeStandardsPath(S_STEP_DIRECTORY))
 S_SCRIPT_NAME = "computeAlpha.py"
 S_COSMIC_RAY_VERSION = "cosmic-ray 8.4.6"
 S_SUMMARY_LINE = json.dumps({
@@ -57,14 +64,18 @@ DICT_DETERMINISTIC_STANDARDS = {
 }
 
 
-def _fdictStepFiles(sRoot):
-    """Return ``{path: bytes}`` for a falsifiable step under ``sRoot``."""
-    sStep = posixpath.join(sRoot, S_STEP_DIRECTORY)
+def _fdictStepFiles(sRoot, sStepDirectory=S_STEP_DIRECTORY):
+    """Return ``{path: bytes}`` for a falsifiable step under ``sRoot``.
+
+    The standards and test file are named by the generator's own path
+    helpers, so each step's files carry that step's name.
+    """
+    sStep = posixpath.join(sRoot, sStepDirectory)
     return {
         posixpath.join(sStep, S_SCRIPT_NAME): b"fValue = 1.5\n",
-        posixpath.join(sStep, "tests", "quantitative_standards.json"):
+        fsQuantitativeStandardsPath(sStep):
             json.dumps(DICT_DETERMINISTIC_STANDARDS).encode("utf-8"),
-        posixpath.join(sStep, "tests", "test_quantitative.py"):
+        fsQuantitativeTestPath(sStep):
             b"def testValue():\n    assert True\n",
     }
 
@@ -317,10 +328,8 @@ async def testARunOnAnotherStepWhileOneRunsIsRefusedAsBusy():
             "saDataCommands": ["python " + S_SCRIPT_NAME],
         })
         dictWorkflow["listSteps"].append(dictSecondStep)
-        for sPath, baContent in _fdictStepFiles(S_REPO).items():
-            connectionDocker._dictFiles[
-                sPath.replace("/stepA/", "/stepB/")
-            ] = baContent
+        connectionDocker._dictFiles.update(
+            _fdictStepFiles(S_REPO, "stepB"))
         with _fnHoldTheWorkerOpen():
             responseFirst = await clientAsync.post(_fsRunPath(0))
             assert responseFirst.status_code == 200, responseFirst.text
@@ -460,7 +469,7 @@ def testTheSessionIsPreparedInScratchSpaceOutsideTheRepo(tmp_path):
     ].decode("utf-8")
     assert posixpath.join(sRepo, S_STEP_DIRECTORY, S_SCRIPT_NAME) in sConfig
     assert "python " + S_SCRIPT_NAME in sConfig
-    assert "test_quantitative.py" in sConfig
+    assert S_QUANTITATIVE_TEST_FILE in sConfig
     assert connectionDocker.dictWritten[
         sWorkDirectory + "/summarizeSession.py"
     ].decode("utf-8") == falsificationAttestation.S_SESSION_SUMMARY_SCRIPT

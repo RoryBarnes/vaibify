@@ -4,6 +4,10 @@ import json
 
 import pytest
 
+from tests.markerStateSupport import (
+    fdictEntryFromCounts,
+    fdictStatesFromCounts,
+)
 from vaibify.gui.testGenerator import (
     fsConftestPath,
     fsConftestContent,
@@ -18,7 +22,7 @@ from vaibify.gui.pipelineServer import (
     _fdictBuildTestMarkerStatus,
     _fbMarkerStale,
     _fbApplyExternalTestResults,
-    _fbApplyMarkerCategory,
+    _fbApplyCategoryStates,
     _fdictBuildTestFileChanges,
     _fsetExtractRegisteredTestFiles,
     _flistResolveTestCommands as flistResolveTestCommandsServer,
@@ -306,14 +310,9 @@ def test_fnApplyExternalTestResults_applies_passed():
         "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": False,
-            "dictMarker": {
-                "dictCategories": {
-                    "integrity": {"iPassed": 3, "iFailed": 0},
-                }
-            },
-        }
+        "0": fdictEntryFromCounts({
+            "integrity": {"iPassed": 3, "iFailed": 0},
+        })
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
@@ -325,14 +324,9 @@ def test_fnApplyExternalTestResults_applies_failed():
         "listSteps": [{"sDirectory": "step1"}]
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": False,
-            "dictMarker": {
-                "dictCategories": {
-                    "qualitative": {"iPassed": 2, "iFailed": 1},
-                }
-            },
-        }
+        "0": fdictEntryFromCounts({
+            "qualitative": {"iPassed": 2, "iFailed": 1},
+        })
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
@@ -351,14 +345,9 @@ def test_fnApplyExternalTestResults_resets_stale_categories_to_untested():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": True,
-            "dictMarker": {
-                "dictCategories": {
-                    "integrity": {"iPassed": 3, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "integrity": {"iPassed": 3, "iFailed": 0},
+        }, bStale=True),
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
@@ -368,42 +357,39 @@ def test_fnApplyExternalTestResults_resets_stale_categories_to_untested():
 def test_fnApplyExternalTestResults_skips_out_of_range():
     dictWorkflow = {"listSteps": [{"sDirectory": "step1"}]}
     dictTestMarkers = {
-        "5": {
-            "bStale": False,
-            "dictMarker": {"dictCategories": {}},
-        }
+        "5": fdictEntryFromCounts({}),
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     assert "dictVerification" not in dictWorkflow["listSteps"][0]
 
 
-# ---- pipelineServer: _fbApplyMarkerCategory ----
+# ---- pipelineServer: _fbApplyCategoryStates ----
 
 def test_fnApplyMarkerCategory_passed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 5, "iFailed": 0}}
-    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
     assert dictVerify["sIntegrity"] == "passed"
 
 
 def test_fnApplyMarkerCategory_failed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 3, "iFailed": 2}}
-    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
     assert dictVerify["sIntegrity"] == "failed"
 
 
 def test_fnApplyMarkerCategory_missing_category():
     dictVerify = {}
     dictCategories = {}
-    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
     assert dictVerify == {}
 
 
 def test_fnApplyMarkerCategory_zero_passed_zero_failed():
     dictVerify = {}
     dictCategories = {"integrity": {"iPassed": 0, "iFailed": 0}}
-    _fbApplyMarkerCategory(dictVerify, dictCategories, "integrity", "sIntegrity")
+    _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
     assert "sIntegrity" not in dictVerify
 
 

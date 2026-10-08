@@ -97,6 +97,12 @@ def test_the_typed_and_embedded_transports_answer_identically(tmp_path):
     dictEmbedded = _fdictRunEmbeddedTransport(
         tmp_path, listContent, listSkipText, listHash, listAbsolute,
     )
+    # The container's clock at hash time differs between any two runs by
+    # construction; every other byte of the two answers must agree.
+    for dictAnswer in (dictTyped, dictEmbedded):
+        for dictEntry in dictAnswer["dictHashes"].values():
+            assert isinstance(dictEntry.pop("iHashedAtNs", None), int) or (
+                dictEntry.get("sBlobSha") is None)
     assert dictTyped == dictEmbedded
     assert dictTyped["dictFiles"]["big.txt"]["sText"] is None, (
         "the skip-text list was not honored, so this parity run "

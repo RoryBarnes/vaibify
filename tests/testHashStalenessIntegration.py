@@ -15,6 +15,7 @@ import os
 
 import pytest
 
+from tests.snapshotProgramHarness import fdictHashStaleFromRealSnapshot
 from vaibify.gui import mtimeCache
 from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
 
@@ -135,12 +136,11 @@ def test_shutil_copy_drift_invalidates_step(tmp_path, sUnitTestState):
     dictWorkflow, dictMarker, dictNewModTimes, dictCtx = (
         _fnSeedShutilCopyScenario(tmp_path, sUnitTestState)
     )
-    dictCache = {}
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache=dictCache,
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     _fnAssertStepInvalidated(dictWorkflow)
 
@@ -163,8 +163,8 @@ def test_matching_content_does_not_invalidate(tmp_path):
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "passed-from-marker"
@@ -187,8 +187,8 @@ def test_marker_with_mismatched_label_is_ignored(tmp_path):
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "passed-from-marker"
@@ -207,8 +207,8 @@ def test_marker_without_hashes_is_no_op(tmp_path):
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "passed"
@@ -228,8 +228,6 @@ def test_guard_fix_passed_from_marker_invalidates_on_mtime_change(tmp_path):
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={},
-        dictCache={},
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     assert dictVerify["sUnitTest"] == "untested"

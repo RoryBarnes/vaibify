@@ -21,12 +21,20 @@ validated independently.
 """
 
 from vaibify.reproducibility import manifestWriter
-from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
+from vaibify.reproducibility.repoFiles import (
+    SnapshotRepoFiles,
+    ffilesEnsureRepoFiles,
+)
 
 from . import mtimeCache
+from . import testMarkerContract
 
 __all__ = [
-    "fsetStaleOutputsForStep",
+    "fdictHashEntriesOfSnapshot",
+    "fdictVerdictsForMarker",
+    "fdictVerdictsForMarkerRuns",
+    "flistMarkerHashedPaths",
+    "fsVerdictForPath",
     "fbMarkerHasHashes",
     "fsetStaleOutputsAgainstManifest",
     "fbManifestExists",
@@ -46,35 +54,177 @@ def fbMarkerHasHashes(dictMarker, sHashKey="dictOutputHashes"):
     return isinstance(dictHashes, dict) and len(dictHashes) > 0
 
 
-def fsetStaleOutputsForStep(
-    dictMarker, sWorkspaceRoot, dictCache, dictMtimeHints=None,
-    sHashKey="dictOutputHashes",
-):
-    """Return the set of repo-relative paths whose content has drifted.
+S_VERDICT_MATCH = "match"
+S_VERDICT_DRIFT = "drift"
+S_VERDICT_UNKNOWN = "unknown"
 
-    Reads ``dictMarker[sHashKey]`` as the baseline (the step's output
-    hashes by default; pass ``"dictInputHashes"`` for the input-data
-    baseline) and compares each file's current blob SHA (via the
-    mtime cache) to its baseline digest. Missing files are treated as
-    stale; markers lacking hashes yield an empty set (nothing to
-    compare). ``dictMtimeHints`` is an optional
-    ``{sRepoRelPath: fMtime}`` map so a caller that already stat'd
-    the files can spare the redundant ``os.stat`` per cache lookup;
-    ``None`` falls back to live stats.
+_T_MARKER_HASH_KEYS = ("dictOutputHashes", "dictInputHashes")
+
+
+def fdictHashEntriesOfSnapshot(filesPoll):
+    """Return the hash entries the poll snapshot answered, keyed by path.
+
+    Anything that is not a poll snapshot answers nothing, so every path
+    reads unknown: the verdict never reaches for a second way to hash a
+    file. A conservative snapshot is a snapshot with no hash entries,
+    and reads the same way.
     """
-    setStale = set()
-    if not fbMarkerHasHashes(dictMarker, sHashKey):
-        return setStale
-    dictBaseline = dictMarker[sHashKey]
-    dictHints = dictMtimeHints or {}
-    for sRelPath, sBaselineSha in dictBaseline.items():
-        bMatches = mtimeCache.fbFileMatchesDigest(
-            sWorkspaceRoot, sRelPath, sBaselineSha, dictCache,
-            fMtimeHint=dictHints.get(sRelPath),
-        )
-        if not bMatches:
-            setStale.add(sRelPath)
-    return setStale
+    if not isinstance(filesPoll, SnapshotRepoFiles):
+        return {}
+    return filesPoll.fdictAllHashEntries()
+
+
+def fsVerdictForPath(sBaselineSha, dictHashEntry):
+    """Return match, drift or unknown for one path against its baseline.
+
+    Drift is proven only by evidence: a digest that differs from the
+    baseline, or the container's own report that the open raised
+    ``FileNotFoundError`` (``bMissing``). A path absent from the answer,
+    or answered without a digest (a torn read, an escape from the repo
+    root, an open that failed for any other reason), proves nothing and
+    is unknown. Absence from the poll's stat map is never consulted: it
+    drops a path on any OSError, and a vanished container yields none.
+    An empty baseline cannot match anything and counts as drift, as the
+    host lane it replaces counted it.
+    """
+    if not sBaselineSha:
+        return S_VERDICT_DRIFT
+    if not isinstance(dictHashEntry, dict):
+        return S_VERDICT_UNKNOWN
+    if dictHashEntry.get("bMissing"):
+        return S_VERDICT_DRIFT
+    sCurrentSha = dictHashEntry.get("sBlobSha")
+    if not sCurrentSha:
+        return S_VERDICT_UNKNOWN
+    if sCurrentSha == sBaselineSha:
+        return S_VERDICT_MATCH
+    return S_VERDICT_DRIFT
+
+
+def fdictVerdictsForMarker(dictMarker, dictHashEntries):
+    """Return ``{"listDrifted": [...], "listUnknown": [...]}`` for a marker.
+
+    Every path the marker recorded a digest for, outputs and inputs
+    alike, is judged against the poll snapshot's entry for it. Paths
+    come back repo-relative and sorted. A marker with no hashes judges
+    nothing.
+    """
+    setDrifted = set()
+    setUnknown = set()
+    for sHashKey in _T_MARKER_HASH_KEYS:
+        if not fbMarkerHasHashes(dictMarker, sHashKey):
+            continue
+        for sRelPath, sBaselineSha in dictMarker[sHashKey].items():
+            sVerdict = fsVerdictForPath(
+                sBaselineSha, dictHashEntries.get(sRelPath),
+            )
+            if sVerdict == S_VERDICT_DRIFT:
+                setDrifted.add(sRelPath)
+            elif sVerdict == S_VERDICT_UNKNOWN:
+                setUnknown.add(sRelPath)
+    return {
+        "listDrifted": sorted(setDrifted),
+        "listUnknown": sorted(setUnknown - setDrifted),
+    }
+
+
+def _fsVerdictOfRun(dictRunVerdicts):
+    """Name one run's verdict: drift beats unknown beats match; no hashes is none."""
+    if dictRunVerdicts["listDrifted"]:
+        return S_VERDICT_DRIFT
+    if dictRunVerdicts["listUnknown"]:
+        return S_VERDICT_UNKNOWN
+    return S_VERDICT_MATCH
+
+
+def fdictVerdictsForMarkerRuns(dictMarker, dictHashEntries):
+    """Judge every run a marker still stands on, and say what the step is.
+
+    Each run's recorded hashes are its own data state, judged against
+    the files as the container hashed them (``dictRunVerdicts``: match,
+    drift, unknown, or none for a run that recorded no hashes). The
+    STEP is drifted when no run's data matches the files and some run's
+    drifted -- the files then describe none of the data states any
+    recorded result was obtained at -- and its paths are the newest
+    drifted run's. A run that matches keeps the step from being
+    drifted, but it vouches only for its own results: the step also
+    lists the unanswered paths of EVERY run that could not be checked
+    (unless the step is drifted), so a pass obtained under an unchecked
+    run is never shown as verified because another run matched. A
+    marker in the old single-run shape is one run called ``legacy``, so
+    it judges as before.
+    """
+    dictNormalized = testMarkerContract.fdictNormalizeMarker(dictMarker)
+    dictRuns = (dictNormalized or {}).get("dictRuns", {})
+    dictPerRun = {}
+    dictRunVerdicts = {}
+    for sRunId, dictRun in dictRuns.items():
+        dictPerRun[sRunId] = fdictVerdictsForMarker(dictRun, dictHashEntries)
+        bHasHashes = any(
+            fbMarkerHasHashes(dictRun, sKey) for sKey in _T_MARKER_HASH_KEYS)
+        dictRunVerdicts[sRunId] = (
+            _fsVerdictOfRun(dictPerRun[sRunId]) if bHasHashes else "none")
+    dictStep = _fdictStepVerdictFromRuns(dictPerRun, dictRunVerdicts, dictRuns)
+    dictStep["dictRunVerdicts"] = dictRunVerdicts
+    return dictStep
+
+
+def _fdictStepVerdictFromRuns(dictPerRun, dictRunVerdicts, dictRuns):
+    """Fold per-run verdicts into the step's drifted and unknown paths.
+
+    The two verdicts are folded by different rules because they mean
+    different things. DRIFT is evidence the files changed, so any run
+    that still matches the files clears the step of it. UNKNOWN is the
+    absence of evidence about one run's data, and a run that matches
+    says nothing about another run's results, so every unchecked run
+    keeps its unanswered paths on the step.
+    """
+    listDrifted = _flistDriftedPathsOfTheStep(
+        dictPerRun, dictRunVerdicts, dictRuns)
+    listUnknown = [] if listDrifted else _flistUncheckedPathsOfEveryRun(
+        dictPerRun, dictRunVerdicts)
+    return {"listDrifted": listDrifted, "listUnknown": listUnknown}
+
+
+def _flistDriftedPathsOfTheStep(dictPerRun, dictRunVerdicts, dictRuns):
+    """Return the newest drifted run's paths, or none when any run matches."""
+    if S_VERDICT_MATCH in dictRunVerdicts.values():
+        return []
+    listRunIds = [
+        sRunId for sRunId, sVerdict in dictRunVerdicts.items()
+        if sVerdict == S_VERDICT_DRIFT]
+    if not listRunIds:
+        return []
+    sNewest = max(listRunIds, key=lambda sKey: dictRuns[sKey].get(
+        "fTimestamp", 0))
+    return dictPerRun[sNewest]["listDrifted"]
+
+
+def _flistUncheckedPathsOfEveryRun(dictPerRun, dictRunVerdicts):
+    """Return the sorted unanswered paths of every run that could not be checked."""
+    setPaths = set()
+    for sRunId, sVerdict in dictRunVerdicts.items():
+        if sVerdict == S_VERDICT_UNKNOWN:
+            setPaths.update(dictPerRun[sRunId]["listUnknown"])
+    return sorted(setPaths)
+
+
+def flistMarkerHashedPaths(dictMarkersByStep):
+    """Return every repo-relative path any marker recorded a digest for.
+
+    Every run counts, because each run's results are judged against its
+    own data state; the poll adds these to the snapshot's hash batch, so
+    a path a marker names but the workflow no longer declares is still
+    judged.
+    """
+    setPaths = set()
+    for dictMarker in (dictMarkersByStep or {}).values():
+        dictNormalized = testMarkerContract.fdictNormalizeMarker(dictMarker)
+        for dictRun in (dictNormalized or {}).get("dictRuns", {}).values():
+            for sHashKey in _T_MARKER_HASH_KEYS:
+                if fbMarkerHasHashes(dictRun, sHashKey):
+                    setPaths.update(dictRun[sHashKey])
+    return sorted(setPaths)
 
 
 def fbManifestExists(filesRepo):

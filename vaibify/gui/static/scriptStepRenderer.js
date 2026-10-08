@@ -48,9 +48,11 @@ var VaibifyStepRenderer = (function () {
         if (!dictWarning) {
             return '<span class="step-regression-cell"></span>';
         }
+        var sDiagnoseClass = dictWarning.bFreshnessUnchecked
+            ? " freshness-unchecked-diagnose" : "";
         return '<span class="step-regression-cell ' +
             'regression-warning-' + dictWarning.sWarningSeverity +
-            '" title="' +
+            sDiagnoseClass + '" title="' +
             fnEscapeHtml(dictWarning.sWarningHint || "") +
             '">⚠</span>';
     }
@@ -335,7 +337,55 @@ var VaibifyStepRenderer = (function () {
             ? dictCell : null;
     }
 
-    function _fsBuildRequirementMark(bMet) {
+    /* A test axis that passed but whose recorded digests the poll
+       could not compare with the files. Said once, shown by the
+       badge, the requirement row and the warning cell alike: the
+       sentence is the server's verdict put into words, never a
+       second judgment. Clicking any of them runs the diagnosis. */
+    var _S_FRESHNESS_UNCHECKED_TITLE = "The tests passed, but vaibify " +
+        "could not check whether the files still match that run. " +
+        "This is not a failure, and nothing is marked stale. " +
+        "Click to run a diagnosis.";
+
+    var _DICT_TEST_AXIS_BY_APPROVER = {
+        "unitTest": "sUnitTest",
+        "integrity": "sIntegrity",
+        "qualitative": "sQualitative",
+        "quantitative": "sQuantitative",
+    };
+
+    function _fbIsTestAxisRequirement(sName) {
+        return Object.keys(_DICT_TEST_AXIS_BY_APPROVER).some(
+            function (sApprover) {
+                return _DICT_TEST_AXIS_BY_APPROVER[sApprover] === sName;
+            });
+    }
+
+    function _fbStepAxisPassIsUnchecked(dictContext, iIndex, sApprover) {
+        /* The server's verdict for one axis: its Level 1 requirement
+           row reads unknown (bMet null) exactly when the pass could
+           not be compared with the files. Read from the row rather
+           than from the step's blocker because the blocker list keeps
+           only the DOMINANT criterion per step, and a step that is
+           also script-stale would otherwise show a plain Passed. */
+        var sAxis = _DICT_TEST_AXIS_BY_APPROVER[sApprover];
+        var dictCell = _fdictStepLevelCell(dictContext, iIndex, 1);
+        if (!sAxis || !dictCell) return false;
+        return (dictCell.listRequirements || []).some(
+            function (dictReq) {
+                return dictReq.sName === sAxis && dictReq.bMet === null;
+            });
+    }
+
+    function _fsBuildUncheckedBadge() {
+        return '<span class="verification-badge state-unchecked ' +
+            'freshness-unchecked-diagnose" role="button" ' +
+            'tabindex="0" title="' +
+            fnEscapeHtml(_S_FRESHNESS_UNCHECKED_TITLE) + '">' +
+            "? Passed, couldn't check freshness</span>";
+    }
+
+    function _fsBuildRequirementMark(bMet, sName) {
         if (bMet === true) {
             return VaibifyUtilities.fsBuildAttainedFavicon(
                 "met", "Requirement met");
@@ -343,6 +393,13 @@ var VaibifyStepRenderer = (function () {
         if (bMet === false) {
             return '<span class="envelope-warn" title="Requirement ' +
                 'not met">&#9888;</span>';
+        }
+        if (_fbIsTestAxisRequirement(sName)) {
+            return '<span class="envelope-light envelope-light-unknown ' +
+                'freshness-unchecked-diagnose" role="button" ' +
+                'tabindex="0" title="' +
+                fnEscapeHtml(_S_FRESHNESS_UNCHECKED_TITLE) +
+                '"></span>';
         }
         return '<span class="envelope-light envelope-light-unknown"' +
             ' title="Not verifiable right now — the last remote ' +
@@ -446,7 +503,7 @@ var VaibifyStepRenderer = (function () {
         var sHtml = "";
         listRequirements.forEach(function (dictReq) {
             sHtml += '<div class="step-level-requirement-row">' +
-                _fsBuildRequirementMark(dictReq.bMet) +
+                _fsBuildRequirementMark(dictReq.bMet, dictReq.sName) +
                 '<span class="step-level-requirement-label">' +
                 fnEscapeHtml(_fsRequirementLabel(dictReq.sName)) +
                 '</span>' +
@@ -458,9 +515,13 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
-    function _fsRequirementMarkMeaning(bMet) {
+    function _fsRequirementMarkMeaning(bMet, sName) {
         if (bMet === true) return "(check = requirement met)";
         if (bMet === false) return "(⚠ = requirement not met)";
+        if (_fbIsTestAxisRequirement(sName)) {
+            return "(hollow circle = the tests passed, but could not " +
+                "be checked against the files right now)";
+        }
         return "(hollow circle = not verifiable right now — " +
             "the last remote verify is stale)";
     }
@@ -476,13 +537,13 @@ var VaibifyStepRenderer = (function () {
         }
         return listRequirements.map(function (dictReq) {
             return '<div class="step-level-requirement-row">' +
-                _fsBuildRequirementMark(dictReq.bMet) +
+                _fsBuildRequirementMark(dictReq.bMet, dictReq.sName) +
                 '<span class="step-level-requirement-label">' +
                 fnEscapeHtml(_fsRequirementLabel(dictReq.sName)) +
                 '</span>' +
                 '<span class="step-level-requirement-meaning">' +
-                fnEscapeHtml(
-                    _fsRequirementMarkMeaning(dictReq.bMet)) +
+                fnEscapeHtml(_fsRequirementMarkMeaning(
+                    dictReq.bMet, dictReq.sName)) +
                 '</span></div>';
         }).join("");
     }
@@ -895,15 +956,19 @@ var VaibifyStepRenderer = (function () {
         var sTriangle = '<span class="expand-triangle">' +
             (bExpanded ? "\u25BE" : "\u25B8") + '</span> ';
         var sStateClass = fsVerificationStateClass(sState);
+        var sBadge = '<span class="verification-badge state-' +
+            sStateClass + '">' +
+            dictContext.fsVerificationStateIcon(sState) + ' ' +
+            dictContext.fsVerificationStateLabel(sState) +
+            '</span>';
+        if (_fbStepAxisPassIsUnchecked(dictContext, iIndex, sCategory)) {
+            sBadge = _fsBuildUncheckedBadge();
+        }
         return '<div class="sub-test-row expandable" data-step="' +
             iIndex + '" data-approver="' + sCategory + '">' +
             '<span class="verification-label">' +
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            '<span class="verification-badge state-' +
-            sStateClass + '">' +
-            dictContext.fsVerificationStateIcon(sState) + ' ' +
-            dictContext.fsVerificationStateLabel(sState) +
-            '</span></div>';
+            sBadge + '</div>';
     }
 
     function fsRenderSubTestExpanded(
@@ -1176,15 +1241,20 @@ var VaibifyStepRenderer = (function () {
                 (bDepsExpanded ? "\u25BE" : "\u25B8") + '</span> ';
         }
         var sStateClass = fsVerificationStateClass(sState);
+        var sBadge = '<span class="verification-badge state-' +
+            sStateClass + '">' +
+            dictContext.fsVerificationStateIcon(sState) + ' ' +
+            dictContext.fsVerificationStateLabel(sState) +
+            '</span>';
+        if (_fbStepAxisPassIsUnchecked(dictContext, iIndex, sApprover)) {
+            sBadge = _fsBuildUncheckedBadge();
+        }
         return '<div class="verification-row' + sClickClass +
             '" data-step="' + iIndex +
             '" data-approver="' + sApprover + '">' +
             '<span class="verification-label">' +
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            '<span class="verification-badge state-' + sStateClass + '">' +
-            dictContext.fsVerificationStateIcon(sState) + ' ' +
-            dictContext.fsVerificationStateLabel(sState) +
-            '</span></div>';
+            sBadge + '</div>';
     }
 
     function fsRenderGenerateButton(step, iIndex, dictContext) {

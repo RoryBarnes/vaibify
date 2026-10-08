@@ -3411,9 +3411,8 @@ _DICT_ROUTE_RE_EXPORTS = {
     "_flistExtractKillPatterns": "routes.pipelineRoutes",
     "_flistExtractStepDirectories": "routes.pipelineRoutes",
     "_flistFindCustomTestFiles": "routes.pipelineRoutes",
-    "_fbApplyAllMarkerCategories": "routes.pipelineRoutes",
+    "_fbApplyCategoryStates": "routes.pipelineRoutes",
     "_fbApplyExternalTestResults": "routes.pipelineRoutes",
-    "_fbApplyMarkerCategory": "routes.pipelineRoutes",
     "_fiMarkPipelineStopped": "routes.pipelineRoutes",
     "_fsetExtractRegisteredTestFiles": "routes.pipelineRoutes",
     # syncRoutes

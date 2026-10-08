@@ -422,7 +422,8 @@ def fnGenerateFromWorkflow(sWorkflowPath, iStepIndex, fDefaultRtol=1e-6,
         return
     dictStandards = fdictGenerateQuantitativeStandards(
         sStepDir, listDataFiles, fDefaultRtol)
-    sOutputPath = os.path.join(sStepDir, "tests", "quantitative_standards.json")
+    from vaibify.gui.testGenerator import fsQuantitativeStandardsPath
+    sOutputPath = fsQuantitativeStandardsPath(sStepDir)
     fnWriteStandards(dictStandards, sOutputPath)
     fnUpdateWorkflowStandards(
         sWorkflowPath, iStepIndex, json.dumps(dictStandards))

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.snapshotProgramHarness import fsetDriftedAgainstRealSnapshot
 from vaibify.gui import conftestManager, hashStaleness, mtimeCache
 
 
@@ -412,9 +413,7 @@ def test_marker_round_trip_detects_drift_after_mutation(tmp_path):
     dictHashes = ns._fdictComputeOutputHashes(str(tmp_path / "step1"))
     assert "step1/Plot/fig.pdf" in dictHashes
     dictMarker = {"dictOutputHashes": dictHashes}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), {},
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == set()
     with open(str(tmp_path / "step1" / "Plot" / "fig.pdf"), "w") as f:
         f.write("drifted")
@@ -422,14 +421,17 @@ def test_marker_round_trip_detects_drift_after_mutation(tmp_path):
         str(tmp_path / "step1" / "Plot" / "fig.pdf"),
         (1_000_000, 1_000_000),
     )
-    setStaleAfter = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), {},
-    )
+    setStaleAfter = fsetDriftedAgainstRealSnapshot(
+        dictMarker, str(tmp_path))
     assert setStaleAfter == {"step1/Plot/fig.pdf"}
 
 
 def test_marker_round_trip_clean_on_fresh_clone(tmp_path):
-    """A fresh clone sees no mtime cache; staleness must still work."""
+    """A fresh clone offers the snapshot no cached entry; it must still judge.
+
+    The digest the conftest wrote and the digest the snapshot program
+    computes are one digest, so a clean clone reads clean.
+    """
     _fsWrite(str(tmp_path), "step1/Plot/fig.pdf", "verified-content")
     _fnWriteJson(str(tmp_path), ".vaibify/workflows/main.json", {
         "listSteps": [{
@@ -440,14 +442,8 @@ def test_marker_round_trip_clean_on_fresh_clone(tmp_path):
     ns = _fnExecTemplateWithRoot(tmp_path)
     dictHashes = ns._fdictComputeOutputHashes(str(tmp_path / "step1"))
     dictMarker = {"dictOutputHashes": dictHashes}
-    dictFreshCache = {}
-    setStale = hashStaleness.fsetStaleOutputsForStep(
-        dictMarker, str(tmp_path), dictFreshCache,
-    )
+    setStale = fsetDriftedAgainstRealSnapshot(dictMarker, str(tmp_path))
     assert setStale == set()
-    assert dictFreshCache, (
-        "Fresh cache should be populated as a side effect of the check"
-    )
 
 
 # ----------------------------------------------------------------------

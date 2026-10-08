@@ -423,7 +423,7 @@ def _fbShouldAddNoNanTest(dictReport):
 
 
 def _fsGenerateIntegrityCode(listdictReports):
-    """Produce integrity_standards.json dict from introspection reports.
+    """Produce the integrity standards dict from introspection reports.
 
     Deprecated: kept for backward compatibility. Use
     _fdictBuildIntegrityStandards instead.
@@ -433,7 +433,7 @@ def _fsGenerateIntegrityCode(listdictReports):
 
 
 def _fsGenerateQualitativeCode(listdictReports):
-    """Produce qualitative_standards.json dict from introspection reports.
+    """Produce the qualitative standards dict from introspection reports.
 
     Deprecated: kept for backward compatibility. Use
     _fdictBuildQualitativeStandards instead.
@@ -615,7 +615,7 @@ def _fdictBuildOneQuantitativeEntry(dictBenchmark):
 def _fdictBuildQuantitativeStandards(
     listdictReports, fTolerance, sClassification="deterministic",
 ):
-    """Build quantitative_standards.json dict tagged by stochasticity class."""
+    """Build the quantitative standards dict tagged by stochasticity class."""
     listStandards = []
     for dictReport in listdictReports:
         for dictBenchmark in dictReport.get("listBenchmarks", []):
@@ -684,7 +684,7 @@ def _fdictBuildOneIntegrityEntry(dictReport):
 
 
 def _fdictBuildIntegrityStandards(listdictReports):
-    """Build integrity_standards.json dict from introspection reports."""
+    """Build the integrity standards dict from introspection reports."""
     listStandards = [
         _fdictBuildOneIntegrityEntry(r) for r in listdictReports
         if r.get("bExists", False)
@@ -710,7 +710,7 @@ def _fbHasQualitativeContent(dictReport):
 
 
 def _fdictBuildQualitativeStandards(listdictReports):
-    """Build qualitative_standards.json dict from introspection reports."""
+    """Build the qualitative standards dict from introspection reports."""
     listStandards = [
         _fdictBuildOneQualitativeEntry(r) for r in listdictReports
         if _fbHasQualitativeContent(r)

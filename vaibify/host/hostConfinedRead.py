@@ -28,8 +28,10 @@ from vaibify.docker.confinedRead import (
 )
 
 __all__ = [
+    "HostReadUnsupportedError",
     "fiterStreamDirectoryAsTar",
     "fiterStreamFileInsideRoot",
+    "fnRequireDirectoryRelativeAccess",
 ]
 
 I_CHUNK_BYTES = 1048576
@@ -37,6 +39,34 @@ _I_TAR_BLOCK_BYTES = 512
 _I_TAR_RECORD_BYTES = 10240
 
 logger = logging.getLogger("vaibify")
+
+T_DIRECTORY_RELATIVE_CALLS = (os.open, os.stat, os.readlink)
+S_DIRECTORY_RELATIVE_ACCESS_MISSING = (
+    "vaibify cannot read project files with this Python: it was built "
+    "without directory-relative file access (os.supports_dir_fd is "
+    "missing open, stat or readlink), which vaibify needs to refuse a "
+    "link that leaves the project. Some builds, such as the python.org "
+    "macOS 3.9 installer, are made without it. Run vaibify with a Python "
+    "that has it, such as a conda, Homebrew or Linux build."
+)
+
+
+class HostReadUnsupportedError(OSError):
+    """This Python cannot do the confined read at all; nothing was opened.
+
+    Neither a refused path nor an I/O failure: the read is impossible
+    here, and the remedy is another Python. It never falls back to an
+    unconfined read, because following links unseen is exactly what the
+    descriptors prevent.
+    """
+
+
+def fnRequireDirectoryRelativeAccess():
+    """Decline before opening anything on a Python built without dir_fd."""
+    if all(fnCall in os.supports_dir_fd
+           for fnCall in T_DIRECTORY_RELATIVE_CALLS):
+        return
+    raise HostReadUnsupportedError(S_DIRECTORY_RELATIVE_ACCESS_MISSING)
 
 
 def _flistSplit(sPath):
@@ -139,6 +169,7 @@ def fiterStreamFileInsideRoot(sRealRoot, sFilePath):
     caller that pulls once can answer an HTTP error before committing to
     a 200.
     """
+    fnRequireDirectoryRelativeAccess()
     iFile = _fiOpenFollowingLinksInsideRoot(
         sRealRoot, sFilePath, os.O_RDONLY | os.O_NONBLOCK, False,
         "regular file")
@@ -247,6 +278,7 @@ def fiterStreamDirectoryAsTar(sRealRoot, sDirectoryPath):
     links and never followed below the starting directory; special files
     are skipped and counted in the log.
     """
+    fnRequireDirectoryRelativeAccess()
     iRoot = _fiOpenFollowingLinksInsideRoot(
         sRealRoot, sDirectoryPath, os.O_RDONLY | os.O_DIRECTORY, True,
         "directory")

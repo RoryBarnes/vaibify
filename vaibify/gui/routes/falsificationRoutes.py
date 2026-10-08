@@ -32,6 +32,7 @@ from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineServer import fdictRequireWorkflow
+from ..testGenerator import fsQuantitativeTestPath
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -483,7 +484,9 @@ def _fsBuildMutationTestCommand(
     listParts = [f"cd {fsShellQuote(sAbsStepDir)}"]
     for sCommand in dictStep.get("saDataCommands", []):
         listParts.append(fsResolveCommand(sCommand, dictAllVars))
-    listParts.append("python -m pytest -x -q tests/test_quantitative.py")
+    sTestFileName = posixpath.basename(
+        fsQuantitativeTestPath(dictStep.get("sDirectory", "")))
+    listParts.append(f"python -m pytest -x -q tests/{sTestFileName}")
     return "bash -c " + fsShellQuote(" && ".join(listParts))
 
 

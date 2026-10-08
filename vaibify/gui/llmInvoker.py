@@ -47,10 +47,15 @@ _CLAUDE_MD_TEST_SECTION = """
 The following files are monitored by the vaibify dashboard.
 Do NOT modify them without explicit user approval:
 - tests/conftest.py
-- tests/test_quantitative.py
-- tests/test_integrity.py
-- tests/test_qualitative.py
+- tests/test_quantitative_<stepName>.py
+- tests/test_integrity_<stepName>.py
+- tests/test_qualitative_<stepName>.py
 - .vaibify/generate_standards.py
+
+(<stepName> is the step directory's name with its first letter lowered,
+for example `aiPowerOverTime` for the step `AiPowerOverTime`. Every
+generated test and standards file carries it, so a file without it is
+not one vaibify wrote.)
 
 If you need to modify these files to handle a new data format,
 STOP and explain to the user what change is needed and why
@@ -90,7 +95,7 @@ import pytest
 - If you are unsure about file formats, write a test that loads the
   file and asserts it is not empty, rather than skipping it.
 
-## Integrity Tests (test_integrity.py)
+## Integrity Tests (test_integrity_<stepName>.py)
 
 Generate a pytest file that validates structural integrity of data files:
 1. All expected output files exist and are non-empty
@@ -102,7 +107,7 @@ Generate a pytest file that validates structural integrity of data files:
 Do NOT test specific numerical values or string content.
 Return ONLY the Python code for a single pytest file. No explanations.
 
-## Qualitative Tests (test_qualitative.py)
+## Qualitative Tests (test_qualitative_<stepName>.py)
 
 Generate a pytest file that validates categorical and string outputs:
 1. String or categorical values in output files (column headers, model names, labels)
@@ -122,7 +127,7 @@ IMPORTANT rules for qualitative tests:
   belong in integrity tests.
 Return ONLY the Python code for a single pytest file. No explanations.
 
-## Quantitative Standards (quantitative_standards.json)
+## Quantitative Standards (quantitative_standards_<stepName>.json)
 
 Extract numerical benchmark values into a JSON file (not Python code).
 For each significant numerical result visible in the output data:
@@ -228,10 +233,10 @@ The dashboard parses test results by matching specific patterns.
 If you modify test files WITH USER APPROVAL, you MUST preserve:
 
 ### Required function names:
-- `test_quantitative_benchmark` in test_quantitative.py
+- `test_quantitative_benchmark` in test_quantitative_<stepName>.py
 - Parametrized with `dictStandard` from a `_LIST_STANDARDS` list
 
-### Required JSON schema for quantitative_standards.json:
+### Required JSON schema for quantitative_standards_<stepName>.json:
 {"listStandards": [{"sName": str, "sDataFile": str, "sAccessPath": str, "fValue": float, "sUnit": str}], "fDefaultRtol": float}
 
 ### Never modify or delete:
@@ -239,7 +244,7 @@ If you modify test files WITH USER APPROVAL, you MUST preserve:
 - The `# vaibify-template-hash:` comment line
 
 ### Where to add custom data format loaders:
-- Add new `_fLoad*Value` functions in test_quantitative.py
+- Add new `_fLoad*Value` functions in test_quantitative_<stepName>.py
 - Register them in the format dispatch dict
 - Do NOT rename `test_quantitative_benchmark` or change its parametrize pattern
 
@@ -252,8 +257,9 @@ git commit -m "Extend test infrastructure for [format/edge case]"
 
 
 _CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v11"
-_CLAUDE_MD_VERSION_TAG = "<!-- vaibify-test-instructions-v11 -->"
+_CLAUDE_MD_VERSION = "v12"
+_CLAUDE_MD_VERSION_TAG = (
+    f"<!-- vaibify-test-instructions-{_CLAUDE_MD_VERSION} -->")
 
 
 def fnEnsureClaudeMdInstructions(

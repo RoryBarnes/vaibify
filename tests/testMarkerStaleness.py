@@ -15,6 +15,7 @@ When a marker is stale, the corresponding category is reset to
 ``"untested"`` rather than left at a misleading prior value.
 """
 
+from tests.markerStateSupport import fdictEntryFromCounts
 from vaibify.gui.routes.pipelineRoutes import (
     _fbMarkerStale,
     _fdictBuildTestMarkerStatus,
@@ -180,14 +181,9 @@ def test_fnApplyExternalTestResults_stale_marker_resets_corrupted_passed():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": True,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 79, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 79, "iFailed": 0},
+        }, bStale=True),
     }
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -209,14 +205,9 @@ def test_fnApplyExternalTestResults_stale_marker_resets_corrupted_failed():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": True,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 0, "iFailed": 10},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 0, "iFailed": 10},
+        }, bStale=True),
     }
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -238,14 +229,9 @@ def test_fnApplyExternalTestResults_stale_marker_skips_already_untested():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": True,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 5, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 5, "iFailed": 0},
+        }, bStale=True),
     }
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -269,14 +255,9 @@ def test_fnApplyExternalTestResults_stale_marker_only_touches_named_categories()
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": True,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 5, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 5, "iFailed": 0},
+        }, bStale=True),
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
@@ -293,14 +274,9 @@ def test_fnApplyExternalTestResults_fresh_marker_writes_passed():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": False,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 5, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 5, "iFailed": 0},
+        }),
     }
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -322,14 +298,9 @@ def test_fnApplyExternalTestResults_returns_false_when_nothing_changed():
         ],
     }
     dictTestMarkers = {
-        "0": {
-            "bStale": False,
-            "dictMarker": {
-                "dictCategories": {
-                    "quantitative": {"iPassed": 5, "iFailed": 0},
-                },
-            },
-        },
+        "0": fdictEntryFromCounts({
+            "quantitative": {"iPassed": 5, "iFailed": 0},
+        }),
     }
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,

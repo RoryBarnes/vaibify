@@ -56,30 +56,28 @@ class _FakeSession:
 
 
 # ----------------------------------------------------------------------
-# Hole 1: _fdictBuildCategoryResults must not swap passed/failed tallies.
+# Hole 1: an item's outcome word must not swap passed and failed.
 # ----------------------------------------------------------------------
 
 
-def test_buildCategoryResults_tallies_pass_and_fail_to_correct_keys(tmp_path):
-    """Passed items increment iPassed, failed items increment iFailed.
+def test_item_outcome_words_follow_the_call_report(tmp_path):
+    """A passing call reads passed, a failing one failed, one never run "".
 
-    Uses asymmetric counts (2 passing, 1 failing) so a swap of the
-    tally keys produces a different dict and is detected. A None
-    rep_call contributes to neither counter.
+    Asymmetric on purpose: a swap of the two words changes both
+    answers. (This replaces the per-category tally the plugin used to
+    keep; the marker now records each test's own outcome, and this is
+    the one place a report becomes a word.)
 
-    Kills: Conftest template _fdictBuildCategoryResults (lines
-    525-528): passed/failed tally keys swapped so .passed increments
-    iFailed and .failed increments iPassed
+    Kills: Conftest template _fsOutcomeOfItem: the passed branch
+    answers failed, so a passing test is recorded as failing
     """
     ns = _fnExecTemplateWithRoot(tmp_path)
-    listItems = [
-        _FakeItem("test_integrity_a.py::test_x", _FakeRep(True, False)),
-        _FakeItem("test_integrity_b.py::test_y", _FakeRep(True, False)),
-        _FakeItem("test_integrity_c.py::test_z", _FakeRep(False, True)),
-        _FakeItem("test_integrity_d.py::test_skipped", None),
-    ]
-    dictCategories = ns._fdictBuildCategoryResults(_FakeSession(listItems))
-    assert dictCategories["integrity"] == {"iPassed": 2, "iFailed": 1}
+    assert ns._fsOutcomeOfItem(_FakeItem(
+        "test_integrity_a.py::test_x", _FakeRep(True, False))) == "passed"
+    assert ns._fsOutcomeOfItem(_FakeItem(
+        "test_integrity_c.py::test_z", _FakeRep(False, True))) == "failed"
+    assert ns._fsOutcomeOfItem(_FakeItem(
+        "test_integrity_d.py::test_skipped", None)) == ""
 
 
 # ----------------------------------------------------------------------

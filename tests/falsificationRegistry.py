@@ -1288,9 +1288,9 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid='tests/testTruthDerivation.py::testMarkerWithoutExitStatusDefaultsToCleanPass',
-        source='vaibify/gui/truthDerivation.py',
-        old="""iExitStatus = dictMarker.get("iExitStatus", 0)""",
-        new="""iExitStatus = dictMarker.get("iExitStatus", 1)  # mutant""",
+        source='vaibify/gui/testMarkerContract.py',
+        old="""        "iExitStatus": dictSource.get("iExitStatus", 0),""",
+        new="""        "iExitStatus": dictSource.get("iExitStatus", 1),""",
     ),
     Falsification(
         nodeid='tests/testTruthDerivation.py::testAggregateAllUnnecessaryAxesStaysUnnecessary',
@@ -1491,22 +1491,22 @@ LIST_FALSIFICATIONS = [
         new="""if dictStep.get("bUnseededRandomnessWarning"):""",
     ),
     Falsification(
-        nodeid='tests/testConftestManagerCoverage.py::test_buildCategoryResults_tallies_pass_and_fail_to_correct_keys',
+        nodeid='tests/testConftestManagerCoverage.py::test_item_outcome_words_follow_the_call_report',
         source='vaibify/gui/conftestManager.py',
-        old="""        if item.rep_call.passed:
-            dictCat["iPassed"] += 1
-        elif item.rep_call.failed:
-            dictCat["iFailed"] += 1""",
-        new="""        if item.rep_call.passed:
-            dictCat["iFailed"] += 1
-        elif item.rep_call.failed:
-            dictCat["iPassed"] += 1  # mutant""",
+        old=(
+            '    if getattr(repCall, "passed", False):\n'
+            '        return "xpassed" if hasattr(repCall, "wasxfail") else "passed"\n'
+        ),
+        new=(
+            '    if getattr(repCall, "passed", False):\n'
+            '        return "xpassed" if hasattr(repCall, "wasxfail") else "failed"\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testConftestManagerCoverage.py::test_sessionfinish_marker_filename_uses_underscore_for_nested_dir',
         source='vaibify/gui/conftestManager.py',
-        old='''sFilename = sStepDirRel.replace("/", "_") + ".json"''',
-        new='''sFilename = sStepDirRel.replace("/", "-") + ".json"  # mutant''',
+        old='''sFilename = dictSession["sDirectory"].replace("/", "_") + ".json"''',
+        new='''sFilename = dictSession["sDirectory"].replace("/", "-") + ".json"''',
     ),
     Falsification(
         nodeid='tests/testConftestManagerCoverage.py::test_activeWorkflowSlug_falls_back_to_default_when_nothing_present',
@@ -2623,7 +2623,8 @@ def _fdictEntry(sRel):
         # read; both transports now run this one constant.
         source='vaibify/docker/dockerConnection.py',
         old="""def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    d = {"sSha256": None, "sBlobSha": None, "sSymlinkSegment": None,
+         "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
         return d
@@ -2637,7 +2638,8 @@ def _fdictEntry(sRel):
     sReal = os.path.realpath(os.path.join(sRootReal, sRel))
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):""",
         new="""def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    d = {"sSha256": None, "sBlobSha": None, "sSymlinkSegment": None,
+         "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
         return d
@@ -21579,7 +21581,8 @@ def _fdictEntry(sRel):
         # parking it inside the pausable probe.
         old=(
             '        fnTypedSnapshot = getattr(\n'
-            '            connectionDocker, "ftReadRepoSnapshot", None,\n'
+            '            _fconnectionServingResource(connectionDocker, sContainerId),\n'
+            '            "ftReadRepoSnapshot", None,\n'
             '        )\n'
         ),
         new='        fnTypedSnapshot = None\n',
@@ -24253,8 +24256,8 @@ def _fdictEntry(sRel):
             'tests/testMarkerNamespaceFromLoadedWorkflow.py::testTheMarkerNamespaceReachesPytestForALoadedWorkflow'
         ),
         source='vaibify/gui/routes/testRoutes.py',
-        old='        sFullCmd, fsWorkflowSlugFromPath(\n            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),\n',
-        new='        sFullCmd, fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),\n',
+        old='        _fsPrefixWithTestCategoryEnv(sFullCmd, sCategory),\n        fsWorkflowSlugFromPath(\n            workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),\n',
+        new='        _fsPrefixWithTestCategoryEnv(sFullCmd, sCategory),\n        fsWorkflowSlugFromPath(dictWorkflow.get("sPath", "")),\n',
     ),
     Falsification(
         nodeid=(
@@ -29384,5 +29387,974 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/styleMain.css',
         old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
         new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
+    # --- 2026-10-07: the marker lane judges digests against the poll
+    # snapshot (hashed inside the container), never by opening files on
+    # the host; unknown is not drift and reaches Level 1 as a blocker ---
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_the_snapshot_blob_sha_is_the_digest_the_conftest_records'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            ("blob " + str(listKey[2]) + chr(0)).encode("ascii"))\n',
+        new='            ("blob " + "0" + chr(0)).encode("ascii"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_deleted_file_is_reported_missing_and_nothing_else_is'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        return {"sSha256": None, "sBlobSha": None, "bMissing": True}\n',
+        new='        return {"sSha256": None, "sBlobSha": None}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_an_unreadable_file_is_not_reported_missing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    except FileNotFoundError:\n'
+            '        # The ONLY failure that proves a deletion.'
+        ),
+        new=(
+            '    except OSError:\n'
+            '        # The ONLY failure that proves a deletion.'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_file_changing_during_the_hash_yields_neither_digest'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        return {"sSha256": None, "sBlobSha": None,\n'
+            '                "listStatKey": listKey, "bTornRead": True}\n'
+        ),
+        new=(
+            '        return {"sSha256": None, "sBlobSha": hBlob.hexdigest(),\n'
+            '                "listStatKey": listKey, "bTornRead": True}\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotAnswersBlobShaAndMissing.py::'
+            'test_a_cache_hit_carries_both_digests_and_an_old_entry_is_rehashed'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old='            dictEntry["sBlobSha"] = dictCached.get("sBlobSha")\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_each_kind_of_evidence_gets_its_own_verdict'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_UNKNOWN\n'
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    sCurrentSha = dictHashEntry.get("sBlobSha")\n'
+            '    if not sCurrentSha:\n'
+            '        return S_VERDICT_UNKNOWN\n'
+        ),
+        new=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    sCurrentSha = dictHashEntry.get("sBlobSha")\n'
+            '    if not sCurrentSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_an_empty_baseline_cannot_match_and_is_drift'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not sBaselineSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+        new=(
+            '    if not sBaselineSha:\n'
+            '        return S_VERDICT_MATCH\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_outputs_and_inputs_are_both_judged_and_listed_sorted'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='_T_MARKER_HASH_KEYS = ("dictOutputHashes", "dictInputHashes")\n',
+        new='_T_MARKER_HASH_KEYS = ("dictOutputHashes",)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerDigestVerdicts.py::'
+            'test_only_a_poll_snapshot_answers_digests'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_an_unchecked_pass_never_reads_attained_anywhere'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n',
+        new='    listUnchecked = None\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_scalar_level_and_the_gate_withhold_level_one'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        if not fbAtLeastLevel1(\n'
+            '            dictWorkflow, filesRepo, dictScriptStatus,\n'
+            '            dictUnknownFreshnessByStep,\n'
+            '        ):\n'
+        ),
+        new=(
+            '        if not fbAtLeastLevel1(\n'
+            '            dictWorkflow, filesRepo, dictScriptStatus,\n'
+            '        ):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_verdict_is_part_of_the_blocker_cache_key'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),\n'
+            '    )\n'
+            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+        ),
+        new=(
+            '    )\n'
+            '    listCached = _flistBlockerCacheLookup(tCacheKey)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_the_criterion_ranks_below_red_axes_and_above_attestation'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '    if not fbStepTestsPassing(dictStep):\n'
+            '        return _fdictAxisNotGreenBlocker(\n'
+            '            dictWorkflow, iStepIndex, dictStep, filesRepo,\n'
+            '        )\n'
+            '    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n'
+            '    if listUnchecked:\n'
+            '        return _fdictFreshnessUncheckedBlocker(\n'
+            '            dictWorkflow, iStepIndex, listUnchecked,\n'
+            '        )\n'
+        ),
+        new=(
+            '    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)\n'
+            '    if listUnchecked:\n'
+            '        return _fdictFreshnessUncheckedBlocker(\n'
+            '            dictWorkflow, iStepIndex, listUnchecked,\n'
+            '        )\n'
+            '    if not fbStepTestsPassing(dictStep):\n'
+            '        return _fdictAxisNotGreenBlocker(\n'
+            '            dictWorkflow, iStepIndex, dictStep, filesRepo,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_test_rows_read_unknown_even_when_script_stale_dominates'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old=(
+            '        dictV, bool(listUncheckedFreshnessFiles),\n'
+            '    )\n'
+        ),
+        new=(
+            '        dictV, "test-freshness-unchecked" in setCriteria,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testFreshnessUncheckedLevelOne.py::'
+            'test_a_red_axis_stays_unmet_and_a_checked_pass_stays_met'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='            (sAxisKey, None if bGreen and bFreshnessUnchecked else bGreen))\n',
+        new='            (sAxisKey, None if bFreshnessUnchecked else bGreen))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_container_project_whose_files_match_stays_passed'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_drifted_output_invalidates_its_step_and_the_steps_downstream'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_deletion_the_container_reports_invalidates_the_step'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_path_absent_from_the_answer_is_unknown_and_invalidates_nothing'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_UNKNOWN\n'
+        ),
+        new=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_path_a_marker_recorded_but_the_workflow_no_longer_declares_is_judged'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(filesPoll, SnapshotRepoFiles):\n'
+            '        return {}\n'
+            '    return filesPoll.fdictAllHashEntries()\n'
+        ),
+        new='    return {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_a_failed_snapshot_is_unknown_never_drift'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_UNKNOWN\n'
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    sCurrentSha = dictHashEntry.get("sBlobSha")\n'
+            '    if not sCurrentSha:\n'
+            '        return S_VERDICT_UNKNOWN\n'
+        ),
+        new=(
+            '    if not isinstance(dictHashEntry, dict):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    if dictHashEntry.get("bMissing"):\n'
+            '        return S_VERDICT_DRIFT\n'
+            '    sCurrentSha = dictHashEntry.get("sBlobSha")\n'
+            '    if not sCurrentSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_an_unchanged_project_is_a_fixed_point_of_the_poll'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old=(
+            '    if sCurrentSha == sBaselineSha:\n'
+            '        return S_VERDICT_MATCH\n'
+        ),
+        new=(
+            '    if sCurrentSha == sBaselineSha:\n'
+            '        return S_VERDICT_DRIFT\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::'
+            'test_the_flag_reconcile_runs_after_the_drift_is_applied'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    listInvalidated = _fdictDetectAndInvalidate(\n'
+            '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
+            '        dictHashStaleByStep=dictHashStaleByStep,\n'
+            '        bPipelineRunning=bPipelineRunning,\n'
+            '    )\n'
+            '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
+            '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
+            '    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(\n'
+            '        dictPathsByStep, dictModTimes,\n'
+            '    )\n'
+            '    bAnyReconciled = (\n'
+            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
+            '    )\n'
+        ),
+        new=(
+            '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
+            '    dictMaxMtimeByStep = _fdictComputeMaxMtimeByStep(\n'
+            '        dictPathsByStep, dictModTimes,\n'
+            '    )\n'
+            '    bAnyReconciled = (\n'
+            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
+            '    )\n'
+            '    listInvalidated = _fdictDetectAndInvalidate(\n'
+            '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
+            '        dictHashStaleByStep=dictHashStaleByStep,\n'
+            '        bPipelineRunning=bPipelineRunning,\n'
+            '    )\n'
+            '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_the_host_leg_answers_the_digest_a_marker_records'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '        return self._ftRunTypedReadProgram(\n'
+            '            sContainerId, S_TYPED_READ_REPO_SNAPSHOT, listArgs,\n'
+            '        )\n'
+        ),
+        new=(
+            '        return self._ftRunTypedReadProgram(\n'
+            '            sContainerId, S_TYPED_READ_GIT_REPO_STATUS, listArgs,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_path_leaving_the_project_is_not_hashed_on_the_host'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):\n'
+            '        d["bEscapesRoot"] = True\n'
+            '        return d\n'
+            '    d.update(_fdictHashAgainstKey('
+        ),
+        new='    d.update(_fdictHashAgainstKey(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_root_outside_the_project_is_refused_before_anything_runs'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '        sRootReal = self._fsValidateHostPath(sContainerId, sRootPath)\n'
+            '        listArgs = flistBuildRepoSnapshotArguments(\n'
+        ),
+        new=(
+            '        sRootReal = sRootPath\n'
+            '        listArgs = flistBuildRepoSnapshotArguments(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_absolute_binary_paths_are_never_read_on_the_host'
+        ),
+        source='vaibify/host/hostConnection.py',
+        old=(
+            '            sRootReal, listContentPaths, listSkipTextPaths,\n'
+            '            listHashPaths, [], dictCachedKeys,\n'
+        ),
+        new=(
+            '            sRootReal, listContentPaths, listSkipTextPaths,\n'
+            '            listHashPaths, listAbsHashPaths, dictCachedKeys,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_the_router_sends_a_host_projects_snapshot_to_the_host_leg'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '    if isinstance(connectionDocker, ConnectionRouter):\n'
+            '        return connectionDocker.fconnectionForResource(sContainerId)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostSnapshotTwin.py::'
+            'test_a_host_project_polls_with_no_docker_daemon'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old=(
+            '    if isinstance(connectionDocker, ConnectionRouter):\n'
+            '        return connectionDocker.fconnectionForResource(sContainerId)\n'
+        ),
+        new='',
+    ),
+    # An entry missing either digest must never be offered back to the
+    # snapshot: a hit would answer a digest of None, which the marker
+    # lane reads as unknown on every poll.
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestCachedEntriesForSnapshot::test_an_entry_missing_either_digest_is_never_offered'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            dictEntry.get("sSha256") and dictEntry.get("sBlobSha")\n'
+            '            and isinstance(listKey, list) and len(listKey) == 4'
+        ),
+        new=(
+            '            dictEntry.get("sSha256")\n'
+            '            and isinstance(listKey, list) and len(listKey) == 4'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestUpdateShaCacheSingleFieldChange::test_blob_digest_only_change_signals_persistence'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            "listStatKey": list(listKey), "sSha256": sSha256,\n'
+            '            "sBlobSha": sBlobSha,\n'
+            '        }'
+        ),
+        new=(
+            '            "listStatKey": list(listKey), "sSha256": sSha256,\n'
+            '        }'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesMutationCoverage.py::'
+            'TestUpdateShaCacheSingleFieldChange::test_an_entry_missing_the_blob_digest_is_not_cached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '            not sSha256 or not sBlobSha or not listKey\n'
+        ),
+        new=(
+            '            not sSha256 or not listKey\n'
+        ),
+    ),
+    # An unchecked pass is drawn as unchecked in every place the screen
+    # shows the pass, never as a plain Passed.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_an_unchecked_pass_is_not_shown_as_passed'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old=(
+            '        if (_fbStepAxisPassIsUnchecked(dictContext, iIndex, sApprover)) {\n'
+            '            sBadge = _fsBuildUncheckedBadge();\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_the_requirement_rows_read_unknown_and_say_why'
+        ),
+        source='vaibify/gui/static/scriptStepRenderer.js',
+        old=(
+            '        if (_fbIsTestAxisRequirement(sName)) {\n'
+            '            return "(hollow circle = the tests passed, but could not " +\n'
+        ),
+        new=(
+            '        if (false) {\n'
+            '            return "(hollow circle = the tests passed, but could not " +\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnUncheckedPassIsNeverShownAsPassed.py::'
+            'test_clicking_the_unchecked_badge_runs_the_diagnosis_it_promises'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old=(
+            '        ".freshness-unchecked-diagnose":\n'
+            '            _fnHandleFreshnessUncheckedDiagnose,\n'
+        ),
+        new='',
+    ),
+    # --- 2026-10-07: the snapshot cache remembers a digest only once
+    # the file has settled for a second (git's racy-clean rule) ---
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_digest_taken_within_a_second_of_the_write_is_used_not_cached'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            or not _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_settled_file_is_cached_and_then_hit'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='I_RACY_CLEAN_WINDOW_NS = 1_000_000_000\n',
+        new='I_RACY_CLEAN_WINDOW_NS = 10 ** 30\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSnapshotCacheRacyClean.py::'
+            'test_a_same_tick_rewrite_with_an_unchanged_key_is_rehashed'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            or not _fbHashWasTakenAfterTheFileSettled(dictEntry, listKey)\n',
+        new='',
+    ),
+    # --- 2026-10-07: the dashboard signals the category it runs ---
+    Falsification(
+        nodeid=(
+            'tests/testGuiSignalsItsCategory.py::'
+            'test_a_category_command_exports_its_category_and_the_workflow'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old='        _fsPrefixWithTestCategoryEnv(sFullCmd, sCategory),\n',
+        new='        sFullCmd,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGuiSignalsItsCategory.py::'
+            'test_only_the_fixed_category_names_ever_reach_the_shell'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        old='    sCategory = _DICT_SIGNALLED_CATEGORY_BY_NAME.get(sCategoryName, "")\n',
+        new='    sCategory = _DICT_SIGNALLED_CATEGORY_BY_NAME.get(sCategoryName, sCategoryName)\n',
+    ),
+    # --- 2026-10-07: the marker records each test's own outcome, per
+    # run, so every category survives and nothing combines across data ---
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_each_category_run_keeps_the_other_categories_results'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    dictMarker = fdictNormalizeMarker(dictExistingMarker) or _fdictEmptyMarker()\n',
+        new='    dictMarker = _fdictEmptyMarker()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_a_narrowed_pass_never_hides_another_tests_failure'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    dictFile["dictCollectionError"] = None\n'
+            '    for sNodeId, sOutcome in dictFileResult.get("dictOutcomes", {}).items():\n'
+        ),
+        new=(
+            '    dictFile["dictCollectionError"] = None\n'
+            '    dictFile["dictOutcomes"] = {}\n'
+            '    for sNodeId, sOutcome in dictFileResult.get("dictOutcomes", {}).items():\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_passes_from_runs_at_one_data_state_accumulate_but_not_across_data'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if dictContext["dictRunVerdicts"].get(sRunId) in T_NOT_CURRENT_VERDICTS:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_a_node_id_run_never_rewrites_the_test_list'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if dictFileResult.get("bWholeFile"):\n'
+            '        listNodeIds = list(dictFileResult.get("listNodeIds") or [])\n'
+        ),
+        new=(
+            '    if True:\n'
+            '        listNodeIds = list(dictFileResult.get("listNodeIds") or [])\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_a_collection_error_fails_the_category_and_the_older_pass_dies'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if dictFile.get("dictCollectionError"):\n'
+            '        dictResult["sState"] = "failed"\n'
+            '        return dictResult\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_an_unattributed_failure_makes_older_results_unproven'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    return not (dictFailure and dictFailure.get("fTimestamp", 0) >= fRunTime)\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTestMarkerContract.py::'
+            'test_an_old_format_marker_reads_as_it_always_did'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if not isinstance(dictMarker.get("dictRuns"), dict):\n'
+            '        return _fdictLegacyAsNewShape(dictMarker)\n'
+        ),
+        new=(
+            '    if not isinstance(dictMarker.get("dictRuns"), dict):\n'
+            '        return _fdictEmptyMarker()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_three_category_runs_leave_all_three_categories_recorded'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    dictMarker = fdictNormalizeMarker(dictExistingMarker) or _fdictEmptyMarker()\n',
+        new='    dictMarker = _fdictEmptyMarker()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_a_narrowed_pass_after_a_failing_full_run_leaves_the_category_failed'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    dictFile["dictCollectionError"] = None\n'
+            '    for sNodeId, sOutcome in dictFileResult.get("dictOutcomes", {}).items():\n'
+        ),
+        new=(
+            '    dictFile["dictCollectionError"] = None\n'
+            '    dictFile["dictOutcomes"] = {}\n'
+            '    for sNodeId, sOutcome in dictFileResult.get("dictOutcomes", {}).items():\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_two_halves_at_one_data_state_pass_and_across_a_data_change_do_not'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if dictContext["dictRunVerdicts"].get(sRunId) in T_NOT_CURRENT_VERDICTS:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_a_k_run_updates_the_test_list_and_a_node_id_run_does_not'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old='        sFileKey, _fdictEmptyFileResult(sAbsolute not in setNodeIdFiles))\n',
+        new='        sFileKey, _fdictEmptyFileResult(True))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_a_gui_category_collection_error_fails_the_category'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '    if not getattr(report, "failed", False):\n'
+            '        return\n'
+            '    sMessage = str(getattr(report, "longrepr", "") or "collection failed")\n'
+        ),
+        new=(
+            '    return\n'
+            '    sMessage = str(getattr(report, "longrepr", "") or "collection failed")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_an_unattributed_collection_error_unproves_older_results'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '    if listOrphans:\n'
+            '        sMessage = listOrphans[0]\n'
+            '    elif exitstatus in (2, 3, 4)'
+        ),
+        new=(
+            '    if False:\n'
+            '        sMessage = ""\n'
+            '    elif exitstatus in (2, 3, 4)'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_a_session_that_collects_nothing_writes_nothing'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '    if exitstatus == 5 and not _fbSessionLeftAResult(\n'
+            '        dictFileResults, listOrphans\n'
+            '    ):\n'
+            '        return None\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::'
+            'test_two_sessions_at_once_both_survive'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        if fcntl is not None:\n'
+            '            fcntl.flock(fileLock.fileno(), fcntl.LOCK_EX)\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPerTestMarkerEndToEnd.py::'
+            'test_each_category_session_survives_the_poll_and_stays_across_polls'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    dictMarker = fdictNormalizeMarker(dictExistingMarker) or _fdictEmptyMarker()\n',
+        new='    dictMarker = _fdictEmptyMarker()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPerTestMarkerEndToEnd.py::'
+            'test_a_data_change_unproves_every_run_and_a_rerun_proves_only_its_own'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if dictContext["dictRunVerdicts"].get(sRunId) in T_NOT_CURRENT_VERDICTS:\n'
+            '        return False\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPerTestMarkerEndToEnd.py::'
+            'test_a_fresh_clone_restores_all_three_categories'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    dictMarker = fdictNormalizeMarker(dictExistingMarker) or _fdictEmptyMarker()\n',
+        new='    dictMarker = _fdictEmptyMarker()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOldMarkerReadsAsItAlwaysDid.py::'
+            'test_the_bootstrap_of_an_old_marker_matches_the_old_derivation'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old=(
+            '    if not isinstance(dictMarker.get("dictRuns"), dict):\n'
+            '        return _fdictLegacyAsNewShape(dictMarker)\n'
+        ),
+        new=(
+            '    if not isinstance(dictMarker.get("dictRuns"), dict):\n'
+            '        return _fdictEmptyMarker()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerBookkeepingIsIgnored.py::testTheMarkerLockIsIgnoredByGit'
+        ),
+        source='vaibify/gui/stateManager.py',
+        old='    "test_markers/*/*.lock\\n"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerBookkeepingIsIgnored.py::testTheMarkerTemporaryIsIgnoredByGit'
+        ),
+        source='vaibify/gui/stateManager.py',
+        old='    "test_markers/*/*.tmp\\n"\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestCarriesTheContractVerbatim.py::test_the_transcribed_functions_need_nothing_the_conftest_lacks'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        old='    _fnPruneUnreferencedRuns,\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestCarriesTheContractVerbatim.py::test_the_containers_merge_equals_the_dashboards_merge'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old='        + "\\n\\n".join(listSources) + "\\n\\n"\n',
+        new='        + "\\n\\n".join(listSources).replace(\n            \'dictMarker["dictUnattributedFailure"] = None\',\n            \'dictMarker["dictUnattributedFailure"] = {}\') + "\\n\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepVerdictFromRuns.py::test_a_step_whose_files_match_any_run_is_clean'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    if S_VERDICT_MATCH in dictRunVerdicts.values():\n        return []\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepVerdictFromRuns.py::test_a_step_matching_no_run_is_drifted_by_its_newest_drifted_run'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    sNewest = max(listRunIds, key=lambda sKey: dictRuns[sKey].get(\n',
+        new='    sNewest = min(listRunIds, key=lambda sKey: dictRuns[sKey].get(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepVerdictFromRuns.py::test_an_unchecked_run_is_unknown_for_the_step_and_never_drift'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    if dictRunVerdicts["listUnknown"]:\n        return S_VERDICT_UNKNOWN\n',
+        new='    if dictRunVerdicts["listUnknown"]:\n        return S_VERDICT_DRIFT\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPerTestMarkerEndToEnd.py::test_the_poll_wire_carries_states_and_a_run_summary_never_the_test_lists'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='            "dictMarker": _fdictLatestRunSummary(dictMarker),\n',
+        new='            "dictMarker": dictMarker,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnExternalRunIsAppliedByCategoryAndAnnouncedOnce.py::test_a_category_the_marker_does_not_speak_for_keeps_what_the_page_shows'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='            if (!dictState || !dictState.bHasMarkerInfo) continue;\n',
+        new='            if (!dictState) continue;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAnExternalRunIsAppliedByCategoryAndAnnouncedOnce.py::test_a_run_is_announced_once_however_many_polls_carry_it'
+        ),
+        source='vaibify/gui/static/scriptTestManager.js',
+        old='        if (!dictRun.sRunId || dictTestMarkerRunIds[sIndex] === dictRun.sRunId)\n            return;\n',
+        new='        if (!dictRun.sRunId)\n            return;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testGeneratedFileNamesAreStepNamed.py::testNoModuleHardCodesAnUnsuffixedGeneratedFileName'
+        ),
+        source='vaibify/gui/routes/falsificationRoutes.py',
+        old='    sTestFileName = posixpath.basename(\n        fsQuantitativeTestPath(dictStep.get("sDirectory", "")))\n',
+        new='    sTestFileName = "test_quantitative.py"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepVerdictFromRuns.py::test_a_matching_run_does_not_vouch_for_another_runs_unchecked_paths'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    listUnknown = [] if listDrifted else _flistUncheckedPathsOfEveryRun(\n        dictPerRun, dictRunVerdicts)\n',
+        new='    listUnknown = [] if (\n        listDrifted or S_VERDICT_MATCH in dictRunVerdicts.values()\n    ) else _flistUncheckedPathsOfEveryRun(\n        dictPerRun, dictRunVerdicts)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerFreshnessPoll.py::test_a_matching_run_does_not_hide_a_pass_whose_run_could_not_be_checked'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='    listUnknown = [] if listDrifted else _flistUncheckedPathsOfEveryRun(\n        dictPerRun, dictRunVerdicts)\n',
+        new='    listUnknown = [] if (\n        listDrifted or S_VERDICT_MATCH in dictRunVerdicts.values()\n    ) else _flistUncheckedPathsOfEveryRun(\n        dictPerRun, dictRunVerdicts)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStepVerdictFromRuns.py::test_every_unchecked_run_contributes_its_own_paths'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        old='            setPaths.update(dictPerRun[sRunId]["listUnknown"])\n',
+        new='            setPaths.update(dictPerRun[sRunId]["listUnknown"])\n            break\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestPerTestMarker.py::test_a_test_file_outside_the_dashboards_naming_is_still_recorded'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        old='        "listPresentFiles": sorted(set(listPresent) | set(dictFileResults)),\n        "dictFileResults": dictFileResults,\n',
+        new='        "listPresentFiles": listPresent, "dictFileResults": dictFileResults,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_a_file_read_declines_before_opening_anything_and_names_the_remedy'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    fnRequireDirectoryRelativeAccess()\n    iFile = _fiOpenFollowingLinksInsideRoot(',
+        new='    iFile = _fiOpenFollowingLinksInsideRoot(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_a_folder_read_declines_before_opening_anything'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    fnRequireDirectoryRelativeAccess()\n    iRoot = _fiOpenFollowingLinksInsideRoot(',
+        new='    iRoot = _fiOpenFollowingLinksInsideRoot(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_the_download_route_answers_501_with_the_sentence'
+        ),
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        raise HTTPException(501, str(error))\n',
+        new='        raise HTTPException(500, str(error))\n',
     ),
 ]

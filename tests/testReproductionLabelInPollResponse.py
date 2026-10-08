@@ -482,7 +482,8 @@ def test_cached_keys_past_the_exec_budget_are_dropped_not_refused(tmp_path):
     connection = LocalSnapshotConnection()
     dictManyEntries = {
         f"cached/file{iIndex:06d}.dat": {
-            "listStatKey": [1, 2, 3, 4], "sSha256": "a" * 64}
+            "listStatKey": [1, 2, 3, 4], "sSha256": "a" * 64,
+            "sBlobSha": "b" * 40}
         for iIndex in range(4000)
     }
     filesPoll = SnapshotRepoFiles.ffilesFetch(
