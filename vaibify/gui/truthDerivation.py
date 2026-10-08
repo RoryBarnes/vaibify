@@ -32,7 +32,8 @@ __all__ = [
     "T_TEST_CATEGORY_AXIS_KEYS",
     "fdictComputeTestAxes",
     "fsAggregateUnitTestFromAxes",
-    "fsResolveCategoryAxisFromCounts",
+    "fsResolveCategoryAxisFromState",
+    "fsRunVerdictFromHashes",
     "fsResolveUnitTestFromExitCode",
 ]
 
@@ -44,37 +45,93 @@ T_TEST_CATEGORY_AXIS_KEYS = (
 )
 
 
+def fsRunVerdictFromHashes(dictExpected, dictOnDisk):
+    """Return how one run's recorded outputs compare with the files now.
+
+    ``match``, ``outputs-changed``, ``outputs-missing`` (missing
+    outranks changed), or ``unrecorded`` when the run recorded no
+    hashes and so cannot be tied to any data state. The fresh-clone
+    bootstrap's words for the poll's drift verdict.
+    """
+    sStatus = _fsStatusFromHashes(dictExpected or {}, dictOnDisk or {})
+    if sStatus == "passed-from-marker":
+        return "match"
+    if sStatus == "untested":
+        return "unrecorded"
+    return sStatus
+
+
 def fdictComputeTestAxes(
-    dictMarker, dictOnDiskHashes, listAvailableCategories,
+    dictLatestRun, dictOnDiskHashes, listAvailableCategories,
+    dictCategoryStates,
 ):
-    """Return the four-axis test verification dict from marker + observation."""
-    if not dictMarker:
+    """Return the four-axis test verification dict from a marker's states.
+
+    ``dictCategoryStates`` is what ``testMarkerContract`` derived from
+    the marker (this leaf cannot import it), ``dictLatestRun`` the
+    marker's newest run, and ``dictOnDiskHashes`` the observation. A
+    category the marker speaks for takes its state's value: a passed
+    state is ``passed-from-marker`` (the result was restored, not just
+    run), and a state that is untested because the run's outputs
+    drifted or vanished says which.
+    """
+    if not dictLatestRun:
         return _fdictEmptyTestAxes()
-    dictExpected = dictMarker.get("dictOutputHashes", {}) or {}
-    sHashStatus = _fsStatusFromHashes(dictExpected, dictOnDiskHashes)
+    dictExpected = dictLatestRun.get("dictOutputHashes", {}) or {}
     listChanged = _flistChangedOutputs(dictExpected, dictOnDiskHashes)
-    iExitStatus = dictMarker.get("iExitStatus", 0)
-    dictCounts = dictMarker.get("dictCategories", {}) or {}
-    dictResult = _fdictBaseAxisFields(dictMarker, listChanged)
-    _fnFillAllAxes(
-        dictResult, sHashStatus, iExitStatus, dictCounts,
-        listAvailableCategories,
+    dictResult = _fdictBaseAxisFields(dictLatestRun, listChanged)
+    _fnFillCategoryAxes(
+        dictResult, dictCategoryStates or {}, listAvailableCategories,
     )
+    _fnFillUnitTestAxis(dictResult, dictCategoryStates or {})
     return dictResult
 
 
-def _fnFillAllAxes(
-    dictResult, sHashStatus, iExitStatus, dictCounts,
-    listAvailableCategories,
+def _fnFillCategoryAxes(
+    dictResult, dictCategoryStates, listAvailableCategories,
 ):
-    """Fill per-category axes plus the aggregate sUnitTest axis."""
-    _fnFillCategoryAxes(
-        dictResult, sHashStatus, iExitStatus, dictCounts,
-        listAvailableCategories,
-    )
-    _fnFillUnitTestAxis(
-        dictResult, sHashStatus, iExitStatus, dictCounts,
-    )
+    """Assign one axis per category the marker speaks for or the workflow has."""
+    setSeen = set()
+    for sCategory, dictState in dictCategoryStates.items():
+        if not dictState.get("bHasMarkerInfo"):
+            continue
+        dictResult[_fsAxisKeyForCategory(sCategory)] = _fsAxisFromState(
+            dictState)
+        setSeen.add(sCategory)
+    for sCategory in listAvailableCategories or []:
+        if sCategory not in setSeen:
+            dictResult.setdefault(
+                _fsAxisKeyForCategory(sCategory), "untested")
+
+
+def _fsAxisFromState(dictState):
+    """Translate a category state into the verification axis vocabulary."""
+    sState = dictState.get("sState")
+    if sState == "passed":
+        return "passed-from-marker"
+    if sState == "failed":
+        return "failed"
+    sReason = dictState.get("sNotCurrentBecause", "")
+    if sReason in ("outputs-changed", "outputs-missing"):
+        return sReason
+    return "untested"
+
+
+def _fnFillUnitTestAxis(dictResult, dictCategoryStates):
+    """Fold the aggregate ``sUnitTest`` from the axes the marker speaks for."""
+    listAxes = [
+        dictResult[_fsAxisKeyForCategory(sCategory)]
+        for sCategory, dictState in dictCategoryStates.items()
+        if dictState.get("bHasMarkerInfo")
+    ]
+    if not listAxes:
+        dictResult["sUnitTest"] = "untested"
+    elif "failed" in listAxes:
+        dictResult["sUnitTest"] = "failed"
+    elif listAxes and all(sAxis == listAxes[0] for sAxis in listAxes):
+        dictResult["sUnitTest"] = listAxes[0]
+    else:
+        dictResult["sUnitTest"] = "untested"
 
 
 _T_GREEN_AXIS_VALUES = ("passed", "passed-from-marker", "unnecessary")
@@ -112,23 +169,19 @@ def fsResolveUnitTestFromExitCode(iExitCode):
     return "passed" if int(iExitCode or 0) == 0 else "failed"
 
 
-def fsResolveCategoryAxisFromCounts(dictCounts):
-    """Return the truth-claim axis value for a fresh per-category result.
+def fsResolveCategoryAxisFromState(dictState):
+    """Return the live axis value for one derived category state.
 
-    Used when a fresh test marker arrives for a single category and
-    the caller already established that the marker is current (no
-    hash drift, no staleness). Returns ``"failed"`` for any failure
-    in the counts, ``"passed"`` when at least one test passed and
-    none failed, or ``""`` when the counts hold neither — leaving
-    the existing axis untouched is the caller's job.
+    The poll's vocabulary, where a result obtained in this dashboard's
+    own reach reads ``passed`` (the bootstrap's ``passed-from-marker``
+    says the result was restored from a committed record instead).
+    ``testMarkerContract`` decides what a category's state IS, from the
+    marker's per-test results; this is only the word for it.
     """
-    iFailed = int(dictCounts.get("iFailed", 0) or 0)
-    iPassed = int(dictCounts.get("iPassed", 0) or 0)
-    if iFailed > 0:
-        return "failed"
-    if iPassed > 0:
-        return "passed"
-    return ""
+    sState = (dictState or {}).get("sState")
+    if sState in ("passed", "failed"):
+        return sState
+    return "untested"
 
 
 def _fdictEmptyTestAxes():
@@ -153,60 +206,9 @@ def _fdictBaseAxisFields(dictMarker, listChanged):
     }
 
 
-def _fnFillCategoryAxes(
-    dictResult, sHashStatus, iExitStatus, dictCategoryCounts,
-    listAvailableCategories,
-):
-    """Compute and assign one axis per category present in marker or workflow."""
-    setSeen = set()
-    for sCategory, dictCounts in dictCategoryCounts.items():
-        sAxisKey = _fsAxisKeyForCategory(sCategory)
-        dictResult[sAxisKey] = _fsCategoryStatus(
-            sHashStatus, iExitStatus, dictCounts or {},
-        )
-        setSeen.add(sCategory)
-    for sCategory in listAvailableCategories or []:
-        if sCategory in setSeen:
-            continue
-        sAxisKey = _fsAxisKeyForCategory(sCategory)
-        dictResult.setdefault(sAxisKey, "untested")
-
-
-def _fnFillUnitTestAxis(
-    dictResult, sHashStatus, iExitStatus, dictCategoryCounts,
-):
-    """Compute the aggregate ``sUnitTest`` axis when not already supplied."""
-    if "sUnitTest" in dictResult:
-        return
-    dictResult["sUnitTest"] = _fsCategoryStatus(
-        sHashStatus, iExitStatus, dictCategoryCounts,
-    )
-
-
 def _fsAxisKeyForCategory(sCategory):
     """Return the camelCase axis key for a lowercase category name."""
     return "s" + sCategory[:1].upper() + sCategory[1:]
-
-
-def _fsCategoryStatus(sHashStatus, iExitStatus, dictCounts):
-    """Fold hash status, marker exit, and per-category counts into one axis.
-
-    Hash mismatches (``outputs-missing`` / ``outputs-changed``) win
-    because they signal that the marker no longer describes the
-    on-disk state. Otherwise a non-zero ``iExitStatus`` or any
-    ``iFailed`` in the category demotes the badge to ``"failed"``
-    rather than letting a failed run masquerade as
-    ``"passed-from-marker"``.
-    """
-    if sHashStatus in ("outputs-missing", "outputs-changed"):
-        return sHashStatus
-    if sHashStatus == "untested":
-        return "untested"
-    if iExitStatus != 0:
-        return "failed"
-    if int(dictCounts.get("iFailed", 0) or 0) > 0:
-        return "failed"
-    return "passed-from-marker"
 
 
 def _fsStatusFromHashes(dictExpected, dictOnDisk):

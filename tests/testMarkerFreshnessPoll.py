@@ -24,6 +24,7 @@ import pytest
 
 from tests.markerPollHarness import (
     MarkerPollProject,
+    fsBaselineDigest,
     fsOutputRelativePath,
 )
 from tests.snapshotProgramHarness import fdictSteadyHashEntry
@@ -275,3 +276,72 @@ def test_the_flag_reconcile_runs_after_the_drift_is_applied():
             project.dictCtx, "cid", project.dictWorkflow, {}, {}, {},
         )
     assert listCalls == ["invalidate", "reconcile"]
+
+
+S_PATH_ONLY_THE_SECOND_RUN_RECORDED = "StepC/second.dat"
+
+
+def _fdictRunRecordedAt(fTimestamp, dictOutputHashes):
+    return {
+        "fTimestamp": fTimestamp, "sRunAtUtc": "2026-10-07T00:00:00Z",
+        "iExitStatus": 0, "dictOutputHashes": dictOutputHashes,
+        "dictInputHashes": {},
+    }
+
+
+def _fdictOutcomeOf(sNodeId, sRunId):
+    return {
+        "listNodeIds": [sNodeId],
+        "dictOutcomes": {sNodeId: {"sOutcome": "passed", "sRunId": sRunId}},
+        "dictCollectionError": None,
+    }
+
+
+def fdictMarkerWithTheIntegrityPassUnderAnUncheckedRun():
+    """Step C: run one (qualitative) matches, run two (integrity) does not.
+
+    Distinct paths and distinct outcomes: the second run recorded a path
+    the first never did, and the integrity pass belongs to the second.
+    """
+    sOutput = fsOutputRelativePath("C")
+    sDigest = fsBaselineDigest("C")
+    return {
+        "sLabel": "A03", "sDirectory": "StepC",
+        "dictRuns": {
+            "runOne": _fdictRunRecordedAt(1.0, {sOutput: sDigest}),
+            "runTwo": _fdictRunRecordedAt(2.0, {
+                sOutput: sDigest,
+                S_PATH_ONLY_THE_SECOND_RUN_RECORDED: "f" * 40}),
+        },
+        "dictTestFiles": {
+            "test_qualitative_stepC.py": _fdictOutcomeOf("q", "runOne"),
+            "test_integrity_stepC.py": _fdictOutcomeOf("i", "runTwo"),
+        },
+        "dictLegacyCategories": {}, "dictUnattributedFailure": None,
+    }
+
+
+@pytest.mark.falsification
+def test_a_matching_run_does_not_hide_a_pass_whose_run_could_not_be_checked():
+    """One run's files match; the run holding the integrity pass cannot be checked.
+
+    Matching keeps the step from being invalidated, but it cannot vouch
+    for another run's results: the integrity pass still depends on data
+    the poll could not compare, so Level 1 must say the freshness is
+    unchecked instead of attaining on the strength of the other run.
+
+    Kills: letting a matching run suppress the step's unknown paths,
+    which hid the unchecked pass from the Level 1 gate.
+    """
+    project = MarkerPollProject(dictMarkerOverrides={
+        ".vaibify/test_markers/demo/StepC.json":
+            fdictMarkerWithTheIntegrityPassUnderAnUncheckedRun()})
+    dictAnswer = project.fdictRunPoll()
+    assert project.flistInvalidatedStepNames() == []
+    listUnchecked = [
+        dictBlocker for dictBlocker in dictAnswer["listBlockers"]
+        if dictBlocker["sCriterion"] == "test-freshness-unchecked"]
+    assert [d["sStepLabel"] for d in listUnchecked] == ["A03"]
+    assert listUnchecked[0]["listOffendingFiles"] == [
+        S_PATH_ONLY_THE_SECOND_RUN_RECORDED]
+    assert dictAnswer["iProofLevel"] == 0

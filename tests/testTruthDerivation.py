@@ -8,15 +8,27 @@ that lands in ``truthDerivation`` belongs in this file too.
 
 import pytest
 
+from vaibify.gui import stateManager
 from vaibify.gui.truthDerivation import (
-    fdictComputeTestAxes,
     fsAggregateUnitTestFromAxes,
-    fsResolveCategoryAxisFromCounts,
+    fsResolveCategoryAxisFromState,
     fsResolveUnitTestFromExitCode,
 )
 
 
 T_AVAILABLE_CATEGORIES = ("integrity", "qualitative", "quantitative")
+
+
+def fdictComputeTestAxes(dictMarker, dictOnDiskHashes, _tCategories=None):
+    """Derive the four axes the way the fresh-clone bootstrap does.
+
+    The marker is read into per-category states by
+    ``testMarkerContract`` and put into the axis vocabulary by
+    ``truthDerivation``; ``stateManager`` composes the two, so this
+    drives the composition every reader of a marker goes through.
+    """
+    return stateManager._fdictVerificationFromMarker(
+        dictMarker, dictOnDiskHashes)
 
 
 @pytest.fixture
@@ -125,22 +137,21 @@ def testCategoryWithFailureDemotesOnlyThatAxis(dictMarkerAllPassed):
     assert dictAxes["sQuantitative"] == "passed-from-marker"
 
 
-def testResolveCategoryAxisFromCountsReturnsFailedOnFailure():
-    """Any positive ``iFailed`` short-circuits to ``failed``."""
-    assert fsResolveCategoryAxisFromCounts(
-        {"iPassed": 5, "iFailed": 1}) == "failed"
+def testResolveCategoryAxisFromStateReturnsFailedOnFailure():
+    """A failed category state is the ``failed`` axis."""
+    assert fsResolveCategoryAxisFromState({"sState": "failed"}) == "failed"
 
 
-def testResolveCategoryAxisFromCountsReturnsPassedOnAllPass():
-    """At least one pass with zero failures yields ``passed``."""
-    assert fsResolveCategoryAxisFromCounts(
-        {"iPassed": 3, "iFailed": 0}) == "passed"
+def testResolveCategoryAxisFromStateReturnsPassedOnPass():
+    """A passed category state is the live ``passed`` axis."""
+    assert fsResolveCategoryAxisFromState({"sState": "passed"}) == "passed"
 
 
-def testResolveCategoryAxisFromCountsReturnsEmptyOnZeros():
-    """Neither pass nor fail leaves the axis untouched (empty string)."""
-    assert fsResolveCategoryAxisFromCounts(
-        {"iPassed": 0, "iFailed": 0}) == ""
+def testResolveCategoryAxisFromStateReturnsUntestedOtherwise():
+    """Anything else, or no state at all, is ``untested``."""
+    assert fsResolveCategoryAxisFromState({"sState": "untested"}) == "untested"
+    assert fsResolveCategoryAxisFromState({}) == "untested"
+    assert fsResolveCategoryAxisFromState(None) == "untested"
 
 
 def testAggregateUnitTestFromEmptyAxesIsUnnecessary():

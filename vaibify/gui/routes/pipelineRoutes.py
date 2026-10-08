@@ -1027,6 +1027,12 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         return {"bSuccess": True}
 
 
+# Private to the poll: the per-run hash verdicts the file-status half
+# computed, handed to the test-status half and popped before the answer
+# leaves, like the level ratchet's flag. They are never on the wire.
+_S_RUN_VERDICTS_PRIVATE_KEY = "_dictRunVerdictsByStep"
+
+
 async def fdictComputeFileStatus(
     dictCtx, sContainerId, dictWorkflow, dictVars,
 ):
@@ -1036,11 +1042,14 @@ async def fdictComputeFileStatus(
     )
     if dictOutputStatus.get("bWorkflowReloaded"):
         dictWorkflow = dictCtx["workflows"][sContainerId]
+    dictRunVerdictsByStep = dictOutputStatus.pop(
+        _S_RUN_VERDICTS_PRIVATE_KEY, {})
     dictTestStatus = await _fdictFetchTestStatus(
         dictCtx, sContainerId, dictWorkflow,
         dictMaxOutputMtimeByStep=dictOutputStatus.get(
             "dictMaxMtimeByStep", {},
         ),
+        dictRunVerdictsByStep=dictRunVerdictsByStep,
     )
     dictOutputStatus.update(dictTestStatus)
     return dictOutputStatus
@@ -1468,6 +1477,8 @@ async def _fdictFetchOutputStatus(
         "dictRemoteChecks": remoteCheckState.fdictDescribeChecks(
             remoteCheckState.ftProjectCheckKey(sContainerId, sRepoRoot),
         ),
+        _S_RUN_VERDICTS_PRIVATE_KEY: _fdictRunVerdictsByStep(
+            dictMarkerVerdicts),
         **dictRest,
     }
 
@@ -1612,6 +1623,14 @@ def _fnRunPollStaleUserCheck(
             "POLL stale-check reset sUser for container=%s", sContainerId,
         )
         dictCtx["save"](sContainerId, dictWorkflow)
+
+
+def _fdictRunVerdictsByStep(dictMarkerVerdicts):
+    """Project ``{iStep: {listDrifted, ..., dictRunVerdicts}}`` onto run verdicts."""
+    return {
+        iStep: dictVerdicts["dictRunVerdicts"]
+        for iStep, dictVerdicts in dictMarkerVerdicts.items()
+    }
 
 
 def _fdictPathsByStepForVerdict(dictMarkerVerdicts, sVerdictKey):
@@ -3420,7 +3439,7 @@ def _fdictBuildReloadedWorkflowShape(dictReload):
 
 async def _fdictFetchTestStatus(
     dictCtx, sContainerId, dictWorkflow,
-    dictMaxOutputMtimeByStep=None,
+    dictMaxOutputMtimeByStep=None, dictRunVerdictsByStep=None,
 ):
     """Fetch test markers, refresh conftest, migrate flat markers, build status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
@@ -3439,6 +3458,7 @@ async def _fdictFetchTestStatus(
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
         dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
+        dictRunVerdictsByStep=dictRunVerdictsByStep,
     )
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -3616,38 +3636,57 @@ def _fnEnsureConftestTemplate(
 
 def _fdictBuildTestMarkerStatus(
     dictWorkflow, dictTestInfo, dictMaxOutputMtimeByStep=None,
+    dictRunVerdictsByStep=None,
 ):
-    """Map test markers to step indices and check staleness.
+    """Read each step's marker into category states for the wire.
 
-    ``dictMaxOutputMtimeByStep`` (str step index → mtime string) lets
-    the staleness check recognise a marker as out-of-date when the
-    step's output files have been regenerated since pytest last ran.
+    ``dictMaxOutputMtimeByStep`` (str step index → mtime string) lets a
+    result be recognised as out-of-date when the step's output files
+    were regenerated since its run, and ``dictRunVerdictsByStep``
+    (``{iStepIndex: {sRunId: verdict}}``, computed from this same
+    poll's snapshot) lets a result be recognised as about data that no
+    longer exists. Each entry carries the category states
+    ``testMarkerContract`` derived, the newest run's summary, and
+    ``bStale`` (the newest run no longer applies), which the page uses
+    to stay quiet about a result that no longer stands.
     """
+    from .. import testMarkerContract
     dictMarkers = dictTestInfo.get("markers", {})
     dictTestFiles = dictTestInfo.get("testFiles", {})
     dictMaxMtimes = dictMaxOutputMtimeByStep or {}
+    dictVerdicts = dictRunVerdictsByStep or {}
     dictResult = {}
-    for iIndex, dictStep in enumerate(
-        dictWorkflow.get("listSteps", [])
-    ):
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
         sDir = dictStep.get("sDirectory", "")
-        if not sDir:
+        sMarkerName = fsMarkerNameFromStepDirectory(sDir) if sDir else ""
+        dictMarker = testMarkerContract.fdictNormalizeMarker(
+            dictMarkers.get(sMarkerName))
+        if dictMarker is None:
             continue
-        sMarkerName = fsMarkerNameFromStepDirectory(sDir)
-        if sMarkerName not in dictMarkers:
-            continue
-        dictMarker = dictMarkers[sMarkerName]
-        fMaxOutputMtime = _ffParseMtime(
-            dictMaxMtimes.get(str(iIndex)),
-        )
-        bStale = _fbMarkerStale(
-            dictMarker, dictTestFiles.get(sDir, {}),
-            fMaxOutputMtime=fMaxOutputMtime,
-        )
+        dictFileInfo = dictTestFiles.get(sDir, {})
+        fMaxOutputMtime = _ffParseMtime(dictMaxMtimes.get(str(iIndex)))
         dictResult[str(iIndex)] = {
-            "dictMarker": dictMarker, "bStale": bStale,
+            "dictMarker": _fdictLatestRunSummary(dictMarker),
+            "dictCategoryStates":
+                testMarkerContract.fdictCategoryStatesFromMarker(
+                    dictMarker, dictFileInfo.get("listFiles", []),
+                    dictFileInfo.get("dictMtimes", {}),
+                    dictVerdicts.get(iIndex, {}), fMaxOutputMtime),
+            "bStale": _fbMarkerStale(
+                dictMarker, dictFileInfo, fMaxOutputMtime=fMaxOutputMtime),
         }
     return dictResult
+
+
+def _fdictLatestRunSummary(dictMarker):
+    """Return the newest run's identity, which is all the page needs of it."""
+    from .. import testMarkerContract
+    sRunId, dictRun = testMarkerContract.ftLatestRun(dictMarker)
+    return {
+        "sRunId": sRunId, "fTimestamp": dictRun.get("fTimestamp", 0),
+        "sRunAtUtc": dictRun.get("sRunAtUtc", ""),
+        "iExitStatus": dictRun.get("iExitStatus", 0),
+    }
 
 
 def _ffParseMtime(sMtime):
@@ -3661,27 +3700,29 @@ def _ffParseMtime(sMtime):
 
 
 def _fbMarkerStale(dictMarker, dictTestFileInfo, fMaxOutputMtime=0):
-    """Return True if the marker no longer reflects the current state.
+    """Return True if the marker's newest run no longer reflects the state.
 
-    A marker is stale when any of:
+    The newest run is stale when any of:
 
-    1. It lacks ``sRunAtUtc`` (legacy pre-2026-04 conftest format —
+    1. It lacks ``sRunAtUtc`` (legacy pre-2026-04 conftest format --
        cannot be trusted to map to any specific data state).
-    2. Any test file is newer than the marker (existing behaviour).
-    3. Any output file is newer than the marker — i.e. the data the
-       step's tests would run against has moved since the recorded
-       result, so the result no longer applies.
+    2. Any test file is newer than it.
+    3. Any output file is newer than it -- the data the step's tests
+       would run against has moved since the recorded result.
+
+    A marker with no run at all is stale. This is the page's cue to
+    stay quiet about a result that no longer stands; what each
+    category's state IS lives in ``testMarkerContract``.
     """
-    if "sRunAtUtc" not in dictMarker:
+    from .. import testMarkerContract
+    dictRun = testMarkerContract.ftLatestRun(dictMarker)[1]
+    if not dictRun or "sRunAtUtc" not in dictRun or not dictRun["sRunAtUtc"]:
         return True
-    fMarkerTime = dictMarker.get("fTimestamp", 0)
+    fMarkerTime = dictRun.get("fTimestamp", 0)
     dictMtimes = dictTestFileInfo.get("dictMtimes", {})
-    for fMtime in dictMtimes.values():
-        if fMtime > fMarkerTime:
-            return True
-    if fMaxOutputMtime and fMaxOutputMtime > fMarkerTime:
+    if any(fMtime > fMarkerTime for fMtime in dictMtimes.values()):
         return True
-    return False
+    return bool(fMaxOutputMtime and fMaxOutputMtime > fMarkerTime)
 
 
 _LIST_MARKER_CATEGORY_KEYS = [
@@ -3691,42 +3732,52 @@ _LIST_MARKER_CATEGORY_KEYS = [
 ]
 
 
-def _fbApplyAllMarkerCategories(dictVerify, dictCategories):
-    """Apply all marker categories to a verification dict."""
+def _fbApplyCategoryState(dictVerify, sVerifyKey, sNewValue):
+    """Write one derived category state; return True if it changed.
+
+    A workflow with no commands for a category declares it
+    ``unnecessary`` and that is never silently re-locked: a derived
+    pass or fail is refused with a warning so the discrepancy stays
+    observable, and a derived ``untested`` is simply not applied.
+    """
+    sCurrent = dictVerify.get(sVerifyKey)
+    if sCurrent == sNewValue:
+        return False
+    if sCurrent == "unnecessary":
+        if sNewValue != "untested":
+            logger.warning(
+                "Marker reports %s for %s but the workflow declares this "
+                "category as empty (\"unnecessary\"); ignoring marker so "
+                "the derived state stays observable.",
+                sNewValue, sVerifyKey,
+            )
+        return False
+    dictVerify[sVerifyKey] = sNewValue
+    return True
+
+
+def _fbApplyCategoryStates(dictVerify, dictCategoryStates):
+    """Apply every category state the marker speaks for; True if any changed.
+
+    The value written is the one ``truthDerivation`` names for the
+    state, so no truth claim is minted in the route layer.
+    """
+    from .. import truthDerivation
     bChanged = False
     for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        if _fbApplyMarkerCategory(
-            dictVerify, dictCategories, sCategory, sVerifyKey,
+        dictState = (dictCategoryStates or {}).get(sCategory) or {}
+        if not dictState.get("bHasMarkerInfo"):
+            continue
+        if _fbApplyCategoryState(
+            dictVerify, sVerifyKey,
+            truthDerivation.fsResolveCategoryAxisFromState(dictState),
         ):
             bChanged = True
     return bChanged
 
 
-def _fbClearStaleMarkerCategories(dictVerify, dictCategories):
-    """Reset to "untested" any category the stale marker would touch.
-
-    A stale marker isn't trustworthy enough to apply, but it does tell
-    us *which* categories used to have a result. Resetting those to
-    "untested" makes the badge accurately reflect "no fresh result for
-    the current state" instead of preserving a prior pass/fail value
-    that's now meaningless. "unnecessary" categories are skipped — a
-    stale marker targeting an empty-commands category is anomalous and
-    must not downgrade the derived state.
-    """
-    bChanged = False
-    for sCategory, sVerifyKey in _LIST_MARKER_CATEGORY_KEYS:
-        if sCategory not in dictCategories:
-            continue
-        sCurrent = dictVerify.get(sVerifyKey)
-        if sCurrent in ("untested", "unnecessary"):
-            continue
-        dictVerify[sVerifyKey] = "untested"
-        bChanged = True
-    return bChanged
-
-
 def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
-    """Update workflow dictVerification from external test markers.
+    """Update workflow dictVerification from the categories' derived states.
 
     Returns True when any verification field was modified, so the
     caller can persist the workflow.
@@ -3737,54 +3788,12 @@ def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
         iIndex = int(sIndex)
         if iIndex >= len(listSteps):
             continue
-        dictVerify = listSteps[iIndex].setdefault(
-            "dictVerification", {},
-        )
-        dictCategories = dictEntry["dictMarker"].get(
-            "dictCategories", {},
-        )
-        if dictEntry.get("bStale"):
-            if _fbClearStaleMarkerCategories(
-                dictVerify, dictCategories,
-            ):
-                bChanged = True
-            continue
-        if _fbApplyAllMarkerCategories(
-            dictVerify, dictCategories,
+        dictVerify = listSteps[iIndex].setdefault("dictVerification", {})
+        if _fbApplyCategoryStates(
+            dictVerify, dictEntry.get("dictCategoryStates"),
         ):
             bChanged = True
     return bChanged
-
-
-def _fbApplyMarkerCategory(
-    dictVerify, dictCategories, sCategory, sVerifyKey,
-):
-    """Apply a single category result from a marker; return True if changed.
-
-    The truth-claim value is resolved by the canonical
-    ``truthDerivation.fsResolveCategoryAxisFromCounts`` so the rule
-    "what counts as passed/failed?" lives in one place; this site
-    handles the sticky-``"unnecessary"`` policy that a workflow with
-    no commands must never get silently re-locked by a stray marker.
-    """
-    from .. import truthDerivation
-    if sCategory not in dictCategories:
-        return False
-    sNewValue = truthDerivation.fsResolveCategoryAxisFromCounts(
-        dictCategories[sCategory],
-    )
-    if not sNewValue or dictVerify.get(sVerifyKey) == sNewValue:
-        return False
-    if dictVerify.get(sVerifyKey) == "unnecessary":
-        logger.warning(
-            "Marker reports %s for %s but the workflow declares this "
-            "category as empty (\"unnecessary\"); ignoring marker so "
-            "the derived state stays observable.",
-            sNewValue, sVerifyKey,
-        )
-        return False
-    dictVerify[sVerifyKey] = sNewValue
-    return True
 
 
 def _fsetExtractRegisteredTestFiles(dictStep):

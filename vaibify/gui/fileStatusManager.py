@@ -1351,13 +1351,14 @@ def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
 
 
 def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
-    """Return ``{iStepIndex: {"listDrifted", "listUnknown"}}`` per step.
+    """Return ``{iStepIndex: {listDrifted, listUnknown, dictRunVerdicts}}``.
 
-    Judges every digest each step's marker recorded against the poll
-    snapshot (``filesPoll``), which hashed the files inside the
+    Judges every digest each run of each step's marker recorded against
+    the poll snapshot (``filesPoll``), which hashed the files inside the
     container: this lane opens nothing itself. A marker whose label or
-    directory disagrees with the live step is treated as absent. Steps
-    with nothing drifted and nothing unknown are omitted.
+    directory disagrees with the live step is treated as absent. A step
+    is listed when any of its runs drifted or could not be checked, and
+    carries each run's own verdict, which the category states read.
     """
     from . import hashStaleness
     dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
@@ -1368,12 +1369,32 @@ def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
         )
         if dictMarker is None:
             continue
-        dictVerdicts = hashStaleness.fdictVerdictsForMarker(
-            dictMarker, dictHashEntries,
-        )
-        if dictVerdicts["listDrifted"] or dictVerdicts["listUnknown"]:
+        dictVerdicts = _fdictVerdictsForOneMarker(dictMarker, dictHashEntries)
+        if (
+            dictVerdicts["listUnknown"] or dictVerdicts["listDrifted"]
+            or {"drift", "unknown"}
+            & set(dictVerdicts["dictRunVerdicts"].values())
+        ):
             dictResult[iIndex] = dictVerdicts
     return dictResult
+
+
+def _fdictVerdictsForOneMarker(dictMarker, dictHashEntries):
+    """Judge a marker's runs, or call an unreadable marker unknown.
+
+    A marker the poll could not read (it was over the batched read's
+    ceiling) says nothing about any file, so its step is unknown, and
+    the file that could not be read is the one named.
+    """
+    from . import hashStaleness
+    if dictMarker.get("bMarkerUnreadable"):
+        return {
+            "listDrifted": [], "listUnknown": [dictMarker["sMarkerPath"]],
+            "dictRunVerdicts": {},
+        }
+    return hashStaleness.fdictVerdictsForMarkerRuns(
+        dictMarker, dictHashEntries,
+    )
 
 
 def _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep):

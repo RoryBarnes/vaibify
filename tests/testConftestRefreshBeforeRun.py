@@ -148,7 +148,9 @@ def test_the_marker_write_still_happens_when_the_directory_is_writable(
     )
     assert listMarkers, "no marker was written to a writable directory"
     dictMarker = json.loads(listMarkers[0].read_text(encoding="utf-8"))
-    assert dictMarker["iExitStatus"] == 0
+    listRuns = list(dictMarker["dictRuns"].values())
+    assert len(listRuns) == 1
+    assert listRuns[0]["iExitStatus"] == 0
 
 
 # ---------------------------------------------------------------------------

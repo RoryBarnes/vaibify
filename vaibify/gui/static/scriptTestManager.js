@@ -7,7 +7,7 @@ var VaibifyTestManager = (function () {
     var setGeneratingInFlight = new Set();
     var setGeneratedTestsPending = new Set();
     var setStepsWithData = new Set();
-    var dictTestMarkerTimestamps = {};
+    var dictTestMarkerRunIds = {};
     var _dictSeenNewTestFiles = {};
     var _bFirstTestFilePoll = true;
     var _dictFalsificationByStep = {};
@@ -770,53 +770,48 @@ var VaibifyTestManager = (function () {
             var dictEntry = dictMarkers[sIndex];
             if (!fbApplyStepMarker(iStep, dictEntry)) continue;
             bAnyChanged = true;
-            // Stale resets are silent — they restore "untested" and
-            // any toast about pass/fail would be misleading.
+            // A result that no longer stands is restored to "untested"
+            // silently: a toast about pass/fail would be misleading.
             if (dictEntry.bStale) continue;
-            var dictMarker = dictEntry.dictMarker || {};
-            var sLabel = VaibifyApp.fsComputeStepLabel(iStep);
-            var iExitStatus = dictMarker.iExitStatus || 0;
-            var sVerb = iExitStatus === 0 ? "passed" : "failed";
-            var sVariant = iExitStatus === 0 ? "success" : "error";
-            VaibifyApp.fnShowToast(
-                "Step " + sLabel + ": tests " + sVerb +
-                " (external run detected)", sVariant
-            );
+            fnAnnounceNewExternalRun(iStep, dictEntry);
         }
         if (bAnyChanged) VaibifyApp.fnRenderStepList();
     }
 
-    function fbApplyStepMarker(iStep, dictEntry) {
-        var dictMarker = dictEntry.dictMarker || {};
+    function fnAnnounceNewExternalRun(iStep, dictEntry) {
+        /* One toast per RUN, not per poll: the server names the newest
+           run, and a run already announced is not announced again. */
+        var dictRun = dictEntry.dictMarker || {};
         var sIndex = String(iStep);
+        if (!dictRun.sRunId || dictTestMarkerRunIds[sIndex] === dictRun.sRunId)
+            return;
+        dictTestMarkerRunIds[sIndex] = dictRun.sRunId;
+        var sLabel = VaibifyApp.fsComputeStepLabel(iStep);
+        var iExitStatus = dictRun.iExitStatus || 0;
+        var sVerb = iExitStatus === 0 ? "passed" : "failed";
+        var sVariant = iExitStatus === 0 ? "success" : "error";
+        VaibifyApp.fnShowToast(
+            "Step " + sLabel + ": tests " + sVerb +
+            " (external run detected)", sVariant
+        );
+    }
+
+    function fbApplyStepMarker(iStep, dictEntry) {
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var dictStep = dictWorkflow && dictWorkflow.listSteps
             ? dictWorkflow.listSteps[iStep] : null;
         if (!dictStep) return false;
         var dictVerify = dictStep.dictVerification || {};
         dictStep.dictVerification = dictVerify;
-        var dictCategories = dictMarker.dictCategories || {};
-        if (dictEntry.bStale) {
-            // Mirror backend _fbClearStaleMarkerCategories: a stale
-            // marker's previously-applied "passed"/"failed" no longer
-            // reflects current state, so reset to "untested" here too.
-            // Without this, the in-memory dictVerification keeps the
-            // last applied value forever after the backend has cleared
-            // it, producing a UI/backend desync.
-            return fbClearStaleMarkerCategories(
-                dictVerify, dictCategories
-            );
-        }
-        var fTimestamp = dictMarker.fTimestamp || 0;
-        if (fTimestamp <= (dictTestMarkerTimestamps[sIndex] || 0))
-            return false;
-        dictTestMarkerTimestamps[sIndex] = fTimestamp;
-        return fbApplyAllMarkerCategories(
-            dictVerify, dictCategories
-        );
+        return fbApplyCategoryStates(
+            dictVerify, dictEntry.dictCategoryStates || {});
     }
 
-    function fbClearStaleMarkerCategories(dictVerify, dictCategories) {
+    function fbApplyCategoryStates(dictVerify, dictCategoryStates) {
+        /* The server derived each category's state from the marker's
+           per-test results; the page only applies it, never recomputes
+           it. A category the marker does not speak for is left alone,
+           and an "unnecessary" category is never re-locked. */
         var listKeys = [
             ["integrity", "sIntegrity"],
             ["qualitative", "sQualitative"],
@@ -824,42 +819,15 @@ var VaibifyTestManager = (function () {
         ];
         var bChanged = false;
         for (var i = 0; i < listKeys.length; i++) {
-            var sCategory = listKeys[i][0];
+            var dictState = dictCategoryStates[listKeys[i][0]];
             var sVerifyKey = listKeys[i][1];
-            if (!dictCategories[sCategory]) continue;
-            if (dictVerify[sVerifyKey] === "untested") continue;
-            dictVerify[sVerifyKey] = "untested";
+            if (!dictState || !dictState.bHasMarkerInfo) continue;
+            if (dictVerify[sVerifyKey] === "unnecessary") continue;
+            if (dictVerify[sVerifyKey] === dictState.sState) continue;
+            dictVerify[sVerifyKey] = dictState.sState;
             bChanged = true;
         }
         return bChanged;
-    }
-
-    function fbApplyAllMarkerCategories(dictVerify, dictCategories) {
-        var bUpdated = false;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "integrity", "sIntegrity"
-        ) || bUpdated;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "qualitative", "sQualitative"
-        ) || bUpdated;
-        bUpdated = fbApplyMarkerCategory(
-            dictVerify, dictCategories, "quantitative", "sQuantitative"
-        ) || bUpdated;
-        return bUpdated;
-    }
-
-    function fbApplyMarkerCategory(
-        dictVerify, dictCategories, sCategory, sVerifyKey
-    ) {
-        if (!dictCategories[sCategory]) return false;
-        var dictCat = dictCategories[sCategory];
-        var sOld = dictVerify[sVerifyKey] || "";
-        if (dictCat.iFailed > 0) {
-            dictVerify[sVerifyKey] = "failed";
-        } else if (dictCat.iPassed > 0) {
-            dictVerify[sVerifyKey] = "passed";
-        }
-        return dictVerify[sVerifyKey] !== sOld;
     }
 
     function fnNotifyTestFileChanges(dictChanges) {
@@ -928,7 +896,7 @@ var VaibifyTestManager = (function () {
     /* --- State Accessors --- */
 
     function fnResetState() {
-        dictTestMarkerTimestamps = {};
+        dictTestMarkerRunIds = {};
         _dictSeenNewTestFiles = {};
         _bFirstTestFilePoll = true;
         _dictFalsificationByStep = {};
@@ -966,8 +934,7 @@ var VaibifyTestManager = (function () {
         fnDeleteTestCommand: fnDeleteTestCommand,
         fnApplyTestMarkers: fnApplyTestMarkers,
         fbApplyStepMarker: fbApplyStepMarker,
-        fbApplyAllMarkerCategories: fbApplyAllMarkerCategories,
-        fbApplyMarkerCategory: fbApplyMarkerCategory,
+        fbApplyCategoryStates: fbApplyCategoryStates,
         fnNotifyTestFileChanges: fnNotifyTestFileChanges,
         flistFilterUnseenTestFiles: flistFilterUnseenTestFiles,
         fnShowCustomTestNotice: fnShowCustomTestNotice,

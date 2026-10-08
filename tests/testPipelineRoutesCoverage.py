@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 from tests.carrierStandDown import fnStandCarrierDown
 from vaibify.gui.routes import pipelineRoutes
+from tests.markerStateSupport import fdictEntryFromCounts
 from vaibify.gui.routes.pipelineRoutes import (
     _S_LEVEL_RATCHET_FLAG_KEY,
     _fnSaveIfLevelHighWaterChanged,
@@ -21,9 +22,7 @@ from vaibify.gui.routes.pipelineRoutes import (
     _flistExtractKillPatterns,
     _flistExtractStepDirectories,
     _flistFindCustomTestFiles,
-    _fbApplyAllMarkerCategories,
     _fbApplyExternalTestResults,
-    _fbApplyMarkerCategory,
     _fnEnsureConftestTemplate,
     _fiMarkPipelineStopped,
     _fsetExtractRegisteredTestFiles,
@@ -1242,14 +1241,9 @@ class TestFdictFetchTestStatusAggregateSelfHeal:
         dictStep = _fdictStuckAggregateStep("untested")
         dictWorkflow = {"listSteps": [dictStep]}
         dictTestMarkers = {
-            "0": {
-                "bStale": False,
-                "dictMarker": {
-                    "dictCategories": {
-                        "integrity": {"iPassed": 3, "iFailed": 0},
-                    },
-                },
-            },
+            "0": fdictEntryFromCounts({
+                "integrity": {"iPassed": 3, "iFailed": 0},
+            }),
         }
         mockSave = MagicMock()
         await self._fdictRunFetchTestStatus(

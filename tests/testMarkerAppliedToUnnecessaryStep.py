@@ -10,21 +10,23 @@ downgrading the derived state and re-locking the all-green gate.
 
 import logging
 
+from tests.markerStateSupport import (
+    fdictEntryFromCounts,
+    fdictStatesFromCounts,
+)
 from vaibify.gui.routes.pipelineRoutes import (
+    _fbApplyCategoryStates,
     _fbApplyExternalTestResults,
-    _fbApplyMarkerCategory,
-    _fbClearStaleMarkerCategories,
 )
 
 
 def test_marker_pass_does_not_downgrade_unnecessary(caplog):
     """Sticky-pass branch leaves the state and logs a warning."""
     dictVerify = {"sIntegrity": "unnecessary"}
-    dictCategories = {"integrity": {"iPassed": 1, "iFailed": 0}}
+    dictStates = fdictStatesFromCounts(
+        {"integrity": {"iPassed": 1, "iFailed": 0}})
     with caplog.at_level(logging.WARNING, logger="vaibify"):
-        bChanged = _fbApplyMarkerCategory(
-            dictVerify, dictCategories, "integrity", "sIntegrity",
-        )
+        bChanged = _fbApplyCategoryStates(dictVerify, dictStates)
     assert bChanged is False
     assert dictVerify["sIntegrity"] == "unnecessary"
     assert any(
@@ -41,11 +43,10 @@ def test_marker_pass_does_not_downgrade_unnecessary(caplog):
 def test_marker_fail_does_not_downgrade_unnecessary(caplog):
     """Sticky-fail branch leaves the state and logs a warning."""
     dictVerify = {"sIntegrity": "unnecessary"}
-    dictCategories = {"integrity": {"iPassed": 0, "iFailed": 3}}
+    dictStates = fdictStatesFromCounts(
+        {"integrity": {"iPassed": 0, "iFailed": 3}})
     with caplog.at_level(logging.WARNING, logger="vaibify"):
-        bChanged = _fbApplyMarkerCategory(
-            dictVerify, dictCategories, "integrity", "sIntegrity",
-        )
+        bChanged = _fbApplyCategoryStates(dictVerify, dictStates)
     assert bChanged is False
     assert dictVerify["sIntegrity"] == "unnecessary"
     assert any(
@@ -55,22 +56,23 @@ def test_marker_fail_does_not_downgrade_unnecessary(caplog):
     ), "Sticky-unnecessary failure path must also emit a WARNING."
 
 
-def test_stale_marker_skips_unnecessary_category():
-    """Stale-marker reset must skip unnecessary categories."""
+def test_stale_marker_skips_unnecessary_category(caplog):
+    """A stale marker resets passed categories and spares unnecessary ones."""
     dictVerify = {
         "sIntegrity": "unnecessary",
         "sQualitative": "passed",
     }
-    dictCategories = {
+    dictStates = fdictStatesFromCounts({
         "integrity": {"iPassed": 1, "iFailed": 0},
         "qualitative": {"iPassed": 1, "iFailed": 0},
-    }
-    bChanged = _fbClearStaleMarkerCategories(
-        dictVerify, dictCategories,
-    )
+    }, bCurrent=False)
+    with caplog.at_level(logging.WARNING, logger="vaibify"):
+        bChanged = _fbApplyCategoryStates(dictVerify, dictStates)
     assert bChanged is True
     assert dictVerify["sIntegrity"] == "unnecessary"
     assert dictVerify["sQualitative"] == "untested"
+    assert not caplog.records, (
+        "a stale marker's untested is not an anomaly worth a warning")
 
 
 def test_apply_external_results_leaves_unnecessary_step_alone():
@@ -85,12 +87,8 @@ def test_apply_external_results_leaves_unnecessary_step_alone():
         },
     }]}
     dictTestMarkers = {
-        "0": {
-            "bStale": False,
-            "dictMarker": {"dictCategories": {
-                "integrity": {"iPassed": 1, "iFailed": 0},
-            }},
-        },
+        "0": fdictEntryFromCounts(
+            {"integrity": {"iPassed": 1, "iFailed": 0}}),
     }
     _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers)
     dictV = dictWorkflow["listSteps"][0]["dictVerification"]
