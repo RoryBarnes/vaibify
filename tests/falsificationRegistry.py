@@ -30333,4 +30333,28 @@ def _fdictEntry(sRel):
         old='        "listPresentFiles": sorted(set(listPresent) | set(dictFileResults)),\n        "dictFileResults": dictFileResults,\n',
         new='        "listPresentFiles": listPresent, "dictFileResults": dictFileResults,\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_a_file_read_declines_before_opening_anything_and_names_the_remedy'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    fnRequireDirectoryRelativeAccess()\n    iFile = _fiOpenFollowingLinksInsideRoot(',
+        new='    iFile = _fiOpenFollowingLinksInsideRoot(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_a_folder_read_declines_before_opening_anything'
+        ),
+        source='vaibify/host/hostConfinedRead.py',
+        old='    fnRequireDirectoryRelativeAccess()\n    iRoot = _fiOpenFollowingLinksInsideRoot(',
+        new='    iRoot = _fiOpenFollowingLinksInsideRoot(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testHostReadNeedsDirectoryRelativeAccess.py::test_the_download_route_answers_501_with_the_sentence'
+        ),
+        source='vaibify/gui/routes/downloadRoutes.py',
+        old='        raise HTTPException(501, str(error))\n',
+        new='        raise HTTPException(500, str(error))\n',
+    ),
 ]

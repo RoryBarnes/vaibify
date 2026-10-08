@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 
 from ...docker.confinedRead import ContainerReadRefusedError
 from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+from vaibify.host.hostConfinedRead import HostReadUnsupportedError
 from vaibify.host.hostConnection import HostPathOutsideProjectError
 from .. import projectRoots
 from ..routeScope import S_CARRIER_TYPED_READ, ffnDeclareCarrierMode
@@ -43,6 +44,8 @@ def _fnRaiseHttpForFailedRead(error, sAbsPath):
     if isinstance(error, (ContainerReadRefusedError,
                           HostPathOutsideProjectError)):
         raise HTTPException(403, str(error))
+    if isinstance(error, HostReadUnsupportedError):
+        raise HTTPException(501, str(error))
     if isinstance(error, FileNotFoundError):
         raise HTTPException(404, f"{sName} does not exist.")
     raise HTTPException(
