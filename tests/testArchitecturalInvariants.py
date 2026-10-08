@@ -6661,7 +6661,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-export invariant requires every public conftestManager symbol
     # to appear here, so this shim grows whenever that module gains
     # one.
-    "testGenerator.py": 1141,
+    # +4 (2026-10-08): re-exports templateManager.fbIsVaibifyTemplateHash
+    # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
+    "testGenerator.py": 1145,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).

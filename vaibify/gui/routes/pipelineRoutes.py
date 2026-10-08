@@ -29,6 +29,7 @@ from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
 from ..pipelineUtils import fbStepIsInteractive
+from ..templateManager import fbIsVaibifyTemplateHash
 from ..pipelineServer import (
     WORKSPACE_ROOT,
     fbPinnedImageIsInLocalStore,
@@ -3799,7 +3800,7 @@ def _fdictBuildTestFileChanges(dictWorkflow, dictTestInfo):
 def _flistFindCustomTestFiles(
     dictFileHashes, dictExpectedHashes,
 ):
-    """Return filenames whose hash differs from their category template.
+    """Return filenames whose hash names no vaibify version of their template.
 
     Matched by category PREFIX, not exact name: generated tests are
     step-suffixed (``test_qualitative_<step>.py``) since 2026-08-27,
@@ -3812,7 +3813,9 @@ def _flistFindCustomTestFiles(
         sExpected = _fsExpectedHashForTestFilename(
             sFilename, dictExpectedHashes,
         )
-        if sExpected is not None and sActual != sExpected:
+        if sExpected is not None and not fbIsVaibifyTemplateHash(
+            sActual, sExpected,
+        ):
             listCustom.append(sFilename)
     return listCustom
 
