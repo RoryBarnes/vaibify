@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev418 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev427 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3e6f2d8b"></script>
+      <script src="_static/documentation_options.js?v=7b25fe85"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -558,18 +558,42 @@ absolute <code class="docutils literal notranslate"><span class="pre">/workspace
 project. Badges are emitted only for the producing project; a
 consumer project sees the file as a read path, not as a tracked
 artifact.</p>
-<p>Test markers — JSON files that record the outcome of the last pytest
-session for each step, including <code class="docutils literal notranslate"><span class="pre">dictOutputHashes</span></code> for staleness
-detection — live inside the repository at
-<code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/test_markers/&lt;slug&gt;.json</span></code> where the slug
-is derived from the step’s (repo-relative) <code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker
-<em>writes</em> (by the conftest plugin deployed into each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code>
-directory) and <em>reads</em> (by <code class="docutils literal notranslate"><span class="pre">fileStatusManager</span></code>, <code class="docutils literal notranslate"><span class="pre">gitRoutes</span></code>,
-<code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) both resolve the directory through
+<p>Test markers — JSON files that record each step’s test results,
+including the output hashes each run was obtained against — live
+inside the repository at
+<code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/test_markers/&lt;workflowSlug&gt;/&lt;step&gt;.json</span></code>
+where the file name is derived from the step’s (repo-relative)
+<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker <em>writes</em> (by the conftest plugin deployed into
+each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory) and <em>reads</em> (by <code class="docutils literal notranslate"><span class="pre">fileStatusManager</span></code>,
+<code class="docutils literal notranslate"><span class="pre">gitRoutes</span></code>, <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) both resolve the directory through
 <code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> — no module hardcodes
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code>. Together with committing the
 markers alongside the project, this makes test-verification state
 survive a clone of the repository.</p>
+<p>A marker records tests, not just sessions. <code class="docutils literal notranslate"><span class="pre">dictRuns</span></code> holds one entry
+per run that still stands behind a result (when it ran, its exit
+status, and the hashes of the step’s output and input files at that
+moment). <code class="docutils literal notranslate"><span class="pre">dictTestFiles</span></code> holds, per test file, the node ids the last
+whole-file collection found and each test’s most recent outcome with
+the run that produced it. A run records exactly the tests it ran, and a
+test it did not run keeps its last outcome, so a narrowed <code class="docutils literal notranslate"><span class="pre">-k</span></code> run
+never hides another test’s failure and passes from separate runs
+accumulate. A result counts as current only while the files its run
+was obtained against still match (judged per run, from the same
+snapshot the poll uses to judge every other file) and while its own
+test file is no newer than the run.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify/gui/testMarkerContract.py</span></code> is the one definition of that
+shape. Its writer half is transcribed verbatim into the generated
+conftest, because a container cannot import vaibify, and its reader
+half derives each category’s state (failed, passed or untested, with
+counts) once, for the poll, the fresh-clone bootstrap and the
+dashboard alike. A marker written before runs existed reads as one run
+called <code class="docutils literal notranslate"><span class="pre">legacy</span></code> plus category-level counts, so published archives keep
+reading as they always did. The dashboard names the category it is
+running in <code class="docutils literal notranslate"><span class="pre">VAIBIFY_TEST_CATEGORY</span></code>, so a collection failure is charged
+to that category. A marker grows by roughly one node id per test; the
+poll’s batched read refuses a file over its ceiling, which makes that
+one step unknown rather than failing the poll for every step.</p>
 <p>This choice has two architectural consequences worth naming:</p>
 <ul class="simple">
 <li><p><strong>No workspace-root projects.</strong> A <code class="docutils literal notranslate"><span class="pre">project.json</span></code> at <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>

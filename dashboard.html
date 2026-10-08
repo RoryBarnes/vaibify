@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Dashboard &mdash; Vaibify 0.0.14.dev418 documentation</title>
+  <title>The Dashboard &mdash; Vaibify 0.0.14.dev427 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3e6f2d8b"></script>
+      <script src="_static/documentation_options.js?v=7b25fe85"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -552,6 +552,18 @@ re-run or re-inspect. The last run’s outcome and durations live in
 the <strong>Last run</strong> line below the Run Step button; the modification
 times of the step’s data and plot files are shown beside their
 sections.</p>
+<p>A <strong>Passed</strong> badge is a claim about files. Every poll compares the
+content digests recorded by the last test run with the files as the
+container holds them, hashed inside the container. When that comparison
+could not be made — the container’s answer was missing, a file changed
+while it was being read, or the snapshot itself failed — nothing is
+marked stale and no test result is invalidated, but the badge reads
+<strong>? Passed, couldn’t check freshness</strong> rather than Passed, the step’s
+Level 1 requirement rows for its tests read unknown, the Level 1 cell
+cannot be attained, and the ⚠ column explains why. It is not a failure.
+Click the badge to run a diagnosis. The condition is recomputed on every
+poll and is never saved, so it clears by itself as soon as a poll can
+answer.</p>
 <p>The expanded quantitative-tests block additionally carries a
 <strong>Falsification</strong> row with a <strong>Check test teeth</strong> button. It
 mutation-tests the step’s own Python code against its quantitative
@@ -1000,16 +1012,20 @@ applicable), and 3) user attestation. These three controls are
 displayed in each step’s expanded view.</p>
 <p>The <strong>Unit Tests</strong> row is expandable to show detailed information
 about the step’s unit tests, including generating and running them.
-Three categories of unit tests exist:</p>
+Three categories of unit tests exist. Each step’s files carry the
+step’s directory name with its first letter lowered (step
+<code class="docutils literal notranslate"><span class="pre">AiPowerOverTime</span></code> generates <code class="docutils literal notranslate"><span class="pre">test_integrity_aiPowerOverTime.py</span></code>), which
+keeps files from different steps distinct in a flat archive such as a
+Zenodo deposit:</p>
 <ol class="arabic simple">
-<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity.py</span></code>) — output files exist, are
+<li><p><strong>Integrity tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_integrity_&lt;stepName&gt;.py</span></code>) — output files exist, are
 non-empty, load in their expected format, have the correct shape,
 and contain no NaN or infinity values.</p></li>
-<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative.py</span></code>) — column names, JSON
+<li><p><strong>Qualitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_qualitative_&lt;stepName&gt;.py</span></code>) — column names, JSON
 keys, parameter names, and other categorical content match
 expectations.</p></li>
-<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative.py</span></code> plus
-<code class="docutils literal notranslate"><span class="pre">quantitative_standards.json</span></code>) — numerical output values match
+<li><p><strong>Quantitative tests</strong> (<code class="docutils literal notranslate"><span class="pre">test_quantitative_&lt;stepName&gt;.py</span></code> plus
+<code class="docutils literal notranslate"><span class="pre">quantitative_standards_&lt;stepName&gt;.json</span></code>) — numerical output values match
 stored benchmarks at full double precision, with configurable
 relative and absolute tolerances.</p></li>
 </ol>

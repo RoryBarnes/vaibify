@@ -8,10 +8,18 @@ manage containers.
 
 | Requirement      | Version     | Notes                                |
 |-----------------|------------|--------------------------------------|
-| Python          | 3.9 -- 3.14 | Any CPython release in this range  |
+| Python          | 3.9 -- 3.14 | Any CPython release in this range, built with `dir_fd` support (see below) |
 | Docker          | 20.10+     | Or Colima on macOS                   |
 | Docker Buildx   | 0.10+      | BuildKit-based image builder         |
 | Git             | 2.0+       | For cloning repositories into images |
+
+A **host project** reads your files through directory-relative file
+access, so it needs a Python whose `os.supports_dir_fd` is not empty:
+`python -c "import os; print(bool(os.supports_dir_fd))"` should print
+`True`. Some builds, such as the python.org macOS 3.9 installer, are made
+without it. On one of those, a host project's file reads and downloads
+stop with a message saying so; run vaibify with a conda, Homebrew or
+Linux Python instead.
 
 Python and Git you likely have. For the other two see
 [Installing Docker](#installing-docker) below — and note that
