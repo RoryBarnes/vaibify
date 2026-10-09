@@ -110,155 +110,102 @@ Before we begin this step, note the following:
   another browser or on another machine refuses the conversion instead,
   because the conversion renames the key that the project's lock,
   lease, and journal all hang from.
-- **Install Docker or Colima if you don't have them yet.** This step requires Docker containers, which are run as `colima` on macOS. See the [install guide](install.md#docker-on-macos)) to install. *Note that this process can require over 60 minutes.*
-- **A failed build does not put you back where you started.** It leaves
-  a registered container that has not been built yet. Fix the cause
-  and build again (try working with an AI agent); you have not lost the host project's work, because
-  there was never a copy to lose.
+- **Install Docker or Colima if you don't have them yet.** This step requires Docker containers, which are run as `colima` on macOS. See the [install guide](install.md#docker-on-macos) to install. *Note that this process can require over 60 minutes.*
+- **A failed build is left unfinished.** If the process fails for any reason, 
+  a registered, but unusuable, container remains partially built. Fix the cause
+  and build again (try working with an AI agent or pressing **Run a diagnosis** in the build-failure window); you have not lost the host project's work, because there was never a copy to lose.
 
+Once you're ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments to return to the original landing page. Open the kebab menu (**⋮**) on this environment's tile, and choose **Containerize Environment**.
 
-If you're ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments [Note to claude: It currently still says Containers] to return to the original landing page. Open the kebab menu (**⋮**) on this environment's tile, and choose **Containerize Environment**.
+The wizard first reads the project's record of its environment,
+`.vaibify/environment.json`, and finds the exact image the author
+used. Because this project pins one, the second page already has
+**Use the author's pinned image** selected, and the wizard skips the
+pages that would describe a new image (Python, repositories,
+packages), leaving five pages. Every page has a **?** that explains
+the choice in more detail; what follows is what to enter to finish
+this walkthrough.
 
-A seven-page wizard opens. It asks about the *environment* — nothing
-it collects moves, renames, or rewrites your files. Every page has a
-**?** that explains the choice in more detail; what follows is what to
-enter to finish this walkthrough. Where a page says "leave it", the
-default is the right answer and you can press **Next**.
-
-[Notes to Claude: 1) The "What to Enter" field does not wrap when rendered; can they wrap? Or at least have a horizontal scroll bar? 2) There does not seeem to be the proper instructions for installing an existing environment!]
 | # | Page | What to enter here |
 |---|------|--------------------|
-| 1 | **Name** | The container, image, and registry name. It is pre-filled with a Docker-safe version of your directory name — lowercase, hyphens, no spaces. Accept it unless it collides with another environment on this machine. |
-| 2 | **Python version** | Leave it at **3.12** unless your code is tested against a specific release. |
-| 3 | **Repositories** | Leave it **empty**. This clones *additional* git repositories into the container; the project you are converting is already accounted for. |
-| 4 | **Features** | Tick **at least one coding agent** — several are offered and none is ticked for you; leaving the page with none selected raises a confirmation, because a container with no agent is usually a slip. LaTeX is on by default. Leave GitHub authentication on. Under *Resource limits*, blank means "all cores − 1" and unlimited memory; **1** CPU and **1** GB are enough for a small pipeline and keep the build off the rest of your machine. |
-| 5 | **Copy into the container** | A container does not share your folder, so tick what should be copied in. For this walkthrough tick **everything**; your originals stay where they are. |
-| 6 | **Packages** | Leave both boxes **empty**. The dependencies come from the repository's own `requirements.lock`. |
-| 7 | **Summary** | Read it back, then press **Convert**. |
+| 1 | **Name** | Set the **Container name** to `ai-greenhouse`. Typing "AI Greenhouse" in the Project name box fills it in for you; the project itself keeps the name it already has. |
+| 2 | **Environment** | Leave **Use the author's pinned image** selected. The table beneath it names the image, the kind of processor it was built for (`linux/amd64`), and the archived copy on Zenodo. If your computer has a different processor, such as any Apple-silicon Mac, tick **Allow emulation**: the image still runs, more slowly, and the result is recorded as emulated. Don't choose *Build from the Dockerfile*. A new build is a different image and cannot reproduce the author's bytes. |
+| 3 | **Features** | LaTeX and the other base features are grayed out because the author's image fixes them. The author's image has no coding agent. Ticking one adds it on top of the image, which takes a few extra minutes and is not part of the reproduction. For this walkthrough you can leave them all unticked and choose **Continue without one** when asked. Under *Resource limits*, **1** CPU and **1** GB are enough. |
+| 4 | **Copy into the container** | Leave everything ticked. You will also see **Start from the committed files**, because the outputs you made in section 5 differ from the author's. Leave it **unticked**: the container should start with your own computer's outputs, so you can watch them get replaced. |
+| 5 | **Summary** | Read it back, then press **Convert and obtain**. |
 
-Then the build runs. This process does not create a second project. Your clone stays exactly where
-it is — the same directory, the same git history, the same outputs you
-just produced. The difference is that now when you interact with the project via `vaibify` you are inside a container that cannot modify your own computer and whose environment is identical to that of the author of the project.
+Nothing is built. `vaibify` downloads the author's image (it tries a
+registry first, then the author's archive on Zenodo, then a copy
+already on your computer), checks it against the hash the project
+records, and copies your files into a new container. Most of the
+wait is the download.
 
-When the build finishes, open the project again. It will look the same except the `host-mode` badges become `contained`. The steps still do the
+This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
+just produced; only the runtime settings in its `vaibify.yml` change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthemore, your `vaibify` interactions will now take place inside this container leaving your own computer safe.
+
+When the conversion finishes, open the project again. It will look the same except the `host-mode` badges become `contained`. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab's Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
 whether a rebuild from that image reproduces the outputs.
 
 
-[Note to Claude: From here, there should be simple instructions on how to use the GUI to confirm the reproduction. So much of this is excessive.]
+### Confirm the reproduction
 
-### Two claims, checked two different ways
+The container now holds the files your own computer made in
+section 5. Let's replace them with files made in the author's
+environment.
 
-The obvious next move is to run the pipeline again and re-check the
-manifest. **Don't** — that is not a byte test, and it cannot come out
-clean. And note that you did not need to containerize anything to
-check the bytes: the command below the two claims works from the
-published URL alone, in a shadow container built from the image the
-author pinned, on any machine with Docker.
+1. From the **Run** menu, choose **Check Files Against Manifest**. The
+   data files and figures still differ, because they are still the
+   bytes your own computer produced.
+2. From the **Run** menu, choose **Run All Steps**, then **Run All Unit
+   Tests**. This time every step runs inside the author's environment,
+   and the run log notes that it used the date the author recorded, so
+   any figure with a date inside it comes out the same. If any step's
+   Researcher marker no longer reads "Passed", mark it again as you
+   did in section 5; the project returns to Level 1.
+3. Choose **Check Files Against Manifest** again. Every file now
+   matches: in the author's environment, your run produced the
+   author's bytes.
 
-Every figure vaibify renders is dated and salted from the project
-repository's HEAD commit. That is what makes two runs of the same
-source produce identical bytes: without it, a PDF carries the wall
-clock in its `CreationDate` and an SVG gets fresh element ids from a
-new `uuid4` on every process. The manifest pins figures dated from
-HEAD *as it was when the manifest was written*. Any commit since —
-and this walkthrough makes several — changes the epoch, so a hand
-rerun re-renders every PDF, EPS, PS and SVG against a different one.
-The manifest check then reports them as differing whether or not
-anything real changed, which tells you nothing at all.
+Finally, from the **Run** menu choose **Verify Level 3
+Reproducibility**. It makes a throwaway copy of the container from
+the author's image, reruns every step there with no network, compares
+every file, and then deletes the copy. It leaves your files alone, and
+it only starts once your files match the manifest, which is why it
+comes after step 3. When it finishes, the heading of the left column
+reads **Project (reproduced)**. The result is saved in
+`.vaibify/reproductions/` and committed to your clone.
 
-So the two claims get checked separately, and neither substitutes for
-the other:
+Your copy stays at Level 1. Levels 2 and 3 record the *author's*
+publication (their GitHub push, their Zenodo deposit, their AI
+declaration), so they are the author's to earn. Bringing a project to
+Level 3 is the author's job; confirming it is yours, and
+"(reproduced)" is that confirmation.
 
-**The science — checked on your own machine.** That is what section 5
-did. The quantitative tests confirm each recomputed number lands inside
-the author's recorded tolerance, so they answer "is this the same
-result?" without asking anything about your libraries. They passed, and
-they passed before you had a container at all — which is the point of
-section 6: the science agreed while the bytes did not.
+Anyone can run the same check starting from nothing but the project's
+URL: in the hub, press **+** and choose **Reproduce a published
+project**. A reader without `vaibify` can run `./reproduce.sh` inside
+the clone. Both obtain the author's image, rerun every step inside it,
+and compare the bytes.
 
-**The bytes — checked in the pinned environment.** Three ways, and
-they check the same thing.
-
-As a stranger, from the URL alone:
-
-```bash
-vaibify reproduce --from https://github.com/RoryBarnes/aigreenhouse.git --rerun
-```
-
-It clones the project in full, validates the snapshot, obtains the
-image the author pinned (the registry first, then the archived copy on
-Zenodo, then a copy already on your machine, saying which one served),
-runs every step in a fresh *shadow* container built from that image
-with no network and no credentials, compares the bytes inside it, and
-writes a **reproduction report** under your own home. The verdict is
-*reproduced* — or *reproduced under emulation* if the pinned build is
-not your machine's architecture and you passed `--allow-emulation`,
-or *diverged*, or *no verdict* with the reason. The report is yours,
-not the author's: nothing is written into the project, and it is not
-an attestation.
-
-Or, from the hub instead of the terminal: the **+** button's third
-kind card, **Reproduce a published project**, takes the same URL,
-shows you what a run would use before anything is pulled, and shows
-the same verdict and report when it settles. No tile is added; the
-shadow is destroyed when the comparison is made.
-
-As a stranger without vaibify, the artifact the project publishes:
-
-```bash
-./reproduce.sh
-```
-
-It reads the image digest, the pinned platform and the recorded epoch
-out of `.vaibify/environment.json`, pulls that exact image for that
-platform, runs every step inside it, and finishes with
-
-```
-sha256sum -c MANIFEST.sha256
-```
-
-**Zero mismatches is the payoff.** Not "a small delta" — zero. It is
-what lets a reader who has never met you re-derive your figures byte
-for byte, and it is the whole reason the environment is pinned.
-
-As the author, the dashboard equivalent is **Verify Level 3
-Reproducibility**, in the **Run** menu (it also has a button on the
-PROOF tab's Level 3 row). It creates a shadow container from the image
-digest your project pins, copies the repository into it, runs the
-whole pipeline there, and compares the results against your files —
-then destroys the shadow. It does not touch your outputs, and it is
-the one of the three that writes an attestation, because it is your
-claim about your own project. All three re-run against the epoch the
-envelope recorded rather than against today's HEAD, which is exactly
-why they can come out at zero and a hand rerun cannot.
-
-It is the difference between believing your work reproduces and having
-watched it happen.
-
-[Note to Claude: The 1-2 paragraphs that describe how to actually reproduce the results should end here.]
 
 ## 8. When something is wrong
 
-Run `vaibify doctor`, and do what it says.
-
-```bash
-vaibify doctor              # every scope
-vaibify doctor --container  # only what is inside the running container
-```
-
-It is the command for the moment when a build will not build, a
-container will not start, an agent inside the container cannot reach
-anything, or the dashboard is saying something you did not expect. It
-reports on three scopes — this machine, the inside of the running
-container, and vaibify's own record of the project — and every finding
+Run a diagnosis, and do what it says. Error messages in the
+dashboard end with **Click to run a diagnosis**, and the build-failure
+window has a **Run a diagnosis** button. Use it when a build will not
+build, a container will not start, or the dashboard is saying something
+you did not expect. The report checks this machine, and every finding
 that needs action names the exact command to run, correct for the
-Docker runtime you are actually using.
+Docker runtime you are actually using. The same checks, plus the inside
+of the running container and vaibify's own record of the project, are
+available as `vaibify doctor` from a terminal; see the
+[CLI Reference](cli.md).
 
 Three things about the report are worth knowing before you read one.
 
-**Doctor changes nothing.** It never starts, stops, removes or restarts
+**The diagnosis changes nothing.** It never starts, stops, removes or restarts
 anything. You can run it against a container that has just died without
 destroying the evidence of why.
 
@@ -280,15 +227,14 @@ and the dashboard will turn those files red. Nothing is broken and
 nothing was lost: the badge is telling you the truth, which is that the
 file on disk is no longer the one the recorded run produced.
 
-The way forward is to run the step through vaibify (Run Step, or
-`vaibify run`), so the run that produced the file is the run vaibify
+The way forward is to run the step through vaibify (**Run Step**), so the run that produced the file is the run vaibify
 recorded. Vaibify deliberately does not offer a way to mark a file
 "fine as it is": a green badge over a file whose provenance nobody
 knows is exactly the claim this tool exists not to make.
 
 ## 9. Where to next
 
-- **[The three templates: sandbox, toolkit, workflow](templates.md)** —
+- **[The three templates: sandbox, toolkit, workflow](environmentsAndProjects.md)** —
   starting your own project rather than driving someone else's.
 - **[Environments and Projects](environmentsAndProjects.md)** — every
   panel of the dashboard, the status colors, and how steps are verified.

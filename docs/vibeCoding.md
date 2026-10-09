@@ -31,9 +31,7 @@ Vaibify's animating assumption is:
 
 The value proposition follows: after an hour of setup, a researcher can
 generate and verify byte-reproducible results in less time than without
-agents. The claim is falsifiable. If human-only code reliably
-outperforms agent-written, human-verified code, vaibify's architecture
-is wasted effort. The bet is that verifying outputs is the part of
+agents. The bet is that verifying outputs is the part of
 science that most benefits from human attention, and that delegating
 the mechanical code-writing frees the researcher to ask the right
 questions, inspect the results, and decide what to do next. The tagline
@@ -45,7 +43,7 @@ this" a first-class artifact alongside the code and the data.
 **A dashboard instead of an IDE.** Researchers prompt agents to write
 the code, so an integrated development environment is unnecessary. A
 minimal text editor handles small tweaks, such as changing an input
-parameter, and **Open in VS Code** attaches the full IDE to the
+parameter, but **Open in VS Code** attaches the full IDE to the
 container when one is wanted. The researcher's main work is examining
 plots and data files to validate the results.
 
@@ -57,8 +55,8 @@ the files say; it never substitutes its own memory for them.
 **A fully scriptable core.** Although vaibify looks like a GUI
 application, its core operates independently of the GUI. The `vaibify`
 command line builds and starts environments, runs and tests steps, and
-reports a project's PROOF level and its blockers
-(`vaibify status --proof`), so any part of the workflow can be
+reports a project's PROOF level and its blockers (see the
+[CLI Reference](cli.md)), so any part of the workflow can be
 automated. Inside the container, a library of scripts gives agents the
 same deterministic actions the dashboard's buttons perform.
 
@@ -84,6 +82,8 @@ vaibify container cannot act on another on the same host. See
 **"Verified" is not "accurate."** Vaibify monitors the contents of
 files. It can show that results are self-consistent and match their
 published copies; interpreting them remains the researcher's job.
+
+Vibe coding scientific software is different than human-programmed code. The following present a list of features that are different and that motivate `vaibify` design choices.
 
 ## Containable
 
@@ -180,7 +180,7 @@ so it is best reserved for the hardest problems.
 **In vaibify.** In the Agent Council, the researcher picks several
 agents from the available models, designates one as the chairbot that
 drafts the final report, writes the prompt, and sets limits such as the
-maximum number of rounds. Each member works in its own disposable copy
+minimum number of rounds. Each member works in its own disposable copy
 of the container, so it can run scripts and move files without touching
 the real one. Members analyze the repository independently, their
 anonymous reports are critiqued, the chairbot synthesizes them, and the
@@ -193,7 +193,7 @@ container-only, token-intensive, and need disk and memory for the
 copies, so they are not available for every project. A Council can also
 sharpen a vague prompt ("make the results statistically robust") into a
 quantifiable one, though judging whether it converged on a sound
-approach remains the researcher's job.
+approach remains the researcher's job. See [Agent Council](agentCouncil.md).
 
 ## Decomposable
 
@@ -239,7 +239,7 @@ figure it should preserve. It detects cross-step dependencies by
 scanning step scripts for files that other steps produce, and lets the
 researcher declare dependencies no scanner could see. When an upstream
 step changes, every downstream step is flagged. The per-step sign-off
-keeps a human in the loop and makes accountability granular, which
+keeps a human in the loop and quantizes the accountability, which
 distinguishes vaibify from tools built for fully autonomous
 investigation. The requirement rows are listed on the
 [PROOF Ladder](proofLadder.md) page.
@@ -354,11 +354,11 @@ record when; agent co-authored commits and stored chat histories can
 help reconstruct the date.
 
 **In vaibify.** Full replayability belongs to Level 4 of the PROOF
-Ladder, which vaibify does not implement. But a transcript must exist
+Ladder, which vaibify does not implement (yet). But a transcript must exist
 *before* Level 1 for a project ever to reach Level 4, so vaibify
 collects the evidence from the start. The opt-in **Prompt Record**
-copies the in-container agent's session transcripts into the
-repository, redacts secrets at capture time, and hash-chains the
+copies the session transcripts of Claude Code running in the container
+into the repository (other agents' sessions are not captured), redacts secrets at capture time, and hash-chains the
 captures so that editing or removing one breaks the chain. **Supervised
 mode** adds the supervision log: every repository change must be
 attributable to a recorded action, and unexplained changes are flagged
@@ -373,12 +373,12 @@ stored remotely. They deliberately do not address accuracy; their scope
 is the development of software and the verification that results are
 reproducible.
 
-The properties guide a researcher in bringing agents into research, but
+These properties guide a researcher in bringing agents into research, but
 they are not enough alone. Without clear rules and procedures for
 development and reproducibility, a skeptical reader of a manuscript
-describing agent-assisted research would reasonably set it aside if the
+describing agent-assisted research would reasonably dimiss it if the
 authors did not fully explain how the AI was used. The
-[PROOF Ladder](proofLadder.md) is a scale for assessing exactly that.
+[PROOF Ladder](proofLadder.md) described in the next section is a scale for assessing exactly that.
 
 For how vaibify's own agent guide applies the Localizable and
 Enforceable properties, see [For Agents](forAgents.md).

@@ -202,6 +202,31 @@ open past the cap and confirm two things: the run you started keeps
 going, and the refusal the tab meets *names the ending* rather than
 claiming the server restarted.
 
+## Creating custom templates
+
+The templates offered on the **Create New** wizard's **Template** page
+are the subdirectories of `vaibify/templates/` in the installed
+package, each offered under its directory name. To add one:
+
+1. Create `vaibify/templates/<name>/` in a vaibify source checkout.
+2. Add a `container.conf`, as every shipped template does: one
+   repository per line in the form `name|url|branch|install_method`,
+   with `#` starting a comment. A build clones only the repositories
+   named in the environment's `vaibify.yml`, so treat this file as a
+   record of the format rather than as build input; `vaibify init
+   --template` warns when it lists repositories.
+3. Optionally add a `project.json` at the template's top level, with
+   the step directories its commands use. Scaffolding moves the file
+   into `.vaibify/projects/`. Write every cross-step file reference as
+   a `{step:<sStepId>.<stem>}` token; `testTemplateCommandsUseStepTokens`
+   enforces this for shipped templates.
+4. Reinstall the package (`pip install .`). An editable install
+   (`pip install -e .`) picks up the new directory without reinstalling.
+
+Do not put a `vaibify.yml` in a template; vaibify always writes that
+file itself. `__pycache__` directories are skipped when a template is
+copied.
+
 ## Pull Request Workflow
 
 1. Fork the repository and create a feature branch.

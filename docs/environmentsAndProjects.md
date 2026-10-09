@@ -50,7 +50,7 @@ environment, building or starting the container first if needed. From
 inside the dashboard, **Admin > Environments** returns here.
 
 When something fails on this page, the error message ends with *Click
-to run a diagnosis*. The click runs the host checks of `vaibify doctor`
+to run a diagnosis*. The click runs vaibify's checks of this computer
 and shows each finding with its remedy.
 
 ### Adding an environment
@@ -77,7 +77,7 @@ only the directory, the template, and the summary.
 | Page | What it sets |
 |---|---|
 | **Project Directory** | The folder on your computer that holds `vaibify.yml`. |
-| **Template** | The starter files: `sandbox`, `toolkit`, or `workflow` (see [Project Templates](templates.md)). |
+| **Template** | The starter files: `sandbox`, `toolkit`, or `workflow` (see [Templates](#templates)). |
 | **Project Name** | The project name and the Docker container name. |
 | **Python Version** | 3.9 to 3.14; 3.12 by default. |
 | **Repositories** | Git URLs cloned into the workspace at first start (required for `toolkit`). |
@@ -92,6 +92,21 @@ Anything missed can be added later: install it from a terminal inside
 the container (lost on rebuild), or add it to `vaibify.yml` and
 rebuild (permanent). The full list of `vaibify.yml` keys is in
 [Advanced Installation](install.md).
+
+### Templates
+
+A template is the small set of starter files copied into a new
+environment. Three ship with vaibify, one for each way of working:
+
+| Template | Contains | Use it when |
+|---|---|---|
+| `sandbox` | No Project file | You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of [the PROOF Ladder](proofLadder.md); its only property is containment. |
+| `toolkit` | A Project file with no steps, and a `README.md` | You are developing several code repositories that must work together. Each repository listed on the wizard's **Repositories** page is cloned and appears in the **Repos** panel with its branch, uncommitted changes, and push controls. |
+| `workflow` | A runnable two-step Project | You already know the analysis is a sequence of steps. The first step draws random samples; the second plots their histogram, receiving the samples through a `{step:generate-samples.samples}` token, so a new environment makes a figure on its first **Run**. Replace both steps with your own. |
+
+If you are unsure, start with `sandbox`. The choice is not permanent:
+exploratory work can become a Project later (see [Turning exploration
+into a Project](#turning-exploration-into-a-project)).
 
 ### Containerizing a host environment
 
@@ -171,14 +186,17 @@ time, and one browser session holds at most **one environment**.
   and a dashboard opened later shows it.
 - To work on two environments at once, use **⧉ New vaibify window**
   (on the environments page, the Project Hub, and the **Admin** menu).
-- `vaibify sessions` lists live sessions from a terminal and can stop
-  them.
+- Listing and stopping live sessions is done from the command line;
+  see [CLI Reference](cli.md).
 
 **Terminals and quiescence.** A shell can start a process that
 detaches from everything vaibify tracks, so once a terminal has been
 used in an environment, vaibify reports that environment's quiescence
 as **unproven** on release or shutdown rather than claiming it is
-quiet. Settle it with `vaibify reconcile`. On a host environment,
+quiet, and its tile's chip reads **quarantined**. Click the chip to see
+why, then **Reconcile now** to settle it; when the dashboard cannot
+clear it, the dialog gives the command to run on the host (see [CLI
+Reference](cli.md)). On a host environment,
 processes started from a terminal can keep running after the session
 closes.
 
@@ -208,6 +226,28 @@ the steps, track the files they read and write, decide when a result
 is stale, and grade each step and the whole Project on the PROOF
 Ladder.
 
+### Turning exploration into a Project
+
+Work that began in a sandbox becomes a Project with a button. Which
+button depends on where the work lives:
+
+- **In a container**, open the **Files** tab and go into a directory
+  directly under the workspace. A **Make this directory a Project** bar
+  appears; give the Project a name and press **Make Project**. Vaibify
+  makes the directory a git repository if it is not one, adds a first
+  commit if it has none (existing history is never rewritten), and
+  writes the Project file.
+- **On this computer**, every host environment starts as a sandbox and
+  shows a **Convert to Project…** bar on its **Files** tab. Choose
+  **Host Project** to keep running directly on this machine, or
+  **Containerized Project** to copy the directory's files into a new
+  container (see [Containerizing a host
+  environment](#containerizing-a-host-environment)).
+
+To start a Project from scratch in an existing environment, use **New
+Project** (see [Multiple projects in one
+environment](#multiple-projects-in-one-environment)).
+
 ### Steps
 
 The division of a Project into Steps is yours to choose; small steps
@@ -221,9 +261,7 @@ are easier to verify. Each step is one of two kinds:
 
 Labels are counted per kind: **A03** is the third automated step and
 **I01** the first interactive step, whatever their positions in the
-list. Each step also carries a permanent identifier, `sStepId` (for
-example `fit-the-model`), assigned once from its name and never
-changed, so renaming or reordering steps never breaks a reference.
+list. Reordering steps never breaks a reference to another step.
 
 A step's directory is named after the step. Remove the spaces and
 capitalize the first letter of each word, keeping the rest as typed:
@@ -264,51 +302,21 @@ earlier one. A step is fully verified only when everything it depends
 on is verified, and only when its inputs were written before it last
 ran. Vaibify learns dependencies two ways.
 
-**Declared in the command.** Every file one step passes to another
-must appear in the consuming step's command as a token:
-
-```
-{step:<sStepId>.<stem>}
-```
-
-`<stem>` is the producing step's output file name without its
-extension. For example, if step `fit-the-model` lists
-`posterior.npy` among its output data, a later step reads it with:
-
-```
-python plotCorner.py --samples {step:fit-the-model.posterior} {sPlotDirectory}/corner.{sFigureType}
-```
-
-Vaibify replaces the token with the file's full path when the command
-runs.
-Pass such paths to scripts as command-line arguments; a path written
-inside a script is invisible to vaibify, so the dependency would not
-exist and a stale result could pass as current.
-`{sPlotDirectory}`, `{sFigureType}`, `{iNumberOfCores}`, and
-`{sRepoRoot}` (the repository root) are substituted the same way.
-
-**Declared by hand.** When a dependency cannot be threaded through a
-command (a script that reads many sibling outputs, for example), list
-tokens in the step's `saDependencies` field. Prefer the command form
-whenever it is possible, because it shows the dependency to anyone
-reading the command.
-
 **Detected automatically.** When you save a step's data analysis
 commands, or press **Update Dependencies** in the step's expanded
 Dependencies row, vaibify scans the scripts those commands run for
 file reads (in Python, R, C, Fortran, Rust, JavaScript, Perl, shell,
 Julia, MATLAB, and Go, and in JSON and YAML files). The **Dependency
 Detection** dialog lists what it found as detected, possible, and
-manual dependencies, and the ones you confirm are written to
-`saDependencies`. Scanning finds explicit reads; a subtle dependency it
-cannot see is yours to declare. Vaibify also links two steps when an
-earlier step writes into a later step's directory.
+manual dependencies, and you confirm them. 
+
+**Declared by the researcher.** Soem dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies.
 
 **Run > Verify Dependencies** checks that every token points to a real
-output of an earlier step, and **View > Dependency Graph** draws the
-graph.
+output of an earlier step, and **View > Dependency Graph** draws a
+graph that illustrates how all the steps depend on each other.
 
-### Polling and staleness
+### Polling
 
 The dashboard re-reads the state of the Project every **5 seconds**:
 which declared files exist, their modification times and hashes, and
@@ -340,7 +348,7 @@ The toolbar's **Run** menu runs and checks the Project:
 | Item | Action |
 |---|---|
 | **Run Selected Steps** | Run the steps whose run checkbox is ticked. |
-| **Run All Steps** | The same set, after a confirmation that estimates the run time. |
+| **Run All Steps** | Run every step in a Project. |
 | **Clean Outputs** | Delete every automated step's output data and figures and reset their verification, without running anything. |
 | **Force Run All (Clean)** | Clean, then run everything. |
 | **Stop This Project's Run** | Stop this Project's running processes; other Projects in the container keep running. |
@@ -376,12 +384,182 @@ successful runtime), or set the Project default under **Runtime limit
 (s)** in the settings. A step limit of zero means "use the Project
 default", and a Project default of zero means no limit.
 
-**Long runs.** Closing the browser does not stop a run: the run
+**Long runs.** Closing the browser does *not* stop a run: the run
 belongs to vaibify's server process, not to the browser tab, and a
 dashboard opened later shows it in progress. The live output is a
 stream, so have long steps write anything that matters to a file.
 
+## Project size limits
+
+The first time a Project reaches 100 steps, vaibify shows a one-time
+**Project milestone** notice: polling and verification take noticeably
+longer at that size. A Project cannot exceed 500 steps; adding a 501st
+is refused with **Step limit reached**. Split larger analyses into
+sibling Projects in the same repository.
+## The dashboard
+
+### Layout
+
+- **Toolbar** — the logo; the environment (**Container:**, or
+  **Directory:** for a host environment); the **Project:** name, which
+  opens the Project switcher; up to three vaibify checks that light up as
+  Levels 1–3 are attained; the **Agent Council** button; the **Run**,
+  **Sync**, **View**, and **Admin** menus; and, at the far right, a
+  gear for this computer's session settings and the **?** Help button.
+- **Left panel** — tabs **Main**, **PROOF**, **Files**, **Repos**, and
+  **Logs**. A Blank Project shows only **Files**, **Repos**, and
+  **Logs**.
+- **Viewing windows** — two side-by-side viewers for figures and text.
+- **Terminal strip** — terminal tabs and panes along the bottom.
+
+The **View** menu holds **Dependency Graph**, **Open in VS Code**,
+**Resource Monitor**, **Zenodo Status**, and **Default Layout**. The
+**Admin** menu holds **Environments**, **Projects**, **New vaibify
+window**, **Environment Info**, and **Quit**. The **Sync** menu and
+the **PROOF** tab are described in
+[Connecting to External Resources](externalResources.md) and
+[The PROOF Ladder](proofLadder.md).
+
+### The Main tab
+
+The Main tab has two collapsible blocks. **Steps** holds the per-step
+work, which is where Level 1 is earned. **Project** holds the
+requirements that apply to the whole Project, where Levels 2 and 3 are
+earned. Both banners carry the same status cells as the rows beneath,
+so a collapsed block still reports its state. Above them sit **⚙**
+(Project settings), **↻** (refresh remote status), and **+** (new
+step).
+
+Each step row shows, left to right: the run checkbox, the run light,
+the label and name, a warning column (⚠), and the **L1 | L2 | L3**
+cells. Clicking a cell opens the step at that level. Expanded, a step
+opens onto the first level it has not yet attained; Level 1 ends with
+**Run Step** and a **Last run** line giving the outcome, finish time,
+and wall-clock and CPU time.
+
+### Viewing windows
+
+Click any file in a step, the Files tab, or the Logs tab to open it in
+a viewer. PDF, PNG, JPG, and SVG files display as images, and other
+text files as text; binary data files cannot be viewed. The two
+viewers make side-by-side comparison easy. The **✎ Edit** button opens
+a small text editor for quick changes such as an input parameter; it
+is not meant to replace an editor or a coding agent. Live run output
+streams into a viewer, and the **Logs** tab lists past run logs.
+
+### Terminal
+
+The terminal strip opens shells inside the container (or, for a host
+environment, on your computer), with tabs and panes. Start a coding
+agent from a shell; the **Using AI** section of the Help panel lists
+the commands. A program that takes over the mouse, such as an agent or
+an editor, also takes your drag gestures. To get text out:
+
+- **Select text** in the pane's tab bar gives the mouse back to the
+  pane, so dragging selects; turn it off to give the mouse back to the
+  program.
+- **Shift + wheel** always scrolls the pane.
+- **Copy all** copies the pane's whole scrollback.
+
+Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
+Ctrl+Insert also work.
+
+### Moving files in and out
+
+- **In.** Drag files or folders from your computer onto the Files tab's
+  drop zone (**Upload from this computer**) or onto a folder row.
+  Folders keep their structure; `.git` and `.vaibify` folders inside
+  them are skipped. A file of the same name is replaced only after you
+  confirm. There is no fixed size limit: vaibify checks the disk has
+  room before sending anything.
+- **Out.** Right-click a file and choose **Download to this computer**,
+  or a folder and choose **Download as .tar**. Files land in your
+  browser's download folder.
+- **From a terminal.** Files can also be copied in and out from the
+  command line; see [CLI Reference](cli.md).
+
+### Opening the container in VS Code
+
+**View > Open in VS Code** opens the running container in a new VS
+Code window, leaving any window you already have alone. It needs VS
+Code's Dev Containers extension, and it is hidden when the dashboard is
+driving a remote machine. The first time, your browser and VS Code
+each ask you to confirm opening the link.
+
+### The Repos panel
+
+The **Repos** tab lists the git repositories in the environment with
+their branch, uncommitted changes, and push controls. Changes to build
+products (compiled files, caches, package metadata) are ignored, so a
+freshly installed repository reads as clean. **Push** commits and
+pushes the tracked changes; the gear's **Push files...** lets you pick
+individual files. When a new repository appears in the workspace,
+vaibify asks whether to **Track** or **Ignore** it.
+
+### Environment Info
+
+**Admin > Environment Info** reports facts about the image this
+session is connected to: its digest and image ID, architecture, recipe
+fingerprint (a hash of the build inputs), the archive epoch of its
+compiler toolchain, and versions probed inside the container. Any value
+vaibify cannot read shows as *unknown* rather than a guess.
+
+### The Help panel
+
+**?** at the right of the toolbar opens the Help panel: a link to this
+documentation, **Using AI** (how to start a coding agent in the
+container and why skipping its per-command prompts is safe there), the
+**Legend** of every symbol (Steps, Project, Level status lights, Files
+and remotes), and terminal tips. The legend is generated from the same
+catalog the dashboard draws from.
+
+## Status lights and colors
+
+### Run lights
+
+| Light | Meaning |
+|---|---|
+| Hollow gray | Not run in this session. |
+| Filled gray | Queued (or skipped). |
+| Blinking orange | Running now. |
+| Blinking red | Running past its runtime limit; may be hung. |
+| Solid red | The last run failed. |
+| Purple | Stopped by you. |
+| Pale-blue dot | The last run succeeded. |
+
+### Level cells
+
+| Cell | Meaning |
+|---|---|
+| Hollow gray circle | Not started: no outputs on disk and no activity at this level. |
+| Gray filled circle | Unassessed: outputs exist, but no tests, checks, or sign-off yet. |
+| Red circle | No requirements met. |
+| Orange circle | Partially met. |
+| Vaibify badge | Attained: every requirement at this level is met. |
+| Question mark | Unknown: remotes have not been checked recently; refresh to find out. |
+| Dash | Not applicable: no requirements at this level. |
+
+The gray states never claim verification, and a remote that has never
+been checked is never shown as passing.
+
+### Warnings and file names
+
+The ⚠ glyph collects every warning a step carries; hover it for the
+reasons and remedies. **Red** means something is broken now (a test
+failed, a declared file is missing). **Orange** means pending work or
+staleness (something changed since it was verified). The pencil ✎ on a
+file means it changed since its last verified run.
+
+A file name in red is itself a diagnosis: upright red means the
+declared file is missing, red with a dotted underline means it changed
+since its last test run, and red italic means it exists but you have
+never verified it. File rows also carry one badge per remote (GitHub,
+Overleaf, Zenodo, arXiv); see
+[Connecting to External Resources](externalResources.md).
+
 ## The project file
+
+The following text provides the technical details of how projects and steps are stored internally and are presented here for completeness. Most users will never need to look at these files.
 
 A Project file is a JSON file in `.vaibify/projects/` inside the
 project's git repository, named after the Project (for example
@@ -465,175 +643,5 @@ The **+** above the step list and the step's **Edit Step** dialog
 write these fields for you; editing the file by hand works too, and
 the dashboard picks up the change on its next poll.
 
-## Project size limits
 
-The first time a Project reaches 100 steps, vaibify shows a one-time
-**Project milestone** notice: polling and verification take noticeably
-longer at that size. A Project cannot exceed 500 steps; adding a 501st
-is refused with **Step limit reached**. Split larger analyses into
-sibling Projects in the same repository.
 
-## The dashboard
-
-### Layout
-
-- **Toolbar** — the logo; the environment (**Container:**, or
-  **Directory:** for a host environment); the **Project:** name, which
-  opens the Project switcher; three PROOF badges that light up as
-  Levels 1–3 are attained; the **Agent Council** button; the **Run**,
-  **Sync**, **View**, and **Admin** menus; and, at the far right, a
-  gear for this computer's session settings and the **?** Help button.
-- **Left panel** — tabs **Main**, **PROOF**, **Files**, **Repos**, and
-  **Logs**. A Blank Project shows only **Files**, **Repos**, and
-  **Logs**.
-- **Viewing windows** — two side-by-side viewers for figures and text.
-- **Terminal strip** — terminal tabs and panes along the bottom.
-
-The dashboard's color follows the Project's current PROOF level: pale
-blue below Level 1, purple at Level 1, green at Level 2, and pink at
-Level 3.
-
-The **View** menu holds **Dependency Graph**, **Open in VS Code**,
-**Resource Monitor**, **Zenodo Status**, and **Default Layout**. The
-**Admin** menu holds **Environments**, **Projects**, **New vaibify
-window**, **Environment Info**, and **Quit**. The **Sync** menu and
-the **PROOF** tab are described in
-[Connecting to External Resources](externalResources.md) and
-[The PROOF Ladder](proofLadder.md).
-
-### The Main tab
-
-The Main tab has two collapsible blocks. **Steps** holds the per-step
-work, which is where Level 1 is earned. **Project** holds the
-requirements that apply to the whole Project, where Levels 2 and 3 are
-earned. Both banners carry the same status cells as the rows beneath,
-so a collapsed block still reports its state. Above them sit **⚙**
-(Project settings), **↻** (refresh remote status), and **+** (new
-step).
-
-Each step row shows, left to right: the run checkbox, the run light,
-the label and name, a warning column (⚠), and the **L1 | L2 | L3**
-cells. Clicking a cell opens the step at that level. Expanded, a step
-opens onto the first level it has not yet attained; Level 1 ends with
-**Run Step** and a **Last run** line giving the outcome, finish time,
-and wall-clock and CPU time.
-
-### Viewing windows
-
-Click any file in a step, the Files tab, or the Logs tab to open it in
-a viewer. PDF, PNG, JPG, and SVG files display as images, and other
-text files as text; binary data files cannot be viewed. The two
-viewers make side-by-side comparison easy. The **✎ Edit** button opens
-a small text editor for quick changes such as an input parameter; it
-is not meant to replace an editor or a coding agent. Live run output
-streams into a viewer, and the **Logs** tab lists past run logs.
-
-### Terminal
-
-The terminal strip opens shells inside the container (or, for a host
-environment, on your computer), with tabs and panes. Start a coding
-agent from a shell; the **Using AI** section of the Help panel lists
-the commands. A program that takes over the mouse, such as an agent or
-an editor, also takes your drag gestures. To get text out:
-
-- **Select text** in the pane's tab bar gives the mouse back to the
-  pane, so dragging selects; turn it off to give the mouse back to the
-  program.
-- **Shift + wheel** always scrolls the pane.
-- **Copy all** copies the pane's whole scrollback.
-
-Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
-Ctrl+Insert also work.
-
-### Moving files in and out
-
-- **In.** Drag files or folders from your computer onto the Files tab's
-  drop zone (**Upload from this computer**) or onto a folder row.
-  Folders keep their structure; `.git` and `.vaibify` folders inside
-  them are skipped. A file of the same name is replaced only after you
-  confirm. There is no fixed size limit: vaibify checks the disk has
-  room before sending anything.
-- **Out.** Right-click a file and choose **Download to this computer**,
-  or a folder and choose **Download as .tar**. Files land in your
-  browser's download folder.
-- **From a terminal.** `vaibify push` and `vaibify pull` copy files in
-  and out.
-
-### Opening the container in VS Code
-
-**View > Open in VS Code** opens the running container in a new VS
-Code window, leaving any window you already have alone. It needs VS
-Code's Dev Containers extension, and it is hidden when the dashboard is
-driving a remote machine. The first time, your browser and VS Code
-each ask you to confirm opening the link.
-
-### The Repos panel
-
-The **Repos** tab lists the git repositories in the environment with
-their branch, uncommitted changes, and push controls. Changes to build
-products (compiled files, caches, package metadata) are ignored, so a
-freshly installed repository reads as clean. **Push** commits and
-pushes the tracked changes; the gear's **Push files...** lets you pick
-individual files. When a new repository appears in the workspace,
-vaibify asks whether to **Track** or **Ignore** it.
-
-### Environment Info
-
-**Admin > Environment Info** reports facts about the image this
-session is connected to: its digest and image ID, architecture, recipe
-fingerprint (a hash of the build inputs), the archive epoch of its
-compiler toolchain, and versions probed inside the container. Any value
-vaibify cannot read shows as *unknown* rather than a guess.
-
-### The Help panel
-
-**?** at the right of the toolbar opens the Help panel: a link to this
-documentation, **Using AI** (how to start a coding agent in the
-container and why skipping its per-command prompts is safe there), the
-**Legend** of every symbol (Steps, Project, Level status lights, Files
-and remotes), and terminal tips. The legend is generated from the same
-catalog the dashboard draws from.
-
-## Status lights and colors
-
-### Run lights
-
-| Light | Meaning |
-|---|---|
-| Hollow gray | Not run in this session. |
-| Filled gray | Queued (or skipped). |
-| Blinking orange | Running now. |
-| Blinking red | Running past its runtime limit; may be hung. |
-| Solid red | The last run failed. |
-| Purple | Stopped by you. |
-| Pale-blue dot | The last run succeeded. |
-
-### Level cells
-
-| Cell | Meaning |
-|---|---|
-| Hollow gray circle | Not started: no outputs on disk and no activity at this level. |
-| Gray filled circle | Unassessed: outputs exist, but no tests, checks, or sign-off yet. |
-| Red circle | No requirements met. |
-| Orange circle | Partially met. |
-| Vaibify badge | Attained: every requirement at this level is met. |
-| Question mark | Unknown: remotes have not been checked recently; refresh to find out. |
-| Dash | Not applicable: no requirements at this level. |
-
-The gray states never claim verification, and a remote that has never
-been checked is never shown as passing.
-
-### Warnings and file names
-
-The ⚠ glyph collects every warning a step carries; hover it for the
-reasons and remedies. **Red** means something is broken now (a test
-failed, a declared file is missing). **Orange** means pending work or
-staleness (something changed since it was verified). The pencil ✎ on a
-file means it changed since its last verified run.
-
-A file name in red is itself a diagnosis: upright red means the
-declared file is missing, red with a dotted underline means it changed
-since its last test run, and red italic means it exists but you have
-never verified it. File rows also carry one badge per remote (GitHub,
-Overleaf, Zenodo, arXiv); see
-[Connecting to External Resources](externalResources.md).

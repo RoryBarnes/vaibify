@@ -192,7 +192,7 @@ sit below Level 1, and create a Project when the work looks promising,
 or start in a Project from the beginning. Project mode is for numerical
 experiments expected to become part of a document: clearly defined
 steps that produce data products requiring careful monitoring. As a
-project matures, vaibify shows what the next level requires, and the
+project matures, vaibify shows what the next PROOF level requires, and the
 dashboard's theme follows the level the project has reached.
 
 Every requirement has a **scope**. A *Project* requirement applies to
@@ -215,13 +215,10 @@ given.
 | Project repository (Project block: **Git enabled**) | Project | The project and every file it touches live in a git repository. |
 | Every step self-consistent | Project | Every step meets the step requirements below. |
 | Input data declared | Step | The step lists its raw input files, or declares it needs none. The Project block shows the same row for all steps, with a one-click declaration for steps that have no inputs. |
-| Unit tests pass; Integrity tests pass; Qualitative tests pass; Quantitative tests pass | Step | One row per test category the step has. |
+| Integrity, Qualitative, and Quantitative unit tests pass | Step | One row per test category the step has. |
 | Your sign-off recorded | Step | The researcher inspected the outputs and approved the step. |
 | Nothing changed since verification | Step | No script, output, or upstream step changed after the step's tests or sign-off. |
 | Project context file (optional) | Project | `.vaibify/AGENTS.md` records the in-container agent's standing instructions. Never blocks a level. |
-
-An AI declaration step has no Level 1 requirements; its sign-off
-belongs to Level 2.
 
 ### Level 2 requirements
 
@@ -323,9 +320,8 @@ button, enabled once the readiness checks pass (the rebuild runs in the
 container and can take hours), the current **Level 3 Attestation**, and
 the **Reproduction History** of every attempt.
 
-The same level and blockers are available without a browser:
-`vaibify status --proof` prints them, and `vaibify status --json` emits
-the environment and PROOF status as one JSON object.
+The same level and blockers are available without a browser, from the
+command line; see [CLI Reference](cli.md).
 
 ## Level cells and status lights
 
@@ -366,8 +362,12 @@ scope. Its states, each requiring the ones before it:
 | recorded | The Prompt Record enabled and its first capture approved by the researcher. A project at this state or above is "Replayable." |
 | supervised | Supervised mode enabled on top of the Prompt Record. |
 
-The Prompt Record copies the in-container agent's session transcripts
-into `.vaibify/promptRecord/`, redacting secrets at capture and
+The dashboard does not display these names; a project's state is read
+from the rows of the Project block's AI section.
+
+The Prompt Record copies the session transcripts of Claude Code running
+in the container (other agents' sessions are not captured) into
+`.vaibify/promptRecord/`, redacting secrets at capture and
 hash-chaining the captures so that editing or removing one breaks the
 chain. It requires `pip install vaibify[replay]` on the host, and the
 agent can never approve its own transcript. Supervised mode flags every

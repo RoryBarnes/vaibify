@@ -89,10 +89,9 @@ in your science. An agent asked for tests is steered to the
 deterministic generator (`generate-tests-deterministic`), which pins
 what is actually in the data and never overwrites an edited file.
 
-Two other paths exist. The command `vaibify generate-standards`
-refreshes a quantitative standards file from live data outside the
-dashboard (for one step directory, or by step label from a workflow
-file). And the generation route can still ask a language model (the
+Two other paths exist. A quantitative standards file can be refreshed
+from live data outside the dashboard, from the command line; see
+[CLI Reference](cli.md). And the generation route can still ask a language model (the
 in-container Claude Code, or a provider API key you have stored) to
 write tests, but only when a caller explicitly turns the deterministic
 mode off; the dashboard's **Generate** button does not. That route is

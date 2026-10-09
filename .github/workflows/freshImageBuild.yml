@@ -42,6 +42,7 @@ on:
       # symlinks onto these Sphinx sources, so an edit produces a diff
       # here and never touches the symlink blob. Trigger on the path
       # the change actually lands on.
+      - 'docs/agentCouncil.md'
       - 'docs/environmentsAndProjects.md'
       - 'docs/forAgents.md'
       - 'docs/proofLadder.md'

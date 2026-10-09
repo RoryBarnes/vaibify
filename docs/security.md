@@ -74,8 +74,9 @@ host, because it orchestrates containers. It binds `127.0.0.1`. On
 Linux, when it serves in-container agents, it also binds the Docker
 bridge gateway address the daemon reports, because a container's
 packets arrive on the bridge interface, not on loopback; on macOS the
-daemon's virtual machine forwards them to loopback. `vaibify remote`
-reaches a hub on another machine through an SSH tunnel between the two
+daemon's virtual machine forwards them to loopback. A remote session
+(see [Connecting to External Resources](externalResources.md)) reaches
+a hub on another machine through an SSH tunnel between the two
 loopback addresses.
 
 A browser request must carry a per-browser credential obtained through
@@ -146,8 +147,8 @@ in shell history, in Git configuration or in a committed file.
 **Credentials inside the container are persistent and shared.** Two
 stores survive container recreation. The container keyring (a
 plaintext keyring backend) lives on a separate per-project credentials
-volume, which `vaibify destroy` does not remove; remove it explicitly
-with `docker volume rm` when decommissioning a project. Each coding
+volume, which survives a Rebuild; **Delete environment…** on the
+environment's tile menu removes it. Each coding
 agent's login and settings live on the workspace volume. All agents run
 as the same container user, so file permissions isolate nothing between
 them: treat "one agent was compromised" as "every configured provider's
@@ -183,8 +184,9 @@ What vaibify changes on the host when forwarding is on:
 
 The display setting is fixed when a container is created. After you
 turn `x11Forwarding` on, or install or reconfigure the X server, stop
-and start the container so it is created again; `vaibify doctor`
-reports a running container that was created without it.
+and start the container so it is created again. A command-line check
+reports a running container that was created without it; see [CLI
+Reference](cli.md).
 
 ## Host mode
 
@@ -214,9 +216,8 @@ did not obtain it) never asks anything. An image the project obtained
 whose provenance vaibify cannot establish, carries an entrypoint and a
 `USER` its author chose, so a persistent container is not created from
 it until you have chosen how it may run. The question is asked in the
-dashboard before the start, and by `vaibify start` on the command line
-(`--image-trust {restricted,as-built,inspect}`, plus `--with-credentials`
-when no terminal can ask). Both read one text, in
+dashboard before the start (the command line asks it too; see [CLI
+Reference](cli.md)). Both read one text, in
 `vaibify/config/imageTrust.py`. Nothing is preselected.
 
 The answer is recorded in the host registry against the image's content
@@ -279,7 +280,8 @@ a restricted run against the author's can diverge.
 
 ## The isolation audit
 
-`vaibify verify` runs `checkIsolation.sh` inside the container. It
+The isolation audit, run from the command line (see [CLI
+Reference](cli.md)), runs `checkIsolation.sh` inside the container. It
 performs exactly four checks:
 
 - **Mounts.** Anything that is not a Docker named volume, an overlay or

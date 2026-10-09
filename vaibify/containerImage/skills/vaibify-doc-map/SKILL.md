@@ -17,9 +17,9 @@ All paths are under `/usr/share/vaibify/docs/`.
 | You need to know… | Doc | Section |
 |---|---|---|
 | What a dashboard panel/badge/row means | environmentsAndProjects.md | `## Status lights and colors`, `### The Main tab` |
-| Environments, steps, dependencies, staleness | environmentsAndProjects.md | `## Environments`, `### The parts of a step`, `### Dependencies`, `### Polling and staleness` |
+| Environments, steps, dependencies, staleness | environmentsAndProjects.md | `## Environments`, `### The parts of a step`, `### Dependencies`, `### Polling` |
 | The agent-action catalog and shipped skills | forAgents.md | `## Agent actions`, `## Shipped agent skills` |
-| The Agent Council | forAgents.md | `## The Agent Council` |
+| The Agent Council: kinds, options, charter, limits | agentCouncil.md | `## The two kinds of council`, `## Input options`, `## The charter — the by-laws every participant is bound by`, `## Honest limits` |
 | What each PROOF level proves / requires | proofLadder.md | `## Ascending the ladder in vaibify` (Level 1/2/3 requirements), `## The PROOF tab` |
 | The full ladder incl. L4-L6 (out of scope) | proofLadder.md | `## The levels of the PROOF Ladder`, `## Where vaibify sits` |
 | AI-provenance states (declared/recorded/supervised) | proofLadder.md | `## The Replay axis` |

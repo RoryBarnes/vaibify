@@ -29,11 +29,22 @@ New users should start with the QuickStart.
    install
    vibeCoding
    proofLadder
+   aiUse
    environmentsAndProjects
    externalResources
    reproducibility
-   templates
+   agentCouncil
+   systemPrompt
    security
    testing
+   cli 
    forAgents
    GitHub <https://github.com/RoryBarnes/Vaibify>
+
+Citing vaibify
+--------------
+
+If you use vaibify in your research, please cite the paper that
+describes it:
+
+   TBD: the citation will appear here once the paper is published.

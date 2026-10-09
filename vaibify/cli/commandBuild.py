@@ -616,6 +616,7 @@ T_STAGED_DOCS = (
     ("vaibify/docs/reproducibility.md", "reproducibility.md"),
     ("vaibify/docs/testing.md", "testing.md"),
     ("vaibify/docs/forAgents.md", "forAgents.md"),
+    ("vaibify/docs/agentCouncil.md", "agentCouncil.md"),
     ("vaibify/docs/scriptAuthoring.md", "scriptAuthoring.md"),
 )
 

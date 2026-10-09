@@ -365,7 +365,7 @@ def testASummaryMayReportNeedsHumanWithoutEnumeratingQuestions():
 def _fsReadCharterBlockFromTheDocumentation():
     pathDocument = (
         pathlib.Path(__file__).resolve().parent.parent
-        / "docs" / "forAgents.md"
+        / "docs" / "agentCouncil.md"
     )
     sDocument = pathDocument.read_text(encoding="utf-8")
     iStart = sDocument.index("```text\nCOUNCIL CHARTER") + len("```text\n")
@@ -374,7 +374,7 @@ def _fsReadCharterBlockFromTheDocumentation():
 
 @pytest.mark.falsification
 def testTheDocumentedCharterIsTheCharterTheCodeSends():
-    """docs/forAgents.md claims to reproduce the charter verbatim.
+    """docs/agentCouncil.md claims to reproduce the charter verbatim.
 
     The code's clauses were extended twice without the page or the
     version moving, so two texts shared one version. Compared against
@@ -386,7 +386,7 @@ def testTheDocumentedCharterIsTheCharterTheCodeSends():
     """
     sDocumented = _fsReadCharterBlockFromTheDocumentation()
     assert S_CHARTER_TEXT.startswith(sDocumented + "\n"), (
-        "docs/forAgents.md no longer matches the charter clauses; "
+        "docs/agentCouncil.md no longer matches the charter clauses; "
         "regenerate the block from S_CHARTER_TEXT and bump "
         "S_CHARTER_VERSION"
     )
@@ -395,5 +395,5 @@ def testTheDocumentedCharterIsTheCharterTheCodeSends():
 def testTheDocumentationNamesTheCurrentCharterVersion():
     assert f"charter\nversion {S_CHARTER_VERSION} " in (
         pathlib.Path(__file__).resolve().parent.parent
-        / "docs" / "forAgents.md"
+        / "docs" / "agentCouncil.md"
     ).read_text(encoding="utf-8")

@@ -36,7 +36,7 @@ assumes an AI agent works inside the container. The rules are:
   line.** Environment variables and command lines are visible to
   process inspection and `docker inspect`; files in a repository get
   published.
-- **Tokens live in established credential stores.** On the host that
+- **Tokens live in established credential stores.** On the host, that
   is your operating system's keyring, or your existing `gh auth`
   login for GitHub. Inside a container it is a keyring kept on a
   dedicated Docker volume, so a token survives a Rebuild without being
@@ -62,7 +62,7 @@ project:
 
 ### What the in-container agent may do
 
-The agent drives the dashboard through `vaibify-do`, and every action
+The agent drives the dashboard through `vaibify-do`, a curated and tightly controlled list of actions the agent may perform. Every action
 is marked as agent-safe or researcher-only. Actions that make
 something public under your name are researcher-only.
 
@@ -129,7 +129,7 @@ than trusted, because both can be edited from inside the container. A
 project that has not pushed from this hub is asked to push once.
 
 If commits are pushed outside the dashboard (for example by an agent
-running `git push`), run the `reconcile-remote-state` action so the
+running `git push`), run **Verify now** so the
 badges catch up.
 
 ## Zenodo
@@ -202,7 +202,7 @@ The `pull-manuscript` action copies the Overleaf project's `.tex`,
 `.vaibify/manuscript/` directory. The copy is ignored by git, so it can
 never dirty the repository; it exists so the in-container agent can
 read the paper and check it against the project's results rather than
-answer from memory. The agent runs it with `vaibify-do pull-manuscript`.
+answer from memory. 
 
 ## arXiv
 
@@ -261,7 +261,7 @@ differ.
   service.
 - The ↻ **Refresh remote status** button above the step list re-reads
   the git remotes.
-- From inside the container, `vaibify-do verify-remote github` (or
+- From a command line inside the container, `vaibify-do verify-remote github` (or
   `zenodo`, `overleaf`, `arxiv`).
 
 ### What the results look like
@@ -276,7 +276,7 @@ The **Verify Reproducibility** dialog shows one row per service:
 
 | Field | Meaning |
 |---|---|
-| Status pill | Green: the last verification matched every file and is less than 24 hours old. Red: at least one file differs. Yellow: never verified, or stale. |
+| Status pill | Blue: the last verification matched every file and is less than 24 hours old. Red: at least one file differs. Yellow: never verified, or stale. |
 | Summary | `<matching>/<total> files match SHA-256`, with the first drifted files named. |
 | Last verified | How long ago the last verification ran. |
 | **Re-verify** | Runs a verification of that service now. |
@@ -297,27 +297,16 @@ the Sync menu remains the way to retry.
 
 ## Revoking credentials
 
-`vaibify revoke` removes a stored token from the host keyring and, where
-the service allows it, revokes it upstream:
+Removing a stored token from the host keyring, and revoking it
+upstream where the service allows it, is done from the command line;
+see [CLI Reference](cli.md). Overleaf and Zenodo offer no revocation
+interface to tools, so revoke the token on the service's own account
+page too, because a cleared local copy does not invalidate a token
+that may have been copied elsewhere.
 
-```bash
-vaibify revoke github --keyring-slot <slot>   # also runs gh auth logout
-vaibify revoke overleaf
-vaibify revoke zenodo --instance production   # default: sandbox
-```
-
-It prints whether the upstream token was revoked and whether the local
-entry was cleared, and exits non-zero if the local entry was not
-cleared. Overleaf and Zenodo offer no revocation interface to tools, so
-the command clears the local copy and names the account page where you
-revoke the token yourself; do that too, because a cleared local copy
-does not invalidate a token that may have been copied elsewhere.
-`vaibify revoke --help` describes the options.
-
-`vaibify revoke` works on the host keyring only. A Zenodo token
-entered for a container project lives in that container's keyring, so
-revoke it on Zenodo's account page; the copy left in the container then
-no longer works.
+A Zenodo token entered for a container project lives in that
+container's keyring, so revoke it on Zenodo's account page; the copy
+left in the container then no longer works.
 
 ## Working on a remote machine
 
@@ -326,15 +315,11 @@ Vaibify can drive a hub running on another computer you reach with
 dashboard runs in the browser in front of you; everything else
 happens over there.
 
-```bash
-vaibify remote compute-machine
-```
-
-That opens one SSH connection, forwards a loopback port, starts or
-adopts a vaibify hub on the remote machine, and opens a signed-in
-browser tab. The remote hub listens only on its own loopback
-interface, so nothing puts vaibify on a network. `--port` chooses the
-port; both ends use the same number.
+A remote session is started from the command line (see [CLI
+Reference](cli.md)). It opens one SSH connection, forwards a loopback
+port, starts or adopts a vaibify hub on the remote machine, and opens a
+signed-in browser tab. The remote hub listens only on its own loopback
+interface, so nothing puts vaibify on a network.
 
 ### Three places
 
@@ -354,20 +339,15 @@ machine, the dashboard shows a **REMOTE** badge naming it.
 
 - **The same vaibify version on both machines.** The helper refuses to
   drive a hub of another version and names both versions.
-- **Vaibify on the remote user's non-interactive PATH.** `ssh
-  compute-machine vaibify --version` must print a version. A
+- **Vaibify on the remote user's non-interactive PATH.** A
   non-interactive SSH command does not read your usual shell profile,
   so an install that is activated there (a `pip install --user`, a
-  virtual environment, a conda environment) is invisible to it. Install
-  vaibify somewhere already on the default PATH, link its entry point
-  into `/usr/local/bin`, or extend the PATH above the non-interactive
-  early exit in the remote shell configuration.
+  virtual environment, a conda environment) is invisible to it. The
+  [CLI Reference](cli.md) explains how to check and fix this.
 - **SSH settings belong in `~/.ssh/config`.** Proxy jumps, identity
-  files, ports and usernames go there; `vaibify remote` accepts only a
-  plain `[user@]host`.
-- **There is no project option.** You choose the project in the
-  dashboard once the tunnel is up, which keeps project names out of a
-  remote shell command.
+  files, ports and usernames go there.
+- **You choose the project in the dashboard** once the tunnel is up,
+  which keeps project names out of a remote shell command.
 
 ### When the connection drops
 
@@ -381,9 +361,10 @@ tunnel, and the hub keeps your session valid at least that long.
 - **Back within the window**, the dashboard reconnects. Output streamed
   while you were away is not replayed, but run state is reconciled by
   ordinary polling.
-- **Back after the window**, run `vaibify remote` again. If exactly one
-  session lost its browser, it is handed back to you ("Picking up where
-  you left off"). If several are waiting, you sign in fresh and choose.
+- **Back after the window**, start the remote session again from the
+  command line. If exactly one session lost its browser, it is handed
+  back to you ("Picking up where you left off"). If several are
+  waiting, you sign in fresh and choose.
 
 A run is never interrupted by any of this. Losing a browser ends that
 browser's authority over the project, never the project's work.
@@ -424,18 +405,12 @@ recorded. Each remote shell's banner names the machine it runs on.
 
 ### Batch schedulers are not supported
 
-Slurm, PBS and LSF are out of scope. Putting `sbatch` in a step's
+Slurm, PBS and LSF are not (yet) supported. Putting `sbatch` in a step's
 command is not a workaround: the submission exits successfully while
 the job is still queued, so vaibify would report unfinished work as
 finished. A remote machine is one you run things on directly.
 
 ### Troubleshooting
 
-| Message | Meaning |
-|---|---|
-| "the remote produced no vaibify startup record" | Usually the PATH problem above; check `ssh <host> vaibify --version`. If SSH could not authenticate, its error is included. |
-| "a vaibify hub is already running on port N, but it is version X" | The two installations differ. Upgrade one, or pass `--port`. |
-| "...it is not a vaibify hub" | Another program holds that port on the remote machine. Pass `--port` with another number. |
-| "port N is already in use on this machine" | The local end of the forward is taken. Omit `--port` and let vaibify choose. |
-| The tab says the session expired | You were away longer than the hold window. Run `vaibify remote` again. |
-| A terminal left the project needing reconciliation | A shell whose descendants could not be proven ended leaves quiescence unproven. Run `vaibify reconcile` on the execution host, which needs a way in that does not depend on the tunnel. |
+The messages a remote session prints when it cannot start or
+reconnect, and what to do about each, are in [CLI Reference](cli.md).
