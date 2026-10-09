@@ -30357,4 +30357,33 @@ def _fdictEntry(sRel):
         old='        raise HTTPException(501, str(error))\n',
         new='        raise HTTPException(500, str(error))\n',
     ),
+    # --- 2026-10-08: the resource-limit help never recommends a cap ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheResourceHelpDoesNotRecommendACap.py::'
+            'testTheWizardSaysWhatACapCosts'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            "            '<div class=\"wizard-helper-text\">' +\n"
+            "            VaibifyUtilities.S_RESOURCE_LIMIT_HELP +\n"
+        ),
+        new=(
+            "            '<div class=\"wizard-helper-text\">Applied via docker ' +\n"
+            "            'run each time the container starts. A minimal demo ' +\n"
+            "            'container runs comfortably at 1 CPU and 1 GB.' +\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheResourceHelpDoesNotRecommendACap.py::'
+            'testTheSettingsDialogSaysWhatACapCosts'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old="            VaibifyUtilities.S_RESOURCE_LIMIT_HELP + '</p>' +\n",
+        new=(
+            "            'Blank means no limit. Applied via docker run the ' +\n"
+            "            'next time the container starts.</p>' +\n"
+        ),
+    ),
 ]

@@ -1399,8 +1399,7 @@ var VaibifyContainerManager = (function () {
             '<span class="settings-option-label">' +
             'Memory limit (GB)</span></div>' +
             '<p class="settings-option-help">' +
-            'Blank means no limit. Applied via docker run the ' +
-            'next time the container starts.</p>' +
+            VaibifyUtilities.S_RESOURCE_LIMIT_HELP + '</p>' +
             '</div>';
     }
 
