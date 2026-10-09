@@ -234,6 +234,30 @@ var VaibifyEventBindings = (function () {
         VaibifyApp.fdictAddAiDeclarationStep();
     }
 
+    function _fnHandleAiDeclarationGenerate(event, elMatch) {
+        event.stopPropagation();
+        var sFilePath = elMatch.dataset.file || "";
+        if (!sFilePath) return;
+        elMatch.disabled = true;
+        VaibifyApp.fnGenerateAiDeclarationTemplate(sFilePath);
+    }
+
+    function _fnHandleAiDeclarationAttach(event, elMatch) {
+        event.stopPropagation();
+        var sFilePath = elMatch.dataset.file || "";
+        if (!sFilePath) return;
+        VaibifyApp.fnAttachAiDeclarationFile(sFilePath);
+    }
+
+    function _fnHandleAiDeclarationChoose(event, elMatch) {
+        event.stopPropagation();
+        VaibifyModals.fnShowFilePickerModal(
+            "Choose AI Declaration file",
+            "Pick the file that declares how AI assisted this work, " +
+                "or type its repo-relative path.",
+            VaibifyApp.fnAttachAiDeclarationFile);
+    }
+
     var _DICT_DECLARATION_COMMIT_TOASTS = {
         "clean": ["Declaration file is already committed — push to " +
             "GitHub to publish it.", "info"],
@@ -587,6 +611,9 @@ var VaibifyEventBindings = (function () {
         ".test-delete-cmd": _fnHandleTestDeleteCmd,
         ".btn-ai-declaration-open": _fnHandleAiDeclarationOpen,
         ".btn-add-ai-declaration-step": _fnHandleAddAiDeclarationStep,
+        ".btn-ai-declaration-generate": _fnHandleAiDeclarationGenerate,
+        ".btn-ai-declaration-attach": _fnHandleAiDeclarationAttach,
+        ".btn-ai-declaration-choose": _fnHandleAiDeclarationChoose,
         ".environment-archive-answer": _fnHandleEnvironmentArchiveChoice,
         ".wf-action-btn": _fnHandleProjectAction,
         ".wf-open-arxiv-config": _fnHandleOpenArxivConfig,

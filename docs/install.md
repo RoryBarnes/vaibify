@@ -1,19 +1,26 @@
-# Installing Vaibify
+# Advanced Installation
 
-Vaibify runs on macOS and Linux with Python 3.9 or later. It uses Docker
-(or [Colima](https://github.com/abiosoft/colima) on macOS) to build and
-manage containers.
+The [QuickStart](quickStart.md) gets one project running. This page is
+the reference behind it: what vaibify needs from your computer, how to
+install it for research or for development, how to set up Docker, and
+every field of the project configuration file. The command line has its
+own page, the [CLI Reference](cli.md).
 
 ## Prerequisites
 
-| Requirement      | Version     | Notes                                |
-|-----------------|------------|--------------------------------------|
-| Python          | 3.9 -- 3.14 | Any CPython release in this range, built with `dir_fd` support (see below) |
-| Docker          | 20.10+     | Or Colima on macOS                   |
-| Docker Buildx   | 0.10+      | BuildKit-based image builder         |
-| Git             | 2.0+       | For cloning repositories into images |
+| Requirement   | Version     | Needed for                                    |
+|---------------|-------------|-----------------------------------------------|
+| macOS or Linux | any current release | everything                           |
+| Python        | 3.9 – 3.14, built with `dir_fd` support (see below) | everything |
+| Git           | any current release | cloning repositories, the PROOF Ladder |
+| Docker Engine with Buildx, or Colima on macOS | current release | container projects only |
 
-A **host project** reads your files through directory-relative file
+A **host project** runs on your own machine with no container, so
+Docker is not needed to start; the [QuickStart](quickStart.md) begins
+that way. Install Docker when you want the isolation that
+[Level 3 of the PROOF Ladder](proofLadder.md) requires.
+
+A host project reads your files through directory-relative file
 access, so it needs a Python whose `os.supports_dir_fd` is not empty:
 `python -c "import os; print(bool(os.supports_dir_fd))"` should print
 `True`. Some builds, such as the python.org macOS 3.9 installer, are made
@@ -21,52 +28,42 @@ without it. On one of those, a host project's file reads and downloads
 stop with a message saying so; run vaibify with a conda, Homebrew or
 Linux Python instead.
 
-Python and Git you likely have. For the other two see
-[Installing Docker](#installing-docker) below — and note that
-neither is needed to start: a **host project** runs on your own
-machine with no container at all, which is how the
-[QuickStart](quickStart.md) begins.
+## Installing with pip
 
-## Users
-
-Install the latest release from PyPI:
+### For researchers
 
 ```bash
 pip install vaibify
+vaibify --version
 ```
 
-This installs the CLI, the Docker SDK, keyring integration, and the
-common data format libraries. A few specialist format readers live in
-an extra — see [Data Format Libraries](#data-format-libraries) below.
+This installs two equivalent commands, `vaibify` and the shorthand
+`vaib`, together with the Docker SDK, keyring integration, and the
+common data-format readers (h5py, openpyxl, Pillow, pyarrow, astropy,
+scipy). Running `vaibify` opens the hub in your browser. Checking this
+machine before any project exists is done from the command line; see
+[CLI Reference](cli.md).
 
-Install into a Python built for your machine's processor. On an
-Apple Silicon Mac an Intel-only Python (an older Anaconda, for
-example) runs through Rosetta, and everything installed into it stops
-working the day an operating-system upgrade removes that layer. Check
-before installing:
+Install into a Python built for your computer's processor. On an Apple
+Silicon Mac, an Intel-only Python (an older Anaconda, for example) runs
+through Rosetta, and everything installed into it stops working when an
+operating-system upgrade removes that translation layer. The two
+commands below must name the same architecture:
 
 ```bash
 file "$(command -v python3)"
 uname -m
 ```
 
-The two must name the same architecture. `vaibify doctor` warns
-whenever the Python it runs under is being translated.
+The command-line diagnosis in the [CLI Reference](cli.md) warns when
+the Python running it is being translated.
 
-After installation, confirm the CLI is available:
+Several projects can live on one machine. Each container project gets
+its own image, container, and workspace volume. The **Create New**
+wizard (the **+** on the environments page) registers a project, and
+the hub then lists it whichever directory you start it from.
 
-```bash
-vaibify --version
-```
-
-Multiple Vaibify projects can coexist on the same machine. Each project
-gets its own container, image, and workspace volume. Use `vaibify init`
-in each project directory to register it, then target any project from
-anywhere with `--project/-p`.
-
-## Developers
-
-Clone the repository and install in editable mode:
+### For developers
 
 ```bash
 git clone https://github.com/RoryBarnes/Vaibify.git
@@ -74,288 +71,348 @@ cd Vaibify
 pip install -e ".[dev]"
 ```
 
-The `[dev]` extra adds pytest-asyncio and httpx for running vaibify's
-own internal test suite.
+The test suite lives in the repository, not in the pip package. How to
+run it, including the browser tests, is in [Developers](developers.md).
 
-## Data Format Libraries
+### Optional extras
 
-The common formats work out of the box: h5py, openpyxl, Pillow, pyarrow,
-astropy and scipy are ordinary dependencies, so `pip install vaibify`
-brings them.
-
-The specialist readers are not. pyvista, pysam, pyreadstat, pyreadr,
-safetensors, tfrecord and scapy live in the `formats` extra, because
-several of them need system libraries that a plain `pip install` cannot
-provide. Ask for them explicitly:
+| Extra     | Adds                                                          |
+|-----------|---------------------------------------------------------------|
+| `formats` | Specialist data readers: pyvista, pysam, pyreadstat, pyreadr, safetensors, tfrecord, scapy. Several need system libraries that pip cannot provide |
+| `replay`  | detect-secrets, used to redact credentials from the Prompt Record |
+| `dev`     | Everything needed to run vaibify's own test suite             |
+| `browser` | Playwright, for the browser test lane                         |
 
 ```bash
 pip install 'vaibify[formats]'
 ```
 
-See [Supported Data Formats](testFormats.md) for the complete list.
+The data formats vaibify's tests can read are listed in
+[Testing Model](testing.md).
 
-Verify the installation:
+## Docker
 
-```bash
-vaibify --version
-vaibify doctor
-```
-
-`vaibify doctor` runs the environment pre-flight (Docker context,
-daemon reachability, Colima health) and prints a status report; it
-works before any project exists.
-
-The `pytest` test suite is **not** shipped in the pip package — it
-lives in the git repository. To run it, clone the repository and
-install the development extras:
+Vaibify does not install a container runtime for you. Whichever
+platform you use, confirm the result before building anything:
 
 ```bash
-git clone https://github.com/RoryBarnes/vaibify
-cd vaibify
-pip install -e '.[dev]'
-pytest tests/            # add -m docker for the Docker-dependent tests
+docker info          # must succeed WITHOUT sudo
+docker buildx version
 ```
 
-## Shell Helpers
+`docker info` catches most problems, and it must work as your own
+user: vaibify talks to the daemon as the user who runs it, never
+through `sudo`. Vaibify follows your active Docker context; a
+`DOCKER_HOST` you export yourself always takes precedence.
 
-Shell completions and helper commands are configured automatically the
-first time any `vaibify` command is run after an install or an upgrade.
-No manual step is required, and nothing needs to be installed beyond
-the shell you already use: bash, zsh and fish are supported on macOS
-and Linux. The setup only ever appends to your shell's configuration
-file (`~/.zshrc`, `~/.bash_profile` on macOS or `~/.bashrc` on Linux,
-`~/.config/fish/config.fish`); it never edits or removes a line.
-The following aliases are added to your shell configuration:
+### Docker on Linux
 
-| Alias | Shorthand | Equivalent |
-|---|---|---|
-| `vaibify_connect` | `vaib_connect` | `vaibify connect` |
-| `vaibify_push` | `vaib_push` | `vaibify push` |
-| `vaibify_pull` | `vaib_pull` | `vaibify pull` |
+Install Docker Engine from Docker's own repository, following the
+current instructions for your distribution
+([Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
+[Debian](https://docs.docker.com/engine/install/debian/),
+[Fedora](https://docs.docker.com/engine/install/fedora/),
+[RHEL](https://docs.docker.com/engine/install/rhel/)). Distribution
+packages are often too old. Install the `docker-buildx-plugin` package
+with the engine: vaibify builds with BuildKit.
 
-These commands work from any directory on the host. When multiple
-projects are registered, specify the target with `--project/-p`:
+Then let your user reach the daemon and start it with the machine:
 
 ```bash
-vaibify_connect -p my-project
-vaibify_push -p my-project data.csv /workspace/data.csv
-vaibify_pull -p my-project /workspace/results.csv ./results.csv
+sudo usermod -aG docker "$USER"
+newgrp docker                      # or log out and back in
+sudo systemctl enable --now docker
 ```
 
-When only one project is registered, the `--project` flag can be
-omitted. See [CLI Reference](cli.md) for details.
+Membership in the `docker` group is equivalent to root on the host,
+because a container can mount the host filesystem. On a shared or
+sensitive machine, prefer
+[rootless mode](https://docs.docker.com/engine/security/rootless/).
 
-### Tab completion
+On Linux a container reaches the vaibify hub through the Docker bridge
+gateway (`172.17.0.1` unless the daemon is configured otherwise), not
+through loopback, so the hub also listens on that address. It asks the
+daemon for the address when it starts and prints what it bound. If the
+daemon was not running at that moment, the hub listens on loopback
+only: the dashboard works, but `vaibify-do` inside the container cannot
+reach the hub. Start the daemon, then restart `vaibify`.
 
-Press TAB after `vaibify push` or `vaibify pull` (or the aliases above)
-to complete a path:
+### Docker on macOS
 
-- `vaibify pull <TAB>` offers the paths inside the project's container;
-  the destination is a path on your computer, which the shell completes
-  as usual.
-- `vaibify push data.csv <TAB>` offers container paths for the
-  destination; the source is a file on your computer.
-- Paths inside the project may be relative (`Step01/output.csv`) or
-  absolute (`/workspace/Step01/output.csv`). A relative path is read
-  from the project's workspace root, and a completed path is accepted
-  as typed.
-- `-p NAME` is honored: the container that is listed is the one that
-  `vaibify push -p NAME` would use. A host project has no container, so
-  its container-side paths complete from the project's own directory.
-
-Nothing is offered while the container is stopped, and the completion
-never prints an error into your command line; run `vaibify start` and
-press TAB again. A name containing a control character is never
-offered, because it could move your terminal or split the list.
-
-In bash, a path containing `=` or `:` is not completed (bash itself
-splits the word there), and a directory completes with a trailing space
-in bash 3.2, the version macOS ships as `/bin/bash`.
-
-### If TAB does nothing
-
-Run `vaibify doctor`. Its `shell-completions` line reads the
-configuration file of the shell in `$SHELL` and, when it does not load
-vaibify's completion script, prints the exact line to add in that
-shell's syntax. Setup could not do it for you when the file was not
-writable, or when your login shell was a different one the first time.
-
-To force the setup to run again, remove the marker file and invoke any
-command:
+[Colima](https://github.com/abiosoft/colima) is the recommended Docker
+runtime on macOS. Install it with Homebrew or MacPorts, then start it
+with enough CPU and memory for your work:
 
 ```bash
-rm ~/.vaibify/.setup_done
-vaibify --version
+# Homebrew
+brew install colima docker docker-buildx
+# MacPorts
+sudo port install colima docker docker-buildx-plugin
+
+colima start --cpu 4 --memory 8
 ```
+
+The command-line diagnosis in the [CLI Reference](cli.md) compares
+what a project will request against what the Colima virtual machine
+has. If macOS sleeps during a long build, the Colima virtual machine
+can corrupt it; prefix long commands with `caffeinate -s`:
+
+```bash
+caffeinate -s vaibify
+```
+
+The `neverSleep` field in `vaibify.yml` does the same for as long as a
+container runs.
+
+## Shell helpers
+
+The first `vaibify` command after an install or upgrade also sets up
+shell completion and a few helper aliases. They are described in the
+[CLI Reference](cli.md).
 
 ## `vaibify: command not found` after an upgrade
 
-The `vaibify` command is a two-line launcher whose first line names
-the Python that installed it. When that Python stops working, the
-launcher dies with it, and because your shell's Python setup usually
-hides the error, the only symptom is `command not found`. The two
-common causes:
-
-1. **The Python was built for a different processor** and ran through
-   a translation layer the operating-system upgrade removed. On an
-   Apple Silicon Mac the tell is `Bad CPU type in executable` when you
-   run the interpreter directly.
-2. **The Python itself was replaced or removed** -- a package manager
-   moved to a new minor version, or the developer tools were
-   reinstalled and took their bundled Python with them.
-
-Find the launcher and the interpreter it names:
+The `vaibify` command is a short launcher whose first line names the
+Python that installed it. When that Python stops working, the launcher
+fails with it, and your shell usually reports only
+`command not found`. The two common causes are a Python built for a
+different processor whose translation layer an operating-system upgrade
+removed (on Apple Silicon the tell is `Bad CPU type in executable`),
+and a Python that a package manager replaced or removed.
 
 ```bash
 find "$HOME" /opt /usr/local -maxdepth 4 -name vaibify -type f 2>/dev/null
 head -1 <that path>
 ```
 
-Run the interpreter named on that line. If it fails, the fix is not
-in vaibify: install a Python that runs natively on this machine (see
-[Users](#users)), then reinstall vaibify and the other commands you
-rely on from it. Reinstalling the translation layer restores the old
-Python, but only until the next time the vendor withdraws it.
+Run the interpreter named on that line. If it fails, install a Python
+that runs natively on this machine (see
+[For researchers](#for-researchers)) and reinstall vaibify into it.
+
+## Browser compatibility
+
+The dashboard runs locally and opens in your default browser. Vaibify
+supports current desktop releases of Firefox, Chrome, Edge, and Safari;
+mobile browsers are not supported. The bundled terminal (xterm.js 5.5)
+and PDF viewer (pdf.js 3.11) set the minimum versions:
+
+| Browser       | Dashboard and terminal | PDF figures |
+|---------------|------------------------|-------------|
+| Firefox       | 74                     | 94          |
+| Chrome / Edge | 87                     | 98          |
+| Safari        | 14.1                   | 15.4        |
+
+Below the first floor the terminal does not load; between the two, the
+dashboard works but PDF figures do not render. Continuous integration
+runs the browser tests in Chromium, Firefox, and WebKit.
 
 ## Installing for remote access
 
-If you plan to drive this machine from another one with `vaibify
-remote`, vaibify must be on the **non-interactive** PATH of the user
-you will connect as. The test is exact:
+Remote access drives a hub on another machine over SSH (see
+[Connecting to External Resources](externalResources.md)); it is
+started from the command line ([CLI Reference](cli.md)). For it to
+work, vaibify must be on the **non-interactive** PATH of the user you
+connect as, and this must print a version:
 
 ```bash
-ssh this-machine vaibify --version
+ssh other-machine vaibify --version
 ```
 
-It must print a version. A non-interactive SSH command does not read
-the shell files you normally edit -- Ubuntu's default `.bashrc` returns
-immediately for them -- so a `pip install --user`, a virtualenv, or a
-conda environment activated by your profile will not be found, and
-`vaibify remote` will report that the remote produced no startup
-record.
+A non-interactive SSH command does not read the shell files you
+normally edit, so a `pip install --user`, a virtual environment, or a
+conda environment activated by your profile is not found, and the
+connection reports that the remote produced no startup record.
+Install somewhere already on the default PATH, link the entry point
+into `/usr/local/bin`, or extend PATH before the non-interactive early
+exit in that user's shell configuration. Install the same vaibify
+version on both machines; a protocol mismatch is refused.
 
-Install somewhere already on the default PATH, symlink the entry point
-into `/usr/local/bin`, or extend the PATH above the non-interactive
-early-exit in that user's shell configuration. Both machines also need
-the same vaibify version; a mismatch is refused rather than guessed at.
+## Uninstalling vaibify
 
-## Browser Compatibility
+Removing the Python package leaves your environments, their Docker
+images, and vaibify's settings in place, so do these in order:
 
-The Vaibify dashboard runs locally and renders in your default browser.
-Vaibify targets evergreen desktop browsers; mobile browsers are out of
-scope. Any reasonably current Firefox, Chrome, Edge, or Safari works.
-The minimum versions below are set by the bundled terminal (xterm.js,
-which uses optional chaining and `ResizeObserver`), not only by the
-layout primitives — the terminal fails to load on older engines:
+1. **Delete the environments you no longer want.** In the hub, open each
+   tile's **⋮** menu and choose **Delete environment…**. This removes
+   the container, its workspace volume, and its images; your project
+   directory and anything already pushed or published are untouched.
+   See [Environments and Projects](environmentsAndProjects.md).
+2. **Revoke stored credentials** you no longer need, on each service's
+   own account page; see [Connecting to External
+   Resources](externalResources.md).
+3. **Stop the hub.** Press Ctrl-C in the terminal where you started
+   `vaibify`. Closing the browser tab does not stop it.
+4. **Remove the package:** `python3 -m pip uninstall vaibify`.
+5. **Remove vaibify's settings and logs:** delete `~/.vaibify`.
+6. **Remove the shell helpers.** Delete each block that begins with the
+   comment `# Added by Vaibify` from your shell's configuration file
+   (`~/.zshrc`, `~/.bash_profile` or `~/.bashrc`, or
+   `~/.config/fish/config.fish`).
 
-| Browser | Minimum version | Released |
-|---|---|---|
-| Firefox | 74 | March 2020 |
-| Chrome / Edge | 87 | November 2020 |
-| Safari | 14.1 | April 2021 |
+Docker and Colima are not part of vaibify and stay installed.
 
-Below the Firefox floor the bundled terminal does not load at all
-(xterm.js fails to parse), so the in-container agent strip is
-unavailable; other panels may also render with collapsed spacing or
-misaligned modals.
+## Configuration reference
 
-Rendering a PDF figure uses the bundled pdf.js 3.11, which sets higher
-floors than the terminal does: Safari 15.4, Firefox 94 and Chrome / Edge
-98. On an older engine the dashboard still loads, but PDF figures do not
-render. CI runs the browser tests in three engines (Chromium, Firefox
-and WebKit), so the current release of each is checked automatically;
-the versions in between are covered only by the floors above.
+### Where vaibify keeps its files
 
-## Installing Docker
+| File | Holds |
+|------|-------|
+| `vaibify.yml` (project directory) | The project's container configuration, documented below |
+| `.vaibify/projects/project.json` (project repository) | The workflow: steps, commands, tests. See [Environments and Projects](environmentsAndProjects.md) |
+| `~/.vaibify/registry.json` | The registered projects the hub lists |
+| `~/.vaibify/preferences.json` | Host-wide dashboard settings, such as the timeouts below |
+| `~/.vaibify/hub-port.json` | The port the last hub used |
+| `~/.vaibify/vaibify.log` | A rotating log (10 MB per file, five backups); each line is tagged `[cid:<container-id>]`. Look here first when something misbehaves |
 
-Vaibify does not install a container runtime for you, and it does not
-need one until you build or run a container project: host mode works
-with no Docker at all. Install it when you want the isolation that
-Level 3 reproducibility is defined by.
+### vaibify.yml fields
 
-Whichever platform you are on, confirm the result before going
-further. `vaibify doctor` runs the full pre-flight -- Docker context,
-daemon reachability, Colima health -- and prints a status report:
+Keys are camelCase. Every field except `projectName` has a default.
 
-```bash
-docker info          # must succeed WITHOUT sudo
-docker buildx version
-vaibify doctor
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `projectName` | string | required | Project, container, image, and volume name. A container project's name must be lowercase letters, digits, `.`, `_`, `-` |
+| `containerUser` | string | `researcher` | Unprivileged user inside the container. `root` is refused |
+| `pythonVersion` | string | `3.12` | Major.minor only (`3.12`, not `3.12.1`) |
+| `baseImage` | string | `ubuntu:24.04` | Left out or set to `ubuntu:24.04`, the build uses the digest-pinned image named in vaibify's Dockerfile. Another Ubuntu release is refused |
+| `workspaceRoot` | string | `/workspace` | Absolute path where the workspace volume mounts |
+| `packageManager` | string | `pip` | `pip`, `conda`, or `mamba` (the last two install Miniforge) |
+| `pipInstallFlags` | string | `--prefer-binary` | Extra `pip install` flags for the image build; `--prefer-binary` is always kept |
+| `networkIsolation` | boolean | `false` | Block all network traffic in and out of the container |
+| `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. A connected client can read the screen and send input (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
+| `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
+| `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |
+| `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count |
+| `memoryLimitGigabytes` | number | `0` | Memory cap in GB. `0` means unlimited; otherwise at least `0.25` |
+
+List fields:
+
+| Key | Each entry | Meaning |
+|-----|------------|---------|
+| `repositories` | `name`, `url`, `branch`, `installMethod` (default `pip_editable`), optional `destination` | Repositories cloned into the workspace, in order. See [container.conf](#containerconf) for install methods |
+| `systemPackages` | string | APT packages. A list you supply **replaces** the defaults (`gcc`, `make`, `git`, `curl`, `ca-certificates`, `gnupg`, `gosu`, `time`), so include the ones you still need |
+| `pythonPackages` | string | pip packages |
+| `condaPackages` | string | **Refused.** A non-empty list fails validation because the build has no conda install step; use `pythonPackages` |
+| `binaries` | `name`, `path` | Executables already in the container; each `name` becomes an environment variable holding `path`, and its directory joins PATH |
+| `ports` | `container`, optional `host` (defaults to `container`), optional `lanExpose` | Ports forwarded from the container, bound to `127.0.0.1` unless `lanExpose: true` |
+| `bindMounts` | `host`, `container` | Host directories mounted into the container (rules below) |
+| `secrets` | `name`, `method` (`gh_auth`, `keyring`, or `docker_secret`) | Credentials resolved on the host at start and mounted read-only at `/run/secrets/<name>`. A secret this host cannot resolve is skipped with a notice. Values never appear in `vaibify.yml` |
+
+A `bindMounts` host path must be absolute (Docker does not expand `~`),
+must exist, and must lie under your home directory or the project
+repository. Vaibify refuses any mount that overlaps a credential
+directory (such as `~/.ssh` or `~/.config/gh`), `/etc`, `/root`, a Docker
+daemon socket, or vaibify's own control, journal, and temporary
+directories under `~/.vaibify`, however the path is spelled.
+
+### Features
+
+Nested under `features`. All values are booleans.
+
+| Key | Default | Installs |
+|-----|---------|----------|
+| `latex` | `true` | TeX Live |
+| `jupyter` | `false` | JupyterLab |
+| `rLanguage` | `false` | R and IRkernel |
+| `julia` | `false` | Julia |
+| `database` | `false` | PostgreSQL and SQLite clients, psycopg2, SQLAlchemy |
+| `dvc` | `false` | DVC, for versioning data |
+| `nestedSampling` | `false` | MultiNest, pymultinest, ultranest (adds a Fortran toolchain and a source build) |
+| `claude`, `codex`, `gemini`, `antigravity`, `opencode`, `cline`, `openhands`, `pi` | `false` | One terminal coding agent each: Claude Code, Codex, Gemini CLI, Antigravity, OpenCode, Cline, OpenHands, Pi |
+| `<agent>AutoUpdate` (for example `claudeAutoUpdate`) | `true` | Keep that agent current. Needs network access; with `networkIsolation` the update is deferred and a warning recorded |
+| `gpu` | `false` | NVIDIA GPU support. **Builds with `gpu: true` are refused**: the GPU base image is Ubuntu 22.04 and vaibify's toolchain is pinned to Ubuntu 24.04 |
+
+Every enabled agent receives the same vaibify context, skills,
+persistent configuration directory, and `vaibify-do` bridge to the
+dashboard.
+
+### Reproducibility
+
+Nested under `reproducibility`; how these are used is described in
+[Reproducibility](reproducibility.md).
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `zenodoService` | `sandbox` | `sandbox` or `production` |
+| `latexRoot` | `src/tex` | LaTeX source directory |
+| `figuresRoot` | `src/tex/figures` | Generated figure directory |
+| `overleaf.projectId` | `""` | Overleaf project identifier |
+| `overleaf.figureDirectory` | `figures` | Figure directory in Overleaf |
+| `overleaf.pullPaths` | `[]` | Paths to pull from Overleaf |
+
+### Example
+
+```yaml
+projectName: my-analysis
+pythonVersion: "3.12"
+pythonPackages:
+  - numpy
+  - matplotlib
+repositories:
+  - name: analysis-code
+    url: https://github.com/example/analysis-code.git
+    branch: main
+    installMethod: pip_editable
+features:
+  jupyter: true
+  claude: true
+cpuLimit: 4
 ```
 
-The `docker info` line is the one that catches most problems, and it
-must work as your own user: vaibify talks to the daemon as the user
-who runs it, never through `sudo`.
+### container.conf
 
-### Docker on Linux
+The build turns `repositories` into a pipe-delimited `container.conf`
+in the image's build context and bakes it into the image at
+`/etc/vaibify/container.conf`. Project templates carry one too, which
+the wizards read to fill in `repositories`. Each non-comment line is:
 
-Distribution packages are often older than the Buildx floor above, so
-install Docker Engine from Docker's own repository, following the
-current instructions for your distribution:
-
-- [Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
-- [Debian](https://docs.docker.com/engine/install/debian/)
-- [Fedora](https://docs.docker.com/engine/install/fedora/)
-- [RHEL](https://docs.docker.com/engine/install/rhel/)
-
-Those pages are linked rather than transcribed because the repository
-setup changes; a copy here would go stale silently and leave you
-debugging a signing key. Install the `docker-buildx-plugin` package
-along with the engine -- vaibify builds with BuildKit, and an engine
-without Buildx fails at the build rather than at the check.
-
-Then grant your own user access to the daemon, which is what makes the
-`docker info` check above pass without `sudo`:
-
-```bash
-sudo usermod -aG docker "$USER"
-newgrp docker          # or log out and back in
+```
+name|url|branch|install_method[|destination]
 ```
 
-Be aware of what that grants: membership of the `docker` group is
-equivalent to root on the host, because a container can mount the host
-filesystem. On a shared or sensitive machine, prefer
-[rootless mode](https://docs.docker.com/engine/security/rootless/),
-which vaibify works with unchanged.
+| Install method | Action |
+|----------------|--------|
+| `pip_editable` | `pip install -e .` (needs `setup.py` or `pyproject.toml`; without one the repository is cloned only, with a warning) |
+| `pip_no_deps`  | `pip install -e . --no-deps` |
+| `c_and_pip`    | `make opt`, then `pip install -e . --no-deps` |
+| `scripts_only` | Add to `PYTHONPATH` and `PATH` only |
+| `reference`    | Clone only; do not install |
 
-One Linux-specific point about the in-container agent. A container
-reaches the hub through the Docker bridge gateway (`172.17.0.1` by
-default), not through the host's loopback interface, so on Linux the
-hub also listens on that gateway address. It asks the daemon for the
-address when it starts, and prints what it bound; if the daemon was not
-running at that moment the hub says so and listens on loopback only,
-in which case the dashboard works but `vaibify-do` inside the container
-cannot reach the hub. Start the daemon, then restart `vaibify`.
+`destination` moves the clone to that workspace-relative path. A URL
+must use `https://`, `http://`, `git://`, `ssh://`, or the
+`user@host:path` form.
 
-Finally, make sure the daemon starts with the machine:
+### Checks before a build
 
-```bash
-sudo systemctl enable --now docker
-```
+The dashboard's **Build** asks these questions before spending an hour
+on a build:
 
-### Docker on macOS
+| Field | Checked against | Refused when |
+|-------|-----------------|--------------|
+| `containerUser`, `pythonVersion`, `workspaceRoot` | their required format | the image recipe cannot use the value |
+| `baseImage`, `features.gpu` | the pinned Ubuntu 24.04 toolchain | the name says another Ubuntu release, or the GPU feature is on |
+| `systemPackages` | Launchpad, for the release `baseImage` names | Ubuntu publishes no such package |
+| `pythonPackages` | pypi.org's simple index | the index has no such project |
+| `repositories[].branch` | `git ls-remote` on the remote | the remote has no such branch |
 
-On macOS, [Colima](https://github.com/abiosoft/colima) is the recommended
-Docker runtime. Install with Homebrew or MacPorts:
+An index or remote that cannot be reached, a `pipInstallFlags` that
+names another index, and a `baseImage` vaibify cannot identify are
+reported as "not checked", and the build proceeds.
 
-**Homebrew:**
+### Environment variables
 
-```bash
-brew install colima docker docker-buildx
-colima start --cpu 4 --memory 8
-```
+These change host-wide behavior. Timeout values are seconds, or
+`never` (also `off`, `none`, `disabled`); a malformed value is ignored.
 
-**MacPorts:**
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `VAIBIFY_HUB_IDLE_TIMEOUT_SECONDS` | never (browser launch); 1800 (`--no-browser`) | How long a hub with **no connected dashboard and no running pipeline** waits before shutting itself down. `0` shuts down as soon as it is idle. Overrides the **Idle shutdown** setting in the toolbar gear menu |
+| `VAIBIFY_ABSOLUTE_SESSION_CAP_SECONDS` | 604800 (7 days) | How long one browser tab's session lasts from when it opened, used or not. When it ends, the container and any running step keep going; a fresh tab is opened from the command line ([CLI Reference](cli.md)). Overrides the **Session lifetime** setting |
+| `VAIBIFY_SLIDING_IDLE_SECONDS` | 3600 | Ends a browser session after this long with no activity. A connected tab counts as activity |
+| `VAIBIFY_RECONNECT_WINDOW_SECONDS` | 15 | How long a local session is held for a reconnecting tab |
+| `VAIBIFY_REMOTE_RECONNECT_WINDOW_SECONDS` | 900 | The same, for a session on another machine opened over SSH |
+| `VAIBIFY_SUPPRESS_BROWSER` | unset | Any value has the same effect as the `--no-browser` option ([CLI Reference](cli.md)) |
 
-```bash
-sudo port install colima docker docker-buildx-plugin
-colima start --cpu 4 --memory 8
-```
-
-If a Docker build takes more than a few minutes, macOS may sleep the
-Colima VM and corrupt the build. Prefix any long-running command with
-`caffeinate -s` to prevent this:
-
-```bash
-caffeinate -s vaibify build
-```
+Each variable outranks the stored setting, which outranks the default.
+The two settings apply without restarting the hub. You are warned at
+three quarters, nine tenths, and nineteen twentieths of the session
+lifetime, and each warning offers to renew the session.

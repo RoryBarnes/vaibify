@@ -64,7 +64,7 @@ def test_the_pagehide_handler_sends_no_release_anywhere():
         )
     for pathDocument in (
         STATIC_DIR / "AGENTS.md",
-        REPO_ROOT / "docs" / "dashboard.md",
+        REPO_ROOT / "docs" / "environmentsAndProjects.md",
         REPO_ROOT / "vaibify" / "gui" / "registryRoutes.py",
     ):
         sText = pathDocument.read_text()

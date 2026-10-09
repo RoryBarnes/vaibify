@@ -1,7 +1,8 @@
 """Keep the publish story and the code telling the same story.
 
-`docs/cli.md` claimed the publishing machinery was "already available
-through the GUI's Settings → Publish pane". No such pane exists, and
+The CLI reference (`docs/cli.md`) once claimed the publishing
+machinery was "already available through the GUI's Settings → Publish
+pane". No such pane exists, and
 `vaibify/reproducibility/githubWorkflow.py` -- the GitHub Actions
 generator behind the claim -- has no caller in the product. A reader
 budgeting on that sentence would look for a feature that was never

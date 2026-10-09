@@ -120,3 +120,35 @@ jobs:
         if: always()
         run: |
           docker rm -f acceptance-project || true
+
+  # The real agent CLIs, run once a night: does a current Codex and
+  # Gemini still write the transcript shape the Prompt Record reads?
+  # Kept off pull requests because building the fixture image installs
+  # both CLIs from npm, which costs minutes per run.
+  agent-transcripts:
+    name: 'agent transcripts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Capture real Codex and Gemini transcripts
+        env:
+          # Turns the tests' own convenience skips into failures, so a
+          # green result here cannot mean "skipped everything".
+          VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        run: |
+          python -m pytest tests/ -m agent_cli_live --tb=short -v

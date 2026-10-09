@@ -75,6 +75,37 @@ def fnCopyTemplate(sTemplateName):
     fnMoveProjectFileWhereDiscoveryLooks(pathDestination)
 
 
+def fnWarnTemplateRepositoriesNotCarried(sTemplateName):
+    """Warn when a template's container.conf names repositories.
+
+    A build clones only the repositories listed in vaibify.yml, and
+    init writes a vaibify.yml with none, so any repository a custom
+    template lists in container.conf would otherwise be dropped
+    without a word.
+    """
+    from vaibify.config.templateManager import fdictLoadTemplateConfig
+    try:
+        listRepositories = fdictLoadTemplateConfig(
+            sTemplateName)["listRepositories"]
+    except FileNotFoundError:
+        return
+    except ValueError as error:
+        click.echo(
+            f"Warning: template '{sTemplateName}' has a container.conf "
+            f"that could not be read, and builds do not use it: {error}"
+        )
+        return
+    if not listRepositories:
+        return
+    sNames = ", ".join(dictRepo["sName"] for dictRepo in listRepositories)
+    click.echo(
+        f"Warning: template '{sTemplateName}' lists repositories in "
+        f"container.conf ({sNames}), but a build clones only the "
+        f"repositories named in vaibify.yml. Add them under "
+        f"'repositories:' in vaibify.yml to have them cloned."
+    )
+
+
 def fnRefuseIfProjectFileExists(pathDestination):
     """Exit before copying anything if the Project file is already there.
 
@@ -254,6 +285,8 @@ def fnInitCommand(sTemplateName, sProjectName, bMinimal, bForce):
     if sTemplateName is not None:
         fnCopyTemplate(sTemplateName)
     fnWriteDefaultConfig(sName, bMinimal)
+    if sTemplateName is not None:
+        fnWarnTemplateRepositoriesNotCarried(sTemplateName)
     try:
         sOutcome = fsRegisterProject(sName)
     except RegistryUnreadableError as error:

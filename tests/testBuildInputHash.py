@@ -111,7 +111,7 @@ def testInputsBeyondTheDockerfileAreKeyed():
         "vaibify/containerImage/vaibifyDo.py",
         "vaibify/cli/commandBuild.py",
         "vaibify/docker/imageBuilder.py",
-        "vaibify/docs/vision.md",
+        "vaibify/docs/proofLadder.md",
     ):
         assert sRequired in listInputs, (
             f"{sRequired} can change the image but is not keyed."

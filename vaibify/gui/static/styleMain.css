@@ -6463,6 +6463,25 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin: 6px 0;
 }
 
+.ai-declaration-freshness {
+    font-size: 13px;
+    padding: 6px 0;
+}
+
+.ai-declaration-freshness-stale {
+    color: var(--color-orange);
+}
+
+.ai-declaration-freshness-unknown,
+.ai-declaration-freshness-untracked {
+    color: var(--text-muted);
+}
+
+.ai-declaration-unknown {
+    font-size: 13px;
+    padding: 6px 0;
+}
+
 .ai-declaration-empty-message {
     color: var(--text-muted);
     font-size: 13px;
@@ -6758,6 +6777,8 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
    secondary affordances (e.g., underline-dotted on stale) can land
    without touching the glyph dispatch. */
 .step-blocker-glyph-l2-declaration,
+.step-blocker-glyph-l2-declaration-stale,
+.step-blocker-glyph-l2-declaration-unknown,
 .step-blocker-glyph-l2-mirror,
 .step-blocker-glyph-l2-zenodo,
 .step-blocker-glyph-l2-github-stale,
@@ -9384,6 +9405,20 @@ body.council-workspace-open #mainLayout {
 .prompt-record-turn-label {
     font-weight: bold;
     margin-bottom: 4px;
+}
+
+.prompt-record-rewound {
+    margin: 6px 0;
+    border-left: 3px dashed var(--border-color);
+    padding-left: 8px;
+    opacity: 0.8;
+}
+
+.prompt-record-rewound > summary,
+.prompt-record-earlier-text > summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12px;
 }
 
 .prompt-record-turn-prompt .prompt-record-turn-label {

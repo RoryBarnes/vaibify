@@ -9,7 +9,7 @@ apply to one subsystem live in that subsystem's skill, listed below;
 `docs/architecture.md` explains the reasoning;
 `tests/testArchitecturalInvariants.py` enforces the structural
 invariants; `tools/listModules.py` reports the current structural state
-on demand. See `docs/vibeCoding.md` for the methodology behind this
+on demand. See `docs/forAgents.md` for the methodology behind this
 structure.
 
 ## How to read this repo when starting a task
@@ -428,7 +428,7 @@ Rather than memorizing structural facts, run these when you need them:
   where the wrong answer was the natural one
 - [docs/knownDebt.md](docs/knownDebt.md) — things that look like bugs
   and are deliberate
-- [docs/vibeCoding.md](docs/vibeCoding.md) — the methodology behind
+- [docs/forAgents.md](docs/forAgents.md) — the methodology behind
   this documentation structure
 - [docs/developers.md](docs/developers.md) — human contributor guide
 - [docs/skillTesting.md](docs/skillTesting.md) — how skills are tested

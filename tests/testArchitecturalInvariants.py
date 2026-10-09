@@ -5185,7 +5185,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # marker through testMarkerContract, so each step answers with the
     # category states the contract derived and the per-run verdicts
     # travel to it on a private key popped before the answer leaves.
-    "routes/pipelineRoutes.py": 4134,
+    # 4134 -> 4175 (2026-10-08): the poll hashes the files an AI
+    # Declaration sign-off covers, latches a stale one, and ships the
+    # verdict; poll wiring, so it stays beside the poll.
+    "routes/pipelineRoutes.py": 4175,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6696,7 +6699,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # re-export invariant requires every public conftestManager symbol
     # to appear here, so this shim grows whenever that module gains
     # one.
-    "testGenerator.py": 1141,
+    # +4 (2026-10-08): re-exports templateManager.fbIsVaibifyTemplateHash
+    # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
+    "testGenerator.py": 1145,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -7120,7 +7125,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment archive branch into main; both sides' growth.
     # 1462 -> 1475 (2026-10-06): the streamed upload's catalog entry,
     # declared not agent-safe, with the reason beside it.
-    "actionCatalog.py": 1475,
+    # 1475 -> 1499 (2026-10-08): the AI Declaration's file-state read
+    # and attach action; the catalog is one cohesive list of entries.
+    "actionCatalog.py": 1499,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7273,7 +7280,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # project runs; another project's run does not touch its steps.
     # 866 -> 959 (2026-09-30): the update-step agent allowlist and the
     # server-side sign-off timestamp, dated by the container's clock.
-    "routes/stepRoutes.py": 959,
+    # 959 -> 984 (2026-10-08): the sign-off records what an AI
+    # Declaration covers (the rules live in declarationFreshness; this
+    # is the route's refusal when the files cannot be read).
+    "routes/stepRoutes.py": 984,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write
@@ -7617,7 +7627,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # verdict.
     # 1145 -> 1150 (2026-10-06): the Files tab's free-space verdict GET
     # joins the container-read allowlist, with why it is a read.
-    "routeScope.py": 1150,
+    # 1150 -> 1154 (2026-10-08): the AI Declaration file-state GET joins
+    # the container-read allowlist the same way; the module is one
+    # cohesive list of route scopes.
+    "routeScope.py": 1154,
 }
 
 

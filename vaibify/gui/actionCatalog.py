@@ -588,9 +588,33 @@ LIST_AGENT_ACTIONS = [
                      "step already exists. Args: {sName?, "
                      "sDirectory?, sDeclarationFile?}; sDirectory "
                      "must be repo-relative and unique among step "
-                     "directories (default aiDeclaration). The step "
+                     "directories (default AIDeclaration). The step "
                      "is interactive: only the researcher's sUser "
-                     "badge can pass it."},
+                     "badge can pass it. It does not create the "
+                     "declaration file; see "
+                     "generate-ai-declaration-template."},
+    {"sName": "check-ai-declaration-file", "sCategory": "workflow",
+     "sMethod": "GET",
+     "sPath": "/api/workflow/{sContainerId}"
+              "/ai-declaration/file-state",
+     "bAgentSafe": True,
+     "saQueryFields": ["sRelativePath"],
+     "sDescription": "Report whether the AI Declaration file exists: "
+                     "sFileState is present, absent, or unknown "
+                     "(could not check; sReason says why). Query: "
+                     "sRelativePath? (default: the step's file, else "
+                     "AI_USAGE.md)."},
+    {"sName": "attach-ai-declaration-file", "sCategory": "workflow",
+     "sMethod": "POST",
+     "sPath": "/api/workflow/{sContainerId}"
+              "/ai-declaration/attach",
+     "bAgentSafe": True,
+     "sDescription": "Point the AI Declaration step at an existing "
+                     "repo-relative file. 409 when the file is absent, "
+                     "503 when its existence could not be checked. "
+                     "Attaching a different file withdraws the "
+                     "researcher's sign-off (bSignOffWithdrawn). "
+                     "Args: {sRelativePath: str}."},
     {"sName": "check-l3-readiness", "sCategory": "verification",
      "sMethod": "GET",
      "sPath": "/api/workflow/{sContainerId}/level3/readiness",

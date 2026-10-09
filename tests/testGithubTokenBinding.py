@@ -257,6 +257,24 @@ def test_assert_raises_on_mismatch():
     assert "victim" in str(excInfo.value)
 
 
+def test_mismatch_names_the_organization_limit():
+    """The refusal must say why a token cannot reach an org's repository.
+
+    The binding is a security control and stays; what a researcher
+    pushing to an organization's repository needs is to learn that no
+    token setting will help, and where to push instead.
+    """
+    with patch(
+        "vaibify.reproducibility.githubAuth._ftFetchLoginFresh",
+        return_value=("researcher", ""),
+    ):
+        with pytest.raises(ValueError) as excInfo:
+            githubAuth.fnAssertTokenOwnerBinding("t", "someLab")
+    sMessage = str(excInfo.value)
+    assert "organization cannot be pushed from vaibify" in sMessage
+    assert "terminal" in sMessage
+
+
 def test_parse_owner_repo_from_https_url():
     sOwner, sRepo = githubAuth.ftParseOwnerRepoFromRemoteUrl(
         "https://github.com/victim/myrepo.git",

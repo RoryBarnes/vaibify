@@ -246,7 +246,7 @@ def test_doc_map_points_into_the_container_docs_dir():
     """The map must reference the in-container staged docs path."""
     sSkill = _fsReadSkill("vaibify-doc-map")
     assert "/usr/share/vaibify/docs" in sSkill
-    assert "dashboard.md" in sSkill
+    assert "environmentsAndProjects.md" in sSkill
     assert "reproducibility.md" in sSkill
 
 

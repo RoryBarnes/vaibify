@@ -28,6 +28,8 @@ bump; the runtime ignores fields it does not consume.
 __all__ = [
     "fsQuantitativeTemplateHash",
     "fsIntegrityTemplateHash",
+    "fbIsVaibifyTemplateHash",
+    "SET_PRIOR_TEMPLATE_HASHES",
     "fsQualitativeTemplateHash",
     "fsBuildQuantitativeTestCode",
     "fsBuildIntegrityTestCode",
@@ -46,6 +48,24 @@ def _fsComputeTemplateHash(sTemplate):
     )
     sDigest = hashlib.sha256(sStripped.encode("utf-8")).hexdigest()
     return sDigest[:16]
+
+
+# The hash of each earlier version of a shipped test template. A test
+# file stamped with one of these was written by vaibify from a template
+# that has since changed, so it is neither a researcher's custom test
+# nor unsafe to regenerate. When a template changes, add its outgoing
+# hash here; testTemplateHashesArePinned fails until you do.
+SET_PRIOR_TEMPLATE_HASHES = frozenset({
+    "982f58ad4c6745d4",
+})
+
+
+def fbIsVaibifyTemplateHash(sStampedHash, sCurrentHash):
+    """Return True if a stamped hash names the current or an earlier template."""
+    return (
+        sStampedHash == sCurrentHash
+        or sStampedHash in SET_PRIOR_TEMPLATE_HASHES
+    )
 
 
 def _fsEmbedTemplateHash(sTemplate):
@@ -77,7 +97,7 @@ def _fbFileMatchesTemplate(
         sExisting, re.MULTILINE,
     )
     if matchHash:
-        return matchHash.group(1) == sExpectedHash
+        return fbIsVaibifyTemplateHash(matchHash.group(1), sExpectedHash)
     sEmbedded = _fsEmbedTemplateHash(sTemplate)
     return sExisting.strip() == sEmbedded.strip()
 
@@ -340,9 +360,19 @@ def _fnCheckJsonl(sFullPath, dictStandard):
 
 
 def _fnCheckGenericText(sFullPath, dictStandard):
-    """Validate a generic text file by checking it is non-empty."""
-    with open(sFullPath, encoding="utf-8") as fileHandle:
-        sContent = fileHandle.read()
+    """Validate a file with no dedicated checker by checking it is non-empty.
+
+    Text must hold something besides whitespace. A file that is not
+    UTF-8 text (an image, a binary table) has no structure this
+    template can inspect, so it must hold at least one byte.
+    """
+    with open(sFullPath, "rb") as fileHandle:
+        baContent = fileHandle.read()
+    try:
+        sContent = baContent.decode("utf-8")
+    except UnicodeDecodeError:
+        assert len(baContent) > 0, f"{sFullPath}: empty file"
+        return
     assert len(sContent.strip()) > 0, f"{sFullPath}: empty file"
 
 
