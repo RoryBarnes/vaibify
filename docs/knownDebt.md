@@ -132,3 +132,12 @@ without discussion:
   whose time vaibify did not see. Persisting the history is possible;
   it was not done because a restart that loses history is honest about
   it, and a store on disk would need its own retention rules.
+- A container terminal's prompt reset (`S_PROMPT_RESET_RCFILE` in
+  `terminalContainment.py`) is appended after the hooks in the
+  researcher's `~/.bashrc`, but a hook that a tool adds to
+  `PROMPT_COMMAND` later, at runtime, runs after it. That is harmless:
+  the reset is idempotent and hands on the exit status it received, so
+  a later hook sees what it would have seen. Running it after every
+  hook ever added would mean rewriting `PROMPT_COMMAND` on every
+  prompt, which is a larger intrusion into the researcher's shell than
+  the defect it would cure.

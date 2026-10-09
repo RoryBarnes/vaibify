@@ -137,6 +137,18 @@ to its newest line. Three ways out, in the order you will want them:
 Selected text reaches the clipboard on its own; Cmd+C, Ctrl+Shift+C,
 Ctrl+Insert and right-click all copy it as well.
 
+### When a program dies holding the mouse
+
+A program that is killed outright — an AI agent the kernel killed for
+lack of memory — never hands the mouse back, so every mouse move
+prints characters such as `35;97;9M` at the prompt. A container's shell
+now switches those input modes off before each prompt. It reads your
+own `~/.bashrc` first and adds its prompt hook after yours, passing
+on whatever status your last command left. If a pane still misbehaves —
+a shell started before this, or one that is not bash — press **Reset**
+in the pane's tab bar. It switches the modes off without clearing the
+scrollback.
+
 **A project that runs on your machine has no in-dashboard terminal.**
 There is no container to open a shell inside, and your own terminal is
 the same shell with the same authority; the strip names the project's

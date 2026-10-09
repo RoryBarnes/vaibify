@@ -30512,4 +30512,36 @@ def _fdictEntry(sRel):
         old='        _fnRenderResourceLimitDriftBanner(\n            (dictReadiness && dictReadiness.listResourceLimitDrift) || []\n        );\n',
         new='',
     ),
+    # --- 2026-10-08: a terminal's prompt resets the input modes a killed program left on ---
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheResetRunsLastAfterTheResearchersArrayHooks',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];\'\n    " then\\n"\n    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\\n"\n    "else\\n"\n',
+        new='    "if false; then\\n"\n    "    :\\n"\n    "else\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheResetHandsOnTheStatusItWasGiven',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'    return "$iStatus"\\n\'\n',
+        new='    "    return 0\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheRcfileAndItsDirectoryAreGoneOnceTheShellStarts',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\\n\'\n',
+        new='    ": the rcfile is kept\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptReset.py::testABashTerminalGetsTheResetRcfileThenThePlainFallback',
+        source='vaibify/gui/terminalContainment.py',
+        old='        + _fsBuildRcfileLaunch(sShellCommand)\n        + f"exec {sShellCommand}"\n',
+        new='        + _fsBuildRcfileLaunch(sShellCommand).rstrip(" &")\n',
+    ),
+    # --- 2026-10-08: the terminal Reset button keeps the scrollback ---
+    Falsification(
+        nodeid='tests/browser/testTheTerminalResetGivesTheMouseBack.py::testResetGivesTheMouseBackAndKeepsTheScrollback',
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        dictTab.terminal.write(S_INPUT_MODE_RESET_SEQUENCE);\n',
+        new='        dictTab.terminal.reset();\n',
+    ),
 ]

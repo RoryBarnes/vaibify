@@ -43,6 +43,7 @@ __all__ = [
     "F_TERMINATE_WAIT_SECONDS",
     "F_KILL_WAIT_SECONDS",
     "S_TERMINAL_OPERATION_KIND",
+    "S_PROMPT_RESET_RCFILE",
     "TerminalContainmentError",
     "TerminalExecutionRecord",
     "fdictCreateTerminalRecordRegistry",
@@ -63,6 +64,7 @@ __all__ = [
 ]
 
 import logging
+import posixpath
 import re
 import secrets
 from typing import TYPE_CHECKING, Optional
@@ -104,6 +106,37 @@ S_RECORD_STATE_QUARANTINED = "quarantined"
 # user input; the allowlist keeps a future caller from smuggling shell
 # metacharacters into the exec wrapper.
 _REGEX_SAFE_SHELL_COMMAND = re.compile(r"^[A-Za-z0-9 _/.-]+$")
+
+# The rcfile a container terminal's bash reads in place of ~/.bashrc. A
+# full-screen program that is SIGKILLed -- an agent the kernel killed
+# for lack of memory -- leaves xterm mouse reporting on, and every mouse
+# move then prints garbage at the prompt. The rcfile deletes itself and
+# its directory (bash has read it whole before it runs), reads the
+# researcher's own ~/.bashrc as bash would have (/etc/bash.bashrc is
+# still read by bash itself), and appends a prompt hook that switches
+# the input modes off. The hook goes LAST -- appended to the array form
+# of PROMPT_COMMAND, newline-joined to the string form, because a scalar
+# append to an array changes only its first element -- and returns the
+# status it was given, so it is invisible to any hook after it. A hook
+# a tool adds later, at runtime, may still follow it; the reset is
+# idempotent and status-transparent, so that is harmless.
+S_PROMPT_RESET_RCFILE = (
+    'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\n'
+    "[ -f ~/.bashrc ] && . ~/.bashrc\n"
+    "fnVaibifyResetInputModes() {\n"
+    "    local iStatus=$?\n"
+    "    printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1005l"
+    "\\033[?1006l\\033[?1015l\\033[?1004l\\033[?25h'\n"
+    '    return "$iStatus"\n'
+    "}\n"
+    'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];'
+    " then\n"
+    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\n"
+    "else\n"
+    "    PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND$'\\n'}"
+    'fnVaibifyResetInputModes"\n'
+    "fi\n"
+)
 
 _LOCK_DRAIN_REGISTRY = threading.Lock()
 _DICT_CONTAINER_DRAIN_LOCKS = {}
@@ -192,6 +225,11 @@ def fsBuildGroupReportingCommand(sShellCommand, sMarkerPath):
     shell — the shell keeps the reported pid, and a failure at any
     step exits without ever starting a shell, which is what lets the
     abort path settle an undiscovered dead exec honestly.
+
+    A bare ``bash`` is first offered :data:`S_PROMPT_RESET_RCFILE`
+    (:func:`_fsBuildRcfileLaunch`); if any step of that fails it falls
+    through to the plain ``exec``, so a missing rcfile never costs the
+    researcher a terminal, and both paths keep the reported pid.
     """
     if not _REGEX_SAFE_SHELL_COMMAND.match(sShellCommand or ""):
         raise TerminalContainmentError(
@@ -207,7 +245,32 @@ def fsBuildGroupReportingCommand(sShellCommand, sMarkerPath):
         f"printf '%s %s %s\\n' \"$$\" \"$3\" \"$4\" "
         f"> {sQuotedMarker}.partial && "
         f"mv {sQuotedMarker}.partial {sQuotedMarker} && "
-        f"exec {sShellCommand}"
+        + _fsBuildRcfileLaunch(sShellCommand)
+        + f"exec {sShellCommand}"
+    )
+
+
+def _fsBuildRcfileLaunch(sShellCommand):
+    """Return the step that execs bash with the reset rcfile, or "".
+
+    Only a bare ``bash`` path gets it: with arguments, ``--rcfile`` may
+    land after a single-letter option (where bash ignores it) or beside
+    a login shell (which never reads an rcfile, so it would never be
+    deleted). ``mktemp -d`` creates a fresh directory atomically, mode
+    0700 under a random name, so nothing planted in the shared /tmp can
+    be followed. A process of the same uid could still race inside that
+    directory; that is out of scope, because the in-container agent runs
+    as that uid and can edit ~/.bashrc already. The rcfile path is a
+    shell variable here, never caller input, and the text is constant.
+    """
+    listParts = sShellCommand.split()
+    if len(listParts) != 1 or posixpath.basename(listParts[0]) != "bash":
+        return ""
+    return (
+        "{ sRcDirectory=$(mktemp -d) && "
+        f"printf '%s' {shlex.quote(S_PROMPT_RESET_RCFILE)} "
+        '> "$sRcDirectory/rc" && '
+        f'exec {sShellCommand} --rcfile "$sRcDirectory/rc" || true; }} && '
     )
 
 
