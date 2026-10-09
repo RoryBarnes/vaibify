@@ -298,6 +298,17 @@ DICT_NAMED_AUTHORITIES = {
             "the dashboard through the doctor route's host checks. A "
             "read of daemon facts, never a container operation.",
         ),
+    "docker/dockerConnection.py|fdictReadContainerState|docker-client|"
+    "docker.errors.NotFound|import-from|0":
+        _fdictAuthority(
+            ["background"],
+            "The exception class the gateway's container-state read uses "
+            "to tell a positive 'no such container' from a daemon that did "
+            "not answer, so the memory watch reports a removed container "
+            "as gone and an unanswered question as unreadable. The read "
+            "runs no program in any container and is a typed read in "
+            "DICT_PRIMITIVE_ACCESS.",
+        ),
     "docker/dockerConnection.py|fsImageState|docker-client|"
     "docker.errors.ImageNotFound|import-from|0":
         _fdictAuthority(

@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.docker import cgroupMemory
 from vaibify.gui import (
@@ -61,7 +62,8 @@ def fnCreateThrowaway():
         container = clientDocker.containers.run(
             S_TEST_IMAGE, ["sleep", "600"], detach=True,
             name="vaibify-memory-live-" + secrets.token_hex(6),
-            labels={"vaibify.test": "memory-watch-live"}, **dictLimits)
+            labels=fdictLabels({"vaibify.test": "memory-watch-live"}),
+            **dictLimits)
         listCreated.append(container)
         iExitCode, baOutput = container.exec_run(
             ["useradd", "-m", "researcher"])

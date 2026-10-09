@@ -30,6 +30,7 @@ import secrets
 
 import pytest
 
+from tests.liveContainerLabels import fdictLabels
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.gui.terminalContainment import fsBuildGroupReportingCommand
 
@@ -90,7 +91,7 @@ def containerThrowaway():
     container = clientDocker.containers.run(
         S_TEST_IMAGE, ["sleep", "600"], detach=True,
         name="vaibify-prompt-reset-live-" + secrets.token_hex(6),
-        labels={"vaibify.test": "prompt-reset-live"})
+        labels=fdictLabels({"vaibify.test": "prompt-reset-live"}))
     try:
         iExitCode, baOutput = container.exec_run(
             ["useradd", "-m", "-s", "/bin/bash", "researcher"])
