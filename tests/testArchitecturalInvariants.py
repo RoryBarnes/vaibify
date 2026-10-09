@@ -6927,7 +6927,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # that changed and answers each with its outcome; the planning and
     # the wording live in vaibify/config/resourceLimits.py, and only the
     # YAML writes stay here, beside the writer they use.
-    "registryRoutes.py": 2433,
+    # 2433 -> 2452 (2026-10-08): the read-only writable-layer preview
+    # route, beside the other name-keyed container routes; the
+    # measurement and its sentence live in writableLayerPreview and
+    # vaibify/docker/writableLayerLoss.py.
+    "registryRoutes.py": 2452,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

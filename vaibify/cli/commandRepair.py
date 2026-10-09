@@ -235,11 +235,15 @@ def _fbConfirmRepair(sContainerName, sOperation, bAssumeYes):
     from vaibify.docker.containerLifecycleRepair import (
         fsDescribeRestartConsequences,
     )
+    from vaibify.docker.writableLayerLoss import (
+        S_STATE_NOT_MEASURED, fsDescribeWritableLayerLoss,
+    )
     click.echo(fsDescribeRestartConsequences(sContainerName))
     if sOperation == "recreate":
         click.echo(
             "  - and recreate the container from the image it is "
-            "running now, discarding its writable layer."
+            "running now. "
+            + fsDescribeWritableLayerLoss(S_STATE_NOT_MEASURED)
         )
     if bAssumeYes:
         return True

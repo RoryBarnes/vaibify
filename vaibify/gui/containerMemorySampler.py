@@ -29,6 +29,7 @@ logger = logging.getLogger("vaibify")
 
 __all__ = [
     "fdictReadExitedOomEvidence",
+    "fgenericReadWithDeadline",
     "fnSampleContainerMemory",
     "fnSampleOwnedContainers",
     "fnRegisterMemorySampler",
@@ -119,8 +120,9 @@ async def _fnMeasureRunningContainer(
 ):
     """Read the running container's cgroup, bounded, and record the result."""
     try:
-        sReadText = await _fsReadWithDeadline(
-            dictReadsInFlight, connectionDocker, sName, sContainerId)
+        sReadText = await fgenericReadWithDeadline(
+            dictReadsInFlight, sName, connectionDocker.fsReadCgroupMemory,
+            sContainerId)
     except Exception as error:  # noqa: BLE001 -- reported, never raised
         _fnRecordUnknown(
             dictStore, sName, sContainerId,
@@ -138,10 +140,15 @@ async def _fnMeasureRunningContainer(
         datetime.now(timezone.utc))
 
 
-async def _fsReadWithDeadline(
-    dictReadsInFlight, connectionDocker, sName, sContainerId,
+async def fgenericReadWithDeadline(
+    dictReadsInFlight, sKey, fnRead, *listArguments,
 ):
-    """Return the cgroup read's text, or None when it missed its deadline.
+    """Return a container read's result, or None when it missed its deadline.
+
+    Shared by the memory sample and the recreate preview's /tmp
+    measurement, so both are bounded the same way and by the same
+    ``F_MEMORY_READ_TIMEOUT_SECONDS``. ``sKey`` names the one read that
+    may be in flight per container in ``dictReadsInFlight``.
 
     The read runs on a worker thread and the wait is bounded by
     ``asyncio.wait_for``. A wait abandoned at the deadline does not stop
@@ -152,13 +159,13 @@ async def _fsReadWithDeadline(
     behind a hung daemon, so a container whose previous read is still
     out reports a timeout and launches no new one.
     """
-    taskPrevious = dictReadsInFlight.get(sName)
+    taskPrevious = dictReadsInFlight.get(sKey)
     if taskPrevious is not None and not taskPrevious.done():
         return None
-    taskRead = asyncio.ensure_future(asyncio.to_thread(
-        connectionDocker.fsReadCgroupMemory, sContainerId))
+    taskRead = asyncio.ensure_future(
+        asyncio.to_thread(fnRead, *listArguments))
     taskRead.add_done_callback(_fnConsumeAbandonedRead)
-    dictReadsInFlight[sName] = taskRead
+    dictReadsInFlight[sKey] = taskRead
     try:
         return await asyncio.wait_for(
             asyncio.shield(taskRead),

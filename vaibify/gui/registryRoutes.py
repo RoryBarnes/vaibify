@@ -230,6 +230,7 @@ def fnRegisterRegistryRoutes(app, dictCtx):
     _fnRegisterStartContainer(app, dictCtx)
     _fnRegisterStopContainer(app, dictCtx)
     _fnRegisterContainerSettings(app, dictCtx)
+    _fnRegisterWritableLayerPreview(app, dictCtx)
     _fnRegisterHostDirectories(app, dictCtx)
     _fnRegisterProjectGitRemote(app, dictCtx)
     _fnRegisterScanDependencies(app, dictCtx)
@@ -1034,6 +1035,24 @@ def _flistApplyLimitSettings(sConfigPath, request):
     return resourceLimits.flistDescribeNextStartOutcomes(
         listChanged, fconfigLoadFromFile(sConfigPath),
     )
+
+
+def _fnRegisterWritableLayerPreview(app, dictCtx):
+    """Register GET /api/containers/{sName}/writable-layer-preview.
+
+    A read: what a recreate would discard, with /tmp measured under a
+    bounded deadline (``writableLayerPreview``). The name must be a
+    registered project before Docker is asked about it.
+    """
+    dictReadsInFlight = {}
+
+    @app.get("/api/containers/{sName}/writable-layer-preview")
+    async def fdictGetWritableLayerPreview(sName: str):
+        from .writableLayerPreview import fdictPreviewWritableLayer
+        _fdictRequireProject(sName)
+        return await fdictPreviewWritableLayer(
+            dictCtx["docker"], sName, dictReadsInFlight,
+        )
 
 
 def _fbApplyX11Forwarding(sConfigPath, bNewValue):

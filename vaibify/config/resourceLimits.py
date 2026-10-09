@@ -351,6 +351,8 @@ def _fsDescribeSavedLimit(sField, config, iHostCores):
 
 def fsFormatBytes(iBytes):
     """Return a byte count in the units the limit fields use (GB = 2**30)."""
+    if iBytes < I_BYTES_PER_MEGABYTE:
+        return f"{round(iBytes / 1024)} KB"
     if iBytes < I_BYTES_PER_GIGABYTE:
         return f"{round(iBytes / I_BYTES_PER_MEGABYTE)} MB"
     fGigabytes = iBytes / I_BYTES_PER_GIGABYTE

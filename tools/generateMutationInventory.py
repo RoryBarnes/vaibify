@@ -269,6 +269,9 @@ DICT_PRIMITIVE_ACCESS = {
     # adapter); the state read asks the DAEMON for a container's State
     # block and runs no program at all.
     "fsReadCgroupMemory": S_ACCESS_TYPED_READ,
+    # The recreate confirmation's /tmp measurement: a declared typed
+    # read of ``du -sxk`` with the path fixed in the adapter.
+    "fiReadTmpBytes": S_ACCESS_TYPED_READ,
     "fdictReadContainerState": S_ACCESS_TYPED_READ,
     "fdictWeighRepository": S_ACCESS_TYPED_READ,
     # A DAEMON-info query, not a container call: it runs no program

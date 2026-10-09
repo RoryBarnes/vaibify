@@ -30544,4 +30544,24 @@ def _fdictEntry(sRel):
         old='        dictTab.terminal.write(S_INPUT_MODE_RESET_SEQUENCE);\n',
         new='        dictTab.terminal.reset();\n',
     ),
+    # --- 2026-10-08: a recreate confirmation measures /tmp, and a timeout is never a size ---
+    Falsification(
+        nodeid='tests/testWritableLayerLoss.py::testAHungReadIsATimeoutNeverASize',
+        source='vaibify/gui/writableLayerPreview.py',
+        old='    if iTmpBytes is None:\n        return _fdictAnswer(loss.S_STATE_TIMEOUT, sReason=(\n',
+        new='    if iTmpBytes is None:\n        return _fdictAnswer(loss.S_STATE_MEASURED, iTmpBytes=0)\n    if False:\n        return _fdictAnswer(loss.S_STATE_TIMEOUT, sReason=(\n',
+    ),
+    # --- 2026-10-08: a recreate confirmation waits for the hub's sentence ---
+    Falsification(
+        nodeid='tests/browser/testARecreateSaysWhatItDiscards.py::testRestartWaitsForTheHubBeforeItCanBeConfirmed',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            _fdictAskWhatRecreateDiscards(sName, {\n                sDetails:\n                    "Use Restart when you\'ve rebuilt the image from " +\n                    "the command line (vaibify build) and want the " +\n                    "container to switch to the new image, or when " +\n                    "a running container has gotten into a bad state " +\n                    "and needs a fresh process. No image rebuild " +\n                    "happens, so this is fast.",\n                sCommand: "vaibify stop && vaibify start",\n            })\n        );\n    }\n\n',
+        new='            {\n                sDetails:\n                    "Use Restart when you\'ve rebuilt the image from " +\n                    "the command line (vaibify build) and want the " +\n                    "container to switch to the new image, or when " +\n                    "a running container has gotten into a bad state " +\n                    "and needs a fresh process. No image rebuild " +\n                    "happens, so this is fast.",\n                sCommand: "vaibify stop && vaibify start",\n            }\n        );\n    }\n\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testARecreateSaysWhatItDiscards.py::testConfirmIsDisabledUntilTheAnswerArrives',
+        source='vaibify/gui/static/scriptModals.js',
+        old='        elOk.disabled = true;\n',
+        new='        elOk.disabled = false;\n',
+    ),
 ]

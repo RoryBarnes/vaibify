@@ -88,6 +88,18 @@ kills in containers that no longer exist, and reports a running
 container's earlier kills again as kills whose time vaibify did not
 observe.
 
+**What a recreate discards.** Restart, Rebuild, Force Rebuild,
+Re-obtain, and both image switches create a new container, so the old
+container's writable layer — everything outside its mounted volumes
+and host directories, including an agent's scratch files in `/tmp` —
+is discarded. Each confirmation opens on "Checking what this would
+discard…" with Confirm disabled, asks the hub to measure `/tmp`, and
+enables Confirm once the answer is shown, for example "Files in the
+container's writable layer, including 1.4 GB in /tmp, are discarded;
+mounted volumes and host directories are preserved." When the size
+cannot be measured, the sentence says why and Confirm is enabled
+anyway. Copy anything you want to keep out of `/tmp` first.
+
 **Limits that differ from the settings.** A container keeps the CPU
 and memory limits it was created with. When they differ from the
 project's settings — after a change in Settings, or a limit raised by

@@ -599,6 +599,7 @@ S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 # written to no file and no log.
 S_TYPED_READ_KEYRING_SECRET = "keyringSecretValue"
 S_TYPED_READ_CGROUP_MEMORY = "cgroupMemory"
+S_TYPED_READ_TMP_SIZE = "tmpSize"
 
 # A provider login document is kilobytes. The council's credential read
 # bounds itself IN the container at this ceiling rather than inheriting
@@ -830,6 +831,20 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    if sText and not sText.endswith('\\n'):\n"
         "        sText += '\\n'\n"
         "    sys.stdout.write('@@ file ' + sName + '\\n' + sText)\n"
+    ),
+    # How much a recreate would discard from /tmp, for the confirmation
+    # that asks first: ``du -sxk`` over the slot's path (the adapter
+    # fixes /tmp). ``-x`` keeps the count on the writable layer's own
+    # filesystem. du reports unreadable subdirectories on stderr and
+    # still prints its total, so only an empty answer is a failure.
+    S_TYPED_READ_TMP_SIZE: (
+        "import subprocess,sys\n"
+        "processDu = subprocess.run(['du', '-sxk', "
+        + _S_TYPED_READ_PATH_SLOT + "],\n"
+        "    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,\n"
+        "    universal_newlines=True)\n"
+        "sys.stdout.write(processDu.stdout)\n"
+        "sys.exit(0 if processDu.stdout.strip() else 1)\n"
     ),
     # The container's own wall clock, in the format a sign-off is
     # stamped in. The read takes no argument: the slot is bound to a
@@ -2723,6 +2738,21 @@ class DockerConnection:
                 f"{tExecResult.sStderr.strip()}"
             )
         return tExecResult.sStdout
+
+    def fiReadTmpBytes(self, sContainerId):
+        """Return the bytes in the container's /tmp, as ``du -sxk`` counts them.
+
+        An AUDITED ADAPTER taking no caller value: the path is fixed
+        here. ``OSError`` when the measurement produced no total.
+        """
+        from vaibify.docker.writableLayerLoss import fiParseTmpBytes
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_TMP_SIZE, "/tmp",
+        )
+        iBytes = fiParseTmpBytes(tExecResult.sStdout)
+        if tExecResult.iExitCode != 0 or iBytes is None:
+            raise OSError("Cannot measure the container's /tmp")
+        return iBytes
 
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.

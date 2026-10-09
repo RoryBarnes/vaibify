@@ -1673,18 +1673,17 @@ var VaibifyContainerManager = (function () {
             "Stop the container, obtain the author’s pinned image " +
             "again through the published chain (registry, then the " +
             "archived deposit, then a copy on this daemon), stack the " +
-            "agents this project adds, and start a fresh container. " +
-            "Workspace files are preserved.",
+            "agents this project adds, and start a fresh container.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Re-obtaining the pinned image"))) return;
                 await fnAcquireImage(sName, bAllowEmulation, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: "The image the author pinned is what every " +
                     "verification grades. Re-obtaining it repairs a " +
                     "tag that moved or an image that was pruned.",
-            }
+            })
         );
     }
 
@@ -1694,8 +1693,7 @@ var VaibifyContainerManager = (function () {
             "This project runs the author’s pinned image. Switching " +
             "builds an image of your own from the Dockerfile instead: " +
             "it will carry a different digest, so it cannot reproduce " +
-            "the author’s bytes, and the origin record is cleared. " +
-            "Workspace files are preserved.",
+            "the author’s bytes, and the origin record is cleared.",
             async function () {
                 /* The stop comes FIRST, and a failed one ends it here:
                    the switch clears the registry entry and the origin
@@ -1717,12 +1715,12 @@ var VaibifyContainerManager = (function () {
                 }
                 await fnBuildContainer(sName, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: "Use this when you want your own " +
                     "environment rather than the author’s. To keep " +
                     "the author’s, choose Re-obtain the pinned image.",
                 sCommand: "vaibify stop && vaibify build && vaibify start",
-            }
+            })
         );
     }
 
@@ -1750,7 +1748,7 @@ var VaibifyContainerManager = (function () {
             "environment fields in vaibify.yml from the committed copy, " +
             "obtains the image the envelope pins (registry, then the " +
             "archived deposit, then a copy on this daemon), and starts " +
-            "a fresh container from it. Workspace files are preserved." +
+            "a fresh container from it." +
             (bOfferEmulation ? "\n\nAllow emulation?" : ""),
             async function () {
                 /* Stop first; a failed stop ends the transition here,
@@ -1770,11 +1768,11 @@ var VaibifyContainerManager = (function () {
                 }
                 await fnAcquireImage(sName, bOfferEmulation, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: sDetails,
                 sConfirmLabel: bOfferEmulation
                     ? "Switch and allow emulation" : "Switch",
-            }
+            })
         );
     }
 
@@ -2260,18 +2258,44 @@ var VaibifyContainerManager = (function () {
         return false;
     }
 
+    /* Every action that recreates the container discards its writable
+       layer -- an agent's scratch files in /tmp above all. Its
+       confirmation asks the hub what that would cost, /tmp measured,
+       and Confirm is enabled only once the hub's sentence is on screen.
+       A request that fails still enables Confirm, with a sentence that
+       says the size is unknown and why. */
+    var S_DISCARD_CHECKING = "Checking what this would discard\u2026";
+    var S_DISCARD_UNMEASURED = "Files in the container's writable " +
+        "layer, including /tmp, are discarded (the size of /tmp could " +
+        "not be measured: this dashboard could not reach the hub); " +
+        "mounted volumes and host directories are preserved.";
+
+    function _fdictAskWhatRecreateDiscards(sName, dictDetails) {
+        var dictAsked = Object.assign({}, dictDetails);
+        dictAsked.sPendingText = S_DISCARD_CHECKING;
+        dictAsked.sPendingFailureText = S_DISCARD_UNMEASURED;
+        dictAsked.fpromisePendingSentence = function () {
+            return VaibifyApi.fdictGet(
+                "/api/containers/" + encodeURIComponent(sName) +
+                "/writable-layer-preview"
+            ).then(function (dictPreview) {
+                return dictPreview.sSentence;
+            });
+        };
+        return dictAsked;
+    }
+
     async function fnRestartContainer(sName) {
         VaibifyApp.fnShowConfirmModal(
             "Restart Container",
             "Stop the container and start it again using the " +
-            "current image. Open terminal sessions will close. " +
-            "Workspace files are preserved.",
+            "current image. Open terminal sessions will close.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Restart"))) return;
                 await fnStartContainer(sName);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Restart when you've rebuilt the image from " +
                     "the command line (vaibify build) and want the " +
@@ -2280,7 +2304,7 @@ var VaibifyContainerManager = (function () {
                     "and needs a fresh process. No image rebuild " +
                     "happens, so this is fast.",
                 sCommand: "vaibify stop && vaibify start",
-            }
+            })
         );
     }
 
@@ -2289,15 +2313,14 @@ var VaibifyContainerManager = (function () {
             "Rebuild Container",
             "Stop the container, rebuild the image with your " +
             "current vaibify.yml settings, then start a fresh " +
-            "container. Open terminal sessions will close. " +
-            "Workspace files are preserved.",
+            "container. Open terminal sessions will close.",
             async function () {
                 if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Rebuild"))) return;
                 await fnBuildContainer(sName, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Rebuild after editing vaibify.yml to change " +
                     "Python packages, system packages, repositories, " +
@@ -2305,7 +2328,7 @@ var VaibifyContainerManager = (function () {
                     "layers where possible, so only the parts that " +
                     "changed are rebuilt \u2014 usually seconds.",
                 sCommand: "vaibify stop && vaibify build && vaibify start",
-            }
+            })
         );
     }
 
@@ -2314,14 +2337,14 @@ var VaibifyContainerManager = (function () {
             "Force Rebuild (Slow)",
             "Rebuild every layer of the image from scratch, " +
             "ignoring the build cache. This can take several " +
-            "minutes. Workspace files are preserved.",
+            "minutes.",
             async function () {
                 if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Force Rebuild"))) return;
                 await fnBuildContainer(sName, true);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Force Rebuild only when the image seems " +
                     "corrupted, or when a layer needs to re-fetch " +
@@ -2333,7 +2356,7 @@ var VaibifyContainerManager = (function () {
                 sCommand:
                     "vaibify stop && vaibify build --no-cache && "
                     + "vaibify start",
-            }
+            })
         );
     }
 
