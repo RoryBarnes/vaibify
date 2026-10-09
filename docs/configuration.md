@@ -31,11 +31,19 @@ file; the Python dataclass uses Hungarian notation internally.
 ### CPU and memory limits
 
 `cpuLimit` and `memoryLimitGigabytes` are passed to `docker run`, so a
-container keeps the limits it was created with. Changing either one,
-in this file or in the dashboard's Settings dialog, takes effect the
-next time the container starts; the dashboard's answer to a save says
-so for each field it changed, and a save that leaves a field as it was
-reports nothing for that field.
+container keeps the limits it was created with. An edit to this file
+takes effect the next time the container starts. A change saved in the
+dashboard's Settings dialog is written here and, if the container is
+running, applied to it at once when that cannot kill a process: a
+higher memory limit (its swap limit moves in proportion, as Docker
+requires) or any change to the CPU limit. A lower memory limit, a new
+memory limit on a container that had none, and removing a limit all
+wait for the next start, because Docker cannot make the last two
+changes to a running container and a lower limit can make the kernel
+kill a process. The answer to the save says, for each field it
+changed, whether it was applied, could not be applied (in Docker's own
+words), or waits for the next start. A save that leaves a field as it
+was reports nothing for that field.
 
 When a running container's limits differ from this file — after an
 edit, or after a limit was raised by hand with `docker update` — the

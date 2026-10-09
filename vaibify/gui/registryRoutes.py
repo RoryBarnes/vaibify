@@ -967,15 +967,22 @@ def _fnRegisterContainerSettings(app, dictCtx):
 
     # separate-authority, not typed-read. Every write here lands in the
     # project's own `vaibify.yml` on the researcher's machine through
-    # `_fnUpdateYamlBoolField` / `_fnUpdateYamlNumberField`; the route
-    # opens no container connection at all. `typed-read` would be
-    # literally true of its container reach and would still be the wrong
-    # record, because a reader takes it to mean the route writes
-    # nothing. What governs it is `_fdictRequireProject`, which binds
-    # the name to a registered project and its config path, and
-    # `_fnRequireValidResourceLimits`. Ruling 2026-08-05.
+    # `_fnUpdateYamlBoolField` / `_fnUpdateYamlNumberField`. `typed-read`
+    # would be the wrong record, because a reader takes it to mean the
+    # route writes nothing. What governs it is `_fdictRequireProject`,
+    # which binds the name to a registered project and its config path,
+    # and `_fnRequireValidResourceLimits`. Ruling 2026-08-05.
+    #
+    # And lifecycle-transaction, since a saved limit may be applied to
+    # the running container live: one `docker update` through the
+    # lifecycle gateway (`containerManager.fnApplyResourceChangesLive`),
+    # daemon-side and never an exec, under the per-container mutation
+    # lock -- the same reading the stop route records for its own
+    # gateway call. Only changes that cannot kill a process are sent.
     @app.post("/api/containers/{sName}/settings")
-    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnDeclareCarrierMode(
+        S_CARRIER_SEPARATE_AUTHORITY, S_CARRIER_LIFECYCLE_TRANSACTION,
+    )
     async def fdictSetContainerSettings(
         sName: str, request: ContainerSettingsRequest
     ):
@@ -999,15 +1006,15 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 bRestartRequired = _fbApplyAgentAutoUpdate(
                     dictProject["sConfigPath"], sAgent, bAutoUpdate,
                 ) or bRestartRequired
-        listLimitOutcomes = _flistApplyLimitSettings(
-            dictProject["sConfigPath"], request,
+        listLimitOutcomes = await _flistApplyLimitSettings(
+            app.state, sName, dictProject, request,
         )
         from vaibify.config import resourceAdequacy
         from vaibify.config.projectConfig import fconfigLoadFromFile
         return {
             "bSuccess": True,
             "bRestartRequired": bRestartRequired or any(
-                dictOutcome["sOutcome"] == "nextStart"
+                dictOutcome["sOutcome"] in ("nextStart", "failed")
                 for dictOutcome in listLimitOutcomes
             ),
             "listLimitOutcomes": listLimitOutcomes,
@@ -1017,15 +1024,19 @@ def _fnRegisterContainerSettings(app, dictCtx):
         }
 
 
-def _flistApplyLimitSettings(sConfigPath, request):
+async def _flistApplyLimitSettings(appState, sName, dictProject, request):
     """Write the limits that differ from vaibify.yml; return each outcome.
 
     The dashboard sends both fields on every save, so only a field whose
-    value differs from the file is written or reported. Every change
-    waits for the next start, and the outcome says so.
+    value differs from the file is written or reported. Each change is
+    then applied to the running container where that cannot kill a
+    process (``resourceLimitApplication``), and waits for the next start
+    otherwise; the outcome says which.
     """
     from vaibify.config import resourceLimits
     from vaibify.config.projectConfig import fconfigLoadFromFile
+    from .resourceLimitApplication import flistApplyChangedLimits
+    sConfigPath = dictProject["sConfigPath"]
     listChanged = resourceLimits.flistChangedLimitFields(
         fconfigLoadFromFile(sConfigPath),
         request.iCpuLimit, request.fMemoryLimitGigabytes,
@@ -1037,8 +1048,9 @@ def _flistApplyLimitSettings(sConfigPath, request):
             sConfigPath, "memoryLimitGigabytes",
             request.fMemoryLimitGigabytes,
         )
-    return resourceLimits.flistDescribeNextStartOutcomes(
-        listChanged, fconfigLoadFromFile(sConfigPath),
+    return await flistApplyChangedLimits(
+        appState, dictProject.get("sContainerName") or sName, listChanged,
+        fconfigLoadFromFile(sConfigPath),
     )
 
 

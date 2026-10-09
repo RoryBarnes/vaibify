@@ -111,7 +111,11 @@ project's settings — after a change in Settings, or a limit raised by
 hand — a banner says which limit differs and what the next Restart
 will apply. It says nothing when the running limits cannot be read.
 Saving a limit in Settings answers with one sentence for each limit
-the save changed, saying when it takes effect.
+the save changed. A higher memory limit or a changed CPU limit is
+applied to the running container at once and checked by reading the
+container back; anything that could kill a process, or that Docker
+cannot change on a running container, waits for the next start and
+says why.
 
 ## Terminal
 

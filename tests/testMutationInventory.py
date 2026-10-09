@@ -406,7 +406,13 @@ I_UNCLASSIFIED_ROW_BUDGET = 275
 # classified at birth under the lock-held carrier -- the copy of a spooled
 # file into place (journal kind file-write, both hashes recorded) and the
 # creation of a dropped folder. Nothing the carrier does not already admit.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 227
+# 227 -> 228 (2026-10-08): the settings save's live limit change
+# (resourceLimitApplication._ftApplyLiveChanges), which hands
+# containerManager.fnApplyResourceChangesLive to a worker thread under the
+# per-container mutation lock. The `docker update` itself is inside the
+# lifecycle gateway; something outside it has to ask for it, as the stop
+# route asks for a stop. Classified at birth.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 
 
 # Every acquisition of a declared capability that still has no reviewed

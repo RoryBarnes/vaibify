@@ -684,27 +684,71 @@ def _fnAddEntrypointUser(saRunArgs, bRestricted=False):
 
 
 def _fnAddCpuAllocation(config, saRunArgs):
-    """Add CPU limit to run args (config cap or total cores minus one).
+    """Add the CPU limit ``resourceLimits`` resolves for this config.
 
-    ``iCpuLimit`` of zero means "no explicit limit", which keeps the
-    historical default of all host cores minus one. A configured cap
-    is clamped to the host's core count so a config written on a
-    larger machine cannot ask Docker for cores that do not exist.
+    One authority for the desired limits: ``cpuLimit`` of zero means all
+    host cores but one, and a cap is clamped to the host's cores. The
+    limit drift and the live change planner compare against the same
+    resolution, so a container created here never reads as drifted.
     """
-    iHostCores = os.cpu_count() or 2
-    iConfiguredLimit = getattr(config, "iCpuLimit", 0)
-    if iConfiguredLimit > 0:
-        iCpuCount = min(iConfiguredLimit, iHostCores)
-    else:
-        iCpuCount = max(1, iHostCores - 1)
-    saRunArgs.extend(["--cpus", str(iCpuCount)])
+    from vaibify.config.resourceLimits import fiResolveCpuCount
+    saRunArgs.extend(["--cpus", str(fiResolveCpuCount(config))])
 
 
 def _fnAddMemoryAllocation(config, saRunArgs):
-    """Add the optional memory cap (0 = unlimited, the default)."""
-    fMemoryGigabytes = getattr(config, "fMemoryLimitGigabytes", 0.0)
-    if fMemoryGigabytes > 0:
-        saRunArgs.extend(["--memory", f"{fMemoryGigabytes:g}g"])
+    """Add the memory cap ``resourceLimits`` resolves; none means unlimited."""
+    from vaibify.config.resourceLimits import fsResolveMemoryArgument
+    sMemoryArgument = fsResolveMemoryArgument(config)
+    if sMemoryArgument is not None:
+        saRunArgs.extend(["--memory", sMemoryArgument])
+
+
+_F_DOCKER_UPDATE_TIMEOUT_SECONDS = 30.0
+
+
+def fnApplyResourceChangesLive(sContainerId, listChanges):
+    """Issue ONE ``docker update`` carrying the live-applicable limit changes.
+
+    ``listChanges`` are entries of ``resourceLimits.flistPlanLimitChanges``;
+    only those planned ``applyLive`` are sent, and the planner admits only
+    changes that cannot kill a process (a memory RAISE, any finite CPU
+    change). A memory raise always carries its swap limit, because Docker
+    refuses a memory limit above the existing swap limit. List argv, no
+    shell; the container id is the one a fresh inspect just named.
+
+    Raises ``RuntimeError`` carrying Docker's own words when the daemon
+    refuses. The exit code is never the verdict: the caller re-inspects
+    the container and reports what the daemon says it now has.
+    """
+    processResult = subprocess.run(
+        ["docker", "update", *_flistResourceUpdateArgs(listChanges),
+         sContainerId],
+        capture_output=True, text=True, encoding="utf-8",
+        timeout=_F_DOCKER_UPDATE_TIMEOUT_SECONDS,
+    )
+    if processResult.returncode != 0:
+        raise RuntimeError(
+            (processResult.stderr or processResult.stdout or "").strip()
+            or "docker update failed"
+        )
+
+
+def _flistResourceUpdateArgs(listChanges):
+    """Return the ``docker update`` flags for the applyLive entries only."""
+    saArgs = []
+    for dictChange in listChanges:
+        if dictChange.get("sAction") != "applyLive":
+            continue
+        if dictChange["sField"] == "memory":
+            saArgs.extend([
+                "--memory", str(dictChange["iDesiredBytes"]),
+                "--memory-swap", str(dictChange["iSwapBytes"]),
+            ])
+        elif dictChange["sField"] == "cpu":
+            saArgs.extend(["--cpus", str(dictChange["iDesiredCpuCount"])])
+    if not saArgs:
+        raise ValueError("no limit change can be applied to a running container")
+    return saArgs
 
 
 def _fnAddVolumeMount(config, saRunArgs):

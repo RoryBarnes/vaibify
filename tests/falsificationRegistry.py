@@ -30571,4 +30571,29 @@ def _fdictEntry(sRel):
         old='            "This project\'s memory limit may be small for an AI agent",\n            listSentences);\n',
         new='            "This project\'s memory limit may be small for an AI agent",\n            listSentences.length\n                ? ["Give an AI agent at least 5 GB of memory."] : []);\n',
     ),
+    # --- 2026-10-08 (gated): live limit changes and the in-container Resources guidance ---
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testEveryMemoryRaiseCarriesItsSwapLimit',
+        source='vaibify/docker/containerManager.py',
+        old='                "--memory", str(dictChange["iDesiredBytes"]),\n                "--memory-swap", str(dictChange["iSwapBytes"]),\n',
+        new='                "--memory", str(dictChange["iDesiredBytes"]),\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testAMemoryDecreaseIsNeverSentLive',
+        source='vaibify/config/resourceLimits.py',
+        old='    if iDesiredBytes < iRunning:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testAPartialResultIsReportedFieldByField',
+        source='vaibify/config/resourceLimits.py',
+        old='    if _fbRunningEqualsDesired(dictPlan, dictRunningAfter):\n',
+        new='    if not sFailure:\n',
+    ),
+    Falsification(
+        nodeid='tests/testEntrypointResourcesGuidance.py::testTheGuideTellsTheAgentWhereItsMemoryLimitIs',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Resources\n\nThis container may have a memory limit: `/sys/fs/cgroup/memory.max` holds it (`max` means none), and `memory.current` and `memory.stat` beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. `/tmp` does not survive a container restart and `/workspace` does, so keep anything you need in `/workspace`.\n\n',
+        new='',
+    ),
 ]

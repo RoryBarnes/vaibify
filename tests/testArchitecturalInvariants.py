@@ -6933,7 +6933,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # vaibify/docker/writableLayerLoss.py.
     # 2452 -> 2457 (2026-10-08): the settings save answers with the
     # agent-memory advisory from vaibify/config/resourceAdequacy.py.
-    "registryRoutes.py": 2457,
+    # 2457 -> 2469 (2026-10-08): the settings save applies a saved limit
+    # to the running container where that is safe; the route's carrier
+    # declaration names the gateway call, and the planning, the update
+    # and the re-inspection live in resourceLimitApplication.
+    "registryRoutes.py": 2469,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

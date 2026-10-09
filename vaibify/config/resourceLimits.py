@@ -53,6 +53,9 @@ __all__ = [
     "flistDescribeLimitDrift",
     "flistChangedLimitFields",
     "flistDescribeNextStartOutcomes",
+    "S_OUTCOME_APPLIED",
+    "S_OUTCOME_FAILED",
+    "fdictDescribeLimitOutcome",
     "fsFormatBytes",
 ]
 
@@ -343,6 +346,58 @@ def _fsDescribeSavedLimit(sField, config, iHostCores):
         return ("vaibify.yml now sets no CPU limit, so the container gets "
                 f"all cores but one ({iCpuCount}).")
     return f"The CPU limit in vaibify.yml is now {_fsFormatCpus(iCpuCount)}."
+
+
+# ---------------------------------------------------------------------
+# A live change: what the running container reports afterwards
+# ---------------------------------------------------------------------
+
+S_OUTCOME_APPLIED = "applied"
+S_OUTCOME_FAILED = "failed"
+
+
+def fdictDescribeLimitOutcome(
+    dictPlan, dictRunningAfter, config, sFailure="", iHostCores=None,
+):
+    """Return ``{sField, sOutcome, sSentence}`` for one planned field.
+
+    A live change is judged by the RE-INSPECTED running limits, never by
+    the update's exit code: ``applied`` only when the container now has
+    the desired value, ``failed`` otherwise, with ``sFailure`` (Docker's
+    words, translated) as the reason when there was one. A field already
+    at the desired value is applied with nothing sent.
+    """
+    sField = dictPlan["sField"]
+    sSaved = _fsDescribeSavedLimit(sField, config, iHostCores)
+    sAction = dictPlan["sAction"]
+    if sAction == S_ACTION_NEXT_START:
+        return _fdictOutcome(sField, S_ACTION_NEXT_START, (
+            f"{sSaved} {S_NEXT_START_CLAUSE[:-1]}: {dictPlan['sReason']}."))
+    if _fbRunningEqualsDesired(dictPlan, dictRunningAfter):
+        return _fdictOutcome(sField, S_OUTCOME_APPLIED, (
+            f"{sSaved} The running container has it now."))
+    sWhy = f" ({sFailure})" if sFailure else ""
+    return _fdictOutcome(sField, S_OUTCOME_FAILED, (
+        f"{sSaved} It could not be applied to the running container"
+        f"{sWhy}; {S_NEXT_START_CLAUSE[0].lower()}{S_NEXT_START_CLAUSE[1:]}"))
+
+
+def _fdictOutcome(sField, sOutcome, sSentence):
+    return {"sField": sField, "sOutcome": sOutcome, "sSentence": sSentence}
+
+
+def _fbRunningEqualsDesired(dictPlan, dictRunningAfter):
+    """Return True when the re-inspected limit equals the planned target."""
+    if dictPlan["sField"] == S_FIELD_MEMORY:
+        dictMemory = dictRunningAfter["dictMemory"]
+        return (dictMemory["sKind"] == S_KIND_FINITE
+                and dictMemory["iBytes"] == dictPlan["iDesiredBytes"]
+                or dictMemory["sKind"] == S_KIND_UNLIMITED
+                and dictPlan["iDesiredBytes"] is None)
+    dictCpu = dictRunningAfter["dictCpu"]
+    iDesired = dictPlan.get("iDesiredCpuCount")
+    return (dictCpu["sKind"] == S_KIND_FINITE and iDesired is not None
+            and dictCpu["iNanoCpus"] == iDesired * I_NANO_CPUS_PER_CPU)
 
 
 # ---------------------------------------------------------------------

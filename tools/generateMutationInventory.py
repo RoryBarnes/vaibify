@@ -360,6 +360,9 @@ DICT_PRIMITIVE_ACCESS = {
     "fnStartCreatedContainer": S_ACCESS_LIFECYCLE,
     "fnStopContainer": S_ACCESS_LIFECYCLE,
     "fnRemoveStopped": S_ACCESS_LIFECYCLE,
+    # A live CPU or memory limit change: one `docker update` on a
+    # running container's HostConfig, daemon-side, never an exec.
+    "fnApplyResourceChangesLive": S_ACCESS_LIFECYCLE,
     "fdictSettleReservationContainers": S_ACCESS_LIFECYCLE,
     "fdictTerminateDockerProcess": S_ACCESS_SIGNAL,
     "fbStopContainerProvenSettled": S_ACCESS_LIFECYCLE,

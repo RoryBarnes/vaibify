@@ -141,3 +141,11 @@ without discussion:
   hook ever added would mean rewriting `PROMPT_COMMAND` on every
   prompt, which is a larger intrusion into the researcher's shell than
   the defect it would cure.
+- A live CPU or memory limit change (`resourceLimitApplication`) runs
+  under the per-container mutation lock, so it is serialized with
+  guarded writes and with a start's settlement, but not with a stop:
+  the stop route holds no such lock (its own comment in
+  `registryRoutes` records why). The update is pinned to the container
+  id a fresh inspect named, so it can only ever change that container,
+  and a stop that lands mid-update makes the re-inspect fail and the
+  outcome read "could not be applied", never "applied".

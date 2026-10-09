@@ -1264,8 +1264,10 @@ var VaibifyContainerManager = (function () {
             '<h2>Settings for ' +
             VaibifyUtilities.fnEscapeHtml(sName) + '</h2>' +
             '<p class="settings-intro">Configure how this ' +
-            'container behaves while running. Changes take ' +
-            'effect the next time the container starts.</p>' +
+            'container behaves while running. Most changes take ' +
+            'effect the next time the container starts; a raised ' +
+            'memory limit or a changed CPU limit applies at once, ' +
+            'and saving says which.</p>' +
             '<div class="settings-option">' +
             '<label class="settings-option-row">' +
             '<input type="checkbox" id="settingNeverSleep"' +
