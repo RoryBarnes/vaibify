@@ -281,14 +281,19 @@ def fnClearStoppedContainerBeforeLaunch(config):
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus, fnRemoveStopped,
     )
+    from vaibify.gui.containerMemorySampler import fdictReadExitedOomEvidence
+    from vaibify.gui.containerMemoryWatch import fsDescribeExitedOomEvidence
     dictStatus = fdictGetContainerStatus(config.sProjectName)
     if not dictStatus["bExists"] or dictStatus["bRunning"]:
         return
+    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)
     fnRemoveStopped(config.sProjectName)
     click.echo(
         f"Removed stopped container '{config.sProjectName}' "
         "from a prior session."
     )
+    if dictEvidence["bOomKilled"]:
+        click.echo(fsDescribeExitedOomEvidence(dictEvidence))
 
 
 def _fpreflightRunningContainer(sProjectName):

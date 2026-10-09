@@ -572,6 +572,47 @@ html, body {
     white-space: nowrap;
 }
 
+/* The memory watch chip. Neutral when the server says "ok", amber at
+   "near", gray and italic when it could not tell, and red-edged while
+   the hub holds a kill for this container. */
+.memory-watch-chip {
+    background: rgba(128, 128, 160, 0.10);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 0 10px 0 6px;
+    font-size: 0.75em;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.memory-watch-chip[data-level="near"] {
+    background: rgba(224, 148, 1, 0.12);
+    border-color: var(--color-orange);
+}
+
+.memory-watch-chip[data-level="unknown"] {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.memory-watch-chip.memory-watch-chip-killed {
+    border-color: var(--color-red);
+}
+
+.memory-incident-banner {
+    background: var(--bg-error-tint);
+    border-left-color: var(--color-red);
+}
+
+.memory-incident-sentence {
+    margin: 0;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
 .other-project-run-badge {
     background: rgba(52, 152, 219, 0.10);
     border: 1px solid var(--color-blue, #3498db);

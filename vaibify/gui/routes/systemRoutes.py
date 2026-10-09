@@ -6,9 +6,11 @@ import asyncio
 import concurrent.futures
 import json
 import os
+from datetime import datetime, timezone
 
 from fastapi import Request
 
+from .. import containerMemoryWatch
 from .. import pipelineServer as _pipelineServer
 from ..dockerStatus import (
     fdictGetDockerStatus,
@@ -32,9 +34,28 @@ def _fnRegisterMonitor(app, dictCtx):
 
     @app.get("/api/monitor/{sContainerId}")
     async def fdictGetMonitorStats(sContainerId: str):
-        return await asyncio.to_thread(
+        dictStats = await asyncio.to_thread(
             fdictGetContainerStats, dictCtx["docker"], sContainerId,
         )
+        dictMemory = containerMemoryWatch.fdictDescribeMemoryForContainerId(
+            app.state, sContainerId, datetime.now(timezone.utc))
+        dictStats["sMemoryKillText"] = containerMemoryWatch.fsDescribeKillCount(
+            dictMemory["iKillCount"])
+        return dictStats
+
+
+def _fnRegisterMemoryWatch(app):
+    """Register GET /api/monitor/{id}/memory, the memory watch's answer.
+
+    It never execs: it returns the record the sampler keeps, judged as
+    of now, so a sampler that has stopped reads as stale here.
+    """
+
+    @app.get("/api/monitor/{sContainerId}/memory")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictGetContainerMemory(sContainerId: str):
+        return containerMemoryWatch.fdictDescribeMemoryForContainerId(
+            app.state, sContainerId, datetime.now(timezone.utc))
 
 
 def _fnRegisterRuntimeInfo(app, dictCtx):
@@ -706,6 +727,7 @@ def _fnRegisterEnvironmentInfo(app, dictCtx):
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
     _fnRegisterMonitor(app, dictCtx)
+    _fnRegisterMemoryWatch(app)
     _fnRegisterEnvironmentInfo(app, dictCtx)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)

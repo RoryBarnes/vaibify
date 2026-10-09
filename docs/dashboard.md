@@ -12,10 +12,12 @@ This page is a tour of every panel.
 
 The dashboard has a fixed layout:
 
-- **Top toolbar** — container name, active project, the three PROOF
-  level badges, the **?** Help button, and the Run, Sync, View, and
-  Admin menus. **View → Resource Monitor** opens a small on-demand
-  panel with live CPU and memory sparklines and the container's disk
+- **Top toolbar** — container name and its memory chip (see
+  [Memory](#memory)), active project, the three PROOF level badges,
+  the **?** Help button, and the Run, Sync, View, and Admin menus.
+  **View → Resource Monitor** opens a small on-demand panel with live
+  CPU and memory sparklines, the container's memory limit, the number
+  of processes killed for lack of memory, and the container's disk
   usage (with a warning banner when the disk is nearly full); when a
   reading is unavailable — Docker unreachable, container stopped —
   the panel says so rather than showing a stale number.
@@ -34,6 +36,57 @@ shifts color with the highest level attained: pale blue before Level
 1, purple at Level 1, green at Level 2, and pink at Level 3. The
 badge, the logo, and every "attained" mark share the tint, so a glance
 at any corner of the screen tells you where the project stands.
+
+## Memory
+
+**A process in a container that reaches the container's memory limit
+is killed by the kernel** — often an AI agent and the jobs it started.
+The process cannot report its own death, so the hub watches every open
+container for it, every 15 seconds, including a Blank Project.
+
+**The chip** beside the container name reads, for example,
+"Memory ~1.2 / 6 GB": the hub's estimate of memory in use against the
+container's limit. The estimate is the working set — memory in use
+minus the file cache the kernel would reclaim first — which is the
+figure `docker stats` reports. The chip:
+
+- turns **amber** when the estimate reaches 85% of the limit, and
+  returns to normal only once it falls below 80%. You get one warning
+  toast each time it turns amber. Memory can reach the limit between
+  two samples, so amber is not a promise of warning.
+- turns **gray**, with the reason in its tooltip, whenever the hub
+  could not measure: the container is stopped, it did not answer
+  within 5 seconds, or the last measurement is more than 45 seconds
+  old. Gray never means "fine".
+- says **"no limit"** for a container with no memory limit of its
+  own.
+- opens **Settings** at the memory limit when clicked.
+
+**A kill** is told once: one error toast, and one banner with the
+hub's sentence, for each kill. The chip keeps a count of kills for as
+long as the hub holds them. Dismissing a banner hides that banner;
+the count remains. When Docker reports that a stopped container's
+main process was killed for lack of memory, the next start reports it
+(in the dashboard, and as a line from `vaibify start`), because
+removing the stopped container would otherwise destroy that record.
+
+**What a sentence claims, and what it does not.** The kernel's
+counters are totals, not a log of events. A sentence names the
+interval between two samples in which the kill count rose. It
+mentions the container's own limit only when the counter of
+limit events rose in the same interval; otherwise it says that
+whether the limit was involved could not be established. It never
+names the process that was killed: that needs the kernel log of
+Docker's virtual machine, which only a privileged container can
+read. Every sentence ends with what to do: check that work the killed
+process was part of is still healthy, resume an AI agent's
+conversation (it is on the workspace volume; for Claude Code,
+`claude --resume`), and raise the limit in Settings.
+
+**History lives in the hub's memory.** Restarting the hub forgets
+kills in containers that no longer exist, and reports a running
+container's earlier kills again as kills whose time vaibify did not
+observe.
 
 ## Terminal
 

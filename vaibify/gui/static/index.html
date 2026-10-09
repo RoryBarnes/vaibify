@@ -416,6 +416,14 @@
             <span class="toolbar-label" id="activeResourceLabel"
                   >Container:</span>
             <span id="activeContainerName" class="toolbar-value"></span>
+            <!-- The memory watch: the hub's estimate of memory in use
+                 against the container's limit, and its kill count.
+                 Rendered from the server's answer; gray means the
+                 server could not tell. A click opens Settings on the
+                 memory limit. -->
+            <span id="memoryWatchChip" class="memory-watch-chip"
+                  role="button" tabindex="0" style="display: none;"
+                  ></span>
             <span class="toolbar-label">Project:</span>
             <div id="workflowSwitcher" class="workflow-switcher">
                 <span id="activeWorkflowName" class="toolbar-workflow"
@@ -603,6 +611,9 @@
              style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
+        <!-- One banner per out-of-memory kill the researcher has not
+             dismissed, each the hub's own sentence. -->
+        <div id="memoryIncidentBanners"></div>
 
         <!-- Steps sub-panel -->
         <div id="panelSteps" class="active">
@@ -1408,6 +1419,7 @@
 <script src="/static/scriptTerminal.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptStepEditor.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptResourceMonitor.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptMemoryWatch.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptCouncilConsent.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptCouncilSnapshotScope.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptAgentCouncil.js?v=__CACHE_VERSION__"></script>

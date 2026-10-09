@@ -648,6 +648,9 @@ const VaibifyApp = (function () {
         if (typeof VaibifyAgentCouncil !== "undefined") {
             VaibifyAgentCouncil.fnTeardown();
         }
+        if (typeof VaibifyMemoryWatch !== "undefined") {
+            VaibifyMemoryWatch.fnStop();
+        }
         VaibifyProofTab.fnSetContainerId(null);
     }
 
@@ -1320,6 +1323,9 @@ const VaibifyApp = (function () {
         fnApplyDashboardMode();
         _fnStopContainerHubPolling();
         _fnStopWorkflowHubPolling();
+        if (typeof VaibifyMemoryWatch !== "undefined") {
+            VaibifyMemoryWatch.fnStart(_dictSessionState.sContainerId);
+        }
     }
 
     function _fnStartContainerHubPolling() {
@@ -1389,6 +1395,9 @@ const VaibifyApp = (function () {
 
     function _fnCancelAllTimers() {
         VaibifyWebSocket.fnDisconnect();
+        if (typeof VaibifyMemoryWatch !== "undefined") {
+            VaibifyMemoryWatch.fnStop();
+        }
         VaibifyPolling.fnStopPipelinePolling();
         VaibifyPolling.fnStopFilePolling();
         VaibifyPolling.fnStopFileTreePolling();

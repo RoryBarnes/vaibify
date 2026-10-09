@@ -117,3 +117,18 @@ without discussion:
   different things by "destroy". Widening a CLI command's blast radius
   is a product decision, so the divergence is recorded rather than
   quietly resolved.
+- The memory watch never names the process an out-of-memory kill took.
+  The kernel writes the victim's name only to the Docker virtual
+  machine's own log, which a container can read only when it is
+  privileged and shares the host's process namespace -- a container
+  vaibify will not create to answer a display question. Guessing the
+  victim by comparing process lists before and after would show a
+  guess as fact, so the sentence says "a process" and asks the
+  researcher to check what was running.
+- The memory watch keeps its incident history in the hub's memory
+  (`containerMemoryWatch`). A hub restart forgets the kills of
+  containers that have since been removed, and a running container's
+  kernel counter is reported again, as a `beforeObservation` incident
+  whose time vaibify did not see. Persisting the history is possible;
+  it was not done because a restart that loses history is honest about
+  it, and a store on disk would need its own retention rules.

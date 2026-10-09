@@ -138,6 +138,9 @@ var VaibifyMonitor = (function () {
                 "CPU", "monitorCpuText", "canvasCpuSparkline") +
             fsMonitorMetricHtml(
                 "Memory", "monitorMemoryText", "canvasMemorySparkline") +
+            '<div id="monitorMemoryKills" style="display: none; ' +
+            'margin: -6px 0 10px; color: var(--color-red-text); ' +
+            'font-size: 12px;"></div>' +
             fsMonitorDiskHtml() +
             fsMonitorUnavailableHtml();
         document.body.appendChild(elMonitorPanel);
@@ -248,11 +251,24 @@ var VaibifyMonitor = (function () {
         if (elMemoryText) {
             elMemoryText.textContent = sMemoryUsage ?
                 sMemoryUsage : fMemoryPercent.toFixed(1) + "%";
+            if (sMemoryUsage && dictData.sMemoryLimit) {
+                elMemoryText.textContent += " / " + dictData.sMemoryLimit;
+            }
         }
+        fnUpdateMemoryKillText(dictData.sMemoryKillText || "");
         fnDrawSparkline(
             "canvasCpuSparkline", listCpuHistory, "#13aed5", 100);
         fnDrawSparkline(
             "canvasMemorySparkline", listMemoryHistory, "#c084fc", 100);
+    }
+
+    /* The kill count is the hub's memory watch speaking, in its own
+       words; empty when it holds no kill for this container. */
+    function fnUpdateMemoryKillText(sKillText) {
+        var elKills = document.getElementById("monitorMemoryKills");
+        if (!elKills) return;
+        elKills.textContent = sKillText;
+        elKills.style.display = sKillText ? "block" : "none";
     }
 
     function fsFormatDiskText(dictDisk) {

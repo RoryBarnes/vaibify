@@ -30386,4 +30386,92 @@ def _fdictEntry(sRel):
             "            'next time the container starts.</p>' +\n"
         ),
     ),
+    # --- 2026-10-08: the memory watch reports out-of-memory kills honestly ---
+    Falsification(
+        nodeid='tests/testCgroupMemory.py::testTheWorkingSetIsUsageMinusInactiveFile',
+        source='vaibify/docker/cgroupMemory.py',
+        old='    return max(0, iUsage - iInactiveFile)\n',
+        new='    return dictParsed.get("iAnonBytes")\n',
+    ),
+    Falsification(
+        nodeid='tests/testCgroupMemory.py::testAMissingFileIsNoneNeverZero',
+        source='vaibify/docker/cgroupMemory.py',
+        old='    """Return a file holding one integer as an int, or None."""\n    if sText is None:\n        return None\n',
+        new='    """Return a file holding one integer as an int, or None."""\n    if sText is None:\n        return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testARecreateUnderTheSameNameResetsCountersAndKeepsHistory',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        dictRecord["dictCurrent"] = None\n        dictRecord["dictBaseline"] = None\n    return dictRecord\n',
+        new='        dictRecord["dictCurrent"] = None\n    return dictRecord\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testStalenessIsJudgedWhenTheRecordIsRead',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    fAge = _ffAgeSeconds(dictCurrent.get("sSampledIso"), datetimeNow)\n',
+        new='    fAge = _ffAgeSeconds(\n        dictCurrent.get("sSampledIso"),\n        _fdatetimeParseIso(dictCurrent.get("sSampledIso")) or datetimeNow)\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFailedReadKeepsEveryIncident',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        dictRecord["dictCurrent"] = dictCurrent\n',
+        new='        dictRecord["dictCurrent"] = dictCurrent\n        dictRecord["listIncidents"] = []\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testNoSentenceClaimsTheLimitWithoutALimitEvent',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if dictIncident.get("bLimitEventInWindow"):\n',
+        new='    if dictIncident.get("sLimitKind") == cgroupMemory.S_LIMIT_FINITE:\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAnOomLogNeverReachesTheHostIncidentRing',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        fsDescribeMemoryIncident(dictIncident, datetime.now(timezone.utc)),\n    )\n',
+        new='        fsDescribeMemoryIncident(dictIncident, datetime.now(timezone.utc)),\n        extra={"sContainerId": dictIncident["sContainerId"]},\n    )\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAHungReadIsATimeoutAndNeverANumber',
+        source='vaibify/gui/containerMemorySampler.py',
+        old='    if sReadText is None:\n        _fnRecordUnknown(\n            dictStore, sName, sContainerId,\n            containerMemoryWatch.S_STATE_TIMEOUT)\n        return\n',
+        new='    if sReadText is None:\n        return\n',
+    ),
+    # --- 2026-10-08: a stopped container's OOM evidence is read before its removal ---
+    Falsification(
+        nodeid='tests/testExitedContainerEvidence.py::testTheHubReadsTheEvidenceBeforeItRemovesTheContainer',
+        source='vaibify/gui/startReservation.py',
+        old='        recordTask.dictExitedOomEvidence = (\n            containerMemorySampler.fdictReadExitedOomEvidence(sName))\n        containerManager.fnRemoveStopped(sName)\n',
+        new='        containerManager.fnRemoveStopped(sName)\n        recordTask.dictExitedOomEvidence = (\n            containerMemorySampler.fdictReadExitedOomEvidence(sName))\n',
+    ),
+    Falsification(
+        nodeid='tests/testExitedContainerEvidence.py::testTheCliReadsTheEvidenceBeforeItRemovesTheContainer',
+        source='vaibify/cli/commandStart.py',
+        old='    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)\n    fnRemoveStopped(config.sProjectName)\n',
+        new='    fnRemoveStopped(config.sProjectName)\n    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)\n',
+    ),
+    # --- 2026-10-08: the memory route reads the name-keyed record ---
+    Falsification(
+        nodeid='tests/testContainerMemoryRoute.py::testTheRouteAnswersFromTheNameKeyedRecordForTheIdInTheUrl',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    sKey = sName or sContainerId\n',
+        new='    sKey = sContainerId\n',
+    ),
+    # --- 2026-10-08: the memory watch tells a kill once ---
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testTheBannerCarriesTheServersSentenceVerbatim',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elSentence.textContent = dictIncident.sSentence || "";\n',
+        new='        elSentence.textContent = "A process in this container was " +\n            "killed for lack of memory.";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAKillIsToastedOnceAcrossPollsAndAReload',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='            _fnRemember(S_SHOWN_KEY, sIncidentId);\n',
+        new='            _fnRemember(S_SHOWN_KEY, sIncidentId + ":" + Date.now());\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testNearToastsOncePerEpisode',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        var sEpisode = (_dictState.sContainerName || "") + "|" +\n            dictCurrent.sNearSinceIso;\n',
+        new='        var sEpisode = (_dictState.sContainerName || "") + "|near";\n',
+    ),
 ]

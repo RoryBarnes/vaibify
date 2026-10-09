@@ -1237,13 +1237,16 @@ var VaibifyContainerManager = (function () {
         return null;
     }
 
-    async function fnShowContainerSettings(sName) {
+    async function fnShowContainerSettings(sName, sFocusFieldId) {
         try {
             var dictSettings = await VaibifyApi.fdictGet(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings"
             );
             fnShowContainerSettingsModal(sName, dictSettings);
+            var elFocus = sFocusFieldId
+                ? document.getElementById(sFocusFieldId) : null;
+            if (elFocus) elFocus.focus();
         } catch (error) {
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
@@ -3049,5 +3052,6 @@ var VaibifyContainerManager = (function () {
         fnBuildContainer: fnBuildContainer,
         fnAcquireImage: fnAcquireImage,
         fnSurfaceReadinessOutcome: _fnSurfaceReadinessOutcome,
+        fnShowContainerSettings: fnShowContainerSettings,
     };
 })();

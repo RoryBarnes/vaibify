@@ -6481,7 +6481,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1119 -> 1122 (2026-10-01): type-only imports name the annotations.
     # 1122 -> 1123 (2026-10-03): the process handle's annotation names
     # its import, under the type-only guard.
-    "startReservation.py": 1123,
+    # 1123 -> 1136 (2026-10-08): the start reads how the stopped
+    # container it removes ended, BEFORE removing it, and records an
+    # out-of-memory kill when the start settles; the worker thread has
+    # no app state, so the evidence rides the start task record.
+    "startReservation.py": 1136,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -7617,7 +7621,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # verdict.
     # 1145 -> 1150 (2026-10-06): the Files tab's free-space verdict GET
     # joins the container-read allowlist, with why it is a read.
-    "routeScope.py": 1150,
+    # 1150 -> 1154 (2026-10-08): the memory watch's GET joins the
+    # container-read allowlist, with why it is a read.
+    "routeScope.py": 1154,
 }
 
 

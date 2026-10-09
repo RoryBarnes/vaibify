@@ -264,6 +264,12 @@ DICT_PRIMITIVE_ACCESS = {
     # caller value. It dates the researcher's sign-off by the clock that
     # stamps the files it is later compared against.
     "fsReadClockUtc": S_ACCESS_TYPED_READ,
+    # The memory watch's two reads. The cgroup read is a declared typed
+    # read with no caller value (the cgroup root is fixed in the
+    # adapter); the state read asks the DAEMON for a container's State
+    # block and runs no program at all.
+    "fsReadCgroupMemory": S_ACCESS_TYPED_READ,
+    "fdictReadContainerState": S_ACCESS_TYPED_READ,
     "fdictWeighRepository": S_ACCESS_TYPED_READ,
     # A DAEMON-info query, not a container call: it runs no program
     # anywhere, takes no caller value, and reads only how much memory
