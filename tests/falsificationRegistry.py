@@ -3735,8 +3735,8 @@ LIST_FALSIFICATIONS = [
         # having run nothing.
         nodeid='tests/testDockerLiveDaemonRequirement.py::test_no_workflow_swallows_an_unreachable_docker_daemon',
         source='.github/workflows/tests-linux.yml',
-        old='          python -m pytest tests/ -m docker_live --tb=short -v',
-        new='          docker info >/dev/null 2>&1 || { echo "skipping"; exit 0; }\n          python -m pytest tests/ -m docker_live --tb=short -v',
+        old='          python -m pytest tests/ -m "docker_live and not agent_cli_live" --tb=short -v',
+        new='          docker info >/dev/null 2>&1 || { echo "skipping"; exit 0; }\n          python -m pytest tests/ -m "docker_live and not agent_cli_live" --tb=short -v',
     ),
     Falsification(
         # The route accepted the list, wrote it to vaibify.yml, and the

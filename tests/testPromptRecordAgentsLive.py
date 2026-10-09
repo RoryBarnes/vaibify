@@ -10,10 +10,14 @@ it reaches the network, which is all this needs, and no model is
 called.
 
 Skipped when no daemon answers, unless ``VAIBIFY_REQUIRE_DOCKER_DAEMON``
-demands one. Building the fixture image installs both CLIs from npm.
+demands one. Building the fixture image installs both CLIs from npm,
+which costs minutes, so the ``agent_cli_live`` marker keeps this out of
+the per-PR docker-smoke lane; the nightly container-acceptance workflow
+runs it with the daemon demanded.
 """
 
 import io
+import os
 
 import pytest
 
@@ -23,7 +27,7 @@ from vaibify.gui import promptRecordManager, promptRecordViewer
 from vaibify.gui.transcriptSanitizer import fbSanitizerAvailable
 from vaibify.reproducibility.repoFiles import ffilesEnsureRepoFiles
 
-pytestmark = pytest.mark.docker_live
+pytestmark = [pytest.mark.docker_live, pytest.mark.agent_cli_live]
 
 S_FIXTURE_TAG = "vaibify-transcript-agents:live"
 S_DOCKERFILE = """FROM node:22-slim
@@ -65,7 +69,11 @@ def _fnRunAgent(container, sDirectory, sCommand):
 def tAgentContainer():
     fnRequireDaemonReachable()
     if not fbSanitizerAvailable():
-        pytest.skip("detect-secrets not installed (vaibify[replay])")
+        sMessage = "detect-secrets not installed (vaibify[replay])"
+        if os.environ.get("VAIBIFY_REQUIRE_DOCKER_DAEMON"):
+            pytest.fail(sMessage + "; a lane that demands this run "
+                        "must not skip it green")
+        pytest.skip(sMessage)
     import docker
     from vaibify.docker.dockerConnection import (
         DockerConnection, _fnEnsureDockerHost,

@@ -224,5 +224,7 @@ jobs:
           # Turns the tests' own convenience skip into a failure, so a
           # green result here cannot mean "skipped everything".
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
+        # agent_cli_live tests install the real agent CLIs from npm (minutes
+        # per run); the nightly container-acceptance workflow runs them.
         run: |
-          python -m pytest tests/ -m docker_live --tb=short -v
+          python -m pytest tests/ -m "docker_live and not agent_cli_live" --tb=short -v

@@ -553,7 +553,7 @@ report on a pull request.
 |---|---|---|
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
 | `tests-macos-nightly.yml` | the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 on Python 3.10–3.13) still run within a day | macOS 15 and 26 × Python 3.9–3.14; nightly and manual |
-| `containerAcceptance.yml` | the modeled container commands and core container behavior, against a real container | one Linux cell; nightly and manual |
+| `containerAcceptance.yml` | the modeled container commands and core container behavior, against a real container; and, as a separate job, the Prompt Record reading transcripts the real Codex and Gemini CLIs wrote (`agent_cli_live`) | one Linux cell; nightly and manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it |
 | `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `reproduced` | one Linux cell; weekly and manual |
 | `toolchainEpoch.yml` | asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change | one Linux cell; monthly and manual |
