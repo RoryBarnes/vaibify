@@ -2798,11 +2798,14 @@ def testHashCheckRunsRegardlessOfMtime(tmp_path):
         "save": _fnSave,
         "dictPreviousModTimes": {"cid": {sLivePath: sMtime}},
     }
+    from tests.snapshotProgramHarness import (
+        fdictHashStaleFromRealSnapshot,
+    )
     _fdictDetectAndInvalidate(
         dictCtx, "cid", dictWorkflow, dictNewModTimes,
         dictVars={"sRepoRoot": str(tmp_path)},
-        dictMarkersByStep={0: dictMarker},
-        dictCache={},
+        dictHashStaleByStep=fdictHashStaleFromRealSnapshot(
+            dictWorkflow, {0: dictMarker}, str(tmp_path)),
     )
     dictVerify = dictWorkflow["listSteps"][0]["dictVerification"]
     for sKey in (
@@ -4319,7 +4322,19 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # content matters, and _fsDescribeRefreshFailure gives a refresh
     # the hub could not perform a sentence on screen instead of a
     # swallowed log line.
-    "conftestManager.py": 908,
+    # 908 -> 1221 (2026-10-07): the generated conftest records each
+    # test's own outcome instead of one verdict per run -- outcome
+    # hooks for call, setup and teardown, collection reports, the
+    # normalizing of node ids to the step directory, the locked
+    # read-modify-write of the marker -- and the writer half of the
+    # marker contract and the shared unique-temporary-path derivation
+    # are transcribed into it from their host modules, and a session
+    # keeps every file it ran, not only the dashboard's test_*.py.
+    # Still one job: composing that file. The seam this module could be
+    # split along is the template text against the deploy and refresh
+    # logic, which change for different reasons; no force has made that
+    # split necessary yet, so it is recorded here, not taken.
+    "conftestManager.py": 1221,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -5158,10 +5173,22 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the pinned-input counts.
     # 4057 -> 4066 (2026-09-30): the poll maps markers by the step dict
     # the fetch returns, and names its namespace from the loaded file.
-    # 4066 -> 4102 (2026-10-08): the poll hashes the files an AI
+    # 4066 -> 4094 (2026-10-07): the poll judges each test marker
+    # against the snapshot the container hashed instead of opening the
+    # files on the host, so the side-effect block moves after the
+    # snapshot and the unchecked-freshness verdict travels to the level
+    # gates. The host-side mtime-cache helpers it replaces are deleted.
+    # 4094 -> 4125 (2026-10-07): the poll's sha cache remembers a digest
+    # only once its file has settled for a second (git's racy-clean
+    # rule), with the rule and what it cannot see written beside it.
+    # 4125 -> 4134 (2026-10-07): the test half of the poll reads every
+    # marker through testMarkerContract, so each step answers with the
+    # category states the contract derived and the per-run verdicts
+    # travel to it on a private key popped before the answer leaves.
+    # 4134 -> 4175 (2026-10-08): the poll hashes the files an AI
     # Declaration sign-off covers, latches a stale one, and ships the
     # verdict; poll wiring, so it stays beside the poll.
-    "routes/pipelineRoutes.py": 4102,
+    "routes/pipelineRoutes.py": 4175,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5244,7 +5271,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 995 -> 998 (2026-09-30): namespace from the loaded-from helper.
     # 998 -> 1011 (2026-10-01): the saved test file is written through the
     # confined write, so the route hands it its root and the denylist.
-    "routes/testRoutes.py": 1011,
+    # 1011 -> 1043 (2026-10-07): a category's command exports its own
+    # category, looked up from a closed table so only one of three
+    # words ever reaches the shell, and the run-all lane signals each
+    # group it runs.
+    "routes/testRoutes.py": 1043,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -5666,7 +5697,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +7 (2026-09-23): the project gitignore covers the run state and
     # logs, which moved into the project from the container root.
     # 1247 -> 1248 (2026-09-30): namespace from the loaded-from helper.
-    "stateManager.py": 1248,
+    # 1248 -> 1302 (2026-10-07): the marker writer's lock and per-writer
+    # temporary join the auto-managed .gitignore body, and a marker over
+    # the batched read's ceiling is read alone, so one large marker
+    # makes its own step unknown instead of failing the poll for all.
+    "stateManager.py": 1302,
     # +44 (2026-07-04): the one-live-pipeline-action dispatch guard
     # (_fbRefuseWhilePipelineTaskLive + the runRefused event) — run
     # exclusivity enforced at dispatch for every lane, cohesive with

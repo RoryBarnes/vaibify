@@ -293,7 +293,8 @@ def _fnEnsureDockerHost():
 # repoFiles, which imports this constant so the two lanes cannot
 # drift. Everything the snapshot reads is also hashed -- the
 # reasoning lives with repoFiles._fsBuildSnapshotScriptCommand.
-S_REPO_SNAPSHOT_PROGRAM_CORE = '''sRoot = dictArgs["sRoot"]
+S_REPO_SNAPSHOT_PROGRAM_CORE = '''import time
+sRoot = dictArgs["sRoot"]
 setSkipText = set(dictArgs.get("listSkipTextPaths", []))
 dictOut = {"dictFiles": {}, "dictHashes": {}, "dictAbsHashes": {}}
 def _fsHash(sAbs):
@@ -344,32 +345,41 @@ def _fdictReadOnceAgainstKey(sAbs, listCachedKey):
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         iFd = os.open(sAbs, iFlags)
-    except (FileNotFoundError, NotADirectoryError):
-        # ABSENT is its own answer: a file that is not there is a
-        # change, a file that cannot be read is an unknown.
-        return {"sSha256": None, "bAbsent": True}
+    except FileNotFoundError:
+        # The ONLY failure that proves a deletion. Any other OSError
+        # leaves the file unjudged, which a caller must treat as unknown.
+        return {"sSha256": None, "sBlobSha": None, "bMissing": True}
     except OSError:
-        return {"sSha256": None}
+        return {"sSha256": None, "sBlobSha": None}
     try:
         listKey = _flistStatKey(os.fstat(iFd))
         if listCachedKey and listKey == list(listCachedKey):
-            return {"sSha256": None, "listStatKey": listKey,
-                    "bCacheHit": True}
+            return {"sSha256": None, "sBlobSha": None,
+                    "listStatKey": listKey, "bCacheHit": True}
         h = hashlib.sha256()
+        # The git blob digest a test marker records: SHA-1 over a
+        # "blob <size>" header (chr(0) terminated) and the same bytes.
+        hBlob = hashlib.sha1(
+            ("blob " + str(listKey[2]) + chr(0)).encode("ascii"))
         while True:
             ba = os.read(iFd, 65536)
             if not ba:
                 break
             h.update(ba)
+            hBlob.update(ba)
         bSteady = (_flistStatKey(os.fstat(iFd)) == listKey
                    and _flistStatKey(os.stat(sAbs)) == listKey)
     except OSError:
-        return {"sSha256": None}
+        return {"sSha256": None, "sBlobSha": None}
     finally:
         os.close(iFd)
     if not bSteady:
-        return {"sSha256": None, "listStatKey": listKey, "bTornRead": True}
-    return {"sSha256": h.hexdigest(), "listStatKey": listKey}
+        return {"sSha256": None, "sBlobSha": None,
+                "listStatKey": listKey, "bTornRead": True}
+    # The container's clock, read AFTER the steady check: how long the
+    # file had been settled when it was hashed (the racy-clean rule).
+    return {"sSha256": h.hexdigest(), "sBlobSha": hBlob.hexdigest(),
+            "listStatKey": listKey, "iHashedAtNs": time.time_ns()}
 def _fdictHashAgainstKey(sAbs, listCachedKey):
     # One immediate retry; a file still changing is reported as torn,
     # never hashed and never matched.
@@ -378,7 +388,8 @@ def _fdictHashAgainstKey(sAbs, listCachedKey):
         dictRead = _fdictReadOnceAgainstKey(sAbs, listCachedKey)
     return dictRead
 def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
+    d = {"sSha256": None, "sBlobSha": None, "sSymlinkSegment": None,
+         "bEscapesRoot": False}
     if os.path.isabs(sRel):
         d["bEscapesRoot"] = True
         return d
@@ -980,8 +991,8 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    try:\n"
         "        iFd = os.open(sReal, os.O_RDONLY | "
         "getattr(os, 'O_NOFOLLOW', 0))\n"
-        "    except (FileNotFoundError, NotADirectoryError):\n"
-        "        dictEntry['bAbsent'] = True\n"
+        "    except FileNotFoundError:\n"
+        "        dictEntry['bMissing'] = True\n"
         "        continue\n"
         "    except OSError:\n"
         "        continue\n"
@@ -1499,6 +1510,58 @@ def _fdictParseJsonTypedRead(tExecResult, sWhat):
     except ValueError as errorParse:
         raise OSError(
             f"The {sWhat} read answered unparseable output: {errorParse}")
+
+
+def flistBuildRepoSnapshotArguments(
+    sRootPath, listContentPaths, listSkipTextPaths, listHashPaths,
+    listAbsHashPaths, dictCachedKeys, bHashManifestEntries,
+    bReadReproductions,
+):
+    """Return the flat prefixed argument list the snapshot program reads.
+
+    Shared by both legs, so the Docker leg and the host leg hand the
+    one fixed program the same encoding: "r:<root>", "c:<content
+    path>", "k:<skip-text path>", "h:<hash path>", "a:<absolute
+    binary>", the two ``f:`` flags, and one "x:<key>|<path>" per cached
+    stat key. The RENDERED size is measured, not estimated: ``repr()``
+    doubles every backslash and escapes what it must, so an estimate
+    admits a command the kernel still refuses -- measured with
+    backslash-heavy POSIX names rendering to twice their estimate
+    (external review, 2026-09-16). Cached keys are an optimisation:
+    past the budget the program simply rehashes what it was not told
+    it may skip, which is slower and correct. The path list itself is
+    never dropped: over budget it raises ``ValueError`` naming the
+    counts.
+    """
+    listArgs = ["r:" + (sRootPath or "")]
+    for sPrefix, listGroup in (
+        ("c", listContentPaths), ("k", listSkipTextPaths),
+        ("h", listHashPaths), ("a", listAbsHashPaths),
+    ):
+        for sPath in listGroup or []:
+            listArgs.append(sPrefix + ":" + sPath)
+    if bHashManifestEntries:
+        listArgs.append("f:manifestEntries")
+    if bReadReproductions:
+        listArgs.append("f:reproductions")
+    listKeyArgs = [
+        "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath
+        for sPath, listKey in sorted((dictCachedKeys or {}).items())
+    ]
+    iRenderedBytes = _fiRenderedSnapshotBytes(listArgs + listKeyArgs)
+    if listKeyArgs and iRenderedBytes <= I_EXEC_ARGUMENT_BUDGET_BYTES:
+        listArgs = listArgs + listKeyArgs
+    else:
+        iRenderedBytes = _fiRenderedSnapshotBytes(listArgs)
+    if iRenderedBytes > I_EXEC_ARGUMENT_BUDGET_BYTES:
+        raise ValueError(
+            f"the repository snapshot's {len(listArgs)} paths "
+            f"render to a {iRenderedBytes}-byte exec argument, "
+            f"over the {I_EXEC_ARGUMENT_BUDGET_BYTES}-byte "
+            "budget; refusing loudly instead of splitting one "
+            "snapshot into two moments or truncating it silently"
+        )
+    return listArgs
 
 
 def _fiRenderedSnapshotBytes(listArgs):
@@ -2377,44 +2440,11 @@ class DockerConnection:
         every file it dropped. The caller falls back to the live
         adapter, which is slow and correct.
         """
-        listArgs = ["r:" + (sRootPath or "")]
-        for sPrefix, listGroup in (
-            ("c", listContentPaths), ("k", listSkipTextPaths),
-            ("h", listHashPaths), ("a", listAbsHashPaths),
-        ):
-            for sPath in listGroup or []:
-                listArgs.append(sPrefix + ":" + sPath)
-        if bHashManifestEntries:
-            listArgs.append("f:manifestEntries")
-        if bReadReproductions:
-            listArgs.append("f:reproductions")
-        listKeyArgs = [
-            "x:" + ",".join(str(int(i)) for i in listKey) + "|" + sPath
-            for sPath, listKey in sorted((dictCachedKeys or {}).items())
-        ]
-        # The RENDERED single argument, not an estimate of the path
-        # bytes going into it: repr() doubles every backslash and
-        # escapes what it must, so an estimate admits a command the
-        # kernel still refuses -- measured with backslash-heavy POSIX
-        # names rendering to twice their estimate (external review,
-        # 2026-09-16). This renders the same program the typed read
-        # will run, so the number is the argument's actual size.
-        iRenderedBytes = _fiRenderedSnapshotBytes(listArgs + listKeyArgs)
-        if listKeyArgs and iRenderedBytes <= I_EXEC_ARGUMENT_BUDGET_BYTES:
-            listArgs = listArgs + listKeyArgs
-        else:
-            # The cached keys are an optimisation: past the budget the
-            # program simply rehashes what it was not told it may skip,
-            # which is slower and correct.
-            iRenderedBytes = _fiRenderedSnapshotBytes(listArgs)
-        if iRenderedBytes > I_EXEC_ARGUMENT_BUDGET_BYTES:
-            raise ValueError(
-                f"the repository snapshot's {len(listArgs)} paths "
-                f"render to a {iRenderedBytes}-byte exec argument, "
-                f"over the {I_EXEC_ARGUMENT_BUDGET_BYTES}-byte "
-                "budget; refusing loudly instead of splitting one "
-                "snapshot into two moments or truncating it silently"
-            )
+        listArgs = flistBuildRepoSnapshotArguments(
+            sRootPath, listContentPaths, listSkipTextPaths,
+            listHashPaths, listAbsHashPaths, dictCachedKeys,
+            bHashManifestEntries, bReadReproductions,
+        )
         return self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_REPO_SNAPSHOT, listArgs,
         )

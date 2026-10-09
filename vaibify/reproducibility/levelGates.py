@@ -281,6 +281,24 @@ def _fsScriptStatusFingerprint(dictScriptStatus):
     return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
 
 
+def _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep):
+    """Return a SHA256 over the unknown-freshness verdicts, or ``"none"``.
+
+    Part of the Level 1 cache key, because the verdicts are an input of
+    the gate that nothing else in the key carries: two polls whose
+    workflow, mtimes and script status agree can still differ in
+    whether the container could be asked about a step's files.
+    """
+    if not dictUnknownFreshnessByStep:
+        return "none"
+    sCanonical = json.dumps(
+        {str(iStep): sorted(listPaths) for iStep, listPaths in
+         dictUnknownFreshnessByStep.items()},
+        sort_keys=True,
+    )
+    return hashlib.sha256(sCanonical.encode("utf-8")).hexdigest()
+
+
 def _fsSyncStatusFingerprint(filesRepo):
     """SHA over GitHub + Zenodo sync caches so verify-completion busts L2/L3.
 
@@ -316,6 +334,7 @@ def _fsRepoFingerprint(filesRepo):
 
 def fiProofLevel(
     dictWorkflow, filesRepo, dictScriptStatus=None, *, bHostProject,
+    dictUnknownFreshnessByStep=None,
 ):
     """Return the integer PROOF level (0..3) for a workflow.
 
@@ -324,6 +343,9 @@ def fiProofLevel(
     recursive calls (L2 -> L1, L3 -> L2 -> L1) hit a memo instead of
     re-iterating every step. ``dictScriptStatus`` threads through to
     L1 so callers with mtime info honor the script-stale criterion.
+    ``dictUnknownFreshnessByStep`` (``{iStepIndex: [paths]}``) does the
+    same for the poll's unchecked-freshness verdicts: a step whose test
+    results could not be compared with its files is not Self-Consistent.
     ``filesRepo`` is a project-repo path string (host clone) or a
     ``repoFiles`` adapter (container or poll snapshot).
 
@@ -345,6 +367,7 @@ def fiProofLevel(
     with fcontextLevelComputation():
         if not fbAtLeastLevel1(
             dictWorkflow, filesRepo, dictScriptStatus,
+            dictUnknownFreshnessByStep,
         ):
             return 0
         if not fbAtLeastLevel2(dictWorkflow, filesRepo):
@@ -354,27 +377,36 @@ def fiProofLevel(
         return 3
 
 
-def fbAtLeastLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
+def fbAtLeastLevel1(
+    dictWorkflow, filesRepo, dictScriptStatus=None,
+    dictUnknownFreshnessByStep=None,
+):
     """Return True iff the workflow meets the L1 Self-Consistent gate.
 
     L1 requires a git project repo, a non-empty step list, and no
     per-step blocker from ``flistLevel1Blockers``, whose docstring
     lists the criteria. When ``dictScriptStatus`` is provided, the
     script-stale criterion also blocks the gate; callers without
-    script-status info preserve the historical truth-table.
+    script-status info preserve the historical truth-table. The same
+    holds for ``dictUnknownFreshnessByStep`` and the
+    ``test-freshness-unchecked`` criterion.
     """
     dictMemo = _fdictActiveLevelMemo()
     if dictMemo is not None and "bL1" in dictMemo:
         return dictMemo["bL1"]
     bResult = _fbComputeLevel1(
         dictWorkflow, filesRepo, dictScriptStatus,
+        dictUnknownFreshnessByStep,
     )
     if dictMemo is not None:
         dictMemo["bL1"] = bResult
     return bResult
 
 
-def _fbComputeLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
+def _fbComputeLevel1(
+    dictWorkflow, filesRepo, dictScriptStatus=None,
+    dictUnknownFreshnessByStep=None,
+):
     """Uncached L1 evaluation — the body of the original gate.
 
     Delegates to ``flistLevel1Blockers`` so the boolean gate and the
@@ -389,13 +421,14 @@ def _fbComputeLevel1(dictWorkflow, filesRepo, dictScriptStatus=None):
         return False
     listBlockers = flistLevel1Blockers(
         dictWorkflow, {}, filesRepo, dictScriptStatus,
+        dictUnknownFreshnessByStep,
     )
     return len(listBlockers) == 0
 
 
 def flistLevel1Blockers(
     dictWorkflow, dictNewModTimes, filesRepo,
-    dictScriptStatus=None,
+    dictScriptStatus=None, dictUnknownFreshnessByStep=None,
 ):
     """Return per-step L1 blockers with per-file granularity.
 
@@ -414,7 +447,13 @@ def flistLevel1Blockers(
     ``sCriterion`` is one of ``"input-data-undeclared"``,
     ``"user-not-approved"``,
     ``"upstream-modified"``, ``"script-stale"``, ``"axis-not-green"``,
-    or ``"attestation-stale"``. ``input-data-undeclared`` fires when a
+    ``"test-freshness-unchecked"``, or ``"attestation-stale"``.
+    ``test-freshness-unchecked`` fires for a step whose test axes are
+    green but whose recorded digests the poll could not compare with
+    the files (``dictUnknownFreshnessByStep``, ``{iStepIndex: [paths]}``,
+    per poll and never persisted): it is not a failure, it is the
+    absence of the check, and no Level 1 may be shown attained on it.
+    ``input-data-undeclared`` fires when a
     step neither lists ``saInputDataFiles`` nor carries the explicit
     ``bNoInputData`` declaration — a Project whose input contract is
     unstated is not self-consistent. ``script-stale`` fires when the
@@ -422,7 +461,8 @@ def flistLevel1Blockers(
     suppressed when the outputs' hashes still match ``MANIFEST.sha256``
     (fresh clones). Priority order is ``input-data-undeclared`` >
     ``upstream-modified`` > ``script-stale``
-    > ``axis-not-green`` > ``attestation-stale`` > ``user-not-approved``.
+    > ``axis-not-green`` > ``test-freshness-unchecked`` >
+    ``attestation-stale`` > ``user-not-approved``.
     The list is sorted by ``iStepIndex`` so rendering order is
     deterministic. Returns ``[]`` for an L1-clean workflow or one with
     no project repo.
@@ -457,12 +497,14 @@ def flistLevel1Blockers(
         _fsModTimesFingerprint(dictNewModTimes),
         _fsRepoFingerprint(filesRepo),
         _fsScriptStatusFingerprint(dictScriptStatus),
+        _fsFreshnessVerdictFingerprint(dictUnknownFreshnessByStep),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
         return listCached
     listResult = _flistComputeLevel1Blockers(
         dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
+        dictUnknownFreshnessByStep,
     )
     _fnBlockerCacheStore(tCacheKey, listResult)
     return listResult
@@ -470,6 +512,7 @@ def flistLevel1Blockers(
 
 def _flistComputeLevel1Blockers(
     dictWorkflow, dictNewModTimes, filesRepo, dictScriptStatus,
+    dictUnknownFreshnessByStep=None,
 ):
     """Uncached L1-blocker evaluation — the body of the original gate."""
     if not fbWorkflowHasProjectRepo(filesRepo):
@@ -483,7 +526,7 @@ def _flistComputeLevel1Blockers(
         dictBlocker = _fdictBuildStepBlocker(
             dictWorkflow, iStepIndex, dictStep,
             dictNewModTimes, dictUpstreamByStep,
-            dictScriptStatus, filesRepo,
+            dictScriptStatus, filesRepo, dictUnknownFreshnessByStep,
         )
         if dictBlocker is not None:
             listBlockers.append(dictBlocker)
@@ -494,12 +537,14 @@ def _fdictBuildStepBlocker(
     dictWorkflow, iStepIndex, dictStep,
     dictNewModTimes, dictUpstreamByStep,
     dictScriptStatus=None, filesRepo=None,
+    dictUnknownFreshnessByStep=None,
 ):
     """Return the single dominant blocker dict for a step, or None.
 
     Priority: ``input-data-undeclared`` > ``upstream-modified`` >
-    ``script-stale`` > ``axis-not-green`` > ``attestation-stale`` >
-    ``user-not-approved``. The declaration criterion leads because it
+    ``script-stale`` > ``axis-not-green`` > ``test-freshness-unchecked``
+    > ``attestation-stale`` > ``user-not-approved``. The declaration
+    criterion leads because it
     is a contract gap, not a freshness signal — until the researcher
     states what raw data the step consumes (or that it consumes
     none), no freshness verdict about the step is meaningful.
@@ -533,9 +578,38 @@ def _fdictBuildStepBlocker(
         return _fdictAxisNotGreenBlocker(
             dictWorkflow, iStepIndex, dictStep, filesRepo,
         )
+    listUnchecked = (dictUnknownFreshnessByStep or {}).get(iStepIndex)
+    if listUnchecked:
+        return _fdictFreshnessUncheckedBlocker(
+            dictWorkflow, iStepIndex, listUnchecked,
+        )
     return _fdictUserDispositionBlocker(
         dictWorkflow, iStepIndex, dictStep,
     )
+
+
+def _fdictFreshnessUncheckedBlocker(dictWorkflow, iStepIndex, listPaths):
+    """Build the ``test-freshness-unchecked`` blocker entry for one step.
+
+    The step's tests passed, and this poll could not compare the files
+    they ran against with the digests the marker recorded. That is not a
+    failure and nothing is shown as stale; it is a check that did not
+    happen, so the pass is reported as unchecked and the step cannot
+    count toward Level 1 until a later poll can answer.
+    ``listOffendingFiles`` names the paths the answer is missing for.
+    """
+    return {
+        "iLevel": 1,
+        "iStepIndex": iStepIndex,
+        "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
+        "sScope": "step",
+        "sCriterion": "test-freshness-unchecked",
+        "listOffendingFiles": sorted(listPaths),
+        "listOffendingUpstreamSteps": [],
+        "sRemediationHint":
+            "Could not check whether the files still match the last "
+            "test run — not a failure. Click to run a diagnosis",
+    }
 
 
 def _fdictUserDispositionBlocker(dictWorkflow, iStepIndex, dictStep):
@@ -4152,7 +4226,7 @@ _T_WORKFLOW_LEVEL3_CRITERIA = (
 def fdictComputeStepLevelStates(
     dictWorkflow, listLevel1Blockers,
     listLevel2Blockers, listLevel3Blockers,
-    dictMaxMtimeByStep=None,
+    dictMaxMtimeByStep=None, dictUnknownFreshnessByStep=None,
 ):
     """Return ``{iStepIndex: {"s1": dictCell, "s2": ..., "s3": ...}}``.
 
@@ -4163,6 +4237,9 @@ def fdictComputeStepLevelStates(
       ``passed-from-marker`` / ``unnecessary``), user attestation
       (``sUser`` is ``passed``), and timing clean (no
       upstream-modified / script-stale / attestation-stale signal).
+      A green axis whose marker digests the poll could not compare
+      with the files (``dictUnknownFreshnessByStep``) is unknown, so
+      the cell cannot read attained.
     * L2 — github mirror match, zenodo deposit match, and (when the
       workflow has an Overleaf binding and the step declares plots)
       figure frozen. A stale verify cache makes the cell ``unknown``.
@@ -4190,6 +4267,9 @@ def fdictComputeStepLevelStates(
         int(sIndex) for sIndex in (dictMaxMtimeByStep or {})
         if str(sIndex).isdigit()
     }
+    dictContext["dictUnknownFreshnessByStep"] = dict(
+        dictUnknownFreshnessByStep or {},
+    )
     dictResult = {}
     listSteps = (dictWorkflow or {}).get("listSteps", []) or []
     for iStepIndex, dictStep in enumerate(listSteps):
@@ -4381,6 +4461,7 @@ def _fdictStepLevelRequirementLists(iStepIndex, dictStep, dictContext):
             dictStep,
             dictContext["dictLevel1CriteriaByStep"].get(
                 iStepIndex, set()),
+            dictContext["dictUnknownFreshnessByStep"].get(iStepIndex),
         ),
         "2": _flistStepLevel2Requirements(
             dictStep,
@@ -4439,7 +4520,27 @@ def _ftCountGreenAxes(dictStep):
     return (iGreen, iPresent)
 
 
-def _flistStepLevel1Requirements(dictStep, setCriteria):
+def _flistStepTestAxisRequirements(dictV, bFreshnessUnchecked):
+    """Return ``[(sAxisKey, bMet)]`` over the step's PRESENT test axes.
+
+    A green axis whose recorded digests could not be compared with the
+    files is neither met nor unmet: ``bMet`` is None, which counts in
+    the total and never as satisfied, exactly as an unverifiable remote
+    does at L2. A red axis stays False however the freshness check went.
+    """
+    listRequirements = []
+    for sAxisKey in _T_TEST_VERIF_KEYS:
+        if sAxisKey not in dictV:
+            continue
+        bGreen = dictV[sAxisKey] in _T_GREEN_VERIF_VALUES
+        listRequirements.append(
+            (sAxisKey, None if bGreen and bFreshnessUnchecked else bGreen))
+    return listRequirements
+
+
+def _flistStepLevel1Requirements(
+    dictStep, setCriteria, listUncheckedFreshnessFiles=None,
+):
     """Return ``[(sName, bMet)]`` over the step's L1 requirements.
 
     Requirements: one per PRESENT test axis, plus user attestation,
@@ -4452,6 +4553,12 @@ def _flistStepLevel1Requirements(dictStep, setCriteria):
     requirements (an empty list renders not-applicable): the
     declaration is a publication artifact, so its sign-off is a
     Level 2 requirement.
+
+    ``listUncheckedFreshnessFiles`` is the poll's verdict for this
+    step, read DIRECTLY for the same reason: a step that is also
+    ``script-stale`` carries only that dominant blocker, and its test
+    rows must still say they could not be checked. Each green test
+    axis then reads unknown (``bMet`` None).
     """
     if fbStepIsAiDeclaration(dictStep):
         return []
@@ -4460,10 +4567,9 @@ def _flistStepLevel1Requirements(dictStep, setCriteria):
         dictV = dictStep.get("dictVerification") or {}
     if not isinstance(dictV, dict):
         dictV = {}
-    listRequirements = [
-        (sAxisKey, dictV[sAxisKey] in _T_GREEN_VERIF_VALUES)
-        for sAxisKey in _T_TEST_VERIF_KEYS if sAxisKey in dictV
-    ]
+    listRequirements = _flistStepTestAxisRequirements(
+        dictV, bool(listUncheckedFreshnessFiles),
+    )
     listRequirements.append(
         ("user-attestation", fbStepUserApproved(dictStep)))
     listRequirements.append(

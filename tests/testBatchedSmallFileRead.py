@@ -201,14 +201,16 @@ async def test_the_poll_reads_markers_off_the_event_loop():
                   return_value=({}, "")), \
             patch(sModule + "_fbCheckStaleUserVerification",
                   return_value=False), \
-            patch(sModule + "_fdictDetectAndInvalidate",
-                  return_value={}) as mockDetect:
+            patch(sModule + "_ffilesFetchPollSnapshot",
+                  return_value="") as mockSnapshot:
         await pipelineRoutes._fdictFetchOutputStatus(
             dictCtx, "cid", {"listSteps": []}, {},
         )
 
     assert listReadThreads and listReadThreads[0] != iLoopThread
-    assert mockDetect.call_args.kwargs["dictMarkersByStep"] is dictMarkers
+    # The markers the worker read are the ones the snapshot is asked to
+    # hash for: the sixth positional argument.
+    assert mockSnapshot.call_args[0][5] is dictMarkers
 
 
 def test_the_host_leg_answers_the_same_contract(tmp_path, monkeypatch):

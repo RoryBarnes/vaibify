@@ -23,6 +23,7 @@ import re
 from collections import OrderedDict
 
 from . import pipelineUtils
+from . import testMarkerContract
 
 
 logger = logging.getLogger("vaibify")
@@ -41,7 +42,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "7"
+S_CONFTEST_VERSION = "9"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
@@ -127,7 +128,40 @@ def fsBuildConftestSource(sProjectRepoPath):
     return (
         _fsVersionStampLine() + sPrologue
         + _fsTranscribeStepLabelDerivation()
+        + _fsTranscribeUniqueTemporaryPath()
+        + _fsTranscribeMarkerContract()
         + _CONFTEST_MARKER_TEMPLATE
+    )
+
+
+def _fsTranscribeMarkerContract():
+    """Return the marker contract's writer half, verbatim, for the container.
+
+    The conftest cannot import from the host, so the shape of a marker,
+    the normalizer that reads an old one and the merge that adds a
+    session to it are transcribed from ``testMarkerContract`` rather
+    than written a second time: the container and the dashboard share
+    one implementation of what a marker is, and a change to it reaches
+    the container on the next conftest refresh. Appended after the
+    prologue is formatted because the transcribed source contains
+    format braces of its own.
+    """
+    try:
+        listSources = [
+            inspect.getsource(fnWriter)
+            for fnWriter in testMarkerContract.LIST_TRANSCRIBED_WRITER_FUNCTIONS
+        ]
+    except (OSError, TypeError) as error:
+        raise RuntimeError(
+            "Cannot transcribe the test-marker contract into the "
+            "container conftest because vaibify's own source is "
+            f"unreadable ({error}). Install vaibify from a source "
+            "distribution rather than a zipped one."
+        )
+    return (
+        "T_CATEGORY_FILE_PREFIXES = "
+        + repr(testMarkerContract.T_CATEGORY_FILE_PREFIXES) + "\n\n\n"
+        + "\n\n".join(listSources) + "\n\n"
     )
 
 
@@ -162,6 +196,26 @@ def _fsTranscribeStepLabelDerivation():
         + repr(pipelineUtils._T_INTERACTIVE_FALSE_TOKENS) + "\n"
         + sClassifier + "\n" + sLabeller + "\n\n"
     )
+
+
+def _fsTranscribeUniqueTemporaryPath():
+    """Return the shared unique-temporary-path derivation, for the container.
+
+    The marker lands by renaming a temporary, and two sessions can write
+    one marker at once, so the temporary must be unique per writer.
+    Transcribed from ``pipelineUtils`` like the label derivation, so the
+    container derives its names the way the host does.
+    """
+    try:
+        sSource = inspect.getsource(pipelineUtils.fsBuildUniqueTemporaryPath)
+    except (OSError, TypeError) as error:
+        raise RuntimeError(
+            "Cannot transcribe the temporary-path derivation into the "
+            "container conftest because vaibify's own source is "
+            f"unreadable ({error}). Install vaibify from a source "
+            "distribution rather than a zipped one."
+        )
+    return sSource + "\n\n"
 
 
 def _fsVersionStampLine():
@@ -623,38 +677,44 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 
-_CATEGORY_MAP = {
-    "test_integrity": "integrity",
-    "test_qualitative": "qualitative",
-    "test_quantitative": "quantitative",
+try:
+    import fcntl
+except ImportError:  # no file locking on this platform
+    fcntl = None
+
+# What THIS session has seen so far, filled by the hooks at the bottom.
+# The run id is minted once, when pytest first imports this file.
+_DICT_SESSION_STATE = {
+    "sRunId": uuid.uuid4().hex, "listDeselected": [],
+    "listCollectionErrors": [],
 }
+_T_CATEGORY_NAMES = ("integrity", "qualitative", "quantitative")
 
 
-def _fsGetCategory(sNodeId):
-    """Map a test node ID to a category name."""
-    for sPrefix, sCategory in _CATEGORY_MAP.items():
-        if sPrefix in sNodeId:
-            return sCategory
-    return "other"
+def _fsOutcomeOfItem(item):
+    """Return the item's own outcome, or "" when it never ran.
 
-
-def _fdictBuildCategoryResults(session):
-    """Tally pass/fail counts per test category from session items."""
-    dictCategories = {}
-    for item in session.items:
-        sCategory = _fsGetCategory(item.nodeid)
-        dictCat = dictCategories.setdefault(
-            sCategory, {"iPassed": 0, "iFailed": 0}
-        )
-        if not hasattr(item, "rep_call") or item.rep_call is None:
-            continue
-        if item.rep_call.passed:
-            dictCat["iPassed"] += 1
-        elif item.rep_call.failed:
-            dictCat["iFailed"] += 1
-    return dictCategories
+    Failed covers a failing call AND a setup or teardown error. A skip
+    decided in setup has no call report; an xfail is a skipped call
+    that carries ``wasxfail``, and a non-strict xpass is a passed call
+    that does (a strict xpass already reports as failed).
+    """
+    repSetup = getattr(item, "rep_setup", None)
+    repCall = getattr(item, "rep_call", None)
+    repTeardown = getattr(item, "rep_teardown", None)
+    for rep in (repSetup, repCall, repTeardown):
+        if rep is not None and getattr(rep, "failed", False):
+            return "failed"
+    if repCall is None:
+        return "skipped" if getattr(repSetup, "skipped", False) else ""
+    if getattr(repCall, "skipped", False):
+        return "xfailed" if hasattr(repCall, "wasxfail") else "skipped"
+    if getattr(repCall, "passed", False):
+        return "xpassed" if hasattr(repCall, "wasxfail") else "passed"
+    return ""
 
 
 def _fsStepDirRepoRel(sDir):
@@ -846,30 +906,261 @@ def _fsActiveWorkflowSlug():
     return "default"
 
 
-def _fnWriteSessionMarker(session, exitstatus):
-    """Compose this session's marker and write it under _MARKER_BASE."""
-    sStepDir = str(Path(__file__).resolve().parent.parent)
+def _fsTestsDirectory():
+    """Return the absolute path of this conftest's tests directory."""
+    return str(Path(__file__).resolve().parent)
+
+
+def _fsTestFileKey(sAbsolutePath, sTestsDir):
+    """Return a test file's key (its path under tests/), or "" outside it."""
+    sRelative = os.path.relpath(sAbsolutePath, sTestsDir)
+    if sRelative.startswith(".."):
+        return ""
+    return sRelative.replace(os.sep, "/")
+
+
+def _fsAbsoluteTestPath(item, sTestsDir):
+    """Return the item's test file, falling back to its node id's name."""
+    pathItem = getattr(item, "path", None) or getattr(item, "fspath", None)
+    if pathItem:
+        return os.path.abspath(str(pathItem))
+    sFileName = os.path.basename(item.nodeid.split("::", 1)[0])
+    return os.path.join(sTestsDir, sFileName)
+
+
+def _fsNodeIdRelativeToStep(item, sStepDir, sTestsDir):
+    """Name a test by its path under the step directory, not pytest's rootdir.
+
+    Pytest roots node ids wherever it decides the rootdir is, which
+    depends on the arguments it was given; the step directory does not
+    move, so the same test has the same name in every session.
+    """
+    sFile = os.path.relpath(_fsAbsoluteTestPath(item, sTestsDir), sStepDir)
+    sRest = item.nodeid.split("::", 1)[1] if "::" in item.nodeid else ""
+    return sFile.replace(os.sep, "/") + "::" + sRest
+
+
+def _fsetFilesNamedByNodeId(session):
+    """Return the absolute paths of files given as ``file.py::test`` arguments.
+
+    Such a file was collected one test at a time, so its test list is
+    not the file's.
+    """
+    config = getattr(session, "config", None)
+    paramsInvocation = getattr(config, "invocation_params", None)
+    if paramsInvocation is None:
+        return set()
+    setFiles = set()
+    for objArgument in paramsInvocation.args:
+        sArgument = str(objArgument)
+        if "::" in sArgument and not sArgument.startswith("-"):
+            setFiles.add(os.path.abspath(os.path.join(
+                str(paramsInvocation.dir), sArgument.split("::", 1)[0])))
+    return setFiles
+
+
+def _fdictEmptyFileResult(bWholeFile):
+    return {
+        "bWholeFile": bWholeFile, "listNodeIds": [], "dictOutcomes": {},
+        "dictCollectionError": None,
+    }
+
+
+def _fnRecordItem(dictFileResults, item, tPaths, setNodeIdFiles, bSelected):
+    """Add one selected or deselected item to its file's result."""
+    sStepDir, sTestsDir = tPaths
+    sAbsolute = _fsAbsoluteTestPath(item, sTestsDir)
+    sFileKey = _fsTestFileKey(sAbsolute, sTestsDir)
+    if not sFileKey:
+        return
+    dictFile = dictFileResults.setdefault(
+        sFileKey, _fdictEmptyFileResult(sAbsolute not in setNodeIdFiles))
+    sNodeId = _fsNodeIdRelativeToStep(item, sStepDir, sTestsDir)
+    if sNodeId not in dictFile["listNodeIds"]:
+        dictFile["listNodeIds"].append(sNodeId)
+    sOutcome = _fsOutcomeOfItem(item) if bSelected else ""
+    if sOutcome:
+        dictFile["dictOutcomes"][sNodeId] = sOutcome
+
+
+def _fdictFileResultsOfSession(session, tPaths):
+    """Return ``{file: result}`` for every test file this session touched."""
+    setNodeIdFiles = _fsetFilesNamedByNodeId(session)
+    dictFileResults = {}
+    for item in getattr(session, "items", []):
+        _fnRecordItem(dictFileResults, item, tPaths, setNodeIdFiles, True)
+    for item in _DICT_SESSION_STATE["listDeselected"]:
+        _fnRecordItem(dictFileResults, item, tPaths, setNodeIdFiles, False)
+    return dictFileResults
+
+
+def _fdictCollectionErrorRecord(sMessage, fNow):
+    return {
+        "sRunId": _DICT_SESSION_STATE["sRunId"], "fTimestamp": fNow,
+        "sMessage": sMessage,
+    }
+
+
+def _flistPresentTestFiles(sTestsDir):
+    """Return the ``test_*.py`` files directly in tests/, as the dashboard lists."""
+    try:
+        listNames = os.listdir(sTestsDir)
+    except OSError:
+        return []
+    return sorted(
+        sName for sName in listNames
+        if sName.startswith("test_") and sName.endswith(".py"))
+
+
+def _fsAuthoritativeCategory():
+    """Return the category the dashboard named for this session, or "".
+
+    The dashboard exports it from a fixed set; a value outside that set
+    names nothing and is ignored, so no user text is ever believed.
+    """
+    sCategory = os.environ.get("VAIBIFY_TEST_CATEGORY", "").strip()
+    return sCategory if sCategory in _T_CATEGORY_NAMES else ""
+
+
+def _flistFilesBlamedFor(sFileKey, listPresentFiles):
+    """Return the test files a collection error is charged to.
+
+    The file itself when its name declares a category. Otherwise EVERY
+    file of the category the dashboard named for the session, when it
+    named one; with neither, no category can be blamed and the list is
+    empty.
+    """
+    sCategory = fsCategoryOfFileName(sFileKey) if sFileKey else "other"
+    if sCategory in _T_CATEGORY_NAMES:
+        return [sFileKey]
+    sNamed = _fsAuthoritativeCategory()
+    listBlamed = [
+        sFile for sFile in listPresentFiles
+        if sNamed and fsCategoryOfFileName(sFile) == sNamed]
+    return listBlamed
+
+
+def _fnAttributeCollectionErrors(dictFileResults, listPresentFiles, fNow):
+    """Record each collection error against the files blamed; return orphans.
+
+    A file's error is always recorded on the file itself; an error no
+    category can be blamed for is returned so the session can say it
+    failed with no one to blame.
+    """
+    listOrphans = []
+    for sFileKey, sMessage in _DICT_SESSION_STATE["listCollectionErrors"]:
+        dictError = _fdictCollectionErrorRecord(sMessage, fNow)
+        listBlamed = _flistFilesBlamedFor(sFileKey, listPresentFiles)
+        for sFile in listBlamed + ([sFileKey] if sFileKey else []):
+            dictFileResults.setdefault(
+                sFile, _fdictEmptyFileResult(False)
+            )["dictCollectionError"] = dictError
+        if not listBlamed:
+            listOrphans.append(sMessage)
+    return listOrphans
+
+
+def _fbSessionLeftAResult(dictFileResults, listOrphans):
+    """Return True iff some test ran, some file failed to collect, or a
+    failure had no one to blame: anything a marker could say."""
+    return bool(listOrphans) or any(
+        dictFile["dictOutcomes"] or dictFile["dictCollectionError"]
+        for dictFile in dictFileResults.values())
+
+
+def _fdictUnattributedFailure(exitstatus, dictFileResults, listOrphans, fNow):
+    """Return the failure no category owns, or None.
+
+    A collection error nobody can be blamed for, or a session that
+    stopped (interrupted, internal or usage error) with no result at all.
+    Exit 0 and 1 are results, and exit 5 collected nothing.
+    """
+    if listOrphans:
+        sMessage = listOrphans[0]
+    elif exitstatus in (2, 3, 4) and not _fbSessionLeftAResult(
+        dictFileResults, listOrphans
+    ):
+        sMessage = "pytest stopped with exit status " + str(exitstatus)
+    else:
+        return None
+    return {
+        "sRunId": _DICT_SESSION_STATE["sRunId"], "fTimestamp": fNow,
+        "iExitStatus": exitstatus, "sMessage": sMessage,
+    }
+
+
+def _fdictBuildSession(session, exitstatus):
+    """Compose this session's record, or None when it left nothing to record.
+
+    The files it calls present are the dashboard's ``test_*.py`` files
+    plus every file the session ran: a file run by path, whatever it is
+    called, is a result the marker must hold.
+    """
+    sTestsDir = _fsTestsDirectory()
+    sStepDir = str(Path(sTestsDir).parent)
     sStepDirRel = _fsStepDirRepoRel(sStepDir)
     fNow = time.time()
-    dictMarker = {
-        "sDirectory": sStepDirRel,
-        "sLabel": _fsLabelForStep(sStepDirRel),
-        "iExitStatus": exitstatus,
-        "fTimestamp": fNow,
+    listPresent = _flistPresentTestFiles(sTestsDir)
+    dictFileResults = _fdictFileResultsOfSession(
+        session, (sStepDir, sTestsDir))
+    listOrphans = _fnAttributeCollectionErrors(
+        dictFileResults, listPresent, fNow)
+    if exitstatus == 5 and not _fbSessionLeftAResult(
+        dictFileResults, listOrphans
+    ):
+        return None
+    return {
+        "sRunId": _DICT_SESSION_STATE["sRunId"], "fTimestamp": fNow,
         "sRunAtUtc": datetime.fromtimestamp(
-            fNow, tz=timezone.utc,
-        ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "iCollected": session.testscollected,
-        "dictCategories": _fdictBuildCategoryResults(session),
+            fNow, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "iExitStatus": exitstatus, "sDirectory": sStepDirRel,
+        "sLabel": _fsLabelForStep(sStepDirRel),
         "dictOutputHashes": _fdictComputeOutputHashes(sStepDir),
         "dictInputHashes": _fdictComputeInputHashes(sStepDir),
+        "listPresentFiles": sorted(set(listPresent) | set(dictFileResults)),
+        "dictFileResults": dictFileResults,
+        "dictUnattributedFailure": _fdictUnattributedFailure(
+            exitstatus, dictFileResults, listOrphans, fNow),
     }
-    sMarkerDir = _MARKER_BASE / _fsActiveWorkflowSlug()
-    sMarkerDir.mkdir(parents=True, exist_ok=True)
-    sFilename = sStepDirRel.replace("/", "_") + ".json"
-    (sMarkerDir / sFilename).write_text(
-        json.dumps(dictMarker, indent=2)
-    )
+
+
+def _fdictReadExistingMarker(sMarkerPath):
+    """Return the marker on disk, or None when absent or unreadable."""
+    try:
+        with open(sMarkerPath) as fileMarker:
+            return json.load(fileMarker)
+    except (OSError, ValueError):
+        return None
+
+
+def _fnWriteMergedMarker(sMarkerPath, dictSession):
+    """Merge the session into the marker under a lock, replacing it atomically.
+
+    The dashboard runs one session per category and may run them
+    together, so the read-modify-write holds an exclusive lock on a
+    sibling lock file and the new marker lands by rename: two sessions
+    both survive, and a reader never meets a half-written file.
+    """
+    os.makedirs(os.path.dirname(sMarkerPath), exist_ok=True)
+    with open(sMarkerPath + ".lock", "a") as fileLock:
+        if fcntl is not None:
+            fcntl.flock(fileLock.fileno(), fcntl.LOCK_EX)
+        dictMerged = fdictMergeSessionIntoMarker(
+            _fdictReadExistingMarker(sMarkerPath), dictSession)
+        sTempPath = fsBuildUniqueTemporaryPath(sMarkerPath)
+        with open(sTempPath, "w") as fileTemp:
+            json.dump(dictMerged, fileTemp, indent=2)
+        os.replace(sTempPath, sMarkerPath)
+
+
+def _fnWriteSessionMarker(session, exitstatus):
+    """Compose this session's record and merge it under _MARKER_BASE."""
+    dictSession = _fdictBuildSession(session, exitstatus)
+    if dictSession is None:
+        return
+    sFilename = dictSession["sDirectory"].replace("/", "_") + ".json"
+    sMarkerPath = str(_MARKER_BASE / _fsActiveWorkflowSlug() / sFilename)
+    _fnWriteMergedMarker(sMarkerPath, dictSession)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -897,12 +1188,34 @@ def pytest_sessionfinish(session, exitstatus):
         )
 
 
+def pytest_deselected(items):
+    """Remember tests a ``-k`` or ``-m`` expression left out of this run.
+
+    They still belong to their file's test list.
+    """
+    _DICT_SESSION_STATE["listDeselected"].extend(items)
+
+
+def pytest_collectreport(report):
+    """Remember a file that failed to collect, with the first line of why."""
+    if not getattr(report, "failed", False):
+        return
+    sMessage = str(getattr(report, "longrepr", "") or "collection failed")
+    sFirstLine = (sMessage.strip().splitlines() or ["collection failed"])[-1]
+    sTestsDir = _fsTestsDirectory()
+    sNodePath = str(getattr(report, "nodeid", "")).split("::", 1)[0]
+    sFileKey = _fsTestFileKey(
+        os.path.abspath(os.path.join(sTestsDir, os.path.basename(sNodePath))),
+        sTestsDir) if sNodePath.endswith(".py") else ""
+    _DICT_SESSION_STATE["listCollectionErrors"].append(
+        (sFileKey, sFirstLine[:300]))
+
+
 import pytest
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """Store the call report on the item for sessionfinish access."""
+    """Store each phase's report on the item for sessionfinish access."""
     outcome = yield
-    if call.when == "call":
-        item.rep_call = outcome.get_result()
+    setattr(item, "rep_" + call.when, outcome.get_result())
 '''

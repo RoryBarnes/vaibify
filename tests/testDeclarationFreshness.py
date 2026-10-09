@@ -115,7 +115,7 @@ def test_a_change_in_the_same_second_as_the_sign_off_is_stale(
 
 @pytest.mark.falsification
 def test_a_deleted_covered_file_is_stale(tSignedProject):
-    """Kills: declarationFreshness dropping the bAbsent branch, so a deleted
+    """Kills: declarationFreshness dropping the bMissing branch, so a deleted
     file reads as unreadable.
     """
     sRepo, dictWorkflow = tSignedProject
@@ -259,9 +259,11 @@ def _fdictSurfaces(dictWorkflow, sRepo):
     listL2 = levelGates.flistLevel2Blockers(dictWorkflow, sRepo)
     dictCells = levelGates.fdictComputeStepLevelStates(
         dictWorkflow, [], listL2, [])
+    dictContext = levelGates._fdictStepProjectionContext(
+        dictWorkflow, [], listL2, [])
+    dictContext["dictUnknownFreshnessByStep"] = {}
     dictRequirements = levelGates._fdictStepLevelRequirementLists(
-        1, dictWorkflow["listSteps"][1],
-        levelGates._fdictStepProjectionContext(dictWorkflow, [], listL2, []))
+        1, dictWorkflow["listSteps"][1], dictContext)
     dictReadiness = _fclientOver(dictWorkflow).get(
         f"/api/workflow/{S_CONTAINER_KEY}/level2/readiness").json()
     return {
@@ -510,23 +512,23 @@ def test_the_cross_poll_cache_tells_deleted_from_unreadable(
 
 @pytest.mark.falsification
 def test_the_poll_snapshot_reports_a_file_it_saw_absent(tmp_path):
-    """The snapshot program answers ``bAbsent`` for a missing file; the
+    """The snapshot program answers ``bMissing`` for a missing file; the
     snapshot adapter must pass it on, or every output a step has not
     produced yet reads as could-not-check on the poll while the
     readiness route, reading live, calls it absent.
 
-    Kills: SnapshotRepoFiles.fdictHashFiles dropping bAbsent.
+    Kills: SnapshotRepoFiles.fdictHashFiles dropping bMissing.
     """
     from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
     filesSnapshot = SnapshotRepoFiles(str(tmp_path), {}, {
-        "seen/absent.json": {"sSha256": None, "bAbsent": True},
+        "seen/absent.json": {"sSha256": None, "bMissing": True},
         "seen/locked.json": {"sSha256": None},
     })
     dictEntries = filesSnapshot.fdictHashFiles(
         ["seen/absent.json", "seen/locked.json", "never/sampled.json"])
-    assert dictEntries["seen/absent.json"].get("bAbsent") is True
-    assert "bAbsent" not in dictEntries["seen/locked.json"]
-    assert "bAbsent" not in dictEntries["never/sampled.json"]
+    assert dictEntries["seen/absent.json"].get("bMissing") is True
+    assert "bMissing" not in dictEntries["seen/locked.json"]
+    assert "bMissing" not in dictEntries["never/sampled.json"]
 
 
 @pytest.mark.parametrize("sCommand,sScriptName", [

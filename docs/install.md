@@ -11,7 +11,7 @@ own page, the [CLI Reference](cli.md).
 | Requirement   | Version     | Needed for                                    |
 |---------------|-------------|-----------------------------------------------|
 | macOS or Linux | any current release | everything                           |
-| Python        | 3.9 – 3.14  | everything                                    |
+| Python        | 3.9 – 3.14, built with `dir_fd` support (see below) | everything |
 | Git           | any current release | cloning repositories, the PROOF Ladder |
 | Docker Engine with Buildx, or Colima on macOS | current release | container projects only |
 
@@ -19,6 +19,14 @@ A **host project** runs on your own machine with no container, so
 Docker is not needed to start; the [QuickStart](quickStart.md) begins
 that way. Install Docker when you want the isolation that
 [Level 3 of the PROOF Ladder](proofLadder.md) requires.
+
+A host project reads your files through directory-relative file
+access, so it needs a Python whose `os.supports_dir_fd` is not empty:
+`python -c "import os; print(bool(os.supports_dir_fd))"` should print
+`True`. Some builds, such as the python.org macOS 3.9 installer, are made
+without it. On one of those, a host project's file reads and downloads
+stop with a message saying so; run vaibify with a conda, Homebrew or
+Linux Python instead.
 
 ## Installing with pip
 

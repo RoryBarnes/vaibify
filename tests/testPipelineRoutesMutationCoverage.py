@@ -279,16 +279,33 @@ class TestCachedEntriesForSnapshot:
 
     def test_an_entry_without_a_stat_key_is_never_offered(self):
         """Kills: Drop the listStatKey conjunct in _fdictCachedEntriesForSnapshot."""
-        dictShaCache = {"out/a.dat": {"iMtime": 1700, "sSha256": "aa"}}
+        # Both digests are present so that only the missing key can
+        # decline the entry; with one absent, the digest check declines
+        # it first and this test kills nothing.
+        dictShaCache = {"out/a.dat": {
+            "iMtime": 1700, "sSha256": "aa", "sBlobSha": "bb"}}
         assert pipelineRoutes._fdictCachedEntriesForSnapshot(
             dictShaCache) == {}
 
     def test_an_entry_under_its_full_key_is_offered_with_its_hash(self):
         """Kills: Offer no entry at all from _fdictCachedEntriesForSnapshot (always rehash)."""
-        dictEntry = {"listStatKey": [1, 2, 3, 4], "sSha256": "aa"}
+        dictEntry = {
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa", "sBlobSha": "bb"}
         dictOffered = pipelineRoutes._fdictCachedEntriesForSnapshot(
             {"out/a.dat": dictEntry})
         assert dictOffered == {"out/a.dat": dictEntry}
+
+    def test_an_entry_missing_either_digest_is_never_offered(self):
+        """Kills: Offer an entry that cannot supply both digests.
+
+        A cache written before the blob digest existed holds a SHA-256
+        only; offering it would answer a hit with a digest of None,
+        which the marker lane reads as unknown on every poll.
+        """
+        dictShaOnly = {"listStatKey": [1, 2, 3, 4], "sSha256": "aa"}
+        dictBlobOnly = {"listStatKey": [1, 2, 3, 4], "sBlobSha": "bb"}
+        assert pipelineRoutes._fdictCachedEntriesForSnapshot(
+            {"out/a.dat": dictShaOnly, "out/b.dat": dictBlobOnly}) == {}
 
 
 # ── Hole 6: _fbUpdateShaCache detects a single-field change ──────
@@ -304,9 +321,10 @@ class _FakeFilesAnswering:
         return dict(self._dictEntries)
 
 
-def _fdictSteadyEntry(sSha256, listKey):
+def _fdictSteadyEntry(sSha256, listKey, sBlobSha="bb"):
     return {
-        "sSha256": sSha256, "listStatKey": listKey,
+        "sSha256": sSha256, "sBlobSha": sBlobSha, "listStatKey": listKey,
+        "iHashedAtNs": max(listKey[0], listKey[1]) + 5 * 10 ** 9,
         "sSymlinkSegment": None, "bEscapesRoot": False,
     }
 
@@ -317,7 +335,8 @@ class TestUpdateShaCacheSingleFieldChange:
     def test_key_only_change_signals_persistence(self):
         """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {
-            "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa",
+            "sBlobSha": "bb"}}
         bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesAnswering({
                 "out/a.dat": _fdictSteadyEntry("aa", [9, 2, 3, 4])}),
@@ -327,9 +346,34 @@ class TestUpdateShaCacheSingleFieldChange:
     def test_sha_only_change_signals_persistence(self):
         """Kills: Change the change-detection disjunction in _fbUpdateShaCache from OR to AND."""
         dictCache = {"out/a.dat": {
-            "listStatKey": [1, 2, 3, 4], "sSha256": "aa"}}
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa",
+            "sBlobSha": "bb"}}
         bChanged = pipelineRoutes._fbUpdateShaCache(
             dictCache, _FakeFilesAnswering({
                 "out/a.dat": _fdictSteadyEntry("bb", [1, 2, 3, 4])}),
         )
         assert bChanged is True
+
+    def test_blob_digest_only_change_signals_persistence(self):
+        """Kills: Compare only the SHA-256 and key in _fbUpdateShaCache."""
+        dictCache = {"out/a.dat": {
+            "listStatKey": [1, 2, 3, 4], "sSha256": "aa",
+            "sBlobSha": "bb"}}
+        bChanged = pipelineRoutes._fbUpdateShaCache(
+            dictCache, _FakeFilesAnswering({
+                "out/a.dat": _fdictSteadyEntry(
+                    "aa", [1, 2, 3, 4], sBlobSha="cc")}),
+        )
+        assert bChanged is True
+        assert dictCache["out/a.dat"]["sBlobSha"] == "cc"
+
+    def test_an_entry_missing_the_blob_digest_is_not_cached(self):
+        """Kills: Cache a half-entry that could never be offered again."""
+        dictCache = {}
+        dictHalf = _fdictSteadyEntry("aa", [1, 2, 3, 4])
+        dictHalf["sBlobSha"] = None
+        bChanged = pipelineRoutes._fbUpdateShaCache(
+            dictCache, _FakeFilesAnswering({"out/a.dat": dictHalf}),
+        )
+        assert bChanged is False
+        assert dictCache == {}

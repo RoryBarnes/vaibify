@@ -208,8 +208,15 @@ def testMarkerIdentityMustMatchLabelAndDirectory():
     assert fileStatusManager._fsRepoRelDirectory("") == ""
 
 
-def testMtimeHintsSkipUnknownStepsAndUnparseableTimes():
-    """Only in-range dict markers with numeric mtimes produce hints."""
+def testMarkerVerdictsSkipNonDictMarkersAndUnknownSteps():
+    """Only in-range dict markers are judged.
+
+    The lane once built mtime hints per marker and skipped the same
+    shapes; it now judges digests against the poll snapshot and must
+    skip them for the same reason: a non-dict marker and a marker for a
+    step that does not exist describe nothing the workflow has.
+    """
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
     dictWorkflow = fdictBuildTwoStepWorkflow()
     dictMarkers = {
         0: {"dictOutputHashes": {"stepAlpha/dataFile.csv": "x",
@@ -218,25 +225,26 @@ def testMtimeHintsSkipUnknownStepsAndUnparseableTimes():
         1: "not a marker",
         7: {"dictOutputHashes": {"a": "b"}},
     }
-    dictModTimes = {
-        f"{S_REPO}/stepAlpha/dataFile.csv": "12",
-        f"{S_REPO}/stepAlpha/input.csv": "unparseable",
-    }
-    assert fileStatusManager._fdictBuildMtimeHintsByStep(
-        dictWorkflow, dictMarkers, dictModTimes, S_REPO,
-    ) == {0: {"stepAlpha/dataFile.csv": 12.0}}
+    dictVerdicts = fileStatusManager.fdictMarkerVerdictsByStep(
+        dictWorkflow, dictMarkers, SnapshotRepoFiles(S_REPO, {}, {}),
+    )
+    assert list(dictVerdicts) == [0]
+    assert dictVerdicts[0]["listUnknown"] == [
+        "stepAlpha/absent.csv", "stepAlpha/dataFile.csv",
+        "stepAlpha/input.csv"]
 
 
-def testHashStaleDetectionNeedsMarkersAndARepo():
-    """Without markers or a repo root there is nothing to compare."""
+def testMarkerVerdictsNeedMarkersWithHashes():
+    """Without markers, or with markers that hash nothing, nothing is judged."""
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
     dictWorkflow = fdictBuildTwoStepWorkflow()
-    assert fileStatusManager._fdictHashStaleFromMarkers(
-        dictWorkflow, {}, {}, None,
-    ) == {}
-    dictWorkflow["sProjectRepoPath"] = ""
-    assert fileStatusManager._fdictHashStaleFromMarkers(
-        dictWorkflow, {}, {0: {"dictOutputHashes": {}}}, None,
-    ) == {}
+    filesPoll = SnapshotRepoFiles(S_REPO, {}, {})
+    assert fileStatusManager.fdictMarkerVerdictsByStep(
+        dictWorkflow, {}, filesPoll) == {}
+    assert fileStatusManager.fdictMarkerVerdictsByStep(
+        dictWorkflow, None, filesPoll) == {}
+    assert fileStatusManager.fdictMarkerVerdictsByStep(
+        dictWorkflow, {0: {"dictOutputHashes": {}}}, filesPoll) == {}
 
 
 def testManifestShortCircuitIsConservativeWithoutEvidence(tmp_path):

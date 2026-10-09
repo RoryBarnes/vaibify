@@ -546,6 +546,17 @@ var VaibifyEventBindings = (function () {
             parseInt(elStep.dataset.index), parseInt(sLevel));
     }
 
+    function _fnHandleFreshnessUncheckedDiagnose(event, elMatch) {
+        // The badge, the requirement mark and the warning cell all say
+        // "click to run a diagnosis" about a pass that could not be
+        // checked against the files; this is that click.
+        event.preventDefault();
+        event.stopPropagation();
+        VaibifyDiagnosis.fnShowDoctorReport(
+            "The tests passed, but vaibify could not check whether " +
+            "the files still match that run.");
+    }
+
     function _fnHandleToggleBinaryForm(event, elMatch) {
         event.preventDefault();
         event.stopPropagation();
@@ -560,6 +571,10 @@ var VaibifyEventBindings = (function () {
     }
 
     var _DICT_CLICK_HANDLERS = {
+        // First: the unchecked marks sit inside rows whose own handler
+        // would otherwise win (first-match dispatch over closest()).
+        ".freshness-unchecked-diagnose":
+            _fnHandleFreshnessUncheckedDiagnose,
         ".step-empty-state": _fnHandleEmptyStepStateClick,
         ".btn-discovered": _fnHandleDiscoveredButton,
         ".remote-badge": _fnHandleRemoteBadge,

@@ -1350,43 +1350,51 @@ def _fdictInvalidateAffectedSteps(dictWorkflow, dictChangedFiles,
     return dictInvalidated
 
 
-def _flistDetectHashStaleFiles(
-    dictWorkflow, sWorkspaceRoot, dictCache,
-    dictMarkersByStep, dictMtimeHintsByStep=None,
-):
-    """Return ``{iStepIndex: [stale_repo_rel_paths]}`` per marker drift."""
+def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
+    """Return ``{iStepIndex: {listDrifted, listUnknown, dictRunVerdicts}}``.
+
+    Judges every digest each run of each step's marker recorded against
+    the poll snapshot (``filesPoll``), which hashed the files inside the
+    container: this lane opens nothing itself. A marker whose label or
+    directory disagrees with the live step is treated as absent. A step
+    is listed when any of its runs drifted or could not be checked, and
+    carries each run's own verdict, which the category states read.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
     dictResult = {}
-    listSteps = dictWorkflow.get("listSteps", [])
-    dictHintsByStep = dictMtimeHintsByStep or {}
-    for iIndex, dictStep in enumerate(listSteps):
-        listStale = _flistStaleOutputsForStepIndex(
-            dictStep, iIndex, dictMarkersByStep, sWorkspaceRoot,
-            dictCache, dictHintsByStep,
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictMarker = _fdictMarkerForStep(
+            dictStep, iIndex, dictMarkersByStep or {},
         )
-        if listStale:
-            dictResult[iIndex] = listStale
+        if dictMarker is None:
+            continue
+        dictVerdicts = _fdictVerdictsForOneMarker(dictMarker, dictHashEntries)
+        if (
+            dictVerdicts["listUnknown"] or dictVerdicts["listDrifted"]
+            or {"drift", "unknown"}
+            & set(dictVerdicts["dictRunVerdicts"].values())
+        ):
+            dictResult[iIndex] = dictVerdicts
     return dictResult
 
 
-def _flistStaleOutputsForStepIndex(
-    dictStep, iIndex, dictMarkersByStep, sWorkspaceRoot,
-    dictCache, dictHintsByStep,
-):
-    """Return sorted stale repo-rel paths for one step, or ``[]`` when none."""
+def _fdictVerdictsForOneMarker(dictMarker, dictHashEntries):
+    """Judge a marker's runs, or call an unreadable marker unknown.
+
+    A marker the poll could not read (it was over the batched read's
+    ceiling) says nothing about any file, so its step is unknown, and
+    the file that could not be read is the one named.
+    """
     from . import hashStaleness
-    dictMarker = _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep)
-    if dictMarker is None:
-        return []
-    setStale = set()
-    for sHashKey in ("dictOutputHashes", "dictInputHashes"):
-        if not hashStaleness.fbMarkerHasHashes(dictMarker, sHashKey):
-            continue
-        setStale |= hashStaleness.fsetStaleOutputsForStep(
-            dictMarker, sWorkspaceRoot, dictCache,
-            dictMtimeHints=dictHintsByStep.get(iIndex),
-            sHashKey=sHashKey,
-        )
-    return sorted(setStale) if setStale else []
+    if dictMarker.get("bMarkerUnreadable"):
+        return {
+            "listDrifted": [], "listUnknown": [dictMarker["sMarkerPath"]],
+            "dictRunVerdicts": {},
+        }
+    return hashStaleness.fdictVerdictsForMarkerRuns(
+        dictMarker, dictHashEntries,
+    )
 
 
 def _fdictMarkerForStep(dictStep, iIndex, dictMarkersByStep):
@@ -1468,18 +1476,21 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
 
 def _fdictDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
-    dictVars=None, dictMarkersByStep=None, dictCache=None,
-    bPipelineRunning=None,
+    dictVars=None, dictHashStaleByStep=None, bPipelineRunning=None,
 ):
-    """Detect mtime + hash drift and invalidate affected steps."""
+    """Detect mtime drift, merge the hash drift given, and invalidate.
+
+    ``dictHashStaleByStep`` is ``{iStepIndex: [repo-relative paths]}``
+    of the files a marker's digest proved drifted (see
+    :func:`fdictMarkerVerdictsByStep`); it is computed from the poll
+    snapshot by the caller, so this function reads no file.
+    """
     dictChangedFiles = _fdictDetectChangedFiles(
         dictCtx, sContainerId, dictWorkflow,
         dictNewModTimes, dictVars,
         bPipelineRunning=bPipelineRunning,
     )
-    dictHashStaleByStep = _fdictHashStaleFromMarkers(
-        dictWorkflow, dictNewModTimes, dictMarkersByStep, dictCache,
-    )
+    dictHashStaleByStep = dictHashStaleByStep or {}
     if not dictChangedFiles and not dictHashStaleByStep:
         return {}
     dictInvalidated = _fdictApplyInvalidationFromDrifts(
@@ -1505,68 +1516,6 @@ def _fdictApplyInvalidationFromDrifts(
     return _fdictInvalidateAffectedSteps(
         dictWorkflow, dictUnionChanged, dictNewModTimes, sRepoRoot,
     )
-
-
-def _fdictHashStaleFromMarkers(
-    dictWorkflow, dictNewModTimes, dictMarkersByStep, dictCache,
-):
-    """Compute per-step hash drift; gracefully no-ops without markers."""
-    if not dictMarkersByStep:
-        return {}
-    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
-    if not sRepoRoot:
-        return {}
-    dictHintsByStep = _fdictBuildMtimeHintsByStep(
-        dictWorkflow, dictMarkersByStep, dictNewModTimes, sRepoRoot,
-    )
-    return _flistDetectHashStaleFiles(
-        dictWorkflow, sRepoRoot,
-        dictCache if dictCache is not None else {},
-        dictMarkersByStep, dictHintsByStep,
-    )
-
-
-def _fdictBuildMtimeHintsByStep(
-    dictWorkflow, dictMarkersByStep, dictNewModTimes, sRepoRoot,
-):
-    """Return ``{iStepIndex: {sRepoRelPath: fMtime}}`` from already-known mtimes.
-
-    The poller already stat'd every output file; we just rewrap the
-    same data under repo-relative keys so the cache lookup can skip the
-    redundant ``os.stat`` for each hash check.
-    """
-    dictResult = {}
-    listSteps = dictWorkflow.get("listSteps", [])
-    for iIndex, dictMarker in dictMarkersByStep.items():
-        if not (0 <= iIndex < len(listSteps)):
-            continue
-        if not isinstance(dictMarker, dict):
-            continue
-        dictHints = _fdictMtimeHintsForStep(
-            listSteps[iIndex], dictMarker, dictNewModTimes, sRepoRoot,
-        )
-        if dictHints:
-            dictResult[iIndex] = dictHints
-    return dictResult
-
-
-def _fdictMtimeHintsForStep(
-    dictStep, dictMarker, dictNewModTimes, sRepoRoot,
-):
-    """Return ``{sRepoRelPath: fMtime}`` hints for a step's hashed files."""
-    dictHints = {}
-    listRelPaths = list(dictMarker.get("dictOutputHashes") or {})
-    listRelPaths += list(dictMarker.get("dictInputHashes") or {})
-    for sRelPath in listRelPaths:
-        sAbs = _fsAbsFromRepoRelative(sRelPath, sRepoRoot)
-        sMtime = dictNewModTimes.get(sAbs)
-        if sMtime is None:
-            continue
-        try:
-            dictHints[sRelPath] = float(sMtime)
-        except (TypeError, ValueError):
-            continue
-    return dictHints
 
 
 def _fdictStatPaths(connectionDocker, sContainerId, listPaths):

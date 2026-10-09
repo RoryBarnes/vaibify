@@ -239,6 +239,32 @@ def _fsPrefixWithWorkflowEnv(sCommand, sWorkflowSlug):
     )
 
 
+# The category names the dashboard may tell the marker plugin it is
+# running, by every spelling the routes hold (a request's "integrity",
+# a step's "dictIntegrity"). Looked up, never composed: the value that
+# reaches the shell is always one of these three words, whatever the
+# caller's string was.
+_DICT_SIGNALLED_CATEGORY_BY_NAME = {
+    "integrity": "integrity", "dictIntegrity": "integrity",
+    "qualitative": "qualitative", "dictQualitative": "qualitative",
+    "quantitative": "quantitative", "dictQuantitative": "quantitative",
+}
+
+
+def _fsPrefixWithTestCategoryEnv(sCommand, sCategoryName):
+    """Prepend ``VAIBIFY_TEST_CATEGORY=<category>`` to a category's command.
+
+    The marker plugin treats it as authoritative for a session whose
+    collection fails before any test names a file: the failure is
+    charged to that category instead of to nobody. A name outside the
+    fixed set (the legacy group, or anything else) exports nothing.
+    """
+    sCategory = _DICT_SIGNALLED_CATEGORY_BY_NAME.get(sCategoryName, "")
+    if not sCategory:
+        return sCommand
+    return "export VAIBIFY_TEST_CATEGORY=" + sCategory + " && " + sCommand
+
+
 def _fdictRunAllTestCategories(
     dictCtx, sContainerId, dictStep, sRepoRoot="", sWorkflowSlug="",
 ):
@@ -254,6 +280,7 @@ def _fdictRunAllTestCategories(
     for sCategory, listCommands in dictGroups.items():
         dictResult = _fdictRunOneTestCategory(
             dictCtx, sContainerId, sDir, listCommands, sWorkflowSlug,
+            sCategory,
         )
         iExitCode = 0 if dictResult["bPassed"] else 1
         if sCategory in dictVerificationKeys:
@@ -273,6 +300,7 @@ def _fdictRunAllTestCategories(
 
 def _fdictRunOneTestCategory(
     dictCtx, sContainerId, sDirectory, listCommands, sWorkflowSlug="",
+    sCategory="",
 ):
     """Execute one group's commands and return its result dict.
 
@@ -282,6 +310,7 @@ def _fdictRunOneTestCategory(
     """
     sCatCmd = " && ".join(
         [f"cd {fsShellQuote(sDirectory)}"] + list(listCommands))
+    sCatCmd = _fsPrefixWithTestCategoryEnv(sCatCmd, sCategory)
     sCatCmd = _fsPrefixWithWorkflowEnv(sCatCmd, sWorkflowSlug)
     tExecResult = dictCtx["docker"].ftRunInContainerStreamed(
         sContainerId, sCatCmd,
@@ -781,27 +810,30 @@ def _ftResolveCategoryContext(
     return (dictWorkflow, dictStep, dictCat, listCmds, sVerifKey)
 
 
-def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds):
-    """Build the cd + && joined category command with the workflow env prefix."""
+def _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory=""):
+    """Build the cd + && joined category command with its env prefixes."""
     sDir = _fsAbsoluteStepWorkdir(
         dictStep, dictWorkflow.get("sProjectRepoPath", ""),
     )
     sFullCmd = " && ".join([f"cd {fsShellQuote(sDir)}"] + listCmds)
     return _fsPrefixWithWorkflowEnv(
-        sFullCmd, fsWorkflowSlugFromPath(
+        _fsPrefixWithTestCategoryEnv(sFullCmd, sCategory),
+        fsWorkflowSlugFromPath(
             workflowManager.fsWorkflowLoadedFromPath(dictWorkflow)),
     )
 
 
 def _ftRunCategoryCommands(
     connectionDocker, sContainerId, dictStep, dictWorkflow, listCmds,
+    sCategory="",
 ):
     """Run the category commands; return (tExecResult, bPassed, sOutput).
 
     Synchronous: it runs inside a mode-(b) carrier worker, which the
     carrier already calls in a thread.
     """
-    sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds)
+    sFullCmd = _fsBuildCategoryCommand(
+        dictStep, dictWorkflow, listCmds, sCategory)
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, sFullCmd,
     )
@@ -978,7 +1010,7 @@ def _fnRegisterTestRun(app, dictCtx):
         def ftRunTheCategory():
             return _ftRunCategoryCommands(
                 dictCtx["docker"], sContainerId, dictStep,
-                dictWorkflow, listCmds,
+                dictWorkflow, listCmds, sCategory,
             )
 
         iLevelBefore, tRun = await _ftProbeLevelThenRunUnderTheDrain(

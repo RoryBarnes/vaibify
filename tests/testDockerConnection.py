@@ -1077,11 +1077,11 @@ def test_the_repo_hash_program_answers_none_for_an_absent_file(
 ):
     """Missing is 'no hash' AND 'absent', never an error or an omitted key.
 
-    ``bAbsent`` is what lets a caller tell a deleted file (a change)
+    ``bMissing`` is what lets a caller tell a deleted file (a change)
     from one it could not read (an unknown); the AI Declaration's
     freshness check needs both answers.
     
-    Kills: dockerConnection's typed hash program dropping bAbsent.
+    Kills: dockerConnection's typed hash program dropping bMissing.
     """
     import json
 
@@ -1094,7 +1094,7 @@ def test_the_repo_hash_program_answers_none_for_an_absent_file(
     dictEntries = json.loads(sOutput)
     assert dictEntries["nowhere.txt"] == {
         "sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False,
-        "bAbsent": True,
+        "bMissing": True,
     }
 
 
@@ -1121,7 +1121,7 @@ def test_the_repo_hash_program_never_calls_an_unreadable_file_absent(
         pathLocked.chmod(0o600)
     dictEntry = json.loads(sOutput)["locked.txt"]
     assert dictEntry["sSha256"] is None
-    assert "bAbsent" not in dictEntry
+    assert "bMissing" not in dictEntry
 
 
 # -----------------------------------------------------------------------

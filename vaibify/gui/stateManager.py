@@ -118,6 +118,12 @@ S_VAIBIFY_GITIGNORE_BODY = (
     "pipeline_state.json\n"
     "pipeline_state.json.*.tmp\n"
     "logs/\n"
+    # The marker writer's lock beside each marker and its per-writer
+    # temporary for the instant of the rename: bookkeeping of the
+    # write, never of the result, and untracked files make the
+    # reproduction export refuse.
+    "test_markers/*/*.lock\n"
+    "test_markers/*/*.tmp\n"
 )
 
 T_STATEFUL_STEP_FIELDS = (
@@ -1169,18 +1175,50 @@ def _flistFetchMarkers(
         ))
         for dictStep in listSteps if dictStep.get("sDirectory", "")
     ]
+    listPaths = [sPath for _, sPath in listStepsWithPaths]
     try:
         # ONE read for every marker (per-step reads took 4.95 s on a
         # 73-step project, 2026-10-05); a failed read leaves all unread.
         dictContents = connectionDocker.fdictFetchSmallFiles(
-            sContainerId, [sPath for _, sPath in listStepsWithPaths],
+            sContainerId, listPaths,
         )
+    except ValueError:
+        dictContents = _fdictFetchMarkersOneByOne(
+            connectionDocker, sContainerId, listPaths)
     except OSError:
         dictContents = {}
     return [
         (dictStep, _fdictParseMarker(dictContents.get(sMarkerPath)))
         for dictStep, sMarkerPath in listStepsWithPaths
     ]
+
+
+def _fdictFetchMarkersOneByOne(connectionDocker, sContainerId, listPaths):
+    """Read each marker alone, naming the ones the batch would not carry.
+
+    The batched read refuses the whole answer when ONE file is over its
+    ceiling, and a marker now grows with the tests it records, so one
+    large marker must not take down the poll for every other step.
+    Re-asking one path at a time costs a round trip each, paid only on
+    that rare refusal; the oversized marker comes back as an unreadable
+    sentinel the freshness lane reports as unknown for its step.
+    """
+    dictContents = {}
+    for sPath in listPaths:
+        try:
+            dictContents.update(connectionDocker.fdictFetchSmallFiles(
+                sContainerId, [sPath]))
+        except ValueError as errorOversized:
+            logger.warning(
+                "test marker %s cannot be read by the poll: %s",
+                sPath, errorOversized)
+            dictContents[sPath] = json.dumps({
+                "bMarkerUnreadable": True, "sMarkerPath": sPath,
+                "sReason": str(errorOversized),
+            }).encode("utf-8")
+        except OSError:
+            dictContents[sPath] = None
+    return dictContents
 
 
 def _fdictParseMarker(baContent):
@@ -1194,17 +1232,18 @@ def _fdictParseMarker(baContent):
 
 
 def _flistAllMarkerOutputs(listMarkers):
-    """Flatten all marker dictOutputHashes paths into one ordered list."""
+    """Flatten every run's dictOutputHashes paths into one ordered list."""
+    from . import testMarkerContract
     listResult = []
     setSeen = set()
     for _, dictMarker in listMarkers:
-        if dictMarker is None:
-            continue
-        for sPath in dictMarker.get("dictOutputHashes", {}) or {}:
-            if sPath in setSeen:
-                continue
-            setSeen.add(sPath)
-            listResult.append(sPath)
+        dictNormalized = testMarkerContract.fdictNormalizeMarker(dictMarker)
+        for dictRun in (dictNormalized or {}).get("dictRuns", {}).values():
+            for sPath in dictRun.get("dictOutputHashes", {}) or {}:
+                if sPath in setSeen:
+                    continue
+                setSeen.add(sPath)
+                listResult.append(sPath)
     return listResult
 
 
@@ -1229,16 +1268,31 @@ def _fdictHashOnDiskOutputs(
 def _fdictVerificationFromMarker(dictMarker, dictOnDiskHashes):
     """Return a synthesized dictVerification for one step.
 
-    Thin delegate to the canonical truth-derivation module. Lives
-    here as a back-compat seam: this is the historical name the
-    bootstrap path uses. New callers should reach for
-    ``truthDerivation.fdictComputeTestAxes`` directly.
+    Composes the two canonical derivations: ``testMarkerContract``
+    reads the marker into per-category states (each test result judged
+    against ITS OWN run's recorded hashes, compared here with the
+    files on disk), and ``truthDerivation`` puts those states into the
+    axis vocabulary. A fresh clone has no test listing and no
+    meaningful mtimes, so the marker's own file table stands for "the
+    files present" and no mtime rule applies.
     """
-    from . import truthDerivation
+    from . import testMarkerContract, truthDerivation
     listCategories = [s for s, _ in truthDerivation.T_TEST_CATEGORY_AXIS_KEYS]
+    dictNormalized = testMarkerContract.fdictNormalizeMarker(dictMarker)
+    if not dictMarker or dictNormalized is None:
+        return truthDerivation.fdictComputeTestAxes(
+            {}, dictOnDiskHashes, listCategories, {})
+    dictRunVerdicts = {
+        sRunId: truthDerivation.fsRunVerdictFromHashes(
+            dictRun.get("dictOutputHashes"), dictOnDiskHashes)
+        for sRunId, dictRun in dictNormalized["dictRuns"].items()
+    }
+    dictStates = testMarkerContract.fdictCategoryStatesFromMarker(
+        dictNormalized, sorted(dictNormalized["dictTestFiles"]), {},
+        dictRunVerdicts, 0)
     return truthDerivation.fdictComputeTestAxes(
-        dictMarker, dictOnDiskHashes, listCategories,
-    )
+        testMarkerContract.ftLatestRun(dictNormalized)[1],
+        dictOnDiskHashes, listCategories, dictStates)
 
 
 def _fsCurrentUtcIso():

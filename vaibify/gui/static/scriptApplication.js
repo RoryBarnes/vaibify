@@ -2925,6 +2925,17 @@ const VaibifyApp = (function () {
         return true;
     }
 
+    function _fbStepFreshnessUnchecked(iStep) {
+        /* The server's verdict, never a client predicate: at Level 1
+         * a requirement row reads unknown (bMet null) only when a
+         * green test axis could not be compared with the files. */
+        var dictCell = ((_dictWorkflowState.dictStepLevels || {})[
+            String(iStep)] || {}).s1;
+        if (!dictCell) return false;
+        return (dictCell.listRequirements || []).some(
+            function (dictReq) { return dictReq.bMet === null; });
+    }
+
     function fbStepIsAtLeastLevel1(dictStep, iStep) {
         if (dictStep && dictStep.sStepKind === "ai-declaration") {
             /* Declaration steps are L1-not-applicable by the
@@ -2952,6 +2963,7 @@ const VaibifyApp = (function () {
         if (_dictWorkflowState.dictScriptModified[iStep] === "modified") {
             return false;
         }
+        if (_fbStepFreshnessUnchecked(iStep)) return false;
         var bHasData =
             VaibifyTestManager.fsetGetStepsWithData().has(iStep) ||
             !!_dictWorkflowState.dictOutputMtimes[String(iStep)];
@@ -3146,6 +3158,17 @@ const VaibifyApp = (function () {
             sLabel: "Awaiting your sign-off — review the step's " +
                 "results and approve it",
             sClass: "step-blocker-glyph-user",
+        },
+        "test-freshness-unchecked": {
+            /* Not a failure and not stale: this poll could not compare
+             * the files with the digests the last test run recorded.
+             * The server's hint carries the sentence; the label is the
+             * fallback and the legend's wording. */
+            sIcon: "?",
+            sLabel: "Tests passed, but this poll could not check " +
+                "whether the files still match that run — not a " +
+                "failure. Click to run a diagnosis",
+            sClass: "step-blocker-glyph-freshness-unchecked",
         },
     };
 
@@ -3842,6 +3865,9 @@ const VaibifyApp = (function () {
             sWarningSeverity: _fbStepWarningIsRed(iStepIndex)
                 ? "red" : "orange",
             sWarningHint: listReasons.join("\n"),
+            bFreshnessUnchecked: (
+                (_dictWorkflowState.dictBlockersByStep[iStepIndex] || {})
+                    .sCriterion === "test-freshness-unchecked"),
         };
     }
 

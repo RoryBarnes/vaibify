@@ -182,7 +182,7 @@ def _ftHashOrUnreadable(dictEntry):
     dictEntry = dictEntry or {}
     if dictEntry.get("sSha256"):
         return dictEntry["sSha256"], False
-    if dictEntry.get("bAbsent"):
+    if dictEntry.get("bMissing"):
         return "", False
     return None, True
 

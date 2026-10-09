@@ -668,16 +668,22 @@ def testAHostProjectsTestRunLeavesAMarkerTheDashboardCanRead(
     )
     with open(listMarkers[0]) as fileMarker:
         dictMarker = json.load(fileMarker)
-    dictCategories = dictMarker.get("dictCategories") or {}
-    assert dictCategories, dictMarker
+    listOutcomes = [
+        dictOutcome
+        for dictFile in (dictMarker.get("dictTestFiles") or {}).values()
+        for dictOutcome in dictFile["dictOutcomes"].values()
+    ]
+    assert listOutcomes, dictMarker
     assert all(
-        dictCategory["iFailed"] == 0 and dictCategory["iPassed"] > 0
-        for dictCategory in dictCategories.values()
+        dictOutcome["sOutcome"] == "passed" for dictOutcome in listOutcomes
     ), dictMarker
     # The hashes are the half that proves this ran on the host: the
     # conftest opened the step's real output file, on this filesystem,
-    # and recorded what it found.
-    assert dictMarker["dictOutputHashes"], dictMarker
+    # and recorded what it found, in the run that holds the results.
+    dictRuns = dictMarker.get("dictRuns") or {}
+    assert dictRuns and all(
+        dictRun["dictOutputHashes"] for dictRun in dictRuns.values()
+    ), dictMarker
 
 
 def _flistMarkerFiles(sProject):

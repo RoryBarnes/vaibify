@@ -10,6 +10,7 @@ kill-confirmed in ``testFalsificationAttestationMutationCoverage.py``.
 """
 
 import json
+import posixpath
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,6 +31,9 @@ from vaibify.reproducibility.falsificationAttestation import (
     fsCurrentFalsificationDigest,
     fsFalsificationRecordRelativePath,
 )
+from vaibify.gui.testGenerator import (
+    fsQuantitativeStandardsPath, fsQuantitativeTestPath,
+)
 from vaibify.gui.routes.falsificationRoutes import (
     _fdictParseSummaryOutput,
     _fsBuildMutationTestCommand,
@@ -40,6 +44,10 @@ from vaibify.gui.routes.falsificationRoutes import (
 
 S_STEP_DIRECTORY = "analysisStage"
 S_SCRIPT_NAME = "computeSummary.py"
+S_QUANTITATIVE_TEST_FILE = posixpath.basename(
+    fsQuantitativeTestPath(S_STEP_DIRECTORY))
+S_QUANTITATIVE_STANDARDS_FILE = posixpath.basename(
+    fsQuantitativeStandardsPath(S_STEP_DIRECTORY))
 
 
 def _fdictBuildStepRepo(
@@ -52,14 +60,14 @@ def _fdictBuildStepRepo(
     (tmp_path / S_STEP_DIRECTORY / S_SCRIPT_NAME).write_text(
         "print(2.0 + 3.0)\n",
     )
-    (pathTests / "test_quantitative.py").write_text(
+    (pathTests / S_QUANTITATIVE_TEST_FILE).write_text(
         "def test_summary_value():\n    assert True\n",
     )
     listStandards = (
         [{"sName": "fMeanValue", "fValue": 5.0}]
         if bWithBenchmarks else []
     )
-    (pathTests / "quantitative_standards.json").write_text(json.dumps({
+    (pathTests / S_QUANTITATIVE_STANDARDS_FILE).write_text(json.dumps({
         "fDefaultRtol": 1.0e-6,
         "sStochasticityClassification": sClassification,
         "listStandards": listStandards,
@@ -114,7 +122,7 @@ def test_not_applicable_when_not_python_source(tmp_path):
 def test_not_applicable_without_standards_file(tmp_path):
     dictStep = _fdictBuildStepRepo(tmp_path)
     (tmp_path / S_STEP_DIRECTORY / "tests"
-     / "quantitative_standards.json").unlink()
+     / S_QUANTITATIVE_STANDARDS_FILE).unlink()
     dictVerdict = fdictClassifyFalsificationApplicability(
         dictStep, str(tmp_path),
     )
@@ -125,7 +133,7 @@ def test_not_applicable_without_standards_file(tmp_path):
 def test_not_applicable_with_unreadable_standards(tmp_path):
     dictStep = _fdictBuildStepRepo(tmp_path)
     (tmp_path / S_STEP_DIRECTORY / "tests"
-     / "quantitative_standards.json").write_text("{not json")
+     / S_QUANTITATIVE_STANDARDS_FILE).write_text("{not json")
     dictVerdict = fdictClassifyFalsificationApplicability(
         dictStep, str(tmp_path),
     )
@@ -145,12 +153,12 @@ def test_not_applicable_without_benchmarks(tmp_path):
 def test_not_applicable_without_quantitative_test_file(tmp_path):
     dictStep = _fdictBuildStepRepo(tmp_path)
     (tmp_path / S_STEP_DIRECTORY / "tests"
-     / "test_quantitative.py").unlink()
+     / S_QUANTITATIVE_TEST_FILE).unlink()
     dictVerdict = fdictClassifyFalsificationApplicability(
         dictStep, str(tmp_path),
     )
     assert dictVerdict["bApplicable"] is False
-    assert "test_quantitative.py" in dictVerdict["sReason"]
+    assert S_QUANTITATIVE_TEST_FILE in dictVerdict["sReason"]
 
 
 def test_token_bearing_script_path_is_excluded(tmp_path):
@@ -211,7 +219,7 @@ def test_standards_edit_invalidates_record(tmp_path):
         S_STATUS_ATTAINED, sDigest, "deterministic", 4, 4, 0,
     )
     (tmp_path / S_STEP_DIRECTORY / "tests"
-     / "quantitative_standards.json").write_text(json.dumps({
+     / S_QUANTITATIVE_STANDARDS_FILE).write_text(json.dumps({
         "fDefaultRtol": 0.5,
         "sStochasticityClassification": "deterministic",
         "listStandards": [{"sName": "fMeanValue", "fValue": 5.0}],
@@ -428,7 +436,9 @@ def test_mutation_test_command_resolves_cross_step_tokens():
     assert "{Step01.samples}" not in sCommand
     assert "cd " in sCommand
     assert "/workspace/projectRepo/analysisStage" in sCommand
-    assert "python -m pytest -x -q tests/test_quantitative.py" in sCommand
+    assert (
+        "python -m pytest -x -q tests/" + S_QUANTITATIVE_TEST_FILE
+    ) in sCommand
 
 
 def test_register_all_registers_both_routes():

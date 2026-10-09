@@ -41,6 +41,19 @@ are part of the step's Level 1 surface; see
 [The PROOF Ladder](proofLadder.md) for how their state feeds the
 project's level.
 
+A **Passed** badge is a claim about files. Every poll compares the
+content digests recorded by the last test run with the files as the
+container holds them, hashed inside the container. When that comparison
+could not be made — the container's answer was missing, a file changed
+while it was being read, or the snapshot itself failed — nothing is
+marked stale and no test result is invalidated, but the badge reads
+**? Passed, couldn't check freshness** rather than Passed, the step's
+Level 1 requirement rows for its tests read unknown, the Level 1 cell
+cannot be attained, and the ⚠ column explains why. It is not a failure.
+Click the badge to run a diagnosis. The condition is recomputed on every
+poll and is never saved, so it clears by itself as soon as a poll can
+answer.
+
 ### Test standards
 
 A quantitative standards file holds a default relative tolerance
@@ -120,11 +133,6 @@ mutations the tests noticed.
   so any edit to either invalidates it.
 - Runs happen only on demand; the cost is roughly the number of mutants
   times the step's run time, with a per-mutant time limit.
-
-The applicability check and the mutation run look for the unsuffixed
-names `tests/quantitative_standards.json` and
-`tests/test_quantitative.py`, so a step whose generated tests carry the
-step-name suffix reads **not applicable**.
 
 ## Supported data formats
 

@@ -8,10 +8,13 @@ endpoints — with the container exec mocked.
 
 from unittest.mock import MagicMock
 
+import posixpath
+
 import pytest
 from fastapi import HTTPException
 
 from vaibify.gui.routes import falsificationRoutes as fr
+from vaibify.gui.testGenerator import fsQuantitativeTestPath
 from vaibify.docker.dockerConnection import ExecResult
 
 
@@ -122,7 +125,7 @@ def test_build_mutation_test_command_reruns_data_then_pytest():
         dictCtx, "cid", dictWorkflow, dictStep)
     assert sCommand.startswith("bash -c ")
     assert "python generate.py" in sCommand
-    assert "test_quantitative.py" in sCommand
+    assert posixpath.basename(fsQuantitativeTestPath("S")) in sCommand
 
 
 # --- session summary record construction ---

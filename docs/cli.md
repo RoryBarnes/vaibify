@@ -55,7 +55,7 @@ directory.
 | `workflow` | Summarize the workflow or one step |
 | `test` | Run the tests of every step or one step |
 | `verify-step` | Record your sign-off on a step |
-| `generate-standards` | Create or refresh a step's `tests/quantitative_standards.json` from its data |
+| `generate-standards` | Create or refresh a step's `tests/quantitative_standards_<step>.json` from its data |
 | `reproduce` | Verify the Level 3 reproducibility envelope, or reproduce a published project |
 | `gui` | Open the hub, or a single-project viewer |
 | `open CONTAINER` | Move a container's live session into a fresh browser tab |
@@ -313,7 +313,7 @@ vaibify generate-standards --step-dir PATH [--rtol FLOAT] [--detect-stochastic]
 vaibify generate-standards --workflow PATH --step-label LABEL [--rtol FLOAT] [--detect-stochastic]
 ```
 
-Creates or refreshes a step's `tests/quantitative_standards.json` from
+Creates or refreshes a step's `tests/quantitative_standards_<step>.json` from
 live data, outside the dashboard: for one step directory, or by step
 label from a workflow file. `--rtol` sets the default relative
 tolerance when a fresh standards file is generated, and

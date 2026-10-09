@@ -13,8 +13,8 @@ presented as a pass/fail gate.
 
 The persisted record lives at
 ``<projectRepo>/.vaibify/falsification/<stepSlug>.json`` and is
-digest-keyed on the step's Python scripts plus its
-``quantitative_standards.json``: any edit to either invalidates the
+digest-keyed on the step's Python scripts plus its step-named
+quantitative standards file: any edit to either invalidates the
 record (mirrors ``l3Attestation.fbL3AttestationCurrent``).
 
 Honesty rules (load-bearing):
@@ -137,6 +137,9 @@ def fdictClassifyFalsificationApplicability(dictStep, filesRepo):
     exists. The returned ``sReason`` names the first disqualifier so
     the dashboard can state exactly why the check is not applicable.
     """
+    from vaibify.gui.testGenerator import (
+        fsQuantitativeStandardsPath, fsQuantitativeTestPath,
+    )
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sDirectory = dictStep.get("sDirectory", "")
     dictResult = {
@@ -144,10 +147,8 @@ def fdictClassifyFalsificationApplicability(dictStep, filesRepo):
         "sReason": "",
         "sClassification": "",
         "listScriptRelPaths": flistExtractPythonScriptRelPaths(dictStep),
-        "sStandardsRelPath": posixpath.join(
-            sDirectory, "tests", "quantitative_standards.json"),
-        "sQuantitativeTestRelPath": posixpath.join(
-            sDirectory, "tests", "test_quantitative.py"),
+        "sStandardsRelPath": fsQuantitativeStandardsPath(sDirectory),
+        "sQuantitativeTestRelPath": fsQuantitativeTestPath(sDirectory),
     }
     dictResult["sReason"] = _fsDescribeApplicabilityGap(
         dictResult, filesRepo,
@@ -187,8 +188,8 @@ def _fsDescribeApplicabilityGap(dictResult, filesRepo):
         return "the quantitative standards contain no benchmarks"
     if not filesRepo.fbIsFile(dictResult["sQuantitativeTestRelPath"]):
         return (
-            "no quantitative test file (tests/test_quantitative.py) "
-            "exists for this step"
+            "no quantitative test file "
+            f"({dictResult['sQuantitativeTestRelPath']}) exists for this step"
         )
     return ""
 

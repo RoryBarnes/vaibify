@@ -7,6 +7,7 @@ pipelineServer, pipelineRunner, syncDispatcher, and workflowManager.
 import json
 from unittest.mock import MagicMock
 
+from tests.markerStateSupport import fdictStatesFromCounts
 from vaibify.gui.fileStatusManager import fsMarkerNameFromStepDirectory
 from vaibify.gui.pipelineServer import (
     _fbCancelPipelineTask,
@@ -15,7 +16,7 @@ from vaibify.gui.pipelineServer import (
     _fdictBuildTestMarkerStatus,
     _flistBuildCleanCommands,
     _flistFindCustomTestFiles,
-    _fbApplyAllMarkerCategories,
+    _fbApplyCategoryStates,
     _fnHandleInteractiveComplete,
     _fnHandleInteractiveResponse,
     _fsResolveLanguage,
@@ -120,7 +121,7 @@ class TestFdictBuildTestMarkerStatus:
             dictWorkflow, dictTestInfo) == {}
 
 
-class TestFnApplyAllMarkerCategories:
+class TestFnApplyCategoryStates:
     def test_applies_all_categories(self):
         dictVerify = {}
         dictCategories = {
@@ -128,14 +129,14 @@ class TestFnApplyAllMarkerCategories:
             "qualitative": {"iPassed": 0, "iFailed": 1},
             "quantitative": {"iPassed": 5, "iFailed": 0},
         }
-        _fbApplyAllMarkerCategories(dictVerify, dictCategories)
+        _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
         assert dictVerify["sIntegrity"] == "passed"
         assert dictVerify["sQualitative"] == "failed"
         assert dictVerify["sQuantitative"] == "passed"
 
     def test_missing_categories_unchanged(self):
         dictVerify = {"sIntegrity": "untested"}
-        _fbApplyAllMarkerCategories(dictVerify, {})
+        _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts({}))
         assert dictVerify["sIntegrity"] == "untested"
 
     def test_partial_categories(self):
@@ -143,7 +144,7 @@ class TestFnApplyAllMarkerCategories:
         dictCategories = {
             "integrity": {"iPassed": 1, "iFailed": 0},
         }
-        _fbApplyAllMarkerCategories(dictVerify, dictCategories)
+        _fbApplyCategoryStates(dictVerify, fdictStatesFromCounts(dictCategories))
         assert dictVerify["sIntegrity"] == "passed"
         assert "sQualitative" not in dictVerify
 

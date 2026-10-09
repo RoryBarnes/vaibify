@@ -402,18 +402,44 @@ project. Badges are emitted only for the producing project; a
 consumer project sees the file as a read path, not as a tracked
 artifact.
 
-Test markers — JSON files that record the outcome of the last pytest
-session for each step, including `dictOutputHashes` for staleness
-detection — live inside the repository at
-`<sProjectRepoPath>/.vaibify/test_markers/<slug>.json` where the slug
-is derived from the step's (repo-relative) `sDirectory`. Marker
-*writes* (by the conftest plugin deployed into each step's `tests/`
-directory) and *reads* (by `fileStatusManager`, `gitRoutes`,
-`syncDispatcher`) both resolve the directory through
+Test markers — JSON files that record each step's test results,
+including the output hashes each run was obtained against — live
+inside the repository at
+`<sProjectRepoPath>/.vaibify/test_markers/<workflowSlug>/<step>.json`
+where the file name is derived from the step's (repo-relative)
+`sDirectory`. Marker *writes* (by the conftest plugin deployed into
+each step's `tests/` directory) and *reads* (by `fileStatusManager`,
+`gitRoutes`, `syncDispatcher`) both resolve the directory through
 `dictWorkflow["sProjectRepoPath"]` — no module hardcodes
 `/workspace/.vaibify/test_markers`. Together with committing the
 markers alongside the project, this makes test-verification state
 survive a clone of the repository.
+
+A marker records tests, not just sessions. `dictRuns` holds one entry
+per run that still stands behind a result (when it ran, its exit
+status, and the hashes of the step's output and input files at that
+moment). `dictTestFiles` holds, per test file, the node ids the last
+whole-file collection found and each test's most recent outcome with
+the run that produced it. A run records exactly the tests it ran, and a
+test it did not run keeps its last outcome, so a narrowed `-k` run
+never hides another test's failure and passes from separate runs
+accumulate. A result counts as current only while the files its run
+was obtained against still match (judged per run, from the same
+snapshot the poll uses to judge every other file) and while its own
+test file is no newer than the run.
+
+`vaibify/gui/testMarkerContract.py` is the one definition of that
+shape. Its writer half is transcribed verbatim into the generated
+conftest, because a container cannot import vaibify, and its reader
+half derives each category's state (failed, passed or untested, with
+counts) once, for the poll, the fresh-clone bootstrap and the
+dashboard alike. A marker written before runs existed reads as one run
+called `legacy` plus category-level counts, so published archives keep
+reading as they always did. The dashboard names the category it is
+running in `VAIBIFY_TEST_CATEGORY`, so a collection failure is charged
+to that category. A marker grows by roughly one node id per test; the
+poll's batched read refuses a file over its ceiling, which makes that
+one step unknown rather than failing the poll for every step.
 
 This choice has two architectural consequences worth naming:
 
