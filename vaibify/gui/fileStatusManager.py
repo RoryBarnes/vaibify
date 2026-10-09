@@ -2274,9 +2274,20 @@ def fbReconcileUserVerificationByContentHash(
 
     Returns True when any step changed, so the caller can persist.
     The caller owns the write-back; this never saves.
+
+    The AI Declaration step is EXCLUDED, explicitly: its ``stale`` is
+    a latched verdict about OTHER steps' files, and only a new
+    researcher sign-off may clear it (``declarationFreshness``).
+    Restoring it here because its own plot hashes matched would undo
+    the stickiness that ruling requires.
     """
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fbStepIsAiDeclaration,
+    )
     bChanged = False
     for dictStep in dictWorkflow.get("listSteps", []) or []:
+        if fbStepIsAiDeclaration(dictStep):
+            continue
         dictVerification = dictStep.get("dictVerification") or {}
         sUser = dictVerification.get("sUser")
         if sUser not in ("passed", "stale"):

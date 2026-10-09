@@ -17,7 +17,13 @@ Honesty properties, in order of importance:
   (:func:`flistVerifyCapturedFiles`). What no mechanism can prove is
   that every prompt was recorded — coverage intervals make the
   monitored windows explicit, and gaps render as gaps.
-- **Project scope**: a container can hold several projects, and the
+- **Every agent the image carries**: Claude Code, Codex and Gemini
+  each write JSONL transcripts under their own home, in their own
+  shape. ``TUPLE_TRANSCRIPT_SOURCES`` names each one's root, file
+  pattern and how its launch directory is recorded; one sanitizer and
+  one hash chain serve all three, and every capture record names the
+  provider whose transcript it holds.
+- **Project scope**: a container can hold several projects, and an
   agent CLI files every session under one root. A session is captured
   only when the directory it was launched in lies inside this
   project's repository; a session launched anywhere else (the
@@ -30,7 +36,11 @@ Honesty properties, in order of importance:
   line waits for the next pass, because a secret CAN span a mid-line
   append boundary. The captured raw prefix is pinned by hash; a
   transcript that was rewritten rather than appended, or a session
-  file that no longer matches its record, is recaptured whole.
+  file that no longer matches its record, is recaptured whole. A
+  transcript is passed over only when its stat key (nanosecond mtime
+  and ctime, size, inode) is the one last seen, never on its size: a
+  same-size rewrite or a truncation changes the key, so it is fetched
+  and its changed prefix sends it to a whole recapture.
 - **Three phases, one short lock each**: listing (an exec, so it
   needs the mutation drain) and landing (a write) hold the drain;
   fetching and sanitizing, which dominate the cost, hold nothing. The
@@ -43,7 +53,8 @@ __all__ = [
     "S_PROMPT_RECORD_DIRECTORY",
     "S_PROMPT_RECORD_INDEX_PATH",
     "S_PROMPT_RECORD_SESSIONS_DIRECTORY",
-    "S_CONTAINER_TRANSCRIPT_ROOT",
+    "S_PROVIDER_CLAUDE",
+    "TUPLE_TRANSCRIPT_SOURCES",
     "fbSessionBelongsToProject",
     "fdictListContainerTranscripts",
     "fdictLoadIndex",
@@ -69,15 +80,26 @@ S_PROMPT_RECORD_SESSIONS_DIRECTORY = (
     S_PROMPT_RECORD_DIRECTORY + "/sessions"
 )
 _S_SESSIONS_DIRECTORY = S_PROMPT_RECORD_SESSIONS_DIRECTORY
-S_CONTAINER_TRANSCRIPT_ROOT = "~/.claude/projects"
+S_PROVIDER_CLAUDE = "claude"
 _I_COVERAGE_MERGE_SECONDS = 60
+
+# One entry per agent whose transcripts are captured. ``sLaunchRule``
+# names the listing program's reader for the directory a session was
+# launched in, which decides whether it belongs to this project.
+TUPLE_TRANSCRIPT_SOURCES = (
+    {"sProvider": S_PROVIDER_CLAUDE, "sRoot": "~/.claude/projects",
+     "sPattern": "**/*.jsonl", "sLaunchRule": "first-cwd"},
+    {"sProvider": "codex", "sRoot": "~/.codex/sessions",
+     "sPattern": "**/rollout-*.jsonl", "sLaunchRule": "session-meta-cwd"},
+    {"sProvider": "gemini", "sRoot": "~/.gemini/tmp",
+     "sPattern": "*/chats/session-*.jsonl",
+     "sLaunchRule": "project-root-marker"},
+)
 
 _S_LIST_PROGRAM = """
 import glob, json, os, sys
-sRoot = os.path.expanduser('""" + S_CONTAINER_TRANSCRIPT_ROOT + """')
-dictListing = {}
-for sPath in glob.glob(sRoot + '/**/*.jsonl', recursive=True):
-    sLaunchDirectory = ''
+listSources = json.loads(""" + repr(json.dumps(TUPLE_TRANSCRIPT_SOURCES)) + """)
+def fsFirstCwd(sPath):
     with open(sPath, 'rb') as fileTranscript:
         for baLine in fileTranscript:
             if b'"cwd"' not in baLine:
@@ -87,22 +109,74 @@ for sPath in glob.glob(sRoot + '/**/*.jsonl', recursive=True):
             except ValueError:
                 continue
             if isinstance(dictLine, dict) and dictLine.get('cwd'):
-                sLaunchDirectory = str(dictLine['cwd'])
+                return str(dictLine['cwd'])
+    return ''
+def fsSessionMetaCwd(sPath):
+    with open(sPath, 'rb') as fileTranscript:
+        for iLine, baLine in enumerate(fileTranscript):
+            if iLine >= 20:
                 break
-    dictListing[sPath] = {
-        'iSizeBytes': os.path.getsize(sPath),
-        'sLaunchDirectory': sLaunchDirectory,
-    }
+            try:
+                dictLine = json.loads(baLine.decode('utf-8', 'replace'))
+            except ValueError:
+                continue
+            if not isinstance(dictLine, dict):
+                continue
+            dictPayload = dictLine.get('payload')
+            if dictLine.get('type') == 'session_meta' and isinstance(
+                    dictPayload, dict) and dictPayload.get('cwd'):
+                return str(dictPayload['cwd'])
+    return ''
+def fsProjectRootMarker(sPath):
+    sSlugDirectory = os.path.dirname(os.path.dirname(sPath))
+    try:
+        with open(os.path.join(sSlugDirectory, '.project_root')) as fileRoot:
+            sRoot = fileRoot.read().strip()
+        if sRoot:
+            return sRoot
+    except OSError:
+        pass
+    try:
+        with open(os.path.expanduser('~/.gemini/projects.json')) as fileMap:
+            dictProjects = json.load(fileMap).get('projects') or {}
+    except (OSError, ValueError, AttributeError):
+        return ''
+    sSlug = os.path.basename(sSlugDirectory)
+    for sProjectPath, sProjectSlug in dictProjects.items():
+        if sProjectSlug == sSlug:
+            return str(sProjectPath)
+    return ''
+dictRules = {'first-cwd': fsFirstCwd,
+             'session-meta-cwd': fsSessionMetaCwd,
+             'project-root-marker': fsProjectRootMarker}
+dictListing = {}
+for dictSource in listSources:
+    sRoot = os.path.expanduser(dictSource['sRoot'])
+    for sPath in glob.glob(os.path.join(sRoot, dictSource['sPattern']),
+                           recursive=True):
+        try:
+            statFile = os.stat(sPath)
+            sLaunchDirectory = dictRules[dictSource['sLaunchRule']](sPath)
+        except OSError:
+            continue
+        dictListing[sPath] = {
+            'iSizeBytes': statFile.st_size,
+            'listStatKey': [statFile.st_mtime_ns, statFile.st_ctime_ns,
+                            statFile.st_size, statFile.st_ino],
+            'sLaunchDirectory': sLaunchDirectory,
+            'sProvider': dictSource['sProvider'],
+        }
 sys.stdout.write(json.dumps(dictListing))
 """
 _S_LIST_SCRIPT = "python3 -c " + shlex.quote(_S_LIST_PROGRAM)
 
 
 def fdictListContainerTranscripts(connectionDocker, sContainerId):
-    """Return ``{sContainerPath: {iSizeBytes, sLaunchDirectory}}``.
+    """Return ``{sContainerPath: {iSizeBytes, listStatKey, ...}}``.
 
-    The launch directory is the first working directory the agent CLI
-    recorded in the transcript, or ``''`` when it recorded none.
+    Each entry also carries ``sProvider`` and ``sLaunchDirectory``: the
+    directory the agent CLI recorded the session was launched in, read
+    by that provider's rule, or ``''`` when it recorded none.
     """
     tExecResult = connectionDocker.ftRunInContainerStreamed(
         sContainerId, _S_LIST_SCRIPT,
@@ -115,7 +189,11 @@ def fdictListContainerTranscripts(connectionDocker, sContainerId):
     return {
         sPath: {
             "iSizeBytes": int(dictEntry["iSizeBytes"]),
+            "listStatKey": [
+                int(iPart) for iPart in dictEntry.get("listStatKey") or []
+            ],
             "sLaunchDirectory": str(dictEntry.get("sLaunchDirectory") or ""),
+            "sProvider": str(dictEntry.get("sProvider") or S_PROVIDER_CLAUDE),
         }
         for sPath, dictEntry in dictListing.items()
     }
@@ -149,6 +227,7 @@ def fdictLoadIndex(filesRepo):
     dictIndex.setdefault("listCoverageIntervals", [])
     dictIndex.setdefault("dictSessionBytes", {})
     dictIndex.setdefault("dictSessionRawSha256", {})
+    dictIndex.setdefault("dictSessionStatKeys", {})
     dictIndex.setdefault("iSessionsOutsideProject", 0)
     return dictIndex
 
@@ -159,6 +238,7 @@ def _fdictEmptyIndex():
         "listCoverageIntervals": [],
         "dictSessionBytes": {},
         "dictSessionRawSha256": {},
+        "dictSessionStatKeys": {},
         "iSessionsOutsideProject": 0,
     }
 
@@ -174,16 +254,25 @@ def _fsHashRecord(dictRecord):
     ).hexdigest()
 
 
-def _fsSessionFileName(sContainerPath):
+def _fsSessionFileName(sContainerPath, sProvider=S_PROVIDER_CLAUDE):
     """Flatten a container transcript path into a safe basename.
 
     Different agent sessions share basenames across project
-    directories, so the parent directory joins the name.
+    directories, so the parent directory joins the name. Claude's
+    names are kept exactly as they always were, because existing
+    records name their sessions by them; every other provider's name
+    starts with the provider, and Gemini's carries its project folder
+    rather than the ``chats`` directory every one of its sessions
+    shares.
     """
-    listParts = [
-        sPart for sPart in sContainerPath.split("/") if sPart
-    ][-2:]
-    return "__".join(listParts).replace(":", "_")
+    listParts = [sPart for sPart in sContainerPath.split("/") if sPart]
+    if sProvider == S_PROVIDER_CLAUDE:
+        listName = listParts[-2:]
+    elif len(listParts) >= 3 and listParts[-2] == "chats":
+        listName = [sProvider, listParts[-3], listParts[-1]]
+    else:
+        listName = [sProvider, listParts[-1]]
+    return "__".join(listName).replace(":", "_")
 
 
 def _fsCurrentTimestamp():
@@ -255,9 +344,21 @@ def _fbCapturedPrefixUnchanged(dictIndex, sContainerPath, baRaw):
     return _fsSha256Hex(baRaw[:iCapturedBytes]) == sCapturedSha256
 
 
+def _fbListingUnchangedSinceCapture(dictIndex, sContainerPath, dictEntry):
+    """Return True iff the transcript's stat key is the one last seen.
+
+    A listing with no stat key is never treated as unchanged: the
+    fetch and the prefix hash then decide, which costs a read and can
+    never miss a rewrite.
+    """
+    listSeen = dictIndex["dictSessionStatKeys"].get(sContainerPath)
+    listNow = dictEntry.get("listStatKey") or []
+    return bool(listSeen) and bool(listNow) and list(listSeen) == listNow
+
+
 def _fdictPlanOneSession(
     connectionDocker, sContainerId, filesRepo, sContainerPath,
-    listExactSecrets, dictIndex,
+    listExactSecrets, dictIndex, dictEntry,
 ):
     """Fetch a transcript and decide which of its bytes need sanitizing.
 
@@ -268,7 +369,8 @@ def _fdictPlanOneSession(
     """
     baRaw = connectionDocker.fbaFetchFile(sContainerId, sContainerPath)
     iCompleteBytes = baRaw.rfind(b"\n") + 1
-    sFileName = _fsSessionFileName(sContainerPath)
+    sProvider = dictEntry.get("sProvider") or S_PROVIDER_CLAUDE
+    sFileName = _fsSessionFileName(sContainerPath, sProvider)
     sPriorText = None
     iStartBytes = 0
     bAnySecretSpansLines = any(
@@ -281,11 +383,20 @@ def _fdictPlanOneSession(
         )
         if sPriorText is not None:
             iStartBytes = dictIndex["dictSessionBytes"][sContainerPath]
-    if iCompleteBytes <= iStartBytes:
+    # A transcript captured before whose captured prefix is gone -- a
+    # rewrite, or a truncation down to nothing -- is recaptured whole
+    # even when it now holds no complete line: keeping the old text
+    # would publish what the transcript no longer says.
+    bPreviouslyCaptured = (
+        dictIndex["dictSessionBytes"].get(sContainerPath, -1) > 0)
+    if iCompleteBytes <= iStartBytes and (
+            sPriorText is not None or not bPreviouslyCaptured):
         return None
     return {
         "sContainerPath": sContainerPath,
         "sSessionFileName": sFileName,
+        "sProvider": sProvider,
+        "listStatKey": list(dictEntry.get("listStatKey") or []),
         "iCapturedBytesBefore": dictIndex["dictSessionBytes"].get(
             sContainerPath, -1,
         ),
@@ -330,6 +441,7 @@ def fdictSanitizeNewTranscriptLines(
     dictIndex = fdictLoadIndex(filesRepo)
     listPending = []
     listOutsideProject = []
+    listUnchanged = []
     for sContainerPath in sorted(dictListing):
         dictEntry = dictListing[sContainerPath]
         if not fbSessionBelongsToProject(
@@ -337,16 +449,18 @@ def fdictSanitizeNewTranscriptLines(
         ):
             listOutsideProject.append(sContainerPath)
             continue
-        if dictEntry["iSizeBytes"] <= dictIndex["dictSessionBytes"].get(
-            sContainerPath, -1,
-        ):
+        if _fbListingUnchangedSinceCapture(
+                dictIndex, sContainerPath, dictEntry):
             continue
         dictPending = _fdictPlanOneSession(
             connectionDocker, sContainerId, filesRepo, sContainerPath,
-            listExactSecrets, dictIndex,
+            listExactSecrets, dictIndex, dictEntry,
         )
         if dictPending is not None:
             listPending.append(dictPending)
+        else:
+            listUnchanged.append(_fdictUnchangedObservation(
+                dictIndex, sContainerPath, dictEntry))
     listSanitized = flistSanitizeTextsInParallel(
         [dictPending["sNewText"] for dictPending in listPending],
         listExactSecrets,
@@ -356,6 +470,24 @@ def fdictSanitizeNewTranscriptLines(
     return {
         "listPending": listPending,
         "listOutsideProject": listOutsideProject,
+        "listUnchanged": listUnchanged,
+    }
+
+
+def _fdictUnchangedObservation(dictIndex, sContainerPath, dictEntry):
+    """Return the stat key of a transcript with nothing new to capture.
+
+    The fetch found its captured prefix intact and no complete new
+    line, so the key it was listed under can spare the next pass the
+    fetch -- recorded only if the capture state is still as it was.
+    """
+    return {
+        "sContainerPath": sContainerPath,
+        "listStatKey": list(dictEntry.get("listStatKey") or []),
+        "iCapturedBytesBefore": dictIndex["dictSessionBytes"].get(
+            sContainerPath, -1),
+        "sRawSha256Before": dictIndex["dictSessionRawSha256"].get(
+            sContainerPath, ""),
     }
 
 
@@ -391,6 +523,7 @@ def _fdictLandOneSession(filesRepo, dictIndex, dictPending):
     dictCounts = dictPending["dictRedactionsByCategory"]
     dictRecord = {
         "sSessionFileName": sFileName,
+        "sProvider": dictPending["sProvider"],
         "sCaptureKind": dictPending["sCaptureKind"],
         "iBytesCaptured": dictPending["iCapturedBytesAfter"],
         "sSha256": _fsSha256Hex(sSanitizedText.encode("utf-8")),
@@ -409,7 +542,25 @@ def _fdictLandOneSession(filesRepo, dictIndex, dictPending):
     dictIndex["dictSessionRawSha256"][sContainerPath] = (
         dictPending["sRawSha256After"]
     )
+    dictIndex["dictSessionStatKeys"][sContainerPath] = (
+        dictPending["listStatKey"]
+    )
     return dictRecord
+
+
+def _fnRecordUnchangedStatKeys(dictIndex, listUnchanged):
+    """Record the stat keys of transcripts verified to hold nothing new."""
+    for dictObservation in listUnchanged:
+        sContainerPath = dictObservation["sContainerPath"]
+        if dictIndex["dictSessionBytes"].get(sContainerPath, -1) != (
+            dictObservation["iCapturedBytesBefore"]
+        ) or dictIndex["dictSessionRawSha256"].get(sContainerPath, "") != (
+            dictObservation["sRawSha256Before"]
+        ):
+            continue
+        dictIndex["dictSessionStatKeys"][sContainerPath] = (
+            dictObservation["listStatKey"]
+        )
 
 
 def fdictLandSanitizedSessions(filesRepo, dictSanitized, iPollSeconds=30):
@@ -433,6 +584,8 @@ def fdictLandSanitizedSessions(filesRepo, dictSanitized, iPollSeconds=30):
         dictRecord = _fdictLandOneSession(filesRepo, dictIndex, dictPending)
         listCapturedNames.append(dictRecord["sSessionFileName"])
         iRedactionTotal += dictRecord["iRedactionCount"]
+    _fnRecordUnchangedStatKeys(
+        dictIndex, dictSanitized.get("listUnchanged") or [])
     iSessionsOutsideProject = len(dictSanitized["listOutsideProject"])
     dictIndex["iSessionsOutsideProject"] = iSessionsOutsideProject
     _fnExtendCoverage(dictIndex, iPollSeconds)
@@ -464,6 +617,10 @@ def flistSummarizeSessions(dictIndex):
         dictSummary = dictSummaries.setdefault(sFileName, {
             "sSessionFileName": sFileName, "iRedactionCount": 0,
         })
+        # A record written before providers were named is Claude's:
+        # it was the only transcript capture read.
+        dictSummary["sProvider"] = dictRecord.get(
+            "sProvider") or S_PROVIDER_CLAUDE
         iCount = int(dictRecord.get("iRedactionCount") or 0)
         if dictRecord.get("sCaptureKind") == "appended":
             dictSummary["iRedactionCount"] += iCount

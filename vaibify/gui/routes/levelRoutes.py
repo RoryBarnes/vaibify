@@ -1,22 +1,30 @@
 """PROOF level readiness route handlers.
 
 Exposes the per-workflow Level 2 readiness rollup that the PROOF tab
-consumes, the AI Declaration starter-template generator that the
-"Generate template" button on the new step kind invokes, and the
-AI Declaration add-step route that appends the interactive
-declaration step to the end of the active workflow.
+consumes, and the AI Declaration step's routes: add the step, ask
+whether its file exists, generate a starter template, and attach a
+file to the step.
 
-All three endpoints are agent-safe: ``check-l2-readiness`` is
-read-only, ``generate-ai-declaration-template`` only writes a new
-file (it refuses to overwrite an existing one, so it cannot lose
-researcher content), and ``add-ai-declaration-step`` refuses when a
-declaration step already exists. Committing the declaration remains
+Every endpoint is agent-safe: ``check-l2-readiness`` and
+``check-ai-declaration-file`` are read-only,
+``generate-ai-declaration-template`` only writes a new file (it
+refuses to overwrite an existing one, so it cannot lose researcher
+content), ``add-ai-declaration-step`` refuses when a declaration step
+already exists, and ``attach-ai-declaration-file`` only points the
+step at a file that already exists -- and pointing it at a DIFFERENT
+file withdraws the sign-off, so an agent cannot carry a researcher's
+attestation over to a document they never read. Signing off remains
 a user-only action via the standard ``sUser`` badge on the step.
+
+Generation never attaches by itself: the dashboard's Generate button
+writes the template and then calls attach, two explicit actions an
+agent can also take in turn.
 """
 
 __all__ = ["fnRegisterAll"]
 
 import os
+import posixpath
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -27,6 +35,8 @@ from ..actionCatalog import ffnAgentAction
 from ..pipelineServer import (
     _fsSanitizeServerError,
     fdictRequireWorkflow,
+    fnRejectWriteDenylistedPath,
+    fsValidatePathWithinRoot,
 )
 from ..pipelineUtils import fbStepDirectoryConforms, fsSlugFromStepName
 from ..routeContext import (
@@ -38,17 +48,29 @@ from ..routeContext import (
 from ..routeScope import (
     S_CARRIER_MODE_A_SYNCHRONOUS,
     S_CARRIER_MODE_B_LOCK_HELD,
+    S_CARRIER_TYPED_READ,
     ffnDeclareCarrierMode,
 )
 from ...reproducibility.aiDeclarationStep import (
+    S_DECLARATION_FILE_ABSENT,
+    S_DECLARATION_FILE_PRESENT,
     S_DEFAULT_DECLARATION_FILENAME,
     S_DEFAULT_DECLARATION_STEP_NAME,
     fbDeclarationFileExists,
+    fbDeclarationPathEscapesRepo,
     fbStepIsAiDeclaration,
     fdictBuildAiDeclarationStep,
+    fiAiDeclarationStepIndex,
     fsWriteDeclarationTemplate,
+    ftDeclarationFileState,
+)
+from ...reproducibility.declarationFreshness import (
+    fbLatchStaleDeclaration,
+    fnClearDeclarationBaseline,
 )
 from ...reproducibility.levelGates import (
+    fdictDeclarationFreshness,
+    fdictDeclarationFreshnessForDisplay,
     fdictLevel2Gaps,
     fiProofLevel,
     flistLevel1Blockers,
@@ -62,6 +84,11 @@ class AiDeclarationTemplateRequest(BaseModel):
     ``AI_USAGE.md`` at the project repo root is used.
     """
     sRelativePath: Optional[str] = None
+
+
+class AiDeclarationAttachRequest(BaseModel):
+    """Body for the attach route: the repo-relative file to point at."""
+    sRelativePath: str
 
 
 class AiDeclarationAddStepRequest(BaseModel):
@@ -102,6 +129,31 @@ def _fsValidateRelativePath(sRelativePath):
         return S_DEFAULT_DECLARATION_FILENAME
     _fnRejectEscapingPath(sClean, "sRelativePath")
     return sClean
+
+
+def _fsValidateDeclarationPathInRepo(sRelativePath, sProjectRepo):
+    """Return a repo-relative path proven to stay inside the repo, or raise.
+
+    The lexical refusals (absolute, ``..``) come first so their 400s
+    name the field; the normalized join is then held to the project
+    repository and kept out of ``.git/``, ``.vaibify/`` and
+    ``project.json``, none of which is a declaration.
+    """
+    sClean = (sRelativePath or "").strip()
+    if not sClean:
+        raise HTTPException(400, "sRelativePath is required")
+    _fnRejectEscapingPath(sClean, "sRelativePath")
+    sAbsolute = fsValidatePathWithinRoot(
+        posixpath.join(sProjectRepo, sClean), sProjectRepo,
+    )
+    try:
+        fnRejectWriteDenylistedPath(sAbsolute, sProjectRepo)
+    except HTTPException:
+        raise HTTPException(
+            403, "The AI Declaration cannot be project.json or a file "
+            "under .git/ or .vaibify/.",
+        )
+    return posixpath.relpath(sAbsolute, posixpath.normpath(sProjectRepo))
 
 
 def _fnRejectDirectoryDisagreeingWithName(sDirectory, sName):
@@ -208,8 +260,14 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
         filesRepo = ffilesForWorkflow(
             dictCtx, sContainerId, dictWorkflow,
         )
+        _fnLatchAnObservedStaleDeclaration(
+            dictCtx, sContainerId, dictWorkflow, filesRepo,
+        )
         dictGaps = fdictLevel2Gaps(dictWorkflow, filesRepo)
         return {
+            "dictAiDeclarationFreshness":
+                fdictDeclarationFreshnessForDisplay(
+                    dictWorkflow, filesRepo),
             "iProofLevel": fiProofLevel(
                 dictWorkflow, filesRepo,
                 bHostProject=fbIsHostProject(sContainerId),
@@ -226,6 +284,23 @@ def _fnRegisterLevel2Readiness(app, dictCtx):
             # making a claim this route cannot support.
             "bScriptStalenessEvaluated": False,
         }
+
+
+def _fnLatchAnObservedStaleDeclaration(
+    dictCtx, sContainerId, dictWorkflow, filesRepo,
+):
+    """Persist a stale AI Declaration this request is the first to see.
+
+    Stale is sticky only if every check that observes it records it:
+    reverting a file after this answer must not turn the sign-off fresh
+    again. The latch can only withdraw a sign-off, never grant one, and
+    it is saved exactly as the dashboard's file-status poll saves its
+    own latch.
+    """
+    if fbLatchStaleDeclaration(
+        dictWorkflow, fdictDeclarationFreshness(dictWorkflow, filesRepo),
+    ):
+        dictCtx["save"](sContainerId, dictWorkflow)
 
 
 def _fnRegisterGenerateTemplate(app, dictCtx):
@@ -380,8 +455,149 @@ def _fnRegisterAddStep(app, dictCtx):
         }
 
 
+def _fnRejectPathResolvingOutsideRepo(filesRepo, sRelative):
+    """Raise 403 when a symlink carries the path out of the repository."""
+    if fbDeclarationPathEscapesRepo(filesRepo, sRelative):
+        raise HTTPException(
+            403, f"'{sRelative}' resolves outside the project "
+            f"repository; the AI Declaration must be a file inside it.",
+        )
+
+
+def _fsDeclarationPathToCheck(dictWorkflow, sRequestedPath):
+    """Return the path a file-state request asks about.
+
+    An explicit path wins; otherwise the declaration step's own file;
+    otherwise the default the Generate button would write.
+    """
+    if (sRequestedPath or "").strip():
+        return sRequestedPath
+    iIndex = fiAiDeclarationStepIndex(dictWorkflow)
+    if iIndex >= 0:
+        sAttached = (dictWorkflow["listSteps"][iIndex].get(
+            "sDeclarationFile") or "").strip()
+        if sAttached:
+            return sAttached
+    return S_DEFAULT_DECLARATION_FILENAME
+
+
+def _fnRegisterFileState(app, dictCtx):
+    """Register GET /api/workflow/{sContainerId}/ai-declaration/file-state.
+
+    The dashboard asks here, never infers absence from a failed
+    preview: a preview fails for a stopped container exactly as it
+    does for a missing file, and only ABSENT may offer "Generate".
+    """
+
+    @ffnAgentAction("check-ai-declaration-file")
+    @app.get(
+        "/api/workflow/{sContainerId}/ai-declaration/file-state"
+    )
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictHandleDeclarationFileState(
+        sContainerId: str, sRelativePath: Optional[str] = None,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        sProjectRepo = _fsRequireProjectRepo(dictWorkflow)
+        sRelative = _fsValidateDeclarationPathInRepo(
+            _fsDeclarationPathToCheck(dictWorkflow, sRelativePath),
+            sProjectRepo,
+        )
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        _fnRejectPathResolvingOutsideRepo(filesRepo, sRelative)
+        sState, sReason = ftDeclarationFileState(filesRepo, sRelative)
+        return {
+            "sRelativePath": sRelative,
+            "sFileState": sState,
+            "sReason": _fsSanitizeServerError(sReason) if sReason else "",
+        }
+
+
+def _fnRequireAttachableFile(filesRepo, sRelative):
+    """Raise unless the file is PRESENT; absent and unknown differ."""
+    sState, sReason = ftDeclarationFileState(filesRepo, sRelative)
+    if sState == S_DECLARATION_FILE_PRESENT:
+        return
+    if sState == S_DECLARATION_FILE_ABSENT:
+        raise HTTPException(
+            409, f"'{sRelative}' does not exist in the project "
+            f"repository; generate a template or choose an existing "
+            f"file.",
+        )
+    raise HTTPException(
+        503, _fsSanitizeServerError(sReason) or
+        f"Could not check whether '{sRelative}' exists.",
+    )
+
+
+def _fbAttachDeclarationFile(dictStep, sRelative):
+    """Point the step at a file; return True if a sign-off was withdrawn.
+
+    The sign-off attests to one document. Re-attaching the same path
+    changes nothing; a different path returns the step to untested,
+    because the researcher has not read the new file.
+    """
+    sPrevious = (dictStep.get("sDeclarationFile") or "").strip()
+    dictStep["sDeclarationFile"] = sRelative
+    if sPrevious == sRelative:
+        return False
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    bWasSigned = dictVerification.get("sUser", "untested") != "untested"
+    dictVerification["sUser"] = "untested"
+    fnClearDeclarationBaseline(dictVerification)
+    return bWasSigned
+
+
+def _fnRegisterAttach(app, dictCtx):
+    """Register POST /api/workflow/{sContainerId}/ai-declaration/attach."""
+
+    @ffnAgentAction("attach-ai-declaration-file")
+    @app.post(
+        "/api/workflow/{sContainerId}/ai-declaration/attach"
+    )
+    @ffnDeclareCarrierMode(S_CARRIER_MODE_A_SYNCHRONOUS)
+    async def fdictHandleAttachDeclarationFile(
+        sContainerId: str,
+        request: AiDeclarationAttachRequest,
+        requestHttp: Request,
+    ):
+        dictCtx["require"](sContainerId)
+        dictWorkflow = fdictRequireWorkflow(
+            dictCtx["workflows"], sContainerId,
+        )
+        iIndex = fiAiDeclarationStepIndex(dictWorkflow)
+        if iIndex < 0:
+            raise HTTPException(
+                409, "This project has no AI Declaration step; add "
+                "one before attaching a file.",
+            )
+        sRelative = _fsValidateDeclarationPathInRepo(
+            request.sRelativePath, _fsRequireProjectRepo(dictWorkflow),
+        )
+        filesRepo = ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow)
+        _fnRejectPathResolvingOutsideRepo(filesRepo, sRelative)
+        _fnRequireAttachableFile(filesRepo, sRelative)
+        bSignOffWithdrawn = _fbAttachDeclarationFile(
+            dictWorkflow["listSteps"][iIndex], sRelative,
+        )
+        fdictCommitWorkflowSave(
+            dictCtx, sContainerId, dictWorkflow, requestHttp,
+            "The AI Declaration file",
+        )
+        return {
+            "iIndex": iIndex,
+            "sRelativePath": sRelative,
+            "bSignOffWithdrawn": bSignOffWithdrawn,
+        }
+
+
 def fnRegisterAll(app, dictCtx):
     """Register the PROOF level readiness routes."""
     _fnRegisterLevel2Readiness(app, dictCtx)
     _fnRegisterGenerateTemplate(app, dictCtx)
     _fnRegisterAddStep(app, dictCtx)
+    _fnRegisterFileState(app, dictCtx)
+    _fnRegisterAttach(app, dictCtx)

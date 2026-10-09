@@ -67,6 +67,43 @@ def _fnSetUserVerification(dictWorkflow, iStepIndex, sStatus):
     dictStep["dictVerification"]["sUser"] = sStatus
 
 
+def _fnRecordDeclarationBaseline(
+    connectionDocker, sContainerName, dictWorkflow, iStepIndex, sStatus,
+):
+    """Record what an AI Declaration sign-off covers, as the dashboard does.
+
+    Without this, a sign-off made here would carry no baseline and read
+    as a legacy sign-off whose later changes are never tracked. Exits
+    rather than signing when the covered files cannot be read.
+    """
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fbStepIsAiDeclaration,
+    )
+    from vaibify.reproducibility.declarationFreshness import (
+        S_BASELINE_KEY, DeclarationEvidenceUnreadableError,
+        fdictBuildDeclarationBaseline, fnClearDeclarationBaseline,
+    )
+    from vaibify.reproducibility.repoFiles import ContainerRepoFiles
+    dictStep = dictWorkflow["listSteps"][iStepIndex]
+    if not fbStepIsAiDeclaration(dictStep):
+        return
+    dictVerification = dictStep.setdefault("dictVerification", {})
+    fnClearDeclarationBaseline(dictVerification)
+    if sStatus != "passed":
+        return
+    filesRepo = ContainerRepoFiles(
+        connectionDocker, sContainerName,
+        dictWorkflow.get("sProjectRepoPath", ""))
+    try:
+        dictVerification[S_BASELINE_KEY] = fdictBuildDeclarationBaseline(
+            dictWorkflow, filesRepo, "")
+    except DeclarationEvidenceUnreadableError as error:
+        click.echo(
+            f"Error: the AI Declaration was not signed off: {error}, "
+            "so vaibify could not record what the sign-off covers.")
+        sys.exit(1)
+
+
 @click.command("verify-step")
 @click.option(
     "--project", "-p", "sProjectName", default=None,
@@ -94,6 +131,10 @@ def fnVerifyStepCommand(sProjectName, sStep, sStatus):
     iStep = _fiResolveStepNumber(sStep, dictWorkflow)
     _fnValidateStepIndex(iStep, len(listSteps))
     iStepIndex = iStep - 1
+    _fnRecordDeclarationBaseline(
+        connectionDocker, sContainerName, dictWorkflow, iStepIndex,
+        sStatus,
+    )
     _fnSetUserVerification(dictWorkflow, iStepIndex, sStatus)
     _fnSaveWorkflow(
         connectionDocker, sContainerName, dictWorkflow, sWorkflowPath

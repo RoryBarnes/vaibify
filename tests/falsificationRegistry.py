@@ -2555,66 +2555,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRepoFilesMutationCoverage.py::test_container_hash_refuses_sibling_dir_sharing_root_prefix',
         source='vaibify/reproducibility/repoFiles.py',
-        old="""_S_HASH_SCRIPT = '''
-import base64, hashlib, json, os, sys
-dictArgs = json.loads(base64.b64decode(%(payload)s).decode())
-sRoot = dictArgs["sRoot"]
-dictOut = {}
-def _fsHash(sAbs):
-    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        iFd = os.open(sAbs, iFlags)
-    except OSError:
-        return None
-    h = hashlib.sha256()
-    with os.fdopen(iFd, "rb") as f:
-        for ba in iter(lambda: f.read(65536), b""):
-            h.update(ba)
-    return h.hexdigest()
-def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
-    if os.path.isabs(sRel):
-        d["bEscapesRoot"] = True
-        return d
-    sCur = sRoot
-    for sSeg in [s for s in sRel.split("/") if s]:
-        sCur = os.path.join(sCur, sSeg)
-        if os.path.islink(sCur):
-            d["sSymlinkSegment"] = sSeg
-            break
-    sRootReal = os.path.realpath(sRoot)
-    sReal = os.path.realpath(os.path.join(sRootReal, sRel))
-    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):""",
-        new="""_S_HASH_SCRIPT = '''
-import base64, hashlib, json, os, sys
-dictArgs = json.loads(base64.b64decode(%(payload)s).decode())
-sRoot = dictArgs["sRoot"]
-dictOut = {}
-def _fsHash(sAbs):
-    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        iFd = os.open(sAbs, iFlags)
-    except OSError:
-        return None
-    h = hashlib.sha256()
-    with os.fdopen(iFd, "rb") as f:
-        for ba in iter(lambda: f.read(65536), b""):
-            h.update(ba)
-    return h.hexdigest()
-def _fdictEntry(sRel):
-    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}
-    if os.path.isabs(sRel):
-        d["bEscapesRoot"] = True
-        return d
-    sCur = sRoot
-    for sSeg in [s for s in sRel.split("/") if s]:
-        sCur = os.path.join(sCur, sSeg)
-        if os.path.islink(sCur):
-            d["sSymlinkSegment"] = sSeg
-            break
-    sRootReal = os.path.realpath(sRoot)
-    sReal = os.path.realpath(os.path.join(sRootReal, sRel))
-    if sReal != sRootReal and not sReal.startswith(sRootReal):""",
+        old='_S_HASH_SCRIPT = \'\'\'\nimport base64, hashlib, json, os, sys\ndictArgs = json.loads(base64.b64decode(%(payload)s).decode())\nsRoot = dictArgs["sRoot"]\ndictOut = {}\ndef _fsHash(sAbs):\n    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)\n    try:\n        iFd = os.open(sAbs, iFlags)\n    except (FileNotFoundError, NotADirectoryError):\n        return False\n    except OSError:\n        return None\n    h = hashlib.sha256()\n    with os.fdopen(iFd, "rb") as f:\n        for ba in iter(lambda: f.read(65536), b""):\n            h.update(ba)\n    return h.hexdigest()\ndef _fdictEntry(sRel):\n    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}\n    if os.path.isabs(sRel):\n        d["bEscapesRoot"] = True\n        return d\n    sCur = sRoot\n    for sSeg in [s for s in sRel.split("/") if s]:\n        sCur = os.path.join(sCur, sSeg)\n        if os.path.islink(sCur):\n            d["sSymlinkSegment"] = sSeg\n            break\n    sRootReal = os.path.realpath(sRoot)\n    sReal = os.path.realpath(os.path.join(sRootReal, sRel))\n    if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):',
+        new='_S_HASH_SCRIPT = \'\'\'\nimport base64, hashlib, json, os, sys\ndictArgs = json.loads(base64.b64decode(%(payload)s).decode())\nsRoot = dictArgs["sRoot"]\ndictOut = {}\ndef _fsHash(sAbs):\n    iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)\n    try:\n        iFd = os.open(sAbs, iFlags)\n    except (FileNotFoundError, NotADirectoryError):\n        return False\n    except OSError:\n        return None\n    h = hashlib.sha256()\n    with os.fdopen(iFd, "rb") as f:\n        for ba in iter(lambda: f.read(65536), b""):\n            h.update(ba)\n    return h.hexdigest()\ndef _fdictEntry(sRel):\n    d = {"sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False}\n    if os.path.isabs(sRel):\n        d["bEscapesRoot"] = True\n        return d\n    sCur = sRoot\n    for sSeg in [s for s in sRel.split("/") if s]:\n        sCur = os.path.join(sCur, sSeg)\n        if os.path.islink(sCur):\n            d["sSymlinkSegment"] = sSeg\n            break\n    sRootReal = os.path.realpath(sRoot)\n    sReal = os.path.realpath(os.path.join(sRootReal, sRel))\n    if sReal != sRootReal and not sReal.startswith(sRootReal):',
     ),
     Falsification(
         nodeid='tests/testRepoFilesMutationCoverage.py::test_snapshot_hash_refuses_sibling_dir_sharing_root_prefix',
@@ -2715,8 +2657,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_unattested_blocker_requires_a_declaration_step',
         source='vaibify/reproducibility/levelGates.py',
-        old='        if fbStepIsAiDeclaration(dictStep)\n        and not fbStepUserApproved(dictStep)',
-        new='        if fbStepIsAiDeclaration(dictStep)\n        or not fbStepUserApproved(dictStep)',
+        old='        if not fbStepIsAiDeclaration(dictStep):\n            continue\n        dictFailure = _fdictDeclarationFailure(',
+        new='        dictFailure = _fdictDeclarationFailure(',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_attested_check_fails_closed_on_non_dict_workflow',
@@ -2733,8 +2675,8 @@ def _fdictEntry(sRel):
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_declaration_step_l2_counts_are_exact',
         source='vaibify/reproducibility/levelGates.py',
-        old='            ("ai-declaration-attested",\n             "ai-declaration-unattested" not in setCriteria))',
-        new='            ("ai-declaration-attested",\n             "ai-declaration-unattested" in setCriteria))',
+        old='             else not ({"ai-declaration-unattested",\n                        "ai-declaration-stale"} & setCriteria)))',
+        new='             else bool({"ai-declaration-unattested",\n                        "ai-declaration-stale"} & setCriteria)))',
     ),
     Falsification(
         nodeid='tests/testDeclarationPushMutationCoverage.py::test_step_l3_counts_zero_without_repo',
@@ -23481,11 +23423,8 @@ def _fdictEntry(sRel):
             'test_the_container_listing_program_reads_each_launch_directory'
         ),
         source='vaibify/gui/promptRecordManager.py',
-        old=(
-            "                sLaunchDirectory = str(dictLine['cwd'])\n"
-            "                break\n"
-        ),
-        new="                sLaunchDirectory = str(dictLine['cwd'])\n",
+        old="            if isinstance(dictLine, dict) and dictLine.get('cwd'):\n                return str(dictLine['cwd'])\n    return ''\ndef fsSessionMetaCwd",
+        new="            if isinstance(dictLine, dict) and dictLine.get('cwd'):\n                sLastCwd = str(dictLine['cwd'])\n    return locals().get('sLastCwd', '')\ndef fsSessionMetaCwd",
     ),
     Falsification(
         nodeid=(
@@ -29384,5 +29323,298 @@ def _fdictEntry(sRel):
         source='vaibify/gui/static/styleMain.css',
         old='.container-tile--locked .container-tile-main {\n    cursor: not-allowed;\n}\n',
         new='.container-tile--locked .container-tile-main {\n    pointer-events: none;\n}\n',
+    ),
+    # --- 2026-10-08: the AI Declaration's file buttons and its stale
+    # sign-off (the researcher's rulings). ---
+    # The AI Declaration's stale sign-off is restored by the plot
+    # content-hash pass, which would undo the stickiness ruling.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_the_plot_reconciliation_never_restores_the_declaration'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        old='        if fbStepIsAiDeclaration(dictStep):\n            continue\n        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
+        new='        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
+    ),
+    # Drop the freshness verdict from the L2 blocker cache key: deleted
+    # and unreadable share a published-files fingerprint.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_the_cross_poll_cache_tells_deleted_from_unreadable'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='        json.dumps(\n            fdictDeclarationFreshness(dictWorkflow, filesRepo),\n            sort_keys=True),\n',
+        new='',
+    ),
+    # Forget a latched stale sign-off: a reverted change reads fresh.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_a_change_then_a_revert_stays_stale_until_signed_again'
+        ),
+        source='vaibify/reproducibility/declarationFreshness.py',
+        old='    if sUser == "stale":\n        return _fdictVerdict(\n            S_FRESHNESS_STALE, dictVerification.get(S_CHANGES_KEY))\n',
+        new='',
+    ),
+    # Read a deleted covered file as unreadable rather than as a change.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_a_deleted_covered_file_is_stale'
+        ),
+        source='vaibify/reproducibility/declarationFreshness.py',
+        old='    if dictEntry.get("bAbsent"):\n        return "", False\n',
+        new='',
+    ),
+    # Read an unreadable covered file as absent: could-not-check
+    # becomes a definite answer.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_an_unreadable_covered_file_is_unknown_and_blocks_level_two'
+        ),
+        source='vaibify/reproducibility/declarationFreshness.py',
+        old='    if dictEntry.get("bAbsent"):\n        return "", False\n    return None, True',
+        new='    return "", False',
+    ),
+    # Let the Level 2 gate pass on the stored sUser alone, so only a
+    # poll's latch could ever block it.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_a_change_blocks_readiness_with_no_poll_in_between'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='    return fbDeclarationFreshnessPasses(\n        fdictDeclarationFreshness(dictWorkflow, filesRepo))',
+        new='    return True',
+    ),
+    # Take the baseline from the client when it sends one.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_an_unchanged_sign_off_keeps_the_stored_baseline'
+        ),
+        source='vaibify/reproducibility/declarationFreshness.py',
+        old='        dictVerificationUpdate.pop(sKey, None)\n        if sKey in dictStored:',
+        new='        if sKey in dictStored and sKey not in dictVerificationUpdate:',
+    ),
+    # Stop hashing the covered files in the poll snapshot.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_the_poll_snapshot_hashes_every_covered_file'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    listPaths.extend(flistPathsToHashForFreshness(dictWorkflow))\n',
+        new='',
+    ),
+    # Render could-not-check as a failed requirement instead of unknown.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_every_surface_agrees_when_it_could_not_check'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        old='             None if "ai-declaration-uncheckable" in setCriteria\n             else not',
+        new='             not',
+    ),
+    # The poll never latches a stale sign-off.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_the_poll_latches_a_stale_sign_off'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='    return fbLatchStaleDeclaration(\n        dictWorkflow, fdictDeclarationFreshness(dictWorkflow, filesPoll),\n    )',
+        new='    return False',
+    ),
+    # A failed existence probe reads as ABSENT, which offers to
+    # generate a template over a file nobody could see.
+    Falsification(
+        nodeid=(
+            'tests/testLevelRoutes.py::'
+            'test_an_unreadable_repo_is_unknown_never_absent'
+        ),
+        source='vaibify/reproducibility/aiDeclarationStep.py',
+        old='        fnReRaiseControlPlaneRefusal(error)\n        return (S_DECLARATION_FILE_UNKNOWN,',
+        new='        fnReRaiseControlPlaneRefusal(error)\n        return (S_DECLARATION_FILE_ABSENT,',
+    ),
+    # Attaching a different file keeps the sign-off for a document the
+    # researcher never read.
+    Falsification(
+        nodeid=(
+            'tests/testLevelRoutes.py::'
+            'test_reattaching_the_same_file_keeps_the_sign_off'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old='    bWasSigned = dictVerification.get("sUser", "untested") != "untested"\n    dictVerification["sUser"] = "untested"\n',
+        new='    bWasSigned = dictVerification.get("sUser", "untested") != "untested"\n',
+    ),
+    # The Generate button loses its click handler again.
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheAiDeclarationFileIsChosenOrGenerated.py::'
+            'test_generate_and_choose_attach_a_real_file'
+        ),
+        source='vaibify/gui/static/scriptEventBindings.js',
+        old='        ".btn-ai-declaration-generate": _fnHandleAiDeclarationGenerate,\n',
+        new='',
+    ),
+    # The typed repo-hash program stops telling absent from unreadable.
+    Falsification(
+        nodeid=(
+            'tests/testDockerConnection.py::'
+            'test_the_repo_hash_program_answers_none_for_an_absent_file'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='        "    except (FileNotFoundError, NotADirectoryError):\\n"\n        "        dictEntry[\'bAbsent\'] = True\\n"\n        "        continue\\n"\n',
+        new='',
+    ),
+    # A declaration may point into .git/ or .vaibify/ again.
+    Falsification(
+        nodeid=(
+            'tests/testLevelRoutes.py::'
+            'test_attach_refuses_an_existing_file_inside_git_metadata'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old='    try:\n        fnRejectWriteDenylistedPath(sAbsolute, sProjectRepo)\n    except HTTPException:',
+        new='    try:\n        pass\n    except HTTPException:',
+    ),
+    # The poll snapshot drops bAbsent, so an output not yet produced
+    # reads as could-not-check on the poll alone.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_the_poll_snapshot_reports_a_file_it_saw_absent'
+        ),
+        source='vaibify/reproducibility/repoFiles.py',
+        old='            if dictEntry.get("bAbsent"):\n                dictResult[sRelPath]["bAbsent"] = True\n',
+        new='',
+    ),
+    # The dashboard ignores the poll's AI Declaration verdict.
+    Falsification(
+        nodeid=(
+            'tests/browser/testAStaleAiDeclarationSaysWhatChanged.py::'
+            'test_a_changed_script_makes_the_sign_off_stale'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnApplyAiDeclarationFreshness(\n            dictStatus.dictAiDeclarationFreshness);\n',
+        new='',
+    ),
+    # --- 2026-10-08: Prompt Record for Codex and Gemini. ---
+    # Restore the size-only skip: a same-size rewrite is never refetched.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_a_same_size_rewrite_is_recaptured_whole'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='        if _fbListingUnchangedSinceCapture(\n                dictIndex, sContainerPath, dictEntry):\n            continue\n',
+        new='        if dictEntry["iSizeBytes"] <= dictIndex["dictSessionBytes"].get(\n                sContainerPath, -1):\n            continue\n',
+    ),
+    # Restore the size-only skip: a truncation is never refetched.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_a_truncated_transcript_is_recaptured_whole'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='        if _fbListingUnchangedSinceCapture(\n                dictIndex, sContainerPath, dictEntry):\n            continue\n',
+        new='        if dictEntry["iSizeBytes"] <= dictIndex["dictSessionBytes"].get(\n                sContainerPath, -1):\n            continue\n',
+    ),
+    # Codex's launch directory read from any record carrying a cwd.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_the_listing_program_reads_codex_and_gemini_launch_directories'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old="            if dictLine.get('type') == 'session_meta' and isinstance(",
+        new='            if isinstance(',
+    ),
+    # Backfill sProvider into records already in the index, which
+    # changes the bytes the old chain hashed.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_an_index_written_before_providers_still_verifies_and_extends'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='    dictIndex.setdefault("dictSessionStatKeys", {})\n    dictIndex.setdefault("iSessionsOutsideProject", 0)\n',
+        new='    dictIndex.setdefault("dictSessionStatKeys", {})\n    for dictOld in dictIndex["listCaptures"]:\n        dictOld.setdefault("sProvider", "claude")\n    dictIndex.setdefault("iSessionsOutsideProject", 0)\n',
+    ),
+    # Replay a Gemini rewind by dropping the rewound messages.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordViewer.py::'
+            'test_a_gemini_session_shows_its_final_state_and_keeps_what_was_rewound'
+        ),
+        source='vaibify/gui/promptRecordViewer.py',
+        old='                dictTurn["iRewindGroup"] = iGroup\n                listTurns.append(dictTurn)\n',
+        new='                dictTurn["iRewindGroup"] = iGroup\n',
+    ),
+    # Render rewound Gemini turns flat in the conversation.
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePromptRecordViewerShowsAGeminiRewind.py::'
+            'test_a_gemini_rewind_is_folded_and_an_edit_is_marked'
+        ),
+        source='vaibify/gui/static/scriptPromptRecordViewer.js',
+        old='            if (dictTurn.bRewound) {\n',
+        new='            if (false) {\n',
+    ),
+    # --- 2026-10-08: review round on the AI Declaration and Prompt
+    # Record work. ---
+    # Only Python interpreters count as running a script.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_a_changed_shell_script_makes_the_sign_off_stale'
+        ),
+        source='vaibify/reproducibility/declarationFreshness.py',
+        old='    if sInterpreter in DICT_COMMAND_PREFIXES:\n',
+        new='    if sInterpreter in ("python", "python3"):\n',
+    ),
+    # Readiness answers stale without latching it.
+    Falsification(
+        nodeid=(
+            'tests/testDeclarationFreshness.py::'
+            'test_readiness_latches_what_it_sees_so_a_revert_stays_stale'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old='        _fnLatchAnObservedStaleDeclaration(\n            dictCtx, sContainerId, dictWorkflow, filesRepo,\n        )\n',
+        new='',
+    ),
+    # A second, earlier Gemini rewind drops the first rewind's group.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordViewer.py::'
+            'test_a_second_gemini_rewind_to_an_earlier_point_loses_nothing'
+        ),
+        source='vaibify/gui/promptRecordViewer.py',
+        old='        listIds.extend(dictEntry.get("listRewoundIds") or [dictEntry["sId"]])\n',
+        new='        listIds.extend([dictEntry["sId"]] if "sId" in dictEntry else [])\n',
+    ),
+    # A transcript truncated to nothing keeps its old landed text.
+    Falsification(
+        nodeid=(
+            'tests/testPromptRecordManager.py::'
+            'test_a_transcript_truncated_to_nothing_replaces_its_landed_text'
+        ),
+        source='vaibify/gui/promptRecordManager.py',
+        old='    if iCompleteBytes <= iStartBytes and (\n            sPriorText is not None or not bPreviouslyCaptured):\n',
+        new='    if iCompleteBytes <= iStartBytes:\n',
+    ),
+    # A symlink out of the repository is accepted as a declaration.
+    Falsification(
+        nodeid=(
+            'tests/testLevelRoutes.py::'
+            'test_attach_refuses_a_symlink_that_leaves_the_repo'
+        ),
+        source='vaibify/gui/routes/levelRoutes.py',
+        old='    if fbDeclarationPathEscapesRepo(filesRepo, sRelative):\n',
+        new='    if False:\n',
     ),
 ]

@@ -403,6 +403,21 @@ var VaibifyStepRenderer = (function () {
         return dictEntry.listOffendingFiles || [];
     }
 
+    function _fsServerDeclarationHint(dictReq, iIndex, dictContext) {
+        // A stale or uncheckable sign-off carries the server's own
+        // sentence naming its cause; the static hint would say only
+        // "sign off", which is not why the requirement is unmet.
+        if (dictReq.sName !== "ai-declaration-attested") return "";
+        var dictEntry = (dictContext.dictBlockersByStepLevel2 ||
+            {})[iIndex];
+        if (!dictEntry || (dictEntry.sCriterion !==
+                "ai-declaration-stale" && dictEntry.sCriterion !==
+                "ai-declaration-uncheckable")) {
+            return "";
+        }
+        return dictEntry.sRemediationHint || "";
+    }
+
     function _fsRequirementHintHtml(dictReq, iIndex, iLevel,
         dictContext) {
         if (dictReq.bMet === true) return "";
@@ -415,7 +430,8 @@ var VaibifyStepRenderer = (function () {
                     return sPath.split("/").pop();
                 }).join(", "));
         }
-        var sHint = _DICT_UNMET_REQUIREMENT_HINTS[dictReq.sName];
+        var sHint = _fsServerDeclarationHint(dictReq, iIndex,
+            dictContext) || _DICT_UNMET_REQUIREMENT_HINTS[dictReq.sName];
         if (sHint) listParts.push(sHint);
         if (listParts.length === 0) return "";
         return '<div class="step-level-requirement-hint">' +
@@ -1635,8 +1651,7 @@ var VaibifyStepRenderer = (function () {
             'data-step="' + iIndex + '">';
         sHtml += '<div class="detail-label">' +
             'AI Usage Declaration</div>';
-        sHtml += fsRenderAiDeclarationFileRow(sFilePath, iIndex);
-        sHtml += fsRenderAiDeclarationViewer(sFilePath, iIndex);
+        sHtml += fsRenderAiDeclarationFileSlot(sFilePath, iIndex);
         sHtml += fsRenderAiDeclarationAttestation(
             step, iIndex, dictContext);
         sHtml += '</div>';
@@ -1690,30 +1705,124 @@ var VaibifyStepRenderer = (function () {
         return sHtml;
     }
 
-    function fsRenderAiDeclarationFileRow(sFilePath, iIndex) {
-        if (sFilePath) {
-            return '<div class="ai-declaration-file" ' +
-                'data-step="' + iIndex + '">' +
-                '<span class="ai-declaration-label">File:</span> ' +
-                '<code>' + fnEscapeHtml(sFilePath) + '</code>' +
-                ' <button class="btn btn-ai-declaration-choose" ' +
-                'data-step="' + iIndex + '" type="button">' +
-                'Choose different file</button>' +
-                _fsBuildDeclarationGitButtons(sFilePath, iIndex) +
-                '</div>';
-        }
+    function fsRenderAiDeclarationFileSlot(sFilePath, iIndex) {
+        // Which buttons belong here depends on whether the file
+        // EXISTS, and only the server can answer that. The slot is
+        // filled by _fnFillDeclarationFileSlot once the answer is in;
+        // a failed preview is never read as "absent", because a
+        // stopped container fails a preview exactly as a missing
+        // file does, and only "absent" may offer Generate.
+        return '<div class="ai-declaration-file-slot" ' +
+            'data-step="' + iIndex + '" ' +
+            'data-file="' + fnEscapeHtml(sFilePath) + '">' +
+            'Checking the declaration file&#8230;</div>';
+    }
+
+    function _fsRenderDeclarationChooseButton(iIndex, sLabel) {
+        return ' <button class="btn btn-ai-declaration-choose" ' +
+            'data-step="' + iIndex + '" type="button">' +
+            sLabel + '</button>';
+    }
+
+    function _fsRenderDeclarationGenerateButton(iIndex, sPath) {
+        return '<button class="btn btn-primary ' +
+            'btn-ai-declaration-generate" ' +
+            'data-step="' + iIndex + '" ' +
+            'data-file="' + fnEscapeHtml(sPath) + '" type="button">' +
+            'Generate template (' + fnEscapeHtml(sPath) + ')</button>';
+    }
+
+    function _fsRenderAttachedPresentFile(sFilePath, iIndex) {
+        return '<div class="ai-declaration-file" ' +
+            'data-step="' + iIndex + '">' +
+            '<span class="ai-declaration-label">File:</span> ' +
+            '<code>' + fnEscapeHtml(sFilePath) + '</code>' +
+            _fsRenderDeclarationChooseButton(
+                iIndex, "Choose different file") +
+            _fsBuildDeclarationGitButtons(sFilePath, iIndex) +
+            '</div>' +
+            fsRenderAiDeclarationViewer(sFilePath, iIndex);
+    }
+
+    function _fsRenderAttachedAbsentFile(sFilePath, iIndex) {
         return '<div class="ai-declaration-empty" ' +
             'data-step="' + iIndex + '">' +
             '<div class="ai-declaration-empty-message">' +
-            'No declaration file is set for this step.</div>' +
-            '<button class="btn btn-primary ' +
-            'btn-ai-declaration-generate" ' +
-            'data-step="' + iIndex + '" type="button">' +
-            'Generate template (AI_USAGE.md)</button>' +
-            ' <button class="btn btn-ai-declaration-choose" ' +
-            'data-step="' + iIndex + '" type="button">' +
-            'Choose existing file</button>' +
+            '<code>' + fnEscapeHtml(sFilePath) + '</code> does not ' +
+            'exist in the project repository.</div>' +
+            _fsRenderDeclarationGenerateButton(iIndex, sFilePath) +
+            _fsRenderDeclarationChooseButton(
+                iIndex, "Choose existing file") +
             '</div>';
+    }
+
+    function _fsRenderUnattachedFile(dictState, iIndex) {
+        // Nothing is attached; the server answered about the default
+        // path. Generate only where nothing is there to overwrite.
+        var sDefault = dictState.sRelativePath;
+        var sHtml = '<div class="ai-declaration-empty" ' +
+            'data-step="' + iIndex + '">' +
+            '<div class="ai-declaration-empty-message">' +
+            'No declaration file is set for this step.</div>';
+        if (dictState.sFileState === "absent") {
+            sHtml += _fsRenderDeclarationGenerateButton(
+                iIndex, sDefault);
+        } else {
+            sHtml += '<button class="btn btn-primary ' +
+                'btn-ai-declaration-attach" ' +
+                'data-step="' + iIndex + '" ' +
+                'data-file="' + fnEscapeHtml(sDefault) + '" ' +
+                'type="button">Use ' + fnEscapeHtml(sDefault) +
+                '</button>';
+        }
+        return sHtml + _fsRenderDeclarationChooseButton(
+            iIndex, "Choose existing file") + '</div>';
+    }
+
+    function fsRenderAiDeclarationFileRow(sFilePath, iIndex, dictState) {
+        if (!sFilePath) return _fsRenderUnattachedFile(dictState, iIndex);
+        if (dictState.sFileState === "present") {
+            return _fsRenderAttachedPresentFile(sFilePath, iIndex);
+        }
+        return _fsRenderAttachedAbsentFile(sFilePath, iIndex);
+    }
+
+    function _fnRenderDeclarationUncheckable(elSlot, sReason) {
+        // Neither Generate nor Choose: both act on a repository that
+        // could not be read, and "could not check" is not "absent".
+        elSlot.textContent = "";
+        var elMessage = document.createElement("div");
+        elMessage.className = "ai-declaration-unknown";
+        elSlot.appendChild(elMessage);
+        VaibifyDiagnosis.fnRenderFailureInline(
+            elMessage, "Could not check the declaration file. ",
+            {dictDetail: {sMessage: sReason ||
+                "The server did not say why."}});
+    }
+
+    function _fnFillDeclarationFileSlot(elSlot) {
+        var sContainerId = VaibifyApp.fsGetContainerId();
+        if (!sContainerId) return;
+        var sFilePath = elSlot.dataset.file || "";
+        var iIndex = parseInt(elSlot.dataset.step, 10);
+        var sUrl = "/api/workflow/" + encodeURIComponent(sContainerId) +
+            "/ai-declaration/file-state";
+        if (sFilePath) {
+            sUrl += "?sRelativePath=" + encodeURIComponent(sFilePath);
+        }
+        VaibifyApi.fdictGet(sUrl).then(function (dictState) {
+            if (dictState.sFileState === "unknown") {
+                _fnRenderDeclarationUncheckable(
+                    elSlot, dictState.sReason);
+                return;
+            }
+            elSlot.innerHTML = fsRenderAiDeclarationFileRow(
+                sFilePath, iIndex, dictState);
+            _fnFillDeclarationPreviewShells(elSlot);
+        }).catch(function (error) {
+            _fnRenderDeclarationUncheckable(
+                elSlot, VaibifyDiagnosis.fsExplainError(error));
+        });
     }
 
     function fsRenderAiDeclarationViewer(sFilePath, iIndex) {
@@ -1734,11 +1843,35 @@ var VaibifyStepRenderer = (function () {
     var _I_DECLARATION_PREVIEW_LINES = 8;
 
     function fnFillAiDeclarationPreviews() {
-        // Async fill of the preview shells fsRenderAiDeclarationViewer
-        // rendered. Each shell is filled once per render of its card;
-        // re-renders (hash change) produce a fresh shell and a fresh
-        // fetch, so the preview tracks the file's real content.
-        var listShells = document.querySelectorAll(
+        // Async fill of the file slots fsRenderAiDeclarationFileSlot
+        // rendered; a slot whose file is present then renders its
+        // preview shell and fills it. Each slot is filled once per
+        // render of its card; re-renders (hash change) produce a
+        // fresh slot and a fresh question, so the buttons and the
+        // preview track the file's real state.
+        var listSlots = document.querySelectorAll(
+            ".ai-declaration-file-slot");
+        for (var i = 0; i < listSlots.length; i++) {
+            if (listSlots[i].dataset.bFilled === "1") continue;
+            listSlots[i].dataset.bFilled = "1";
+            _fnFillDeclarationFileSlot(listSlots[i]);
+        }
+    }
+
+    function fnRefreshAiDeclarationFileSlots() {
+        // A generate or attach can leave the step's own fields as they
+        // were (the template written at the path already attached), so
+        // the card does not re-render; its slot must ask again.
+        var listSlots = document.querySelectorAll(
+            ".ai-declaration-file-slot");
+        for (var i = 0; i < listSlots.length; i++) {
+            listSlots[i].dataset.bFilled = "";
+        }
+        fnFillAiDeclarationPreviews();
+    }
+
+    function _fnFillDeclarationPreviewShells(elSlot) {
+        var listShells = elSlot.querySelectorAll(
             ".ai-declaration-preview[data-file]");
         for (var i = 0; i < listShells.length; i++) {
             if (listShells[i].dataset.bFilled === "1") continue;
@@ -1788,8 +1921,31 @@ var VaibifyStepRenderer = (function () {
             fsRenderVerificationTimestamp(
                 "Last updated", dictVerify.sLastUserUpdate) +
             '</div>';
+        sHtml += _fsRenderDeclarationFreshness(
+            dictContext.dictAiDeclarationFreshness);
         sHtml += '</div>';
         return sHtml;
+    }
+
+    var _DICT_DECLARATION_FRESHNESS_LINES = {
+        "stale": {sClass: "ai-declaration-freshness-stale",
+            sPrefix: "\u26A0 "},
+        "unknown": {sClass: "ai-declaration-freshness-unknown",
+            sPrefix: "Could not check: "},
+        "untracked": {sClass: "ai-declaration-freshness-untracked",
+            sPrefix: ""},
+    };
+
+    function _fsRenderDeclarationFreshness(dictFreshness) {
+        // Renders the server's verdict and the server's sentence; a
+        // fresh or unsigned declaration needs no line.
+        var dictLine = _DICT_DECLARATION_FRESHNESS_LINES[
+            (dictFreshness || {}).sVerdict];
+        if (!dictLine || !dictFreshness.sMessage) return "";
+        return '<div class="ai-declaration-freshness ' +
+            dictLine.sClass + '">' +
+            fnEscapeHtml(dictLine.sPrefix + dictFreshness.sMessage) +
+            '</div>';
     }
 
     return {
@@ -1816,5 +1972,6 @@ var VaibifyStepRenderer = (function () {
         fsRenderAiDeclarationBody: fsRenderAiDeclarationBody,
         fsRenderGhostAiDeclarationRow: fsRenderGhostAiDeclarationRow,
         fnFillAiDeclarationPreviews: fnFillAiDeclarationPreviews,
+        fnRefreshAiDeclarationFileSlots: fnRefreshAiDeclarationFileSlots,
     };
 })();

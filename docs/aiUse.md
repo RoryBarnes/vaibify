@@ -37,17 +37,26 @@ commands, so its run-status light is a dash. It has no Level 1
 requirements and never holds your project below Level 1. Everything
 about it lives in the step's expanded Level 2 section.
 
-**Writing it.** The **AI Usage Declaration** block shows the file's name
-and its first few lines; until the file exists, the preview reads
-*Declaration file could not be read.* Write `AI_USAGE.md` however you
-like. Your in-container agent can also write vaibify's starter template
-for you, with four headings: **Models used**; **How AI assisted each
-step** (code generation, debugging, plot tweaks, documentation);
-**Review policy** (how a human reviewed AI-generated output before it
-landed); and **Anything else researchers should know**. If the agent
-drafts the text, read it carefully: the declaration is your statement,
-not the agent's. **Open in viewer** shows the whole file in a viewing
-window, where the pencil (✎) button lets you edit and save it.
+**Choosing or writing the file.** The **AI Usage Declaration** block
+asks your repository whether the declaration file exists. If it does
+not, the block offers **Generate template (AI_USAGE.md)**, which writes
+vaibify's starter template with four headings: **Models used**; **How
+AI assisted each step** (code generation, debugging, plot tweaks,
+documentation); **Review policy** (how a human reviewed AI-generated
+output before it landed); and **Anything else researchers should
+know**. It also offers **Choose existing file**, which opens a file
+picker inside your project repository. Once the file exists, the block
+shows its name and first few lines, and **Choose different file**
+points the step at another file. Pointing the step at a different file
+withdraws your sign-off, because you signed a different document. If
+vaibify cannot reach the repository, for example because the container
+is stopped, the block says it could not check and offers a diagnosis
+instead.
+
+Write the declaration however you like. If your agent drafts the text,
+read it carefully: the declaration is your statement, not the agent's.
+**Open in viewer** shows the whole file in a viewing window, where the
+pencil (✎) button lets you edit and save it.
 
 **Committing it.** **Commit to repo…** checks the repository and offers
 to commit just this file. Committing is not publishing: push from the
@@ -64,6 +73,24 @@ attested — open the step and verify it*. The section's requirement rows
 are **AI declaration signed off** plus the publication rows every step
 carries, such as **Published files match the GitHub mirror**, which here
 compare `AI_USAGE.md` with its published copies.
+
+**When the work changes after you sign.** Your sign-off covers the
+project as it stood when you gave it. At that moment vaibify records a
+SHA-256 hash of every other step's scripts, outputs (data and plots),
+and declared input data. If any of those files later changes, appears,
+or disappears, the sign-off becomes stale: the marker reads *Stale*,
+the step's ⚠ names the steps whose files changed, and Level 2 is
+blocked until you review the declaration and sign off again. Signing
+again takes one click and records new hashes. Changing a file back does
+not undo the warning, and editing the declaration file itself never
+causes one. If vaibify cannot read one of the files, the step says it
+could not check, and Level 2 stays blocked until it can. A declaration
+signed before vaibify recorded these hashes stays signed, with a note
+that changes are tracked from your next sign-off.
+
+Vaibify compares the files with the recorded hashes each time it
+checks, so a change that is made and completely undone between two
+checks cannot be detected.
 
 ## Declaring the AI models
 
@@ -135,10 +162,11 @@ missing, the dashboard says so. Install it with
 **What it captures.** While recording is on and the dashboard is open,
 vaibify checks every 30 seconds for new material and copies the
 in-container agent's session transcripts, your prompts and its replies,
-into the project repository. Today it reads the session files that
-Claude Code writes. Only sessions started inside this project's folder
-are captured; the row counts any started elsewhere, such as the
-workspace root or another project, and leaves them out.
+into the project repository. It reads the session files that Claude
+Code, Codex and Gemini write inside the container. Only sessions
+started inside this project's folder are captured; the row counts any
+started elsewhere, such as the workspace root or another project, and
+leaves them out.
 
 **How secrets are removed.** Your repository is public or will be, so
 every capture is scanned *before* it is saved. A visible
@@ -153,7 +181,12 @@ private, which is why your review matters.
 have read it. When the first capture arrives, the row shows a ⚠ and a
 **Review & Approve** button. The viewer lists each session with its
 redaction count, and **Show only turns with a redaction** narrows the
-view to what the scanner changed. **Approve first capture** records that
+view to what the scanner changed. Gemini lets you take turns back and
+can replace a message's text, so a Gemini session is shown as it
+finally stood: turns that were taken back are folded into one
+**Rewound** group where they happened, and a reply whose text changed is
+marked *edited*, with its earlier text folded beneath it. Nothing is
+removed from the record itself. **Approve first capture** records that
 you have read the redacted sessions and are content for them to be
 published with the project. The agent can never approve its own
 transcript. **View Record** reopens the viewer at any time.

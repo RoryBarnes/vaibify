@@ -38,6 +38,12 @@ from .dependencyPinning import (
     flistVerifyRequirementsLock,
 )
 from .dockerfileLint import flistLintDockerfile
+from .declarationFreshness import (
+    S_FRESHNESS_STALE,
+    S_FRESHNESS_UNKNOWN,
+    fbDeclarationFreshnessPasses,
+    fdictEvaluateDeclarationFreshness,
+)
 from .determinismGate import (
     fbWorkflowDeclaresDeterminism,
     flistAuditWorkflow,
@@ -96,6 +102,9 @@ __all__ = [
     "fbWorkflowFullySyncedWithGithub",
     "fbWorkflowFullySyncedWithZenodo",
     "fbWorkflowAiDeclarationAttested",
+    "fdictDeclarationFreshness",
+    "fdictDeclarationFreshnessForDisplay",
+    "fsDescribeStaleDeclaration",
     "fbWorkflowHasAiDeclarationStep",
     "fbWorkflowHasOverleafBinding",
     "fbWorkflowHasProjectRepo",
@@ -1161,7 +1170,7 @@ def _fbComputeLevel2(dictWorkflow, filesRepo):
         dictWorkflow, filesRepo,
     ):
         return False
-    if not fbWorkflowAiDeclarationAttested(dictWorkflow):
+    if not fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):
         return False
     if not replayGate.fbWorkflowDeclaresAiModels(dictWorkflow):
         return False
@@ -1693,13 +1702,20 @@ def fbWorkflowHasAiDeclarationStep(dictWorkflow):
     return False
 
 
-def fbWorkflowAiDeclarationAttested(dictWorkflow):
-    """Return True iff an ai-declaration step exists and is attested.
+def fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):
+    """Return True iff an ai-declaration step exists, is signed, and is fresh.
 
     The declaration only has meaning at publication, so its
     researcher sign-off is a LEVEL 2 requirement (ruling 2026-07-02).
     AI-declaration steps are excluded from the L1 gate entirely and
     their L1 cell reads not-applicable.
+
+    A sign-off counts only while it is still about the work: another
+    step's scripts, outputs or input data changing afterwards makes it
+    stale, and evidence that cannot be read makes it unknown — both
+    fail here (ruling 2026-10-08). ``filesRepo`` is required, never
+    defaulted, because a caller that could omit it would be a second
+    derivation that skips the freshness half.
     """
     if not isinstance(dictWorkflow, dict):
         return False
@@ -1710,7 +1726,27 @@ def fbWorkflowAiDeclarationAttested(dictWorkflow):
         bFound = True
         if not fbStepUserApproved(dictStep):
             return False
-    return bFound
+    if not bFound:
+        return False
+    return fbDeclarationFreshnessPasses(
+        fdictDeclarationFreshness(dictWorkflow, filesRepo))
+
+
+def fdictDeclarationFreshness(dictWorkflow, filesRepo):
+    """Return the freshness verdict, once per active gate evaluation.
+
+    Every gate in one poll asks the same question of the same files,
+    so the answer is memoized in the per-call memo when one is active;
+    outside one, it is computed afresh. Never cached across calls.
+    """
+    dictMemo = _fdictActiveLevelMemo()
+    if dictMemo is not None and "dictDeclarationFreshness" in dictMemo:
+        return dictMemo["dictDeclarationFreshness"]
+    dictVerdict = fdictEvaluateDeclarationFreshness(
+        dictWorkflow, ffilesEnsureRepoFiles(filesRepo))
+    if dictMemo is not None:
+        dictMemo["dictDeclarationFreshness"] = dictVerdict
+    return dictVerdict
 
 
 def _fbCachedSyncStatusFresh(dictStatus, fMaxStaleHours):
@@ -2182,7 +2218,7 @@ def fdictLevel2Gaps(dictWorkflow, filesRepo):
     bArxiv = fbWorkflowFullySyncedWithArxiv(
         dictWorkflow, filesRepo,
     )
-    bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow)
+    bDecl = fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo)
     bModels = replayGate.fbWorkflowDeclaresAiModels(dictWorkflow)
     bPersonal = replayGate.fbWorkflowDeclaresPersonalLayer(dictWorkflow)
     bArchiveAnswered = fbImageArchiveQuestionSettled(
@@ -2269,6 +2305,13 @@ def flistLevel2Blockers(dictWorkflow, filesRepo):
         # And the published files themselves: an edit after the verify
         # must be able to raise the changed-since-verify blocker.
         _fsLevel2ContentFingerprint(dictWorkflow, filesRepo),
+        # The AI Declaration's freshness reads files the workflow
+        # fingerprint cannot see (input data among them), so its own
+        # verdict joins the key; otherwise a cached list would keep
+        # saying "signed" over a change.
+        json.dumps(
+            fdictDeclarationFreshness(dictWorkflow, filesRepo),
+            sort_keys=True),
     )
     listCached = _flistBlockerCacheLookup(tCacheKey)
     if listCached is not None:
@@ -2290,7 +2333,7 @@ def _flistComputeLevel2Blockers(dictWorkflow, filesRepo):
         dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistAiDeclarationLevel2Blockers(
-        dictWorkflow,
+        dictWorkflow, filesRepo,
     ))
     listBlockers.extend(_flistAiProvenanceLevel2Blockers(
         dictWorkflow,
@@ -2367,14 +2410,16 @@ def _flistZenodoLevel2Blockers(dictWorkflow, filesRepo):
     return [_fdictZenodoUnexplainedRefusalBlocker(dictStatus)]
 
 
-def _flistAiDeclarationLevel2Blockers(dictWorkflow):
+def _flistAiDeclarationLevel2Blockers(dictWorkflow, filesRepo):
     """Return the ai-declaration L2 blocker, or empty list.
 
-    Two failure modes: no ai-declaration step at all (workflow-scope,
-    re-homed to the ghost row), or the step exists but the researcher
-    has not attested it (per-step, lands on the declaration step's
-    own row — the declaration only has meaning at publication, so the
-    sign-off is enforced here rather than at L1).
+    Four failure modes: no ai-declaration step at all (workflow-scope,
+    re-homed to the ghost row); the step exists but the researcher has
+    not signed it off; the sign-off is STALE because another step's
+    files changed afterwards; or whether it is stale could not be
+    checked. The last three are per-step and land on the declaration
+    step's own row -- the declaration only has meaning at publication,
+    so the sign-off is enforced here rather than at L1.
     """
     if not fbWorkflowHasAiDeclarationStep(dictWorkflow):
         return [{
@@ -2388,27 +2433,115 @@ def _flistAiDeclarationLevel2Blockers(dictWorkflow):
             "sRemediationHint":
                 "Add an AI declaration step to record agent involvement",
         }]
-    if fbWorkflowAiDeclarationAttested(dictWorkflow):
+    if fbWorkflowAiDeclarationAttested(dictWorkflow, filesRepo):
         return []
-    return [
-        {
+    listBlockers = []
+    for iStepIndex, dictStep in enumerate(
+        (dictWorkflow or {}).get("listSteps") or [],
+    ):
+        if not fbStepIsAiDeclaration(dictStep):
+            continue
+        dictFailure = _fdictDeclarationFailure(
+            dictWorkflow, dictStep, filesRepo)
+        if dictFailure is None:
+            continue
+        listBlockers.append({
             "iLevel": 2,
             "iStepIndex": iStepIndex,
             "sStepLabel": _fsLabelForStep(dictWorkflow, iStepIndex),
             "sScope": "step",
-            "sCriterion": "ai-declaration-unattested",
-            "listOffendingFiles": [],
             "listOffendingUpstreamSteps": [],
-            "sRemediationHint":
-                "Attest the AI Declaration step — open it and "
-                "verify the declaration",
+            **dictFailure,
+        })
+    return listBlockers
+
+
+def _fdictDeclarationFailure(dictWorkflow, dictStep, filesRepo):
+    """Return a failing step's criterion, hint and files, or None.
+
+    An unsigned step is ``ai-declaration-unattested``; a signed one
+    fails only on the freshness verdict, which names its own cause.
+    """
+    sUser = ((dictStep or {}).get("dictVerification") or {}).get("sUser")
+    if sUser not in ("passed", "stale"):
+        return {
+            "sCriterion": "ai-declaration-unattested",
+            "sRemediationHint": "Attest the AI Declaration step — open it and "
+                     "verify the declaration",
+            "listOffendingFiles": [],
         }
-        for iStepIndex, dictStep in enumerate(
-            (dictWorkflow or {}).get("listSteps") or [],
-        )
-        if fbStepIsAiDeclaration(dictStep)
-        and not fbStepUserApproved(dictStep)
-    ]
+    dictVerdict = fdictDeclarationFreshness(dictWorkflow, filesRepo)
+    if fbDeclarationFreshnessPasses(dictVerdict):
+        return None
+    if dictVerdict["sVerdict"] == S_FRESHNESS_STALE:
+        return {
+            "sCriterion": "ai-declaration-stale",
+            "sRemediationHint": fsDescribeStaleDeclaration(
+                dictWorkflow, dictVerdict["listChanges"]),
+            "listOffendingFiles": [
+                dictChange["sPath"]
+                for dictChange in dictVerdict["listChanges"]],
+        }
+    return {
+        "sCriterion": "ai-declaration-uncheckable",
+        "sRemediationHint": (dictVerdict.get("sReason") or "Could not check the "
+                  "AI Declaration's coverage.")
+        + " Level 2 stays blocked until it can be checked.",
+        "listOffendingFiles": [],
+    }
+
+
+def _fsLabelForStepId(dictWorkflow, sStepId):
+    """Return the label of the step with this id, or "" when it is gone."""
+    for iIndex, dictStep in enumerate(
+        (dictWorkflow or {}).get("listSteps") or [],
+    ):
+        if not isinstance(dictStep, dict):
+            continue
+        if sStepId in (dictStep.get("sStepId"), dictStep.get("sDirectory")):
+            return _fsLabelForStep(dictWorkflow, iIndex)
+    return ""
+
+
+def fdictDeclarationFreshnessForDisplay(dictWorkflow, filesRepo):
+    """Return the freshness verdict plus the sentence the dashboard shows.
+
+    The sentence is composed here, beside the blocker that carries the
+    same words, so the row and the blocker cannot word one verdict two
+    ways and no surface derives it in JavaScript.
+    """
+    dictVerdict = dict(fdictDeclarationFreshness(dictWorkflow, filesRepo))
+    if dictVerdict["sVerdict"] == S_FRESHNESS_STALE:
+        dictVerdict["sMessage"] = fsDescribeStaleDeclaration(
+            dictWorkflow, dictVerdict["listChanges"])
+    else:
+        dictVerdict["sMessage"] = dictVerdict.get("sReason", "")
+    return dictVerdict
+
+
+def fsDescribeStaleDeclaration(dictWorkflow, listChanges):
+    """Return the sentence naming what changed and what to do about it.
+
+    Changes are grouped by step and kind, so the sentence reads
+    "Step A03's outputs and A05's scripts changed ..." rather than
+    listing files; the files ride separately as offending files.
+    """
+    listParts = []
+    for dictChange in listChanges or []:
+        sLabel = _fsLabelForStepId(dictWorkflow, dictChange.get("sStepId"))
+        sOwner = f"{sLabel}'s" if sLabel else "a removed step's"
+        sPart = f"{sOwner} {dictChange.get('sKind') or 'files'}"
+        if sPart not in listParts:
+            listParts.append(sPart)
+    if not listParts:
+        sWhat = "The covered files"
+    elif len(listParts) == 1:
+        sWhat = "Step " + listParts[0]
+    else:
+        sWhat = ("Steps " + ", ".join(listParts[:-1]) + " and "
+                 + listParts[-1])
+    return (sWhat + " changed after the AI Declaration was signed off "
+            "— review the declaration and sign off again.")
 
 
 def _fbSyncCacheStale(dictStatus):
@@ -4408,10 +4541,14 @@ def _flistStepLevel2Requirements(dictStep, setCriteria, dictContext):
              "figure-not-frozen" not in setCriteria))
     if fbStepIsAiDeclaration(dictStep):
         # The declaration's researcher sign-off is a Level 2
-        # requirement (its L1 cell reads not-applicable).
+        # requirement (its L1 cell reads not-applicable). A sign-off
+        # whose freshness could not be checked is UNKNOWN (None), not
+        # failed and not met -- the cell and the row agree on it.
         listRequirements.append(
             ("ai-declaration-attested",
-             "ai-declaration-unattested" not in setCriteria))
+             None if "ai-declaration-uncheckable" in setCriteria
+             else not ({"ai-declaration-unattested",
+                        "ai-declaration-stale"} & setCriteria)))
     return listRequirements
 
 

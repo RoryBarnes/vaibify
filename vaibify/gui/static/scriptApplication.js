@@ -61,6 +61,7 @@ const VaibifyApp = (function () {
             dictPlotStandardExists: {},
             dictBlockersByStep: {},
             dictBlockersByStepLevel2: {},
+            dictAiDeclarationFreshness: null,
             dictBlockersByStepLevel3: {},
             dictStepLevels: {},
             dictStepLevelHighWater: {},
@@ -1071,6 +1072,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictBlockersByStep = {};
         _dictWorkflowState.dictBlockersByStepLevel2 = {};
         _dictWorkflowState.dictBlockersByStepLevel3 = {};
+        _dictWorkflowState.dictAiDeclarationFreshness = null;
         _dictWorkflowState.dictStepLevels = {};
         _dictWorkflowState.dictStepLevelHighWater = {};
         _dictWorkflowState.dictStepLevelWarnings = {};
@@ -2246,6 +2248,8 @@ const VaibifyApp = (function () {
             bBinaryAddFormOpen: _dictUiState.bBinaryAddFormOpen,
             sProjectRepoPath: (_dictWorkflowState.dictWorkflow || {})
                 .sProjectRepoPath || "",
+            dictAiDeclarationFreshness:
+                _dictWorkflowState.dictAiDeclarationFreshness || null,
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
@@ -2478,6 +2482,13 @@ const VaibifyApp = (function () {
         return (dictBadges && dictBadges.sGithub) || "";
     }
 
+    function _fsDeclarationFreshnessSlice(step, dictContext) {
+        // The declaration card renders the server's freshness verdict,
+        // so the card must re-render when the verdict moves.
+        if (!step || step.sStepKind !== "ai-declaration") return "";
+        return JSON.stringify(dictContext.dictAiDeclarationFreshness);
+    }
+
     function _fsComputeStepRenderHash(step, iIndex, dictContext, dictVars) {
         // The hash captures every render-affecting input
         // fsRenderStepItem reads: the step object itself plus the
@@ -2490,6 +2501,7 @@ const VaibifyApp = (function () {
             + "\x01" + _fsExpansionSliceForStep(iIndex, dictContext)
             + "\x01" + _fsContextSliceForStep(iIndex, dictContext)
             + "\x01" + _fsDeclarationBadgeSlice(step)
+            + "\x01" + _fsDeclarationFreshnessSlice(step, dictContext)
             + "\x01" + JSON.stringify(dictVars || {});
     }
 
@@ -3027,6 +3039,15 @@ const VaibifyApp = (function () {
                     dictBlocker.sRemediationHint || dictMeta.sLabel);
             }
         }
+        var dictLevel2Blocker = (_dictWorkflowState
+            .dictBlockersByStepLevel2 || {})[iStepIndex];
+        if (dictLevel2Blocker &&
+                _SET_DECLARATION_FRESHNESS_CRITERIA.has(
+                    dictLevel2Blocker.sCriterion)) {
+            // The server's sentence, which names the steps whose
+            // files changed; never composed here.
+            listReasons.push(dictLevel2Blocker.sRemediationHint);
+        }
         var dictStep = ((_dictWorkflowState.dictWorkflow || {})
             .listSteps || [])[iStepIndex] || {};
         var dictVerify = dictStep.dictVerification || {};
@@ -3153,12 +3174,30 @@ const VaibifyApp = (function () {
         "untested": null,
     };
 
+    var _SET_DECLARATION_FRESHNESS_CRITERIA = new Set([
+        "ai-declaration-stale", "ai-declaration-uncheckable",
+    ]);
+
     var _DICT_L2_BLOCKER_GLYPHS = {
         "ai-declaration-unattested": {
             sIcon: "—",
             sLabel: "AI declaration not yet attested — open the " +
                 "step and verify it",
             sClass: "step-blocker-glyph-l2-declaration",
+        },
+        "ai-declaration-stale": {
+            sIcon: "⚠",
+            sLabel: "Another step's scripts, outputs or input data " +
+                "changed after the AI declaration was signed off — " +
+                "review it and sign off again",
+            sClass: "step-blocker-glyph-l2-declaration-stale",
+        },
+        "ai-declaration-uncheckable": {
+            sIcon: "?",
+            sLabel: "Could not check whether the work changed since " +
+                "the AI declaration was signed off — Level 2 stays " +
+                "blocked until it can be checked",
+            sClass: "step-blocker-glyph-l2-declaration-unknown",
         },
         "not-in-github-mirror": {
             sIcon: "⚠",
@@ -6197,8 +6236,16 @@ const VaibifyApp = (function () {
         var listStates = [
             "untested", "passed", "failed", "error"
         ];
-        var iNext = (listStates.indexOf(dictVerify.sUser || "untested")
-            + 1) % listStates.length;
+        var sCurrent = dictVerify.sUser || "untested";
+        // A stale AI Declaration is one click from a fresh sign-off:
+        // the researcher has already read it once, and signing again
+        // is the remedy the warning names.
+        if (sCurrent === "stale" &&
+                dictStep.sStepKind === "ai-declaration") {
+            sCurrent = "untested";
+        }
+        var iNext = (listStates.indexOf(sCurrent) + 1) %
+            listStates.length;
         var dictNext = Object.assign({}, dictVerify);
         dictNext.sUser = listStates[iNext];
         dictNext.sLastUserUpdate = fsFormatUtcTimestamp();
@@ -6852,6 +6899,8 @@ const VaibifyApp = (function () {
                 dictStatus.dictTestCategoryMtimes;
         }
         _fnApplyBlockerAndLevelState(dictStatus);
+        _fnApplyAiDeclarationFreshness(
+            dictStatus.dictAiDeclarationFreshness);
         fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
@@ -6867,6 +6916,32 @@ const VaibifyApp = (function () {
         if (dictStatus.dictTestFileChanges) {
             VaibifyTestManager.fnNotifyTestFileChanges(
                 dictStatus.dictTestFileChanges);
+        }
+    }
+
+    function _fnApplyAiDeclarationFreshness(dictFreshness) {
+        /* The poll latched a stale sign-off on the server and saved it
+           before answering, so a "stale" verdict is the stored sUser;
+           the step mirrors it so its badge and its next click start
+           from what the server holds. Nothing here decides staleness. */
+        var sPrior = JSON.stringify(
+            _dictWorkflowState.dictAiDeclarationFreshness || null);
+        _dictWorkflowState.dictAiDeclarationFreshness =
+            dictFreshness || null;
+        if (JSON.stringify(dictFreshness || null) !== sPrior) {
+            fnRenderStepList();
+        }
+        if (!dictFreshness || dictFreshness.sVerdict !== "stale") return;
+        var listSteps = ((_dictWorkflowState.dictWorkflow || {})
+            .listSteps) || [];
+        for (var i = 0; i < listSteps.length; i++) {
+            if (listSteps[i].sStepKind !== "ai-declaration") continue;
+            var dictVerify = listSteps[i].dictVerification || {};
+            if (dictVerify.sUser !== "passed") return;
+            dictVerify.sUser = "stale";
+            listSteps[i].dictVerification = dictVerify;
+            fnRenderStepList();
+            return;
         }
     }
 
@@ -7147,6 +7222,62 @@ const VaibifyApp = (function () {
             fnShowToast(
                 fsSanitizeErrorForUser(error.message), "error");
         }
+    }
+
+    function _fsAiDeclarationRouteUrl(sSuffix) {
+        return "/api/workflow/" +
+            encodeURIComponent(_dictSessionState.sContainerId) +
+            "/ai-declaration/" + sSuffix;
+    }
+
+    function _fnApplyAttachedDeclaration(dictResult) {
+        // Mirrors the server's answer, never anticipates it: the path
+        // is the one the server normalized and saved, and the sign-off
+        // is withdrawn here only because the server withdrew it.
+        var dictStep = _dictWorkflowState.dictWorkflow
+            .listSteps[dictResult.iIndex];
+        if (!dictStep) return;
+        dictStep.sDeclarationFile = dictResult.sRelativePath;
+        if (dictResult.bSignOffWithdrawn) {
+            dictStep.dictVerification = dictStep.dictVerification || {};
+            dictStep.dictVerification.sUser = "untested";
+        }
+    }
+
+    async function fnAttachAiDeclarationFile(sRelativePath) {
+        if (!_dictSessionState.sContainerId) return;
+        try {
+            var dictResult = await VaibifyApi.fdictPost(
+                _fsAiDeclarationRouteUrl("attach"),
+                {sRelativePath: sRelativePath});
+            _fnApplyAttachedDeclaration(dictResult);
+            fnRenderStepList();
+            fnShowToast(dictResult.bSignOffWithdrawn ?
+                "Declaration file changed to " +
+                    dictResult.sRelativePath +
+                    " — review it and sign off again." :
+                "Declaration file set to " + dictResult.sRelativePath,
+                dictResult.bSignOffWithdrawn ? "info" : "success");
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+        }
+        VaibifyStepRenderer.fnRefreshAiDeclarationFileSlots();
+    }
+
+    async function fnGenerateAiDeclarationTemplate(sRelativePath) {
+        // Two explicit actions in turn: write the starter template,
+        // then attach it. Generation alone never attaches.
+        if (!_dictSessionState.sContainerId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                _fsAiDeclarationRouteUrl("generate-template"),
+                {sRelativePath: sRelativePath});
+        } catch (error) {
+            VaibifyDiagnosis.fnReportFailureFromError(error);
+            VaibifyStepRenderer.fnRefreshAiDeclarationFileSlots();
+            return;
+        }
+        await fnAttachAiDeclarationFile(sRelativePath);
     }
 
     async function fnOpenVsCode() {
@@ -7462,6 +7593,8 @@ const VaibifyApp = (function () {
         fsBlockerHintForStep: fsBlockerHintForStep,
         fsBlockerHintForFile: fsBlockerHintForFile,
         fdictAddAiDeclarationStep: fdictAddAiDeclarationStep,
+        fnAttachAiDeclarationFile: fnAttachAiDeclarationFile,
+        fnGenerateAiDeclarationTemplate: fnGenerateAiDeclarationTemplate,
         fnHandleDiscoveredOutputs: fnHandleDiscoveredOutputs,
 
         /* New public methods for extracted modules */

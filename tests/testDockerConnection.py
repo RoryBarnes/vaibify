@@ -1,6 +1,7 @@
 """Tests for vaibify.docker.dockerConnection with mocked docker-py."""
 
 import io
+import os
 import sys
 import tarfile
 
@@ -1070,10 +1071,18 @@ def test_the_repo_hash_program_enforces_containment_and_symlinks(
     assert dictEntries["aLink.txt"]["sSymlinkSegment"] == "aLink.txt"
 
 
+@pytest.mark.falsification
 def test_the_repo_hash_program_answers_none_for_an_absent_file(
     tmp_path,
 ):
-    """Missing is 'no hash', never an error or an omitted key."""
+    """Missing is 'no hash' AND 'absent', never an error or an omitted key.
+
+    ``bAbsent`` is what lets a caller tell a deleted file (a change)
+    from one it could not read (an unknown); the AI Declaration's
+    freshness check needs both answers.
+    
+    Kills: dockerConnection's typed hash program dropping bAbsent.
+    """
     import json
 
     pathRepo = tmp_path / "repo"
@@ -1085,7 +1094,34 @@ def test_the_repo_hash_program_answers_none_for_an_absent_file(
     dictEntries = json.loads(sOutput)
     assert dictEntries["nowhere.txt"] == {
         "sSha256": None, "sSymlinkSegment": None, "bEscapesRoot": False,
+        "bAbsent": True,
     }
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root reads a mode-000 file, so it cannot be made unreadable",
+)
+def test_the_repo_hash_program_never_calls_an_unreadable_file_absent(
+    tmp_path,
+):
+    import json
+
+    pathRepo = tmp_path / "repo"
+    pathRepo.mkdir()
+    pathLocked = pathRepo / "locked.txt"
+    pathLocked.write_text("present but private")
+    pathLocked.chmod(0)
+    try:
+        sOutput = _fdictRunTypedReadProgramLocally(
+            dockerConnectionModule.S_TYPED_READ_REPO_HASHES,
+            [str(pathRepo), "locked.txt"],
+        )
+    finally:
+        pathLocked.chmod(0o600)
+    dictEntry = json.loads(sOutput)["locked.txt"]
+    assert dictEntry["sSha256"] is None
+    assert "bAbsent" not in dictEntry
 
 
 # -----------------------------------------------------------------------

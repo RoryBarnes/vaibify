@@ -357,8 +357,8 @@ help reconstruct the date.
 Ladder, which vaibify does not implement (yet). But a transcript must exist
 *before* Level 1 for a project ever to reach Level 4, so vaibify
 collects the evidence from the start. The opt-in **Prompt Record**
-copies the session transcripts of Claude Code running in the container
-into the repository (other agents' sessions are not captured), redacts secrets at capture time, and hash-chains the
+copies the session transcripts of Claude Code, Codex and Gemini running
+in the container into the repository, redacts secrets at capture time, and hash-chains the
 captures so that editing or removing one breaks the chain. **Supervised
 mode** adds the supervision log: every repository change must be
 attributable to a recorded action, and unexplained changes are flagged

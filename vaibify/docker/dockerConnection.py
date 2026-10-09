@@ -344,6 +344,10 @@ def _fdictReadOnceAgainstKey(sAbs, listCachedKey):
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         iFd = os.open(sAbs, iFlags)
+    except (FileNotFoundError, NotADirectoryError):
+        # ABSENT is its own answer: a file that is not there is a
+        # change, a file that cannot be read is an unknown.
+        return {"sSha256": None, "bAbsent": True}
     except OSError:
         return {"sSha256": None}
     try:
@@ -976,6 +980,9 @@ _DICT_TYPED_READ_PROGRAMS = {
         "    try:\n"
         "        iFd = os.open(sReal, os.O_RDONLY | "
         "getattr(os, 'O_NOFOLLOW', 0))\n"
+        "    except (FileNotFoundError, NotADirectoryError):\n"
+        "        dictEntry['bAbsent'] = True\n"
+        "        continue\n"
         "    except OSError:\n"
         "        continue\n"
         "    hashFile = hashlib.sha256()\n"

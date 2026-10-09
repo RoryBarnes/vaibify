@@ -12,6 +12,10 @@ from .. import stepRename, workflowManager
 from ..actionCatalog import ffnAgentAction
 from ..fileStatusManager import fbMaybeAutoArchive
 from vaibify.reproducibility.levelGates import fiProofLevel
+from vaibify.reproducibility.declarationFreshness import (
+    DeclarationEvidenceUnreadableError,
+    fnApplySignOffBaseline,
+)
 from ..routeContext import (
     fdictCarryARefusalBackInsteadOfRaising,
     fdictRequireLaneTupleForCommit,
@@ -317,6 +321,10 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,
             dictUpdates,
         )
+        _fnRecordDeclarationBaseline(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictWorkflow, iStepIndex, dictUpdates,
+        )
         try:
             workflowManager.fnUpdateStep(
                 dictWorkflow, iStepIndex, dictUpdates,
@@ -418,6 +426,23 @@ def _fnStampServerSideUserUpdate(
         dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(
             connectionDocker, sContainerId)
     dictUpdates["dictVerification"] = dictStamped
+
+
+def _fnRecordDeclarationBaseline(
+    filesRepo, dictWorkflow, iStepIndex, dictUpdates,
+):
+    """Record what an AI Declaration sign-off covers, or refuse it (409)."""
+    try:
+        fnApplySignOffBaseline(
+            filesRepo, dictWorkflow, iStepIndex,
+            dictUpdates.get("dictVerification"),
+        )
+    except DeclarationEvidenceUnreadableError as error:
+        raise HTTPException(
+            409, f"The sign-off was not recorded: {error}, so vaibify "
+            "could not record what it covers. Check that the "
+            "container is running and the files are readable, then "
+            "sign off again.") from error
 
 
 def _fnRejectContractBreakingUpdates(

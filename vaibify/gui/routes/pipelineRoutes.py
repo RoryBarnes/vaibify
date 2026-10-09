@@ -1386,6 +1386,12 @@ async def _fdictFetchOutputStatus(
         dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
     ):
         dictCtx["save"](sContainerId, dictWorkflow)
+    if _fbLatchStaleAiDeclaration(dictWorkflow, filesPoll):
+        logger.info(
+            "POLL latched a stale AI Declaration for container=%s",
+            sContainerId,
+        )
+        dictCtx["save"](sContainerId, dictWorkflow)
     await _fnMaintainAiProvenanceStamp(
         dictCtx, sContainerId, dictWorkflow, filesPoll,
     )
@@ -1682,6 +1688,22 @@ def _fbReconcileUserVerificationByHash(
         return False
 
 
+def _fbLatchStaleAiDeclaration(dictWorkflow, filesPoll):
+    """Make a stale AI Declaration sign-off sticky; True iff it changed.
+
+    The evaluator is pure, so a change it sees and a later revert would
+    otherwise read fresh again; latching here, and persisting, is what
+    keeps the sign-off stale until the researcher signs off again.
+    """
+    from vaibify.reproducibility.declarationFreshness import (
+        fbLatchStaleDeclaration,
+    )
+    from vaibify.reproducibility.levelGates import fdictDeclarationFreshness
+    return fbLatchStaleDeclaration(
+        dictWorkflow, fdictDeclarationFreshness(dictWorkflow, filesPoll),
+    )
+
+
 async def _fnMaintainAiProvenanceStamp(
     dictCtx, sContainerId, dictWorkflow, filesPoll,
 ):
@@ -1701,7 +1723,7 @@ async def _fnMaintainAiProvenanceStamp(
     )
     if not dictWorkflow.get("sProjectRepoPath"):
         return
-    if not fbWorkflowAiDeclarationAttested(dictWorkflow):
+    if not fbWorkflowAiDeclarationAttested(dictWorkflow, filesPoll):
         return
     dictStamp = _fdictReadStampFromSnapshot(filesPoll)
     if fbStampMatchesDeclaration(dictStamp, dictWorkflow, filesPoll):
@@ -2195,12 +2217,18 @@ def _flistPollHashRelPaths(dictWorkflow, sRepoRoot, sWorkflowPath):
 
     The declared outputs, and the workflow file itself: a reproduction
     record binds the workflow it ran, and the label compares it with
-    the file as it is now.
+    the file as it is now. And, while an AI Declaration sign-off is
+    live, every file it covers, so its freshness is read from this
+    snapshot rather than from a second exec.
     """
     from vaibify.reproducibility.reproductionLabel import (
         fsRelativeWorkflowPath,
     )
+    from vaibify.reproducibility.declarationFreshness import (
+        flistPathsToHashForFreshness,
+    )
     listPaths = _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot)
+    listPaths.extend(flistPathsToHashForFreshness(dictWorkflow))
     sWorkflowRelative = fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot)
     if sWorkflowRelative:
         listPaths.append(sWorkflowRelative)
@@ -2370,6 +2398,7 @@ def _fdictAssemblePollResponse(
     ``bVerificationRunning`` is keyword-only with no default, for
     the reason given in ``_fdictBuildPollResponseRest``.
     """
+    from vaibify.reproducibility import levelGates as levelGatesModule
     from vaibify.reproducibility.levelGates import fdictBinaryStaleByStep
     from .. import workflowManager
     dictBinaryStaleByStep = fdictBinaryStaleByStep(
@@ -2393,6 +2422,13 @@ def _fdictAssemblePollResponse(
             dictLockSatisfaction=dictLockSatisfaction,
         ),
         "iProofLevel": dictWorkflow["iProofLevel"],
+        # The AI Declaration sign-off's freshness, from the one
+        # evaluator the Level 2 gate calls; the step renders this
+        # verdict and its sentence, never a derivation of its own.
+        "dictAiDeclarationFreshness": (
+            levelGatesModule.fdictDeclarationFreshnessForDisplay(
+                dictWorkflow, filesPoll)
+        ),
         "dictInvalidatedSteps": listInvalidated,
         "dictScriptStatus": dictScriptStatus,
         "sWorkflowFingerprint": (
@@ -2757,7 +2793,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
             else dict.fromkeys(_T_ENVELOPE_SYNC_SERVICES)
         ),
         "bAiDeclarationAttested":
-            levelGates.fbWorkflowAiDeclarationAttested(dictWorkflow),
+            levelGates.fbWorkflowAiDeclarationAttested(
+                dictWorkflow, filesRepo),
         # The waiver half of the binary declaration. Without it the
         # Software row could not tell "no binaries declared yet" from
         # "the researcher answered: there are none", so an answered
