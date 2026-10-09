@@ -1,0 +1,668 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connecting to External Resources &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Reproducibility" href="reproducibility.html" />
+    <link rel="prev" title="Environments and Projects" href="environmentsAndProjects.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Connecting to External Resources</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-each-connection-is-for">What each connection is for</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-vaibify-holds-your-credentials">How vaibify holds your credentials</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-in-container-agent-may-do">What the in-container agent may do</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#setting-up-a-connection">Setting up a connection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#github">GitHub</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#zenodo">Zenodo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#overleaf">Overleaf</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#reading-the-manuscript-back">Reading the manuscript back</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#arxiv">arXiv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-vaibify-checks-the-published-copies">How vaibify checks the published copies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#when-checks-run">When checks run</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#forcing-a-check">Forcing a check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-results-look-like">What the results look like</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#automatic-pushes">Automatic pushes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#revoking-credentials">Revoking credentials</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#working-on-a-remote-machine">Working on a remote machine</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#three-places">Three places</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#when-the-connection-drops">When the connection drops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#terminals">Terminals</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#moving-files">Moving files</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-a-remote-session-does-not-change">What a remote session does not change</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#batch-schedulers-are-not-supported">Batch schedulers are not supported</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Connecting to External Resources</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/externalResources.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="connecting-to-external-resources">
+<h1>Connecting to External Resources<a class="headerlink" href="#connecting-to-external-resources" title="Link to this heading"></a></h1>
+<p>A project reaches PROOF Level 2 by being published, and Level 3 also
+needs its reproduction recipe and environment archived. Vaibify
+connects a project to the four places where that happens: GitHub for
+version control, Zenodo for permanent archives, Overleaf for the
+manuscript, and arXiv for the preprint. It pushes files to the first
+three, reads all four back, and compares SHA-256 hashes of every
+published file with the copy on disk, so an agent (or anybody else)
+cannot quietly change a file that has already left the machine without
+the dashboard saying so.</p>
+<p>The last part of this page covers driving a vaibify hub on another
+computer over SSH.</p>
+<section id="what-each-connection-is-for">
+<h2>What each connection is for<a class="headerlink" href="#what-each-connection-is-for" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Service</p></th>
+<th class="head"><p>What vaibify does with it</p></th>
+<th class="head"><p>Direction</p></th>
+<th class="head"><p>Role on the ladder</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>GitHub</strong></p></td>
+<td><p>The project repository’s <code class="docutils literal notranslate"><span class="pre">origin</span></code> remote: commits and pushes selected files, then compares the published copies.</p></td>
+<td><p>Push and verify</p></td>
+<td><p>Level 2 mirror; Level 3 checks that the reproducibility envelope on GitHub matches the local one.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Zenodo</strong></p></td>
+<td><p>Uploads selected files to a deposit and publishes it with a DOI; separately, archives the container image.</p></td>
+<td><p>Push and verify</p></td>
+<td><p>Level 2 archive; Level 3 requires the envelope, the rebuild attestation and the environment image in permanent (non-sandbox) records.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Overleaf</strong></p></td>
+<td><p>Pushes figures into the manuscript project, and reads the manuscript sources back.</p></td>
+<td><p>Push, pull and verify</p></td>
+<td><p>Optional at Level 2.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>arXiv</strong></p></td>
+<td><p>Downloads the e-print source of a posted preprint and compares its figures with yours.</p></td>
+<td><p>Verify only</p></td>
+<td><p>Optional at Level 2; checked only once a submission is recorded.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Requirement tables for each level are on
+<a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a>; what the envelope contains and how
+it is archived is on <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p>
+</section>
+<section id="how-vaibify-holds-your-credentials">
+<h2>How vaibify holds your credentials<a class="headerlink" href="#how-vaibify-holds-your-credentials" title="Link to this heading"></a></h2>
+<p>Every connection except arXiv needs a token, and the threat model
+assumes an AI agent works inside the container. The rules are:</p>
+<ul class="simple">
+<li><p><strong>No token is ever placed in an environment variable, a
+configuration file, <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, or a command
+line.</strong> Environment variables and command lines are visible to
+process inspection and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code>; files in a repository get
+published.</p></li>
+<li><p><strong>Tokens live in established credential stores.</strong> On the host, that
+is your operating system’s keyring, or your existing <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code>
+login for GitHub. Inside a container it is a keyring kept on a
+dedicated Docker volume, so a token survives a Rebuild without being
+baked into the image.</p></li>
+<li><p><strong>Tokens reach programs through short-lived channels.</strong> Git is given
+a mode-700 helper script that reads the token at the moment git asks
+and is deleted afterwards; container-side programs receive a token
+on standard input. A GitHub credential the container itself needs
+is mounted read-only as a Docker secret file and handed to git by a
+credential helper only for requests to GitHub.</p></li>
+<li><p><strong>Error messages are redacted</strong> before they reach the dashboard, so
+a server that echoes a credential back does not put it on screen.</p></li>
+</ul>
+<p>Where each token lives depends on the service and on the kind of
+project:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Service</p></th>
+<th class="head"><p>Container project</p></th>
+<th class="head"><p>Host-mode project</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>GitHub</p></td>
+<td><p>Your host’s <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span></code> login, or a per-repository token in a keyring</p></td>
+<td><p>Same</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zenodo</p></td>
+<td><p>The container’s keyring (one entry for the sandbox, one for production)</p></td>
+<td><p>The host keyring</p></td>
+</tr>
+<tr class="row-even"><td><p>Overleaf</p></td>
+<td><p>The host keyring</p></td>
+<td><p>The host keyring</p></td>
+</tr>
+<tr class="row-odd"><td><p>arXiv</p></td>
+<td><p>No credential needed</p></td>
+<td><p>No credential needed</p></td>
+</tr>
+</tbody>
+</table>
+<section id="what-the-in-container-agent-may-do">
+<h3>What the in-container agent may do<a class="headerlink" href="#what-the-in-container-agent-may-do" title="Link to this heading"></a></h3>
+<p>The agent drives the dashboard through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>, a curated and tightly controlled list of actions the agent may perform. Every action
+is marked as agent-safe or researcher-only. Actions that make
+something public under your name are researcher-only.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Action</p></th>
+<th class="head"><p>Agent may run it</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Push selected files to GitHub</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Push to Overleaf</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Publish to Zenodo, edit Zenodo metadata, Make Permanent</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>Verify any remote, refresh the Overleaf mirror, read the manuscript back</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p>Configure arXiv, declare an extra Zenodo record</p></td>
+<td><p>Yes</p></td>
+</tr>
+</tbody>
+</table>
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">--list</span></code> inside a container for the complete catalog.</p>
+</section>
+</section>
+<section id="setting-up-a-connection">
+<h2>Setting up a connection<a class="headerlink" href="#setting-up-a-connection" title="Link to this heading"></a></h2>
+<p>The first time you push to a service, the <strong>Setup Connection</strong> dialog
+asks for what that service needs:</p>
+<ul class="simple">
+<li><p><strong>Overleaf</strong>: the project ID (the string after <code class="docutils literal notranslate"><span class="pre">/project/</span></code> in the
+project’s Overleaf URL) and a Git authentication token, generated in
+the Git integration section of your Overleaf account settings. Your
+Overleaf login password does not work.</p></li>
+<li><p><strong>Zenodo</strong>: the instance (<strong>Sandbox</strong>, the default and the right
+choice for practice, or <strong>Production</strong>, which mints real DOIs) and a
+personal access token from that instance with the <code class="docutils literal notranslate"><span class="pre">deposit:write</span></code>
+and <code class="docutils literal notranslate"><span class="pre">deposit:actions</span></code> scopes. Sandbox and production are separate
+sites with separate accounts and tokens.</p></li>
+<li><p><strong>GitHub</strong>: nothing, if <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">login</span></code> has been run on the host;
+otherwise a per-repository token.</p></li>
+</ul>
+<p><strong>Connect</strong> stores the token and immediately tests it against the
+service. If the test fails, vaibify restores the token you had before
+(or removes the new one if there was none), and the message says which
+happened. A connection that cannot be made because the container runs
+with network isolation is refused at once rather than after a timeout.</p>
+</section>
+<section id="github">
+<h2>GitHub<a class="headerlink" href="#github" title="Link to this heading"></a></h2>
+<p>The GitHub mirror is the project repository’s own <code class="docutils literal notranslate"><span class="pre">origin</span></code> remote.
+There is nothing extra to create: initialize the repository, add a
+GitHub remote, and push.</p>
+<ul class="simple">
+<li><p><strong>Sync → Push to GitHub</strong> lists the project’s files with their
+state. Choose files, give a commit message, and vaibify stages
+exactly those files, commits, and pushes. A retry after a failed
+push publishes what is already committed instead of stopping on
+“nothing to commit”.</p></li>
+<li><p>The <strong>Repos</strong> panel’s push commits changes to files git already
+tracks. Untracked files are never swept in; publish a new file
+through the file selection above.</p></li>
+<li><p>Before every push, vaibify asks GitHub which account the token
+belongs to and refuses unless that account name matches the owner
+named in the remote’s URL. A repository owned by an organization
+therefore cannot be pushed from vaibify; push it from a terminal with
+your own git credentials.</p></li>
+<li><p>A container with no git author configured asks for one (<strong>Set Git
+Identity</strong>). The name and email are written into the project
+repository only, never into a global git configuration.</p></li>
+</ul>
+<p>Verification compares against the repository the project last pushed
+to from this hub, recorded at push time. A changed <code class="docutils literal notranslate"><span class="pre">origin</span></code> or a
+<code class="docutils literal notranslate"><span class="pre">project.json</span></code> that names a different repository is refused rather
+than trusted, because both can be edited from inside the container. A
+project that has not pushed from this hub is asked to push once.</p>
+<p>If commits are pushed outside the dashboard (for example by an agent
+running <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code>), run <strong>Verify now</strong> so the
+badges catch up.</p>
+</section>
+<section id="zenodo">
+<h2>Zenodo<a class="headerlink" href="#zenodo" title="Link to this heading"></a></h2>
+<p><strong>Sync → Archive to Zenodo</strong> opens the push dialog with the project’s
+publication files: step outputs, the scripts that made them, the input
+data they read, test standards, the AI declaration, <code class="docutils literal notranslate"><span class="pre">project.json</span></code>, and
+the reproducibility envelope. That is the same set the Level 2 and
+Level 3 Zenodo checks compare. <strong>Edit
+Zenodo metadata</strong> sets the title, creators, license and keywords.
+<strong>Push Selected</strong> or <strong>Push All</strong> uploads the files and publishes.</p>
+<p>Four properties of Zenodo shape what vaibify does:</p>
+<ul class="simple">
+<li><p><strong>Deposits are flat.</strong> Zenodo does not store directories, so files
+upload under their base names. A selection in which two files share a
+base name is refused before anything is uploaded, because the second
+would overwrite the first. Test files that vaibify generates carry
+a step-specific suffix so this never happens to them.</p></li>
+<li><p><strong>Published versions are immutable.</strong> Changing a published file
+means publishing a new version of the record. Each version has its
+own DOI; vaibify always records the version DOI, never the concept
+DOI, because the concept DOI resolves to whatever is deposited next.</p></li>
+<li><p><strong>The sandbox is not an archive.</strong> Sandbox records receive test
+DOIs, carry no preservation promise, and can be cleared at any time.
+A sandbox deposit can satisfy the Level 2 Zenodo check, but never
+Level 3. Nothing transfers between the sandbox and production, so
+<strong>Make Permanent</strong> on the affected row of the Project block publishes
+the current files as a new production record and keeps the sandbox
+identifiers in a superseded note.</p></li>
+<li><p><strong>Other records can hold your files.</strong> Zenodo’s own GitHub
+integration archives each GitHub release as a separate record. The
+Zenodo checks consult every record you declare, under <strong>View →
+Zenodo Status</strong>, and a file agrees when any declared record serves
+its exact bytes. A record that holds only a release tarball cannot be
+compared file by file.</p></li>
+</ul>
+<p>When the recorded deposit and the instance the project is set to use
+disagree (for example, a production deposit and a project switched
+back to the sandbox), publishing is refused with two remedies: publish
+where the record is, or start a new record on the chosen instance.</p>
+<p>Archiving the container image to Zenodo is a separate action on the
+Environment archive row, described in
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p>
+</section>
+<section id="overleaf">
+<h2>Overleaf<a class="headerlink" href="#overleaf" title="Link to this heading"></a></h2>
+<p><strong>Sync → Push to Overleaf</strong> copies figures into the bound Overleaf
+project through Overleaf’s Git integration. The dialog:</p>
+<ul class="simple">
+<li><p>asks for a <strong>target directory</strong>, chosen from a tree of the Overleaf
+project, and refuses absolute paths and <code class="docutils literal notranslate"><span class="pre">..</span></code>;</p></li>
+<li><p>shows which files are new, which would overwrite a different
+remote file, and which are unchanged;</p></li>
+<li><p>warns when Overleaf already holds a directory under different
+capitalization (Overleaf stores names case-insensitively but lists
+both spellings) and offers the existing spelling;</p></li>
+<li><p>asks you to confirm with <strong>Overwrite anyway</strong> before replacing a
+file that changed on Overleaf since your last push.</p></li>
+</ul>
+<p>Only figure formats travel to a manuscript, so Overleaf rows list
+figure files only. A successful push re-verifies the Overleaf row
+automatically.</p>
+<section id="reading-the-manuscript-back">
+<h3>Reading the manuscript back<a class="headerlink" href="#reading-the-manuscript-back" title="Link to this heading"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">pull-manuscript</span></code> action copies the Overleaf project’s <code class="docutils literal notranslate"><span class="pre">.tex</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.bib</span></code>, <code class="docutils literal notranslate"><span class="pre">.bbl</span></code>, <code class="docutils literal notranslate"><span class="pre">.sty</span></code> and <code class="docutils literal notranslate"><span class="pre">.cls</span></code> files into the project repository’s
+<code class="docutils literal notranslate"><span class="pre">.vaibify/manuscript/</span></code> directory. The copy is ignored by git, so it can
+never dirty the repository; it exists so the in-container agent can
+read the paper and check it against the project’s results rather than
+answer from memory.</p>
+</section>
+</section>
+<section id="arxiv">
+<h2>arXiv<a class="headerlink" href="#arxiv" title="Link to this heading"></a></h2>
+<p>arXiv offers no upload interface for tools, so vaibify only reads it.
+<strong>Sync → Configure arXiv…</strong> records the preprint’s identifier (for
+example <code class="docutils literal notranslate"><span class="pre">2401.12345</span></code>). Vaibify then downloads the e-print source of
+the <strong>latest</strong> version, extracts it safely, and compares each local
+figure with the figure of the same base name. When a base name is
+ambiguous, or a figure was renamed for the submission, add an explicit
+mapping from local path to path inside the e-print. Removing the
+identifier stops tracking. An untracked submission reads “not tracked”
+and never blocks Level 2.</p>
+</section>
+<section id="how-vaibify-checks-the-published-copies">
+<h2>How vaibify checks the published copies<a class="headerlink" href="#how-vaibify-checks-the-published-copies" title="Link to this heading"></a></h2>
+<p>A <strong>verification</strong> downloads each published file, computes its
+SHA-256, and compares it with the SHA-256 of the same file on disk
+right now. It does not compare against <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>: the manifest
+is a Level 3 artifact, and this check asks whether the files you hold
+match the files you published.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Service</p></th>
+<th class="head"><p>How the remote copy is read</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>GitHub</p></td>
+<td><p>Each file is fetched from the pushed branch over HTTPS.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zenodo</p></td>
+<td><p>Each file of every declared record is downloaded.</p></td>
+</tr>
+<tr class="row-even"><td><p>Overleaf</p></td>
+<td><p>A local mirror of the Overleaf project is refreshed through git.</p></td>
+</tr>
+<tr class="row-odd"><td><p>arXiv</p></td>
+<td><p>The e-print source of the latest version is downloaded and unpacked.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Results are cached in the repository’s <code class="docutils literal notranslate"><span class="pre">.vaibify/syncStatus.json</span></code>, so
+the dashboard can show them without contacting the services on every
+refresh.</p>
+<section id="when-checks-run">
+<h3>When checks run<a class="headerlink" href="#when-checks-run" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>When you open a project, and when the dashboard reconnects</strong>, it
+starts a check of every configured remote. Each badge pulses until
+its own answer arrives.</p></li>
+<li><p><strong>In the background</strong>, a loop re-verifies every configured remote of
+every loaded project every 6 hours. Its first pass runs a minute or
+two after the hub starts, and it resumes its schedule across
+restarts.</p></li>
+<li><p><strong>A result older than 24 hours is stale.</strong> It is shown as needing a
+check, never as passing.</p></li>
+</ul>
+<p>A check that cannot finish (no network, a container with network
+isolation, a service that is down) is reported as <em>uncheckable</em> with
+the reason. It writes nothing, so the last good result stands, and it
+is never shown as a divergence: red means the bytes were compared and
+differ.</p>
+</section>
+<section id="forcing-a-check">
+<h3>Forcing a check<a class="headerlink" href="#forcing-a-check" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Verify now</strong> on any row of the <strong>Published copies</strong> section of the
+Main tab’s Project block.</p></li>
+<li><p><strong>Sync → Verify Reproducibility</strong>, then <strong>Re-verify</strong> on one
+service.</p></li>
+<li><p>The ↻ <strong>Refresh remote status</strong> button above the step list re-reads
+the git remotes.</p></li>
+<li><p>From a command line inside the container, <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">verify-remote</span> <span class="pre">github</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">zenodo</span></code>, <code class="docutils literal notranslate"><span class="pre">overleaf</span></code>, <code class="docutils literal notranslate"><span class="pre">arxiv</span></code>).</p></li>
+</ul>
+</section>
+<section id="what-the-results-look-like">
+<h3>What the results look like<a class="headerlink" href="#what-the-results-look-like" title="Link to this heading"></a></h3>
+<p>Each <strong>Published copies</strong> row groups the files it covers: <strong>Differs
+from the published copy</strong>, <strong>Not on the remote</strong>, <strong>Not checked yet</strong>,
+<strong>Matching</strong>, and <strong>Not compared by vaibify</strong>. Each file row in the
+Steps and Project blocks also carries a small badge per configured
+remote, tinted by that remote’s state.</p>
+<p>The <strong>Verify Reproducibility</strong> dialog shows one row per service:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Status pill</p></td>
+<td><p>Blue: the last verification matched every file and is less than 24 hours old. Red: at least one file differs. Yellow: never verified, or stale.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Summary</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&lt;matching&gt;/&lt;total&gt;</span> <span class="pre">files</span> <span class="pre">match</span> <span class="pre">SHA-256</span></code>, with the first drifted files named.</p></td>
+</tr>
+<tr class="row-even"><td><p>Last verified</p></td>
+<td><p>How long ago the last verification ran.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Re-verify</strong></p></td>
+<td><p>Runs a verification of that service now.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A line at the top summarizes all services (“not yet verified”, all in
+sync, or how many files drifted across how many remotes), and a line at
+the bottom says when the background loop last ran. <strong>Verify Manifest</strong>
+checks the files on disk against <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> instead.</p>
+</section>
+</section>
+<section id="automatic-pushes">
+<h2>Automatic pushes<a class="headerlink" href="#automatic-pushes" title="Link to this heading"></a></h2>
+<p>The <strong>Auto Archive</strong> checkbox in the project settings (the ⚙ button
+above the step list) pushes a step’s files that you have marked for
+Overleaf and Zenodo automatically when that step’s verification first
+brings the project to Level 1. It is off by default. A failed
+automatic push is logged and never blocks the step that triggered it;
+the Sync menu remains the way to retry.</p>
+</section>
+<section id="revoking-credentials">
+<h2>Revoking credentials<a class="headerlink" href="#revoking-credentials" title="Link to this heading"></a></h2>
+<p>Removing a stored token from the host keyring, and revoking it
+upstream where the service allows it, is done from the command line;
+see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>. Overleaf and Zenodo offer no revocation
+interface to tools, so revoke the token on the service’s own account
+page too, because a cleared local copy does not invalidate a token
+that may have been copied elsewhere.</p>
+<p>A Zenodo token entered for a container project lives in that
+container’s keyring, so revoke it on Zenodo’s account page; the copy
+left in the container then no longer works.</p>
+</section>
+<section id="working-on-a-remote-machine">
+<h2>Working on a remote machine<a class="headerlink" href="#working-on-a-remote-machine" title="Link to this heading"></a></h2>
+<p>Vaibify can drive a hub running on another computer you reach with
+<code class="docutils literal notranslate"><span class="pre">ssh</span></code>, such as a lab workstation or a departmental server. The
+dashboard runs in the browser in front of you; everything else
+happens over there.</p>
+<p>A remote session is started from the command line (see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI
+Reference</span></a>). It opens one SSH connection, forwards a loopback
+port, starts or adopts a vaibify hub on the remote machine, and opens a
+signed-in browser tab. The remote hub listens only on its own loopback
+interface, so nothing puts vaibify on a network.</p>
+<section id="three-places">
+<h3>Three places<a class="headerlink" href="#three-places" title="Link to this heading"></a></h3>
+<p>Once the hub is elsewhere, a file can be in three places:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Where</p></th>
+<th class="head"><p>What it means</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Observer machine</strong></p></td>
+<td><p>The computer you are sitting at, running the browser.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Execution host</strong></p></td>
+<td><p>The remote machine running the vaibify hub.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Execution environment</strong></p></td>
+<td><p>The container, or the project directory in host mode.</p></td>
+</tr>
+</tbody>
+</table>
+<p>In container mode the execution host and environment are different
+filesystems; in host mode they are the same. While you drive another
+machine, the dashboard shows a <strong>REMOTE</strong> badge naming it.</p>
+</section>
+<section id="prerequisites">
+<h3>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>The same vaibify version on both machines.</strong> The helper refuses to
+drive a hub of another version and names both versions.</p></li>
+<li><p><strong>Vaibify on the remote user’s non-interactive PATH.</strong> A
+non-interactive SSH command does not read your usual shell profile,
+so an install that is activated there (a <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--user</span></code>, a
+virtual environment, a conda environment) is invisible to it. The
+<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a> explains how to check and fix this.</p></li>
+<li><p><strong>SSH settings belong in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.</strong> Proxy jumps, identity
+files, ports and usernames go there.</p></li>
+<li><p><strong>You choose the project in the dashboard</strong> once the tunnel is up,
+which keeps project names out of a remote shell command.</p></li>
+</ul>
+</section>
+<section id="when-the-connection-drops">
+<h3>When the connection drops<a class="headerlink" href="#when-the-connection-drops" title="Link to this heading"></a></h3>
+<p>The remote hub is started detached and keeps running, so closing your
+laptop does not stop a pipeline. Its idle timeout is raised for remote
+sessions.</p>
+<p>For 15 minutes, your session is held: the client keeps rebuilding the
+tunnel, and the hub keeps your session valid at least that long.</p>
+<ul class="simple">
+<li><p><strong>Back within the window</strong>, the dashboard reconnects. Output streamed
+while you were away is not replayed, but run state is reconciled by
+ordinary polling.</p></li>
+<li><p><strong>Back after the window</strong>, start the remote session again from the
+command line. If exactly one session lost its browser, it is handed
+back to you (“Picking up where you left off”). If several are
+waiting, you sign in fresh and choose.</p></li>
+</ul>
+<p>A run is never interrupted by any of this. Losing a browser ends that
+browser’s authority over the project, never the project’s work.</p>
+</section>
+<section id="terminals">
+<h3>Terminals<a class="headerlink" href="#terminals" title="Link to this heading"></a></h3>
+<p>A dropped connection ends your shell, and the pane returns with a new
+one and says so. Closing the socket ends the recorded session and
+proves it ended, which is what lets vaibify report honestly whether a
+project is quiet. Anything that must survive a disconnection belongs in
+a step, not in a terminal: steps are durable and their output is
+recorded. Each remote shell’s banner names the machine it runs on.</p>
+</section>
+<section id="moving-files">
+<h3>Moving files<a class="headerlink" href="#moving-files" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Download to this computer</strong> streams a file through the browser to
+the observer machine. It is what right-clicking a file offers.</p></li>
+<li><p><strong>Upload from this computer</strong> sends a local file into the execution
+environment.</p></li>
+<li><p><strong>Copy to execution-host path</strong> copies from a container to the
+remote machine’s own filesystem. It appears only when those are
+different places.</p></li>
+</ul>
+</section>
+<section id="what-a-remote-session-does-not-change">
+<h3>What a remote session does not change<a class="headerlink" href="#what-a-remote-session-does-not-change" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Security.</strong> SSH encrypts the connection and proves you are the
+remote user. After that, the browser redeems a one-time capability
+for a session, claims the project, and passes the hub’s loopback
+Host and Origin checks exactly as it would locally, because through
+the tunnel it <em>is</em> a loopback client.</p></li>
+<li><p><strong>Host mode is still uncontained.</strong> Commands run with your full user
+authority on the remote machine, and PROOF Level 3 remains
+unavailable to a host-mode project.</p></li>
+<li><p><strong>Actions that hand the browser an address are hidden</strong>: the <strong>New
+vaibify window</strong> buttons on the hub and project-list screens, and
+<strong>Open in VS Code</strong>. Through a tunnel those addresses resolve to the
+computer you are sitting at.</p></li>
+</ul>
+</section>
+<section id="batch-schedulers-are-not-supported">
+<h3>Batch schedulers are not supported<a class="headerlink" href="#batch-schedulers-are-not-supported" title="Link to this heading"></a></h3>
+<p>Slurm, PBS and LSF are not (yet) supported. Putting <code class="docutils literal notranslate"><span class="pre">sbatch</span></code> in a step’s
+command is not a workaround: the submission exits successfully while
+the job is still queued, so vaibify would report unfinished work as
+finished. A remote machine is one you run things on directly.</p>
+</section>
+<section id="troubleshooting">
+<h3>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h3>
+<p>The messages a remote session prints when it cannot start or
+reconnect, and what to do about each, are in <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="environmentsAndProjects.html" class="btn btn-neutral float-left" title="Environments and Projects" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="reproducibility.html" class="btn btn-neutral float-right" title="Reproducibility" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

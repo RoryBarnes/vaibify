@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agent Council &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>Agent Council &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Working on a remote machine" href="remoteAccess.html" />
-    <link rel="prev" title="The Dashboard" href="dashboard.html" /> 
+    <link rel="next" title="System Prompt" href="systemPrompt.html" />
+    <link rel="prev" title="Reproducibility" href="reproducibility.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,56 +45,37 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Agent Council</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#the-two-kinds-of-council">The two kinds of council</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#what-a-council-is-and-is-not">What a council is, and is not</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-council-is-container-only">The council is container-only</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#quickstart">QuickStart</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#example-usage">Example usage</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-protocol-and-its-termination-and-quorum-rules">The protocol, and its termination and quorum rules</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#input-options">Input options</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#participants">Participants</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#chairbot">Chairbot</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#council-settings">Council settings</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#the-charter-the-by-laws-every-participant-is-bound-by">The charter — the by-laws every participant is bound by</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#container-only-and-why">Container-only, and why</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#shadow-containers">Shadow containers</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#execution-backend">Execution backend</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#convening-a-council">Convening a council</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-protocol-and-its-termination-and-quorum-rules">The protocol, and its termination and quorum rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#input-options">Input options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-charter-the-by-laws-every-participant-is-bound-by">The charter — the by-laws every participant is bound by</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-first-council-on-a-computer">The first council on a computer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#files-vaibify-never-copies">Files vaibify never copies</a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#credential-risk-disclosure">Credential-risk disclosure</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#output">Output</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#asking-the-chairbot">Asking the chairbot</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#honest-limits">Honest limits</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
 <li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -123,211 +104,138 @@
              
   <section id="agent-council">
 <h1>Agent Council<a class="headerlink" href="#agent-council" title="Link to this heading"></a></h1>
-<p>An Agent Council asks two or more model participants to deliberate about
-a proposed change to your project, challenge one another’s proposals,
-ground their positions in evidence by reading and running your code
-against a disposable copy, ask you when a choice cannot be settled from
-evidence, and produce a written deliverable.</p>
-<section id="the-two-kinds-of-council">
-<h2>The two kinds of council<a class="headerlink" href="#the-two-kinds-of-council" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><strong>Planning</strong> — the council deliberates a proposed change and its
-deliverable is a written implementation plan.</p></li>
-<li><p><strong>Implementation</strong> — the council takes an <em>accepted plan</em> and its
-deliverable is a reviewed <strong>patch</strong> that implements it. An
-implementation council is convened from a completed planning
-council; it refuses to start without the plan it implements.</p></li>
-</ul>
-<p>A patch is <strong>text the researcher may apply by hand</strong>. No runner ever
-holds a writable path to the live project, in either kind of council:
-the patch is applied by you or not at all.</p>
-</section>
-<section id="what-a-council-is-and-is-not">
-<h2>What a council is, and is not<a class="headerlink" href="#what-a-council-is-and-is-not" title="Link to this heading"></a></h2>
-<p>A council is a deliberation facility. It does <strong>not</strong> apply a patch,
-approve its own work, launch an implementer, publish anything, change
-your project’s reproducibility (PROOF) state, or act as an interactive
-terminal. Its strongest permitted conclusion is deliberately modest:</p>
+<p>An Agent Council asks two or more models to deliberate about a proposed
+change to a project, challenge one another, ground their positions by
+reading and running the code against disposable copies, ask the
+researcher when a choice cannot be settled from evidence, and produce a
+written deliverable. It does <strong>not</strong> apply a patch, approve its own
+work, publish anything, or change the project’s PROOF state. Its
+strongest permitted conclusion is deliberately modest:</p>
 <blockquote>
 <div><p>No known blocking objection remains after independent proposals,
 adversarial review, executable checks where available, and human
 acceptance.</p>
 </div></blockquote>
-<p>Consensus is not proof, and agreement is not evidence. See
-<a class="reference internal" href="#honest-limits">Honest limits</a> below.</p>
-</section>
-<section id="the-council-is-container-only">
-<h2>The council is container-only<a class="headerlink" href="#the-council-is-container-only" title="Link to this heading"></a></h2>
-<p>A council is available only for a <strong>containerized</strong> project, and the
-toolbar button says so on a host project. Every claim the council makes
-about containment rests on creating a disposable container, running a
-participant inside it, and then proving that container gone. A host
-project has no container to create, and its own pipeline runs with your
-full user authority, so there is nothing to contain and nothing to
-prove.</p>
-<p>This is the same trade the rest of host mode makes — the container is
-what lets vaibify vouch for anything. On a host project the button
-explains itself as an on-ramp: <strong>convert this project to a container to
-convene a council</strong>. (Converting is the door that helps; merely
-<em>promoting</em> a host sandbox to a named project leaves it in host mode and
-the council would refuse it again.)</p>
-</section>
-<section id="quickstart">
-<h2>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h2>
-<p>Enable each runner you want in the project’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and rebuild
-the image: <code class="docutils literal notranslate"><span class="pre">claude</span></code> for Claude Code, <code class="docutils literal notranslate"><span class="pre">codex</span></code> for Codex, and
-<code class="docutils literal notranslate"><span class="pre">antigravity</span></code> for Gemini models through Google’s Antigravity CLI. Then
-run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span> <span class="pre">--project</span> <span class="pre">NAME</span></code> and log that CLI in inside the
-project container. The council provider name is <code class="docutils literal notranslate"><span class="pre">gemini</span></code>; it does not
-use the separate Gemini CLI feature. If Antigravity reports an expired
-login, <code class="docutils literal notranslate"><span class="pre">agy</span> <span class="pre">models</span></code> refreshes the project credential without giving a
-council runner the refresh token.</p>
-<p>The council reads the login from the project container’s workspace
-volume, never from the computer running the dashboard, so a login on
-the host does not count. One provider with a usable login is enough to
-open the council; each provider you name as a participant needs its own.
-When the <strong>Agent Council</strong> button reports that no login was found, it
-says why for each provider (no login file at the path it looked at, a
-file it could not read, or a token that has lapsed). Clicking the button
-re-checks, so there is no need to reload after logging in.</p>
-<ol class="arabic simple">
-<li><p>Open a containerized project in the dashboard.</p></li>
-<li><p>Click <strong>Agent Council</strong> in the toolbar (between the project name and
-the Run menu). The first time, one or two questions come first:
-if the project is too large to copy in full, a size window offers
-to copy only the files git tracks
-(<a class="reference internal" href="#projects-too-large-to-copy-in-full">Projects too large to copy in full</a>);
-and if this project’s image has not been used for a council on this
-computer, a consent window asks to run a short credential test
-(<a class="reference internal" href="#the-first-council-on-a-computer">The first council on a computer</a>).</p></li>
-<li><p>Choose <strong>Plan a change</strong> — or <strong>Implement a plan</strong>, which is
-enabled once a planning council has an accepted plan to seed it.</p></li>
-<li><p>Write the question, add at least two participants covering two
-distinct models, pick a chairbot, review the settings and the
-credential disclosure, and click <strong>Convene council</strong>.</p></li>
-<li><p>Watch the deliberation in the council workspace. Answer any blocking
-question the council raises.</p></li>
-<li><p>When a plan is ready, review it on the <strong>Plan</strong> tab and choose
-<strong>Accept and save plan</strong>, <strong>Request another pass</strong>, or <strong>Reject</strong>.</p></li>
-<li><p>For a planning council, either hand the saved plan to another agent
-or convene an implementation council from it. An implementation
-council returns a reviewed patch for you to apply; it never changes
-the live project itself.</p></li>
-</ol>
-</section>
-<section id="example-usage">
-<h2>Example usage<a class="headerlink" href="#example-usage" title="Link to this heading"></a></h2>
-<p>A researcher wants to add a caching layer to a slow pipeline step but is
-unsure whether it is safe. They convene a council with three
-participants: two different models from one provider and one from
-another (the form recommends, without requiring, at least one
-cross-provider participant, because same-family models can share blind
-spots). The chairbot defaults to the first participant.</p>
+<section id="the-two-kinds-of-council">
+<h2>The two kinds of council<a class="headerlink" href="#the-two-kinds-of-council" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong>Round 1 — independent proposals.</strong> Each participant reads the
-project copy and writes its own proposal without seeing the others.</p></li>
-<li><p><strong>Cross-review.</strong> Each participant receives the peers’ proposals as
-quoted, untrusted material and tries to <em>falsify</em> them — naming
-incorrect assumptions, missing cases, and unstated costs. By default,
-peer proposals are shown unattributed, so a participant judges the
-argument rather than the author.</p></li>
-<li><p><strong>Synthesis.</strong> The chairbot folds the proposals and critiques into one
-candidate plan.</p></li>
-<li><p><strong>Veto.</strong> Every other participant votes on the candidate. The plan is
-ready only when <strong>every</strong> required veto returns <code class="docutils literal notranslate"><span class="pre">accept</span></code>.</p></li>
-<li><p><strong>A blocking question.</strong> One participant finds that the cache
-invalidation policy is a genuine judgment call that evidence cannot
-decide. The council pauses and asks the researcher, showing the
-alternatives, their consequences, and each participant’s position. The
-researcher’s answer is recorded and supplied to the next round.</p></li>
-<li><p><strong>Plan ready.</strong> After the researcher’s decision, a second round
-resolves the remaining objections and every veto accepts. The plan is
-saved, and its implementation brief is handed to a separate coding
-agent.</p></li>
+<li><p><strong>Plan</strong> — the council deliberates a proposed change and delivers a
+written implementation plan.</p></li>
+<li><p><strong>Implementation</strong> — convened from an <em>accepted</em> plan, the council
+delivers a reviewed <strong>patch</strong> that implements it. It refuses to start
+without the plan.</p></li>
 </ul>
+<p>A patch is text the researcher applies by hand, for example with
+<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">apply</span></code>. No participant ever holds a writable path to the live
+project.</p>
+</section>
+<section id="container-only-and-why">
+<h2>Container-only, and why<a class="headerlink" href="#container-only-and-why" title="Link to this heading"></a></h2>
+<p>A council is available only for a <strong>containerized</strong> project. Its
+containment claims rest on creating a disposable container, running a
+participant in it, and proving the container gone afterward; a host
+project has no container to clone, and several agents acting at once
+are more likely to cause harm than one. On a host project the toolbar
+button says: <strong>Convert this project to a container to convene a
+council.</strong></p>
+</section>
+<section id="shadow-containers">
+<h2>Shadow containers<a class="headerlink" href="#shadow-containers" title="Link to this heading"></a></h2>
+<p>Each participant works in its own <em>shadow</em> of the project container.
+Every turn — each proposal, review, synthesis, and vote — runs in a
+fresh runner built from the project’s image by its immutable id,
+holding a copy of a sealed snapshot of the project. The runner’s root
+filesystem is read-only, its only network path is its own provider’s
+API, and when the turn ends the whole container is destroyed and its
+absence confirmed. No participant inherits another’s state or its own
+earlier work. A fresh container takes seconds, but a council spends far
+more tokens than one agent and needs memory for every copy at once, so
+it is best kept for planning or implementing a complex feature or a
+multi-step experiment.</p>
+</section>
+<section id="execution-backend">
+<h2>Execution backend<a class="headerlink" href="#execution-backend" title="Link to this heading"></a></h2>
+<p>Each participant is a provider’s own command-line agent running
+headless in its runner, with that provider’s native tools for reading,
+searching, and running scripts and tests against the copy. Each runner
+is authenticated with the narrowest workable credential from the
+subscription already logged in for the project, and its work is billed
+to that subscription. There is no API-key fallback.</p>
+</section>
+<section id="convening-a-council">
+<h2>Convening a council<a class="headerlink" href="#convening-a-council" title="Link to this heading"></a></h2>
+<p>Enable each provider’s tool in the project’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (<code class="docutils literal notranslate"><span class="pre">claude</span></code>
+for Claude Code, <code class="docutils literal notranslate"><span class="pre">codex</span></code> for Codex, <code class="docutils literal notranslate"><span class="pre">antigravity</span></code> for Gemini models
+through Google’s Antigravity CLI), rebuild the image, and log the tool
+in from a terminal inside the project container; a login on the host
+does not count. When the <strong>Agent Council</strong> button finds no usable
+login, it says why for each provider, and clicking it again re-checks.</p>
+<ol class="arabic simple">
+<li><p>Open a containerized project and click <strong>Agent Council</strong>. The first
+time, it may ask whether to copy only the files git tracks and
+whether to run a credential test (both described below).</p></li>
+<li><p>Choose <strong>Plan a change</strong>, or <strong>Implement a plan</strong> once a planning
+council has an accepted plan.</p></li>
+<li><p>Write the question, add participants covering at least two distinct
+models, pick the chairbot, review the settings and the disclosure,
+and click <strong>Convene council</strong>.</p></li>
+<li><p>Watch the deliberation and answer any blocking question it raises.</p></li>
+<li><p>Review the candidate on the <strong>Plan</strong> tab and choose <strong>Accept and
+save plan</strong> or <strong>Reject</strong>. An accepted plan offers <strong>Implement plan
+with new council</strong>.</p></li>
+</ol>
 </section>
 <section id="the-protocol-and-its-termination-and-quorum-rules">
 <h2>The protocol, and its termination and quorum rules<a class="headerlink" href="#the-protocol-and-its-termination-and-quorum-rules" title="Link to this heading"></a></h2>
-<p>The standard protocol is <strong>phase-synchronous with bounded concurrency</strong>.
-The next phase begins only after every participant in the current phase
-has produced a terminal turn or failed visibly; a failed participant is
-recorded and noted, never silently dropped and never counted as
-agreement. Within a phase, no participant’s result is revealed to
-another until the phase barrier lifts — that withholding is what
-enforces independence.</p>
-<p>A planning council’s round runs cross-review → synthesis → veto →
-termination check. An implementation council’s runs
-implementation → conformance-review → synthesis → veto → termination
-check: one participant holds the pen and writes the patch, the others
-review it against the seeded plan for conformance rather than
-re-litigating the plan itself. Both kinds share the termination check,
-which resolves the round under an explicit quorum:</p>
-<ul>
+<p>The protocol is <strong>phase-synchronous with bounded concurrency</strong>. A phase
+ends only when every participant has produced a final turn or failed
+visibly; a failure is recorded, never dropped and never counted as
+agreement. No participant sees another’s result until the phase ends,
+which keeps proposals independent.</p>
+<p>A planning council opens with <strong>independent proposals</strong>. Each round
+then runs <strong>cross-review</strong> (each participant tries to falsify the
+others’ proposals, which arrive as quoted, untrusted material and, by
+default, unattributed), <strong>synthesis</strong> (the chairbot folds proposals and
+critiques into one candidate), <strong>veto</strong> (every other participant votes
+on it), and the termination check. An implementation council’s round
+runs implementation, conformance review, synthesis, veto, and the
+check: one participant writes the patch, and the others review it
+against the plan rather than re-arguing the plan.</p>
+<ul class="simple">
 <li><p><strong>Plan ready</strong> only when <strong>every required veto returns <code class="docutils literal notranslate"><span class="pre">accept</span></code>.</strong> A
-missing or failed veto is <code class="docutils literal notranslate"><span class="pre">undetermined</span></code>, which is neither acceptance
-nor absence of objection — it blocks a ready plan exactly as an
-objection would.</p></li>
-<li><p><strong>Needs human</strong> when any participant raises a blocking question — the
-campaign pauses and waits for the researcher.</p></li>
-<li><p><strong>Next round</strong> when an objection or an <code class="docutils literal notranslate"><span class="pre">undetermined</span></code> veto remains and
-rounds are left in the budget.</p></li>
-<li><p><strong>Rounds exhausted</strong> with objections outstanding — the campaign enters
-a <em>needs human</em> state that offers exactly three exits, and never a
-plain response that would silently relaunch the spent budget:</p>
-<ol class="arabic simple">
-<li><p>grant a bounded resolution round;</p></li>
-<li><p>resolve or override the named objections, then request one final
-veto; or</p></li>
-<li><p>reject and archive the candidate.
-A human-overridden objection is recorded as a researcher decision, not
-laundered into council agreement.</p></li>
-</ol>
-<p>A council whose rounds run out also gets one last chairbot turn — a
-<strong>deliberation summary</strong>. Its deliverable is deliberately <em>not</em> a
-plan, because no plan was agreed; it says what the argument was
-about. Before this existed, a non-convergent council simply stopped
-and left the researcher a raw objection list with nothing tying it
-together.</p>
-</li>
-<li><p><strong>Quorum floor.</strong> A legitimate result requires at least <strong>two distinct
-models</strong> to have completed substantive roles. A one-model “council” is
-not a council.</p></li>
+missing or failed veto is <code class="docutils literal notranslate"><span class="pre">undetermined</span></code>, which blocks exactly as an
+objection does.</p></li>
+<li><p><strong>Needs human</strong> when any participant raises a blocking question. The
+council pauses and shows the alternatives, their consequences, and
+each participant’s position; the answer goes to the next round.</p></li>
+<li><p><strong>Next round</strong> when an objection or <code class="docutils literal notranslate"><span class="pre">undetermined</span></code> veto remains and
+rounds are left.</p></li>
+<li><p><strong>Rounds exhausted</strong> with objections outstanding: the chairbot writes
+a <strong>deliberation summary</strong> (not a plan, because none was agreed), and
+the council offers three exits — grant a bounded resolution round;
+resolve or override the objections and request one final veto; or
+reject and archive the candidate. An override is recorded as the
+researcher’s decision, not as agreement.</p></li>
+<li><p><strong>Quorum floor.</strong> A result requires at least <strong>two distinct models</strong>
+to have completed substantive roles.</p></li>
 </ul>
-<p>A configurable <strong>minimum number of rounds</strong> (default 1) forces at least
-one adversarial cross-review round, so a plan cannot be rubber-stamped
-in a single pass. The consensus rule — every required veto must accept —
-is <strong>not</strong> a setting: exposing a “majority is enough” knob would weaken
-the one property that makes the verdict meaningful.</p>
+<p>The consensus rule is not a setting; a “majority is enough” option would
+weaken the one property that makes the verdict meaningful.</p>
 </section>
 <section id="input-options">
 <h2>Input options<a class="headerlink" href="#input-options" title="Link to this heading"></a></h2>
-<section id="participants">
-<h3>Participants<a class="headerlink" href="#participants" title="Link to this heading"></a></h3>
-<p>Each participant is a <code class="docutils literal notranslate"><span class="pre">(provider,</span> <span class="pre">model)</span></code> pair with an optional role.
-Claude, Codex, and Gemini-through-Antigravity are supported when their
-runner image, login, and immutable-image evidence gates are satisfied.
-The UI shows the model catalog recorded by that evidence; when no
-verified catalog exists it accepts an explicit model identifier rather
-than claiming a stale baked-in list is current. A council needs at least
-two participants whose completed turns resolve to two distinct
-<code class="docutils literal notranslate"><span class="pre">(provider,</span> <span class="pre">model)</span></code> identities. Requested aliases and missing identities
-do not satisfy that quorum. Several models from one provider debating is
-supported; the form recommends at least one participant from a different
-provider.</p>
-</section>
-<section id="chairbot">
-<h3>Chairbot<a class="headerlink" href="#chairbot" title="Link to this heading"></a></h3>
-<p>The chairbot is the single pen-holder that synthesizes each round’s
-candidate plan, fixed for the campaign. It defaults to the <strong>first
-configured participant</strong> — a structural default, not a capability
-judgment; vaibify does not rank models. Change it in one click. The
-chairbot never votes on its own candidate, and its framing power is
-checked by every other participant’s veto.</p>
-</section>
-<section id="council-settings">
-<h3>Council settings<a class="headerlink" href="#council-settings" title="Link to this heading"></a></h3>
-<p>Each setting has a safe default, so you can launch without touching any
-of them.</p>
+<p><strong>Participants.</strong> Each is a provider and model with an optional role.
+Claude, Codex, and Gemini through Antigravity are supported. The form
+shows the model catalog the provider’s evidence recorded, or accepts an
+explicit model id. At least two participants must resolve to two
+distinct models; requested aliases do not count. The form recommends at
+least one participant from a second provider, because models of one
+family can share blind spots. A council may also be given a name.</p>
+<p><strong>Chairbot.</strong> The chairbot holds the pen: it writes each round’s
+candidate. It defaults to the first participant — a structural default,
+not a judgment of which model is best — and changes in one click. It
+never votes on its own candidate, and every other participant’s veto
+checks its framing.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Setting</p></th>
@@ -338,36 +246,42 @@ of them.</p>
 <tbody>
 <tr class="row-even"><td><p><strong>Peer anonymity in review</strong></p></td>
 <td><p>on</p></td>
-<td><p>Peers’ proposals and critiques are shown unattributed during review, so a participant judges the argument, not the author. Identities are still kept in the record.</p></td>
+<td><p>Proposals are reviewed unattributed; identities stay in the record.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Effort per participant</strong></p></td>
-<td><p>provider standard</p></td>
-<td><p>Reserved for provider-specific runner controls; current adapters use the selected model’s standard behavior.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">standard</span></code></p></td>
+<td><p>Recorded with the council; the provider adapters do not read it.</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Execution permission</strong></p></td>
-<td><p>full sandbox</p></td>
-<td><p><em>Full sandbox</em> lets participants run code against the disposable copy; <em>read-only council</em> skips execution for a cheaper, design-only deliberation, where no claim can be <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>.</p></td>
+<td><p>Full sandbox</p></td>
+<td><p><em>Read-only council</em> skips execution for a cheaper, design-only deliberation in which no claim can be <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Minimum rounds</strong></p></td>
 <td><p>1</p></td>
-<td><p>Force at least this many adversarial cross-review rounds even if the first veto set would accept.</p></td>
+<td><p>Force at least this many cross-review rounds even if the first veto would accept.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Output budget per turn (MB)</strong></p></td>
+<td><p>10</p></td>
+<td><p>A turn that produces more is stopped.</p></td>
 </tr>
 </tbody>
 </table>
-<p>Advanced maximum-rounds, time, and output limits bound the cost.</p>
-</section>
+<p>The round limit is not on the form and defaults to three. Each turn
+also has a time budget (four hours by default) and is stopped after a
+long silence; a turn stopped at its time or output budget prompts an
+offer of a larger one. A runner’s access token cannot renew itself, so
+when a login will expire before the turn budget, the form says so and
+turns are capped at the login’s remaining life.</p>
 </section>
 <section id="the-charter-the-by-laws-every-participant-is-bound-by">
 <h2>The charter — the by-laws every participant is bound by<a class="headerlink" href="#the-charter-the-by-laws-every-participant-is-bound-by" title="Link to this heading"></a></h2>
 <p>Every participant receives the same server-owned <strong>charter</strong> as its
-highest-priority instruction, delivered on the command line so it never
-overwrites or is overwritten by your project’s own agent-instruction
-files. It is the reviewable contract the whole feature rests on, so it
-is reproduced here verbatim rather than paraphrased. This is charter
-version 1.8.0 (the version constant lives at
-<code class="docutils literal notranslate"><span class="pre">S_CHARTER_VERSION</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify/gui/agentCouncilCharter.py</span></code>; a campaign
-persists the version and text it ran under, so an older plan stays
-readable as what it was):</p>
+highest-priority instruction, on the command line, so it never collides
+with the project’s own instruction files, which are not copied into the
+snapshot at all. It is reproduced verbatim. This is the text of the charter
+version 1.8.0 (the constant <code class="docutils literal notranslate"><span class="pre">S_CHARTER_VERSION</span></code> in
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/agentCouncilCharter.py</span></code>; each council records the version
+and text it ran under, so an older plan stays readable as what it was):</p>
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>COUNCIL CHARTER (version 1.8.0)
 
 1. Role and its limits. You are one of several independent models
@@ -435,130 +349,63 @@ about its author.
 </pre></div>
 </div>
 </section>
-<section id="execution-backend">
-<h2>Execution backend<a class="headerlink" href="#execution-backend" title="Link to this heading"></a></h2>
-<p>The current implementation is runner-only. Claude Code, Codex, or
-Antigravity runs headless inside a disposable runner container built
-from your project’s image, against a copy of the sealed snapshot.
-Participants get the provider’s native tools: they can read, search, and
-run scripts and tests against the copy, which is what makes data-driven
-planning possible. Each runner is authenticated by the narrowest
-workable credential from your existing subscription login and billed to
-that subscription. The trade-off is the credential exposure described
-below.</p>
-<p>There is no API-key fallback. A future direct-API backend would be a
-separate execution engine with its own tool, credential, accounting, and
-containment design; the runner adapters do not silently switch to it.</p>
-</section>
 <section id="the-first-council-on-a-computer">
 <h2>The first council on a computer<a class="headerlink" href="#the-first-council-on-a-computer" title="Link to this heading"></a></h2>
-<p>A council copies this project’s provider login into each disposable
-runner, so the first council with a project’s image on a computer asks
-first. The window, <strong>First council with this project’s image on this
-computer</strong>, lists the providers this project is logged in to; tick the
-ones councils may use and choose <strong>Run the test and continue</strong>. Codex
-and Gemini ask for the model id to test with, because vaibify cannot
-list their models.</p>
-<p>vaibify then runs a short credential test against the project’s image,
-by its immutable id, in a disposable runner — the same machinery a
-council uses:</p>
-<ol class="arabic simple">
-<li><p>a copyable login is present;</p></li>
-<li><p>a copy of the access token only (never the refresh token)
-authenticates one trivial, paid turn;</p></li>
-<li><p>the project’s own login is still present and unchanged (vaibify does
-not spend a request to prove it still works);</p></li>
-<li><p>the login’s token was not rotated;</p></li>
-<li><p>the copied token is gone from this computer and the runner was
-destroyed;</p></li>
-<li><p>a turn with a model that does not exist is reported as a failure,
-and checks 4 and 5 still hold;</p></li>
-<li><p>a runner killed part-way through a turn is cleaned up, and checks 4
-and 5 still hold.</p></li>
-</ol>
-<p>Each provider costs about two paid requests. Nothing is retried; a turn
-that does not answer within its timeout ends the test as <em>did not
-finish</em>. Only a passed test enables the provider, and your consent
-applies to <strong>every project on this computer that uses this image</strong>.</p>
-<p><strong>Credential tests panel.</strong> The council’s first screen links to
-<strong>Credential tests</strong>, which shows each provider’s consent, its latest
-test (passed on a date, failed at a named check, or did not finish),
-and the running projects that share the image. <strong>Re-run test</strong> suspends
-the current pass until the new test passes — a test that does not
-finish leaves the provider off. <strong>Withdraw</strong> takes effect at once:
-turns already running finish, and no later turn, for any project using
-this image, is given a copy of the login until you consent and a test
-passes again. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> reports the same records and never
-changes them.</p>
-<p>What the consent can guarantee is narrow and stated honestly: it is
-recorded only from an authenticated vaibify browser session holding the
-project’s lease. That excludes agents inside containers and local
-processes without your browser credential; it is not proof that a
-person clicked.</p>
+<p>A council copies the project’s provider login into each runner, so the
+first council with a project’s image on a computer asks first. The
+window <strong>First council with this project’s image on this computer</strong>
+lists the logged-in providers; tick the ones councils may use and
+choose <strong>Run the test and continue</strong> (Codex and Gemini also ask for a
+model id). vaibify then runs a short credential test in a disposable
+runner. It checks that a copy of the access token alone, never the
+refresh token, authenticates one paid turn; that the project’s own
+login is unchanged; that the copy is gone and the runner destroyed; and
+that a failed turn and a runner killed mid-turn are cleaned up as
+safely. Nothing is retried, and only a passed test enables the
+provider. The consent covers <strong>every project on this computer that uses
+this image</strong>.</p>
+<p>The <strong>Credential tests</strong> panel shows each provider’s consent and latest
+result. <strong>Re-run test</strong> suspends the provider until the fresh test
+passes. <strong>Withdraw</strong> takes effect at once: running turns finish, and no
+later turn receives the login until consent is given and a test passes
+again. The diagnosis that a failure toast’s <strong>Click to run a
+diagnosis</strong> opens reports the same records. Consent is accepted
+only from an authenticated browser session holding the project’s lease,
+which excludes agents inside containers; it is not proof that a person
+clicked.</p>
 </section>
 <section id="projects-too-large-to-copy-in-full">
 <h2>Projects too large to copy in full<a class="headerlink" href="#projects-too-large-to-copy-in-full" title="Link to this heading"></a></h2>
-<p>Each participant works on its own copy of the project, held in memory on
-this computer. A project that keeps generated output inside its
-repository can be far over the snapshot’s limits even when its code is
-small, because the whole-directory copy includes files git ignores.</p>
-<p>When that happens and the files git tracks would fit, the council button
-opens <strong>This project is too large to copy in full for a council</strong>. It
-shows why (this project’s size against the limits), the option — <strong>Copy
-only the files git tracks</strong>, with their count, size, and how many have
-uncommitted edits — and an expandable list of <strong>Files that will be
-missing</strong>, grouped by top-level folder and reason (untracked, ignored,
-deleted in the working tree, not checked out, excluded by vaibify
-policy). Tracked files are copied as they are in the working tree,
-uncommitted edits included. A merge conflict, a submodule in the index,
-or a tracked directory replaced by a symbolic link refuses the scope,
-naming the paths — a linked directory would otherwise have its target’s
-files copied in place of the tracked ones.</p>
-<p>The choice is remembered for the project and shown in the convene form,
-where it can be changed; every start re-checks it against the current
-tree. Participants are told what was left out — counts, sizes and
-top-level folders, never file names — and that they must not assume the
-contents of omitted files. In this scope a new untracked output file
-does not mark a finished council stale; an edit to a tracked file does.</p>
-<section id="files-vaibify-never-copies">
-<h3>Files vaibify never copies<a class="headerlink" href="#files-vaibify-never-copies" title="Link to this heading"></a></h3>
-<p>Whatever the scope, vaibify leaves out paths that may hold a secret or
-steer a participant, even when they are tracked, and lists each one
-under <strong>Files that will be missing</strong> as “excluded by vaibify policy”.
-The policy matches path components at any depth:</p>
-<ul class="simple">
-<li><p>repository and runtime state (<code class="docutils literal notranslate"><span class="pre">.git</span></code>, <code class="docutils literal notranslate"><span class="pre">.vaibify</span></code>) and generated
-caches (<code class="docutils literal notranslate"><span class="pre">__pycache__</span></code>, <code class="docutils literal notranslate"><span class="pre">.pytest_cache</span></code>, <code class="docutils literal notranslate"><span class="pre">.ipynb_checkpoints</span></code>);</p></li>
-<li><p>agent configuration and instruction files (<code class="docutils literal notranslate"><span class="pre">.claude</span></code>, <code class="docutils literal notranslate"><span class="pre">.codex</span></code>,
-<code class="docutils literal notranslate"><span class="pre">.gemini</span></code>, <code class="docutils literal notranslate"><span class="pre">.mcp.json</span></code>, <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>,
-<code class="docutils literal notranslate"><span class="pre">CLAUDE.local.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.override.md</span></code>, and similar);</p></li>
-<li><p>credential stores: <code class="docutils literal notranslate"><span class="pre">.ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">.netrc</span></code>, <code class="docutils literal notranslate"><span class="pre">.git-credentials</span></code>, <code class="docutils literal notranslate"><span class="pre">.aws</span></code>,
-<code class="docutils literal notranslate"><span class="pre">.docker</span></code>, <code class="docutils literal notranslate"><span class="pre">.npmrc</span></code>, <code class="docutils literal notranslate"><span class="pre">.pypirc</span></code>, <code class="docutils literal notranslate"><span class="pre">.config/gh</span></code>, <code class="docutils literal notranslate"><span class="pre">.env</span></code>, and every
-<code class="docutils literal notranslate"><span class="pre">.env.*</span></code> variant.</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">.env.*</span></code> includes templates such as <code class="docutils literal notranslate"><span class="pre">.env.example</span></code>. A template
-conventionally holds no secrets, but nothing can tell it from a file
-that does, so the whole family is excluded; put a template’s contents in
-the question if a participant needs them. Names that merely begin with
-the same letters (<code class="docutils literal notranslate"><span class="pre">.environment</span></code>, <code class="docutils literal notranslate"><span class="pre">.envrc</span></code>) are not excluded.</p>
-</section>
+<p>Each participant’s copy is held in memory on the hub’s computer, and a
+whole-directory copy includes files git ignores, so a project that
+keeps generated output in its repository can exceed the snapshot’s
+limits. When the files git tracks would fit, the council offers to
+<strong>copy only the files git tracks</strong>, listing what will be missing and
+why. Tracked files are copied as they stand in the working tree,
+uncommitted edits included; a merge conflict, a submodule, or a tracked
+directory replaced by a symbolic link refuses this scope. The choice is
+remembered for the project and re-checked at every start. Participants
+are told what was left out (counts, sizes, and top-level folders, never
+file names) and must not assume the contents of omitted files.</p>
+<p>Whatever the scope, vaibify never copies repository and runtime state,
+generated caches, agent configuration directories and instruction files
+(<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>, and similar), or conventional
+credential stores such as <code class="docutils literal notranslate"><span class="pre">.ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">.netrc</span></code>, <code class="docutils literal notranslate"><span class="pre">.env</span></code>, and every <code class="docutils literal notranslate"><span class="pre">.env.*</span></code>
+variant, templates included.</p>
 </section>
 <section id="credential-risk-disclosure">
 <h2>Credential-risk disclosure<a class="headerlink" href="#credential-risk-disclosure" title="Link to this heading"></a></h2>
-<p>The runner backend reuses the provider account already configured for
-your project rather than requiring a separately billed API key. This is
-an accepted, displayed risk, and the launch form states it in plain
-language before you convene:</p>
+<p>The council reuses the provider account already configured for the
+project instead of a separately billed API key. This is an accepted,
+displayed risk. The launch form states:</p>
 <blockquote>
-<div><p>This council runs the provider’s CLI inside a throwaway container built
-from your project’s image, holding a copy of your files. To do that it
-reuses the subscription already logged in for this project, copying the
-narrowest token that authenticates into that one container. A
-prompt-injected model could read its own copied token or push data out
-through the one network path it is allowed (its provider’s API). The
-copy is destroyed with the container, but <strong>destroying the copy does
-not revoke the credential</strong> — revoke at the provider if a run is
-compromised.</p>
+<div><p>This council reuses the provider subscription already logged in for
+this project, copying the narrowest token that authenticates into one
+throwaway container. A prompt-injected model could read its own copied
+token or push data out through the one network path it is allowed
+(its provider’s API). The copy is destroyed with the container, but
+destroying the copy does not revoke the credential — revoke at the
+provider if a run is compromised.</p>
 </div></blockquote>
 <p>The consent window and the launch form both add:</p>
 <blockquote>
@@ -568,90 +415,52 @@ copy. The token expires and cannot renew itself, but until it expires
 it works. This test shows the sharing works as designed; it does not
 make that risk zero.</p>
 </div></blockquote>
-<p>Exposure is narrowed: one provider’s token per runner (never the shared
-store), the shortest-lived credential that works, and egress restricted
-to that provider’s endpoints. What is <em>not</em> relaxed is containment — the
-proven-absence obligations are unchanged.</p>
-<p><strong>Whose subscription, on which machine.</strong> When you drive a hub on another
-machine (a remote session), the login a runner reuses belongs to the
-account configured on <strong>the machine the hub runs on</strong>, which may not be
-the computer you are sitting at. On a shared compute server, “your
-subscription” is a claim about someone else’s account as well as your
-own. The launch form names the execution host in a remote session.</p>
+<p>Every provider given a participant receives the project’s content. In
+a remote session the reused login belongs to the account on <strong>the
+machine the hub runs on</strong>, and the launch form names that machine.</p>
 </section>
 <section id="output">
 <h2>Output<a class="headerlink" href="#output" title="Link to this heading"></a></h2>
-<p>An accepted plan is saved to the hub’s local application data (outside
-your repository, credential-redacted) as a plain-text artifact you can
-copy or download. Alongside it, the council produces an <strong>implementation
-brief</strong> — the accepted plan’s path and hash, the repository baseline,
-the constraints, the validation expectations, and the stop conditions.
-The brief tells a fresh implementation agent to report contradictions
-rather than silently expand scope. Downloads land on the computer your
-browser runs on, which in a remote session is not the execution host.</p>
-<p>During deliberation, the workspace streams a bounded, sequence-numbered
-event log per participant. It is a display convenience: old console
-output may roll off, and the log marks the point where it did. The
-structured phase artifacts — proposals, critiques, candidate plans,
-the evidence ledger, and your decisions — are the durable record and do
-not roll off. Settled structured turn results are also rendered from the
-campaign record, so a long completed turn remains readable after its
-older live console events leave the bounded display window.</p>
+<p>The council’s record — proposals, critiques, candidates, the evidence
+ledger, and the researcher’s decisions — is saved to the hub’s local
+application data, outside the repository and with credentials
+redacted. The plan document carries the question, the snapshot
+reviewed, the participants and the models they resolved to, the plan
+items, assumptions, rejected alternatives and why, required
+verification, stop conditions telling an implementer when to halt and
+return to the council, noted findings, and open questions. A candidate
+never accepted says so in its own text. The Plan tab copies it to the
+clipboard or saves it as a file. The live event log per participant is
+bounded and may roll off; the structured record does not.</p>
 </section>
 <section id="asking-the-chairbot">
 <h2>Asking the chairbot<a class="headerlink" href="#asking-the-chairbot" title="Link to this heading"></a></h2>
-<p>An accepted plan is a document; sometimes what you want is a
-conversation. Open <strong>Ask the chairbot</strong> in the council workspace and the
-pen-holder that wrote the plan answers questions about it — why an
-alternative was rejected, what a plan item assumes, what a held question
-is really asking.</p>
-<p>The conversation runs in one disposable runner built from the same
-sealed snapshot the council reviewed, and it is destroyed when you close
-the conversation. Each message spends this project’s provider
-subscription exactly as a deliberation turn does, so the
-credential-risk disclosure above applies unchanged.</p>
-<p>Three things it deliberately cannot do:</p>
-<ul class="simple">
-<li><p><strong>It settles nothing.</strong> The chairbot cannot accept a plan, clear an
-objection, answer a blocking question or start a round. Those are your
-decisions, taken with the workspace’s own controls; the conversation
-is reading, not voting.</p></li>
-<li><p><strong>It remembers only what is on screen.</strong> Every message is a fresh run
-in a container that kept no conversational state, so vaibify re-sends
-the whole transcript each time. That is also why a conversation has a
-message bound: at the bound it refuses further messages rather than
-quietly forgetting its own middle.</p></li>
-<li><p><strong>It answers from the sealed snapshot, not your repository as it
-stands now.</strong> If the baseline has moved, the workspace’s
-stale-baseline warning applies to the conversation too.</p></li>
-</ul>
-<p>The conversation closes itself after fifteen minutes idle, and after two
-hours however active it is. That is not housekeeping: the runner holds a
-copy of this project’s provider login for as long as it exists, and a
-browser tab you closed cannot be trusted to end it. A message already
-being answered is never cut short — it has its own time budget, and
-until it settles the project cannot be released to another session.</p>
+<p><strong>Ask the chairbot</strong> opens a conversation with the pen-holder about the
+council’s work — why an alternative was rejected, what a plan item
+assumes. It runs in a disposable runner built from the same sealed
+snapshot, and each message spends the project’s subscription as a turn
+does. It <strong>settles nothing</strong>: it cannot accept a plan, clear an
+objection, or answer a blocking question. It <strong>remembers only what is
+on screen</strong>: each message is a fresh run, so vaibify re-sends the
+transcript, and at the message limit it refuses rather than forgetting
+its middle. It <strong>answers from the snapshot</strong>, not the repository as it
+stands now. The conversation closes after fifteen minutes idle, and
+after two hours however active, because its runner holds a copy of the
+login.</p>
 </section>
 <section id="honest-limits">
 <h2>Honest limits<a class="headerlink" href="#honest-limits" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong>Consensus is not proof.</strong> The council’s strongest permitted
-conclusion is that no known blocking objection remains after
-independent proposals, adversarial review, executable checks where
-available, and human acceptance. Neither one agent’s confidence nor
-several agents’ agreement is evidence by itself.</p></li>
-<li><p><strong>What “confirmed” means, and does not.</strong> A claim is <code class="docutils literal notranslate"><span class="pre">confirmed</span></code> only
-when it names a real command or observation that actually ran, with
-the state it tested recorded. A claim from source reading is
-<code class="docutils literal notranslate"><span class="pre">supported</span> <span class="pre">by</span> <span class="pre">source</span> <span class="pre">inspection</span></code>; one that was never executed is
-<code class="docutils literal notranslate"><span class="pre">asserted</span></code>; one whose evidence is unavailable is <code class="docutils literal notranslate"><span class="pre">blocked</span></code>. A
-read-only council can never reach <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>. A “confirmed” label
-whose supporting evidence is lost reverts to <code class="docutils literal notranslate"><span class="pre">asserted</span></code> — a claim
-never keeps a confirmed status it can no longer back.</p></li>
-<li><p><strong>The council does not apply its work.</strong> A planning council writes a
-plan; an implementation council writes and reviews patch text against
-that accepted plan. Neither changes the live project, and neither is a
-substitute for your judgment or the project’s own verification lanes.</p></li>
+<li><p><strong>Consensus is not proof.</strong> Agreement among agents is not evidence by
+itself.</p></li>
+<li><p><strong>“Confirmed” is specific.</strong> A claim is <code class="docutils literal notranslate"><span class="pre">confirmed</span></code> only when it names
+a command or observation that actually ran. Otherwise it is
+<code class="docutils literal notranslate"><span class="pre">supported</span> <span class="pre">by</span> <span class="pre">source</span> <span class="pre">inspection</span></code>, <code class="docutils literal notranslate"><span class="pre">asserted</span></code>, or <code class="docutils literal notranslate"><span class="pre">blocked</span></code>. A
+read-only council never reaches <code class="docutils literal notranslate"><span class="pre">confirmed</span></code>, and a confirmed claim
+whose evidence is lost reverts to <code class="docutils literal notranslate"><span class="pre">asserted</span></code>.</p></li>
+<li><p><strong>The council does not apply its work.</strong> Neither a plan nor a patch
+changes the live project or substitutes for the researcher’s judgment
+and the project’s own verification.</p></li>
 </ul>
 </section>
 </section>
@@ -660,8 +469,8 @@ substitute for your judgment or the project’s own verification lanes.</p></li>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="dashboard.html" class="btn btn-neutral float-left" title="The Dashboard" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="remoteAccess.html" class="btn btn-neutral float-right" title="Working on a remote machine" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="reproducibility.html" class="btn btn-neutral float-left" title="Reproducibility" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="systemPrompt.html" class="btn btn-neutral float-right" title="System Prompt" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -1,0 +1,705 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The PROOF Ladder &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Declaring AI Use" href="aiUse.html" />
+    <link rel="prev" title="Vibe Coding Scientific Software" href="vibeCoding.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">The PROOF Ladder</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-levels-of-the-proof-ladder">The levels of the PROOF Ladder</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#level-1-self-consistent">Level 1: Self-Consistent</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-2-published">Level 2: Published</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-3-reproducible">Level 3: Reproducible</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-4-traceable">Level 4: Traceable</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-5-regenerated">Level 5: Regenerated</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-6-attested">Level 6: Attested</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-ladder-is-and-is-not">What the ladder is and is not</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-vaibify-sits">Where vaibify sits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ascending-the-ladder-in-vaibify">Ascending the ladder in vaibify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#level-1-requirements">Level 1 requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-2-requirements">Level 2 requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-3-requirements">Level 3 requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reaching-level-3">Reaching Level 3</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-proof-tab">The PROOF tab</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#level-cells-and-status-lights">Level cells and status lights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-replay-axis">The Replay axis</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">The PROOF Ladder</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/proofLadder.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="the-proof-ladder">
+<h1>The PROOF Ladder<a class="headerlink" href="#the-proof-ladder" title="Link to this heading"></a></h1>
+<p>The PROOF Ladder is a scale of ever-stricter standards of confidence
+that AI agents have not inadvertently modified a project’s code or data.
+It measures how well a data-science project controlled the stochastic
+behavior of language models. The name comes from the pillars a result
+must rest on to be trusted by someone who was not there:
+<strong>P</strong>rovenance, <strong>R</strong>eproducibility, <strong>O</strong>penness, <strong>O</strong>versight, and
+<strong>F</strong>alsifiability.</p>
+<p>The levels are somewhat arbitrary, but they draw heavily on fields in
+which provenance and continuous confirmation of authenticity
+(“custody”) are paramount: the Supply-chain Levels for Software
+Artifacts (SLSA) framework, the Association for Computing Machinery’s
+artifact badging, and artwork certification. These resemble the norms,
+or aspirations, of most scientific studies, so the approach is broadly
+applicable.</p>
+<p><strong>The ladder measures custody, not correctness.</strong> It is <em>not</em> intended
+to confirm that results accurately represent reality. It only addresses
+how well the researchers monitored the role of AI in the research.</p>
+<section id="the-levels-of-the-proof-ladder">
+<h2>The levels of the PROOF Ladder<a class="headerlink" href="#the-levels-of-the-proof-ladder" title="Link to this heading"></a></h2>
+<p>SLSA, the closest model, is a community checklist for monitoring the
+software behind supply chains, so that vendors can confirm their
+software has not been modified by malicious actors. Its source-code
+track has four levels: use of version control; a changelog that details
+provenance; continuous technical control of the repository, enforcing
+its rules; and independent review by multiple trusted people. The
+analogy for science is clear: researchers seek to ensure that their
+software and data are free of corruption introduced by AI agents.</p>
+<p>Each level includes everything below it. Each also states what it does
+<em>not</em> establish, because a level’s limits matter as much as its claims.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Level</p></th>
+<th class="head"><p>Name</p></th>
+<th class="head"><p>Adds</p></th>
+<th class="head"><p>Does not establish</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>Self-Consistent</p></td>
+<td><p>Version control; every step tested and approved</p></td>
+<td><p>Anything outside the researcher’s own machine</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>Published</p></td>
+<td><p>Public release of data and a declaration of AI use</p></td>
+<td><p>How others can exactly reproduce the results</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>Reproducible</p></td>
+<td><p>Instructions and environment for a byte-identical rerun, attested by the authors</p></td>
+<td><p>That inputs trace to raw data, or a public record of all AI assistance</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>Traceable</p></td>
+<td><p>Public chain of events from raw data to publication, including prompts</p></td>
+<td><p>That a different AI would reach the same result</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>Regenerated</p></td>
+<td><p>The same science reproduced with a different AI</p></td>
+<td><p>That anyone besides the researcher has done so</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p>Attested</p></td>
+<td><p>Independent, publicly verifiable attestations</p></td>
+<td><p>That the result describes the universe correctly</p></td>
+</tr>
+</tbody>
+</table>
+<p>Given the pace of model and harness development, this scale may need
+revision, but it gives a vocabulary for how trustworthy an
+agent-assisted result is.</p>
+<section id="level-1-self-consistent">
+<h3>Level 1: Self-Consistent<a class="headerlink" href="#level-1-self-consistent" title="Link to this heading"></a></h3>
+<p>The lowest level is a project whose code and data are locally
+consistent and under version control. Outcomes are validated by a clear
+set of rules, such as unit tests that cover the large majority of the
+code. A project at Level 1 has crossed an important threshold: the data
+are analyzed, the figures are approaching camera-ready, and the
+researchers believe they have controlled the agents well enough that
+the results could be worth sharing. The project is, however, invisible
+to the rest of the world, and so by definition it is <em>not</em> a
+reproducible scientific result.</p>
+</section>
+<section id="level-2-published">
+<h3>Level 2: Published<a class="headerlink" href="#level-2-published" title="Link to this heading"></a></h3>
+<p>The public release of the data, together with a clear and complete
+declaration of how AI was used and controlled, marks Level 2. Maturing
+projects connect to remote resources both to keep the work safe and to
+prepare a publication, and those resources are natural places to
+release data products and the statement of AI use. A project that aims
+for Level 5 should also publish, at this stage, the tolerance it will
+accept for each output quantity, so that the threshold is fixed before
+any regeneration exists. Publication does <em>not</em> explain how other
+researchers can exactly reproduce the results.</p>
+</section>
+<section id="level-3-reproducible">
+<h3>Level 3: Reproducible<a class="headerlink" href="#level-3-reproducible" title="Link to this heading"></a></h3>
+<p>Level 3 adds published instructions for reproducing the results at the
+bit level, and an attestation that the original authors have performed
+that reproduction. A Level 3 product collects all dependencies in a
+clean, well-defined environment, regenerates the results exactly as in
+the original experiment, and includes hashes, such as SHA-256, that let
+others verify that every byte of their recreation matches. A
+reproducible result does <em>not</em> have to contain the raw observational
+data behind it, nor a public record of how the data and software were
+assisted by AI.</p>
+</section>
+<section id="level-4-traceable">
+<h3>Level 4: Traceable<a class="headerlink" href="#level-4-traceable" title="Link to this heading"></a></h3>
+<p>Level 4 adds a complete public record of the sequence of events, from
+the first commit to the curation of a long-term archive: the raw data,
+the analysis scripts, and the plotting scripts behind every published
+figure. Every artifact must have a public changelog, meaning both the
+git history and the transcript of AI prompts, which together (almost)
+prove the chain from an artifact’s creation to the published
+interpretation. The result traces back to all raw observational data,
+including calibration and every processing step. The Level 2
+publication must include the prompt transcript and a “supervision log”
+of what the researcher did independently of AI.</p>
+<p>Level 4 must be planned when the project is conceived: the transcript
+has to exist before Level 1, so a project that did not record it cannot
+reach Level 4 later. A traceable project lets others recreate the chain
+of events, but does <em>not</em> show that different AI agents would produce
+the same results.</p>
+</section>
+<section id="level-5-regenerated">
+<h3>Level 5: Regenerated<a class="headerlink" href="#level-5-regenerated" title="Link to this heading"></a></h3>
+<p>Level 5 recreates the results with at least one different AI agent and
+brings that second analysis to Level 4. Regeneration is not blindly
+feeding the original prompts to another agent: the researcher is an
+active participant and may have changed files by hand. Instead, the
+researcher uses the Level 2 publication as an implementation plan and
+collaborates with agents to build an entirely separate pipeline.</p>
+<p>The two results are very unlikely to match at the bit level, because of
+order-of-operations differences, so they must instead be judged
+consistent with the original publication against the tolerances
+published at Level 2. Choosing those ranges is a judgment call, but
+publishing them in advance exposes it to peer review and makes Level 5
+a quantitative assessment. Each artifact must independently satisfy
+Level 3. “A different model” means a different model identifier, a
+floor rather than a guarantee, since models from one vendor may share
+training data. A regenerated result shows that one researcher working
+with several agents obtains scientifically equivalent results; it does
+<em>not</em> show that independent researchers have done the same.</p>
+</section>
+<section id="level-6-attested">
+<h3>Level 6: Attested<a class="headerlink" href="#level-6-attested" title="Link to this heading"></a></h3>
+<p>The highest level adds independent, publicly verifiable attestations by
+trusted parties that they regenerated the results with multiple agents
+and obtained values within the tolerances of the Level 2 publication.
+The attestations must be verifiable in public, for example through
+tests run on a public repository or cryptographic links between
+witnesses’ identities (such as ORCID) and the DOIs of the archives;
+Zenodo and tools such as <code class="docutils literal notranslate"><span class="pre">in-toto</span></code> support this. Because the attestors
+never saw the original process, Level 6 is where independence from the
+researcher arrives.</p>
+<p>Level 6 does <em>not</em> imply that the results correctly describe the
+universe. Corrupt observations, conceptual misunderstandings, and bugs
+that every agent introduces identically all survive it, and scientists
+can interpret the same results differently. The scientific method must
+continue with independent experiments. Level 6 is a high bar that
+demands real community effort, so in the near term it will likely be
+reserved for high-profile claims, such as the discovery of life on
+another world. Whether reaching it is more efficient than having humans
+rebuild a result from scratch remains an open question.</p>
+</section>
+</section>
+<section id="what-the-ladder-is-and-is-not">
+<h2>What the ladder is and is not<a class="headerlink" href="#what-the-ladder-is-and-is-not" title="Link to this heading"></a></h2>
+<p>The ladder is a vocabulary for stating, and checking, the rigor with
+which a computational result was produced. It is independent of
+vaibify: any tool that implements container packaging, hash checks
+against public authorities, reproducible builds, and attestation logs
+could claim levels on it.</p>
+<p>Two properties are deliberately kept off the ladder. <strong>Test
+meaningfulness</strong>, whether a project’s tests are strong enough to catch
+subtle errors, is a property of the tests that a project should have at
+every level. <strong>Physical validation</strong>, whether a result respects
+conservation laws, symmetries, or limiting cases, is a claim about the
+science, not about the bits. Results can be perfectly reproducible and
+scientifically wrong.</p>
+</section>
+<section id="where-vaibify-sits">
+<h2>Where vaibify sits<a class="headerlink" href="#where-vaibify-sits" title="Link to this heading"></a></h2>
+<p>Vaibify implements <strong>Levels 1, 2, and 3</strong> and stops there by design.
+Level 4 is a phase change: the analysis must begin from raw
+observational data, which most projects do not need, and Levels 4 to 6
+depend on prompt publication, cross-agent regeneration, and third-party
+attestation that lie outside a local-first tool. Vaibify does record
+the AI-provenance evidence that Level 4 will need; see
+<a class="reference internal" href="#the-replay-axis">The Replay axis</a>.</p>
+<p><strong>Level 3 requires a containerized project.</strong> The level is defined by a
+pinned container image and an in-container rerun. A host-mode project,
+whose pipeline runs directly on the researcher’s machine, reaches
+Level 2 and stops; its Level 3 shows a single <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> blocker.</p>
+<p>Two design choices shape the implementation. Vaibify is <strong>local-first</strong>:
+the project stays on the researcher’s own disk and under their control,
+rather than being uploaded to a hosted platform. And <strong>agent output
+receives no special privilege</strong>: it passes the same gates as human
+output, in either direction. Vaibify is not a workflow manager (it uses
+a minimal JSON pipeline description), not an AI agent (it writes no code
+and drafts no papers), not a hosted reproducibility platform, and not a
+cryptographic attestation service.</p>
+</section>
+<section id="ascending-the-ladder-in-vaibify">
+<h2>Ascending the ladder in vaibify<a class="headerlink" href="#ascending-the-ladder-in-vaibify" title="Link to this heading"></a></h2>
+<p>A researcher can explore in a sandbox, toolkit, or Blank Project, which
+sit below Level 1, and create a Project when the work looks promising,
+or start in a Project from the beginning. Project mode is for numerical
+experiments expected to become part of a document: clearly defined
+steps that produce data products requiring careful monitoring. As a
+project matures, vaibify shows what the next PROOF level requires, and the
+dashboard’s theme follows the level the project has reached.</p>
+<p>Every requirement has a <strong>scope</strong>. A <em>Project</em> requirement applies to
+the whole experiment and lives in the Main tab’s <strong>Project</strong> block. A
+<em>Step</em> requirement must be met by each step and appears in that step’s
+expanded view, under its Level 1, Level 2, and Level 3 sections; the ⓘ
+beside each section lists every requirement with its live mark. Level 1
+is earned mostly step by step. Above Level 1 the requirements are
+mostly project-wide, and the focus shifts from science to bookkeeping:
+disseminating the results and making them reproducible.</p>
+<p>The labels below are the ones the dashboard shows. Where the PROOF tab
+and the Project block name the same requirement differently, both are
+given.</p>
+<section id="level-1-requirements">
+<h3>Level 1 requirements<a class="headerlink" href="#level-1-requirements" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Requirement</p></th>
+<th class="head"><p>Scope</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Project repository (Project block: <strong>Git enabled</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>The project and every file it touches live in a git repository.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Every step self-consistent</p></td>
+<td><p>Project</p></td>
+<td><p>Every step meets the step requirements below.</p></td>
+</tr>
+<tr class="row-even"><td><p>Input data declared</p></td>
+<td><p>Step</p></td>
+<td><p>The step lists its raw input files, or declares it needs none. The Project block shows the same row for all steps, with a one-click declaration for steps that have no inputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Integrity, Qualitative, and Quantitative unit tests pass</p></td>
+<td><p>Step</p></td>
+<td><p>One row per test category the step has.</p></td>
+</tr>
+<tr class="row-even"><td><p>Your sign-off recorded</p></td>
+<td><p>Step</p></td>
+<td><p>The researcher inspected the outputs and approved the step.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Nothing changed since verification</p></td>
+<td><p>Step</p></td>
+<td><p>No script, output, or upstream step changed after the step’s tests or sign-off.</p></td>
+</tr>
+<tr class="row-even"><td><p>Project context file (optional)</p></td>
+<td><p>Project</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> records the in-container agent’s standing instructions. Never blocks a level.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="level-2-requirements">
+<h3>Level 2 requirements<a class="headerlink" href="#level-2-requirements" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Requirement</p></th>
+<th class="head"><p>Scope</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>GitHub mirror</p></td>
+<td><p>Project</p></td>
+<td><p>Every published file matches the GitHub repository at a recently verified commit.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Zenodo deposit (Project block: <strong>Zenodo archive</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>Published files match a Zenodo deposit with a DOI.</p></td>
+</tr>
+<tr class="row-even"><td><p>arXiv manuscript (Project block: <strong>arXiv submission</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>Opt-in: checked only when an arXiv submission is recorded.</p></td>
+</tr>
+<tr class="row-odd"><td><p>AI model declared (Project block: <strong>AI models</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>Every model used is declared with vendor, model ID, and dates of use; open-weight models also give their weights source and revision hash. Undeclared is the only failing state.</p></td>
+</tr>
+<tr class="row-even"><td><p>Personal AI Configuration answered (Project block: <strong>Personal AI Configuration</strong>)</p></td>
+<td><p>Project</p></td>
+<td><p>See below.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Environment archive</p></td>
+<td><p>Project</p></td>
+<td><p>Asked once the environment snapshot pins a container image: deposit the image in a permanent archive, point at a deposit that holds it, or decline. Any answer meets it.</p></td>
+</tr>
+<tr class="row-even"><td><p>Supervised mode (optional)</p></td>
+<td><p>Project</p></td>
+<td><p>When enabled, every repository change is attributed to a recorded action. Never blocks a level.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Prompt Record (optional)</p></td>
+<td><p>Project</p></td>
+<td><p>When enabled, agent transcripts are captured and the first capture approved. Never blocks a level.</p></td>
+</tr>
+<tr class="row-even"><td><p>Published files match the GitHub mirror</p></td>
+<td><p>Step</p></td>
+<td><p>The step’s declared files match GitHub.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Published files match the Zenodo deposit</p></td>
+<td><p>Step</p></td>
+<td><p>The step’s declared files match Zenodo.</p></td>
+</tr>
+<tr class="row-even"><td><p>Manuscript figures frozen in Overleaf</p></td>
+<td><p>Step</p></td>
+<td><p>Shown only when an Overleaf project is bound and the step has plot files.</p></td>
+</tr>
+<tr class="row-odd"><td><p>AI declaration signed off</p></td>
+<td><p>Step</p></td>
+<td><p>Only on the AI declaration step: the researcher has signed the declaration of AI use, and no other step’s scripts, outputs, or declared input data have changed since. A later change makes the sign-off stale until the researcher signs again; a file vaibify cannot read leaves the row unknown, which also blocks Level 2. A change made and fully undone between two checks is not detected. If the project has no such step, an <strong>Add AI declaration step</strong> row appears at the foot of the step list.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Personal AI Configuration</strong> asks one question: did the researcher’s
+own private, host-side agent setup (a global instruction file, personal
+skills, memory, hooks) govern this work, and is it being disclosed?
+<em>Answering is the criterion. Disclosure is never required.</em> All three
+answers pass: <strong>none</strong> (“No personal AI configuration exists”),
+<strong>declared-private</strong> (“Exists — content withheld”), and <strong>included</strong>
+(“Included in the project repository”). A declared-private answer with
+nothing further is complete. Only an unanswered question fails. It is
+not a file the researcher must produce. With a declared-private answer,
+the researcher may optionally record a hash commitment to a file, which
+stores only a label, the file’s SHA-256, its size, and the date.</p>
+<p>Remote checks are cached. A GitHub or Zenodo verdict older than a day
+reads as unknown (<strong>?</strong>) rather than passing; <strong>Verify now</strong> refreshes
+it, and vaibify also re-verifies on a schedule while the hub runs.</p>
+</section>
+<section id="level-3-requirements">
+<h3>Level 3 requirements<a class="headerlink" href="#level-3-requirements" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Requirement</p></th>
+<th class="head"><p>Scope</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Manifest complete</p></td>
+<td><p>Project</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> pins the hash of every declared artifact, script, and test.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Manifest matches the files</p></td>
+<td><p>Project</p></td>
+<td><p>Every hash the manifest pins is the file’s current bytes.</p></td>
+</tr>
+<tr class="row-even"><td><p>Dependency lock</p></td>
+<td><p>Project</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> pins every Python dependency by version with hashes.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Environment snapshot</p></td>
+<td><p>Project</p></td>
+<td><p>The exact container image digest and system toolchain are recorded.</p></td>
+</tr>
+<tr class="row-even"><td><p>Dockerfile pinned</p></td>
+<td><p>Project</p></td>
+<td><p>The Dockerfile builds from an exact base-image digest.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Reproduce script</p></td>
+<td><p>Project</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> at the repository root reruns the project, and its hash is in the manifest.</p></td>
+</tr>
+<tr class="row-even"><td><p>Reproduce script is current</p></td>
+<td><p>Project</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> matches what vaibify would generate for the workflow.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Determinism declared</p></td>
+<td><p>Project</p></td>
+<td><p>The researcher has stated how exactly a rerun must match: last-digit numeric differences, thread count, and the Intel MKL setting.</p></td>
+</tr>
+<tr class="row-even"><td><p>Software declared</p></td>
+<td><p>Project</p></td>
+<td><p>Standalone binaries are declared with version and hash captured, or explicitly waived.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Envelope published</p></td>
+<td><p>Project</p></td>
+<td><p>The envelope files (reproduce script, manifest, lock, snapshot, Dockerfile) match the copies on GitHub.</p></td>
+</tr>
+<tr class="row-even"><td><p>Envelope archived</p></td>
+<td><p>Project</p></td>
+<td><p>The same envelope files are in the Zenodo archive.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Environment archived</p></td>
+<td><p>Project</p></td>
+<td><p>The container image is in a permanent archive under its own DOI, for the image and platform the envelope pins.</p></td>
+</tr>
+<tr class="row-even"><td><p>Archives are permanent</p></td>
+<td><p>Project</p></td>
+<td><p>Neither archive is a Zenodo sandbox deposit.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Image on a registry (optional)</p></td>
+<td><p>Project</p></td>
+<td><p>The pinned image is pullable from a registry such as Docker Hub. Never blocks a level.</p></td>
+</tr>
+<tr class="row-even"><td><p>Rebuild attestation</p></td>
+<td><p>Project</p></td>
+<td><p>A full rebuild reproduced the outputs with matching hashes against the current manifest.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Outputs pinned in the manifest</p></td>
+<td><p>Step</p></td>
+<td><p>The step’s declared files are in the manifest.</p></td>
+</tr>
+<tr class="row-even"><td><p>Scripts match the manifest</p></td>
+<td><p>Step</p></td>
+<td><p>The step’s scripts are unchanged since the manifest was written.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Randomness seeded or declared</p></td>
+<td><p>Step</p></td>
+<td><p>A step that uses randomness seeds it or declares it.</p></td>
+</tr>
+<tr class="row-even"><td><p>Invoked binaries declared; Binary versions captured; Binaries match their captured hashes</p></td>
+<td><p>Step</p></td>
+<td><p>For steps that run standalone programs.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Step rows appear only where they apply. The Level 3 gate also requires
+that the Zenodo archive carry a rebuild attestation covering its own
+manifest; that requirement is reported as a Level 3 blocker rather than
+as a separate PROOF-tab row.</p>
+<p>Because Zenodo versions are immutable, any change to the envelope drops
+<strong>Envelope archived</strong> until the next published deposit version. That is
+expected: Level 3 describes a published release, not the working tree.</p>
+</section>
+<section id="reaching-level-3">
+<h3>Reaching Level 3<a class="headerlink" href="#reaching-level-3" title="Link to this heading"></a></h3>
+<p>Level 3 needs the reproducibility envelope (manifest, dependency lock,
+environment snapshot, pinned Dockerfile, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>), published
+to GitHub and archived on Zenodo; the container image itself archived,
+because a list of the environment’s contents is not enough to rebuild
+it byte for byte; the determinism and software declarations; and an
+attestation that the researcher has rebuilt the results in a copy of
+the container and confirmed that every hash matches. The order of the
+final steps matters: for example, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> must be generated
+before the manifest records its hash. See
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for the envelope, the
+environment archive, the attestation, and the order in which to do
+them.</p>
+</section>
+</section>
+<section id="the-proof-tab">
+<h2>The PROOF tab<a class="headerlink" href="#the-proof-tab" title="Link to this heading"></a></h2>
+<p>The <strong>PROOF</strong> tab is the requirements ledger. A header card names the
+project’s current level (“Not yet at Level 1”, “Level 1:
+Self-Consistent”, “Level 2: Published”, or “Level 3: Reproducible”)
+with a clickable progression strip. Below it are three expandable
+sections, <strong>Level 1 — Self-Consistent</strong>, <strong>Level 2 — Published</strong>, and
+<strong>Level 3 — Reproducible</strong>, each listing its project-wide requirements
+with a status light, what the requirement means, how to meet it, and a
+link to where the work happens (the Main tab’s Project block or the
+Repos panel). The tab owns the requirement text; the buttons that do the
+work live in the Project block. An unmet optional row shows a neutral
+dash and is not counted.</p>
+<p>The Level 3 section ends with the <strong>Verify Level 3 Reproducibility</strong>
+button, enabled once the readiness checks pass (the rebuild runs in the
+container and can take hours), the current <strong>Level 3 Attestation</strong>, and
+the <strong>Reproduction History</strong> of every attempt.</p>
+<p>The same level and blockers are available without a browser, from the
+command line; see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
+</section>
+<section id="level-cells-and-status-lights">
+<h2>Level cells and status lights<a class="headerlink" href="#level-cells-and-status-lights" title="Link to this heading"></a></h2>
+<p>Step rows, the Steps and Project banners, and every requirement row
+carry <strong>L1 | L2 | L3</strong> level cells with seven states:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Cell</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Hollow gray circle</p></td>
+<td><p>Not started: no outputs on disk and no activity at this level.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gray filled circle</p></td>
+<td><p>Unassessed: outputs exist, but no tests, checks, or sign-off are recorded.</p></td>
+</tr>
+<tr class="row-even"><td><p>Red circle</p></td>
+<td><p>No requirements met.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Orange circle</p></td>
+<td><p>Partially met.</p></td>
+</tr>
+<tr class="row-even"><td><p>Vaibify badge</p></td>
+<td><p>Attained: every requirement at this level is met.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Question mark (?)</p></td>
+<td><p>Unknown: GitHub or Zenodo has not been checked recently.</p></td>
+</tr>
+<tr class="row-even"><td><p>Dash (—)</p></td>
+<td><p>Not applicable: no requirements at this level for this row.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A level cell and the rows beneath it are computed from the same list,
+so they cannot disagree. A remote that has never been checked is never
+shown as passing. Warning glyphs (⚠) are colored by severity, not by
+level: red for something currently broken or failing, orange for
+something stale or pending. Hovering a glyph gives every reason and its
+remedy, and the <strong>?</strong> Help panel carries the full legend.</p>
+</section>
+<section id="the-replay-axis">
+<h2>The Replay axis<a class="headerlink" href="#the-replay-axis" title="Link to this heading"></a></h2>
+<p>The ladder measures the state of the <em>artifact</em>. The Replay axis
+measures the provenance of the <em>process</em> that produced it: which models
+did the work, under what instructions, and whether the development
+dialogue is preserved. Its evidence must be collected from the
+beginning, because a prompt transcript cannot be reconstructed after
+the fact, which is why vaibify tracks it even though Level 4 is out of
+scope. Its states, each requiring the ones before it:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>State</p></th>
+<th class="head"><p>Requires</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>untracked</p></td>
+<td><p>Nothing declared.</p></td>
+</tr>
+<tr class="row-odd"><td><p>declared</p></td>
+<td><p>Every AI model declared, and the Personal AI Configuration question answered. Level 2 requires this state.</p></td>
+</tr>
+<tr class="row-even"><td><p>recorded</p></td>
+<td><p>The Prompt Record enabled and its first capture approved by the researcher. A project at this state or above is “Replayable.”</p></td>
+</tr>
+<tr class="row-odd"><td><p>supervised</p></td>
+<td><p>Supervised mode enabled on top of the Prompt Record.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The dashboard does not display these names; a project’s state is read
+from the rows of the Project block’s AI section.</p>
+<p>The Prompt Record copies the session transcripts of Claude Code, Codex
+and Gemini running in the container into
+<code class="docutils literal notranslate"><span class="pre">.vaibify/promptRecord/</span></code>, redacting secrets at capture and
+hash-chaining the captures so that editing or removing one breaks the
+chain. It requires <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">vaibify[replay]</span></code> on the host, and the
+agent can never approve its own transcript. Supervised mode flags every
+repository change that cannot be attributed to a recorded action, and
+those flags are permanent. The axis is honest about its limit: the
+chain is <em>tamper-evident</em>, not <em>provably complete</em>. Coverage intervals
+make the monitored windows explicit, and gaps are shown as gaps.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="vibeCoding.html" class="btn btn-neutral float-left" title="Vibe Coding Scientific Software" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="aiUse.html" class="btn btn-neutral float-right" title="Declaring AI Use" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

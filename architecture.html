@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" href="externalServices.html" />
-    <link rel="prev" title="Reproducibility" href="reproducibility.html" /> 
+    <link rel="next" title="Lessons from past sessions" href="lessons.html" />
+    <link rel="prev" title="Contributor’s Guide" href="developers.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,126 +45,46 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#preface">Preface</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#mental-model">Mental model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-happy-path">The happy path</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#file-status-polling">File-status polling</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-poll-s-freshness-stamp-and-why-it-ships-no-store">The poll’s freshness stamp, and why it ships <code class="docutils literal notranslate"><span class="pre">no-store</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="forAgents.html">For Agents</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#the-vaibify-harness">The vaibify harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#agent-actions">Agent actions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#shipped-agent-skills">Shipped agent skills</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="forAgents.html#developing-vaibify-with-agents">Developing vaibify with agents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#why-agent-documentation-drifts">Why agent documentation drifts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#deterministic-and-stochastic-documentation">Deterministic and stochastic documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-layered-framework">The layered framework</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-scoping-test">The scoping test</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#traps-over-rules">Traps over rules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-feedback-principle">The feedback principle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#tradeoffs-and-limits">Tradeoffs and limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#a-playbook-for-your-own-repository">A playbook for your own repository</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#how-this-repository-applies-it">How this repository applies it</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="forAgents.html#developer-references">Developer references</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Architecture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#architectural-decisions-with-tradeoffs">Architectural decisions with tradeoffs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#project-git-repo">Project = git repo</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#project-json-is-a-definition-the-sidecar-records-what-happened">project.json is a definition; the sidecar records what happened</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#single-browser-session-per-container">Single browser session per container</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-lease-is-the-access-principal">The lease is the access principal</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-owner-of-record-map-is-the-sole-authority">The owner-of-record map is the sole authority</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#which-control-plane-routes-are-lease-enforced-and-which-are-a-deliberate-residual">Which control-plane routes are lease-enforced, and which are a deliberate residual</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="#claim-arbitration">Claim arbitration</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#one-container-several-projects">One container, several projects</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#starting-a-container-is-a-server-owned-reservation">Starting a container is a server-owned reservation</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-one-live-pipeline-connection-invariant">The one-live-pipeline-connection invariant</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-shared-authorization-guard">The shared authorization guard</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#where-the-hub-listens">Where the hub listens</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#bagentsafe-is-enforced-not-advertised"><code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> is enforced, not advertised</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-four-release-triggers">The four release triggers</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-lapsed-claim-is-recovered-by-the-page-in-one-place">A lapsed claim is recovered by the page, in one place</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#leaving-for-the-environments-page-releases-first">Leaving for the Environments page releases first</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#idle-self-shutdown">Idle self-shutdown</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#session-lifetime-two-windows-three-tiers-one-honest-notice">Session lifetime: two windows, three tiers, one honest notice</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#sleep-prevention-follows-the-work-not-the-tab">Sleep prevention follows the work, not the tab</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-survives-what-measured-2026-08-29">What survives what (measured, 2026-08-29)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#pid-reuse-proof-staleness">PID-reuse-proof staleness</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#host-mode-the-same-hub-a-different-substrate">Host mode: the same hub, a different substrate</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#container-mutations-announce-themselves">Container mutations announce themselves</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#python-backend">Python backend</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#application-layer">Application layer</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#route-modules">Route modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#domain-modules">Domain modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#test-generation-modules">Test generation modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#other-modules">Other modules</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#dependency-graph">Dependency graph</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#re-export-pattern">Re-export pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#verification-state-machine">Verification state machine</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#two-proof-level-truth-systems">Two PROOF-level truth systems</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#determinism-is-three-questions-and-each-must-be-answered">Determinism is three questions, and each must be answered</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-requirement-row-shows-the-gate-s-verdict-never-its-own">A requirement row shows the gate’s verdict, never its own</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-batched-container-probe-is-split-to-fit-one-exec-argument">A batched container probe is split to fit one exec argument</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-remote-s-files-are-grouped-by-what-to-do-about-them">A remote’s files are grouped by what to do about them</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#a-configured-remote-pulses-until-its-own-check-answers">A configured remote pulses until its own check answers</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#l3-tier-5-runs-in-a-shadow-container">L3 tier 5 runs in a shadow container</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#three-trees-and-the-comparison-must-read-the-right-one">Three trees, and the comparison must read the right one</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-posture-and-the-one-bound-that-does-not-exist">The posture, and the one bound that does not exist</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-admission-is-not-optional-plumbing">The admission is not optional plumbing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-seed-is-coherence-pinned">The seed is coherence-pinned</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-researcher-is-told-before-the-copy-is-taken">The researcher is told before the copy is taken</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#shared-with-the-agent-council-deliberately">Shared with the Agent Council, deliberately</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-second-seed-a-staged-snapshot-of-a-published-project">The second seed: a staged snapshot of a published project</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#the-environment-archive">The environment archive</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-archive-is-the-agent-free-environment">The archive is the agent-free environment</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#one-row-two-blocks-and-the-l3-half-never-reads-the-l2-answer">One row, two blocks, and the L3 half never reads the L2 answer</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#two-records-in-two-files-and-they-are-not-the-same-thing">Two records, in two files, and they are not the same thing</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-deposit-runs-on-the-host-and-the-credential-crosses-once">The deposit runs on the host and the credential crosses once</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#unchecked-is-never-red-and-closed-is-not-the-same-red">Unchecked is never red, and closed is not the same red</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-attestation-re-check-can-be-vacuous-and-must-say-so">The attestation re-check can be vacuous, and must say so</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-deposit-is-found-by-name-and-no-redirect-is-followed-on-trust">The deposit is found by NAME, and no redirect is followed on trust</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-verification-produces-a-file-not-a-sentence">A verification produces a FILE, not a sentence</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-clone-carrying-someone-else-s-attestation-records-a-reproduction">A clone carrying someone else’s attestation records a reproduction</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#containerizing-from-the-author-s-pinned-image">Containerizing from the author’s pinned image</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#one-image-n-papers">One image, N papers</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-deposit-is-not-an-archive-until-somebody-promises-to-keep-it">A deposit is not an archive until somebody promises to keep it</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#three-questions-about-which-zenodo-and-three-answers">Three questions about “which Zenodo”, and three answers</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-promotion-is-bracketed-because-a-lost-doi-cannot-be-guessed">The promotion is bracketed, because a lost DOI cannot be guessed</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-deposit-is-finished-when-the-archive-agrees-not-when-the-upload-returns">A deposit is finished when the archive agrees, not when the upload returns</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#most-of-the-ladder-is-order-free-and-the-exceptions-were-never-said">Most of the ladder is order-free, and the exceptions were never said</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#the-replay-axis-ai-provenance">The Replay axis (AI provenance)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#javascript-frontend">JavaScript frontend</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#foundation-modules-loaded-first">Foundation modules (loaded first)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#rendering-feature-and-pre-existing-modules">Rendering, feature, and pre-existing modules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#core-application">Core application</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#state-management">State management</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#rendering">Rendering</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#packaging-why-runtime-resources-live-inside-the-package">Packaging: why runtime resources live inside the package</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#testing">Testing</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#known-technical-debt">Known technical debt</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -181,6 +101,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="forAgents.html">For Agents</a></li>
       <li class="breadcrumb-item active">Architecture</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/architecture.md.txt" rel="nofollow"> View page source</a>
@@ -203,11 +124,11 @@ server (Python); the frontend is plain JavaScript using IIFE modules
 (no bundler, no npm, no ES modules).</p>
 <p>For the human contributor workflow (how to run tests, submit PRs, follow
 the style guide) see <a class="reference internal" href="developers.html"><span class="std std-doc">developers.md</span></a>. For the methodology
-behind the agent documentation, see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a>.</p>
+behind the agent documentation, see <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>.</p>
 <section id="preface">
 <h2>Preface<a class="headerlink" href="#preface" title="Link to this heading"></a></h2>
 <p>For the full argument of why vaibify exists and what it believes about
-AI-assisted scientific computing, see <a class="reference internal" href="philosophy.html"><span class="std std-doc">philosophy.md</span></a>.
+AI-assisted scientific computing, see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">Vibe Coding Scientific Software</span></a>.
 The short version: the tagline <em>“Vibe boldly. Verify everything.”</em> is
 the architecture specification. Bold vibing happens inside a Docker
 container the agent cannot escape. Verification happens in a browser
@@ -523,7 +444,7 @@ location. This constraint is enforced at discovery time
 (<code class="docutils literal notranslate"><span class="pre">flistFindWorkflowsInContainer</span></code> drops any candidate not inside a git
 work tree) and at creation time (<code class="docutils literal notranslate"><span class="pre">_fsValidateRepoDirectory</span></code> rejects
 target directories that are not git repos). It maps directly to L1 of
-the reproducibility ladder in <a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a>: a project that
+the <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Ladder</span></a>: a project that
 cannot be committed cannot be reproduced.</p>
 <p><code class="docutils literal notranslate"><span class="pre">/workspace</span></code> itself is a Docker-managed named volume, not a repo. It
 is the <em>discovery root</em> — the search origin for project.json files —
@@ -666,7 +587,7 @@ identical.</p>
 <section id="single-browser-session-per-container">
 <h2>Single browser session per container<a class="headerlink" href="#single-browser-session-per-container" title="Link to this heading"></a></h2>
 <p>This section is normative: it is the single source of truth for the
-container-access model. <code class="docutils literal notranslate"><span class="pre">docs/dashboard.md</span></code> and <code class="docutils literal notranslate"><span class="pre">docs/cli.md</span></code> describe
+container-access model. <code class="docutils literal notranslate"><span class="pre">docs/environmentsAndProjects.md</span></code> and <code class="docutils literal notranslate"><span class="pre">docs/install.md</span></code> describe
 the user-facing surface and point here for the mechanism.</p>
 <p>Vaibify’s concurrency model is borrowed from JupyterHub, which solves
 the same problem of long-lived servers that outlive the browser that
@@ -1449,7 +1370,7 @@ time, an absent claim, or a legacy payload without <code class="docutils literal
 fall back to the bare PID-existence check, so a live genuine holder is
 never reaped. No new dependency is introduced; the probe shells out to
 <code class="docutils literal notranslate"><span class="pre">ps</span></code>, which is present on both platforms.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> CLI (see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>) is the
+<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code> CLI (see <a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a>) is the
 host-side enumerator over these same files – the analog of
 <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
 </section>
@@ -1460,7 +1381,7 @@ host-side enumerator over these same files – the analog of
 no image, no container and no volume: its pipeline runs directly on the
 researcher’s machine, in the directory they registered. It exists
 because the image build ends most first encounters with vaibify before
-they begin (see <a class="reference internal" href="philosophy.html"><span class="std std-doc">philosophy.md</span></a> for the stance, which is
+they begin (see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">Vibe Coding Scientific Software</span></a> for the stance, which is
 that the container remains the default and the destination).</p>
 <p>Almost nothing above changes, and that is the design. The ownership
 model — flock, lease, two-tab arbitration, orphan and expiry, transfer
@@ -3416,7 +3337,7 @@ source for structural rules about the codebase (leaf modules, route
 contracts, path-module conventions, science-agnostic source). When a
 rule there changes, the test changes. When the code violates a rule,
 the test fails. This is the deterministic half of the documentation
-system — see <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">vibeCoding.md</span></a> for the broader methodology.</p>
+system — see <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a> for the broader methodology.</p>
 </section>
 <section id="known-technical-debt">
 <h2>Known technical debt<a class="headerlink" href="#known-technical-debt" title="Link to this heading"></a></h2>
@@ -3443,8 +3364,8 @@ contributor can recognize these as deliberate rather than accidental.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="reproducibility.html" class="btn btn-neutral float-left" title="Reproducibility" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="externalServices.html" class="btn btn-neutral float-right" title="External-service integrations: Overleaf, GitHub, Zenodo, arXiv" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="developers.html" class="btn btn-neutral float-left" title="Contributor’s Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="lessons.html" class="btn btn-neutral float-right" title="Lessons from past sessions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

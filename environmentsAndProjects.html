@@ -1,0 +1,1074 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Environments and Projects &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Connecting to External Resources" href="externalResources.html" />
+    <link rel="prev" title="Declaring AI Use" href="aiUse.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Environments and Projects</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#environments">Environments</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-an-environment-is">What an environment is</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-environments-page">The environments page</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#adding-an-environment">Adding an environment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-container-wizard">The container wizard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#templates">Templates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#containerizing-a-host-environment">Containerizing a host environment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tile-actions">Tile actions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multiple-projects-in-one-environment">Multiple projects in one environment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sessions">Sessions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#core-allocation">Core allocation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#projects">Projects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#turning-exploration-into-a-project">Turning exploration into a Project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#steps">Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-parts-of-a-step">The parts of a step</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#dependencies">Dependencies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#polling">Polling</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-steps">Running steps</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#project-size-limits">Project size limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-dashboard">The dashboard</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#layout">Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-main-tab">The Main tab</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#viewing-windows">Viewing windows</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#terminal">Terminal</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#moving-files-in-and-out">Moving files in and out</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#opening-the-container-in-vs-code">Opening the container in VS Code</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-repos-panel">The Repos panel</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#environment-info">Environment Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-help-panel">The Help panel</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#status-lights-and-colors">Status lights and colors</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#run-lights">Run lights</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#level-cells">Level cells</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#warnings-and-file-names">Warnings and file names</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-project-file">The project file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-step-object">The step object</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Environments and Projects</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/environmentsAndProjects.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="environments-and-projects">
+<h1>Environments and Projects<a class="headerlink" href="#environments-and-projects" title="Link to this heading"></a></h1>
+<p>Vaibify organizes work around two ideas. An <strong>environment</strong> is where
+the work runs: a Docker container, or a folder on your own computer.
+A <strong>Project</strong> is what the work is: a scientific analysis decomposed
+into <strong>Steps</strong> that vaibify runs, watches, tests, and grades on
+<a class="reference internal" href="proofLadder.html"><span class="std std-doc">the PROOF Ladder</span></a>. One environment can hold several
+Projects. You manage both through the dashboard in your browser.</p>
+<p><img alt="The vaibify dashboard" src="_images/vaibify_screenshot.png" /></p>
+<section id="environments">
+<h2>Environments<a class="headerlink" href="#environments" title="Link to this heading"></a></h2>
+<section id="what-an-environment-is">
+<h3>What an environment is<a class="headerlink" href="#what-an-environment-is" title="Link to this heading"></a></h3>
+<p>A <strong>container environment</strong> is a Docker container built from a
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> recipe. Its files live in a workspace volume
+(<code class="docutils literal notranslate"><span class="pre">/workspace</span></code>) that is separate from your computer’s disk, its user is
+unprivileged, and nothing it runs can read or change files on your
+computer. That containment is what makes it safe to let a coding agent
+work for hours without approving each command, and a pinned,
+rebuildable image is what lets a result reach PROOF Level 3.</p>
+<p>A <strong>host environment</strong> (“This machine”) is a folder on your own
+computer. Nothing is built, so you can start immediately, but every
+command runs with your full user authority: your files, your network,
+your stored credentials. Vaibify says so before you open one, marks
+every screen with a <strong>HOST MODE — uncontained</strong> badge, and opens each
+terminal with a reminder that the shell runs on your machine. A host
+environment cannot reach PROOF Level 3 or provide Supervised
+attribution. It suits first contact and experimentation; containerize
+it when the work becomes real.</p>
+</section>
+<section id="the-environments-page">
+<h3>The environments page<a class="headerlink" href="#the-environments-page" title="Link to this heading"></a></h3>
+<p>Running <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> with no subcommand opens the environments page in
+your browser. It lists every environment registered on this computer
+under <strong>This machine</strong>, with four buttons beside the heading:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Button</p></th>
+<th class="head"><p>Action</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>+</strong></p></td>
+<td><p>Add an environment.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>↻</strong></p></td>
+<td><p>Refresh the list.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>⧉</strong></p></td>
+<td><p>Open a new vaibify window (a separate browser session).</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>?</strong></p></td>
+<td><p>Help: creating an environment, a legend of tile marks, and troubleshooting.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Each tile shows a status light, the name, and a chip reading
+<strong>contained</strong> or <strong>uncontained</strong>. Clicking a tile opens the
+environment, building or starting the container first if needed. From
+inside the dashboard, <strong>Admin &gt; Environments</strong> returns here.</p>
+<p>When something fails on this page, the error message ends with <em>Click
+to run a diagnosis</em>. The click runs vaibify’s checks of this computer
+and shows each finding with its remedy.</p>
+</section>
+<section id="adding-an-environment">
+<h3>Adding an environment<a class="headerlink" href="#adding-an-environment" title="Link to this heading"></a></h3>
+<p><strong>+</strong> opens <strong>Add Environment</strong>, which first asks where the work runs:</p>
+<ul class="simple">
+<li><p><strong>Container</strong> — contained and reproducible; needs Docker.</p></li>
+<li><p><strong>This machine</strong> — no container; for experimentation.</p></li>
+<li><p><strong>Reproduce a published project</strong> — re-run somebody else’s published
+result in a throwaway container. See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p></li>
+</ul>
+<p>It then asks how the environment arrives:</p>
+<ul class="simple">
+<li><p><strong>Add Existing</strong> — choose a directory that already holds a
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (one a collaborator shared, or one you cloned). The
+existing file is read, never overwritten.</p></li>
+<li><p><strong>Create New</strong> — the creation wizard writes a new <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p></li>
+</ul>
+</section>
+<section id="the-container-wizard">
+<h3>The container wizard<a class="headerlink" href="#the-container-wizard" title="Link to this heading"></a></h3>
+<p><strong>Create New</strong> walks through these pages. A host environment needs
+only the directory, the template, and the summary.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Page</p></th>
+<th class="head"><p>What it sets</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Project Directory</strong></p></td>
+<td><p>The folder on your computer that holds <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Template</strong></p></td>
+<td><p>The starter files: <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>, <code class="docutils literal notranslate"><span class="pre">toolkit</span></code>, or <code class="docutils literal notranslate"><span class="pre">workflow</span></code> (see <a class="reference internal" href="#templates">Templates</a>).</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Project Name</strong></p></td>
+<td><p>The project name and the Docker container name.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Python Version</strong></p></td>
+<td><p>3.9 to 3.14; 3.12 by default.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Repositories</strong></p></td>
+<td><p>Git URLs cloned into the workspace at first start (required for <code class="docutils literal notranslate"><span class="pre">toolkit</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Features &amp; Authentication</strong></p></td>
+<td><p>Coding-agent command-line tools, JupyterLab, LaTeX, R, Julia, a PostgreSQL client, DVC, and NVIDIA GPU support; GitHub authentication; runtime options (sleep prevention on macOS, network isolation, X11 display forwarding); and resource limits.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Packages</strong></p></td>
+<td><p>System packages (apt) and Python packages, with an <strong>Advanced</strong> section for the package manager, pip flags, container user, base image, and workspace root.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Summary</strong></p></td>
+<td><p>Review, then <strong>Create</strong>.</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Create</strong> writes <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and registers the environment; the
+image is built the first time you open its tile. A minimal image
+builds in minutes, and large feature sets can take an hour or more.
+Anything missed can be added later: install it from a terminal inside
+the container (lost on rebuild), or add it to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and
+rebuild (permanent). The full list of <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> keys is in
+<a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a>.</p>
+</section>
+<section id="templates">
+<h3>Templates<a class="headerlink" href="#templates" title="Link to this heading"></a></h3>
+<p>A template is the small set of starter files copied into a new
+environment. Three ship with vaibify, one for each way of working:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Template</p></th>
+<th class="head"><p>Contains</p></th>
+<th class="head"><p>Use it when</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sandbox</span></code></p></td>
+<td><p>No Project file</p></td>
+<td><p>You want to explore freely: write code, make plots, try ideas. There are no steps or tests, so a sandbox sits below Level 1 of <a class="reference internal" href="proofLadder.html"><span class="std std-doc">the PROOF Ladder</span></a>; its only property is containment.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">toolkit</span></code></p></td>
+<td><p>A Project file with no steps, and a <code class="docutils literal notranslate"><span class="pre">README.md</span></code></p></td>
+<td><p>You are developing several code repositories that must work together. Each repository listed on the wizard’s <strong>Repositories</strong> page is cloned and appears in the <strong>Repos</strong> panel with its branch, uncommitted changes, and push controls.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
+<td><p>A runnable two-step Project</p></td>
+<td><p>You already know the analysis is a sequence of steps. The first step draws random samples; the second plots their histogram, receiving the samples through a <code class="docutils literal notranslate"><span class="pre">{step:generate-samples.samples}</span></code> token, so a new environment makes a figure on its first <strong>Run</strong>. Replace both steps with your own.</p></td>
+</tr>
+</tbody>
+</table>
+<p>If you are unsure, start with <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>. The choice is not permanent:
+exploratory work can become a Project later (see <a class="reference internal" href="#turning-exploration-into-a-project">Turning exploration
+into a Project</a>).</p>
+</section>
+<section id="containerizing-a-host-environment">
+<h3>Containerizing a host environment<a class="headerlink" href="#containerizing-a-host-environment" title="Link to this heading"></a></h3>
+<p>A host environment’s tile menu (<strong>⋮</strong>) offers <strong>Containerize
+Environment</strong>. The wizard asks for a container name, where the image
+comes from (built from a Dockerfile, or, for a cloned published
+project, the author’s pinned image), the usual container settings,
+and which of the directory’s files to copy into the container. The
+copy is one-way and made once, when the container first starts: a
+container’s workspace is a separate volume, not your folder, and your
+originals are never moved or deleted. The directory’s <code class="docutils literal notranslate"><span class="pre">.git</span></code> comes
+along, so the container’s copy is a real repository. If the directory
+has no Project file yet, one is created, because a container is always
+a Project.</p>
+</section>
+<section id="tile-actions">
+<h3>Tile actions<a class="headerlink" href="#tile-actions" title="Link to this heading"></a></h3>
+<p>A container tile’s <strong>⋮</strong> menu offers <strong>Start</strong>, <strong>Stop</strong>,
+<strong>Restart</strong>, <strong>Rebuild</strong>, and <strong>Force Rebuild</strong>, then <strong>Release</strong>
+(when this tab holds the container), <strong>Remove from list</strong>, and
+<strong>Delete environment…</strong>. Its <strong>⚙</strong> opens the container settings,
+including the resource limits below. A host tile’s menu offers
+<strong>Containerize Environment</strong>, <strong>Release</strong>, and <strong>Remove from list</strong>.</p>
+<p>The two removals differ in what they touch:</p>
+<ul class="simple">
+<li><p><strong>Remove from list</strong> unregisters the environment and touches
+nothing else. The container, volumes, image, and files stay; adding
+the directory again brings the tile back with its work intact.</p></li>
+<li><p><strong>Delete environment…</strong> permanently removes the container, the
+workspace volume (every file inside the container you have not
+copied out), the credentials volume, every image built or obtained
+for it, and the registry entry. Your project directory on your
+computer, its git history, and anything already pushed or published
+are not touched. To confirm, type <code class="docutils literal notranslate"><span class="pre">permanently</span> <span class="pre">delete</span> <span class="pre">&lt;name&gt;</span></code>
+exactly; the server checks the same phrase. Deletion is refused
+while the environment is open in another browser session, held by
+another vaibify process, or carrying unsettled operations, and an
+in-container agent can never request it. If any part fails, the
+tile stays and the message says what did and did not go.</p></li>
+</ul>
+</section>
+<section id="multiple-projects-in-one-environment">
+<h3>Multiple projects in one environment<a class="headerlink" href="#multiple-projects-in-one-environment" title="Link to this heading"></a></h3>
+<p>Opening an environment shows its <strong>Project Hub</strong>. A line names the
+environment (<strong>Environment: &lt;name&gt;</strong>, or <strong>Environment: this
+computer</strong> for a host environment), followed by <strong>Available
+Projects:</strong>, one card per Project file found in the environment’s
+repositories.</p>
+<ul class="simple">
+<li><p><strong>Blank Project</strong> opens the dashboard with a terminal and the file
+tree but no steps, for work that has none yet.</p></li>
+<li><p><strong>New Project</strong> is a three-step wizard: a display name, a location
+(an existing git directory, or a new directory vaibify creates and
+initializes as a repository), and a confirmation.</p></li>
+</ul>
+<p>Inside the dashboard, click the Project name in the toolbar to switch
+Projects or start a new one. Projects in one container can run at the
+same time: starting a run while another Project’s run is active asks
+first (<strong>Run anyway</strong>), because the runs share the container’s CPU and
+memory limits. A toolbar badge shows when another Project in the
+container is running.</p>
+</section>
+<section id="sessions">
+<h3>Sessions<a class="headerlink" href="#sessions" title="Link to this heading"></a></h3>
+<p>Each environment can be open in only <strong>one browser session</strong> at a
+time, and one browser session holds at most <strong>one environment</strong>.</p>
+<ul class="simple">
+<li><p>A second tab that tries to open an environment already in use sees
+its tile grayed out with <em>In use in another browser session</em>.</p></li>
+<li><p>Opening a second environment from the same tab asks whether to
+release the first. <strong>Release</strong> on the tile menu does the same, and
+returning to the environments page releases the environment
+automatically. Releasing only drops the tab’s hold: the container
+keeps running, and a release is refused while a run or an agent is
+active in it.</p></li>
+<li><p>Reloading a tab keeps its hold. Closing a tab does not stop a run,
+and a dashboard opened later shows it.</p></li>
+<li><p>To work on two environments at once, use <strong>⧉ New vaibify window</strong>
+(on the environments page, the Project Hub, and the <strong>Admin</strong> menu).</p></li>
+<li><p>Listing and stopping live sessions is done from the command line;
+see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p></li>
+</ul>
+<p><strong>Terminals and quiescence.</strong> A shell can start a process that
+detaches from everything vaibify tracks, so once a terminal has been
+used in an environment, vaibify reports that environment’s quiescence
+as <strong>unproven</strong> on release or shutdown rather than claiming it is
+quiet, and its tile’s chip reads <strong>quarantined</strong>. Click the chip to see
+why, then <strong>Reconcile now</strong> to settle it; when the dashboard cannot
+clear it, the dialog gives the command to run on the host (see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI
+Reference</span></a>). On a host environment,
+processes started from a terminal can keep running after the session
+closes.</p>
+</section>
+</section>
+<section id="core-allocation">
+<h2>Core allocation<a class="headerlink" href="#core-allocation" title="Link to this heading"></a></h2>
+<p>A container uses <strong>all of this computer’s cores minus one</strong> unless you
+set a limit, leaving one core for your operating system. Set a limit
+in the wizard’s <strong>CPU cores</strong> field or in the tile’s <strong>⚙</strong> under
+<strong>CPU core limit</strong>; it is stored as <code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and is
+capped at the number of cores the computer has. Memory is unlimited
+unless you set <strong>Memory (GB)</strong> (<code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code>). Both take
+effect when the container next starts. <strong>View &gt; Resource Monitor</strong>
+shows live CPU and memory use and the container’s disk usage, and
+warns when the disk is nearly full.</p>
+<p>Steps run one at a time, so parallelism comes from the scripts
+themselves. The Project’s <strong>Cores</strong> setting (<code class="docutils literal notranslate"><span class="pre">iNumberOfCores</span></code>) is
+handed to commands as the <code class="docutils literal notranslate"><span class="pre">{iNumberOfCores}</span></code> token. Vaibify passes the
+number through unchanged; the convention that <code class="docutils literal notranslate"><span class="pre">-1</span></code> means “all cores
+minus one” is for your script to implement.</p>
+</section>
+<section id="projects">
+<h2>Projects<a class="headerlink" href="#projects" title="Link to this heading"></a></h2>
+<p>A Project is a JSON file (the <em>Project file</em>) kept inside a git
+repository. It lists the Steps of an analysis in order. Vaibify reads the file to run
+the steps, track the files they read and write, decide when a result
+is stale, and grade each step and the whole Project on the PROOF
+Ladder.</p>
+<section id="turning-exploration-into-a-project">
+<h3>Turning exploration into a Project<a class="headerlink" href="#turning-exploration-into-a-project" title="Link to this heading"></a></h3>
+<p>Work that began in a sandbox becomes a Project with a button. Which
+button depends on where the work lives:</p>
+<ul class="simple">
+<li><p><strong>In a container</strong>, open the <strong>Files</strong> tab and go into a directory
+directly under the workspace. A <strong>Make this directory a Project</strong> bar
+appears; give the Project a name and press <strong>Make Project</strong>. Vaibify
+makes the directory a git repository if it is not one, adds a first
+commit if it has none (existing history is never rewritten), and
+writes the Project file.</p></li>
+<li><p><strong>On this computer</strong>, every host environment starts as a sandbox and
+shows a <strong>Convert to Project…</strong> bar on its <strong>Files</strong> tab. Choose
+<strong>Host Project</strong> to keep running directly on this machine, or
+<strong>Containerized Project</strong> to copy the directory’s files into a new
+container (see <a class="reference internal" href="#containerizing-a-host-environment">Containerizing a host
+environment</a>).</p></li>
+</ul>
+<p>To start a Project from scratch in an existing environment, use <strong>New
+Project</strong> (see <a class="reference internal" href="#multiple-projects-in-one-environment">Multiple projects in one
+environment</a>).</p>
+</section>
+<section id="steps">
+<h3>Steps<a class="headerlink" href="#steps" title="Link to this heading"></a></h3>
+<p>The division of a Project into Steps is yours to choose; small steps
+are easier to verify. Each step is one of two kinds:</p>
+<ul class="simple">
+<li><p>An <strong>automated</strong> step runs from files already on disk with no input
+from you.</p></li>
+<li><p>An <strong>interactive</strong> step needs a person at a shell. <strong>Run in
+Terminal</strong> opens a terminal tab, runs the step’s commands there, and
+watches for the exit code, so the step settles when you finish.</p></li>
+</ul>
+<p>Labels are counted per kind: <strong>A03</strong> is the third automated step and
+<strong>I01</strong> the first interactive step, whatever their positions in the
+list. Reordering steps never breaks a reference to another step.</p>
+<p>A step’s directory is named after the step. Remove the spaces and
+capitalize the first letter of each word, keeping the rest as typed:
+“Fit the model” lives in <code class="docutils literal notranslate"><span class="pre">FitTheModel</span></code>. Names may contain only letters,
+digits, spaces, and hyphens, and no two steps may map to the same
+directory (compared without regard to case). Parent folders are free:
+<code class="docutils literal notranslate"><span class="pre">analysis/FitTheModel</span></code> is fine. <strong>Rename…</strong> on a step’s right-click
+menu moves the directory and updates every reference to it.</p>
+</section>
+<section id="the-parts-of-a-step">
+<h3>The parts of a step<a class="headerlink" href="#the-parts-of-a-step" title="Link to this heading"></a></h3>
+<p>Expanding a step shows its parts, grouped under the three PROOF levels.
+Level 1 holds the step’s own material:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Part</p></th>
+<th class="head"><p>What it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Description</strong></p></td>
+<td><p>A few sentences on the step’s goal, for people and agents.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Input data</strong></p></td>
+<td><p>Raw files the step reads that no other step produces. A step that needs none is declared with <strong>No input data needed</strong>; a step with neither cannot reach Level 1.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Data analysis commands</strong></p></td>
+<td><p>The commands that compute results.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Output data</strong></p></td>
+<td><p>The files those commands write.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Plot commands</strong></p></td>
+<td><p>The commands that make figures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Plot files</strong></p></td>
+<td><p>The figures. <strong>Make Standard</strong> saves a figure as the reference and <strong>Compare to Standard</strong> shows the two side by side.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Test standards</strong></p></td>
+<td><p>The stored values the quantitative tests compare against.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Verification</strong></p></td>
+<td><p>Unit tests, dependencies, and your own approval.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Every step needs your approval. The Verification section has a row
+labeled with your user name; click it to record that you have
+inspected the step’s outputs (clicking again cycles through passed,
+failed, and error). No test substitutes for it, and an in-container
+agent cannot set it. Unit tests come in three kinds (integrity,
+qualitative, quantitative) and are built by <strong>Generate Tests</strong>; see the
+<a class="reference internal" href="testing.html"><span class="std std-doc">Testing Model</span></a>.</p>
+</section>
+<section id="dependencies">
+<h3>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading"></a></h3>
+<p>When one step uses another’s output, the later step depends on the
+earlier one. A step is fully verified only when everything it depends
+on is verified, and only when its inputs were written before it last
+ran. Vaibify learns dependencies two ways.</p>
+<p><strong>Detected automatically.</strong> When you save a step’s data analysis
+commands, or press <strong>Update Dependencies</strong> in the step’s expanded
+Dependencies row, vaibify scans the scripts those commands run for
+file reads (in Python, R, C, Fortran, Rust, JavaScript, Perl, shell,
+Julia, MATLAB, and Go, and in JSON and YAML files). The <strong>Dependency
+Detection</strong> dialog lists what it found as detected, possible, and
+manual dependencies, and you confirm them.</p>
+<p><strong>Declared by the researcher.</strong> Soem dependencies are subtle and evade capture by the automatic detector. In those cases, you can declare dependencies.</p>
+<p><strong>Run &gt; Verify Dependencies</strong> checks that every token points to a real
+output of an earlier step, and <strong>View &gt; Dependency Graph</strong> draws a
+graph that illustrates how all the steps depend on each other.</p>
+</section>
+<section id="polling">
+<h3>Polling<a class="headerlink" href="#polling" title="Link to this heading"></a></h3>
+<p>The dashboard re-reads the state of the Project every <strong>5 seconds</strong>:
+which declared files exist, their modification times and hashes, and
+whether the dependencies still hold. Change the interval with the
+<strong>Poll Interval</strong> slider (1 to 60 seconds) in the Project settings
+(<strong>⚙</strong> above the step list); the setting applies to the current tab.</p>
+<p>Polling is what keeps a verified result honest. A step loses its
+verified standing, and its ⚠ and level cells turn orange or red, when:</p>
+<ul class="simple">
+<li><p>a declared <strong>input data</strong> file changed since the step last ran
+(“Input data modified since last run”);</p></li>
+<li><p>one of the step’s <strong>scripts</strong> was edited after its outputs were made;</p></li>
+<li><p>its <strong>outputs</strong> changed after you approved them, or after its tests
+last passed;</p></li>
+<li><p>an <strong>earlier step</strong> it depends on produced new outputs (“Upstream
+changed; re-run to clear blocker”);</p></li>
+<li><p>a declared output is <strong>missing</strong>, or a <strong>test failed</strong>.</p></li>
+</ul>
+<p>The step’s expanded view names the stale files in plain words, such
+as “Tests older than data scripts” or “User verification older than
+plot files”, so you know what to re-run or re-inspect. The same applies
+whether the change came from you, a script, or a coding agent.</p>
+</section>
+<section id="running-steps">
+<h3>Running steps<a class="headerlink" href="#running-steps" title="Link to this heading"></a></h3>
+<p>The toolbar’s <strong>Run</strong> menu runs and checks the Project:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Item</p></th>
+<th class="head"><p>Action</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Run Selected Steps</strong></p></td>
+<td><p>Run the steps whose run checkbox is ticked.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Run All Steps</strong></p></td>
+<td><p>Run every step in a Project.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Clean Outputs</strong></p></td>
+<td><p>Delete every automated step’s output data and figures and reset their verification, without running anything.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Force Run All (Clean)</strong></p></td>
+<td><p>Clean, then run everything.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Stop This Project’s Run</strong></p></td>
+<td><p>Stop this Project’s running processes; other Projects in the container keep running.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Verify Outputs</strong></p></td>
+<td><p>Check that every declared output exists.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Run All Unit Tests</strong></p></td>
+<td><p>Run every enabled step’s tests without running its commands.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Verify Dependencies</strong></p></td>
+<td><p>Check every cross-step token.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Check Files Against Manifest</strong></p></td>
+<td><p>Re-hash every file pinned in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and report which differ.</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Verify Level 3 Reproducibility</strong></p></td>
+<td><p>Rebuild and re-run in a throwaway container; see <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Standardize All Plots</strong></p></td>
+<td><p>Save every step’s current figures as its standards.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Interactive steps keep their outputs through <strong>Clean Outputs</strong>,
+because a person made them. Cleaning without re-running is how you see
+a Project emptied: when the outputs reappear, you know your machine
+produced them.</p>
+<p>A step’s right-click menu offers <strong>Run Step</strong>, <strong>Edit Step</strong>,
+<strong>Rename…</strong>, <strong>Set Runtime Limit…</strong>, <strong>Run From Here</strong>, <strong>Insert Step
+Before</strong>, <strong>Insert Step After</strong>, and <strong>Delete Step</strong>. Steps can be
+reordered by dragging. <strong>+</strong> above the step list adds a step.</p>
+<p><strong>How a run proceeds.</strong> Steps run one at a time, in order. Within a
+step, vaibify runs the data analysis commands (skipped for a plot-only
+step), then the step’s tests, then the plot commands, each from the
+step’s directory. A failed step does not stop the steps after it, but
+a step whose referenced input file is missing is skipped, with the
+missing path named in the log.</p>
+<p><strong>Runtime limit.</strong> A step’s runtime limit is an advisory ceiling in
+seconds. Past it, the step’s run light blinks red as a possible hang,
+but the run is never stopped. Right-click a step and choose <strong>Set
+Runtime Limit…</strong> to set one (the dialog suggests twice the step’s last
+successful runtime), or set the Project default under <strong>Runtime limit
+(s)</strong> in the settings. A step limit of zero means “use the Project
+default”, and a Project default of zero means no limit.</p>
+<p><strong>Long runs.</strong> Closing the browser does <em>not</em> stop a run: the run
+belongs to vaibify’s server process, not to the browser tab, and a
+dashboard opened later shows it in progress. The live output is a
+stream, so have long steps write anything that matters to a file.</p>
+</section>
+</section>
+<section id="project-size-limits">
+<h2>Project size limits<a class="headerlink" href="#project-size-limits" title="Link to this heading"></a></h2>
+<p>The first time a Project reaches 100 steps, vaibify shows a one-time
+<strong>Project milestone</strong> notice: polling and verification take noticeably
+longer at that size. A Project cannot exceed 500 steps; adding a 501st
+is refused with <strong>Step limit reached</strong>. Split larger analyses into
+sibling Projects in the same repository.</p>
+</section>
+<section id="the-dashboard">
+<h2>The dashboard<a class="headerlink" href="#the-dashboard" title="Link to this heading"></a></h2>
+<section id="layout">
+<h3>Layout<a class="headerlink" href="#layout" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Toolbar</strong> — the logo; the environment (<strong>Container:</strong>, or
+<strong>Directory:</strong> for a host environment); the <strong>Project:</strong> name, which
+opens the Project switcher; up to three vaibify checks that light up as
+Levels 1–3 are attained; the <strong>Agent Council</strong> button; the <strong>Run</strong>,
+<strong>Sync</strong>, <strong>View</strong>, and <strong>Admin</strong> menus; and, at the far right, a
+gear for this computer’s session settings and the <strong>?</strong> Help button.</p></li>
+<li><p><strong>Left panel</strong> — tabs <strong>Main</strong>, <strong>PROOF</strong>, <strong>Files</strong>, <strong>Repos</strong>, and
+<strong>Logs</strong>. A Blank Project shows only <strong>Files</strong>, <strong>Repos</strong>, and
+<strong>Logs</strong>.</p></li>
+<li><p><strong>Viewing windows</strong> — two side-by-side viewers for figures and text.</p></li>
+<li><p><strong>Terminal strip</strong> — terminal tabs and panes along the bottom.</p></li>
+</ul>
+<p>The <strong>View</strong> menu holds <strong>Dependency Graph</strong>, <strong>Open in VS Code</strong>,
+<strong>Resource Monitor</strong>, <strong>Zenodo Status</strong>, and <strong>Default Layout</strong>. The
+<strong>Admin</strong> menu holds <strong>Environments</strong>, <strong>Projects</strong>, <strong>New vaibify
+window</strong>, <strong>Environment Info</strong>, and <strong>Quit</strong>. The <strong>Sync</strong> menu and
+the <strong>PROOF</strong> tab are described in
+<a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External Resources</span></a> and
+<a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a>.</p>
+</section>
+<section id="the-main-tab">
+<h3>The Main tab<a class="headerlink" href="#the-main-tab" title="Link to this heading"></a></h3>
+<p>The Main tab has two collapsible blocks. <strong>Steps</strong> holds the per-step
+work, which is where Level 1 is earned. <strong>Project</strong> holds the
+requirements that apply to the whole Project, where Levels 2 and 3 are
+earned. Both banners carry the same status cells as the rows beneath,
+so a collapsed block still reports its state. Above them sit <strong>⚙</strong>
+(Project settings), <strong>↻</strong> (refresh remote status), and <strong>+</strong> (new
+step).</p>
+<p>Each step row shows, left to right: the run checkbox, the run light,
+the label and name, a warning column (⚠), and the <strong>L1 | L2 | L3</strong>
+cells. Clicking a cell opens the step at that level. Expanded, a step
+opens onto the first level it has not yet attained; Level 1 ends with
+<strong>Run Step</strong> and a <strong>Last run</strong> line giving the outcome, finish time,
+and wall-clock and CPU time.</p>
+</section>
+<section id="viewing-windows">
+<h3>Viewing windows<a class="headerlink" href="#viewing-windows" title="Link to this heading"></a></h3>
+<p>Click any file in a step, the Files tab, or the Logs tab to open it in
+a viewer. PDF, PNG, JPG, and SVG files display as images, and other
+text files as text; binary data files cannot be viewed. The two
+viewers make side-by-side comparison easy. The <strong>✎ Edit</strong> button opens
+a small text editor for quick changes such as an input parameter; it
+is not meant to replace an editor or a coding agent. Live run output
+streams into a viewer, and the <strong>Logs</strong> tab lists past run logs.</p>
+</section>
+<section id="terminal">
+<h3>Terminal<a class="headerlink" href="#terminal" title="Link to this heading"></a></h3>
+<p>The terminal strip opens shells inside the container (or, for a host
+environment, on your computer), with tabs and panes. Start a coding
+agent from a shell; the <strong>Using AI</strong> section of the Help panel lists
+the commands. A program that takes over the mouse, such as an agent or
+an editor, also takes your drag gestures. To get text out:</p>
+<ul class="simple">
+<li><p><strong>Select text</strong> in the pane’s tab bar gives the mouse back to the
+pane, so dragging selects; turn it off to give the mouse back to the
+program.</p></li>
+<li><p><strong>Shift + wheel</strong> always scrolls the pane.</p></li>
+<li><p><strong>Copy all</strong> copies the pane’s whole scrollback.</p></li>
+</ul>
+<p>Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
+Ctrl+Insert also work.</p>
+</section>
+<section id="moving-files-in-and-out">
+<h3>Moving files in and out<a class="headerlink" href="#moving-files-in-and-out" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>In.</strong> Drag files or folders from your computer onto the Files tab’s
+drop zone (<strong>Upload from this computer</strong>) or onto a folder row.
+Folders keep their structure; <code class="docutils literal notranslate"><span class="pre">.git</span></code> and <code class="docutils literal notranslate"><span class="pre">.vaibify</span></code> folders inside
+them are skipped. A file of the same name is replaced only after you
+confirm. There is no fixed size limit: vaibify checks the disk has
+room before sending anything.</p></li>
+<li><p><strong>Out.</strong> Right-click a file and choose <strong>Download to this computer</strong>,
+or a folder and choose <strong>Download as .tar</strong>. Files land in your
+browser’s download folder.</p></li>
+<li><p><strong>From a terminal.</strong> Files can also be copied in and out from the
+command line; see <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p></li>
+</ul>
+</section>
+<section id="opening-the-container-in-vs-code">
+<h3>Opening the container in VS Code<a class="headerlink" href="#opening-the-container-in-vs-code" title="Link to this heading"></a></h3>
+<p><strong>View &gt; Open in VS Code</strong> opens the running container in a new VS
+Code window, leaving any window you already have alone. It needs VS
+Code’s Dev Containers extension, and it is hidden when the dashboard is
+driving a remote machine. The first time, your browser and VS Code
+each ask you to confirm opening the link.</p>
+</section>
+<section id="the-repos-panel">
+<h3>The Repos panel<a class="headerlink" href="#the-repos-panel" title="Link to this heading"></a></h3>
+<p>The <strong>Repos</strong> tab lists the git repositories in the environment with
+their branch, uncommitted changes, and push controls. Changes to build
+products (compiled files, caches, package metadata) are ignored, so a
+freshly installed repository reads as clean. <strong>Push</strong> commits and
+pushes the tracked changes; the gear’s <strong>Push files…</strong> lets you pick
+individual files. When a new repository appears in the workspace,
+vaibify asks whether to <strong>Track</strong> or <strong>Ignore</strong> it.</p>
+</section>
+<section id="environment-info">
+<h3>Environment Info<a class="headerlink" href="#environment-info" title="Link to this heading"></a></h3>
+<p><strong>Admin &gt; Environment Info</strong> reports facts about the image this
+session is connected to: its digest and image ID, architecture, recipe
+fingerprint (a hash of the build inputs), the archive epoch of its
+compiler toolchain, and versions probed inside the container. Any value
+vaibify cannot read shows as <em>unknown</em> rather than a guess.</p>
+</section>
+<section id="the-help-panel">
+<h3>The Help panel<a class="headerlink" href="#the-help-panel" title="Link to this heading"></a></h3>
+<p><strong>?</strong> at the right of the toolbar opens the Help panel: a link to this
+documentation, <strong>Using AI</strong> (how to start a coding agent in the
+container and why skipping its per-command prompts is safe there), the
+<strong>Legend</strong> of every symbol (Steps, Project, Level status lights, Files
+and remotes), and terminal tips. The legend is generated from the same
+catalog the dashboard draws from.</p>
+</section>
+</section>
+<section id="status-lights-and-colors">
+<h2>Status lights and colors<a class="headerlink" href="#status-lights-and-colors" title="Link to this heading"></a></h2>
+<section id="run-lights">
+<h3>Run lights<a class="headerlink" href="#run-lights" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Light</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Hollow gray</p></td>
+<td><p>Not run in this session.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Filled gray</p></td>
+<td><p>Queued (or skipped).</p></td>
+</tr>
+<tr class="row-even"><td><p>Blinking orange</p></td>
+<td><p>Running now.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Blinking red</p></td>
+<td><p>Running past its runtime limit; may be hung.</p></td>
+</tr>
+<tr class="row-even"><td><p>Solid red</p></td>
+<td><p>The last run failed.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Purple</p></td>
+<td><p>Stopped by you.</p></td>
+</tr>
+<tr class="row-even"><td><p>Pale-blue dot</p></td>
+<td><p>The last run succeeded.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="level-cells">
+<h3>Level cells<a class="headerlink" href="#level-cells" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Cell</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Hollow gray circle</p></td>
+<td><p>Not started: no outputs on disk and no activity at this level.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gray filled circle</p></td>
+<td><p>Unassessed: outputs exist, but no tests, checks, or sign-off yet.</p></td>
+</tr>
+<tr class="row-even"><td><p>Red circle</p></td>
+<td><p>No requirements met.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Orange circle</p></td>
+<td><p>Partially met.</p></td>
+</tr>
+<tr class="row-even"><td><p>Vaibify badge</p></td>
+<td><p>Attained: every requirement at this level is met.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Question mark</p></td>
+<td><p>Unknown: remotes have not been checked recently; refresh to find out.</p></td>
+</tr>
+<tr class="row-even"><td><p>Dash</p></td>
+<td><p>Not applicable: no requirements at this level.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The gray states never claim verification, and a remote that has never
+been checked is never shown as passing.</p>
+</section>
+<section id="warnings-and-file-names">
+<h3>Warnings and file names<a class="headerlink" href="#warnings-and-file-names" title="Link to this heading"></a></h3>
+<p>The ⚠ glyph collects every warning a step carries; hover it for the
+reasons and remedies. <strong>Red</strong> means something is broken now (a test
+failed, a declared file is missing). <strong>Orange</strong> means pending work or
+staleness (something changed since it was verified). The pencil ✎ on a
+file means it changed since its last verified run.</p>
+<p>A file name in red is itself a diagnosis: upright red means the
+declared file is missing, red with a dotted underline means it changed
+since its last test run, and red italic means it exists but you have
+never verified it. File rows also carry one badge per remote (GitHub,
+Overleaf, Zenodo, arXiv); see
+<a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External Resources</span></a>.</p>
+</section>
+</section>
+<section id="the-project-file">
+<h2>The project file<a class="headerlink" href="#the-project-file" title="Link to this heading"></a></h2>
+<p>The following text provides the technical details of how projects and steps are stored internally and are presented here for completeness. Most users will never need to look at these files.</p>
+<p>A Project file is a JSON file in <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code> inside the
+project’s git repository, named after the Project (for example
+<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/fit-the-model.json</span></code>; templates use <code class="docutils literal notranslate"><span class="pre">project.json</span></code>).
+Vaibify also reads <code class="docutils literal notranslate"><span class="pre">.vaibify/workflows/</span></code> and a <code class="docutils literal notranslate"><span class="pre">project.json</span></code> at the
+repository root. Results do not live in this file: each step’s
+verification states and run statistics, and the Project’s attained
+level, are kept in <code class="docutils literal notranslate"><span class="pre">.vaibify/state.json</span></code> beside it, so the Project
+file describes the analysis and nothing else.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">listSteps</span></code></p></td>
+<td><p>array</p></td>
+<td><p>required</p></td>
+<td><p>The steps, in order.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sPlotDirectory</span></code></p></td>
+<td><p>string</p></td>
+<td><p>required</p></td>
+<td><p>Where figures go (new Projects use <code class="docutils literal notranslate"><span class="pre">Plot</span></code>); a relative path is taken from the repository root. Commands use it as <code class="docutils literal notranslate"><span class="pre">{sPlotDirectory}</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sWorkflowName</span></code></p></td>
+<td><p>string</p></td>
+<td><p>—</p></td>
+<td><p>The Project’s display name.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sFigureType</span></code></p></td>
+<td><p>string</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pdf</span></code></p></td>
+<td><p>Figure format, used as <code class="docutils literal notranslate"><span class="pre">{sFigureType}</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">iNumberOfCores</span></code></p></td>
+<td><p>integer</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">-1</span></code></p></td>
+<td><p>Passed to commands as <code class="docutils literal notranslate"><span class="pre">{iNumberOfCores}</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fTolerance</span></code></p></td>
+<td><p>number</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1e-6</span></code></p></td>
+<td><p>How closely quantitative tests must match their standards.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fDefaultWallClockBudgetSeconds</span></code></p></td>
+<td><p>number</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> (no limit)</p></td>
+<td><p>Default runtime limit for every step; Projects made with <strong>New Project</strong> or <strong>Make Project</strong> start at four hours.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bAutoArchive</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Push verified files to Overleaf and Zenodo automatically.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bNoStandaloneBinaries</span></code>, <code class="docutils literal notranslate"><span class="pre">listDeclaredBinaries</span></code></p></td>
+<td><p>boolean, array</p></td>
+<td><p>—</p></td>
+<td><p>Compiled programs the Project runs, for Level 3.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dictDeterminism</span></code></p></td>
+<td><p>object</p></td>
+<td><p>—</p></td>
+<td><p>How exactly a rerun must match; see <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dictRemotes</span></code></p></td>
+<td><p>object</p></td>
+<td><p>—</p></td>
+<td><p>GitHub, Overleaf, and Zenodo connections; see <a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External Resources</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">iWorkflowSchemaVersion</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>written by vaibify</p></td>
+<td><p>Format version; older files are upgraded when loaded.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The Project settings (<strong>⚙</strong> above the step list) edit the common
+fields: <strong>Plot Dir</strong>, <strong>Figure Type</strong>, <strong>Cores</strong>, <strong>Tolerance</strong>, <strong>Auto
+Archive</strong>, and <strong>Runtime limit (s)</strong>, alongside per-tab display
+settings such as <strong>Poll Interval</strong>.</p>
+</section>
+<section id="the-step-object">
+<h2>The step object<a class="headerlink" href="#the-step-object" title="Link to this heading"></a></h2>
+<p>Each entry in <code class="docutils literal notranslate"><span class="pre">listSteps</span></code> is a step. Four fields are required:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sName</span></code></p></td>
+<td><p>string</p></td>
+<td><p>The step’s name; letters, digits, spaces, and hyphens.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sDirectory</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Working directory, relative to the repository root; its last part must match the name.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code></p></td>
+<td><p>string array</p></td>
+<td><p>Commands that make figures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code></p></td>
+<td><p>string array</p></td>
+<td><p>The figures they produce.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The rest are optional:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sStepId</span></code></p></td>
+<td><p>string</p></td>
+<td><p>from the name</p></td>
+<td><p>Permanent identifier used in <code class="docutils literal notranslate"><span class="pre">{step:…}</span></code> tokens.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sDescription</span></code></p></td>
+<td><p>string</p></td>
+<td><p>—</p></td>
+<td><p>What the step does.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bRunEnabled</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>The run checkbox: included when the Project runs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bInteractive</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>A person runs the step in a terminal.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bPlotOnly</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Skip the data analysis commands and only re-plot.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code></p></td>
+<td><p>string array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Data analysis commands, run before the plots.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code></p></td>
+<td><p>string array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Data files the step produces.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code></p></td>
+<td><p>string array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Raw files the step reads that no step produces.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bNoInputData</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Declares that the step needs no input data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">saDependencies</span></code></p></td>
+<td><p>string array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Extra <code class="docutils literal notranslate"><span class="pre">{step:…}</span></code> tokens for dependencies not in a command.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">saTestCommands</span></code></p></td>
+<td><p>string array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Additional test commands.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dictTests</span></code></p></td>
+<td><p>object</p></td>
+<td><p>—</p></td>
+<td><p>The step’s generated integrity, qualitative, and quantitative tests.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">listRemoteData</span></code></p></td>
+<td><p>array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
+<td><p>Provenance of files fetched from a remote source.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fWallClockBudgetSeconds</span></code></p></td>
+<td><p>number</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> (use the Project default)</p></td>
+<td><p>The step’s runtime limit.</p></td>
+</tr>
+</tbody>
+</table>
+<p>A minimal automated step:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"sName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Fit the model"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sStepId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fit-the-model"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sDirectory"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FitTheModel"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"saInputDataFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"FitTheModel/observations.csv"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"saDataCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"python fitModel.py --input observations.csv --output posterior.npy"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"saOutputDataFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"posterior.npy"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"saPlotCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"python plotFit.py --samples posterior.npy --output {sPlotDirectory}/fit.{sFigureType}"</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"saPlotFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"{sPlotDirectory}/fit.{sFigureType}"</span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Commands run from the step’s directory, while <code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code>
+entries are relative to the repository root. A later step reads
+<code class="docutils literal notranslate"><span class="pre">posterior.npy</span></code> as <code class="docutils literal notranslate"><span class="pre">{step:fit-the-model.posterior}</span></code>.</p>
+<p>The <strong>+</strong> above the step list and the step’s <strong>Edit Step</strong> dialog
+write these fields for you; editing the file by hand works too, and
+the dashboard picks up the change on its next poll.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="aiUse.html" class="btn btn-neutral float-left" title="Declaring AI Use" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="externalResources.html" class="btn btn-neutral float-right" title="Connecting to External Resources" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

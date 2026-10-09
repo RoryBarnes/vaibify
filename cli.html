@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Pipelines" href="pipelines.html" />
-    <link rel="prev" title="Configuration Reference" href="configuration.html" /> 
+    <link rel="next" title="For Agents" href="forAgents.html" />
+    <link rel="prev" title="Testing Model" href="testing.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,93 +45,66 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">CLI Reference</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#global-options">Global Options</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#driving-a-hub-on-another-machine">Driving a hub on another machine</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#troubleshooting-log">Troubleshooting log</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#project-targeting">Project Targeting</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#project-setup">Project Setup</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#host-installer-agent-defaults">Host installer agent defaults</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-init"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-register"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-setup"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-config"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#global-options-and-project-targeting">Global options and project targeting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#commands">Commands</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#creating-and-configuring-projects">Creating and configuring projects</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-init">vaibify init</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-register-and-vaibify-config">vaibify register and vaibify config</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#container-lifecycle">Container Lifecycle</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-doctor"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-repair"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-build"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-start"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-stop"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-destroy"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-status"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#diagnosing-and-repairing">Diagnosing and repairing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-doctor">vaibify doctor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-repair-dns">vaibify repair dns</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#working-with-the-container">Working with the Container</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-connect"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-push"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-pull"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-verify"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-ls"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">ls</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-cat"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">cat</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-run"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-workflow"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">workflow</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-test"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">test</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-verify-step"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify-step</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-generate-standards"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">generate-standards</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#environment-lifecycle">Environment lifecycle</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-build">vaibify build</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-start">vaibify start</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-status">vaibify status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-stop-and-vaibify-destroy">vaibify stop and vaibify destroy</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-verify">vaibify verify</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#shell-helpers">Shell helpers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#tab-completion">Tab completion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#if-tab-does-nothing">If TAB does nothing</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#files-and-shells">Files and shells</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflows-and-tests">Workflows and tests</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-generate-standards">vaibify generate-standards</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#reproducibility">Reproducibility</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-reproduce"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-reproduce">vaibify reproduce</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#credentials">Credentials</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-revoke"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-hub-sessions-and-ports">The hub, sessions, and ports</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-gui-and-vaibify-open">vaibify gui and vaibify open</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions">vaibify sessions</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#gui-and-pipeline">GUI and Pipeline</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-gui"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#multiple-sessions">Multiple sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#vaibify-do">vaibify do</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recovering-a-quarantined-container">Recovering a quarantined container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#credentials">Credentials</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#remote-machines">Remote machines</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#session-management">Session management</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-sessions-stop"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#dashboard-actions-from-the-host-vaibify-do">Dashboard actions from the host: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="#publishing">Publishing</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-publish-workflow-coming-soon"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#vaibify-publish-archive-coming-soon"><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> <em>(coming soon)</em></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -160,1050 +133,773 @@
              
   <section id="cli-reference">
 <h1>CLI Reference<a class="headerlink" href="#cli-reference" title="Link to this heading"></a></h1>
-<p>Vaibify provides two equivalent entry points: <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> and the shorthand
-<code class="docutils literal notranslate"><span class="pre">vaib</span></code>. All commands accept a <code class="docutils literal notranslate"><span class="pre">--config</span></code> flag to specify an alternate
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> path.</p>
-<section id="global-options">
-<h2>Global Options<a class="headerlink" href="#global-options" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Flag</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code></p></td>
-<td><p>Path to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (default: <code class="docutils literal notranslate"><span class="pre">./vaibify.yml</span></code>)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code></p></td>
-<td><p>Port for the hub server. Defaults to the port the last hub used, so a bookmarked tab keeps working; an explicit port is used verbatim and fails loudly if taken</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-browser</span></code></p></td>
-<td><p>Serve without opening a browser. The process still runs in the foreground until you stop it – this does not make it a daemon</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--version</span></code></p></td>
-<td><p>Print the installed version and exit</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
-<td><p>Show the help message and exit</p></td>
-</tr>
-</tbody>
-</table>
-<p>When invoked with no subcommand, Vaibify starts in <strong>hub mode</strong> – a
-browser-based dashboard for managing multiple projects.</p>
-</section>
-<section id="driving-a-hub-on-another-machine">
-<h2>Driving a hub on another machine<a class="headerlink" href="#driving-a-hub-on-another-machine" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>remote<span class="w"> </span>compute-machine
-vaibify<span class="w"> </span>remote<span class="w"> </span>researcher@compute-machine
-vaibify<span class="w"> </span>remote<span class="w"> </span>compute-machine<span class="w"> </span>--port<span class="w"> </span><span class="m">18050</span>
+<p>The vaibify core is fully scriptable. Everything the dashboard does can
+also be driven from the command line, so a build, a run, a test pass,
+or a PROOF report can be part of a script or a scheduled job. The
+other pages describe the dashboard; this page is the command-line
+counterpart.</p>
+<p>The command is <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>, with the shorthand <code class="docutils literal notranslate"><span class="pre">vaib</span></code>. Every command
+prints its own options, and that output is the authority:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>--help<span class="w">             </span><span class="c1"># every command</span>
+vaibify<span class="w"> </span>&lt;command&gt;<span class="w"> </span>--help<span class="w">   </span><span class="c1"># one command's options</span>
 </pre></div>
 </div>
-<p>Opens one SSH connection, forwards a loopback port, starts or adopts a
-hub beside your projects on that machine, and opens a signed-in browser
-tab locally. The remote hub keeps running if your tunnel drops, and a
-session is held for fifteen minutes so you can come back to it.</p>
-<p>Two things to check before the first attempt: both machines need the
-same vaibify version, and <code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">&lt;host&gt;</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code> must print
-one – a <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">--user</span></code> install, a virtualenv, or a conda environment
-activated by your shell profile is invisible to a non-interactive SSH
-command. SSH options themselves belong in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.</p>
-<p>There is no <code class="docutils literal notranslate"><span class="pre">--project</span></code> flag: a project name may contain a space, and
-the remote command reaches a login shell, so the project is chosen in
-the dashboard once the tunnel is up.</p>
-<p>See <a class="reference internal" href="remoteAccess.html"><span class="std std-doc">Working on a remote machine</span></a> for what a dropped
-connection does to a run and to an open terminal, how the three file
-actions differ once the backend is elsewhere, and troubleshooting.</p>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote-helper</span></code> is the far-end counterpart. It is invoked by
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> over SSH and is not meant to be run by hand.</p>
-</section>
-<section id="troubleshooting-log">
-<h2>Troubleshooting log<a class="headerlink" href="#troubleshooting-log" title="Link to this heading"></a></h2>
-<p>Every CLI invocation attaches a rotating log at
-<code class="docutils literal notranslate"><span class="pre">~/.vaibify/vaibify.log</span></code> (10 MB per file, five backups kept). Warnings
-and errors from the hub, the pipeline runner, and the Docker layer land
-there, each tagged with the container id it concerns
-(<code class="docutils literal notranslate"><span class="pre">[cid:&lt;container-id&gt;]</span></code>), so when something misbehaves the log is the
-first place to look. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> (below) is the other first stop.</p>
-</section>
-<section id="project-targeting">
-<h2>Project Targeting<a class="headerlink" href="#project-targeting" title="Link to this heading"></a></h2>
-<blockquote>
-<div><p><strong>Note:</strong> When you are in a directory containing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, the
-<code class="docutils literal notranslate"><span class="pre">--project</span></code> flag defaults to that project. When only one project is
-registered globally, the flag can be omitted entirely. When multiple
-projects exist, <code class="docutils literal notranslate"><span class="pre">--project</span></code> is required unless you are in a project
-directory. Projects are registered automatically when you run
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>.</p>
-</div></blockquote>
-</section>
-<section id="project-setup">
-<h2>Project Setup<a class="headerlink" href="#project-setup" title="Link to this heading"></a></h2>
-<section id="host-installer-agent-defaults">
-<h3>Host installer agent defaults<a class="headerlink" href="#host-installer-agent-defaults" title="Link to this heading"></a></h3>
-<p>The host installer can select which in-container agent CLIs a later
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code> enables by default:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sh<span class="w"> </span>vaibify/install/installVaibify.sh<span class="w"> </span>--agent<span class="o">=</span>OpenCode<span class="w"> </span>--install-pi
-</pre></div>
-</div>
-<p>Accepted provider names are <code class="docutils literal notranslate"><span class="pre">claude</span></code>, <code class="docutils literal notranslate"><span class="pre">codex</span></code>, <code class="docutils literal notranslate"><span class="pre">gemini</span></code>, <code class="docutils literal notranslate"><span class="pre">antigravity</span></code>,
-<code class="docutils literal notranslate"><span class="pre">opencode</span></code>, <code class="docutils literal notranslate"><span class="pre">cline</span></code>, <code class="docutils literal notranslate"><span class="pre">openhands</span></code>, and <code class="docutils literal notranslate"><span class="pre">pi</span></code>; each also has a matching
-<code class="docutils literal notranslate"><span class="pre">--install-&lt;provider&gt;</span></code> flag.
-These choices are defaults only: each new project’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> remains the
-authority, and can enable or disable any provider independently.</p>
-</section>
-<section id="vaibify-init">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code><a class="headerlink" href="#vaibify-init" title="Link to this heading"></a></h3>
-<p>Create a new project, from a template or from nothing.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w"> </span><span class="o">[</span>--template<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--minimal<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
-</pre></div>
-</div>
+<section id="global-options-and-project-targeting">
+<h2>Global options and project targeting<a class="headerlink" href="#global-options-and-project-targeting" title="Link to this heading"></a></h2>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--template</span></code></p></td>
-<td><p>Template name: <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>, <code class="docutils literal notranslate"><span class="pre">toolkit</span></code>, or <code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--name</span></code></p></td>
-<td><p>Project name; scaffolds without a template when given alone</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--minimal</span></code></p></td>
-<td><p>Smallest config that still builds: no optional features, no extra packages</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
-<td><p>Overwrite existing configuration files</p></td>
-</tr>
-</tbody>
-</table>
-<p>With <code class="docutils literal notranslate"><span class="pre">--template</span></code>, this copies the template’s files and creates
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in the current directory. With <code class="docutils literal notranslate"><span class="pre">--name</span></code> alone it writes
-only <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, which is what a script wants:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>myProject<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>myProject
-vaibify<span class="w"> </span>init<span class="w"> </span>--name<span class="w"> </span>myProject<span class="w"> </span>--minimal
-</pre></div>
-</div>
-<p>Run with neither option, it lists the available templates and exits.</p>
-</section>
-<section id="vaibify-register">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span></code><a class="headerlink" href="#vaibify-register" title="Link to this heading"></a></h3>
-<p>Register an existing project directory in the global registry so it
-can be targeted with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code> from any directory. Unlike
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">init</span></code>, this does not create or overwrite any files.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>register<span class="w"> </span><span class="o">[</span>DIRECTORY<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Argument</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DIRECTORY</span></code></p></td>
-<td><p>Path to the project directory (default: <code class="docutils literal notranslate"><span class="pre">.</span></code>)</p></td>
-</tr>
-</tbody>
-</table>
-<p>The directory must contain a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> file.</p>
-</section>
-<section id="vaibify-setup">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">setup</span></code><a class="headerlink" href="#vaibify-setup" title="Link to this heading"></a></h3>
-<p>Launch the interactive setup wizard in a browser (port 8051). The wizard
-walks through configuration fields and writes the result to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.</p>
-<p>The wizard listens on loopback only and signs the browser in with a
-one-time link, exactly as the dashboard does, so the printed address
-alone cannot save a configuration. If no window opens, run the command
-again.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>setup
-</pre></div>
-</div>
-</section>
-<section id="vaibify-config">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span></code><a class="headerlink" href="#vaibify-config" title="Link to this heading"></a></h3>
-<p>Edit, export, or import configuration.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>config<span class="w"> </span>edit<span class="w">                         </span><span class="c1"># Open vaibify.yml in $EDITOR</span>
-vaibify<span class="w"> </span>config<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;file&gt;<span class="w">      </span><span class="c1"># Write current config to a file</span>
-vaibify<span class="w"> </span>config<span class="w"> </span>import<span class="w"> </span>&lt;file&gt;<span class="w">                </span><span class="c1"># Load config from a file</span>
-</pre></div>
-</div>
-</section>
-</section>
-<section id="container-lifecycle">
-<h2>Container Lifecycle<a class="headerlink" href="#container-lifecycle" title="Link to this heading"></a></h2>
-<section id="vaibify-doctor">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code><a class="headerlink" href="#vaibify-doctor" title="Link to this heading"></a></h3>
-<p>The command to run when something is wrong. It DIAGNOSES and changes
-nothing — no container is started, stopped, removed or restarted by any
-check it performs. When a finding has a fix vaibify itself can apply,
-the finding names the command (see <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code> below).</p>
-<p>Three scopes:</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Scope</p></th>
-<th class="head"><p>What it examines</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">host</span></code></p></td>
-<td><p>This machine: whether the Python answering the command is a native build or runs through CPU translation, Docker context and endpoint, daemon reachability, the runtime (Docker Desktop / Colima / rootful or rootless Engine), architecture, daemon storage and memory, what vaibify will request against what the daemon has, and room for an environment deposit</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">container</span></code></p></td>
-<td><p>Inside the running container: network attachments and default route, the resolver configuration, name resolution compared against this host’s, the effective proxy path, and (with <code class="docutils literal notranslate"><span class="pre">--online</span></code>) transport</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">project</span></code></p></td>
-<td><p>Vaibify’s own record of the project: journal quarantine, whether the environment envelope pins the image the container runs, workspace ownership, and what the entrypoint observed at the last start</p></td>
-</tr>
-</tbody>
-</table>
-<p>Four states, and <em>not checked</em> is one of them:</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>State</p></th>
 <th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ok</span></code></p></td>
-<td><p>Assessed and correct</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code></p></td>
+<td><p>Use this <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> (default: <code class="docutils literal notranslate"><span class="pre">./vaibify.yml</span></code>)</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code></p></td>
-<td><p>Assessed, and something is worth acting on</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code></p></td>
+<td><p>Port for the hub. By default the hub reuses the port it used last (so a bookmarked tab keeps working) and moves only if another program holds it; an explicit port is used as given and fails if taken</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fail</span></code></p></td>
-<td><p>Assessed, and something is broken</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-browser</span></code></p></td>
+<td><p>Serve without opening a browser. The process still runs in the foreground; it is not a daemon</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">not</span> <span class="pre">checked</span></code></p></td>
-<td><p><strong>Could not be assessed</strong>, with the reason. Never counted as <code class="docutils literal notranslate"><span class="pre">ok</span></code>, and printed in its own group</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--version</span></code>, <code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
+<td><p>Print and exit</p></td>
 </tr>
 </tbody>
 </table>
-<p>Every <code class="docutils literal notranslate"><span class="pre">warn</span></code> and <code class="docutils literal notranslate"><span class="pre">fail</span></code> names a next step, and the command it names is
-correct for the runtime this host is actually using — <code class="docutils literal notranslate"><span class="pre">colima</span> <span class="pre">start</span> <span class="pre">--profile</span> <span class="pre">&lt;yours&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">--user</span> <span class="pre">start</span> <span class="pre">docker</span></code> for a rootless
-daemon, <code class="docutils literal notranslate"><span class="pre">open</span> <span class="pre">-a</span> <span class="pre">Docker</span></code> for Docker Desktop. When the runtime cannot be
-identified, doctor says so and names the diagnostic step rather than
-guessing at a command that does not apply to your machine.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor<span class="w"> </span><span class="o">[</span>--quiet<span class="o">]</span><span class="w"> </span><span class="o">[</span>--build<span class="o">]</span><span class="w"> </span><span class="o">[</span>--start<span class="o">]</span><span class="w"> </span><span class="o">[</span>--container<span class="o">]</span><span class="w"> </span><span class="o">[</span>--online<span class="o">]</span>
-<span class="w">               </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--explain<span class="w"> </span>CHECK<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<p>Run with no command, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> starts the <strong>hub</strong>: the dashboard for
+all registered projects. Commands that act on a project resolve it in
+this order: <code class="docutils literal notranslate"><span class="pre">--project/-p</span> <span class="pre">NAME</span></code>, then <code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">PATH</span></code>, then a
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in the current directory, then the only registered
+project. With several registered projects and none of these, the
+command lists them and exits. A project created with <code class="docutils literal notranslate"><span class="pre">init</span></code> or
+registered with <code class="docutils literal notranslate"><span class="pre">register</span></code> can be targeted with <code class="docutils literal notranslate"><span class="pre">-p</span></code> from any
+directory.</p>
+</section>
+<section id="commands">
+<h2>Commands<a class="headerlink" href="#commands" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init</span></code></p></td>
+<td><p>Create a project in the current directory from a template, or just a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">register</span> <span class="pre">[DIRECTORY]</span></code></p></td>
+<td><p>Register an existing directory containing a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>; writes no files</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">setup</span></code></p></td>
+<td><p>Open the setup wizard in a browser, on port 8051</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">config</span> <span class="pre">edit</span> <span class="pre">|</span> <span class="pre">export</span> <span class="pre">FILE</span> <span class="pre">|</span> <span class="pre">import</span> <span class="pre">FILE</span></code></p></td>
+<td><p>Edit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code>, write it to a file, or replace it from one</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">doctor</span></code></p></td>
+<td><p>Diagnose this machine, the container, and the project; changes nothing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">repair</span> <span class="pre">dns</span></code></p></td>
+<td><p>Clear a container’s stale name-resolution state</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">build</span></code></p></td>
+<td><p>Build the image from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">start</span></code></p></td>
+<td><p>Start the container</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">stop</span></code></p></td>
+<td><p>Stop the container; the workspace volume remains</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status</span></code></p></td>
+<td><p>Show container, image, and volume state, and optionally the PROOF level</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">destroy</span></code></p></td>
+<td><p>Delete the workspace volume, then offer to delete the images</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">connect</span></code></p></td>
+<td><p>Open a shell in the running container</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">push</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code> / <code class="docutils literal notranslate"><span class="pre">pull</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span></code></p></td>
+<td><p>Copy files between the host and the workspace</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">[PATH]</span></code> / <code class="docutils literal notranslate"><span class="pre">cat</span> <span class="pre">PATH</span></code></p></td>
+<td><p>List a container directory or print a container file</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">verify</span></code></p></td>
+<td><p>Run the container isolation check</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">run</span></code></p></td>
+<td><p>Run every step, one step, or from a step onward</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">workflow</span></code></p></td>
+<td><p>Summarize the workflow or one step</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">test</span></code></p></td>
+<td><p>Run the tests of every step or one step</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">verify-step</span></code></p></td>
+<td><p>Record your sign-off on a step</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">generate-standards</span></code></p></td>
+<td><p>Create or refresh a step’s <code class="docutils literal notranslate"><span class="pre">tests/quantitative_standards_&lt;step&gt;.json</span></code> from its data</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproduce</span></code></p></td>
+<td><p>Verify the Level 3 reproducibility envelope, or reproduce a published project</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gui</span></code></p></td>
+<td><p>Open the hub, or a single-project viewer</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">open</span> <span class="pre">CONTAINER</span></code></p></td>
+<td><p>Move a container’s live session into a fresh browser tab</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sessions</span></code> / <code class="docutils literal notranslate"><span class="pre">sessions</span> <span class="pre">stop</span></code></p></td>
+<td><p>List or stop live hubs and viewers</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">do</span> <span class="pre">&lt;action&gt;</span></code></p></td>
+<td><p>Run any dashboard action from the host, as the researcher</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reconcile</span> <span class="pre">CONTAINER</span></code></p></td>
+<td><p>Prove a quarantined container’s interrupted operations settled</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">secret</span></code></p></td>
+<td><p>Store, check, or delete an agent provider’s API key</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">revoke</span> <span class="pre">github|overleaf|zenodo</span></code></p></td>
+<td><p>Remove a stored credential and revoke it upstream where possible</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remote</span> <span class="pre">DESTINATION</span></code></p></td>
+<td><p>Open a dashboard for another machine over SSH</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remote-helper</span></code></p></td>
+<td><p>The far end of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code>; not run by hand</p></td>
+</tr>
+</tbody>
+</table>
+<p>Vaibify has no <code class="docutils literal notranslate"><span class="pre">publish</span></code> command. Zenodo and GitHub publication run
+through the PROOF Level 2 rows in the dashboard and the matching
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> actions (<code class="docutils literal notranslate"><span class="pre">push-to-github</span></code>, <code class="docutils literal notranslate"><span class="pre">publish-to-zenodo</span></code>).</p>
+</section>
+<section id="creating-and-configuring-projects">
+<h2>Creating and configuring projects<a class="headerlink" href="#creating-and-configuring-projects" title="Link to this heading"></a></h2>
+<section id="vaibify-init">
+<h3>vaibify init<a class="headerlink" href="#vaibify-init" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>init<span class="w">                              </span><span class="c1"># list the installed templates</span>
+vaibify<span class="w"> </span>init<span class="w"> </span>--template<span class="w"> </span>NAME<span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+vaibify<span class="w"> </span>init<span class="w"> </span>--name<span class="w"> </span>NAME<span class="w"> </span><span class="o">[</span>--minimal<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </pre></div>
 </div>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--quiet</span></code></p></td>
-<td><p>Suppress <code class="docutils literal notranslate"><span class="pre">ok</span></code> lines; show only warns, fails and unassessed</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--template</span> <span class="pre">NAME</span></code></p></td>
+<td><p>Copy a template (<code class="docutils literal notranslate"><span class="pre">sandbox</span></code>, <code class="docutils literal notranslate"><span class="pre">toolkit</span></code>, <code class="docutils literal notranslate"><span class="pre">workflow</span></code>, or a custom one; see <a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">Environments and Projects</span></a>) into the current directory</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--build</span></code></p></td>
-<td><p>Run only the build-relevant subset</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--name</span> <span class="pre">NAME</span></code></p></td>
+<td><p>Project name. Given alone, writes a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> with no template</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--start</span></code></p></td>
-<td><p>Run only the start-relevant subset</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--minimal</span></code></p></td>
+<td><p>The smallest <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> that still builds: no features, no packages</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--container</span></code></p></td>
-<td><p>Run only the checks inside the running container and against this project’s records</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--online</span></code></p></td>
-<td><p>Permit connection attempts to the host this project already depends on</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit the results as JSON instead of a report</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code></p></td>
-<td><p>Print how one named check decides its answer, and nothing else</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
+<td><p>Overwrite an existing <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>; without it, <code class="docutils literal notranslate"><span class="pre">init</span></code> refuses</p></td>
 </tr>
 </tbody>
 </table>
-<p>With no scope flag, every scope runs. The report ends with an
-<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">ok</span> <span class="pre">/</span> <span class="pre">M</span> <span class="pre">warn</span> <span class="pre">/</span> <span class="pre">K</span> <span class="pre">fail</span> <span class="pre">/</span> <span class="pre">J</span> <span class="pre">not</span> <span class="pre">checked</span></code> summary line.</p>
-<p><strong>Exit codes.</strong></p>
+<p>With a template, <code class="docutils literal notranslate"><span class="pre">init</span></code> copies the template’s files into the current
+directory, moves any <code class="docutils literal notranslate"><span class="pre">project.json</span></code> into <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code>, writes a
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from the built-in defaults, and registers the project. It
+refuses, before writing anything, when <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code>
+already exists. Because a build clones only the repositories named in
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code> warns when a template’s <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> lists
+repositories the new <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> does not carry. A name already
+registered to a different directory is scaffolded but not registered,
+and the command says so.</p>
+</section>
+<section id="vaibify-register-and-vaibify-config">
+<h3>vaibify register and vaibify config<a class="headerlink" href="#vaibify-register-and-vaibify-config" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">register</span> <span class="pre">[DIRECTORY]</span></code> adds an existing directory (default:
+the current one) to the registry so <code class="docutils literal notranslate"><span class="pre">-p</span></code> finds it; the directory must
+contain a <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, and nothing is written there.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span> <span class="pre">edit</span></code> opens <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> in <code class="docutils literal notranslate"><span class="pre">$EDITOR</span></code>;
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span> <span class="pre">export</span> <span class="pre">FILE</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code> writes the current configuration
+to a file; <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">config</span> <span class="pre">import</span> <span class="pre">FILE</span></code> replaces the current
+configuration with a file’s contents. Every field is documented in the
+<a class="reference internal" href="install.html#configuration-reference"><span class="std std-ref">configuration reference</span></a>.</p>
+</section>
+</section>
+<section id="diagnosing-and-repairing">
+<h2>Diagnosing and repairing<a class="headerlink" href="#diagnosing-and-repairing" title="Link to this heading"></a></h2>
+<section id="vaibify-doctor">
+<h3>vaibify doctor<a class="headerlink" href="#vaibify-doctor" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor<span class="w"> </span><span class="o">[</span>--quiet<span class="o">]</span><span class="w"> </span><span class="o">[</span>--build<span class="w"> </span><span class="p">|</span><span class="w"> </span>--start<span class="w"> </span><span class="p">|</span><span class="w"> </span>--container<span class="o">]</span><span class="w"> </span><span class="o">[</span>--online<span class="o">]</span>
+<span class="w">               </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--explain<span class="w"> </span>CHECK<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>
+</pre></div>
+</div>
+<p>Doctor examines three scopes: <strong>host</strong> (the Python’s architecture, the
+Docker context and endpoint, the daemon and runtime, storage, memory,
+CPU), <strong>container</strong> (network attachments, name resolution, proxy path),
+and <strong>project</strong> (vaibify’s own records of the project); every scope
+also reports the Agent Council’s credential-test records. With no
+scope flag every scope runs; <code class="docutils literal notranslate"><span class="pre">--build</span></code> and <code class="docutils literal notranslate"><span class="pre">--start</span></code> run the host checks relevant to
+that step, and <code class="docutils literal notranslate"><span class="pre">--container</span></code> runs the container and project checks.
+Each check reports <code class="docutils literal notranslate"><span class="pre">ok</span></code>, <code class="docutils literal notranslate"><span class="pre">warn</span></code>, <code class="docutils literal notranslate"><span class="pre">fail</span></code>, or <code class="docutils literal notranslate"><span class="pre">not</span> <span class="pre">checked</span></code> (with the
+reason; never counted as ok). Every <code class="docutils literal notranslate"><span class="pre">warn</span></code> and <code class="docutils literal notranslate"><span class="pre">fail</span></code> names a next step
+for the runtime this machine actually uses. For a running container,
+doctor also reports whether it was created consistently with
+<code class="docutils literal notranslate"><span class="pre">x11Forwarding</span></code>, which is fixed when a container is created (see
+<a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). <code class="docutils literal notranslate"><span class="pre">--quiet</span></code> hides the <code class="docutils literal notranslate"><span class="pre">ok</span></code>
+lines, <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits the results as JSON, and <code class="docutils literal notranslate"><span class="pre">--explain</span> <span class="pre">CHECK</span></code>
+prints how one check decides and nothing else.</p>
+<p>Doctor works before any project exists, so it is the first check after
+an install. It warns when the Python running it is being translated
+(an Intel-only Python on Apple Silicon), compares what a project will
+request against what a Colima virtual machine has, and its
+<code class="docutils literal notranslate"><span class="pre">shell-completions</span></code> line prints the exact line to add when TAB
+completion is not loaded. In the dashboard, a failure toast’s <strong>Click
+to run a diagnosis</strong> runs the same checks without a project.</p>
+<p>By default doctor resolves names but opens no connections. <code class="docutils literal notranslate"><span class="pre">--online</span></code>
+permits connections to the host your project already depends on (its
+first repository’s host or the enabled agent’s provider), over the port
+and proxy your project would use, without authenticating.</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Code</p></th>
+<tr class="row-odd"><th class="head"><p>Exit</p></th>
 <th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>0</p></td>
-<td><p>Everything applicable in the requested scope was assessed, and nothing failed</p></td>
+<td><p>Everything applicable was assessed and nothing failed</p></td>
 </tr>
 <tr class="row-odd"><td><p>1</p></td>
 <td><p>At least one check failed</p></td>
 </tr>
 <tr class="row-even"><td><p>2</p></td>
-<td><p>A scope you asked for by name contains a check that could not be assessed</p></td>
+<td><p>A scope you named contains a check that could not be assessed</p></td>
 </tr>
 </tbody>
 </table>
-<p>Code 2 fires for <em>any</em> unassessed applicable check inside an explicitly
-requested scope — not only when the whole scope was unassessable.
-Without a scope flag nothing is explicitly requested, so a laptop with
-no container running does not turn an ordinary <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> run
-non-zero.</p>
-<p><strong>What doctor does over the network.</strong> By default it resolves exactly
-one name, and it is a name your project already depends on: your first
-configured repository’s host, or the API host of the agent provider you
-enabled. It introduces no third party of its own, and with neither
-configured it falls back to inspecting the resolver configuration and
-says so.</p>
-<p>Connection attempts happen only with <code class="docutils literal notranslate"><span class="pre">--online</span></code>, and they follow the
-path your project actually uses rather than a fixed one: the <strong>port</strong>
-its remote is reached on (443 for <code class="docutils literal notranslate"><span class="pre">https://</span></code>, 22 for <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> and for
-the <code class="docutils literal notranslate"><span class="pre">git&#64;host:path</span></code> form, 9418 for <code class="docutils literal notranslate"><span class="pre">git://</span></code>, or whatever the URL
-names), TLS <strong>only</strong> where the transport carries it, and through the
-container’s own <strong>proxy</strong> with a <code class="docutils literal notranslate"><span class="pre">CONNECT</span></code> when <code class="docutils literal notranslate"><span class="pre">HTTPS_PROXY</span></code> /
-<code class="docutils literal notranslate"><span class="pre">HTTP_PROXY</span></code> is set and <code class="docutils literal notranslate"><span class="pre">NO_PROXY</span></code> does not exempt the host. Nothing
-vaibify probes is ever authenticated to: no request bytes are sent to
-the destination and no <code class="docutils literal notranslate"><span class="pre">Proxy-Authorization</span></code> is sent to the proxy — a
-proxy that answers <code class="docutils literal notranslate"><span class="pre">407</span></code> is reported as exactly that, which is the
-diagnosis rather than a thing to work around.</p>
 </section>
-<section id="vaibify-repair">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code><a class="headerlink" href="#vaibify-repair" title="Link to this heading"></a></h3>
-<p>The acted-on half of <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>. One subject exists today.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>repair<span class="w"> </span>dns<span class="w"> </span><span class="o">[</span>--recreate<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<section id="vaibify-repair-dns">
+<h3>vaibify repair dns<a class="headerlink" href="#vaibify-repair-dns" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>repair<span class="w"> </span>dns<span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span> <span class="pre">dns</span></code> clears a container’s stale resolver state. It
-reads the resolver configuration first and branches on it, because the
-three configurations do not have the same remedy:</p>
-<ul class="simple">
-<li><p>a <strong>default bridge</strong> or Docker’s <strong>embedded resolver</strong> clears on a
-restart, so the repair restarts the container;</p></li>
-<li><p>an <strong>explicit <code class="docutils literal notranslate"><span class="pre">HostConfig.Dns</span></code></strong> is baked into the container and no
-restart can change it. Vaibify never sets that field, so finding one
-means the container’s specification drifted from its vaibify
-configuration — introduced from outside vaibify. The repair
-<strong>refuses</strong> to restart (which would succeed and change nothing, and
-read as the fix failing) and points at <code class="docutils literal notranslate"><span class="pre">--recreate</span></code>, which recreates
-the container from the vaibify configuration.</p></li>
-</ul>
-<p>A repair tells you what it is about to do before it does it: a restart
-re-runs the entrypoint and kills every shell, agent and pipeline step
-inside the container. It refuses over live work, naming what is busy;
-it routes a <strong>restart</strong> through the live hub when one owns the
-container; it is journaled, so a crash mid-repair reconciles like any
-other interrupted operation; and a recreation pins the image
-<strong>identity</strong> the container is running rather than the project’s
-<code class="docutils literal notranslate"><span class="pre">latest</span></code> tag, which may have moved.</p>
-<p>A <strong>recreation is refused while a vaibify hub holds the container</strong>,
-on both sides. Recreating gives the container a new id, and the hub’s
-session, workflow cache and file paths are all bound to the old one —
-so the session would stay authorized and cached against a container
-that no longer exists. Close the dashboard session for that project
-and run the command again; it then takes the direct lane.</p>
-<p>Afterwards it re-probes and reports the state it actually found.</p>
+<p>Clears a container’s stale name-resolution state by restarting it.
+<code class="docutils literal notranslate"><span class="pre">--recreate</span></code> instead recreates the container from the image it is
+running, which is required when DNS servers were baked into the
+container from outside vaibify. <code class="docutils literal notranslate"><span class="pre">--yes</span></code> skips the confirmation prompt.</p>
+</section>
+</section>
+<section id="environment-lifecycle">
+<h2>Environment lifecycle<a class="headerlink" href="#environment-lifecycle" title="Link to this heading"></a></h2>
+<section id="vaibify-build">
+<h3>vaibify build<a class="headerlink" href="#vaibify-build" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span><span class="o">[</span>--no-cache<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>
+</pre></div>
+</div>
+<p>Runs the <a class="reference internal" href="install.html#checks-before-a-build"><span class="std std-ref">checks before a build</span></a>,
+then builds the base image and one layer per enabled feature.
+<code class="docutils literal notranslate"><span class="pre">--no-cache</span></code> ignores Docker’s build cache. When the build produces an
+image different from the one the recorded results came from, it says
+so, and whether vaibify’s own build recipe changed too (if not, the
+difference came from outside vaibify). On macOS, a long build can be
+kept from sleeping with <code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span> <span class="pre">vaibify</span> <span class="pre">build</span></code>.</p>
+</section>
+<section id="vaibify-start">
+<h3>vaibify start<a class="headerlink" href="#vaibify-start" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>-d<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gui<span class="w"> </span><span class="o">[</span>--port<span class="w"> </span>N<span class="o">]]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>
+<span class="w">              </span><span class="o">[</span>--image-trust<span class="w"> </span>restricted<span class="p">|</span>as-built<span class="p">|</span>inspect<span class="o">]</span><span class="w"> </span><span class="o">[</span>--with-credentials<span class="o">]</span>
+<span class="w">              </span><span class="o">[</span>COMMAND<span class="o">]</span>
+</pre></div>
+</div>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Code</p></th>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
 <th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>0</p></td>
-<td><p>The repair ran <strong>and</strong> the re-probe confirmed the container resolves names again</p></td>
-</tr>
-<tr class="row-odd"><td><p>1</p></td>
-<td><p>The repair was refused, failed, or ran and the container still does not resolve</p></td>
-</tr>
-<tr class="row-even"><td><p>2</p></td>
-<td><p>The repair ran and <strong>nothing was verified</strong> — this project names no host vaibify may resolve, or the container could not answer a lookup</p></td>
-</tr>
-</tbody>
-</table>
-<p>Exit 2 is not a success. It is the command saying it changed something
-and cannot tell you whether that helped.</p>
-</section>
-<section id="vaibify-build">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code><a class="headerlink" href="#vaibify-build" title="Link to this heading"></a></h3>
-<p>Build the Docker image from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build<span class="w"> </span><span class="o">[</span>--no-cache<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-cache</span></code></p></td>
-<td><p>Force a clean rebuild of all layers</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="vaibify-start">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code><a class="headerlink" href="#vaibify-start" title="Link to this heading"></a></h3>
-<p>Start the container. By default it attaches a terminal and holds the
-shell; <code class="docutils literal notranslate"><span class="pre">--detach</span></code> leaves it running in the background instead, which is
-what a script or a CI job needs.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>start<span class="w"> </span><span class="o">[</span>--detach/-d<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gui<span class="o">]</span><span class="w"> </span><span class="o">[</span>--jupyter<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-<span class="w">              </span><span class="o">[</span>--image-trust<span class="w"> </span><span class="o">{</span>restricted,as-built,inspect<span class="o">}]</span><span class="w"> </span><span class="o">[</span>--with-credentials<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--detach</span></code>, <code class="docutils literal notranslate"><span class="pre">-d</span></code></p></td>
-<td><p>Start in the background and return</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-d</span></code>, <code class="docutils literal notranslate"><span class="pre">--detach</span></code></p></td>
+<td><p>Start in the background and return, as a script needs. A <code class="docutils literal notranslate"><span class="pre">COMMAND</span></code> is refused with <code class="docutils literal notranslate"><span class="pre">--detach</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--gui</span></code></p></td>
-<td><p>Launch the pipeline viewer after starting</p></td>
+<td><p>Also open the single-project viewer, on <code class="docutils literal notranslate"><span class="pre">--port</span></code> or the project’s <code class="docutils literal notranslate"><span class="pre">dashboardPort</span></code>. With neither, the first launch picks a free port (preferring 8050) and writes it to <code class="docutils literal notranslate"><span class="pre">dashboardPort</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--jupyter</span></code></p></td>
-<td><p>Start JupyterLab inside the container</p></td>
+<td><p>Enable JupyterLab with port forwarding</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--image-trust</span></code></p></td>
+<td><p>How an image vaibify did not build may run. Asked interactively on a terminal; required without one</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--image-trust</span></code></p></td>
-<td><p>How an image vaibify did not build may run (see below)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code></p></td>
-<td><p>Let that image’s code read your stored credentials</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code></p></td>
+<td><p>Let that image’s code read your stored credentials. Needs <code class="docutils literal notranslate"><span class="pre">--image-trust</span></code>; never implied</p></td>
 </tr>
 </tbody>
 </table>
-<p>An image vaibify did not build (an obtained environment, or one whose
-provenance cannot be established) needs a recorded answer for its exact
-digest before a container is created from it. On a terminal, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code> shows the three options with the same text as the dashboard and
-asks; the credentials question defaults to no. Without a terminal it
-stops unless <code class="docutils literal notranslate"><span class="pre">--image-trust</span></code> is given, and <code class="docutils literal notranslate"><span class="pre">--with-credentials</span></code> is a
-separate flag that is never implied. <code class="docutils literal notranslate"><span class="pre">inspect</span></code> creates no persistent
-container. See <a class="reference internal" href="security.html"><span class="doc">Security Model</span></a> for what each choice does.</p>
-<p>A detached container runs idle so you can <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code> into it; a
-COMMAND argument is refused with <code class="docutils literal notranslate"><span class="pre">--detach</span></code> rather than silently
-dropped.</p>
-</section>
-<section id="vaibify-stop">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code><a class="headerlink" href="#vaibify-stop" title="Link to this heading"></a></h3>
-<p>Stop the running container. The workspace volume persists.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>stop<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
-</section>
-<section id="vaibify-destroy">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code><a class="headerlink" href="#vaibify-destroy" title="Link to this heading"></a></h3>
-<p>Delete the project’s workspace volume, after confirming, and then offer
-to remove the image as well.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>This deletes the workspace volume — every file the container holds that
-is not committed and pushed. The volume is the only copy: <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>
-is Docker-managed storage, not a directory on your machine. There is no
-<code class="docutils literal notranslate"><span class="pre">--volumes</span></code> flag to opt in; deleting the volume is what the command
-does, and the prompt is the only guard.</p>
-</div>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>destroy<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
-<p>Two things it does <strong>not</strong> remove: the container itself (stop it with
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code>), and the credential volume, which persists until you
-remove it with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span> <span class="pre">rm</span></code>.</p>
+<p>Without <code class="docutils literal notranslate"><span class="pre">--detach</span></code>, <code class="docutils literal notranslate"><span class="pre">start</span></code> attaches a terminal to the container, or
+runs <code class="docutils literal notranslate"><span class="pre">COMMAND</span></code> in it. See <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a> for what each
+image-trust choice does.</p>
 </section>
 <section id="vaibify-status">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">status</span></code><a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
-<p>Report the state of the container, image, and workspace volume — and,
-on request, the project’s PROOF level and everything blocking the next
-one.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--proof<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
+<h3>vaibify status<a class="headerlink" href="#vaibify-status" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--proof<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>-p<span class="w"> </span>NAME<span class="o">]</span>
 </pre></div>
 </div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--proof</span></code></p></td>
-<td><p>Also print the PROOF level and its blockers</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit environment and PROOF status as one JSON object</p></td>
-</tr>
-</tbody>
-</table>
-<p>The level and the blockers come from the same gates the dashboard
-renders, read straight from the container, so no browser and no running
-hub is needed:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>status<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s2">"import json,sys; print(json.load(sys.stdin)['dictProof']['iProofLevel'])"</span>
-</pre></div>
-</div>
-<p>One criterion is honestly absent. The dashboard polls file modification
-times and therefore also evaluates <code class="docutils literal notranslate"><span class="pre">script-stale</span></code>; a single read of the
-container has no mtime history, so that criterion is not evaluated here.
-The payload says which criteria were skipped in
-<code class="docutils literal notranslate"><span class="pre">listUnevaluatedCriteria</span></code> rather than letting the silence read as a
-pass.</p>
+<p>Shows the container, image, and volume state. <code class="docutils literal notranslate"><span class="pre">--proof</span></code> adds the
+project’s PROOF level and its blockers, the same ones the PROOF tab
+shows; <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits the environment and PROOF status as one JSON
+object.</p>
 </section>
-</section>
-<section id="working-with-the-container">
-<h2>Working with the Container<a class="headerlink" href="#working-with-the-container" title="Link to this heading"></a></h2>
-<p>These commands work from any directory on the host. If you have multiple
-projects, specify which one with <code class="docutils literal notranslate"><span class="pre">--project/-p</span></code>. If only one project is
-registered, the flag can be omitted.</p>
-<section id="vaibify-connect">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code><a class="headerlink" href="#vaibify-connect" title="Link to this heading"></a></h3>
-<p>Open an interactive shell inside the running container.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>connect<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
+<section id="vaibify-stop-and-vaibify-destroy">
+<h3>vaibify stop and vaibify destroy<a class="headerlink" href="#vaibify-stop-and-vaibify-destroy" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code> stops the container; the workspace volume
+remains.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">destroy</span></code> deletes the project’s workspace volume: every file in
+the container that has not been committed and pushed. The volume is
+Docker-managed storage, not a directory on your computer, so it is the
+only copy. The confirmation prompt is the only guard.</p>
 </div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="vaibify-push">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code><a class="headerlink" href="#vaibify-push" title="Link to this heading"></a></h3>
-<p>Copy files from the host into the container workspace.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>push<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
-</pre></div>
-</div>
-<p>The source is a path on the host. The destination is a path inside the
-container; a relative destination is read from the project’s workspace
-root, so <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">Step01/</span></code> and
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">/workspace/Step01/</span></code> are the same command for a
-project whose workspace root is <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>.</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="vaibify-pull">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code><a class="headerlink" href="#vaibify-pull" title="Link to this heading"></a></h3>
-<p>Copy files from the container workspace to the host.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>pull<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>&lt;source&gt;<span class="w"> </span>&lt;destination&gt;
-</pre></div>
-</div>
-<p>The source is a path inside the container; a relative source is read
-from the project’s workspace root. The destination is a path on the
-host.</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
+<p>After the volume, <code class="docutils literal notranslate"><span class="pre">destroy</span></code> offers to remove the project’s images. It
+does not remove the container itself (stop it with <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">stop</span></code>) or
+the volume that holds the container’s stored credentials, which
+remains until you remove it with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">volume</span> <span class="pre">rm</span></code>.</p>
 </section>
 <section id="vaibify-verify">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span></code><a class="headerlink" href="#vaibify-verify" title="Link to this heading"></a></h3>
-<p>Run the isolation security audit inside the container. The audit checks
-for Docker socket access, privilege escalation paths, exposed ports, and
-mounted secrets.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>verify<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
+<h3>vaibify verify<a class="headerlink" href="#vaibify-verify" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code> runs <code class="docutils literal notranslate"><span class="pre">checkIsolation.sh</span></code> inside the running
+container; what it checks is in <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>.</p>
 </section>
-<section id="vaibify-ls">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">ls</span></code><a class="headerlink" href="#vaibify-ls" title="Link to this heading"></a></h3>
-<p>List files in the container workspace. The path defaults to
-<code class="docutils literal notranslate"><span class="pre">/workspace</span></code>; relative paths are resolved against <code class="docutils literal notranslate"><span class="pre">/workspace/</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>ls<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span><span class="w"> </span><span class="o">[</span>PATH<span class="o">]</span>
-</pre></div>
-</div>
+</section>
+<section id="shell-helpers">
+<h2>Shell helpers<a class="headerlink" href="#shell-helpers" title="Link to this heading"></a></h2>
+<p>The first <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> command after an install or upgrade configures
+shell completion and three helper aliases for bash, zsh, and fish. The
+setup only appends to your shell’s configuration file (<code class="docutils literal notranslate"><span class="pre">~/.zshrc</span></code>;
+<code class="docutils literal notranslate"><span class="pre">~/.bash_profile</span></code> on macOS or <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code> on Linux;
+<code class="docutils literal notranslate"><span class="pre">~/.config/fish/config.fish</span></code>) and never edits or removes a line.</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Alias</p></th>
+<th class="head"><p>Shorthand</p></th>
+<th class="head"><p>Runs</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_connect</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_connect</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit a JSON array instead of one filename per line</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_push</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_push</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PATH</span></code></p></td>
-<td><p>Directory to list (default: <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify_pull</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaib_pull</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code></p></td>
 </tr>
 </tbody>
 </table>
+<p>On macOS the setup also links Colima’s Docker socket to
+<code class="docutils literal notranslate"><span class="pre">/var/run/docker.sock</span></code> when that path is free and writable without
+<code class="docutils literal notranslate"><span class="pre">sudo</span></code>.</p>
+<section id="tab-completion">
+<h3>Tab completion<a class="headerlink" href="#tab-completion" title="Link to this heading"></a></h3>
+<p>Press TAB after <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span></code> or <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span></code> (or their aliases) to
+complete a path inside the project. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span> <span class="pre">&lt;TAB&gt;</span></code> offers paths in
+the container; <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">data.csv</span> <span class="pre">&lt;TAB&gt;</span></code> offers container paths for
+the destination. Container paths may be relative to the workspace root
+(<code class="docutils literal notranslate"><span class="pre">StepName/output.csv</span></code>) or absolute. <code class="docutils literal notranslate"><span class="pre">-p</span> <span class="pre">NAME</span></code> is honored. A host
+project has no container, so its paths complete from the project’s own
+directory. Nothing is offered while the container is stopped. In bash,
+a path containing <code class="docutils literal notranslate"><span class="pre">=</span></code> or <code class="docutils literal notranslate"><span class="pre">:</span></code> is not completed.</p>
 </section>
-<section id="vaibify-cat">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">cat</span></code><a class="headerlink" href="#vaibify-cat" title="Link to this heading"></a></h3>
-<p>Print the contents of a file inside the container. Relative paths are
-resolved against <code class="docutils literal notranslate"><span class="pre">/workspace/</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>cat<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span>PATH
+<section id="if-tab-does-nothing">
+<h3>If TAB does nothing<a class="headerlink" href="#if-tab-does-nothing" title="Link to this heading"></a></h3>
+<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>. Its <code class="docutils literal notranslate"><span class="pre">shell-completions</span></code> line reads the
+configuration file of the shell named in <code class="docutils literal notranslate"><span class="pre">$SHELL</span></code> and, when that file
+does not load vaibify’s completion script, prints the exact line to
+add. To rerun the setup, remove its marker and run any command:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>rm<span class="w"> </span>~/.vaibify/.setup_done
+vaibify<span class="w"> </span>--version
 </pre></div>
 </div>
 </section>
-<section id="vaibify-run">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code><a class="headerlink" href="#vaibify-run" title="Link to this heading"></a></h3>
-<p>Execute pipeline steps inside the container. Without options, runs every
-step from the beginning. Use <code class="docutils literal notranslate"><span class="pre">--step</span></code> to run one step in isolation, or
-<code class="docutils literal notranslate"><span class="pre">--from</span></code> to resume from a specific step. The two are mutually exclusive.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>run<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--step<span class="w"> </span>N<span class="w"> </span><span class="p">|</span><span class="w"> </span>--from<span class="w"> </span>N<span class="o">]</span>
-</pre></div>
-</div>
+</section>
+<section id="files-and-shells">
+<h2>Files and shells<a class="headerlink" href="#files-and-shells" title="Link to this heading"></a></h2>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code></p></td>
-<td><p>Run only step N (1-based)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Open a shell inside the running container</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--from</span> <span class="pre">N</span></code></p></td>
-<td><p>Run step N and every step after it</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Copy a host file into the workspace. A relative container path is read from <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">pull</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Copy a workspace file to the host. A relative container path is read from <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">ls</span> <span class="pre">[PATH]</span> <span class="pre">[--json]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>List a container directory (default <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>); a relative path is read from <code class="docutils literal notranslate"><span class="pre">/workspace</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">cat</span> <span class="pre">PATH</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Print a container file; a relative path is read from <code class="docutils literal notranslate"><span class="pre">/workspace</span></code></p></td>
 </tr>
 </tbody>
 </table>
-<p>Step progress, per-step pass/fail, and pipeline outcome are printed to
-stdout as the run progresses.</p>
-</section>
-<section id="vaibify-workflow">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">workflow</span></code><a class="headerlink" href="#vaibify-workflow" title="Link to this heading"></a></h3>
-<p>Print a summary of the current project, or details for a single step.
-Without <code class="docutils literal notranslate"><span class="pre">--step</span></code>, emits a table of all steps with their last verification
-status and run timestamp. With <code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code>, emits the step’s name,
-directory, run flags, and verification block.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>workflow<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--step<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span>
+<p>The shell helpers that the first command after an install configures
+(see <a class="reference internal" href="#shell-helpers">Shell helpers</a>) wrap the first three:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify_connect<span class="w"> </span>-p<span class="w"> </span>my-analysis
+vaibify_push<span class="w"> </span>-p<span class="w"> </span>my-analysis<span class="w"> </span>data.csv<span class="w"> </span>/workspace/data.csv
+vaibify_pull<span class="w"> </span>-p<span class="w"> </span>my-analysis<span class="w"> </span>/workspace/results.csv<span class="w"> </span>./results.csv
 </pre></div>
 </div>
+</section>
+<section id="workflows-and-tests">
+<h2>Workflows and tests<a class="headerlink" href="#workflows-and-tests" title="Link to this heading"></a></h2>
+<p>Step numbers on these commands are 1-based. Labels such as <code class="docutils literal notranslate"><span class="pre">A09</span></code> are
+per-type sequential (the ninth automated step), as in the dashboard.</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code></p></td>
-<td><p>Show details for step N (1-based) only</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span> <span class="pre">[--step</span> <span class="pre">N</span> <span class="pre">|</span> <span class="pre">--from</span> <span class="pre">N]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Run every step, one step, or from a step onward</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit JSON instead of a human-readable table</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">workflow</span> <span class="pre">[--step</span> <span class="pre">N]</span> <span class="pre">[--json]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Summarize the workflow, or show one step in detail</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">test</span> <span class="pre">[--step</span> <span class="pre">N]</span> <span class="pre">[--json]</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Run the tests of every step or one step. Exits 1 on any failure, 2 when the step number is out of range</p></td>
 </tr>
-</tbody>
-</table>
-</section>
-<section id="vaibify-test">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">test</span></code><a class="headerlink" href="#vaibify-test" title="Link to this heading"></a></h3>
-<p>Run the test commands attached to one or all pipeline steps. Without
-<code class="docutils literal notranslate"><span class="pre">--step</span></code>, every step’s tests run in order. The exit code is non-zero if
-any step’s tests fail.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--step<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--json<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code></p></td>
-<td><p>Run tests for step N only (1-based)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit JSON results instead of a summary table</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify-step</span> <span class="pre">--step</span> <span class="pre">STEP</span> <span class="pre">--status</span> <span class="pre">passed|failed|untested</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
+<td><p>Record your sign-off on a step. <code class="docutils literal notranslate"><span class="pre">--step</span></code> takes a label or a 1-based number</p></td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="vaibify-verify-step">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify-step</span></code><a class="headerlink" href="#vaibify-verify-step" title="Link to this heading"></a></h3>
-<p>Set the user-verification status for a single pipeline step. This is the
-CLI counterpart to clicking your sign-off row in a step’s Verification
-section in the GUI: a researcher records their judgment that a step’s
-outputs look correct (or don’t).</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>verify-step<span class="w"> </span>--step<span class="w"> </span>N<span class="w"> </span>--status<span class="w"> </span>STATUS<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step</span> <span class="pre">N</span></code></p></td>
-<td><p>Step number (1-based, required)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--status</span> <span class="pre">STATUS</span></code></p></td>
-<td><p>One of <code class="docutils literal notranslate"><span class="pre">passed</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>, <code class="docutils literal notranslate"><span class="pre">untested</span></code> (required)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
-</tr>
-</tbody>
-</table>
-</section>
 <section id="vaibify-generate-standards">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">generate-standards</span></code><a class="headerlink" href="#vaibify-generate-standards" title="Link to this heading"></a></h3>
-<p>Refresh or generate a step’s
-<code class="docutils literal notranslate"><span class="pre">tests/quantitative_standards_&lt;stepName&gt;.json</span></code> from live data files. If a curated standards file already exists, only each
-entry’s value is recomputed and the schema is preserved; otherwise a
-fresh file is generated from the data files found under the step
-directory.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--step-dir<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>--rtol<span class="w"> </span>X<span class="o">]</span><span class="w"> </span><span class="o">[</span>--detect-stochastic<span class="o">]</span>
-vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--workflow<span class="w"> </span>JSON<span class="w"> </span>--step-label<span class="w"> </span>A09
+<h3>vaibify generate-standards<a class="headerlink" href="#vaibify-generate-standards" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--step-dir<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>--rtol<span class="w"> </span>FLOAT<span class="o">]</span><span class="w"> </span><span class="o">[</span>--detect-stochastic<span class="o">]</span>
+vaibify<span class="w"> </span>generate-standards<span class="w"> </span>--workflow<span class="w"> </span>PATH<span class="w"> </span>--step-label<span class="w"> </span>LABEL<span class="w"> </span><span class="o">[</span>--rtol<span class="w"> </span>FLOAT<span class="o">]</span><span class="w"> </span><span class="o">[</span>--detect-stochastic<span class="o">]</span>
 </pre></div>
 </div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step-dir</span> <span class="pre">PATH</span></code></p></td>
-<td><p>Path to a step directory containing <code class="docutils literal notranslate"><span class="pre">tests/</span></code> and data files</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--workflow</span> <span class="pre">JSON</span></code></p></td>
-<td><p>Path to a workflow JSON (alternative to <code class="docutils literal notranslate"><span class="pre">--step-dir</span></code>)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--step-label</span> <span class="pre">LABEL</span></code></p></td>
-<td><p>Step label like <code class="docutils literal notranslate"><span class="pre">A09</span></code> or <code class="docutils literal notranslate"><span class="pre">I01</span></code> (use with <code class="docutils literal notranslate"><span class="pre">--workflow</span></code>)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rtol</span> <span class="pre">X</span></code></p></td>
-<td><p>Default relative tolerance when generating a fresh standards file (default: <code class="docutils literal notranslate"><span class="pre">1e-6</span></code>)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--detect-stochastic</span></code></p></td>
-<td><p>Scan the step’s <code class="docutils literal notranslate"><span class="pre">data*.py</span></code> scripts for unseeded RNG before generating</p></td>
-</tr>
-</tbody>
-</table>
+<p>Creates or refreshes a step’s <code class="docutils literal notranslate"><span class="pre">tests/quantitative_standards_&lt;step&gt;.json</span></code> from
+live data, outside the dashboard: for one step directory, or by step
+label from a workflow file. <code class="docutils literal notranslate"><span class="pre">--rtol</span></code> sets the default relative
+tolerance when a fresh standards file is generated, and
+<code class="docutils literal notranslate"><span class="pre">--detect-stochastic</span></code> scans the step’s <code class="docutils literal notranslate"><span class="pre">data*.py</span></code> scripts for unseeded
+random-number generation first. The dashboard’s equivalent is
+<strong>Generate</strong>; see <a class="reference internal" href="testing.html"><span class="std std-doc">Testing Model</span></a>.</p>
 </section>
 </section>
 <section id="reproducibility">
 <h2>Reproducibility<a class="headerlink" href="#reproducibility" title="Link to this heading"></a></h2>
 <section id="vaibify-reproduce">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code><a class="headerlink" href="#vaibify-reproduce" title="Link to this heading"></a></h3>
-<p>Verify a project’s PROOF L3 reproducibility envelope: manifest
-integrity, hash-pinned dependency install, pinned container image,
-the seven L3 artifact-coherence checks, and — with <code class="docutils literal notranslate"><span class="pre">--rerun</span></code> — a full
-re-run of the workflow with a post-run hash compare and an L3
-attestation written to <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>.</p>
+<h3>vaibify reproduce<a class="headerlink" href="#vaibify-reproduce" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span><span class="o">[</span>--repo<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--rerun<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-tier<span class="w"> </span>N<span class="o">]</span>
-vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span class="w"> </span>SOURCE<span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prepare<span class="w"> </span><span class="p">|</span><span class="w"> </span>--rerun<span class="o">]</span><span class="w"> </span><span class="o">[</span>--allow-emulation<span class="o">]</span>
+vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span class="w"> </span>SOURCE<span class="w"> </span><span class="o">[</span>--prepare<span class="w"> </span><span class="p">|</span><span class="w"> </span>--rerun<span class="o">]</span><span class="w"> </span><span class="o">[</span>--workflow<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--allow-emulation<span class="o">]</span>
 </pre></div>
 </div>
+<p>The first form walks a project’s Level 3 envelope in tiers, from a
+checked-out repository (<code class="docutils literal notranslate"><span class="pre">--repo</span></code>, default: the current directory):</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Tier</p></th>
+<th class="head"><p>What it does</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">PATH</span></code></p></td>
-<td><p>Path to the project repo (default: current directory)</p></td>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>Checks <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> against the files on disk</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code></p></td>
-<td><p>Also re-run the workflow (tier 5), re-hash its outputs, and write an attestation (default: off)</p></td>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>Installs <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> with <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--require-hashes</span></code> into your current Python environment, retrying with <code class="docutils literal notranslate"><span class="pre">uv</span></code> on a hash error if <code class="docutils literal notranslate"><span class="pre">uv</span></code> is installed</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--workflow</span> <span class="pre">NAME</span></code></p></td>
-<td><p>Name (or container path) of the workflow to re-run; required when the container hosts more than one</p></td>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>Pulls the pinned image by digest</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">N</span></code></p></td>
-<td><p>Skip tier 1, 2, 3, or 4; may be repeated</p></td>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>Runs the same Level 3 readiness checks as the dashboard</p></td>
 </tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>Only with <code class="docutils literal notranslate"><span class="pre">--rerun</span></code>: reruns the workflow in a disposable shadow container from the pinned image, re-hashes its outputs, and writes <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>. It needs the project’s container running, since the copy is taken from it</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span></code> skips one of tiers 1–4 and may be repeated. <code class="docutils literal notranslate"><span class="pre">--workflow</span></code>
+is required when the container holds more than one workflow. Exit 0
+means every selected tier passed, 1 that one failed, 2 a usage error
+such as a missing envelope file. A run ends with
+<code class="docutils literal notranslate"><span class="pre">L3</span> <span class="pre">reproduction</span> <span class="pre">confirmed</span> <span class="pre">and</span> <span class="pre">attested.</span></code>, <code class="docutils literal notranslate"><span class="pre">L3</span> <span class="pre">reproduction</span> <span class="pre">ready</span></code>
+(without <code class="docutils literal notranslate"><span class="pre">--rerun</span></code>), or <code class="docutils literal notranslate"><span class="pre">L3</span> <span class="pre">reproduction</span> <span class="pre">failed;</span> <span class="pre">see</span> <span class="pre">tier</span> <span class="pre">output</span> <span class="pre">above.</span></code>
+The shadow rerun uses an image already on your own Docker daemon, so
+only tiers 1–4 (and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>) show whether a fresh machine could
+obtain the image. Each of tiers 1–3 is an ordinary command
+(<code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span></code>, <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--require-hashes</span></code>,
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span> <span class="pre">&lt;image&gt;&#64;sha256:…</span></code>) that anyone reading the envelope can
+run by hand.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">--from</span></code>, vaibify reproduces a <strong>published</strong> project from an
+<code class="docutils literal notranslate"><span class="pre">https://</span></code> or <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> clone URL, a <code class="docutils literal notranslate"><span class="pre">user&#64;host:path</span></code> address, or a
+clean local clone under your home directory, without installing it as
+one of your own projects:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Form</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--from</span> <span class="pre">SOURCE</span></code></p></td>
-<td><p>Reproduce a <strong>published</strong> project: stage an exact snapshot of one commit from a clone URL or a clean local clone and validate it as reproduction-ready (six staging rules, not the author’s Level 3 gate). Alone it describes and discards the snapshot. Takes <code class="docutils literal notranslate"><span class="pre">--workflow</span></code>; refuses <code class="docutils literal notranslate"><span class="pre">--repo</span></code> and <code class="docutils literal notranslate"><span class="pre">--skip-tier</span></code>. Exit <code class="docutils literal notranslate"><span class="pre">1</span></code> names the first rule the snapshot failed. See <a class="reference internal" href="reproducibility.html#reproducing-somebody-else-s-project-vaibify-reproduce-from"><span class="std std-ref">Reproducing somebody else’s project</span></a></p></td>
+<td><p>Stages an exact snapshot of one commit, validates it, prints what a rerun would use (workflow, commit, pinned image, platform, archived deposit), and discards it. Nothing is pulled or run</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--prepare</span></code></p></td>
-<td><p>With <code class="docutils literal notranslate"><span class="pre">--from</span></code>: obtain the pinned image through the published chain (registry, archived deposit, local copy) and stop</p></td>
+<td><p>Also obtains the pinned image (registry, archived deposit, or local copy), so a long download can be done ahead of time</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> with <code class="docutils literal notranslate"><span class="pre">--from</span></code></p></td>
-<td><p>Obtain the image, re-run the snapshot in a shadow container, compare the bytes there, and write a reproduction report under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. Exit <code class="docutils literal notranslate"><span class="pre">0</span></code> only when the verdict is <em>reproduced</em></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code></p></td>
+<td><p>Obtains the image, reruns the snapshot in a shadow container, compares the outputs with the project’s manifest, and writes a report under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. Exits 0 only when the verdict is <em>reproduced</em></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code></p></td>
-<td><p>With <code class="docutils literal notranslate"><span class="pre">--from</span></code>: accept a pinned build of another architecture than this daemon’s; the verdict then reads “reproduced under emulation”. Refused by name otherwise</p></td>
+<td><p>Accepts a pinned build for another processor; the verdict says so</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--workflow</span></code></p></td>
+<td><p>Selects the workflow when the repository holds several</p></td>
 </tr>
 </tbody>
 </table>
-<p>Exit codes: <code class="docutils literal notranslate"><span class="pre">0</span></code> when every selected tier passed, <code class="docutils literal notranslate"><span class="pre">1</span></code> when any tier
-failed, <code class="docutils literal notranslate"><span class="pre">2</span></code> on a usage error (missing required file, malformed
-<code class="docutils literal notranslate"><span class="pre">environment.json</span></code>). The five tiers, the printed output, and the
-attestation files are documented in
-<a class="reference internal" href="reproducibility.html#the-verification-ceremony-vaibify-reproduce"><span class="std std-ref">Reproducibility</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--from</span></code> cannot be combined with <code class="docutils literal notranslate"><span class="pre">--repo</span></code> or <code class="docutils literal notranslate"><span class="pre">--skip-tier</span></code>. See
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>.</p>
 </section>
 </section>
-<section id="credentials">
-<h2>Credentials<a class="headerlink" href="#credentials" title="Link to this heading"></a></h2>
-<section id="vaibify-revoke">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span></code><a class="headerlink" href="#vaibify-revoke" title="Link to this heading"></a></h3>
-<p>Remove a stored credential from the local keyring and best-effort
-revoke it upstream. Supports the three services vaibify pushes to.
-Prints what was and was not revoked; exits non-zero when the local
-keyring slot could not be cleared.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>revoke<span class="w"> </span><span class="o">{</span>github<span class="p">|</span>overleaf<span class="p">|</span>zenodo<span class="o">}</span><span class="w"> </span><span class="o">[</span>--keyring-slot<span class="w"> </span>SLOT<span class="o">]</span><span class="w"> </span><span class="o">[</span>--instance<span class="w"> </span><span class="o">{</span>sandbox<span class="p">|</span>production<span class="o">}]</span>
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SERVICE</span></code></p></td>
-<td><p>One of <code class="docutils literal notranslate"><span class="pre">github</span></code>, <code class="docutils literal notranslate"><span class="pre">overleaf</span></code>, <code class="docutils literal notranslate"><span class="pre">zenodo</span></code> (required)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--keyring-slot</span> <span class="pre">SLOT</span></code></p></td>
-<td><p>GitHub only: per-repo keyring slot to clear (e.g. <code class="docutils literal notranslate"><span class="pre">github_token:owner/repo</span></code>)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--instance</span> <span class="pre">NAME</span></code></p></td>
-<td><p>Zenodo only: target the <code class="docutils literal notranslate"><span class="pre">sandbox</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">production</span></code> keyring slot</p></td>
-</tr>
-</tbody>
-</table>
+<section id="the-hub-sessions-and-ports">
+<h2>The hub, sessions, and ports<a class="headerlink" href="#the-hub-sessions-and-ports" title="Link to this heading"></a></h2>
+<section id="vaibify-gui-and-vaibify-open">
+<h3>vaibify gui and vaibify open<a class="headerlink" href="#vaibify-gui-and-vaibify-open" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code> open the hub. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span> <span class="pre">-p</span> <span class="pre">NAME</span></code> serves
+a single-project viewer on port 8050. Several hubs can run on one
+machine. Each container may be open in only one browser session at a
+time, so a second <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code> on a container held elsewhere is
+refused. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">open</span> <span class="pre">CONTAINER</span></code> moves a held session into a fresh
+browser tab; it works only from the host’s own keyboard, never from a
+container or a remote peer, and it is also how to get a fresh tab
+after a session reaches its lifetime limit.</p>
 </section>
-</section>
-<section id="gui-and-pipeline">
-<h2>GUI and Pipeline<a class="headerlink" href="#gui-and-pipeline" title="Link to this heading"></a></h2>
-<section id="vaibify-gui">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">gui</span></code><a class="headerlink" href="#vaibify-gui" title="Link to this heading"></a></h3>
-<p>Launch the pipeline viewer in a browser. The port is fixed at 8050 —
-there is no <code class="docutils literal notranslate"><span class="pre">--port</span></code> flag on this subcommand (hub mode, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">[--port</span> <span class="pre">N]</span></code>, is the invocation that accepts a port). When run without
-a project, the landing page opens and displays all registered
-containers. Use the <strong>+</strong> button to add an existing project or create
-a new one. See <a class="reference internal" href="dashboard.html"><span class="std std-doc">The Dashboard</span></a> for details.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>gui<span class="w"> </span><span class="o">[</span>--project/-p<span class="w"> </span>NAME<span class="o">]</span>
-</pre></div>
-</div>
-</section>
-<section id="multiple-sessions">
-<h3>Multiple sessions<a class="headerlink" href="#multiple-sessions" title="Link to this heading"></a></h3>
-<p>Several vaibify instances can run on the same host. Typing
-<code class="docutils literal notranslate"><span class="pre">vaibify</span></code> twice in two terminals does not collide — the second
-invocation auto-shifts to the next free port (8051, 8052, …) and
-announces the fallback on stderr. Pass <code class="docutils literal notranslate"><span class="pre">--port</span> <span class="pre">N</span></code> to pin an
-explicit port. Any given container may be accessed by only one
-browser session at a time: the hub landing page grays out
-containers already held by another session, a second tab that tries
-to open a held container is refused <em>“In use in another browser
-session”</em>, and a second <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span> <span class="pre">-p</span> <span class="pre">X</span></code> on the same project
-refuses to attach. The exclusivity mechanism — the per-claim lease,
-the owner-of-record map, the one-live-connection invariant, and the
-release triggers — is specified once in the
-<a class="reference internal" href="architecture.html#single-browser-session-per-container"><span class="std std-ref">architecture reference</span></a>;
-that section is the normative source of truth, including the
-holder-payload field table.
-The <strong>New vaibify window</strong> button on the container hub, project
-picker, and Admin menu spawns a detached hub on a free port and
-opens it in a new browser tab.</p>
-</section>
-</section>
-<section id="session-management">
-<h2>Session management<a class="headerlink" href="#session-management" title="Link to this heading"></a></h2>
-<p>Vaibify hub and viewer servers run in the foreground of the terminal
-that launched them. Closing a browser tab does not stop them, and
-closing the terminal orphans the server, which keeps holding its
-session slot and per-container locks until it is reaped. These
-commands let you see and stop live sessions. They are the host-side
-analog of <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> and <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>, and like
-those, they run <strong>on the host only</strong> – they are not invokable from
-inside a container.</p>
 <section id="vaibify-sessions">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code><a class="headerlink" href="#vaibify-sessions" title="Link to this heading"></a></h3>
-<p>List every live hub and viewer session on the host, with its PID,
-role, port, start time, and the container(s) it holds.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions
+<h3>vaibify sessions<a class="headerlink" href="#vaibify-sessions" title="Link to this heading"></a></h3>
+<p>Hubs and viewers run in the foreground of the terminal that started
+them. Closing a browser tab does not stop them. On the host only:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions<span class="w">              </span><span class="c1"># pid, role, port, start time, containers held</span>
+vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>PID<span class="w">     </span><span class="c1"># stop one session</span>
+vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>--all<span class="w">   </span><span class="c1"># stop every session except this one</span>
 </pre></div>
 </div>
-<p>Each line reports <code class="docutils literal notranslate"><span class="pre">pid</span></code>, <code class="docutils literal notranslate"><span class="pre">role</span></code> (<code class="docutils literal notranslate"><span class="pre">hub</span></code> or <code class="docutils literal notranslate"><span class="pre">viewer</span></code>), <code class="docutils literal notranslate"><span class="pre">port</span></code>, <code class="docutils literal notranslate"><span class="pre">started</span></code>
-(the ISO start time), and <code class="docutils literal notranslate"><span class="pre">containers</span></code> (the names locked on that
-port). When nothing is running it prints <code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">live</span> <span class="pre">Vaibify</span> <span class="pre">sessions.</span></code></p>
-</section>
-<section id="vaibify-sessions-stop">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span> <span class="pre">stop</span></code><a class="headerlink" href="#vaibify-sessions-stop" title="Link to this heading"></a></h3>
-<p>Gracefully stop a session by PID, or every session with <code class="docutils literal notranslate"><span class="pre">--all</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>&lt;PID&gt;
-vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>--all
-</pre></div>
-</div>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PID</span></code></p></td>
-<td><p>The session PID to stop (from <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">sessions</span></code>)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--all</span></code></p></td>
-<td><p>Stop every live session except the current one</p></td>
-</tr>
-</tbody>
-</table>
-<p>Stopping sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>, which lets the server run its graceful
-shutdown – releasing its session slot and any container locks it
-holds. <code class="docutils literal notranslate"><span class="pre">stop</span></code> <strong>refuses any PID that is not a known live Vaibify
-session</strong>, so it can never signal an unrelated process, and <code class="docutils literal notranslate"><span class="pre">--all</span></code>
-<strong>excludes the current session</strong> so a session never stops itself.</p>
+<p><code class="docutils literal notranslate"><span class="pre">stop</span></code> sends <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code>, so the server releases its session and
+container locks, and it refuses any PID that is not a live vaibify
+session.</p>
 </section>
 </section>
-<section id="dashboard-actions-from-the-host-vaibify-do">
-<h2>Dashboard actions from the host: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code><a class="headerlink" href="#dashboard-actions-from-the-host-vaibify-do" title="Link to this heading"></a></h2>
-<p>Everything a researcher can do from the dashboard has a name in the
-agent-action catalog (<code class="docutils literal notranslate"><span class="pre">vaibify/gui/actionCatalog.py</span></code>), and every one of
-those names is a <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommand, generated from the catalog
-itself. The CLI therefore cannot drift from the dashboard: a new
-dashboard action is a new CLI command, and an action the CLI could not
-dispatch fails CI
-(<code class="docutils literal notranslate"><span class="pre">testArchitecturalInvariants.py::testEveryCatalogActionHasCliCommand</span></code>).</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                       </span><span class="c1"># list every action, grouped by category</span>
-vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>&lt;action&gt;<span class="w"> </span>--help<span class="w">       </span><span class="c1"># one action's arguments</span>
-vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">          </span><span class="c1"># run one step through the dashboard's own path</span>
-vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>push-to-github<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="nv">listFilePaths</span><span class="o">=</span><span class="s1">'["Step/out.csv"]'</span>
+<section id="vaibify-do">
+<h2>vaibify do<a class="headerlink" href="#vaibify-do" title="Link to this heading"></a></h2>
+<p>Every dashboard action has a <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> subcommand, generated from
+the same catalog the dashboard and the in-container <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> use,
+so the three cannot drift apart. <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span></code> authenticates as the
+researcher, so actions reserved for the researcher (user-only actions,
+such as <code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code>) are available here; <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> constrains an
+agent in a container, not the researcher at their own terminal. The
+agent’s in-container usage is described in <a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span><span class="k">do</span><span class="w">                          </span><span class="c1"># list every action</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>--help<span class="w">          </span><span class="c1"># one action's arguments</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-step<span class="w"> </span>A09<span class="w">             </span><span class="c1"># run one step</span>
+vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>run-selected-steps<span class="w"> </span>A03<span class="w"> </span>A04
 vaibify<span class="w"> </span><span class="k">do</span><span class="w"> </span>check-l2-readiness<span class="w"> </span>--json
 </pre></div>
 </div>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Option</p></th>
-<th class="head"><p>Description</p></th>
+<th class="head"><p>Meaning</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--project</span></code>, <code class="docutils literal notranslate"><span class="pre">-p</span></code></p></td>
-<td><p>Target project name (optional if only one exists)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-p</span></code>, <code class="docutils literal notranslate"><span class="pre">--project</span></code></p></td>
+<td><p>Target project</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--port</span></code></p></td>
-<td><p>Port of the vaibify session to drive (required when several are live)</p></td>
+<td><p>Port of the hub to drive, when several are running</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--workflow</span></code></p></td>
-<td><p>Container path of the <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to connect</p></td>
+<td><p>Container path of the <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to use</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--json</span></code></p></td>
-<td><p>Emit one JSON object per line</p></td>
+<td><p>One JSON object per line</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></p></td>
-<td><p>Print the call that would be made; send nothing</p></td>
+<td><p>Print the call without sending it</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--timeout</span></code></p></td>
-<td><p>Seconds to wait on the hub (0 disables the limit)</p></td>
+<td><p>Seconds to wait for the response, or for the next event of a run (<code class="docutils literal notranslate"><span class="pre">0</span></code> waits indefinitely)</p></td>
 </tr>
 </tbody>
 </table>
-<p>Path parameters become positional arguments (<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">run-test-category</span> <span class="pre">A09</span> <span class="pre">sCategory=integrity</span></code>); request-body fields are
-<code class="docutils literal notranslate"><span class="pre">key=value</span></code> pairs, coerced to numbers, booleans, and JSON by shape. A
-whole JSON object also works: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">do</span> <span class="pre">declare-ai-model</span> <span class="pre">'{&quot;sVendor&quot;:</span> <span class="pre">&quot;...&quot;,</span> <span class="pre">&quot;sModelId&quot;:</span> <span class="pre">&quot;...&quot;}'</span></code>.</p>
-<p><strong>A hub must be running.</strong> These commands drive the same backend the
-browser drives, so the dashboard sees every one of them; they are not a
-second, parallel way to change a project. Start one with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> in
-another terminal.</p>
-<p><strong>One session per container still holds.</strong> The CLI claims the
-container’s lease for the duration of one command and releases it
-afterwards — including when the action fails, so a failed command never
-strands the claim. A container currently open in a dashboard tab is
-therefore refused rather than taken over:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Error</span><span class="p">:</span> <span class="n">Container</span> <span class="s1">'myProject'</span> <span class="ow">is</span> <span class="n">held</span> <span class="n">by</span> <span class="n">another</span> <span class="n">vaibify</span> <span class="n">session</span><span class="p">:</span> <span class="n">In</span> <span class="n">use</span>
-<span class="ow">in</span> <span class="n">another</span> <span class="n">browser</span> <span class="n">session</span><span class="o">.</span> <span class="n">Vaibify</span> <span class="n">allows</span> <span class="n">one</span> <span class="n">session</span> <span class="n">per</span> <span class="n">container</span><span class="p">,</span> <span class="n">so</span>
-<span class="n">this</span> <span class="n">command</span> <span class="n">cannot</span> <span class="n">take</span> <span class="n">it</span> <span class="kn">from</span><span class="w"> </span><span class="nn">a</span> <span class="n">live</span> <span class="n">dashboard</span><span class="o">.</span> <span class="n">Either</span> <span class="n">close</span> <span class="n">the</span>
-<span class="n">dashboard</span> <span class="n">tab</span> <span class="n">holding</span> <span class="n">it</span> <span class="p">(</span><span class="ow">or</span> <span class="n">release</span> <span class="n">the</span> <span class="n">container</span> <span class="kn">from</span><span class="w"> </span><span class="nn">the</span> <span class="n">picker</span><span class="p">)</span> <span class="ow">and</span>
-<span class="n">run</span> <span class="n">this</span> <span class="n">again</span><span class="p">,</span> <span class="ow">or</span> <span class="n">run</span> <span class="n">the</span> <span class="n">same</span> <span class="n">action</span> <span class="kn">from</span><span class="w"> </span><span class="nn">inside</span> <span class="n">the</span> <span class="n">container</span> <span class="k">with</span>
-<span class="s1">'vaibify-do'</span><span class="p">,</span> <span class="n">the</span> <span class="ow">in</span><span class="o">-</span><span class="n">container</span> <span class="n">agent</span> <span class="n">lane</span><span class="p">,</span> <span class="n">which</span> <span class="n">acts</span> <span class="n">within</span> <span class="n">the</span> <span class="n">session</span>
-<span class="n">that</span> <span class="ow">is</span> <span class="n">already</span> <span class="nb">open</span><span class="o">.</span>
+<p>Options follow the action name. Step selectors on the run actions are
+bare words (labels such as <code class="docutils literal notranslate"><span class="pre">A09</span></code>, or 0-based indices); other fields
+are <code class="docutils literal notranslate"><span class="pre">key=value</span></code> pairs, or one JSON object. A hub must be running (start
+one with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> in another terminal), and the dashboard shows every
+action as it runs. The command claims the container for one action and
+then releases it, so a container open in a dashboard tab is refused
+rather than taken over: close that tab, or run the action from inside
+the container with <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>.</p>
+</section>
+<section id="recovering-a-quarantined-container">
+<h2>Recovering a quarantined container<a class="headerlink" href="#recovering-a-quarantined-container" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span>
+vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span class="w"> </span>--break-glass<span class="w"> </span>SHA256
+vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span class="w"> </span>--force-abandon<span class="w"> </span>OPERATION
+vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span class="w"> </span>--terminate-recorded
+vaibify<span class="w"> </span>reconcile<span class="w"> </span>CONTAINER<span class="w"> </span>--abandon-host-journal<span class="w"> </span>SHA256
 </pre></div>
 </div>
-<p>That is the deliberate answer, not a limitation to work around: taking
-the container would mean revoking a session someone is working in.</p>
-<p><strong>The CLI is the researcher lane.</strong> It authenticates exactly as the
-browser does — with a per-browser credential — obtaining it headlessly:
-it mints a one-time launch capability over the hub’s host control
-socket (a <code class="docutils literal notranslate"><span class="pre">0700</span></code> Unix socket, peer-authenticated to the user who
-started the hub, unreachable from any container or remote peer) and
-redeems it at <code class="docutils literal notranslate"><span class="pre">/api/bootstrap</span></code>. The <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> flag in the catalog
-governs what a compromised <em>in-container agent</em> may invoke; it does not
-restrict the person at their own terminal, so user-only actions like
-<code class="docutils literal notranslate"><span class="pre">clean-outputs</span></code> are available here and are marked in <code class="docutils literal notranslate"><span class="pre">--help</span></code>.</p>
+<p>Once a terminal has been used in an environment, vaibify reports its
+quiescence as unproven on release or shutdown, and <code class="docutils literal notranslate"><span class="pre">reconcile</span></code> is how
+to settle it. A plain run shows which operation was mid-write, when,
+and in which container; proves the recorded writer dead and the
+operation settled; and only then clears the quarantine, or refuses and
+leaves the container quarantined. The dashboard’s <strong>Reconcile now</strong>
+button runs the same proof. The other options are destructive
+judgments available only here:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code></p></td>
+<td><p>Skip the confirmation prompt</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--break-glass</span> <span class="pre">SHA256</span></code></p></td>
+<td><p>Clear a malformed marker whose raw bytes hash to this value (a plain run prints it)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--force-abandon</span> <span class="pre">OPERATION</span></code></p></td>
+<td><p>Poison a wedged operation on the live hub that holds the container; changes are refused until it is reconciled</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--terminate-recorded</span></code></p></td>
+<td><p>Host projects only: signal the process groups vaibify journaled, then retry the proof. A record whose identity cannot be proven is reported, never signaled</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--abandon-host-journal</span> <span class="pre">SHA256</span></code></p></td>
+<td><p>Host projects only: give up on proving a malformed marker with this hash, recording the abandonment beside the journal. Proves nothing</p></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="publishing">
-<h2>Publishing<a class="headerlink" href="#publishing" title="Link to this heading"></a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code> subcommands are <strong>not implemented</strong>, and the
-<code class="docutils literal notranslate"><span class="pre">publish</span></code> group is not registered on the CLI at all — <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span></code>
-is an unknown command, not a command that reports its own absence. The
-sections below describe intended behavior only.</p>
-<p>There is no Settings → Publish pane. This section previously said the
-publishing machinery was “already available” through one; it never
-existed, and <code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> — the GitHub
-Actions generator behind that claim — has no caller anywhere in the
-product. Zenodo archiving is real and reachable, but through the PROOF
-Level 2 workflow in the dashboard, not a publish pane.</p>
-<section id="vaibify-publish-workflow-coming-soon">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> <em>(coming soon)</em><a class="headerlink" href="#vaibify-publish-workflow-coming-soon" title="Link to this heading"></a></h3>
-<p>Generate a GitHub Actions workflow from <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>.
-The output will be written to <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>workflow
+<section id="credentials">
+<h2>Credentials<a class="headerlink" href="#credentials" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">secret</span> <span class="pre">set-provider-key</span> <span class="pre">--provider</span> <span class="pre">NAME</span></code></p></td>
+<td><p>Store an agent provider’s API key, read from a prompt that does not echo</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">secret</span> <span class="pre">provider-key-status</span> <span class="pre">--provider</span> <span class="pre">NAME</span></code></p></td>
+<td><p>Report whether a provider’s key is configured</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">secret</span> <span class="pre">delete-provider-key</span> <span class="pre">--provider</span> <span class="pre">NAME</span></code></p></td>
+<td><p>Remove a provider’s key</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">github</span> <span class="pre">[--keyring-slot</span> <span class="pre">SLOT]</span></code></p></td>
+<td><p>Remove the stored GitHub credential, or one repository’s with <code class="docutils literal notranslate"><span class="pre">--keyring-slot</span></code>, and revoke it upstream where possible</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">overleaf</span></code></p></td>
+<td><p>The same, for Overleaf</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">revoke</span> <span class="pre">zenodo</span> <span class="pre">[--instance</span> <span class="pre">sandbox|production]</span></code></p></td>
+<td><p>The same, for one Zenodo instance (default <code class="docutils literal notranslate"><span class="pre">sandbox</span></code>)</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">revoke</span></code> prints whether the upstream token was revoked and whether the
+local copy was cleared, and exits non-zero if the local copy was not
+cleared. For GitHub it also runs <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">auth</span> <span class="pre">logout</span></code>. Overleaf and Zenodo
+offer tools no way to revoke a token, so for them the command clears
+the local copy and names the account page where you revoke the token
+yourself; do that too, because clearing a local copy does not
+invalidate a token that may have been copied elsewhere. <code class="docutils literal notranslate"><span class="pre">revoke</span></code> acts
+on the host only: a Zenodo token entered for a container project is
+held inside that container, so revoke it on Zenodo’s account page,
+after which the copy in the container no longer works.</p>
+</section>
+<section id="remote-machines">
+<h2>Remote machines<a class="headerlink" href="#remote-machines" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>remote<span class="w"> </span>DESTINATION<span class="w"> </span><span class="o">[</span>--port<span class="w"> </span>N<span class="o">]</span>
 </pre></div>
 </div>
-</section>
-<section id="vaibify-publish-archive-coming-soon">
-<h3><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> <em>(coming soon)</em><a class="headerlink" href="#vaibify-publish-archive-coming-soon" title="Link to this heading"></a></h3>
-<p>Package pipeline outputs and upload them to Zenodo (or the Zenodo sandbox).
-Will return a DOI on success.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>publish<span class="w"> </span>archive
-</pre></div>
-</div>
-</section>
+<p>Opens a dashboard for another machine over SSH: it starts or adopts a
+hub there, forwards one loopback port, and opens a signed-in browser
+tab. <code class="docutils literal notranslate"><span class="pre">--port</span></code> chooses that port; both ends use the same number.
+Pressing Ctrl-C closes the tunnel and leaves the remote hub running.
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote-helper</span> <span class="pre">--port</span> <span class="pre">N</span></code> is the far end of that connection and
+is not for interactive use.</p>
+<ul class="simple">
+<li><p><strong>Install the same vaibify version on both machines.</strong> The helper
+refuses to drive a hub of another version and names both versions.</p></li>
+<li><p><strong>Vaibify must be on the remote user’s non-interactive PATH</strong>:
+<code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">DESTINATION</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code> must print a version (see
+<a class="reference internal" href="install.html#installing-for-remote-access"><span class="std std-ref">Installing for remote access</span></a>).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">DESTINATION</span></code> is a plain <code class="docutils literal notranslate"><span class="pre">[user&#64;]host</span></code>.</strong> Proxy jumps, identity
+files, ports, and usernames belong in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.</p></li>
+<li><p><strong>There is no project option.</strong> You choose the project in the
+dashboard once the tunnel is up.</p></li>
+<li><p><strong>After a dropped connection</strong>, run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> again. If
+exactly one session lost its browser, it is handed back to you; if
+several are waiting, you sign in fresh and choose.</p></li>
+</ul>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Message</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>“the remote produced no vaibify startup record”</p></td>
+<td><p>Usually the PATH problem above; check <code class="docutils literal notranslate"><span class="pre">ssh</span> <span class="pre">DESTINATION</span> <span class="pre">vaibify</span> <span class="pre">--version</span></code>. If SSH could not authenticate, its error is included</p></td>
+</tr>
+<tr class="row-odd"><td><p>“…is version X and this is Y”</p></td>
+<td><p>The two installations differ. Upgrade one, or pass <code class="docutils literal notranslate"><span class="pre">--port</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>“…it is not a vaibify hub”</p></td>
+<td><p>Another program holds that port on the remote machine. Pass <code class="docutils literal notranslate"><span class="pre">--port</span></code> with another number</p></td>
+</tr>
+<tr class="row-odd"><td><p>“port N is already in use on this machine”</p></td>
+<td><p>The local end of the forward is taken. Omit <code class="docutils literal notranslate"><span class="pre">--port</span></code> and let vaibify choose</p></td>
+</tr>
+<tr class="row-even"><td><p>The tab says the session expired</p></td>
+<td><p>You were away longer than the hold window. Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">remote</span></code> again</p></td>
+</tr>
+</tbody>
+</table>
+<p>A terminal session on the remote machine can leave a project needing
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code>, which must run on that machine, so keep a way in
+that does not depend on the tunnel. See
+<a class="reference internal" href="externalResources.html"><span class="std std-doc">Connecting to External Resources</span></a>.</p>
 </section>
 </section>
 
@@ -1211,8 +907,8 @@ Will return a DOI on success.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="pipelines.html" class="btn btn-neutral float-right" title="Pipelines" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="testing.html" class="btn btn-neutral float-left" title="Testing Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="forAgents.html" class="btn btn-neutral float-right" title="For Agents" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

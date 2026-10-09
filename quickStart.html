@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Installing Vaibify" href="install.html" />
-    <link rel="prev" title="Philosophy" href="philosophy.html" /> 
+    <link rel="next" title="Advanced Installation" href="install.html" />
+    <link rel="prev" title="Code of Conduct" href="conduct.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,8 +45,6 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">QuickStart</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#install">1. Install</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#download-the-example-project">2. Download the example project</a></li>
@@ -58,7 +56,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#check-the-bytes-again">6. Check the bytes again</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#containerize-the-same-project">7. Containerize the same project</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#two-claims-checked-two-different-ways">Two claims, checked two different ways</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#confirm-the-reproduction">Confirm the reproduction</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#when-something-is-wrong">8. When something is wrong</a><ul>
@@ -68,28 +66,20 @@
 <li class="toctree-l2"><a class="reference internal" href="#where-to-next">9. Where to next</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -180,7 +170,7 @@ menu’s select <strong>Run All Unit Tests</strong> and you will see messages in
 <p>Note, however, that the research field still says “Untested”. You have not declared the results to meet your own standard of scientific rigor. When you’re using <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> for your own research, you’ll want to be very careful about passing the researcher test because that means you are declaring the results to be accurate. While the process can of course be undone, waiting until you are sure is the best approach with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>. But for this example, go ahead and click the researcher marker for Step A01 to “Passed”. After a couple seconds or so, the left-most orange marker in the banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1. Then do the same for Step A02. This time, when the dashboard detects the change, not only will the main orange marker flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of “AI Greenhouse” along the top bar. The number of checks next to the project name indicated the current PROOF Level of the project, Level 1 in this case.</p>
 <section id="doing-the-same-thing-with-an-agent">
 <h3>Doing the same thing with an agent<a class="headerlink" href="#doing-the-same-thing-with-an-agent" title="Link to this heading"></a></h3>
-<p>Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like “Run all steps and their unit tests.” <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> includes an <a class="reference internal" href="dashboard.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.</p>
+<p>Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like “Run all steps and their unit tests.” <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> includes an <a class="reference internal" href="forAgents.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.</p>
 </section>
 </section>
 <section id="check-the-bytes-again">
@@ -212,19 +202,20 @@ tab you are clicking from, <code class="docutils literal notranslate"><span clas
 another browser or on another machine refuses the conversion instead,
 because the conversion renames the key that the project’s lock,
 lease, and journal all hang from.</p></li>
-<li><p><strong>Install Docker or Colima if you don’t have them yet.</strong> This step requires Docker containers, which are run as <code class="docutils literal notranslate"><span class="pre">colima</span></code> on macOS. See the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a>) to install. <em>Note that this process can require over 60 minutes.</em></p></li>
-<li><p><strong>A failed build does not put you back where you started.</strong> It leaves
-a registered container that has not been built yet. Fix the cause
-and build again (try working with an AI agent); you have not lost the host project’s work, because
-there was never a copy to lose.</p></li>
+<li><p><strong>Install Docker or Colima if you don’t have them yet.</strong> This step requires Docker containers, which are run as <code class="docutils literal notranslate"><span class="pre">colima</span></code> on macOS. See the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a> to install. <em>Note that this process can require over 60 minutes.</em></p></li>
+<li><p><strong>A failed build is left unfinished.</strong> If the process fails for any reason,
+a registered, but unusuable, container remains partially built. Fix the cause
+and build again (try working with an AI agent or pressing <strong>Run a diagnosis</strong> in the build-failure window); you have not lost the host project’s work, because there was never a copy to lose.</p></li>
 </ul>
-<p>If you’re ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments [Note to claude: It currently still says Containers] to return to the original landing page. Open the kebab menu (<strong>⋮</strong>) on this environment’s tile, and choose <strong>Containerize Environment</strong>.</p>
-<p>A seven-page wizard opens. It asks about the <em>environment</em> — nothing
-it collects moves, renames, or rewrites your files. Every page has a
-<strong>?</strong> that explains the choice in more detail; what follows is what to
-enter to finish this walkthrough. Where a page says “leave it”, the
-default is the right answer and you can press <strong>Next</strong>.</p>
-<p>[Notes to Claude: 1) The “What to Enter” field does not wrap when rendered; can they wrap? Or at least have a horizontal scroll bar? 2) There does not seeem to be the proper instructions for installing an existing environment!]</p>
+<p>Once you’re ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments to return to the original landing page. Open the kebab menu (<strong>⋮</strong>) on this environment’s tile, and choose <strong>Containerize Environment</strong>.</p>
+<p>The wizard first reads the project’s record of its environment,
+<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>, and finds the exact image the author
+used. Because this project pins one, the second page already has
+<strong>Use the author’s pinned image</strong> selected, and the wizard skips the
+pages that would describe a new image (Python, repositories,
+packages), leaving five pages. Every page has a <strong>?</strong> that explains
+the choice in more detail; what follows is what to enter to finish
+this walkthrough.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>#</p></th>
@@ -235,134 +226,90 @@ default is the right answer and you can press <strong>Next</strong>.</p>
 <tbody>
 <tr class="row-even"><td><p>1</p></td>
 <td><p><strong>Name</strong></p></td>
-<td><p>The container, image, and registry name. It is pre-filled with a Docker-safe version of your directory name — lowercase, hyphens, no spaces. Accept it unless it collides with another environment on this machine.</p></td>
+<td><p>Set the <strong>Container name</strong> to <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code>. Typing “AI Greenhouse” in the Project name box fills it in for you; the project itself keeps the name it already has.</p></td>
 </tr>
 <tr class="row-odd"><td><p>2</p></td>
-<td><p><strong>Python version</strong></p></td>
-<td><p>Leave it at <strong>3.12</strong> unless your code is tested against a specific release.</p></td>
+<td><p><strong>Environment</strong></p></td>
+<td><p>Leave <strong>Use the author’s pinned image</strong> selected. The table beneath it names the image, the kind of processor it was built for (<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>), and the archived copy on Zenodo. If your computer has a different processor, such as any Apple-silicon Mac, tick <strong>Allow emulation</strong>: the image still runs, more slowly, and the result is recorded as emulated. Don’t choose <em>Build from the Dockerfile</em>. A new build is a different image and cannot reproduce the author’s bytes.</p></td>
 </tr>
 <tr class="row-even"><td><p>3</p></td>
-<td><p><strong>Repositories</strong></p></td>
-<td><p>Leave it <strong>empty</strong>. This clones <em>additional</em> git repositories into the container; the project you are converting is already accounted for.</p></td>
+<td><p><strong>Features</strong></p></td>
+<td><p>LaTeX and the other base features are grayed out because the author’s image fixes them. The author’s image has no coding agent. Ticking one adds it on top of the image, which takes a few extra minutes and is not part of the reproduction. For this walkthrough you can leave them all unticked and choose <strong>Continue without one</strong> when asked. Under <em>Resource limits</em>, <strong>1</strong> CPU and <strong>1</strong> GB are enough.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
-<td><p><strong>Features</strong></p></td>
-<td><p>Tick <strong>at least one coding agent</strong> — several are offered and none is ticked for you; leaving the page with none selected raises a confirmation, because a container with no agent is usually a slip. LaTeX is on by default. Leave GitHub authentication on. Under <em>Resource limits</em>, blank means “all cores − 1” and unlimited memory; <strong>1</strong> CPU and <strong>1</strong> GB are enough for a small pipeline and keep the build off the rest of your machine.</p></td>
+<td><p><strong>Copy into the container</strong></p></td>
+<td><p>Leave everything ticked. You will also see <strong>Start from the committed files</strong>, because the outputs you made in section 5 differ from the author’s. Leave it <strong>unticked</strong>: the container should start with your own computer’s outputs, so you can watch them get replaced.</p></td>
 </tr>
 <tr class="row-even"><td><p>5</p></td>
-<td><p><strong>Copy into the container</strong></p></td>
-<td><p>A container does not share your folder, so tick what should be copied in. For this walkthrough tick <strong>everything</strong>; your originals stay where they are.</p></td>
-</tr>
-<tr class="row-odd"><td><p>6</p></td>
-<td><p><strong>Packages</strong></p></td>
-<td><p>Leave both boxes <strong>empty</strong>. The dependencies come from the repository’s own <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>.</p></td>
-</tr>
-<tr class="row-even"><td><p>7</p></td>
 <td><p><strong>Summary</strong></p></td>
-<td><p>Read it back, then press <strong>Convert</strong>.</p></td>
+<td><p>Read it back, then press <strong>Convert and obtain</strong>.</p></td>
 </tr>
 </tbody>
 </table>
-<p>Then the build runs. This process does not create a second project. Your clone stays exactly where
-it is — the same directory, the same git history, the same outputs you
-just produced. The difference is that now when you interact with the project via <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> you are inside a container that cannot modify your own computer and whose environment is identical to that of the author of the project.</p>
-<p>When the build finishes, open the project again. It will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
+<p>Nothing is built. <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> downloads the author’s image (it tries a
+registry first, then the author’s archive on Zenodo, then a copy
+already on your computer), checks it against the hash the project
+records, and copies your files into a new container. Most of the
+wait is the download.</p>
+<p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
+just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthemore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
+<p>When the conversion finishes, open the project again. It will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
 whether a rebuild from that image reproduces the outputs.</p>
-<p>[Note to Claude: From here, there should be simple instructions on how to use the GUI to confirm the reproduction. So much of this is excessive.]</p>
-<section id="two-claims-checked-two-different-ways">
-<h3>Two claims, checked two different ways<a class="headerlink" href="#two-claims-checked-two-different-ways" title="Link to this heading"></a></h3>
-<p>The obvious next move is to run the pipeline again and re-check the
-manifest. <strong>Don’t</strong> — that is not a byte test, and it cannot come out
-clean. And note that you did not need to containerize anything to
-check the bytes: the command below the two claims works from the
-published URL alone, in a shadow container built from the image the
-author pinned, on any machine with Docker.</p>
-<p>Every figure vaibify renders is dated and salted from the project
-repository’s HEAD commit. That is what makes two runs of the same
-source produce identical bytes: without it, a PDF carries the wall
-clock in its <code class="docutils literal notranslate"><span class="pre">CreationDate</span></code> and an SVG gets fresh element ids from a
-new <code class="docutils literal notranslate"><span class="pre">uuid4</span></code> on every process. The manifest pins figures dated from
-HEAD <em>as it was when the manifest was written</em>. Any commit since —
-and this walkthrough makes several — changes the epoch, so a hand
-rerun re-renders every PDF, EPS, PS and SVG against a different one.
-The manifest check then reports them as differing whether or not
-anything real changed, which tells you nothing at all.</p>
-<p>So the two claims get checked separately, and neither substitutes for
-the other:</p>
-<p><strong>The science — checked on your own machine.</strong> That is what section 5
-did. The quantitative tests confirm each recomputed number lands inside
-the author’s recorded tolerance, so they answer “is this the same
-result?” without asking anything about your libraries. They passed, and
-they passed before you had a container at all — which is the point of
-section 6: the science agreed while the bytes did not.</p>
-<p><strong>The bytes — checked in the pinned environment.</strong> Three ways, and
-they check the same thing.</p>
-<p>As a stranger, from the URL alone:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>reproduce<span class="w"> </span>--from<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git<span class="w"> </span>--rerun
-</pre></div>
-</div>
-<p>It clones the project in full, validates the snapshot, obtains the
-image the author pinned (the registry first, then the archived copy on
-Zenodo, then a copy already on your machine, saying which one served),
-runs every step in a fresh <em>shadow</em> container built from that image
-with no network and no credentials, compares the bytes inside it, and
-writes a <strong>reproduction report</strong> under your own home. The verdict is
-<em>reproduced</em> — or <em>reproduced under emulation</em> if the pinned build is
-not your machine’s architecture and you passed <code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code>,
-or <em>diverged</em>, or <em>no verdict</em> with the reason. The report is yours,
-not the author’s: nothing is written into the project, and it is not
-an attestation.</p>
-<p>Or, from the hub instead of the terminal: the <strong>+</strong> button’s third
-kind card, <strong>Reproduce a published project</strong>, takes the same URL,
-shows you what a run would use before anything is pulled, and shows
-the same verdict and report when it settles. No tile is added; the
-shadow is destroyed when the comparison is made.</p>
-<p>As a stranger without vaibify, the artifact the project publishes:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./reproduce.sh
-</pre></div>
-</div>
-<p>It reads the image digest, the pinned platform and the recorded epoch
-out of <code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>, pulls that exact image for that
-platform, runs every step inside it, and finishes with</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sha256sum</span> <span class="o">-</span><span class="n">c</span> <span class="n">MANIFEST</span><span class="o">.</span><span class="n">sha256</span>
-</pre></div>
-</div>
-<p><strong>Zero mismatches is the payoff.</strong> Not “a small delta” — zero. It is
-what lets a reader who has never met you re-derive your figures byte
-for byte, and it is the whole reason the environment is pinned.</p>
-<p>As the author, the dashboard equivalent is <strong>Verify Level 3
-Reproducibility</strong>, in the <strong>Run</strong> menu (it also has a button on the
-PROOF tab’s Level 3 row). It creates a shadow container from the image
-digest your project pins, copies the repository into it, runs the
-whole pipeline there, and compares the results against your files —
-then destroys the shadow. It does not touch your outputs, and it is
-the one of the three that writes an attestation, because it is your
-claim about your own project. All three re-run against the epoch the
-envelope recorded rather than against today’s HEAD, which is exactly
-why they can come out at zero and a hand rerun cannot.</p>
-<p>It is the difference between believing your work reproduces and having
-watched it happen.</p>
-<p>[Note to Claude: The 1-2 paragraphs that describe how to actually reproduce the results should end here.]</p>
+<section id="confirm-the-reproduction">
+<h3>Confirm the reproduction<a class="headerlink" href="#confirm-the-reproduction" title="Link to this heading"></a></h3>
+<p>The container now holds the files your own computer made in
+section 5. Let’s replace them with files made in the author’s
+environment.</p>
+<ol class="arabic simple">
+<li><p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. The
+data files and figures still differ, because they are still the
+bytes your own computer produced.</p></li>
+<li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>, then <strong>Run All Unit
+Tests</strong>. This time every step runs inside the author’s environment,
+and the run log notes that it used the date the author recorded, so
+any figure with a date inside it comes out the same. If any step’s
+Researcher marker no longer reads “Passed”, mark it again as you
+did in section 5; the project returns to Level 1.</p></li>
+<li><p>Choose <strong>Check Files Against Manifest</strong> again. Every file now
+matches: in the author’s environment, your run produced the
+author’s bytes.</p></li>
+</ol>
+<p>Finally, from the <strong>Run</strong> menu choose <strong>Verify Level 3
+Reproducibility</strong>. It makes a throwaway copy of the container from
+the author’s image, reruns every step there with no network, compares
+every file, and then deletes the copy. It leaves your files alone, and
+it only starts once your files match the manifest, which is why it
+comes after step 3. When it finishes, the heading of the left column
+reads <strong>Project (reproduced)</strong>. The result is saved in
+<code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code> and committed to your clone.</p>
+<p>Your copy stays at Level 1. Levels 2 and 3 record the <em>author’s</em>
+publication (their GitHub push, their Zenodo deposit, their AI
+declaration), so they are the author’s to earn. Bringing a project to
+Level 3 is the author’s job; confirming it is yours, and
+“(reproduced)” is that confirmation.</p>
+<p>Anyone can run the same check starting from nothing but the project’s
+URL: in the hub, press <strong>+</strong> and choose <strong>Reproduce a published
+project</strong>. A reader without <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can run <code class="docutils literal notranslate"><span class="pre">./reproduce.sh</span></code> inside
+the clone. Both obtain the author’s image, rerun every step inside it,
+and compare the bytes.</p>
 </section>
 </section>
 <section id="when-something-is-wrong">
 <h2>8. When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Link to this heading"></a></h2>
-<p>Run <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>, and do what it says.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor<span class="w">              </span><span class="c1"># every scope</span>
-vaibify<span class="w"> </span>doctor<span class="w"> </span>--container<span class="w">  </span><span class="c1"># only what is inside the running container</span>
-</pre></div>
-</div>
-<p>It is the command for the moment when a build will not build, a
-container will not start, an agent inside the container cannot reach
-anything, or the dashboard is saying something you did not expect. It
-reports on three scopes — this machine, the inside of the running
-container, and vaibify’s own record of the project — and every finding
+<p>Run a diagnosis, and do what it says. Error messages in the
+dashboard end with <strong>Click to run a diagnosis</strong>, and the build-failure
+window has a <strong>Run a diagnosis</strong> button. Use it when a build will not
+build, a container will not start, or the dashboard is saying something
+you did not expect. The report checks this machine, and every finding
 that needs action names the exact command to run, correct for the
-Docker runtime you are actually using.</p>
+Docker runtime you are actually using. The same checks, plus the inside
+of the running container and vaibify’s own record of the project, are
+available as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> from a terminal; see the
+<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
 <p>Three things about the report are worth knowing before you read one.</p>
-<p><strong>Doctor changes nothing.</strong> It never starts, stops, removes or restarts
+<p><strong>The diagnosis changes nothing.</strong> It never starts, stops, removes or restarts
 anything. You can run it against a container that has just died without
 destroying the evidence of why.</p>
 <p><strong>“Not checked” is not “ok”.</strong> A check that could not run says so, with
@@ -380,8 +327,7 @@ a cluster — the outputs it writes are not the outputs vaibify recorded,
 and the dashboard will turn those files red. Nothing is broken and
 nothing was lost: the badge is telling you the truth, which is that the
 file on disk is no longer the one the recorded run produced.</p>
-<p>The way forward is to run the step through vaibify (Run Step, or
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code>), so the run that produced the file is the run vaibify
+<p>The way forward is to run the step through vaibify (<strong>Run Step</strong>), so the run that produced the file is the run vaibify
 recorded. Vaibify deliberately does not offer a way to mark a file
 “fine as it is”: a green badge over a file whose provenance nobody
 knows is exactly the claim this tool exists not to make.</p>
@@ -390,18 +336,18 @@ knows is exactly the claim this tool exists not to make.</p>
 <section id="where-to-next">
 <h2>9. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong><a class="reference internal" href="templates.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
+<li><p><strong><a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
 starting your own project rather than driving someone else’s.</p></li>
-<li><p><strong><a class="reference internal" href="dashboard.html"><span class="std std-doc">The dashboard tour</span></a></strong> — every panel, the status
-colors, and the verification state machine.</p></li>
-<li><p><strong><a class="reference internal" href="reproducibility.html"><span class="std std-doc">The reproducibility ladder</span></a></strong> — what Levels 1
-through 3 each certify, and what none of them do.</p></li>
+<li><p><strong><a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">Environments and Projects</span></a></strong> — every
+panel of the dashboard, the status colors, and how steps are verified.</p></li>
+<li><p><strong><a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a></strong> — what Levels 1 through 3 each
+certify, and what none of them do.</p></li>
 <li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what a container protects against
 and what host mode does not. Worth reading before you let an agent
 write code anywhere.</p></li>
-<li><p><strong><a class="reference internal" href="install.html"><span class="std std-doc">Install guide</span></a></strong> — Docker and Colima, plus
-platform-specific troubleshooting.</p></li>
-<li><p><strong><a class="reference internal" href="cli.html"><span class="std std-doc">Command line interface</span></a></strong> — everything above, scriptable.</p></li>
+<li><p><strong><a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a></strong> — Docker and Colima,
+platform-specific troubleshooting, the configuration reference, and
+the command line that makes everything above scriptable.</p></li>
 </ul>
 <p>A note on what you will see in <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> afterwards: opening a
 project can refresh the small <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> that vaibify installs in
@@ -416,8 +362,8 @@ manifest.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="philosophy.html" class="btn btn-neutral float-left" title="Philosophy" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="install.html" class="btn btn-neutral float-right" title="Installing Vaibify" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="conduct.html" class="btn btn-neutral float-left" title="Code of Conduct" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="install.html" class="btn btn-neutral float-right" title="Advanced Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

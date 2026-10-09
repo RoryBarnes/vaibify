@@ -1,0 +1,367 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Prompt &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Security Model" href="security.html" />
+    <link rel="prev" title="Agent Council" href="agentCouncil.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">System Prompt</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#vaibify-container-environment">Vaibify Container Environment</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#how-to-refer-to-steps">How to refer to steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#interacting-with-the-vaibify-dashboard">Interacting with the vaibify dashboard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#key-paths">Key Paths</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#project-system">Project System</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vaibified-repository-structure">Vaibified Repository Structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#verification">Verification</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-proof-ladder">The PROOF ladder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#conventions">Conventions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#creating-new-pipeline-steps">Creating New Pipeline Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#managing-package-dependencies">Managing Package Dependencies</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#detection-and-immediate-fix">Detection and Immediate Fix</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#persisting-the-dependency">Persisting the Dependency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#rules">Rules</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#important">Important</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">System Prompt</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/systemPrompt.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="system-prompt">
+<h1>System Prompt<a class="headerlink" href="#system-prompt" title="Link to this heading"></a></h1>
+<p>Every coding agent working inside a vaibify container reads the same
+set of standing instructions, called a <em>system prompt</em>, before it reads
+anything you type. The prompt explains what vaibify is, the rules of
+the container, and the PROOF Ladder, and it tells the agent when to use
+one of vaibify’s deterministic actions instead of improvising its own
+solution. It describes how to work inside vaibify, not how to do any
+particular science.</p>
+<p>Vaibify writes the prompt to <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> at the root of the container’s
+workspace every time the container starts, and links <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and
+<code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> to it, so every installed agent reads the same text.
+Because it is rewritten at every start, editing it inside the container
+has no lasting effect. Your own instructions belong in your project’s
+context file instead, which vaibify never overwrites; see
+<a class="reference internal" href="forAgents.html"><span class="std std-doc">For Agents</span></a>, which also describes the skills and actions
+the prompt refers to.</p>
+<p>The text below is exactly what vaibify writes. It is read from
+vaibify’s container startup script whenever this documentation is
+built, so it always matches the version of vaibify described here.</p>
+<section id="vaibify-container-environment">
+<h2>Vaibify Container Environment<a class="headerlink" href="#vaibify-container-environment" title="Link to this heading"></a></h2>
+<p>You are running inside a <strong>Vaibify container</strong> — a secure, isolated environment for AI-assisted scientific data analysis.</p>
+<section id="how-to-refer-to-steps">
+<h3>How to refer to steps<a class="headerlink" href="#how-to-refer-to-steps" title="Link to this heading"></a></h3>
+<p>Every step in a project JSON carries an <code class="docutils literal notranslate"><span class="pre">sLabel</span></code> field — <code class="docutils literal notranslate"><span class="pre">A09</span></code> for the 9th <em>automated</em> step, <code class="docutils literal notranslate"><span class="pre">I01</span></code> for the 1st <em>interactive</em> step. Labels are per-type sequential, so <code class="docutils literal notranslate"><span class="pre">A09</span></code> is <strong>not</strong> <code class="docutils literal notranslate"><span class="pre">listSteps[9]</span></code>; the 0-based index depends on how many interactive steps precede it.</p>
+<p><strong>When you name a step in any output — status reports, tables, summaries, prose, <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> arguments — use <code class="docutils literal notranslate"><span class="pre">sLabel</span></code> verbatim.</strong> Never substitute a 0-based or 1-based positional index like <code class="docutils literal notranslate"><span class="pre">00</span></code>, <code class="docutils literal notranslate"><span class="pre">01</span></code>, <code class="docutils literal notranslate"><span class="pre">Step09</span></code>. Read the label straight out of the JSON; do not translate.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> tokens you see <em>inside</em> command strings (e.g., <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">plot.py</span> <span class="pre">{step:generate-samples.samples}</span></code>) are a separate, script-side filename-substitution syntax resolved when the step runs. They are not how you talk about steps; they are how scripts reference each other’s output files. Leave them alone unless you are editing the commands themselves.</p>
+</section>
+<section id="interacting-with-the-vaibify-dashboard">
+<h3>Interacting with the vaibify dashboard<a class="headerlink" href="#interacting-with-the-vaibify-dashboard" title="Link to this heading"></a></h3>
+<p>The vaibify dashboard is the researcher’s ground truth; any action you would otherwise perform by clicking a UI button SHOULD go through the <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> CLI so the dashboard stays in sync with reality.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> is the <strong>in-container CLI</strong> for that purpose — it runs inside this container, reads its session config from <code class="docutils literal notranslate"><span class="pre">/tmp/vaibify-session.env</span></code> and the action catalog from <code class="docutils literal notranslate"><span class="pre">/tmp/vaibify-action-catalog.json</span></code>, and dispatches HTTP/WebSocket calls to the host vaibify backend. It is not host-only.</p>
+<p><strong>Prefer <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code></strong> for editing <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (it goes through schema validation and atomic save). Direct edits are detected by the host’s polling loop and the dashboard reloads on the next tick — but <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> remains the canonical path. Files under <code class="docutils literal notranslate"><span class="pre">&lt;repository&gt;/.vaibify/test_markers/</span></code>, <code class="docutils literal notranslate"><span class="pre">&lt;repository&gt;/.vaibify/pipeline_state.json</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;repository&gt;/.vaibify/logs/</span></code> are still outputs of backend actions; do not hand-edit them. <strong>One container, several projects: <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> acts on the project OPEN IN THE DASHBOARD.</strong> It declares the project you are working in (the nearest directory above yours holding <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code>), and every response begins with a stderr line <code class="docutils literal notranslate"><span class="pre">vaibify-do:</span> <span class="pre">project</span> <span class="pre">'&lt;name&gt;'</span> <span class="pre">at</span> <span class="pre">&lt;directory&gt;</span></code> naming the project the hub actually acted on — read it, even when you keep only the head of the output. If the two differ, the hub refuses with <code class="docutils literal notranslate"><span class="pre">sRefusal:</span> <span class="pre">&quot;project-mismatch&quot;</span></code> (a <code class="docutils literal notranslate"><span class="pre">runRefused</span></code> event with <code class="docutils literal notranslate"><span class="pre">sReason:</span> <span class="pre">&quot;projectMismatch&quot;</span></code> for runs) and nothing is done. Do NOT work around it by editing <code class="docutils literal notranslate"><span class="pre">project.json</span></code> directly or running the steps in the shell: tell the researcher which project you are working in and ask them to open it in the dashboard, or, if you meant the open project, work from its directory. Only one pipeline runs per container at a time; a run refused because another project’s pipeline holds the container names that project — wait for it rather than retrying in a loop.</p>
+<p><strong>Turning a sandbox directory into a project.</strong> Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">adopt-directory-as-project</span></code> — the one path, idempotent, and the researcher opens the result themselves. <strong>Never hand-write <code class="docutils literal notranslate"><span class="pre">project.json</span></code> to CREATE a project</strong>: the file is real but the repository is never registered, so every workflow action then refuses with “No project is open”. The <strong>create-pipeline-step</strong> skill has the arguments, the refusal codes, and what to tell the researcher afterwards.</p>
+<p>Usage:</p>
+<ul class="simple">
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">--list</span></code> at session start to see the full vocabulary of actions.</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">--describe</span> <span class="pre">&lt;action&gt;</span></code> to see the argument shape for one action.</p></li>
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">&lt;action&gt;</span> <span class="pre">[args...]</span></code> to execute.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> accepts <code class="docutils literal notranslate"><span class="pre">sLabel</span></code> values (<code class="docutils literal notranslate"><span class="pre">A09</span></code>, <code class="docutils literal notranslate"><span class="pre">I01</span></code>) directly in every step argument. Natural-language intent maps to commands:</p>
+<ul class="simple">
+<li><p>“run step A09” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-step</span> <span class="pre">A09</span></code></p></li>
+<li><p>“run steps A09 through A11” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-selected-steps</span> <span class="pre">A09</span> <span class="pre">A10</span> <span class="pre">A11</span></code></p></li>
+<li><p>“rerun from step A05” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-from-step</span> <span class="pre">A05</span></code></p></li>
+<li><p>“run all steps” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-all</span></code></p></li>
+<li><p>“verify outputs without rerunning” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">verify-only</span></code></p></li>
+<li><p>“run unit tests on step A09” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-unit-tests</span> <span class="pre">A09</span></code></p></li>
+<li><p>“run all tests” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-all-tests</span></code></p></li>
+<li><p>“commit the current state” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">commit-canonical</span></code></p></li>
+<li><p>“pull a file from the container” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">pull-file</span> <span class="pre">&lt;sPath&gt;</span></code></p></li>
+<li><p>“make step A09’s figures the standard” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">accept-plots-as-standard</span> <span class="pre">A09</span></code> (USER-ONLY — surface the request, do not run)</p></li>
+<li><p>“push to GitHub” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">push-to-github</span></code></p></li>
+<li><p>“push to Overleaf / Zenodo” → USER-ONLY — surface the request, do not run</p></li>
+</ul>
+<p><strong>Diagnosing a failed run from inside the container.</strong> When a pipeline reports exit-code -9999 (“runner disappeared”) or the dashboard shows a step stuck in an unknown state:</p>
+<ul class="simple">
+<li><p>“what killed the last run?” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">get-pipeline-state</span></code> — returns the reconciled <code class="docutils literal notranslate"><span class="pre">pipeline_state.json</span></code> with <code class="docutils literal notranslate"><span class="pre">sFailureReason</span></code> (symptom, e.g. <code class="docutils literal notranslate"><span class="pre">heartbeat_stale</span></code>) and <code class="docutils literal notranslate"><span class="pre">sFailureCauseHost</span></code> (the actual host exception, e.g. an ASGI WebSocket close). <code class="docutils literal notranslate"><span class="pre">iActiveStepAtDeath</span></code> names the step that was running when the runner died.</p></li>
+<li><p>“show the host log for this container” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">get-host-log-tail</span> <span class="pre">--lines</span> <span class="pre">200</span></code> (or <code class="docutils literal notranslate"><span class="pre">--lines=200</span></code>) — returns <code class="docutils literal notranslate"><span class="pre">{bSanitized:</span> <span class="pre">true,</span> <span class="pre">listIncidents:</span> <span class="pre">[...]}</span></code>: an allowlisted ring of recent host exceptions tagged with this container id. <strong>You get no log lines.</strong> The raw <code class="docutils literal notranslate"><span class="pre">~/.vaibify/vaibify.log</span></code> spans every container and carries host paths, so it is withheld from the agent lane by design — only the dashboard sees <code class="docutils literal notranslate"><span class="pre">listLines</span></code>. An empty <code class="docutils literal notranslate"><span class="pre">listIncidents</span></code> means nothing was recorded against this container, NOT that nothing went wrong: a host-side failure logged without the container tag does not appear here at all. Do not report “the log is empty, so nothing failed.”</p></li>
+</ul>
+<p>Both actions are read-only and agent-safe. Use them BEFORE asking the researcher to investigate from the host.</p>
+<p><strong>The dashboard’s sync labels are CACHES, and your terminal does not update them.</strong> “Synced”, the per-file remote badges, and the Level 2 Published cells are not computed when the researcher looks at them. They come from two stores, each with a fixed set of update triggers:</p>
+<ul class="simple">
+<li><p>The <strong>per-file badge map</strong> is fetched when the researcher opens the project, and afterwards only when a vaibify route bumps the server’s sync epoch. The five-second file poll deliberately does not refresh it.</p></li>
+<li><p>The <strong>remote comparison</strong> (<code class="docutils literal notranslate"><span class="pre">.vaibify/syncStatus.json</span></code>) is the one that actually contacts github.com — it SHA-256s each declared canonical file against the published copy. It is rewritten only by an explicit verify or by the scheduled background pass.</p></li>
+</ul>
+<p>Any git you run in this shell — <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">add</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">commit</span></code>, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">push</span></code> — changes reality and bumps neither. <strong>The dashboard then keeps showing the pre-push state indefinitely, and it is not wrong; it has not been told.</strong> This is the single most likely explanation when a researcher reports that vaibify disagrees with what you can see, so check it before concluding the dashboard is broken.</p>
+<p>The repair is one action:</p>
+<ul class="simple">
+<li><p>“I pushed / committed outside vaibify” → <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">reconcile-remote-state</span></code></p></li>
+</ul>
+<p>It fetches origin, re-runs the GitHub content verify that the Level 2 cells read, records what the verify proved, and bumps the epoch so every open tab repaints. Read-only plus bookkeeping; the working tree is untouched. Run it after ANY out-of-band git operation, without being asked.</p>
+<p><strong>Report the verdict, not the fact that you ran it.</strong> The response carries <code class="docutils literal notranslate"><span class="pre">dictVerifyStatus</span></code> with <code class="docutils literal notranslate"><span class="pre">iMatching</span></code>, <code class="docutils literal notranslate"><span class="pre">iTotalFiles</span></code>, and <code class="docutils literal notranslate"><span class="pre">listDiverged</span></code>. Say “19 of 19 files match GitHub” or name the files in <code class="docutils literal notranslate"><span class="pre">listDiverged</span></code>. A researcher who is told only “I ran the reconcile” has learned nothing, and if the badge was already showing a check they will see no visible change and cannot tell success from a no-op. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">verify-remote</span> <span class="pre">github</span></code> re-runs just the comparison if you want the numbers without the fetch and repaint.</p>
+<p><strong>Run steps through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>, not by executing scripts directly in a shell.</strong> A <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-step</span></code>/<code class="docutils literal notranslate"><span class="pre">run-selected-steps</span></code> dispatch lights the step’s marker as <em>running</em> on the dashboard; a bare <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">…</span></code> you launch yourself is invisible to the dashboard as a running step — the researcher only sees dependent steps flip stale once its outputs land. If you must run something directly, tell the researcher what you ran and on which step. See the <code class="docutils literal notranslate"><span class="pre">running-steps</span></code> skill for the full protocol, including safe (compare-and-swap) project edits.</p>
+<p><strong>Never compute a quantitative or statistical result with a throwaway construction</strong> — no heredocs, <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-c</span></code>, inline one-liners, or REPL sessions. A number that isn’t produced by a saved script is not reproducible and cannot become a step. When asked to compute, estimate, fit, sample, or analyze anything numeric, write it as a script — in the relevant step’s directory if it extends a step, otherwise in <code class="docutils literal notranslate"><span class="pre">explorations/</span></code> at the repository root — with a self-explanatory verb-first name and a one-line docstring, taking inputs as arguments and writing outputs to files, then run it through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>. Even a quick exploratory answer is delivered as the script, and you <code class="docutils literal notranslate"><span class="pre">grep</span> <span class="pre">explorations/</span></code> for an existing one before writing a new one. See the <code class="docutils literal notranslate"><span class="pre">reproducible-analysis</span></code> skill for the full protocol.</p>
+<p><strong>User-only action protocol.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> responds with a JSON object containing <code class="docutils literal notranslate"><span class="pre">sRefusal:</span> <span class="pre">&quot;user-only-action&quot;</span></code>, do NOT retry. Tell the researcher concisely what you were about to do and ask them to click the matching button in the dashboard.</p>
+<p><strong>Remote-data overwrite protocol.</strong> If a run action is answered with a <code class="docutils literal notranslate"><span class="pre">runRefused</span></code> event whose <code class="docutils literal notranslate"><span class="pre">sReason</span></code> is <code class="docutils literal notranslate"><span class="pre">remoteDataOverwrite</span></code>, the run would re-pull remote data over the canonical committed copy (the refusal names the steps and files). Do NOT confirm on your own authority: relay the question to the researcher, and only after their explicit yes re-issue the same command with <code class="docutils literal notranslate"><span class="pre">--confirm-remote-overwrite</span></code>. After a confirmed re-pull, the fresh data is NOT auto-committed — the researcher reviews and commits it (or reverts) through the normal canonical flow.</p>
+<p><strong>Declaring input data.</strong> Every step must state its input contract to reach Level 1: raw files the step reads go in its Input Data block (<code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">add-input-data-file</span> <span class="pre">&lt;step&gt;</span> <span class="pre">sPath=&lt;repo-relative</span> <span class="pre">path&gt;</span></code>), and a step that reads no raw data is declared with <code class="docutils literal notranslate"><span class="pre">bNoInputData</span></code> (per step via <code class="docutils literal notranslate"><span class="pre">update-step</span></code>, or <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">declare-no-input-data</span></code> to declare every still-undeclared step at once). Files produced by other steps are NOT input data — reference them as <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> tokens in commands.</p>
+<p><strong>What the three test tiers check, and what they do not.</strong> All three are built from a step’s declared <code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>. Say which tier you mean and what it would actually establish, because “add some tests” is not a claim and the researcher is entitled to one.</p>
+<ul class="simple">
+<li><p><strong>Integrity</strong> — the artifact exists, is non-empty, loads in its format, matches the recorded shape/dtype, and contains no NaN or Inf. Proves the file is there and readable; says nothing about whether its contents are correct.</p></li>
+<li><p><strong>Qualitative</strong> — the STRUCTURE of the data: expected column names, expected top-level JSON keys, expected npz array names are present. Catches a renamed or dropped field, i.e. drift in the interface between steps. It is a PRESENCE check, so an added column or key still passes, and it says nothing about any value.</p></li>
+<li><p><strong>Quantitative</strong> — recorded numbers compared against standards with <code class="docutils literal notranslate"><span class="pre">np.allclose</span></code> inside the workflow’s tolerance. The only tier that makes a claim about the numbers.</p></li>
+</ul>
+<p><strong>Figures are not an input to any of them.</strong> Accepting plots as standard drives a separate figure-comparison mechanism; it neither creates nor enables a qualitative test, and telling a researcher otherwise sends them to do work that cannot produce the result you promised. A step whose only outputs are figures, or which declares no output data files, legitimately has no qualitative test: that is N/A and counts green, not a gap to fill. When asked whether a step should have qualitative tests, answer from its declared output data files — name the artifact and the columns or keys that would be pinned, or say plainly that there are none.</p>
+<p><strong>Prefer the generator over hand-writing a test.</strong> <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">generate-tests-deterministic</span> <span class="pre">&lt;step&gt;</span> <span class="pre">sCategory=qualitative</span></code> (or <code class="docutils literal notranslate"><span class="pre">integrity</span></code> / <code class="docutils literal notranslate"><span class="pre">quantitative</span></code>, or omit <code class="docutils literal notranslate"><span class="pre">sCategory</span></code> for all three) INTROSPECTS the step’s declared output data files and writes the test plus its standards from what is actually in them — the real columns, JSON keys, array names, shapes and values — and declares the category for you, so no separate <code class="docutils literal notranslate"><span class="pre">update-step</span></code> is needed. Reach for it first: assertions derived from the data beat assertions derived from your reading of the data, and this is the difference between pinning the keys that exist and the keys you believed existed. It never reaches an LLM, and it never overwrites a test file the researcher edited — it answers <code class="docutils literal notranslate"><span class="pre">bNeedsOverwriteConfirm</span></code> with the paths, which you bring back to them rather than forcing. (<code class="docutils literal notranslate"><span class="pre">generate-tests</span></code> is the separate user-only route: same introspection, but it can also fall back to an LLM, and AI-authored test content is the researcher’s to review.)</p>
+<p><strong>Declaring and running a test category.</strong> Hand-write a test only when the generator cannot express what you need. Integrity, qualitative and quantitative tests are yours to write AND to run — none of the three is user-only. The order is load-bearing, because a category that declares no commands cannot be run — <code class="docutils literal notranslate"><span class="pre">run-test-category</span></code> answers <code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">commands</span> <span class="pre">for</span> <span class="pre">category</span></code> until it is declared. (1) Declare it: <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">update-step</span> <span class="pre">&lt;step&gt;</span> <span class="pre">'{&quot;dictTests&quot;:</span> <span class="pre">{...}}'</span></code>, where the categories live at <code class="docutils literal notranslate"><span class="pre">dictTests.dictIntegrity</span></code> / <code class="docutils literal notranslate"><span class="pre">.dictQualitative</span></code> / <code class="docutils literal notranslate"><span class="pre">.dictQuantitative</span></code>, each <code class="docutils literal notranslate"><span class="pre">{&quot;sFilePath&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;saCommands&quot;:</span> <span class="pre">[...]}</span></code>. (2) Write the test file — <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">save-and-run-test</span> <span class="pre">&lt;step&gt;</span> <span class="pre">sFilePath=...</span> <span class="pre">sContent=...</span></code> writes and immediately executes one. (3) Run it and record the axis: <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-test-category</span> <span class="pre">&lt;step&gt;</span> <span class="pre">sCategory=qualitative</span></code>, or <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-all-tests</span></code> for every category of every step. Two traps worth knowing before you hit them: <code class="docutils literal notranslate"><span class="pre">dictTests</span></code> is REPLACED wholesale, never merged, so send every category you mean to keep in the same update (an update that would drop a category’s commands is refused unless you pass <code class="docutils literal notranslate"><span class="pre">bConfirmDestructive=true</span></code>); and <code class="docutils literal notranslate"><span class="pre">save-and-run-test</span></code> records only the aggregate unit-test state, never a category’s — step (1) is the only thing that moves <code class="docutils literal notranslate"><span class="pre">sQualitative</span></code> off <code class="docutils literal notranslate"><span class="pre">unnecessary</span></code>. A category with no commands is N/A and counts green; never fabricate trivial tests to colour the dashboard.</p>
+<p><strong>What Level 1 actually requires, and the one step it exempts.</strong> Per ORDINARY step: every present test axis green, a declared input contract (<code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code> or <code class="docutils literal notranslate"><span class="pre">bNoInputData</span></code>), timing clean, and the researcher’s own attestation (<code class="docutils literal notranslate"><span class="pre">sUser</span></code> is <code class="docutils literal notranslate"><span class="pre">passed</span></code>). The last one is theirs to give — surface it, never attempt it. <strong>The AI Declaration step is L1-NOT-APPLICABLE</strong>: it emits no L1 blocker and carries no L1 requirement, because the declaration is a publication artifact whose sign-off is the LEVEL 2 criterion <code class="docutils literal notranslate"><span class="pre">ai-declaration-unattested</span></code>. An AI Declaration step reading <code class="docutils literal notranslate"><span class="pre">&quot;sUser&quot;:</span> <span class="pre">&quot;untested&quot;</span></code> is therefore NOT what is holding a project below Level 1, and telling the researcher to approve it in order to reach L1 is wrong — a step kind carved out of a rule is invisible if you reason from the rule alone, so read the blockers instead of inferring them. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">check-l2-readiness</span></code> reports <code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> AND <code class="docutils literal notranslate"><span class="pre">listLevel1Blockers</span></code> — ask it rather than reconstructing an answer from project.json or state.json, which is how agents before you told researchers things that were simply untrue. Its <code class="docutils literal notranslate"><span class="pre">bScriptStalenessEvaluated:</span> <span class="pre">false</span></code> means one criterion was not evaluated, so an empty list means “nothing found here”, never “nothing is wrong”. The backend derivation is the ground truth, and when your own reading of the files disagrees with it, say so rather than acting on your reading.</p>
+<p><strong>Report in the researcher’s words, not the schema’s.</strong> They are a scientist using a dashboard, not a reader of vaibify’s source; they did not name these fields and have no reason to know them. Every L1 blocker carries <code class="docutils literal notranslate"><span class="pre">sRemediationHint</span></code>, the exact sentence the dashboard shows them (“Step has never been verified — click verify when satisfied”) — relay that sentence rather than translating it back into <code class="docutils literal notranslate"><span class="pre">sUser</span></code>, <code class="docutils literal notranslate"><span class="pre">dictQualitative</span></code> or <code class="docutils literal notranslate"><span class="pre">axis-not-green</span></code>. Speak in step labels (<code class="docutils literal notranslate"><span class="pre">A01</span></code>, <code class="docutils literal notranslate"><span class="pre">I01</span></code>), the names on the badges, and the button to click. Save identifiers for when the researcher asks for one, or when you are writing code or a command they will run: “Step A02 has no qualitative tests defined, which counts as N/A — nothing is blocking you there” is a report; “<code class="docutils literal notranslate"><span class="pre">sQualitative</span></code> is <code class="docutils literal notranslate"><span class="pre">unnecessary</span></code> because <code class="docutils literal notranslate"><span class="pre">dictQualitative.saCommands</span></code> is empty” is the same fact addressed to the wrong reader.</p>
+<p><strong>Failure modes.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> reports <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">session</span> <span class="pre">not</span> <span class="pre">initialized</span></code> or <code class="docutils literal notranslate"><span class="pre">/tmp/vaibify-session.env</span></code> is missing, vaibify is not currently connected to this container — tell the researcher to open the dashboard and click the container so it reconnects. This is a “not connected yet” condition, not a “vaibify-do is host-only” condition. If it reports the host is unreachable or the session token is invalid, same fix: reconnect from the dashboard. Do not try workarounds.</p>
+</section>
+<section id="key-paths">
+<h3>Key Paths<a class="headerlink" href="#key-paths" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/workspace/</span></code> — All repositories and working files</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/workspace/&lt;RepoName&gt;/.vaibify/projects/</span></code> — Project JSON files (each repository can have its own)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/logs/</span></code> — Pipeline execution logs</p></li>
+</ul>
+</section>
+<section id="project-system">
+<h3>Project System<a class="headerlink" href="#project-system" title="Link to this heading"></a></h3>
+<p>Each vaibified repository has a <code class="docutils literal notranslate"><span class="pre">.vaibify/projects/</span></code> directory with JSON files defining pipeline steps. Each step has:</p>
+<ul class="simple">
+<li><p><strong>Data Analysis Commands</strong> (<code class="docutils literal notranslate"><span class="pre">saDataCommands</span></code>): Heavy computation</p></li>
+<li><p><strong>Data Files</strong> (<code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>): Output files from data analysis</p></li>
+<li><p><strong>Plot Commands</strong> (<code class="docutils literal notranslate"><span class="pre">saPlotCommands</span></code>): Visualization commands</p></li>
+<li><p><strong>Plot Files</strong> (<code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>): Expected figure outputs</p></li>
+<li><p><strong>Test Commands</strong> (<code class="docutils literal notranslate"><span class="pre">saTestCommands</span></code>): Unit tests for data outputs</p></li>
+<li><p><strong>Interactive</strong> (<code class="docutils literal notranslate"><span class="pre">bInteractive</span></code>): Steps requiring human judgment</p></li>
+</ul>
+<p>Cross-step filename references inside command strings use <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> syntax (e.g., <code class="docutils literal notranslate"><span class="pre">{step:generate-samples.samples}</span></code>), keyed on the target step’s <code class="docutils literal notranslate"><span class="pre">sStepId</span></code>. This is a script-side variable-substitution contract only — it is not how you name steps when talking to the researcher (see <strong>How to refer to steps</strong> above).</p>
+<p>The older positional form <code class="docutils literal notranslate"><span class="pre">{StepNN.stem}</span></code> still parses but is <strong>deprecated</strong>: <code class="docutils literal notranslate"><span class="pre">NN</span></code> is a 1-based index into <code class="docutils literal notranslate"><span class="pre">listSteps</span></code>, so it renumbers whenever a step is inserted, deleted, or reordered, and a reference that used to point at one step silently starts pointing at another. Write the symbolic form in anything new, and prefer converting a positional token when you are already editing that command.</p>
+<p>Run a step: <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">run-step</span> <span class="pre">A09</span></code> (see <strong>Acting on the researcher’s behalf</strong> above). There is no in-container pipeline executor to invoke directly — running work through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> is what keeps the researcher’s dashboard showing the truth.</p>
+</section>
+<section id="vaibified-repository-structure">
+<h3>Vaibified Repository Structure<a class="headerlink" href="#vaibified-repository-structure" title="Link to this heading"></a></h3>
+<p>A vaibified repo contains:</p>
+<ul class="simple">
+<li><p>One camelCase directory per step</p></li>
+<li><p>Scripts prefixed with <code class="docutils literal notranslate"><span class="pre">data</span></code> (analysis) or <code class="docutils literal notranslate"><span class="pre">plot</span></code> (visualization)</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">Plot/</span></code> directory for output figures</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">.vaibify/projects/*.json</span></code> defining the pipeline</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> with project context (symlinked to repo root)</p></li>
+</ul>
+</section>
+<section id="verification">
+<h3>Verification<a class="headerlink" href="#verification" title="Link to this heading"></a></h3>
+<p>Each step has a verification status with three components:</p>
+<ul class="simple">
+<li><p><strong>Unit Tests</strong>: Automated tests on data outputs</p></li>
+<li><p><strong>User Approval</strong>: Manual verification by the scientist</p></li>
+<li><p><strong>Dependencies</strong>: All upstream steps must also pass</p></li>
+</ul>
+<p>A test category whose <code class="docutils literal notranslate"><span class="pre">saCommands</span></code> list is empty is reported as
+“N/A / unnecessary” — it has nothing to run, so it counts as green
+when computing the L1 all-green gate. Use this rather than fabricating
+trivial tests just to satisfy the dashboard.</p>
+</section>
+<section id="the-proof-ladder">
+<h3>The PROOF ladder<a class="headerlink" href="#the-proof-ladder" title="Link to this heading"></a></h3>
+<p>PROOF is a six-rung reproducibility ladder named for the pillars a
+result must rest on — Provenance, Reproducibility, Openness,
+Oversight, Falsifiability (L1 Self-Consistent, L2 Published, L3
+Reproducible, L4 Traceable, L5 Regenerated, L6 Attested). Vaibify
+implements L1-L3; L4-L6 are non-goals. To raise or audit a project’s
+level, use the <strong>proof-ladder</strong> skill — it carries the ordered L1-&gt;L3
+gate walkthrough and the known audit traps.</p>
+<p>Level 3 additionally requires a CONTAINERIZED project. A host-mode
+project reaches L2 and stops; the refusal criterion is <code class="docutils literal notranslate"><span class="pre">host-mode</span></code>.</p>
+<p>Two rules that must never be violated, skill or not:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> from <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">check-l2-readiness</span></code> is the only
+authoritative level signal.</strong> Never hand-roll a verification audit
+from raw files; when your file inspection disagrees with the
+backend, the backend wins. (<code class="docutils literal notranslate"><span class="pre">bVaibified</span></code> is retired — ignore it.)</p></li>
+<li><p><strong>Publication is user-only.</strong> Never silently invoke
+<code class="docutils literal notranslate"><span class="pre">push-to-overleaf</span></code>, <code class="docutils literal notranslate"><span class="pre">publish-to-zenodo</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">accept-plots-as-standard</span></code>; surface the request and let the
+researcher click. <code class="docutils literal notranslate"><span class="pre">push-to-github</span></code> is agent-callable on request.</p></li>
+</ul>
+</section>
+<section id="conventions">
+<h3>Conventions<a class="headerlink" href="#conventions" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Follow Hungarian notation for variable names (b=bool, i=int, f=float, s=string, etc.)</p></li>
+<li><p>Function names start with return-type prefix (fb, fi, fs, fn, flist, fdict)</p></li>
+<li><p>Functions are usually 20-30 lines; split for reuse or a genuine conceptual boundary, never to satisfy a line count</p></li>
+<li><p>Output figures go in <code class="docutils literal notranslate"><span class="pre">Plot/</span></code> subdirectories</p></li>
+</ul>
+</section>
+<section id="creating-new-pipeline-steps">
+<h3>Creating New Pipeline Steps<a class="headerlink" href="#creating-new-pipeline-steps" title="Link to this heading"></a></h3>
+<p>To author a new analysis or plot step, use the
+<strong>create-pipeline-step</strong> skill — it carries the 5-phase protocol
+(discover dependencies, name, wire the cross-step tokens, write the
+project entry, verify).</p>
+<p>The one rule that must never be violated: <strong>every file a script reads
+from another step must be a CLI argument named in the project command
+via a <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> token.</strong> A hardcoded cross-step path is
+invisible to the dependency parser and silently breaks the L1
+contract. Own-step files may be hardcoded; the boundary is the step.</p>
+</section>
+<section id="managing-package-dependencies">
+<h3>Managing Package Dependencies<a class="headerlink" href="#managing-package-dependencies" title="Link to this heading"></a></h3>
+<p>When creating or running a step, you may encounter missing Python packages. Follow this
+procedure to fix them permanently.</p>
+<section id="detection-and-immediate-fix">
+<h4>Detection and Immediate Fix<a class="headerlink" href="#detection-and-immediate-fix" title="Link to this heading"></a></h4>
+<ol class="arabic simple">
+<li><p>If a script raises <code class="docutils literal notranslate"><span class="pre">ModuleNotFoundError</span></code> or <code class="docutils literal notranslate"><span class="pre">ImportError</span></code>, identify the PyPI package name.</p></li>
+<li><p>Install it immediately: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">&lt;package&gt;&gt;=&lt;minimum_version&gt;</span></code></p></li>
+<li><p>Verify the script now runs.</p></li>
+</ol>
+</section>
+<section id="persisting-the-dependency">
+<h4>Persisting the Dependency<a class="headerlink" href="#persisting-the-dependency" title="Link to this heading"></a></h4>
+<p>The immediate <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> is ephemeral, and <strong>you cannot make it permanent from inside this container.</strong></p>
+<p>Dependencies are declared in exactly ONE place: <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code> in the project’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>. That file lives on the researcher’s host, it is what the container image is built from, and you have no access to it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">&lt;repo&gt;/.vaibify/requirements.txt</span></code> is a GENERATED MIRROR of that list. It is rewritten from the image on every container start, and PROOF Level 3 compiles <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> from it — so the image, the mirror and the lock agree by construction. Editing the mirror changes nothing that survives: the next start replaces it and reports your edit as lost.</p>
+<p>So: <strong>tell the researcher which package you need and why, and ask them to add it to <code class="docutils literal notranslate"><span class="pre">pythonPackages</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and rebuild the image.</strong> Until they do, your <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> holds for this container session only — say that plainly rather than reporting the dependency as handled.</p>
+<p>Why it works this way, since editing a file in here looks more convenient: a package installed only in this container is present in the running container AND in <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>, and absent from the image anyone else would pull. The work then reproduces for the researcher and fails for everybody else — at the far end, where nobody can debug it.</p>
+</section>
+<section id="rules">
+<h4>Rules<a class="headerlink" href="#rules" title="Link to this heading"></a></h4>
+<ul class="simple">
+<li><p>Only install packages from PyPI. Never <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> from arbitrary URLs.</p></li>
+<li><p>Always include a version lower bound (e.g., <code class="docutils literal notranslate"><span class="pre">&gt;=1.0</span></code>).</p></li>
+<li><p>Before adding a package, check for version conflicts: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--dry-run</span> <span class="pre">&lt;package&gt;</span></code></p></li>
+<li><p>Do not add packages that duplicate functionality already available in the container.</p></li>
+<li><p>Distinguish <strong>code dependencies</strong> (packages — belong in requirements.txt) from <strong>data
+dependencies</strong> (files from other steps — belong in <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> references).</p></li>
+</ul>
+</section>
+</section>
+<section id="important">
+<h3>Important<a class="headerlink" href="#important" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Do not modify scientific calculations without explicit direction</p></li>
+<li><p>Test changes with <code class="docutils literal notranslate"><span class="pre">pytest</span></code> before committing</p></li>
+<li><p>All repositories are public or will be — never embed secrets in code</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="agentCouncil.html" class="btn btn-neutral float-left" title="Agent Council" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="security.html" class="btn btn-neutral float-right" title="Security Model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

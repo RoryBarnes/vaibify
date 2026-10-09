@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Architecture" href="architecture.html" />
-    <link rel="prev" title="Security Model" href="security.html" /> 
+    <link rel="next" title="Agent Council" href="agentCouncil.html" />
+    <link rel="prev" title="Connecting to External Resources" href="externalResources.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,83 +45,44 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Reproducibility</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-stack">The Reproducibility Stack</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#l1-precondition-projects-live-inside-a-git-repo">L1 precondition: projects live inside a git repo</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#l1-requires-a-declared-input-contract">L1 requires a declared input contract</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#canonical-remote-data">Canonical remote data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proof-level-3-reproducible">PROOF Level 3 — Reproducible</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#a-word-about-zenodo">A word about Zenodo</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#proof-level-3-reproducible">PROOF Level 3 — Reproducible</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-envelope">The Reproducibility Envelope</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#tier-1-artifacts-manifest-sha256">Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#tier-2-python-dependencies-requirements-lock">Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#tier-3-container-system-layer-vaibify-environment-json">Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#the-image-digest-names-bytes-somebody-else-is-storing">The image digest names bytes somebody else is storing</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#the-archived-environment-holds-no-coding-agent">The archived environment holds no coding agent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-reproducibility-envelope">The reproducibility envelope</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#tier-1-the-manifest">Tier 1 — the manifest</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tier-2-the-python-packages">Tier 2 — the Python packages</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tier-3-the-container">Tier 3 — the container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reproduce-sh"><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="#the-dockerfile-is-provenance-the-digest-is-reproduction">The Dockerfile is provenance; the digest is reproduction</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-is-pinned-in-the-image-and-what-floats">What is pinned in the image, and what floats</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#regenerating-the-pin-lists-after-a-base-image-bump">Regenerating the pin lists after a base-image bump</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-toolchain-epoch">The toolchain epoch</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#moving-the-epoch">Moving the epoch</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#when-a-pin-does-not-resolve-anyway">When a pin does not resolve anyway</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-vaibify-tells-you-when-a-rebuild-moves-the-environment">What vaibify tells you when a rebuild moves the environment</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#your-vaibify-yml-is-stamped-too-and-read-on-every-entry">Your <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> is stamped too, and read on every entry</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-a-changed-environment-does-and-does-not-affect">What a changed environment does and does not affect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#archiving-the-environment">Archiving the environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#declaring-what-can-still-vary">Declaring what can still vary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-order-of-the-final-steps">The order of the final steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-verification-process">The verification process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reproducing-a-published-project">Reproducing a published project</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#keeping-the-compiler-fixed">Keeping the compiler fixed</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#when-a-pinned-toolchain-version-disappears">When a pinned toolchain version disappears</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#the-verification-ceremony-vaibify-reproduce">The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="#reproducing-somebody-else-s-project-vaibify-reproduce-from">Reproducing somebody else’s project: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-image-is-obtained-through-the-chain-reproduce-sh-uses">The image is obtained through the chain <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> uses</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#the-platform-is-three-facts-not-one">The platform is three facts, not one</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-the-shadow-run-is-and-is-not">What the shadow run is, and is not</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-a-report-is-and-is-not">What a report is, and is not</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-a-source-can-be">What a source can be</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#a-reproduction-is-of-a-commit">A reproduction is of a commit</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">Validation is strict, not advisory – and it is not the Level 3 gate</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#from-the-dashboard">From the dashboard</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#what-a-report-may-carry">What a report may carry</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#trust-anchor-architecture">Trust-anchor architecture</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#remote-mirror-verification">Remote-mirror verification</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#known-limitations">Known limitations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#publishing-a-workflow">Publishing a Workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#archiving-to-zenodo">Archiving to Zenodo</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-publish-record-lives-in-the-sidecar-not-in-project-json">The publish record lives in the sidecar, not in project.json</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#version-pinning">Version Pinning</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#network-isolation">Network Isolation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#sharing-results">Sharing Results</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -150,1242 +111,303 @@
              
   <section id="reproducibility">
 <h1>Reproducibility<a class="headerlink" href="#reproducibility" title="Link to this heading"></a></h1>
-<p>Vaibify is built around the principle that every computational result
-should be reproducible from a single command. This page describes the
-tools and practices that make this possible.</p>
-<section id="the-reproducibility-stack">
-<h2>The Reproducibility Stack<a class="headerlink" href="#the-reproducibility-stack" title="Link to this heading"></a></h2>
-<p>A Vaibify repository captures four layers of provenance:</p>
-<ol class="arabic simple">
-<li><p><strong>Environment</strong> – The Docker image pins the operating system, compilers,
-system libraries, Python version, and all package versions.</p></li>
-<li><p><strong>Code</strong> – <code class="docutils literal notranslate"><span class="pre">container.conf</span></code> lists every repository with its branch or
-tag, so the exact source code is recorded.</p></li>
-<li><p><strong>Pipeline</strong> – <code class="docutils literal notranslate"><span class="pre">project.json</span></code> defines the commands to run and their
-order, removing ambiguity about how results were produced.</p></li>
-<li><p><strong>Configuration</strong> – <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> records all settings, so a
-collaborator can rebuild the identical environment.</p></li>
-</ol>
-<p>Together, these four files constitute a reproducibility manifest. Sharing
-them (or the repository that contains them) is sufficient for anyone with
-Docker to reproduce the results.</p>
-<section id="l1-precondition-projects-live-inside-a-git-repo">
-<h3>L1 precondition: projects live inside a git repo<a class="headerlink" href="#l1-precondition-projects-live-inside-a-git-repo" title="Link to this heading"></a></h3>
-<p>Vaibify enforces the lowest rung of the reproducibility ladder as a
-precondition, not a best practice. Every project must live inside a
-git repository — its <em>repository</em> — which vaibify auto-detects as
-the git work tree enclosing the <code class="docutils literal notranslate"><span class="pre">project.json</span></code> file. A project saved
-to a directory that is not a git work tree is rejected at both
-creation and connect time with a clear error pointing the user to run
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">init</span></code>. The dashboard cannot display a meaningful reproducibility
-level for code that cannot be committed, so asking for one would be
-dishonest.</p>
-<p>The repository path is auto-detected once per connect via
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">rev-parse</span> <span class="pre">--show-toplevel</span></code>, stamped on the in-memory workflow
-dict, and threaded through every subsequent status, badge, and
-manifest call. A single container may host multiple projects in
-separate repository subdirectories (for example, a paper pipeline
-and a follow-on cross-system analysis that share the same dependency
-clones); the active project determines the scope of every per-file
-badge.</p>
-<p>Test markers (the JSON files that record each test’s outcome and the
-output-file hashes of the run that produced it, for each step) live
-inside the repository under <code class="docutils literal notranslate"><span class="pre">.vaibify/test_markers/</span></code> and are committed
-alongside <code class="docutils literal notranslate"><span class="pre">project.json</span></code>. This makes a project’s verification state —
-which tests have run, what they produced, whether the outputs have
-drifted — reproducible from a fresh clone without rerunning anything.</p>
-</section>
-<section id="l1-requires-a-declared-input-contract">
-<h3>L1 requires a declared input contract<a class="headerlink" href="#l1-requires-a-declared-input-contract" title="Link to this heading"></a></h3>
-<p>Every step must state what raw data it consumes: files listed in its
-<code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code> (repo-relative, watched for modification) or the
-explicit <code class="docutils literal notranslate"><span class="pre">bNoInputData</span></code> declaration. An <em>undeclared</em> step — neither
-inputs listed nor the declaration — cannot reach Level 1, because
-nothing distinguishes “verified there are no raw inputs” from
-“nobody looked.” An input file modified after outputs or plots were
-generated does not satisfy Level 1 either: the results no longer
-follow from the recorded inputs, so the Project is not
-self-consistent until the affected steps re-run. Markers record a
-per-input content hash (<code class="docutils literal notranslate"><span class="pre">dictInputHashes</span></code>) at every run, so both
-verdicts survive a fresh clone.</p>
-</section>
-<section id="canonical-remote-data">
-<h3>Canonical remote data<a class="headerlink" href="#canonical-remote-data" title="Link to this heading"></a></h3>
-<p>Data pulled from a remote source (an archive query, a survey
-release) must be committed to the repository — the remote may vanish
-or silently change, and a Project whose raw data cannot be
-re-obtained is not reproducible. Each pulled file carries a
-provenance record in the pulling step’s <code class="docutils literal notranslate"><span class="pre">listRemoteData</span></code>
-(<code class="docutils literal notranslate"><span class="pre">sPath</span></code>, <code class="docutils literal notranslate"><span class="pre">sSourceUrl</span></code>, <code class="docutils literal notranslate"><span class="pre">sDigestBecameCurrentUtc</span></code>, <code class="docutils literal notranslate"><span class="pre">sSha256</span></code>), refreshed
-automatically after every successful pull; the URL is inert
-metadata, never fetched by vaibify. Because a re-pull overwrites the
-canonical copy, any run covering such a step whose files already
-exist is refused pending explicit confirmation (browser modal;
-<code class="docutils literal notranslate"><span class="pre">--confirm-remote-overwrite</span></code> for the agent CLI after relaying the
-question to the researcher), and the fresh data is never
-auto-committed — it flows through the normal review-and-commit
-canonical flow.</p>
-</section>
-</section>
+<p>Most scientists consider a result reproducible if someone else can rerun
+the analysis and get the same answer to within some tolerance. That is
+what a project’s unit tests check, and it is the bar for PROOF Level 1.
+Level 3 is much stricter: anyone, anywhere, at any time, can rerun your
+project and get back <em>exactly the same bytes</em> in every output file. When
+that holds, there is no doubt at all about how your inputs became your
+outputs.</p>
+<p>Byte-for-byte reproduction is harder than it sounds. As the
+<a class="reference internal" href="quickStart.html"><span class="std std-doc">QuickStart</span></a> showed, two computers running the same code
+can disagree in the last digits of a fitted value, because the rules
+that govern floating-point arithmetic allow small differences between
+libraries and processors. The only reliable cure is to rerun the work
+in the <em>exact</em> computing environment that produced it. This page
+explains how vaibify records that environment, saves it permanently,
+and proves the reproduction works.</p>
 <section id="proof-level-3-reproducible">
 <h2>PROOF Level 3 — Reproducible<a class="headerlink" href="#proof-level-3-reproducible" title="Link to this heading"></a></h2>
-<p>The PROOF ladder has six rungs — L1 Self-Consistent, L2 Published,
-L3 Reproducible, L4 Traceable, L5 Regenerated, L6 Attested — and
-<a class="reference internal" href="vision.html"><span class="std std-doc">vision.md</span></a> is the normative statement of all six. This
-page is the normative statement of the ceiling vaibify implements.</p>
-<p><strong>Level 3 requires a containerized project.</strong> The level is defined by
-a pinned image digest and a rerun inside that image, and a host-mode
-project — one whose pipeline runs directly on the researcher’s own
-machine — has neither. Such a project is refused L3 with the
-<code class="docutils literal notranslate"><span class="pre">host-mode</span></code> criterion and reaches L2. This is a property of what the
-level claims, not a gap in host mode.</p>
-<p>Vaibify targets <strong>PROOF Level 3 (“Reproducible”)</strong> on the PROOF
-ladder: third parties can confirm, at the bit level, that
-the artifacts they hold are byte-for-byte identical to the artifacts
-the original project produced. Level 3 is a claim about <em>file-byte
-identity</em>, not numerical re-derivation. Re-running the project on a
-different machine may produce slightly different bytes for the same
-inputs (CPU/BLAS variance, see <a class="reference internal" href="#known-limitations">Known
-limitations</a>); the hashes recorded in
-<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> describe the bytes the original run produced, and
-those bytes can be redistributed and verified anywhere coreutils is
-installed.</p>
-<p>Level 3 also requires the <strong>published-envelope pair</strong> (2026-08-26,
-superseding a same-day GitHub-only ruling): the envelope files must
-match the copies on the GitHub mirror <strong>and</strong> be present in the
-Zenodo archive. GitHub is not an archive — repositories are renamed,
-made private, force-pushed, deleted — so an envelope that lives only
-there gives the re-execute claim the lifetime of a mutable host. The
-Zenodo check consults every <strong>declared record</strong>
-(<code class="docutils literal notranslate"><span class="pre">dictRemotes.zenodo.listRecords</span></code> plus the primary deposit), because
-Zenodo’s own GitHub integration archives code releases as separate
-records with their own DOIs; a file agrees with Zenodo when any
-declared record serves its bytes. Records with per-file entries are
-comparable; a record holding only a release tarball is not (a
-documented limitation — publish the envelope through vaibify to make
-it verifiable). Zenodo deposits are <strong>flat</strong> — the bucket API refuses
-path-containing keys — so files upload under their basenames and the
-verify matches a repo path to its basename only when that basename is
-unique among the compared files; two paths sharing a basename are
-honestly unverifiable, and the archive refuses such a selection
-outright, because the second upload would silently overwrite the
-first in the published record. Vaibify-generated test and standards
-files carry a step-derived suffix (<code class="docutils literal notranslate"><span class="pre">test_qualitative_&lt;step&gt;.py</span></code>)
-precisely so this never happens to generated projects. Because Zenodo deposits are immutable, restoring
-agreement after an envelope change costs a new published deposit
-version rather than a push: <strong>Level 3 is a release-time property</strong>,
-red through most of a project’s life and green at publication
-moments. That is deliberate — “reproducible” describes a published
-artifact, not a state the working tree drifts through.</p>
+<p>A project reaches Level 3 when four things exist:</p>
+<ol class="arabic simple">
+<li><p><strong>A fingerprint of every file.</strong> A list of every input, script and
+output in the project, each with its SHA-256 hash, a 64-character
+summary of the file’s bytes. Change one byte and the hash changes.</p></li>
+<li><p><strong>The computing environment itself</strong>, saved in a permanent public
+archive, so it cannot disappear.</p></li>
+<li><p><strong>A script anyone can run</strong> to rebuild the results from the files
+and the archived environment.</p></li>
+<li><p><strong>Your confirmation</strong> that you ran that reproduction and every byte
+matched.</p></li>
+</ol>
+<p>Level 3 requires a containerized project, because only a container can
+be saved and rerun exactly; a project in host mode reaches at most Level
+2. It also builds on Level 1: the project lives in a git repository,
+every step declares the data it reads, and any data pulled from a remote
+source is committed, because the source may change or disappear.</p>
+<section id="a-word-about-zenodo">
+<h3>A word about Zenodo<a class="headerlink" href="#a-word-about-zenodo" title="Link to this heading"></a></h3>
+<p>The permanent archive vaibify uses is <a class="reference external" href="https://zenodo.org">Zenodo</a>, a
+free service run by CERN. Each upload becomes a <em>record</em> with a DOI, the
+same kind of permanent identifier a journal article has. A published
+record can never be changed; to update it you publish a new <em>version</em>,
+and every version keeps its own DOI. That permanence is the point, and it
+also means mistakes are permanent, which is why the order of the final
+steps matters (see below). Zenodo also runs a <em>sandbox</em> where you can
+practice; sandbox records are not permanent, so they never count toward
+Level 3.</p>
+<p>Because published records are frozen, Level 3 describes a <em>release</em>,
+not a work in progress. Change any of the files below after publishing
+and the Level 3 rows turn red until you publish a new version.</p>
+</section>
 </section>
 <section id="the-reproducibility-envelope">
-<h2>The Reproducibility Envelope<a class="headerlink" href="#the-reproducibility-envelope" title="Link to this heading"></a></h2>
-<p>An honest L3 claim covers three tiers. Vaibify writes one file per
-tier into the repository, and each tier is independently verifiable
-with standard tools — vaibify is the orchestrator, not a dependency.</p>
-<p>The envelope is regenerated automatically when the project
-transitions to all-green (every step fully verified), and on demand
-via the <strong>Regenerate now</strong> buttons in the Artifacts section of the
-Main tab’s Project block. This keeps the manifest in sync with the
-latest verified state without requiring the user to remember to
-trigger it.</p>
-<section id="tier-1-artifacts-manifest-sha256">
-<h3>Tier 1 — Artifacts (<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>)<a class="headerlink" href="#tier-1-artifacts-manifest-sha256" title="Link to this heading"></a></h3>
-<p>A GNU-coreutils shasum-format file at the repository root listing
-every declared project artifact (everything in each step’s
-<code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>, and <code class="docutils literal notranslate"><span class="pre">saInputDataFiles</span></code>) by
-repo-relative POSIX path with its SHA-256 hash:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">1</span><span class="n">a2b3c</span><span class="o">...</span>  <span class="n">scripts</span><span class="o">/</span><span class="n">runAnalysis</span><span class="o">.</span><span class="n">py</span>
-<span class="mi">4</span><span class="n">d5e6f</span><span class="o">...</span>  <span class="n">data</span><span class="o">/</span><span class="n">results</span><span class="o">.</span><span class="n">csv</span>
-<span class="mi">7</span><span class="n">g8h9i</span><span class="o">...</span>  <span class="n">plots</span><span class="o">/</span><span class="n">figure1</span><span class="o">.</span><span class="n">pdf</span>
-</pre></div>
-</div>
-<p>Paths containing newlines or backslashes are encoded with the GNU
-escape convention: the line is prefixed with <code class="docutils literal notranslate"><span class="pre">\</span></code> and the path itself
-has <code class="docutils literal notranslate"><span class="pre">\\</span></code> for backslash and <code class="docutils literal notranslate"><span class="pre">\n</span></code> for newline. This prevents an
-attacker from forging a second manifest line by injecting a newline
-into a filename.</p>
-<p>Written by
-<a class="reference download internal" download="" href="_downloads/e5552a01c127b7920068298e3a663de4/manifestWriter.py"><span class="xref download myst">fnWriteManifest</span></a> and
-verified in-process by <code class="docutils literal notranslate"><span class="pre">flistVerifyManifest</span></code>. The file is also
-verifiable on any system that ships <code class="docutils literal notranslate"><span class="pre">coreutils</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sha256sum</span> <span class="o">-</span><span class="n">c</span> <span class="n">MANIFEST</span><span class="o">.</span><span class="n">sha256</span>
-</pre></div>
-</div>
-<p>An architectural-invariants test enforces that every path-list field
-in <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (<code class="docutils literal notranslate"><span class="pre">saPlotFiles</span></code>, <code class="docutils literal notranslate"><span class="pre">saOutputDataFiles</span></code>,
-and any future addition) is reflected in <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> — guarding
-against silent under-tracking when the project schema is extended.</p>
-<p>No vaibify install is required.</p>
-</section>
-<section id="tier-2-python-dependencies-requirements-lock">
-<h3>Tier 2 — Python dependencies (<code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>)<a class="headerlink" href="#tier-2-python-dependencies-requirements-lock" title="Link to this heading"></a></h3>
-<p>A pinned, hash-augmented Python dependency lockfile at the repository
-root. Generated by
-<a class="reference download internal" download="" href="_downloads/888e1fec7153b0865c96042fd2fdd1a0/dependencyPinning.py"><span class="xref download myst">fnGenerateRequirementsLock</span></a>
-which shells out to <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">pip</span> <span class="pre">compile</span> <span class="pre">--generate-hashes</span></code> against the
-first dependency declaration it finds, in this order:</p>
-<ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">requirements.in</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">.vaibify/requirements.txt</span></code></p></li>
-</ol>
-<p>Each entry pins an exact version and at least one <code class="docutils literal notranslate"><span class="pre">--hash=sha256:...</span></code>
-line.</p>
-<p>The fourth candidate is the file vaibify’s own container docs tell you
-to maintain, and that the entrypoint installs on container startup. It
-is last so a repo-root declaration — the one a Python packager reads —
-always wins. Before it was probed at all, a project that followed the
-documented workflow exactly could never turn the Level 3 dependency
-row green, and the tier reported the miss only as a flag that stayed
-false.</p>
-<p>The compile runs on the <strong>host</strong>, in vaibify’s own backend process,
-not inside the container: for a container project the declaration is
-staged out to a host temp directory, compiled there, and the resulting
-lockfile written back through the container adapter. Installing a lock
-generator <em>inside</em> the container therefore changes nothing.</p>
-<p>The compile is <strong>constrained to what the container runs</strong>. Left to
-itself, a resolver on the host pins whatever the host’s own
-interpreter would install today: a laptop with Python 3.10 beside a
-container running 3.12 wrote a lock naming numpy 2.2.6 for a container
-that ran 2.5.2, and the lock described neither the container nor the
-author’s environment (measured 2026-09-13). So before compiling,
-vaibify asks the container for its interpreter version, its
-architecture and its installed packages (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">freeze</span></code>), and hands all
-three to the resolver: the installed set as a constraints file, so
-every package the declaration reaches is held to the version that
-actually ran while packages the declaration does not reach stay out of
-the lock; and, for <code class="docutils literal notranslate"><span class="pre">uv</span></code>, the interpreter version and platform as the
-resolution target. A container that cannot be asked fails the tier by
-name rather than compiling unconstrained, because an unconstrained lock
-is the defect. A host project still compiles in place against the host
-interpreter, which is the one its steps run under.</p>
-<p>Verifiers reproduce the environment with stock <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">--</span><span class="n">require</span><span class="o">-</span><span class="n">hashes</span> <span class="o">-</span><span class="n">r</span> <span class="n">requirements</span><span class="o">.</span><span class="n">lock</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">uv</span></code> is needed only to <em>generate</em> the lockfile, never to consume it.
-<code class="docutils literal notranslate"><span class="pre">flistVerifyRequirementsLock</span></code> performs a structural check (file
-exists, parses, every entry carries a sha256 hash) without installing.</p>
-</section>
-<section id="tier-3-container-system-layer-vaibify-environment-json">
-<h3>Tier 3 — Container / system layer (<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>)<a class="headerlink" href="#tier-3-container-system-layer-vaibify-environment-json" title="Link to this heading"></a></h3>
-<p>A JSON document at <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/environment.json</span></code> capturing
-the layers below the Python interpreter. Written by
-<a class="reference download internal" download="" href="_downloads/0f3b7ad8fbb8d21a0beaf8aded2b3d7a/environmentSnapshot.py"><span class="xref download myst">fnWriteEnvironmentJson</span></a>
-from three orthogonal capture helpers:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureContainerImageDigest(sContainerName)</span></code> — the immutable
-<code class="docutils literal notranslate"><span class="pre">&lt;image&gt;&#64;sha256:...</span></code> digest (or local image ID) of the agent-free
-ENVIRONMENT the running container’s image is built on, via <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">inspect</span></code>. Coding agents are stacked above that image and are not
-part of what the envelope pins; see “The archived environment holds
-no coding agent” below.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureHostBinaryHashes(listBinaryPaths)</span></code> — for each binary
-the project declares as a host-side dependency (e.g., a compiled
-scientific executable referenced from <code class="docutils literal notranslate"><span class="pre">saHostBinaries</span></code> in
-<code class="docutils literal notranslate"><span class="pre">project.json</span></code>), the SHA-256 of the file plus the first line of
-its <code class="docutils literal notranslate"><span class="pre">--version</span></code> output.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fdictCaptureSystemTools()</span></code> — Python interpreter version, <code class="docutils literal notranslate"><span class="pre">gcc</span> <span class="pre">--version</span></code>, <code class="docutils literal notranslate"><span class="pre">platform.libc_ver()</span></code>, and the contents of
-<code class="docutils literal notranslate"><span class="pre">/etc/os-release</span></code> from inside the container.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fiCaptureSourceDateEpoch(filesRepo)</span></code> — the repo’s HEAD commit
-epoch at capture time, recorded as <code class="docutils literal notranslate"><span class="pre">iSourceDateEpoch</span></code>. This is the
-value the pipeline exported as <code class="docutils literal notranslate"><span class="pre">SOURCE_DATE_EPOCH</span></code> (and as
-matplotlib’s <code class="docutils literal notranslate"><span class="pre">svg.hashsalt</span></code>) when it produced the pinned artifacts.
-It is recorded rather than re-derived at reproduction time, because
-the commit that publishes the manifest moves HEAD — an epoch
-re-derived on the reproducing side would differ from the one that
-salted the pinned figures, so every timestamped artifact would
-diverge on exactly the workflows the envelope exists to certify.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">fsReadImageArchitecture(sImageReference)</span></code> — the platform the image
-was built for, recorded as <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>. Read from the image
-rather than derived from the digest, because a <strong>manifest list</strong>
-digest spans several platforms and pins none of them.</p></li>
-</ul>
-<p>This tier records what the container layer cannot pin by digest alone,
-without claiming to bit-pin floating-point arithmetic across CPU
-architectures.</p>
-<section id="the-image-digest-names-bytes-somebody-else-is-storing">
-<h4>The image digest names bytes somebody else is storing<a class="headerlink" href="#the-image-digest-names-bytes-somebody-else-is-storing" title="Link to this heading"></a></h4>
-<p>A digest is a pin, not a copy. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> begins with <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code>, and that is the moment the pin stops being enough: when the
-registry no longer serves the digest, the compiler, the exact numeric
-library, the interpreter and every installed package are gone with it.</p>
-<p><code class="docutils literal notranslate"><span class="pre">dictContainer.dictImageArchive</span></code> records a deposit of the image itself
-— a <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code>, compressed, published to Zenodo under its own
-version DOI. <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> falls back to it when the pull fails,
-verifying the download against <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> before loading it. The
-archive is the second link of a three-link chain — the registry pull,
-then the archived copy, then a copy already present on the reproducing
-host — and only the first two are open to anyone but the author, which
-is why the last prints a warning naming that. A registry copy is
-optional and gates no level: a container registry is a commercial
-service with no preservation commitment, so vaibify integrates with it
-for convenience, as it does with Overleaf and arXiv, and the archive is
-the only image criterion on the ladder. The
-record carries the digest and the platform it covers, so an envelope
-regenerated for a different image drops it rather than claiming an
-archive nobody made, and two hashes: <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> binds the bytes
-uploaded, and <code class="docutils literal notranslate"><span class="pre">sImageStreamSha256</span></code> binds the image content
-independently of which compressor produced the tarball.</p>
-<p>Depositing is the researcher’s choice, asked once at Level 2 and
-answerable with <code class="docutils literal notranslate"><span class="pre">archived</span></code>, <code class="docutils literal notranslate"><span class="pre">referenced</span></code> or <code class="docutils literal notranslate"><span class="pre">declined</span></code>. Declining
-satisfies Level 2 and blocks only the Level 3 criterion, which never
-reads the answer — so a project that declined and later deposits
-reaches Level 3 with nothing to undo.</p>
-<p>The Environment archive row names every place a deposit can go before
-anything is uploaded: a new version of the project’s earlier record
-(on the Zenodo that holds it), a new record on zenodo.org, or a new
-record on the Zenodo sandbox, which is for practice and never
-satisfies Level 3. When the project has deposited before, the row says
-so and recommends continuing a permanent record; otherwise it
-recommends a new permanent one. Nothing is pre-selected, the
-confirmation names the chosen destination, and a missing token for
-that Zenodo is asked for without changing where the project
-publishes.</p>
-<p>While a deposit runs, the row names each step and counts the bytes
-uploaded. A dropped connection is retried twice, and each attempt that
-ended is kept on the row with how far it got and how long it ran. A
-running deposit can be stopped from the row up to the moment it starts
-publishing; after that the DOI is being minted and cannot be taken
-back. A stopped deposit publishes nothing.</p>
-</section>
-<section id="the-archived-environment-holds-no-coding-agent">
-<h4>The archived environment holds no coding agent<a class="headerlink" href="#the-archived-environment-holds-no-coding-agent" title="Link to this heading"></a></h4>
-<p>Coding agents help write the code; they compute no result. So the
-image the envelope pins, the Level 3 rerun uses and the archive
-deposits is the <strong>agent-free environment</strong> — the build stage just
-below the first coding agent — and the agents the researcher worked
-with are stacked above it. A reproducer then installs whichever agents
-they like, or none, and the published record names no vendor’s
-software as part of the environment.</p>
-<p>Each build stage is labeled with what it holds (<code class="docutils literal notranslate"><span class="pre">vaibify-overlays</span></code>),
-and every stage that installs an agent, or a prerequisite installed
-only for one (Node.js, uv), names the agent-free stage in
-<code class="docutils literal notranslate"><span class="pre">vaibify-environment-image-id</span></code>. The envelope follows that label and
-checks it against the image’s layers before pinning; the agents’
-names are recorded as <code class="docutils literal notranslate"><span class="pre">dictContainer.listAgentOverlays</span></code>, and their
-versions in the AI provenance stamp. The deposit’s description names
-them as used, not included.</p>
-<p>That is honest only if the agents cannot change what the environment
-computes, so before a deposit — and again when a reproducer stacks
-their own agents on an obtained image — vaibify reads the agents’
-layers back out of <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">save</span></code> and refuses if any of them:</p>
-<ol class="arabic simple">
-<li><p>overwrites or removes a file the environment holds (package-manager
-bookkeeping and logs excepted);</p></li>
-<li><p>adds a command the environment already has on its <code class="docutils literal notranslate"><span class="pre">PATH</span></code>;</p></li>
-<li><p>adds a file where an interpreter or the loader searches — an
-existing Python package directory, a shared-library directory,
-shell or loader configuration, fonts, R or Julia libraries;</p></li>
-<li><p>appends anything but a <code class="docutils literal notranslate"><span class="pre">PATH</span></code> prepend to a shell startup file;</p></li>
-<li><p>changes the image’s settings beyond prepending to <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p></li>
-</ol>
-<p>The same two images always get the same verdict. The rules enumerate
-the search mechanisms vaibify knows, so a pass is strong evidence
-rather than proof; the proof is the Level 3 rerun itself, which
-regenerates every pinned output inside the agent-free image. An image
-built before these labels existed pins the image the container runs,
-as it always did, and a deposit refuses a pinned image whose own label
-says it holds agents, naming the remedy: rebuild with this vaibify,
-restart, and deposit again.</p>
-</section>
-</section>
-<section id="the-dockerfile-is-provenance-the-digest-is-reproduction">
-<h3>The Dockerfile is provenance; the digest is reproduction<a class="headerlink" href="#the-dockerfile-is-provenance-the-digest-is-reproduction" title="Link to this heading"></a></h3>
-<p>PROOF Level 3 also asks for a pinned <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code> at the repository
-root. A vaibify project has none by default, because the image is
-built from vaibify’s own packaged Dockerfiles as a <em>chain</em> — the base,
-then one <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">build</span></code> per enabled feature overlay, each handed the
-previous image as <code class="docutils literal notranslate"><span class="pre">BASE_IMAGE</span></code>. The <strong>Copy image Dockerfile into repo</strong>
-action on the Dockerfile row composes that chain into a single
-multi-stage file you can commit.</p>
-<p>Read what it is for, because the distinction decides how much its
-contents matter:</p>
-<ul class="simple">
-<li><p><strong>It records how the image was made.</strong> Every stage is one step of
-the real build chain, in the order it ran.</p></li>
-<li><p><strong>It is not the reproduction recipe.</strong> <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> runs
-<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code> against <code class="docutils literal notranslate"><span class="pre">dictContainer.sImageDigest</span></code> and never builds.
-A verifier gets byte-identical layers — the same compiler, the same
-system libraries, the same everything — without consulting the
-Dockerfile at all.</p></li>
-</ul>
-<p>So rebuilding from that file is a <em>fallback</em>, used only if the image
-itself becomes unavailable, and it does not reconstruct the original
-environment. That is a property of <code class="docutils literal notranslate"><span class="pre">apt-get</span> <span class="pre">install</span></code> reaching a live
-archive at build time, not of anything vaibify chose.</p>
-</section>
-<section id="what-is-pinned-in-the-image-and-what-floats">
-<h3>What is pinned in the image, and what floats<a class="headerlink" href="#what-is-pinned-in-the-image-and-what-floats" title="Link to this heading"></a></h3>
-<p>The <strong>entire toolchain closure</strong> is version-pinned — every package
-that <code class="docutils literal notranslate"><span class="pre">apt-get</span> <span class="pre">install</span> <span class="pre">--no-install-recommends</span> <span class="pre">gcc</span> <span class="pre">g++</span> <span class="pre">make</span></code> resolves on
-top of the pinned base image, once per architecture the image builds on. Nothing in the compile-and-link path is
-left floating:</p>
+<h2>The reproducibility envelope<a class="headerlink" href="#the-reproducibility-envelope" title="Link to this heading"></a></h2>
+<p>The files that let a stranger rerun your project are called the
+<em>envelope</em>. They sit at the top of the project repository, and each can
+be checked on its own:</p>
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Group</p></th>
-<th class="head"><p>Examples</p></th>
-<th class="head"><p>Why it is pinned</p></th>
+<tr class="row-odd"><th class="head"><p>File</p></th>
+<th class="head"><p>What it records</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Compiler</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">gcc</span></code>, <code class="docutils literal notranslate"><span class="pre">gcc-13</span></code>, <code class="docutils literal notranslate"><span class="pre">cpp-13</span></code>, <code class="docutils literal notranslate"><span class="pre">g++-13</span></code>, <code class="docutils literal notranslate"><span class="pre">libgcc-13-dev</span></code>, <code class="docutils literal notranslate"><span class="pre">libstdc++-13-dev</span></code></p></td>
-<td><p>A binary compiled by a different compiler is a different binary, and can differ in the last significant figures.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code></p></td>
+<td><p>The SHA-256 of every input, script, output and test file, and of the other envelope files</p></td>
 </tr>
-<tr class="row-odd"><td><p>Assembler / linker</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">binutils</span></code>, <code class="docutils literal notranslate"><span class="pre">libbinutils</span></code>, <code class="docutils literal notranslate"><span class="pre">libctf0</span></code>, <code class="docutils literal notranslate"><span class="pre">libsframe1</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">as</span></code> and <code class="docutils literal notranslate"><span class="pre">ld</span></code> decide the emitted object and its layout.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code></p></td>
+<td><p>Every Python package the project uses, with its exact version and hash</p></td>
 </tr>
-<tr class="row-even"><td><p>C library + headers</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">libc6</span></code>, <code class="docutils literal notranslate"><span class="pre">libc6-dev</span></code>, <code class="docutils literal notranslate"><span class="pre">libc-bin</span></code>, <code class="docutils literal notranslate"><span class="pre">linux-libc-dev</span></code>, <code class="docutils literal notranslate"><span class="pre">libcrypt-dev</span></code></p></td>
-<td><p>Headers and the libc a binary is linked against.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code></p></td>
+<td><p>The container image, the kind of processor it runs on, and the versions of Python, the compiler and the system libraries</p></td>
 </tr>
-<tr class="row-odd"><td><p>gcc’s math libraries</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">libisl23</span></code>, <code class="docutils literal notranslate"><span class="pre">libmpc3</span></code>, <code class="docutils literal notranslate"><span class="pre">libmpfr6</span></code></p></td>
-<td><p>These perform gcc’s <strong>constant folding</strong>, so they can change emitted numeric values.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code></p></td>
+<td><p>How the container image was built</p></td>
 </tr>
-<tr class="row-even"><td><p>Runtime libraries</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">libgomp1</span></code>, <code class="docutils literal notranslate"><span class="pre">libquadmath0</span></code>, <code class="docutils literal notranslate"><span class="pre">libatomic1</span></code>, sanitizers</p></td>
-<td><p>Linked into binaries built with OpenMP, <code class="docutils literal notranslate"><span class="pre">__float128</span></code>, atomics, or <code class="docutils literal notranslate"><span class="pre">-fsanitize</span></code>.</p></td>
-</tr>
-<tr class="row-odd"><td><p>Build driver</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">make</span></code></p></td>
-<td><p></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code></p></td>
+<td><p>The script that reruns the project and checks the result</p></td>
 </tr>
 </tbody>
 </table>
-<p>Two package families need both names pinned. <code class="docutils literal notranslate"><span class="pre">gcc</span></code> is a <em>metapackage</em>
-at <code class="docutils literal notranslate"><span class="pre">4:13.2.0-7ubuntu1</span></code> that depends on <code class="docutils literal notranslate"><span class="pre">gcc-13</span> <span class="pre">(&gt;=</span> <span class="pre">...)</span></code>, so pinning
-<code class="docutils literal notranslate"><span class="pre">gcc</span></code> alone leaves the actual compiler free to float; the version
-reported by <code class="docutils literal notranslate"><span class="pre">gcc</span> <span class="pre">--version</span></code>, and recorded in <code class="docutils literal notranslate"><span class="pre">dictSystemTools.sGcc</span></code>, is
-<code class="docutils literal notranslate"><span class="pre">gcc-13</span></code>’s. The same applies to <code class="docutils literal notranslate"><span class="pre">cpp</span></code>/<code class="docutils literal notranslate"><span class="pre">cpp-13</span></code> and <code class="docutils literal notranslate"><span class="pre">g++</span></code>/<code class="docutils literal notranslate"><span class="pre">g++-13</span></code>.</p>
-<p><strong>Partial pinning is worse than either extreme.</strong> A pinned <code class="docutils literal notranslate"><span class="pre">libc6-dev</span></code>
-whose <code class="docutils literal notranslate"><span class="pre">libc6</span></code> has moved on is not a looser constraint — it is an
-<em>unsatisfiable</em> one, and apt fails with a dependency conflict rather
-than a missing-version message. Pin the closure or pin nothing.</p>
-<p>What is deliberately <em>not</em> pinned here: anything already present in the
-base image and not upgraded by this block. Those are fixed by the base
-image digest, which is the stronger guarantee — they cannot float while
-the digest holds. Also unpinned are the packages that cannot reach a
-numerical result (editors, viewers, <code class="docutils literal notranslate"><span class="pre">graphviz</span></code>, <code class="docutils literal notranslate"><span class="pre">poppler-utils</span></code>, LaTeX,
-X11); their apt blocks carry an explicit <code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">allow-unpinned</span></code> marker.</p>
+<p>The <strong>Artifacts</strong> section of the Project block has a row for each file.
+You rarely write any of them by hand: <strong>Regenerate now</strong> rewrites the
+whole envelope, and vaibify regenerates it automatically the first time
+the project reaches Level 1.</p>
+<section id="tier-1-the-manifest">
+<h3>Tier 1 — the manifest<a class="headerlink" href="#tier-1-the-manifest" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> is the heart of the envelope. From the <strong>Run</strong> menu,
+<strong>Check Files Against Manifest</strong> recomputes every hash and reports any
+file that no longer matches. Two Level 3 rows read it: <strong>Manifest
+complete</strong> (every file that should be listed is) and <strong>Manifest matches
+the files</strong> (every listed hash still describes the file on disk). A
+reader can run the same check without vaibify with <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span> <span class="pre">MANIFEST.sha256</span></code>.</p>
 </section>
-<section id="regenerating-the-pin-lists-after-a-base-image-bump">
-<h3>Regenerating the pin lists after a base-image bump<a class="headerlink" href="#regenerating-the-pin-lists-after-a-base-image-bump" title="Link to this heading"></a></h3>
-<p>There is one list per architecture the image builds on (amd64 and
-arm64), selected at build time by <code class="docutils literal notranslate"><span class="pre">dpkg</span> <span class="pre">--print-architecture</span></code>.
-Regenerate each with its own platform:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">run</span> <span class="o">--</span><span class="n">rm</span> <span class="o">--</span><span class="n">platform</span> <span class="n">linux</span><span class="o">/&lt;</span><span class="n">amd64</span><span class="o">|</span><span class="n">arm64</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="n">BASE_IMAGE</span><span class="o">&gt;</span> <span class="n">sh</span> <span class="o">-</span><span class="n">c</span> \
-  <span class="s1">'apt-get update -qq &gt;/dev/null </span><span class="se">\</span>
-<span class="s1">  &amp;&amp; apt-get install -s -y --no-install-recommends gcc g++ make </span><span class="se">\</span>
-<span class="s1">  | grep "^Inst "'</span>
-</pre></div>
-</div>
-<p>Take the version in <strong>parentheses</strong>, not the one in brackets. An
-upgrade line reads <code class="docutils literal notranslate"><span class="pre">Inst</span> <span class="pre">libc6</span> <span class="pre">[old]</span> <span class="pre">(new</span> <span class="pre">...)</span></code>, so reading the
-bracketed field pins the version being <em>replaced</em>. <code class="docutils literal notranslate"><span class="pre">libc6</span></code> and
-<code class="docutils literal notranslate"><span class="pre">libc-bin</span></code> are upgrades from the base image and are exactly the two
-this gets silently wrong.</p>
-<p>The pinned base digest is a multi-architecture index, so the daemon
-pulls the manifest for its own platform and the toolchain packages
-carry that platform in their names (<code class="docutils literal notranslate"><span class="pre">gcc-13-x86-64-linux-gnu</span></code> on
-amd64, <code class="docutils literal notranslate"><span class="pre">gcc-13-aarch64-linux-gnu</span></code> on arm64). The two lists carry the
-same versions, because one Ubuntu source upload builds every
-architecture, and differ only in those suffixed names and in
-<code class="docutils literal notranslate"><span class="pre">libquadmath0</span></code>, which has no aarch64 build;
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/checkToolchainEpoch.py</span> <span class="pre">--verify</span></code> fails if the lists ever
-disagree on a version. A daemon of any other architecture is refused
-before apt runs, with its own message, so that refusal can never look
-like a withdrawn version.</p>
+<section id="tier-2-the-python-packages">
+<h3>Tier 2 — the Python packages<a class="headerlink" href="#tier-2-the-python-packages" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code> lists each Python package at the exact version that
+actually ran in your container, with a hash so a substitute package
+cannot slip in. <strong>Check dependencies</strong> confirms that every entry
+carries its hash.</p>
 </section>
-<section id="the-toolchain-epoch">
-<h3>The toolchain epoch<a class="headerlink" href="#the-toolchain-epoch" title="Link to this heading"></a></h3>
-<p>The pinned package versions answer “which compiler built this?”.
-They left a second question unanswered for a while: <strong>which archive
-were they fetched from?</strong> Ubuntu drops superseded versions from its
-pool within weeks, so a pin that was correct in September stops
-resolving in October and the build refuses — not because anything is
-wrong with the recipe, but because the archive moved on.</p>
-<p>That refusal was correct and its timing was not. It arrived on
-Ubuntu’s schedule, in the middle of unrelated pull requests, asking a
-maintainer to approve a change nobody can actually evaluate: a glibc
-security update changes real bytes, and no review separates “this
-moves a number” from “this does not”.</p>
-<p>So the archive is pinned too, to a date:</p>
-<div class="highlight-dockerfile notranslate"><div class="highlight"><pre><span></span><span class="k">ARG</span><span class="w"> </span><span class="nv">APT_SNAPSHOT_DATE</span><span class="o">=</span><span class="m">20260909</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">snapshot.ubuntu.com</span></code> serves the archive as it stood on that date, so
-the pinned versions always resolve. Three axes are now frozen
-together — the base image by digest, the packages by version, and the
-archive by date — and the toolchain changes when <strong>a maintainer moves
-the date</strong>, never when Ubuntu publishes. A project that leaves out
-<code class="docutils literal notranslate"><span class="pre">baseImage</span></code>, or sets it to <code class="docutils literal notranslate"><span class="pre">ubuntu:24.04</span></code>, is built from the digest the
-Dockerfile pins; a project that names any other base image is built from
-that value as written.</p>
-<p>The scope is deliberately narrow. That date covers only the pinned
-toolchain block. Everything in the waived block above it — editors,
-viewers, graphviz — still floats from one build to the next, because
-those cannot reach a result, and freezing them would strand a
-researcher whose <code class="docutils literal notranslate"><span class="pre">systemPackages</span></code> name anything published since that
-date.</p>
-<p>They float between builds, never within one. Every apt step of a build
-reads the archive as of that build’s own snapshot, <code class="docutils literal notranslate"><span class="pre">APT_BUILD_SNAPSHOT</span></code>:
-the most recent midnight UTC, recorded inside the image at
-<code class="docutils literal notranslate"><span class="pre">/etc/vaibify/aptArchiveSnapshot</span></code>. Reading the live mirrors instead
-let two steps of one build see two versions of the archive while a
-security update was still reaching all of Ubuntu’s servers, and the
-build stopped on an unmet dependency with nothing in vaibify changed.
-The cost is that an image is at most a day behind the archive; a
-day’s rebuilds share Docker’s layer cache, and the next day’s first
-build picks up that day’s fixes.</p>
+<section id="tier-3-the-container">
+<h3>Tier 3 — the container<a class="headerlink" href="#tier-3-the-container" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> records the container image by its
+<em>digest</em>, an identifier computed from the image’s contents, so it names
+one exact image and nothing else. It also records the processor
+architecture, the versions of everything beneath Python, any standalone
+programs your steps run, and a fixed date that every step runs with, so
+that figures which embed a date come out identical.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">Dockerfile</span></code> records how the image was built, which is useful for
+understanding it, but a reproduction never rebuilds the image.
+Rebuilding would download today’s packages, not the ones you used.
+<strong>Copy image Dockerfile into repo</strong> puts it in your repository, and the
+<strong>Dockerfile pinned</strong> row checks that it names its starting images
+exactly.</p>
 </section>
-<section id="moving-the-epoch">
-<h3>Moving the epoch<a class="headerlink" href="#moving-the-epoch" title="Link to this heading"></a></h3>
-<p>Moving the date is how Ubuntu’s security and correctness fixes reach
-vaibify users. It is meant to happen. What it must not be is
-automatic, because it changes the compiler and libc that a
-researcher’s binaries are built against.</p>
-<p>A monthly lane (<code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code>) asks whether the archive has
-moved past the pinned date and, if so, opens a single standing issue
-describing exactly what would change. You can ask the same question
-at any time:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>python<span class="w"> </span>tools/checkToolchainEpoch.py<span class="w"> </span>--propose
-<span class="go">[amd64] 4 of 45 pins move:</span>
-<span class="go">  libc-bin: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
-<span class="go">  libc-dev-bin: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
-<span class="go">  libc6: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
-<span class="go">  libc6-dev: 2.39-0ubuntu8.8 -&gt; ['2.39-0ubuntu8', '2.39-0ubuntu8.9']</span>
-<span class="go">[arm64] 4 of 44 pins move:</span>
-<span class="go">  ...</span>
-</pre></div>
-</div>
-<p>Note that it lists <em>every</em> candidate version rather than choosing one.
-Picking would need dpkg version ordering plus a judgment about what
-your results rest on, and a tool that guessed would be writing a pin
-nobody reviewed.</p>
-<p>To move it: edit <code class="docutils literal notranslate"><span class="pre">ARG</span> <span class="pre">APT_SNAPSHOT_DATE</span></code> and the affected pins,
-confirm the two halves still agree, open a pull request, and re-run
-and re-verify the results built on the old epoch.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>python<span class="w"> </span>tools/checkToolchainEpoch.py<span class="w"> </span>--verify
-<span class="go">[amd64] All 45 pins resolve at snapshot 20260909.</span>
-<span class="go">[arm64] All 44 pins resolve at snapshot 20260909.</span>
-</pre></div>
-</div>
-<p>The check reads every architecture’s list by default (<code class="docutils literal notranslate"><span class="pre">--architecture</span></code>
-narrows it) and fails first if the lists disagree on any version.</p>
-<p>That check also runs in <code class="docutils literal notranslate"><span class="pre">fresh-image-build</span></code> before the hour-long
-build, because a Dockerfile whose date and pins were edited apart
-produces an image that cannot build, and discovering that in thirty
-seconds is better than discovering it in sixty minutes.</p>
-<p><strong>The honest cost.</strong> Between epochs you are deliberately running a
-known-older libc in a container that holds credentials for Overleaf,
-GitHub, and Zenodo. That is a real tradeoff, not a free win, and it is
-why the cadence has to be short enough to mean something. The
-recommendation is quarterly, or immediately on a vulnerability that
-matters for this threat model.</p>
+<section id="reproduce-sh">
+<h3><code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code><a class="headerlink" href="#reproduce-sh" title="Link to this heading"></a></h3>
+<p><strong>Generate reproduce.sh</strong> writes the script a stranger runs. It finds
+the archived image, runs every automatic step inside it, and finishes
+by checking every file against the manifest. Steps that a person
+performed, such as the AI Declaration, are not rerun; their committed
+files are used as given. The <strong>Reproduce script is current</strong> row warns
+you if the script is older than what vaibify would generate today.</p>
 </section>
-<section id="when-a-pin-does-not-resolve-anyway">
-<h3>When a pin does not resolve anyway<a class="headerlink" href="#when-a-pin-does-not-resolve-anyway" title="Link to this heading"></a></h3>
-<p>With the archive frozen this should not happen, so it means something
-other than Ubuntu moving on:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">vaibify</span><span class="p">:</span> <span class="n">the</span> <span class="n">pinned</span> <span class="n">compiler</span> <span class="n">toolchain</span> <span class="ow">is</span> <span class="n">no</span> <span class="n">longer</span> <span class="n">available</span><span class="o">.</span>
-<span class="o">...</span>
-<span class="n">This</span> <span class="n">build</span> <span class="n">stopped</span> <span class="n">on</span> <span class="n">purpose</span><span class="o">.</span>
-</pre></div>
-</div>
-<p>The diagnostic prints your options and <code class="docutils literal notranslate"><span class="pre">apt-cache</span> <span class="pre">policy</span></code> for the
-affected packages. The likely causes, in order:</p>
+</section>
+<section id="archiving-the-environment">
+<h2>Archiving the environment<a class="headerlink" href="#archiving-the-environment" title="Link to this heading"></a></h2>
+<p>Why archive the whole environment instead of just listing its software?
+Because a list is not enough. Images vanish from online registries, and
+a newer version of the same library can differ from the old one in the
+last digit of a function like <code class="docutils literal notranslate"><span class="pre">tan</span></code>, which is enough to change your
+bytes. So Level 3 requires the image itself in a permanent archive.</p>
+<p>The <strong>Environment archive</strong> row asks one question with three answers:
+deposit the image, point to a deposit that already holds it, or decline.
+Any answer satisfies Level 2. Level 3 requires that a matching archive
+actually exists, so you can decline now and deposit later without
+undoing anything. Don’t wait too long, though: the image lives only on
+your computer, and a cleanup, a rebuild or a new laptop can remove it
+for good.</p>
+<p><strong>Depositing</strong> uploads the image to Zenodo as its own record, separate
+from your project’s record, so several papers that ran in the same
+environment can share one archive. The row shows every choice of
+destination before anything is uploaded, and recommends one. Expect
+several gigabytes, several minutes, and the same amount of free disk.
+Before publishing, vaibify asks Zenodo for the checksum of what it
+received and stops if it differs from what was sent.</p>
+<p><strong>Pointing to an existing deposit</strong> (<strong>Use a deposit that already holds
+this exact image</strong>) asks for the deposit’s <em>version</em> DOI. A record’s
+general “concept” DOI is refused, because it always points to the newest
+version, which may hold a different image. Vaibify accepts the deposit
+only if it describes the same image digest and processor architecture
+as your envelope.</p>
+<p>Two things to know about the archive. First, it can be <em>run</em> but not
+<em>rebuilt</em>: it preserves the finished programs, not the means to
+recreate them. An image made for one kind of processor runs on another
+only under emulation, which is slower. Second, it contains no coding
+agent. Agents write code; they compute no results. The archive holds the
+environment just beneath them, and vaibify refuses to deposit if an
+agent’s installation would change anything your steps use.</p>
+<p>An online registry such as Docker Hub can also hold the image and makes
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> faster, but a registry promises no preservation, so the
+<strong>Image on a registry (optional)</strong> row never affects your level.</p>
+</section>
+<section id="declaring-what-can-still-vary">
+<h2>Declaring what can still vary<a class="headerlink" href="#declaring-what-can-still-vary" title="Link to this heading"></a></h2>
+<p>Even in an identical environment, a few things can make two runs
+differ. Level 3 asks you to say how your project handles them. As with
+the other declarations in vaibify, <strong>answering is what counts</strong>: an
+honest “no” passes, and only an unanswered question fails. The
+<strong>Determinism</strong> section of the Project block asks three questions, each
+saved with its own <strong>Save this answer</strong> button:</p>
+<ul class="simple">
+<li><p><strong>Last-digit differences.</strong> Linear-algebra libraries often split a
+sum across several threads and add the pieces in whatever order they
+finish, so the final digits can differ from run to run. Do you accept
+that?</p></li>
+<li><p><strong>Thread count.</strong> Fixing the number of threads removes that source of
+variation. Is it fixed, and to what?</p></li>
+<li><p><strong>The Intel math library.</strong> If your code uses it, it can choose
+different internal routines on different processors unless a setting
+prevents it. Do you use it, and with that setting?</p></li>
+</ul>
+<p>If a step’s scripts appear to draw random numbers without a seed, that
+step carries a warning, and the <strong>Determinism declared</strong> row stays red
+until you seed the generator or the declaration covers the step.</p>
+<p>The <strong>Software declared</strong> row covers programs your steps run that are
+not Python packages, such as a compiled simulation code. Declare each
+with its expected version, and <strong>Capture version + SHA</strong> records its
+version and fingerprint. If you use none, say so.</p>
+</section>
+<section id="the-order-of-the-final-steps">
+<h2>The order of the final steps<a class="headerlink" href="#the-order-of-the-final-steps" title="Link to this heading"></a></h2>
+<p>Most Level 3 requirements can be met in any order. The last few cannot,
+because some of them rewrite files that others have already
+fingerprinted, and a published Zenodo version cannot be fixed. Do them
+in this order:</p>
 <ol class="arabic simple">
-<li><p><strong>The date and the pins were edited apart.</strong>
-<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/checkToolchainEpoch.py</span> <span class="pre">--verify</span></code> says so directly.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">snapshot.ubuntu.com</span></code> is unreachable.</strong> A frozen archive is still
-a network dependency; this is the price of the guarantee.</p></li>
-<li><p><strong>The daemon’s architecture has no pin list.</strong> The Dockerfile
-carries lists for amd64 and arm64 and refuses any other
-architecture before apt runs, with a message naming it – so that
-refusal is never mistaken for a withdrawn version, which produces a
-different apt message and a fix that is nothing alike.</p></li>
+<li><p><strong>Make the container match the package lock</strong> by regenerating the
+envelope. A reproduction refuses to start in a container that does
+not match <code class="docutils literal notranslate"><span class="pre">requirements.lock</span></code>.</p></li>
+<li><p><strong>Generate <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>.</strong> This also updates the manifest.</p></li>
+<li><p><strong>Settle the manifest.</strong> The confirmation in step 5 records the
+manifest’s fingerprint, so changing the manifest afterwards makes it
+stale.</p></li>
+<li><p><strong>Archive the environment.</strong> This writes the archive’s record into
+the envelope, so it must come before the confirmation too.</p></li>
+<li><p><strong>Verify Level 3</strong> (next section) and commit the result.</p></li>
+<li><p><strong>Push to GitHub and publish a Zenodo version</strong> that includes the
+envelope and the confirmation. Publishing earlier would cost you a
+second version.</p></li>
 </ol>
-<p>Whatever the cause, the response is never to unpin. If you only need
-to <em>verify</em> published work, you do not need this block at all — pull
-the published image by digest, which is what <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> does and
-why Level 3 rests on the digest rather than on the Dockerfile.</p>
+<p>When the order matters, the Project block points to the one row to fix
+next.</p>
 </section>
-<section id="what-vaibify-tells-you-when-a-rebuild-moves-the-environment">
-<h3>What vaibify tells you when a rebuild moves the environment<a class="headerlink" href="#what-vaibify-tells-you-when-a-rebuild-moves-the-environment" title="Link to this heading"></a></h3>
-<p>You do not have to notice any of this yourself. When <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code>
-finishes, it compares the image it just built against the one your
-project’s recorded results were produced in, and says so when they
-differ:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="o">==============================================================</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="n">The</span> <span class="n">environment</span> <span class="n">changed</span><span class="o">.</span> <span class="n">The</span> <span class="n">image</span> <span class="n">you</span> <span class="n">just</span> <span class="n">built</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">the</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="n">one</span> <span class="n">this</span> <span class="n">project</span><span class="s1">'s recorded results were produced in.</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span>   <span class="n">recorded</span><span class="p">:</span> <span class="n">sha256</span><span class="p">:</span><span class="mi">9</span><span class="n">f2c</span><span class="o">...</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span>   <span class="n">built</span> <span class="n">now</span><span class="p">:</span> <span class="n">sha256</span><span class="p">:</span><span class="mi">41</span><span class="n">ab</span><span class="o">...</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="n">The</span> <span class="n">build</span> <span class="n">recipe</span> <span class="n">did</span> <span class="n">NOT</span> <span class="n">change</span><span class="p">,</span> <span class="n">so</span> <span class="n">this</span> <span class="n">difference</span> <span class="n">came</span> <span class="kn">from</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="n">outside</span> <span class="n">vaibify</span><span class="p">:</span> <span class="n">the</span> <span class="n">Linux</span> <span class="n">distribution</span> <span class="n">rotated</span> <span class="n">a</span> <span class="n">package</span> <span class="n">out</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="n">of</span> <span class="n">its</span> <span class="n">archive</span> <span class="ow">and</span> <span class="n">the</span> <span class="n">rebuild</span> <span class="n">resolved</span> <span class="n">a</span> <span class="n">different</span> <span class="n">one</span><span class="o">.</span>
-<span class="p">[</span><span class="n">vaib</span><span class="p">]</span> <span class="o">==============================================================</span>
-</pre></div>
-</div>
-<p><strong>The second half of that message is the useful part.</strong> Every image
-vaibify builds carries a <em>recipe fingerprint</em> — a hash over the build
-texts vaibify itself ships: the Dockerfile, the overlays, the
-entrypoint. Comparing it alongside the digest separates two events
-that look identical from the outside:</p>
-<ul class="simple">
-<li><p><strong>The recipe changed too.</strong> You upgraded vaibify, or edited the
-configuration. The environment moved because you moved it.</p></li>
-<li><p><strong>The recipe did not change and the image did anyway.</strong> Nothing
-under vaibify’s control moved, so the difference came from outside
-it. This is the case you have no other way to see.</p></li>
-</ul>
-<p>The warning is silent when nothing changed, and silent when nothing
-could be determined — a project that has not captured an envelope yet
-has no recorded environment to compare against, and vaibify will not
-invent a claim about an image it never compared.</p>
+<section id="the-verification-process">
+<h2>The verification process<a class="headerlink" href="#the-verification-process" title="Link to this heading"></a></h2>
+<p><strong>Verify Level 3 Reproducibility</strong>, in the <strong>Run</strong> menu or at the bottom
+of the PROOF tab’s Level 3 section, is how you confirm the reproduction
+yourself. It first checks that everything is ready and tells you what
+to fix if not. Then it explains what will happen and asks you to press
+<strong>Copy and verify</strong>. Before you do, make sure nothing is changing files
+in the container: no agent mid-task, no running step.</p>
+<p>Vaibify then copies your project into a fresh, throwaway container built
+from the image your envelope pins, with no network access, and reruns the entire
+workflow there. Your own files are never touched. Before anything runs,
+it deletes every output the steps will produce, so an old file can never
+be mistaken for a reproduced one. Then it compares every new file with
+the manifest and deletes the throwaway container.</p>
+<p>The rerun takes as long as your workflow does. When it finishes, the
+PROOF tab shows the <strong>Level 3 Attestation</strong> card, with the time, the
+fingerprints it compared and how many files matched, and the
+<strong>Reproduction History</strong> of every attempt. If a step fails, its name and
+the end of its output are kept for you, since the container that ran it
+is gone. The result is written to <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code>, and
+the hashes the rerun observed are written to <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code>, laid
+out exactly like <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> so the two can be compared line by
+line. Commit both.</p>
+<p>You do not have to take vaibify’s word for any of this. Every check is
+a standard tool that anyone can run by hand: <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code> for the files,
+<code class="docutils literal notranslate"><span class="pre">pip</span></code> for the packages, and <code class="docutils literal notranslate"><span class="pre">docker</span></code> for the image. Vaibify just runs
+them in the right order.</p>
 </section>
-<section id="your-vaibify-yml-is-stamped-too-and-read-on-every-entry">
-<h3>Your <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> is stamped too, and read on every entry<a class="headerlink" href="#your-vaibify-yml-is-stamped-too-and-read-on-every-entry" title="Link to this heading"></a></h3>
-<p>The recipe fingerprint covers vaibify’s own texts. A second stamp
-covers <strong>yours</strong>: a hash of the configuration fields the build
-consumes — the repository list, the system and Python packages, the
-base image, the Python version, the container user, the workspace
-root, the binaries, the features. It rides the image as
-<code class="docutils literal notranslate"><span class="pre">vaibify-configuration-sha256</span></code>, and every time you enter a container
-vaibify compares it with the same hash computed from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> as
-it is on disk <em>now</em>.</p>
-<p>This is the mundane case, and it is the one that costs whole evenings.
-A researcher corrects a misspelled package and a wrong branch, saves
-the file, restarts the container — and meets the same warnings, because
-all of it was baked in at build time. Nothing on screen said so. Now a
-banner does, and it names the remedy:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>This container is running an older version of your environment
-  The environment's settings (its packages, repositories, Python
-  version or features) changed after this container was built, so
-  those changes are not in effect yet.
-  To apply them, open Admin → Environments and choose Rebuild from the
-  ⋮ menu on this environment's tile; the container restarts on the new
-  build when it finishes.
-  If this project is already verified, the rebuild changes its
-  environment: afterwards open Project → Artifacts → Environment
-  snapshot, click Regenerate now, and verify again.
-  Ports, shared folders, passwords and memory limits never need a
-  rebuild: they take effect the next time the container starts.
-</pre></div>
-</div>
-<p>The comparison is against <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> as you wrote it. A build also
-adds the project’s own repository to the list the container clones,
-but that addition belongs to the build, not to your file, and it is
-kept out of the stamp — otherwise every fresh container would claim to
-predate the file it was just built from.</p>
-<p><strong>The second line is as load-bearing as the first.</strong> Ports, bind
-mounts, secrets, network isolation and the CPU/memory ceilings are
-applied by <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span></code>, so changing any of them takes effect the next
-time the container starts. They are deliberately outside the
-fingerprint: a warning that sent you through an hour-long rebuild to
-publish a port is how a true warning becomes one people learn to
-ignore.</p>
-<p>An image built before this stamp existed carries no label, and that is
-reported as <em>nothing determined</em> — no banner. Absence of a label is
-absence of evidence, never evidence of drift.</p>
+<section id="reproducing-a-published-project">
+<h2>Reproducing a published project<a class="headerlink" href="#reproducing-a-published-project" title="Link to this heading"></a></h2>
+<p>You can also check somebody else’s Level 3 project without adding it to
+your own projects. In the hub, press <strong>+</strong> and choose <strong>Reproduce a
+published project</strong>. Enter the project’s GitHub address (or a clean
+clone on your computer) and press <strong>Stage</strong>. Vaibify downloads one exact
+snapshot and shows you the workflow, the pinned image and processor, and
+whether your computer’s processor matches. If it does not, you can allow
+emulation, and the result will say so. The image is not downloaded,
+and nothing runs, until you press <strong>Run</strong>; <strong>Not now</strong> discards the
+snapshot.</p>
+<p>Vaibify first checks that the snapshot is ready to reproduce: its
+project file loads, the image is pinned exactly, and every file matches
+the manifest. This is deliberately not the author’s Level 3 checklist;
+whether the author finished their paperwork should not stop you from
+checking the work. It then obtains the image (from a registry, then the
+author’s Zenodo archive, checked against its fingerprint, then any copy
+already on your computer), reruns every step in a throwaway container,
+and compares the bytes.</p>
+<p>The result is one of <em>reproduced</em>, <em>reproduced under emulation</em>,
+<em>diverged</em>, or <em>no verdict</em> (with the reason). It is saved as a report
+under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/</span></code>. The report is yours, not the
+author’s: nothing is written into their project.</p>
 </section>
-<section id="what-a-changed-environment-does-and-does-not-affect">
-<h3>What a changed environment does and does not affect<a class="headerlink" href="#what-a-changed-environment-does-and-does-not-affect" title="Link to this heading"></a></h3>
-<p><strong>Work you have already published is unaffected.</strong> Its results are
-pinned to the recorded image by digest, and reproducing them pulls
-that image rather than rebuilding. That is the whole reason Level 3
-rests on the digest and not on the Dockerfile.</p>
-<p>What changes is everything you compute <em>from here on</em>. Those numbers
-were produced in a different environment than the older ones, so a
-comparison between them is no longer a comparison of your science
-alone. Re-run and re-verify before mixing them, or the manifest will
-report the difference as a divergence — which is the honest signal,
-not a malfunction.</p>
-<p><strong>How much a result can move.</strong> A library update can change the last
-representable digit of a transcendental function. For most
-calculations that is invisible. For a <strong>chaotic</strong> system — a
-gravitational few-body integration, a turbulent flow, anything with a
-positive Lyapunov exponent — that last digit grows exponentially, and
-after enough Lyapunov times two trajectories that started identical
-are qualitatively different.</p>
-<p>The right response is not alarm, because for such a system an
-individual trajectory was never the physically meaningful prediction
-in the first place. The ensemble is. So:</p>
-<ul class="simple">
-<li><p>A <strong>trajectory</strong> that no longer reproduces bit-for-bit after an
-environment change is expected, and says nothing about either
-environment being wrong.</p></li>
-<li><p>An <strong>ensemble statistic</strong> — a posterior, a rate, a fraction — should
-not move by more than its own Monte Carlo error. If it does, that is
-a finding worth reporting, not a nuisance to suppress.</p></li>
-</ul>
-<p>Record which environment produced which figures, and a reader can tell
-those two cases apart. That is what the envelope is for.</p>
+<section id="keeping-the-compiler-fixed">
+<h2>Keeping the compiler fixed<a class="headerlink" href="#keeping-the-compiler-fixed" title="Link to this heading"></a></h2>
+<p>The compiler and system libraries inside a vaibify container are pinned
+to a dated snapshot of the Ubuntu package archive, so they change only
+when vaibify’s maintainers deliberately move that date, never because
+Ubuntu published an update. When the date does move, results built
+before the change should be rerun and re-verified.</p>
+<p>A banner reading <strong>This container is running an older version of your
+environment</strong> means your <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> has changed since the container
+was built. Published results are unaffected, because they are tied to
+the archived image. New results come from a different environment,
+though, so regenerate the envelope and verify again before mixing them
+with older ones.</p>
+<section id="when-a-pinned-toolchain-version-disappears">
+<h3>When a pinned toolchain version disappears<a class="headerlink" href="#when-a-pinned-toolchain-version-disappears" title="Link to this heading"></a></h3>
+<p>If a build stops with “the pinned compiler toolchain is no longer
+available”, the snapshot server may be unreachable, or vaibify’s
+pinned versions and their date have fallen out of step, which is for
+its maintainers to fix. Never work around it by unpinning. To check published work you do not need to build anything:
+<code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> uses the archived image.</p>
 </section>
-</section>
-<section id="the-verification-ceremony-vaibify-reproduce">
-<h2>The verification ceremony: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code><a class="headerlink" href="#the-verification-ceremony-vaibify-reproduce" title="Link to this heading"></a></h2>
-<p>For users who want one command instead of three,
-<a class="reference download internal" download="" href="_downloads/4f83724733e5920691f294794a74b101/commandReproduce.py"><span class="xref download myst">vaibify reproduce</span></a> walks five
-tiers in sequence. Tiers 1–3 verify the three envelope files above;
-Tier 4 verifies L3 artifact coherence (the same seven readiness
-checks the dashboard’s L3 gate applies: manifest completeness,
-dependency lock, environment-snapshot digest form, Dockerfile
-pinning, <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> present and in the manifest, determinism
-declared, and binaries declared or waived); Tier 5 optionally
-re-runs the project:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ git clone &lt;project-url&gt; &amp;&amp; cd &lt;project&gt;
-$ vaibify reproduce
-[1/5] Verifying file integrity (MANIFEST.sha256) ... 47/47 OK
-[2/5] Reproducing Python env (requirements.lock) ... hashes verified OK
-[3/5] Pulling pinned container image ... python@sha256:1a2b... OK
-[4/5] Verifying L3 artifact coherence ... 7/7 OK
-       - Manifest complete: OK
-       - Dependency lock: OK
-       - Environment snapshot digest-form: OK
-       - Dockerfile pinned: OK
-       - reproduce.sh present + in manifest: OK
-       - Determinism declared: OK
-       - Binaries declared or waived: OK
-[5/5] Re-running workflow ... skipped (use --rerun)
-
-L3 reproduction ready (no attestation on file — run --rerun to attest).
-</pre></div>
-</div>
-<p>With <code class="docutils literal notranslate"><span class="pre">--rerun</span></code>, a fully passing run instead ends with
-<code class="docutils literal notranslate"><span class="pre">L3</span> <span class="pre">reproduction</span> <span class="pre">confirmed</span> <span class="pre">and</span> <span class="pre">attested.</span></code>; any failing tier ends with
-<code class="docutils literal notranslate"><span class="pre">L3</span> <span class="pre">reproduction</span> <span class="pre">failed;</span> <span class="pre">see</span> <span class="pre">tier</span> <span class="pre">output</span> <span class="pre">above.</span></code></p>
-<p>Flags:</p>
-<ul>
-<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">&lt;path&gt;</span></code> — path to the repository (defaults to the current
-directory).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> / <code class="docutils literal notranslate"><span class="pre">--no-rerun</span></code> — also run Tier 5, the full project
-re-execution. Off by default; opt-in because projects can be
-expensive and the re-run tier is best-effort (see <a class="reference internal" href="#known-limitations">Known
-limitations</a>). When enabled, vaibify dispatches
-to the same pipeline runner that <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">run</span></code> uses, against a
-running container resolved from the repository — and then re-hashes
-every <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> entry <strong>inside that container</strong>. Note the
-asymmetry: the earlier tiers read the host repo <code class="docutils literal notranslate"><span class="pre">--repo</span></code> names,
-while the re-run tier reads the container’s project repo, because
-<code class="docutils literal notranslate"><span class="pre">/workspace</span></code> is a Docker-managed named volume and the two are
-different filesystems. The expected hashes are frozen before the run
-starts, so a step that re-pins the manifest over its own changed
-output is reported as a divergence rather than blessed. The rerun
-exports the <code class="docutils literal notranslate"><span class="pre">SOURCE_DATE_EPOCH</span></code> recorded in
-<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> (<code class="docutils literal notranslate"><span class="pre">iSourceDateEpoch</span></code>) rather than
-re-deriving it from HEAD, so timestamp-salted figures are salted
-the way the pinned artifacts were.</p>
-<p>A step <strong>a human runs</strong> — an interactive step, such as the AI
-Declaration — cannot execute unattended, and does not refuse the
-rerun. Its outputs are treated as <em>given</em>: data a person produced,
-which the steps below it consume as input. The shadow’s repository
-copy carries them in unchanged, so the executable steps run against
-exactly the bytes the original run used, and those paths are dropped
-from the hash comparison and listed under <code class="docutils literal notranslate"><span class="pre">listCarriedPaths</span></code>. The
-matched/total counts therefore describe only what execution
-produced, and the carried files are named beside them — an
-attestation makes no claim about a file nobody re-computed.</p>
-<p><strong>The rerun regenerates every output it grades.</strong> The shadow starts
-as a copy of the whole repository, so before any step runs the
-rerun deletes each <em>produced</em> path (a declared output of a step it
-executes) and clears each executed step’s <code class="docutils literal notranslate"><span class="pre">saScratchDirs</span></code>. An output
-that exists afterwards was therefore written by the run, and one
-that does not is <code class="docutils literal notranslate"><span class="pre">missing</span></code>: a step that exits zero and writes
-nothing can no longer pass. Every executed step runs its data
-commands whatever its <code class="docutils literal notranslate"><span class="pre">bPlotOnly</span></code> says, exactly as <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code>
-does, and <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> skips the same interactive steps the rerun
-carries. A <em>protected</em> path is never deleted: a declared input or
-script no executed step produces, a carried output,
-<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> and the environment files. A path that is both
-produced and protected, or a scratch directory that contains a
-protected file, refuses the rerun by name with nothing deleted. The
-outputs count (<code class="docutils literal notranslate"><span class="pre">iOutputHashesMatched</span></code> of <code class="docutils literal notranslate"><span class="pre">iOutputHashesTotal</span></code>)
-covers only regenerated outputs; scripts, input data and the
-environment files are checked unchanged and counted apart
-(<code class="docutils literal notranslate"><span class="pre">iPinnedInputsUnchanged</span></code> of <code class="docutils literal notranslate"><span class="pre">iPinnedInputsTotal</span></code>), and
-<code class="docutils literal notranslate"><span class="pre">dictPreRerunClearing</span></code> records what was deleted first. A project
-whose steps do not regenerate byte-identically no longer attests
-Level 3.</p>
-<p>A workflow the unattended runner cannot honestly execute is still
-<strong>refused before any step runs</strong>: steps disabled in the dashboard,
-or a workflow with no steps at all. A disabled step leaves its
-pinned outputs untouched, so every hash would trivially match and
-the attestation would certify a rerun that ran nothing. Being
-disabled is a switch rather than a declared property of the
-workflow, which is why its outputs are not carried. A workflow whose
-<em>every</em> pinned entry is a given step’s output is refused too: there
-is nothing left for a rerun to reproduce.</p>
-<p>Tier 5 writes an attestation whenever the comparison reached a
-verdict, pass or fail: <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestation.json</span></code> plus a
-timestamped copy archived under <code class="docutils literal notranslate"><span class="pre">.vaibify/l3_attestations/</span></code>,
-recording the manifest digest the comparison was made against, the
-image digest, the hash-match counts, the carried paths, and every
-diverged path. A refusal reaches <strong>no verdict</strong> and writes nothing —
-it is reported (<code class="docutils literal notranslate"><span class="pre">rerun</span> <span class="pre">refused</span> <span class="pre">before</span> <span class="pre">any</span> <span class="pre">step</span> <span class="pre">executed</span></code>, then <code class="docutils literal notranslate"><span class="pre">no</span> <span class="pre">attestation</span> <span class="pre">written:</span> <span class="pre">nothing</span> <span class="pre">was</span> <span class="pre">verified</span></code>) and leaves any earlier
-attestation intact, because it established nothing about whether the
-workflow reproduces. Without <code class="docutils literal notranslate"><span class="pre">--rerun</span></code> no attestation is written.</p>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--workflow</span> <span class="pre">&lt;name&gt;</span></code> — which workflow to re-run, when the container
-hosts more than one. Without it an ambiguous container is refused:
-attesting one workflow for a run of another produces a record that
-reads as complete and describes something that did not happen.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--skip-tier</span> <span class="pre">1|2|3|4</span></code> — skip a tier; may be repeated. Useful when a
-verifier only wants to confirm artifact identity without installing
-Python packages. Tier 5 has no skip flag; it is opt-in via
-<code class="docutils literal notranslate"><span class="pre">--rerun</span></code>.</p></li>
-</ul>
-<p>Exit codes:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code> — every selected tier passed.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">1</span></code> — at least one tier failed; per-tier diagnostics are printed
-above the final summary.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">2</span></code> — usage error (a required input file is missing, or a malformed
-<code class="docutils literal notranslate"><span class="pre">environment.json</span></code>).</p></li>
-</ul>
-</section>
-<section id="reproducing-somebody-else-s-project-vaibify-reproduce-from">
-<h2>Reproducing somebody else’s project: <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--from</span></code><a class="headerlink" href="#reproducing-somebody-else-s-project-vaibify-reproduce-from" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> grades a repository you already have checked out.
-<strong>Reproduce a published project</strong> starts one step earlier, from the
-thing a stranger has – a clone URL, or a clone already on your
-machine – and stages an exact snapshot of it before anything is
-graded:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ vaibify reproduce --from https://host.example/group/project.git
-Staged git-url as an exact snapshot.
-  repository:      project
-  commit:          3f1c...e9
-  remote:          https://host.example/group/project.git
-  workflow:        Demo (.vaibify/projects/project.json, 4 steps)
-  manifest:        47 entries, every one matching, digest 9a2b...
-A rerun would use:
-  pinned image:    registry.example/project@sha256:1a2b...
-  platform:        linux/amd64
-  image archive:   deposited, version DOI 10.5281/zenodo.1234567
-Snapshot validated as reproduction-ready (the six staging rules,
-not the author's Level 3 gate) and discarded; nothing was
-pulled, installed or run.
-</pre></div>
-</div>
-<p>Alone, <code class="docutils literal notranslate"><span class="pre">--from</span></code> stages, validates, describes and discards. Two more
-modes go further:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ vaibify reproduce --from https://host.example/group/project.git --rerun
-...
-Obtaining the pinned image:
-  registry pull: failed (manifest unknown)
-  downloading the deposit: 0/821000000 bytes
-  downloading the deposit: 821000000/821000000 bytes
-  archived deposit: served
-  obtained from:   archive (sha256:29e0...)
-  platform:        required linux/amd64, obtained linux/amd64, daemon amd64
-Re-running the snapshot in a shadow container ...
-... workflow re-ran successfully in a shadow container
-... hashes match 47/47 OK
-
-Verdict: reproduced
-Reproduction report: ~/.vaibify/reproductions/reports/680f090caf425eb6.json
-This report is yours, not the author's attestation; nothing was written into the project.
-</pre></div>
-</div>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--prepare</span></code> obtains the pinned image through the published chain
-and stops, so a long download can be done ahead of a run.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rerun</span></code> obtains the image, re-runs the snapshot in a fresh shadow
-container built from it, compares the produced bytes with the
-project’s manifest <strong>inside that container</strong>, and writes a
-reproduction report. The exit code is <code class="docutils literal notranslate"><span class="pre">0</span></code> only when the verdict is
-<em>reproduced</em>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code> accepts a pinned build of another architecture
-than this daemon’s; without it that case is refused by name.</p></li>
-</ul>
-<section id="the-image-is-obtained-through-the-chain-reproduce-sh-uses">
-<h3>The image is obtained through the chain <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> uses<a class="headerlink" href="#the-image-is-obtained-through-the-chain-reproduce-sh-uses" title="Link to this heading"></a></h3>
-<p>The order is a ruling and is not reordered: <strong>registry pull, then the
-archived deposit, then a copy already on this daemon.</strong> A registry is
-a convenience; the Zenodo deposit is the archive; a local copy is
-survivable for the author alone, and the run says so when it takes
-that path. Every link reports as it happens, and a refusal names every
-link tried and why each failed. The deposit is trusted through the
-envelope, never through the record page: its <code class="docutils literal notranslate"><span class="pre">sTarballSha256</span></code> is
-checked before anything is handed to the daemon, a download that
-differs is deleted and reported as “did not match its hash”, and the
-tarball is removed on every exit path. There is no Dockerfile rebuild:
-the digest is the reproduction and the Dockerfile is provenance.</p>
-<p>The Python chain and the shell chain in <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> are pinned to
-agree link for link (<code class="docutils literal notranslate"><span class="pre">tests/testImageAcquisition.py</span></code> drives both
-against the same tarball bytes), and both now request the pinned
-platform: <code class="docutils literal notranslate"><span class="pre">reproduce.sh</span></code> passes <code class="docutils literal notranslate"><span class="pre">--platform</span> <span class="pre">linux/&lt;arch&gt;</span></code> to <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span></code> and <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">run</span></code>, read from the envelope’s <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>, and
-announces on stderr when an older envelope recorded none.</p>
-</section>
-<section id="the-platform-is-three-facts-not-one">
-<h3>The platform is three facts, not one<a class="headerlink" href="#the-platform-is-three-facts-not-one" title="Link to this heading"></a></h3>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Fact</p></th>
-<th class="head"><p>Where it comes from</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>required</strong> platform</p></td>
-<td><p>the envelope’s <code class="docutils literal notranslate"><span class="pre">sArchitecture</span></code>, as <code class="docutils literal notranslate"><span class="pre">linux/&lt;arch&gt;</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>obtained</strong> platform</p></td>
-<td><p>what the image the chain produced reports of itself</p></td>
-</tr>
-<tr class="row-even"><td><p><strong>daemon</strong> architecture</p></td>
-<td><p>asked of the daemon itself, never of the host Python</p></td>
-</tr>
-</tbody>
-</table>
-<p>An obtained platform that differs from the required one <strong>always</strong>
-refuses: the chain produced the wrong bytes. A daemon of another
-architecture is <em>emulation</em>: refused unless <code class="docutils literal notranslate"><span class="pre">--allow-emulation</span></code>, and
-when allowed the verdict reads “reproduced under emulation
-(<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code> image on a <code class="docutils literal notranslate"><span class="pre">arm64</span></code> host)”. Inspecting the obtained
-image cannot reveal emulation, because an image reports its own
-architecture on any host, which is why the third fact has its own
-name.</p>
-</section>
-<section id="what-the-shadow-run-is-and-is-not">
-<h3>What the shadow run is, and is not<a class="headerlink" href="#what-the-shadow-run-is-and-is-not" title="Link to this heading"></a></h3>
-<p>The rerun runs in the same shadow lane the dashboard’s Verify uses,
-seeded from the staged snapshot instead of a running container: a
-container built from the obtained image with no network, no volumes,
-no credentials, no ports and no GPU, whatever the snapshot’s
-<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> declares – that file is data to the run, never an input
-to its runtime specification. The comparison is rooted on the shadow’s
-filesystem, an interactive step’s outputs are carried in and reported
-beside the counts, the first failing step’s output is kept, and the
-shadow is destroyed with proof. When the image came from the archive,
-the loaded-from-archive marker is written into the shadow before any
-step runs, so the report’s image re-check is <em>vacuous</em> by construction
-rather than a download compared with itself.</p>
-</section>
-<section id="what-a-report-is-and-is-not">
-<h3>What a report is, and is not<a class="headerlink" href="#what-a-report-is-and-is-not" title="Link to this heading"></a></h3>
-<p>A <strong>reproduction report</strong> is the reproducer’s own artifact. It lives
-under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/reproductions/reports/&lt;id&gt;.json</span></code>, apart from the
-staging directory that is deleted after every run, with its own
-retention. It carries the redacted source facts, the manifest digest,
-the three platform facts, where the image came from and which
-reference ran, the verdict and the per-file comparison, the carried
-paths beside the counts, the failure record, and the image re-check.
-It is never an attestation, never written into any repository, and
-never read by the Level 3 gate; vaibify offers no publishing,
-depositing, pushing or attesting action on it. Its verdicts are
-<em>reproduced</em>, <em>reproduced under emulation</em>, <em>diverged</em>, and <em>no
-verdict</em> (the rerun never started, and the reason is named).</p>
-</section>
-<section id="what-a-source-can-be">
-<h3>What a source can be<a class="headerlink" href="#what-a-source-can-be" title="Link to this heading"></a></h3>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Source</p></th>
-<th class="head"><p>Accepted as</p></th>
-<th class="head"><p>Notes</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>An <code class="docutils literal notranslate"><span class="pre">https://</span></code> or <code class="docutils literal notranslate"><span class="pre">ssh://</span></code> clone URL, or <code class="docutils literal notranslate"><span class="pre">user&#64;host:path</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">git-url</span></code></p></td>
-<td><p>Matched by shape, never by which forge hosts it. A URL carrying a username, a password, or an <code class="docutils literal notranslate"><span class="pre">access_token=</span></code> / <code class="docutils literal notranslate"><span class="pre">token=</span></code> query parameter is refused: credentials in a URL end up in shell history, in reports, and inside the container.</p></td>
-</tr>
-<tr class="row-odd"><td><p>The path of a clone under your home directory</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">local-clone</span></code></p></td>
-<td><p>Only when <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> reports nothing at all – tracked, untracked <em>and</em> ignored. A dirty clone is not a published project.</p></td>
-</tr>
-</tbody>
-</table>
-<p><code class="docutils literal notranslate"><span class="pre">file://</span></code>, <code class="docutils literal notranslate"><span class="pre">git://</span></code>, <code class="docutils literal notranslate"><span class="pre">ext::</span></code> and plain <code class="docutils literal notranslate"><span class="pre">http://</span></code> are refused, each
-being a way to make git read or run something on this host. A Zenodo
-software record as a source, and comparing a reproduction against a
-published <em>data</em> deposit, are recorded design decisions not yet built.</p>
-</section>
-<section id="a-reproduction-is-of-a-commit">
-<h3>A reproduction is of a commit<a class="headerlink" href="#a-reproduction-is-of-a-commit" title="Link to this heading"></a></h3>
-<p>A URL is cloned in full – no <code class="docutils literal notranslate"><span class="pre">--depth</span></code>, because the history and the
-source-date epoch matter – and the commit it resolved to is recorded.
-A local clone is materialized by <strong>cloning the local repository</strong>,
-never by copying its working tree, and checked out at the commit you
-had checked out, so the staged bytes are that commit’s bytes and
-nothing else. Everything downstream consumes the staged snapshot: a
-branch that advances after staging, or a working tree edited since,
-changes nothing about what would run.</p>
-<p>Every <code class="docutils literal notranslate"><span class="pre">git</span></code> the stage runs carries vaibify’s shared hardening flags
-(<code class="docutils literal notranslate"><span class="pre">protocol.file.allow=never</span></code>, <code class="docutils literal notranslate"><span class="pre">core.symlinks=false</span></code>, no submodule
-recursion), the credential-helper reset, <code class="docutils literal notranslate"><span class="pre">GIT_TERMINAL_PROMPT=0</span></code>, and
-ssh in batch mode (<code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">BatchMode=yes</span></code> placed FIRST in your
-<code class="docutils literal notranslate"><span class="pre">GIT_SSH_COMMAND</span></code>, or in <code class="docutils literal notranslate"><span class="pre">ssh</span></code>, because OpenSSH keeps the first value
-it sees for an option), so no ambient credential can answer
-for a stranger’s remote and neither git nor ssh can hang an unattended
-run on a question – an unknown host key or a locked key fails the
-clone, and the refusal says so. One deliberate exception: the clone
-of a <em>local</em> repository is itself the file transport git’s hardening
-refuses, so that one clone – and only that one, only after the path
-was admitted under your home – reopens the file transport. It asks
-for no submodule, so the hostile <code class="docutils literal notranslate"><span class="pre">.gitmodules</span></code> the setting defends
-against is never read.</p>
-<p>A clone is refused while it grows past a size ceiling, not after it
-has filled the disk, and an abandoned staging directory is swept after
-a day – never one a live job still holds. The staged clone’s <code class="docutils literal notranslate"><span class="pre">origin</span></code>
-is rewritten to the redacted remote and its reflog removed before
-anything reads it: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span></code> records the source it was given in two
-places, and the staged tree is copied into a container built from
-somebody else’s image.</p>
-<p>The archive handed to that container is bounded by the same figure the
-live shadow lane uses for its own export, and spooled to a private
-file rather than assembled in memory: the size ceiling above bounds
-what a clone may occupy on disk and says nothing about what the hub
-may materialize in its own address space.</p>
-</section>
-<section id="validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate">
-<h3>Validation is strict, not advisory – and it is not the Level 3 gate<a class="headerlink" href="#validation-is-strict-not-advisory-and-it-is-not-the-level-3-gate" title="Link to this heading"></a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> warns about a manifest that omits a declared file;
-<code class="docutils literal notranslate"><span class="pre">--from</span></code> refuses. It grades somebody else’s project, and the six rules
-it applies are the ones a rerun <em>depends on</em>: a loadable workflow, a
-pinned image on a named platform, and a manifest that parses, matches
-the staged bytes and covers the selected workflow’s declarations. They
-are deliberately <strong>not</strong> the author’s Level 3 readiness gate. A
-dependency lock, a pinned Dockerfile, determinism answers, a published
-mirror, an environment archive and a current attestation are the
-author’s own claims; requiring them before a stranger may reproduce
-the work would put the claim ahead of the check. The verdict is
-therefore “reproduction-ready”, never “Level 3”. The rules, applied in
-order, the first to fail named with the file that failed it:</p>
-<ol class="arabic simple">
-<li><p>The selected <code class="docutils literal notranslate"><span class="pre">project.json</span></code> loads through the ordinary migrations
-and validates. A file written by a newer vaibify is refused here by
-name, never as a bare traceback.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code> is present, pins a content digest (a
-tag is refused: it can be repointed without anything changing), and
-records the image’s architecture. A legacy envelope with no
-architecture is refused rather than defaulted to this host’s: the
-source names its environment, and there is no architecture picker.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> parses, every line.</p></li>
-<li><p>Every manifest entry matches the staged bytes.</p></li>
-<li><p>No file the <strong>selected</strong> workflow declares is missing from the
-manifest. A repository hosting several workflows is validated for
-the one that will run.</p></li>
-<li><p>If an image deposit is on record, it covers the pinned image <em>and</em>
-its architecture. No deposit on record is not a refusal – the
-registry may still serve the image – and is reported as such.</p></li>
-</ol>
-</section>
-<section id="from-the-dashboard">
-<h3>From the dashboard<a class="headerlink" href="#from-the-dashboard" title="Link to this heading"></a></h3>
-<p>The hub’s <strong>+</strong> dialog offers the same run as a third kind card,
-<strong>Reproduce a published project</strong>: a source field and a Stage button,
-a confirmation card showing everything a run would use (project and
-workflow, commit, pinned image, required platform, deposit on record,
-whether this daemon’s architecture matches, the chain links in
-order), a Run button that starts the job, a progress card that polls
-only while the hub reports the job live, and a result card with the
-verdict, every pinned file by name (diverged, carried in unchanged,
-or re-derived byte-identically), the three platform facts, the
-image’s provenance and a link to the report. No tile persists and no
-publishing, depositing or attesting action is offered. Dismissing the
-confirmation deletes the staged clone; a staged job nobody runs
-expires; and the hub holds only a few staged snapshots at once. It drives exactly the staging, chain and
-shadow the command line does, through the same seams, so the two
-cannot describe two different reproductions.</p>
-</section>
-<section id="what-a-report-may-carry">
-<h3>What a report may carry<a class="headerlink" href="#what-a-report-may-carry" title="Link to this heading"></a></h3>
-<p>Only what <code class="docutils literal notranslate"><span class="pre">fdictDescribeStagedSource</span></code> returns: the source kind, the
-resolved commit, the remote URL with any <code class="docutils literal notranslate"><span class="pre">user:password&#64;</span></code> <strong>and any
-credential query parameter</strong> stripped,
-the workflow name and its repo-relative path, and the validated facts
-above. Never a path on the reproducer’s machine. A reproduction report
-is the reproducer’s own artifact – never an attestation, never
-written into any repository, and never read by the Level 3 gate – and
-it may one day be deposited publicly, which is why the redaction is
-applied when the snapshot is staged rather than when a report is
-written.</p>
-</section>
-</section>
-<section id="trust-anchor-architecture">
-<h2>Trust-anchor architecture<a class="headerlink" href="#trust-anchor-architecture" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is a convenience orchestrator, <strong>not</strong> the trust
-anchor. The trust anchor for Tier 1 is <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span> <span class="pre">MANIFEST.sha256</span></code>,
-a <code class="docutils literal notranslate"><span class="pre">coreutils</span></code> binary every verifier already has. If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> is ever wrong, a third party verifying by hand catches the
-discrepancy. This is the load-bearing reason the PROOF levels are
-defined independently of vaibify: it makes vaibify <em>auditable</em> rather
-than authoritative. The same independence applies to Tier 2 (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">--require-hashes</span></code>) and Tier 3 (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">pull</span> <span class="pre">&lt;image&gt;&#64;sha256:...</span></code>); each step can be performed manually by anyone
-who reads the three files.</p>
-</section>
-<section id="remote-mirror-verification">
-<h2>Remote-mirror verification<a class="headerlink" href="#remote-mirror-verification" title="Link to this heading"></a></h2>
-<p>When a project is pushed to a public mirror — GitHub, Overleaf, or
-Zenodo — vaibify verifies that the <em>remote</em> copy of every manifested
-file still matches the SHA-256 recorded at archive time. Each remote
-exposes a uniform <code class="docutils literal notranslate"><span class="pre">fdictFetchRemoteHashes(...)</span></code> API
-(<a class="reference download internal" download="" href="_downloads/071a727d86c84f46a49b7d8542c384a1/githubMirror.py"><span class="xref download myst">githubMirror.py</span></a>,
-<a class="reference download internal" download="" href="_downloads/c6860652d411ed1b1cbeed4cab0a0726/overleafMirror.py"><span class="xref download myst">overleafMirror.py</span></a>,
-<a class="reference download internal" download="" href="_downloads/9d075668f16500f787afd9eab6b69054/zenodoClient.py"><span class="xref download myst">zenodoClient.py</span></a>) that
-returns one SHA-256 per declared file. Two layers run on top:</p>
-<ul class="simple">
-<li><p><strong>Cheap poll</strong> — continuous, low-cost change detection (per-file
-blob SHA-1 or modified-time metadata). Flags “something might have
-drifted, re-verify.”</p></li>
-<li><p><strong>Authoritative verify</strong> — downloads bytes, recomputes SHA-256,
-compares against <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code>. Triggered by the per-remote
-Re-verify button in the dashboard or by the scheduled background
-loop in
-<a class="reference download internal" download="" href="_downloads/e2066a77e9b4dc87922c6b32d990341a/scheduledReverify.py"><span class="xref download myst">scheduledReverify.py</span></a>.
-The cadence is currently a single global default (6 hours) set when
-the FastAPI app is constructed and applied uniformly to every loaded
-project; per-project overrides are deferred to a future commit.</p></li>
-</ul>
-<p>Results are cached in <code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code> keyed
-by service so the dashboard always shows ground truth without a
-network round trip on every poll. See <a class="reference internal" href="dashboard.html#the-verify-reproducibility-panel"><span class="std std-ref">the dashboard
-guide</span></a> for the
-resulting UI.</p>
 </section>
 <section id="known-limitations">
 <h2>Known limitations<a class="headerlink" href="#known-limitations" title="Link to this heading"></a></h2>
-<p><strong>Symbolic links are resolved against the repo root.</strong>
-<a class="reference download internal" download="" href="_downloads/e5552a01c127b7920068298e3a663de4/manifestWriter.py"><span class="xref download myst">fnWriteManifest</span></a>
-resolves a symlink anywhere on a declared path and checks the target
-against the repository root. A symlink resolving <em>inside</em> the root
-hashes the target’s content, recorded under the declared (symlink)
-path. A symlink whose target escapes the root is never opened or
-hashed: that single entry is skipped as a logged per-file gap
-(surfaced by the manifest-completeness check) rather than aborting
-the whole manifest. Only a non-symlink declared path that escapes
-the root (<code class="docutils literal notranslate"><span class="pre">..</span></code> traversal) raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
-<p><strong>Tier 1 is bit-perfect; re-running the project is best-effort.</strong>
-<code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> records the exact bytes a particular run produced,
-and <code class="docutils literal notranslate"><span class="pre">sha256sum</span> <span class="pre">-c</span></code> confirms those bytes were preserved. Re-executing
-the project on a different CPU, BLAS implementation, or compiler
-toolchain may produce numerically near-identical but
-<strong>byte-different</strong> outputs because of floating-point order-of-operation
-variance. This is a science-of-reproducibility limitation, not a
-vaibify defect, and we document it rather than try to engineer around
-it. Tier 5 (project re-run via <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span> <span class="pre">--rerun</span></code>) is
-therefore advisory.</p>
-<p><strong>An archived environment is runnable, not rebuildable.</strong> The deposit
-preserves the image as it was built: binaries, not sources. It does not
-let a reader reconstruct that image from first principles the way a
-Guix or Nix derivation would, and it inherits <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">load</span></code>’s own
-platform constraints — an arm64 deposit runs under emulation on an
-amd64 host, or not at all. Preserving a runnable environment is the
-claim; preserving a rebuildable one is out of scope and deliberately
-so.</p>
-<p><strong>The unfixable failure mode.</strong> If <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reproduce</span></code> itself is
-replaced by a tampered binary on the verifier’s machine, vaibify
-cannot detect that — the same problem every verification tool has,
-including a tampered <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code>. The mitigation is the architectural
-one above: vaibify’s source is public, builds reproducibly, and any
-verifier can fall back to plain coreutils.</p>
-</section>
-<section id="publishing-a-workflow">
-<h2>Publishing a Workflow<a class="headerlink" href="#publishing-a-workflow" title="Link to this heading"></a></h2>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Not implemented — this section describes an intended feature. The
-<code class="docutils literal notranslate"><span class="pre">publish</span></code> command group is not registered on the CLI, so
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> is an unknown command, and
-<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/githubWorkflow.py</span></code> (the generator described
-below) has no caller in the product. Nothing here runs today.</p>
-</div>
-<p>The intent is to read <code class="docutils literal notranslate"><span class="pre">project.json</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, render the
-Jinja2 template at <code class="docutils literal notranslate"><span class="pre">vaibify/templates/workflow.yml.j2</span></code>, and write the
-result to <code class="docutils literal notranslate"><span class="pre">.github/workflows/vaibify.yml</span></code>.</p>
-<p>The generated workflow would:</p>
-<ol class="arabic simple">
-<li><p>Checks out the repository.</p></li>
-<li><p>Installs Vaibify.</p></li>
-<li><p>Builds the Docker image.</p></li>
-<li><p>Runs each pipeline step inside the container.</p></li>
-<li><p>Uploads artifacts (figures, data products) to GitHub Actions.</p></li>
-</ol>
-</section>
-<section id="archiving-to-zenodo">
-<h2>Archiving to Zenodo<a class="headerlink" href="#archiving-to-zenodo" title="Link to this heading"></a></h2>
-<p>Zenodo archiving is real and reachable — through the PROOF Level 2
-workflow in the dashboard, not through the CLI.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">archive</span></code> is not implemented and not registered on the
-CLI. Use the dashboard’s archive action instead.</p>
-</div>
-<p>The intended CLI form would package the Docker image, configuration
-files, and pipeline outputs into a tarball, upload it to Zenodo (or the
-Zenodo sandbox, depending on the <code class="docutils literal notranslate"><span class="pre">reproducibility.zenodoService</span></code>
-setting), and return a DOI.</p>
-<p>Authentication with Zenodo is handled through the host’s credential
-manager. Vaibify never stores tokens in configuration files or
-environment variables.</p>
-<section id="the-publish-record-lives-in-the-sidecar-not-in-project-json">
-<h3>The publish record lives in the sidecar, not in project.json<a class="headerlink" href="#the-publish-record-lives-in-the-sidecar-not-in-project-json" title="Link to this heading"></a></h3>
-<p>A Zenodo deposit is immutable, and <code class="docutils literal notranslate"><span class="pre">project.json</span></code> is part of what an
-archive uploads — so if the archive then recorded its own success
-<em>into</em> <code class="docutils literal notranslate"><span class="pre">project.json</span></code> (deposit id, DOIs, per-file digests), the local
-file would necessarily diverge from the copy it had just published,
-and re-archiving would mint a new deposit id that changed the file
-again: a treadmill by construction. That is exactly what happened
-until 2026-08-27.</p>
-<p>The fix is structural. <code class="docutils literal notranslate"><span class="pre">project.json</span></code> holds only the definition the
-researcher declares; everything a push, archive, or verify <em>produces</em>
-— the per-file <code class="docutils literal notranslate"><span class="pre">dictSyncStatus</span></code>, the Zenodo publish record, and the
-produced <code class="docutils literal notranslate"><span class="pre">dictRemotes</span></code> fields such as <code class="docutils literal notranslate"><span class="pre">overleaf.sLastPushCommit</span></code> and
-<code class="docutils literal notranslate"><span class="pre">zenodo.sRecordId</span></code> — is split out on save into a per-workflow
-<code class="docutils literal notranslate"><span class="pre">dictProjectBookkeeping</span></code> section of
-<code class="docutils literal notranslate"><span class="pre">&lt;projectRepo&gt;/.vaibify/syncStatus.json</span></code>, which is deliberately
-outside the publication comparison scope. The in-memory workflow dict
-stays merged (the load path grafts the section back in), so the
-dashboard and routes see one shape. The module that owns the split is
-<a class="reference download internal" download="" href="_downloads/43b5dec9324e524fe49c522616bec8fa/syncBookkeeping.py"><span class="xref download myst">syncBookkeeping.py</span></a>.</p>
-<p>Legacy projects migrate automatically: their fielded keys are read
-from <code class="docutils literal notranslate"><span class="pre">project.json</span></code> until the first save moves them into the sidecar,
-after which the archived and local copies of <code class="docutils literal notranslate"><span class="pre">project.json</span></code> can
-byte-match indefinitely. Sidecar values win over fielded ones on
-load, so restoring an old definition from git history does not roll
-back the record of what was actually published.</p>
-</section>
-</section>
-<section id="version-pinning">
-<h2>Version Pinning<a class="headerlink" href="#version-pinning" title="Link to this heading"></a></h2>
-<p>For maximum reproducibility, pin repository branches to specific tags or
-commit hashes in <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mycode</span><span class="o">|</span><span class="n">git</span><span class="nd">@github</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="n">user</span><span class="o">/</span><span class="n">mycode</span><span class="o">.</span><span class="n">git</span><span class="o">|</span><span class="n">v1</span><span class="mf">.2.3</span><span class="o">|</span><span class="n">pip_editable</span>
-</pre></div>
-</div>
-<p>The Docker image caches the cloned repositories, so rebuilding with
-<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">build</span></code> after changing a branch or tag will pull the updated
-code.</p>
-</section>
-<section id="network-isolation">
-<h2>Network Isolation<a class="headerlink" href="#network-isolation" title="Link to this heading"></a></h2>
-<p>Enable <code class="docutils literal notranslate"><span class="pre">networkIsolation:</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> to disable outbound
-network access from the container. This ensures that the pipeline cannot
-download external resources at runtime, guaranteeing that all dependencies
-are captured in the image.</p>
-</section>
-<section id="sharing-results">
-<h2>Sharing Results<a class="headerlink" href="#sharing-results" title="Link to this heading"></a></h2>
-<p>The recommended workflow for sharing reproducible results:</p>
-<ol class="arabic simple">
-<li><p>Commit <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">container.conf</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">.vaibify/projects/project.json</span></code> to your repository.</p></li>
-<li><p>Tag a release when results are final.</p></li>
-<li><p>Create a Zenodo DOI through the dashboard’s archive action.</p></li>
-<li><p>Reference the DOI in your manuscript.</p></li>
-</ol>
-<p>(CI automation would be step 2 once <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">publish</span> <span class="pre">workflow</span></code> exists;
-until then, add the GitHub Actions workflow by hand.)</p>
-<p>A collaborator can then reproduce your results by cloning the repository
-and running:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>build
-vaibify<span class="w"> </span>start
-</pre></div>
-</div>
+<ul class="simple">
+<li><p><strong>Byte-exact means within one environment.</strong> The same code on a
+different processor or library can give numerically near-identical
+but byte-different results. The archived image removes the library
+difference, and the determinism answers record the rest.</p></li>
+<li><p><strong>A tampered verifier cannot detect itself.</strong> That is true of every
+verification tool, which is why each check can also be run by hand.</p></li>
+</ul>
 </section>
 </section>
 
@@ -1393,8 +415,8 @@ vaibify<span class="w"> </span>start
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="security.html" class="btn btn-neutral float-left" title="Security Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="architecture.html" class="btn btn-neutral float-right" title="Architecture" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="externalResources.html" class="btn btn-neutral float-left" title="Connecting to External Resources" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="agentCouncil.html" class="btn btn-neutral float-right" title="Agent Council" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -1,0 +1,509 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>For Agents &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Contributor’s Guide" href="developers.html" />
+    <link rel="prev" title="CLI Reference" href="cli.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">For Agents</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-vaibify-harness">The vaibify harness</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-container-system-prompt">The container system prompt</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#your-own-instructions">Your own instructions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#agent-actions">Agent actions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#using-vaibify-do">Using <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#agent-safe-and-user-only-actions">Agent-safe and user-only actions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#shipped-agent-skills">Shipped agent skills</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#developing-vaibify-with-agents">Developing vaibify with agents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#why-agent-documentation-drifts">Why agent documentation drifts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deterministic-and-stochastic-documentation">Deterministic and stochastic documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-layered-framework">The layered framework</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-scoping-test">The scoping test</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#traps-over-rules">Traps over rules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-feedback-principle">The feedback principle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tradeoffs-and-limits">Tradeoffs and limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#a-playbook-for-your-own-repository">A playbook for your own repository</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-this-repository-applies-it">How this repository applies it</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#developer-references">Developer references</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l4"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">For Agents</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/forAgents.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="for-agents">
+<h1>For Agents<a class="headerlink" href="#for-agents" title="Link to this heading"></a></h1>
+<p>AI coding agents work with vaibify in two places. Inside a vaibify
+container, an agent helps a researcher build and run a project, and
+vaibify gives it a harness. Outside the container, agents write vaibify
+itself, and the last part of this page describes the documentation
+method that keeps that work honest.</p>
+<section id="the-vaibify-harness">
+<h2>The vaibify harness<a class="headerlink" href="#the-vaibify-harness" title="Link to this heading"></a></h2>
+<p>The harness arrives in three layers. The <strong>container system prompt</strong>
+explains vaibify, the rules of the container, the PROOF ladder, and
+when to use a deterministic action instead of improvising. <strong>Skills</strong>
+are task recipes an agent loads only when a task matches (see
+<a class="reference internal" href="#shipped-agent-skills">Shipped agent skills</a>). The <strong>Agent Council</strong>
+has its own charter for deliberations among several models (see
+<a class="reference internal" href="agentCouncil.html"><span class="std std-doc">Agent Council</span></a>). All three describe how to
+work inside vaibify, not how to do any particular science.</p>
+<section id="the-container-system-prompt">
+<h3>The container system prompt<a class="headerlink" href="#the-container-system-prompt" title="Link to this heading"></a></h3>
+<p>Every time a container starts, vaibify regenerates <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> at the
+root of <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> and links <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code> there to it,
+so every installed agent reads the same text. Because it is rewritten
+on every start, edits to it do not survive a restart. Its main rules:</p>
+<ul class="simple">
+<li><p><strong>Name steps by label.</strong> <code class="docutils literal notranslate"><span class="pre">A09</span></code> is the ninth <em>automated</em> step and
+<code class="docutils literal notranslate"><span class="pre">I01</span></code> the first <em>interactive</em> step. Labels are per-type sequential,
+not positions in the step list, so an agent uses them verbatim.</p></li>
+<li><p><strong>Act through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>.</strong> Anything the researcher could do with a
+dashboard button goes through the action catalog (see
+<a class="reference internal" href="#agent-actions">Agent actions</a>), so the dashboard stays true.</p></li>
+<li><p><strong>Compute with saved scripts.</strong> A numeric answer is delivered as a
+saved script that could become a step, never as a heredoc, one-liner,
+or REPL session.</p></li>
+<li><p><strong>Declare cross-step files as tokens.</strong> A file a script reads from
+another step is named in the step’s command as a
+<code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> token, so the dependency graph is complete.</p></li>
+<li><p><strong>Ask the backend for the PROOF level.</strong> <code class="docutils literal notranslate"><span class="pre">iProofLevel</span></code> from
+<code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">check-l2-readiness</span></code> is the only authoritative signal.</p></li>
+<li><p><strong>Leave publication to the researcher.</strong> Pushing to Overleaf,
+publishing to Zenodo, and accepting figures as the standard are
+user-only.</p></li>
+<li><p><strong>Ask for dependencies.</strong> The agent cannot change the project’s
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, which the image is built from, so it names the package
+the researcher should add and says that its own <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> lasts
+only for the current container session.</p></li>
+<li><p><strong>Report in the researcher’s words</strong>: step labels, badge names, and
+the dashboard’s own remediation sentences, not schema field names.</p></li>
+</ul>
+<p>The full text is on the <a class="reference internal" href="systemPrompt.html"><span class="std std-doc">System Prompt</span></a> page.</p>
+</section>
+<section id="your-own-instructions">
+<h3>Your own instructions<a class="headerlink" href="#your-own-instructions" title="Link to this heading"></a></h3>
+<p>The researcher’s standing instructions to the agent live in the
+<strong>project context file</strong>, <code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code> in the project
+repository. It is versioned with the repository and is part of the
+provenance record. The dashboard can write a starter template (what the
+project is, where its data comes from, its conventions, and what the
+agent must never touch) or import an existing file, and an agent can
+read or update it with the <code class="docutils literal notranslate"><span class="pre">read-project-context</span></code> and
+<code class="docutils literal notranslate"><span class="pre">update-project-context</span></code> actions.</p>
+<p>At each start vaibify links <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, and <code class="docutils literal notranslate"><span class="pre">GEMINI.md</span></code>
+at the repository root to that file (and adds a <code class="docutils literal notranslate"><span class="pre">.clinerules/</span></code> entry
+when Cline is installed), but only where no file exists. A real file at
+one of those names belongs to the researcher and is never touched. The
+container prompt describes the container; the project context file
+describes the project, and it is the one file a researcher needs to add
+to give the agent their own rules.</p>
+<p>Separately, PROOF Level 2 asks whether the researcher’s private,
+host-side agent setup (global instructions, personal skills, memory,
+hooks) governed the work. That <strong>Personal AI Configuration</strong> row passes
+with any answer — <code class="docutils literal notranslate"><span class="pre">none</span></code>, <code class="docutils literal notranslate"><span class="pre">declared-private</span></code>, or <code class="docutils literal notranslate"><span class="pre">included</span></code> — and fails
+only when unanswered. It is user-only. See
+<a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a>.</p>
+</section>
+</section>
+<section id="agent-actions">
+<h2>Agent actions<a class="headerlink" href="#agent-actions" title="Link to this heading"></a></h2>
+<p>An agent inside the container can ask the dashboard to perform named
+operations on the researcher’s behalf. These <em>agent actions</em> bridge the
+agent’s text-only world and the dashboard’s verified state, and they
+make the agent’s behavior deterministic: asked to build unit tests, the
+agent runs the same generator the button runs rather than inventing
+tests of its own. Every action an agent takes is one the researcher
+could have taken, and it triggers the same verification, so the
+dashboard never drifts from what the agent actually did.</p>
+<p>Every state-changing operation in the dashboard — running a step,
+generating tests, committing, pushing to GitHub, archiving to Zenodo —
+is registered in one catalog, <code class="docutils literal notranslate"><span class="pre">LIST_AGENT_ACTIONS</span></code> in
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/actionCatalog.py</span></code>. Each entry carries a stable name, the
+call the dashboard itself makes, a description of its arguments, and a
+<code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> flag. The agent never invents an action: it picks one from
+the catalog, or it tells the researcher what it ran in the shell.</p>
+<section id="using-vaibify-do">
+<h3>Using <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code><a class="headerlink" href="#using-vaibify-do" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> is the in-container command that reads the catalog and
+sends an action to the vaibify hub on the host. The hub writes the
+catalog and a per-container session token into the container when the
+dashboard connects to it.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify-do<span class="w"> </span>--list<span class="w">                 </span><span class="c1"># every action, with its description</span>
+vaibify-do<span class="w"> </span>--describe<span class="w"> </span>run-step<span class="w">    </span><span class="c1"># one action's arguments</span>
+vaibify-do<span class="w"> </span>run-step<span class="w"> </span>A03<span class="w">           </span><span class="c1"># run one step</span>
+vaibify-do<span class="w"> </span>run-selected-steps<span class="w"> </span>A03<span class="w"> </span>A04<span class="w"> </span>A05
+</pre></div>
+</div>
+<p>Step arguments accept labels. Other arguments go as <code class="docutils literal notranslate"><span class="pre">key=value</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--long-flag=value</span></code>, or a JSON object. <code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> prints the call
+without sending it and <code class="docutils literal notranslate"><span class="pre">--json</span></code> emits line-delimited JSON; both must
+come before the action name. The dashboard updates as the action runs.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> acts on the project open in the dashboard, and every
+response begins with a line naming that project. An agent working in a
+different project’s directory is refused with <code class="docutils literal notranslate"><span class="pre">project-mismatch</span></code>, and
+nothing happens; the remedy is to ask the researcher to open the right
+project. If <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> reports that the session is not initialized or
+the host is unreachable, the dashboard is not connected to this
+container, and the researcher reconnects by clicking the container.</p>
+</section>
+<section id="agent-safe-and-user-only-actions">
+<h3>Agent-safe and user-only actions<a class="headerlink" href="#agent-safe-and-user-only-actions" title="Link to this heading"></a></h3>
+<p>An action with <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> false is <strong>user-only</strong>: a decision only the
+researcher may make, such as stopping a running pipeline, deleting a
+step, publishing to Zenodo, pushing to Overleaf, accepting figures as
+the standard, or answering a consent question. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span> <span class="pre">--list</span></code>
+shows which is which. <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> refuses a user-only action with a
+JSON object carrying <code class="docutils literal notranslate"><span class="pre">sRefusal:</span> <span class="pre">&quot;user-only-action&quot;</span></code>; the agent does not
+retry, and instead asks the researcher to click the matching button.</p>
+<p>That client-side check is a courtesy, not the protection. The hub
+enforces <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> on every HTTP request carrying an agent’s session
+token, so a user-only route answers 403 even when an agent calls it
+directly. The check <strong>fails closed</strong>: a state-changing route with no
+catalog entry is refused on the agent lane, so a route stays out of an
+agent’s reach until someone deliberately registers it as agent-safe.
+Routes that change the hub’s own registry or preferences are excluded
+outright. The test suite fails if any state-changing route is neither
+registered nor explicitly excluded (<code class="docutils literal notranslate"><span class="pre">testAgentActionRegistered</span></code>).</p>
+<p>Some agent-safe actions still stop for the researcher. A run that would
+re-pull remote data over the committed copy is refused with
+<code class="docutils literal notranslate"><span class="pre">remoteDataOverwrite</span></code>; the agent relays the question and re-issues the
+command with <code class="docutils literal notranslate"><span class="pre">--confirm-remote-overwrite</span></code> only after an explicit yes.</p>
+<p>The same catalog generates the researcher’s own command-line
+counterpart on the host, described in the <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>. It
+authenticates as the researcher, so user-only actions are available
+there: <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> constrains an agent in a container, not the
+researcher at their own terminal.</p>
+</section>
+</section>
+<section id="shipped-agent-skills">
+<h2>Shipped agent skills<a class="headerlink" href="#shipped-agent-skills" title="Link to this heading"></a></h2>
+<p>At every container start, vaibify copies its skills into the skills
+directory of each installed agent that supports them. The copy replaces
+vaibify’s own skill files each time, so put a customized recipe in a
+skill with its own name.</p>
+<ul class="simple">
+<li><p><strong>create-pipeline-step</strong> — author a fully wired step: dependencies,
+naming, the <code class="docutils literal notranslate"><span class="pre">{step:&lt;sStepId&gt;.&lt;stem&gt;}</span></code> token contract, the project
+entry, and verification.</p></li>
+<li><p><strong>running-steps</strong> — run steps through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code>, never by
+launching a step’s script in a shell, which the dashboard cannot see.</p></li>
+<li><p><strong>reproducible-analysis</strong> — answer a quantitative question with a
+saved script structured so it can become a step.</p></li>
+<li><p><strong>proof-ladder</strong> — raise or audit a project’s PROOF level through
+Level 3, with the known audit traps.</p></li>
+<li><p><strong>diagnose-failed-run</strong> — triage a run that died or hung with the
+read-only <code class="docutils literal notranslate"><span class="pre">get-pipeline-state</span></code> and <code class="docutils literal notranslate"><span class="pre">get-host-log-tail</span></code> actions.</p></li>
+<li><p><strong>read-manuscript</strong> — pull the project’s Overleaf manuscript (the
+<code class="docutils literal notranslate"><span class="pre">pull-manuscript</span></code> action) into a git-ignored copy and read it, rather
+than answering from memory.</p></li>
+<li><p><strong>read-arxiv</strong> — read a paper from its arXiv TeX source instead of
+the PDF, which costs far fewer tokens.</p></li>
+<li><p><strong>session-budget</strong> — keep long autonomous runs alive across usage
+limits with checkpoint commits, a resume note, and a pause until the
+usage window resets (at 95% by default, adjustable in the prompt).</p></li>
+<li><p><strong>vaibify-doc-map</strong> — point the agent at the right section of
+vaibify’s documentation, staged in the container under
+<code class="docutils literal notranslate"><span class="pre">/usr/share/vaibify/docs</span></code>, instead of a whole file.</p></li>
+</ul>
+</section>
+<section id="developing-vaibify-with-agents">
+<h2>Developing vaibify with agents<a class="headerlink" href="#developing-vaibify-with-agents" title="Link to this heading"></a></h2>
+<p>vaibify is written by AI coding agents directed by its author. Agents
+are stochastic — the same prompt, run twice, can produce different
+code — and the most dangerous mistakes are the plausible ones. This
+part describes how vaibify documents itself for agents so that the
+documentation does not drift from the code. The method applies to any
+repository.</p>
+<section id="why-agent-documentation-drifts">
+<h3>Why agent documentation drifts<a class="headerlink" href="#why-agent-documentation-drifts" title="Link to this heading"></a></h3>
+<p>The natural response to an unreliable agent is more documentation:
+where everything lives, what modules are called, how large each file
+is. Then a module is split, and the documentation becomes quietly
+wrong. An agent can trust the stale facts and write confidently wrong
+code, or ignore them and re-derive the architecture every session. The
+root cause is a document doing two jobs: stating rules that cannot be
+tested, and reciting facts that should never be typed by hand.</p>
+</section>
+<section id="deterministic-and-stochastic-documentation">
+<h3>Deterministic and stochastic documentation<a class="headerlink" href="#deterministic-and-stochastic-documentation" title="Link to this heading"></a></h3>
+<p><strong>Deterministic signals</strong> are facts the code unambiguously is: the
+modules in a package, their exported symbols, whether a test exists.
+Written by hand, they become a second source of truth that will
+diverge. <strong>Stochastic signals</strong> are rules, contracts, and hazards that
+span files and cannot be read from any one of them, such as “container
+paths use <code class="docutils literal notranslate"><span class="pre">posixpath</span></code>; host paths use <code class="docutils literal notranslate"><span class="pre">os.path</span></code>.” Only someone who
+knows the system can write them, and they matter because an agent
+cannot infer them. Mixing the two buries the rules under rotting facts,
+as if a simulation were asked to invent its own priors.</p>
+</section>
+<section id="the-layered-framework">
+<h3>The layered framework<a class="headerlink" href="#the-layered-framework" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>What it is</p></th>
+<th class="head"><p>Trigger</p></th>
+<th class="head"><p>Source of truth</p></th>
+<th class="head"><p>Failure mode</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>Short prose of untestable rules (<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>)</p></td>
+<td><p>Every task</p></td>
+<td><p>Hand-written prose</p></td>
+<td><p>Silent</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>Architectural invariants written as tests</p></td>
+<td><p>Every commit</p></td>
+<td><p>The assertion</p></td>
+<td><p>Loud (CI fails)</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>Scripts that report structure from the live tree</p></td>
+<td><p>On demand</p></td>
+<td><p>The current source</p></td>
+<td><p>At the point of use</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>Multi-step recipes loaded on a task match (skills)</p></td>
+<td><p>Task match</p></td>
+<td><p>Hand-written prose</p></td>
+<td><p>Silent</p></td>
+</tr>
+</tbody>
+</table>
+<p>Layers 2 and 3 cannot drift, so they carry the deterministic content;
+Layers 1 and 4 carry only what is irreducibly stochastic. Layer 1 stays
+small because a wrong rule there is trusted on every task, and a skill
+that fires on every task is Layer 1 in a costume.</p>
+</section>
+<section id="the-scoping-test">
+<h3>The scoping test<a class="headerlink" href="#the-scoping-test" title="Link to this heading"></a></h3>
+<p>Before adding to an agent-facing document, ask in order:</p>
+<ol class="arabic simple">
+<li><p>Would a new developer, reading the code for twenty minutes, miss
+this? If not, do not write it.</p></li>
+<li><p>Can it be an assertion on the code? Then write a test.</p></li>
+<li><p>Can it be extracted from the code? Then write a script, and do not
+persist its output.</p></li>
+<li><p>Otherwise, a single rule goes in Layer 1 and a recurring recipe in
+Layer 4.</p></li>
+</ol>
+</section>
+<section id="traps-over-rules">
+<h3>Traps over rules<a class="headerlink" href="#traps-over-rules" title="Link to this heading"></a></h3>
+<p>The most valuable prose is a list of <em>traps</em>: places where the code
+does the opposite of what a careful reader expects, or where two
+look-alikes behave differently. A good entry names both, says which
+does what, and gives the consequence. For example, a test double that
+stores a written file without consulting the authorization gate the
+real connection consults lets a route lose its authorization while its
+tests stay green. To start an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, write the five mistakes you
+would most hate to see an agent make next week.</p>
+</section>
+<section id="the-feedback-principle">
+<h3>The feedback principle<a class="headerlink" href="#the-feedback-principle" title="Link to this heading"></a></h3>
+<p>When an agent repeats a mistake, the documentation absorbs it: first
+by promoting it to a test, so CI catches any repeat; otherwise by
+writing it where its reach belongs — a subsystem’s skill,
+<a class="reference internal" href="lessons.html"><span class="std std-doc">lessons</span></a> for how a mistake happened, and <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> only
+for a rule that governs every edit, since its length taxes every task;
+and, for a multi-step task done inconsistently, by adding a skill.</p>
+<p>A test enforces a rule only if it can observe the rule being broken.
+Break the rule on purpose and watch the test fail; if it passes, the
+test’s premise is wrong. Assert on the state the rule is about, not
+merely that nothing raised. A guard nobody has watched fail is a guard
+nobody has tested.</p>
+</section>
+<section id="tradeoffs-and-limits">
+<h3>Tradeoffs and limits<a class="headerlink" href="#tradeoffs-and-limits" title="Link to this heading"></a></h3>
+<p>Rules about intent, taste, and scientific meaning resist assertion and
+stay as prose. Short module docstrings drift less than long ones, so
+long docstrings are reserved for behavior a reader cannot infer from
+the functions. A correct, longer <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> beats a short one missing
+load-bearing context, but every sentence is a future drift liability.
+Skills are tool-specific; for portability across agent tools, rely on
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>, tests, and scripts.</p>
+</section>
+<section id="a-playbook-for-your-own-repository">
+<h3>A playbook for your own repository<a class="headerlink" href="#a-playbook-for-your-own-repository" title="Link to this heading"></a></h3>
+<ol class="arabic simple">
+<li><p>Write down the traps first; they are the core of <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>.</p></li>
+<li><p>Turn every invariant you can into a test in one invariants file.</p></li>
+<li><p>Write a script that prints the module map on demand instead of a
+hand-written map.</p></li>
+<li><p>Link <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>, and any other filename your tools read, to
+<code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code>.</p></li>
+<li><p>Add a CI check that fails when an agent document names a missing
+path.</p></li>
+<li><p>Apply the feedback principle whenever you correct an agent twice.</p></li>
+</ol>
+</section>
+<section id="how-this-repository-applies-it">
+<h3>How this repository applies it<a class="headerlink" href="#how-this-repository-applies-it" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Layer 1.</strong> The root <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> (<code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code> links to it) holds the
+rules for every edit and opens with a table routing each subsystem to
+the skill that governs it. Nested <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> files under
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify/gui/static/</span></code> hold backend and frontend
+conventions.</p></li>
+<li><p><strong>Layer 2.</strong> <code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code> enforces the
+structural rules (route modules do not import one another, shipped
+source names no specific science, every state-changing route is in
+the agent action catalog), and <code class="docutils literal notranslate"><span class="pre">tests/testStyleInvariants.py</span></code>
+enforces the naming contract, with existing exceptions held under
+budgets that may only fall.</p></li>
+<li><p><strong>Layer 3.</strong> <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">tools/listModules.py</span> <span class="pre">&lt;subtree&gt;</span></code> prints the
+current module map with public symbols and one-line purposes, and
+<code class="docutils literal notranslate"><span class="pre">tools/checkAgentDocsPaths.py</span></code> fails CI when an agent document names
+a missing path.</p></li>
+<li><p><strong>Layer 4.</strong> The subsystem skills live under <code class="docutils literal notranslate"><span class="pre">.claude/skills/</span></code>.
+<code class="docutils literal notranslate"><span class="pre">tests/testSkillIntegrity.py</span></code> checks their structure, and harnesses
+in <code class="docutils literal notranslate"><span class="pre">tools/</span></code> test whether each triggers and performs as intended (see
+<a class="reference internal" href="skillTesting.html"><span class="std std-doc">Skill testing</span></a>).</p></li>
+<li><p><strong>Falsification.</strong> Each falsification test records the mutation it
+must catch, and <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> applies those
+mutations in a disposable worktree to confirm each test still fails.</p></li>
+</ul>
+<p>Documentation that drifts from code is a reproducibility hazard. The
+discipline that keeps an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> correct is the same one that keeps
+a methods section correct.</p>
+</section>
+<section id="developer-references">
+<h3>Developer references<a class="headerlink" href="#developer-references" title="Link to this heading"></a></h3>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+</ul>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="cli.html" class="btn btn-neutral float-left" title="CLI Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="developers.html" class="btn btn-neutral float-right" title="Contributor’s Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

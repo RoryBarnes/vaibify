@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Known technical debt &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>Known technical debt &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Lessons from past sessions" href="lessons.html" />
-    <link rel="prev" title="Testing" href="testing.html" /> 
+    <link rel="next" title="Skill Testing" href="skillTesting.html" />
+    <link rel="prev" title="Lessons from past sessions" href="lessons.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,31 +45,46 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="forAgents.html">For Agents</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#the-vaibify-harness">The vaibify harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#agent-actions">Agent actions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="forAgents.html#shipped-agent-skills">Shipped agent skills</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="forAgents.html#developing-vaibify-with-agents">Developing vaibify with agents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#why-agent-documentation-drifts">Why agent documentation drifts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#deterministic-and-stochastic-documentation">Deterministic and stochastic documentation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-layered-framework">The layered framework</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-scoping-test">The scoping test</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#traps-over-rules">Traps over rules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#the-feedback-principle">The feedback principle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#tradeoffs-and-limits">Tradeoffs and limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#a-playbook-for-your-own-repository">A playbook for your own repository</a></li>
+<li class="toctree-l3"><a class="reference internal" href="forAgents.html#how-this-repository-applies-it">How this repository applies it</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="forAgents.html#developer-references">Developer references</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
+<li class="toctree-l4"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Known technical debt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -86,6 +101,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="forAgents.html">For Agents</a></li>
       <li class="breadcrumb-item active">Known technical debt</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/knownDebt.md.txt" rel="nofollow"> View page source</a>
@@ -221,8 +237,8 @@ quietly resolved.</p></li>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="testing.html" class="btn btn-neutral float-left" title="Testing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="lessons.html" class="btn btn-neutral float-right" title="Lessons from past sessions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="lessons.html" class="btn btn-neutral float-left" title="Lessons from past sessions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="skillTesting.html" class="btn btn-neutral float-right" title="Skill Testing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -1,0 +1,369 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Declaring AI Use &mdash; Vaibify 0.0.14.dev437 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Environments and Projects" href="environmentsAndProjects.html" />
+    <link rel="prev" title="The PROOF Ladder" href="proofLadder.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Vaibify
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Declaring AI Use</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-ai-declaration-step">The AI Declaration step</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#declaring-the-ai-models">Declaring the AI models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#personal-ai-configuration">Personal AI Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-prompt-record">The Prompt Record</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supervised-mode">Supervised mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-it-shows-on-the-dashboard">How it shows on the dashboard</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Vaibify</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Declaring AI Use</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/aiUse.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="declaring-ai-use">
+<h1>Declaring AI Use<a class="headerlink" href="#declaring-ai-use" title="Link to this heading"></a></h1>
+<p>A reader of an agent-assisted paper will reasonably ask which AI models
+helped, what they did, and how you checked their work. Vaibify has you
+answer those questions inside the project, as you go, so the answers
+are published with your data instead of reconstructed from memory at
+submission time. A declaration of AI use is one of the Level 2
+requirements of the <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Ladder</span></a>, and the optional
+records at the end of this page collect the evidence behind the
+“Replayable” property of <a class="reference internal" href="vibeCoding.html"><span class="std std-doc">Vibe Coding Scientific Software</span></a>.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>What</p></th>
+<th class="head"><p>Where on the dashboard</p></th>
+<th class="head"><p>Required for Level 2?</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>An <strong>AI Declaration</strong> in your own words</p></td>
+<td><p>A step in the step list</p></td>
+<td><p>Yes, signed off</p></td>
+</tr>
+<tr class="row-odd"><td><p>The <strong>AI models</strong> you used</p></td>
+<td><p>The Project block’s <strong>AI</strong> section</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p>Your <strong>Personal AI Configuration</strong></p></td>
+<td><p>The Project block’s <strong>AI</strong> section</p></td>
+<td><p>Yes, any answer</p></td>
+</tr>
+<tr class="row-odd"><td><p>The <strong>Prompt Record</strong> and <strong>Supervised mode</strong></p></td>
+<td><p>The Project block’s <strong>AI</strong> section</p></td>
+<td><p>No, never blocks a level</p></td>
+</tr>
+</tbody>
+</table>
+<p>Vaibify checks only that each question has an answer. Whether the
+answer satisfies a journal or a referee is between you and them.</p>
+<section id="the-ai-declaration-step">
+<h2>The AI Declaration step<a class="headerlink" href="#the-ai-declaration-step" title="Link to this heading"></a></h2>
+<p>The declaration is a short Markdown document, written by you, that
+explains how AI assisted the work. It is a <em>step</em> rather than a setting
+because it is a publication artifact, like your figures: it is
+committed, pushed, archived, and pinned in the manifest along with them.</p>
+<p><strong>Adding the step.</strong> A project without one shows a row at the foot of
+the step list: <em>AI Declaration step — required for Level 2, not yet
+added</em>. Click <strong>Add AI declaration step</strong>. The new step is named <strong>AI
+Declaration</strong> and points at <code class="docutils literal notranslate"><span class="pre">AI_USAGE.md</span></code> at the root of your project
+repository. A project holds only one.</p>
+<p>It is an <em>interactive</em> step, so it gets an I label, and it runs no
+commands, so its run-status light is a dash. It has no Level 1
+requirements and never holds your project below Level 1. Everything
+about it lives in the step’s expanded Level 2 section.</p>
+<p><strong>Choosing or writing the file.</strong> The <strong>AI Usage Declaration</strong> block
+asks your repository whether the declaration file exists. If it does
+not, the block offers <strong>Generate template (AI_USAGE.md)</strong>, which writes
+vaibify’s starter template with four headings: <strong>Models used</strong>; <strong>How
+AI assisted each step</strong> (code generation, debugging, plot tweaks,
+documentation); <strong>Review policy</strong> (how a human reviewed AI-generated
+output before it landed); and <strong>Anything else researchers should
+know</strong>. It also offers <strong>Choose existing file</strong>, which opens a file
+picker inside your project repository. Once the file exists, the block
+shows its name and first few lines, and <strong>Choose different file</strong>
+points the step at another file. Pointing the step at a different file
+withdraws your sign-off, because you signed a different document. If
+vaibify cannot reach the repository, for example because the container
+is stopped, the block says it could not check and offers a diagnosis
+instead.</p>
+<p>Write the declaration however you like. If your agent drafts the text,
+read it carefully: the declaration is your statement, not the agent’s.
+<strong>Open in viewer</strong> shows the whole file in a viewing window, where the
+pencil (✎) button lets you edit and save it.</p>
+<p><strong>Committing it.</strong> <strong>Commit to repo…</strong> checks the repository and offers
+to commit just this file. Committing is not publishing: push from the
+Repos panel, as for any other file. Once git tracks the file, <strong>Remove
+from repo…</strong> takes it out of git; the file stays on disk but no longer
+counts as published.</p>
+<p><strong>Signing it off.</strong> Below the preview is a sign-off row labeled with
+your name. Click its marker to move it from <em>Untested</em> to <em>Passed</em>; a
+further click marks it <em>Failed</em>, and another returns it to <em>Untested</em>.
+The time of your last change appears beneath it. Sign off when the text
+is final. Until you do, the step’s L2 cell reads <em>AI declaration not yet
+attested — open the step and verify it</em>. The section’s requirement rows
+are <strong>AI declaration signed off</strong> plus the publication rows every step
+carries, such as <strong>Published files match the GitHub mirror</strong>, which here
+compare <code class="docutils literal notranslate"><span class="pre">AI_USAGE.md</span></code> with its published copies.</p>
+<p><strong>When the work changes after you sign.</strong> Your sign-off covers the
+project as it stood when you gave it. At that moment vaibify records a
+SHA-256 hash of every other step’s scripts, outputs (data and plots),
+and declared input data. If any of those files later changes, appears,
+or disappears, the sign-off becomes stale: the marker reads <em>Stale</em>,
+the step’s ⚠ names the steps whose files changed, and Level 2 is
+blocked until you review the declaration and sign off again. Signing
+again takes one click and records new hashes. Changing a file back does
+not undo the warning, and editing the declaration file itself never
+causes one. If vaibify cannot read one of the files, the step says it
+could not check, and Level 2 stays blocked until it can. A declaration
+signed before vaibify recorded these hashes stays signed, with a note
+that changes are tracked from your next sign-off.</p>
+<p>Vaibify compares the files with the recorded hashes each time it
+checks, so a change that is made and completely undone between two
+checks cannot be detected.</p>
+</section>
+<section id="declaring-the-ai-models">
+<h2>Declaring the AI models<a class="headerlink" href="#declaring-the-ai-models" title="Link to this heading"></a></h2>
+<p>Every model that touched the project must be named, one model per
+entry, because a provenance record names models individually. In the
+Project block’s <strong>AI</strong> section, expand the <strong>AI models</strong> row. With
+nothing declared it offers <strong>Declare Model</strong>; afterward, <strong>View
+Declaration</strong> lists your entries and <strong>Edit Declaration</strong> changes them.
+Each entry asks for:</p>
+<ul class="simple">
+<li><p><strong>Vendor</strong>, the company or group that offers the model;</p></li>
+<li><p><strong>Model ID</strong>, one exact model identifier, not a product family;</p></li>
+<li><p><strong>Used from</strong> and <strong>Used until</strong>, the dates you used it.</p></li>
+</ul>
+<p>If the model’s weights are public, tick <strong>Open weights</strong> and also give
+the <strong>Weights source</strong> (where the weights are published) and the
+<strong>Weights revision hash</strong>, so others can load exactly the weights you
+used. <strong>Declare</strong> saves a new entry and <strong>Save</strong> an edited one; <strong>Add
+another model</strong> adds a card, and <strong>Delete</strong> removes an entry after you
+confirm.</p>
+<p>The row passes when at least one model is declared and every entry is
+complete. Undeclared is the only failing state; a closed-weights model
+passes by declaration alone. The PROOF tab calls this requirement <strong>AI
+model declared</strong>.</p>
+</section>
+<section id="personal-ai-configuration">
+<h2>Personal AI Configuration<a class="headerlink" href="#personal-ai-configuration" title="Link to this heading"></a></h2>
+<p>The models are only part of what governed the AI’s work. If you use a
+coding agent on your own computer, you may also have a private setup of
+your own there: a global instruction file, personal skills, memory, or
+hooks. The <strong>Personal AI Configuration</strong> row asks one question about it:
+<em>did your own private, host-side agent setup govern this work, and are
+you disclosing it?</em></p>
+<p><strong>Answering is the requirement. Disclosure is never required.</strong> All
+three answers pass:</p>
+<ul class="simple">
+<li><p><strong>No personal AI configuration exists</strong></p></li>
+<li><p><strong>Exists — content withheld</strong></p></li>
+<li><p><strong>Included in the project repository</strong></p></li>
+</ul>
+<p>Only an unanswered question fails. “Exists — content withheld,” with
+nothing further, is a complete answer; you do not need to write, find,
+or upload anything.</p>
+<p>If you choose “Exists — content withheld,” the row also offers an
+optional <strong>hash commitment</strong>: give a <strong>Label</strong> and the file’s <strong>Path on
+this computer</strong>, then click <strong>Add hash commitment</strong>. Vaibify stores only
+the label, the file’s SHA-256 hash, its size, and the date, never the
+path or the content. The commitment reveals nothing, but if you later
+release the file, anyone can check that it is the version that governed
+the work. Only you can add one; the in-container agent cannot. The
+PROOF tab calls this requirement <strong>Personal AI Configuration answered</strong>.</p>
+</section>
+<section id="the-prompt-record">
+<h2>The Prompt Record<a class="headerlink" href="#the-prompt-record" title="Link to this heading"></a></h2>
+<p>A transcript of your conversations with the agent is the most complete
+account of how the code came to be, and it cannot be reconstructed
+later. The <strong>Prompt Record</strong> keeps one as you work. It is optional and
+never blocks a level.</p>
+<p><strong>Turning it on.</strong> Expand the <strong>Prompt Record</strong> row and click <strong>Set up
+recording</strong>, then <strong>Turn on recording</strong>. Recording needs a secret
+scanner on the computer running vaibify (not in the container); if it is
+missing, the dashboard says so. Install it with
+<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">&quot;vaibify[replay]&quot;</span></code> and turn recording on again.</p>
+<p><strong>What it captures.</strong> While recording is on and the dashboard is open,
+vaibify checks every 30 seconds for new material and copies the
+in-container agent’s session transcripts, your prompts and its replies,
+into the project repository. It reads the session files that Claude
+Code, Codex and Gemini write inside the container. Only sessions
+started inside this project’s folder are captured; the row counts any
+started elsewhere, such as the workspace root or another project, and
+leaves them out.</p>
+<p><strong>How secrets are removed.</strong> Your repository is public or will be, so
+every capture is scanned <em>before</em> it is saved. A visible
+<code class="docutils literal notranslate"><span class="pre">[REDACTED:</span> <span class="pre">…]</span></code> marker, naming what was removed, replaces the session
+secrets vaibify itself issued, well-known credential formats (cloud
+keys, service tokens, private keys, and the like), and long
+random-looking strings of letters and digits. If the scanner cannot
+run, nothing is captured. It cannot recognize prose you consider
+private, which is why your review matters.</p>
+<p><strong>Approving the first capture.</strong> The record does not count until you
+have read it. When the first capture arrives, the row shows a ⚠ and a
+<strong>Review &amp; Approve</strong> button. The viewer lists each session with its
+redaction count, and <strong>Show only turns with a redaction</strong> narrows the
+view to what the scanner changed. Gemini lets you take turns back and
+can replace a message’s text, so a Gemini session is shown as it
+finally stood: turns that were taken back are folded into one
+<strong>Rewound</strong> group where they happened, and a reply whose text changed is
+marked <em>edited</em>, with its earlier text folded beneath it. Nothing is
+removed from the record itself. <strong>Approve first capture</strong> records that
+you have read the redacted sessions and are content for them to be
+published with the project. The agent can never approve its own
+transcript. <strong>View Record</strong> reopens the viewer at any time.</p>
+<p><strong>Where it is stored.</strong> In your project repository, under
+<code class="docutils literal notranslate"><span class="pre">.vaibify/promptRecord/sessions/</span></code>, with an index beside it. Each capture
+records the hash of the one before it, so editing or deleting a capture
+breaks the chain, and the dashboard says so on the row and in the
+viewer. The record is <em>tamper-evident</em>, not <em>provably complete</em>: time
+between recorded intervals was not monitored, and the dashboard shows
+those gaps rather than hiding them.</p>
+</section>
+<section id="supervised-mode">
+<h2>Supervised mode<a class="headerlink" href="#supervised-mode" title="Link to this heading"></a></h2>
+<p>Some changes never appear in a transcript: an edit you make by hand, a
+script that rewrites a file. <strong>Supervised mode</strong> adds a supervision log
+on top of the Prompt Record. Every change to a file your project
+declares must be attributable to an action vaibify recorded, such as a
+step run, an editor save, an agent request, or an open terminal session
+(recorded as opening and closing, not keystroke by keystroke). A change
+with no recorded cause, or one made while vaibify was not watching, is
+flagged permanently. The log lives under
+<code class="docutils literal notranslate"><span class="pre">.vaibify/promptRecord/attribution/</span></code>.</p>
+<p>The <strong>Supervised mode</strong> row offers <strong>Turn on Supervised mode</strong> once the
+Prompt Record is on and its first capture approved. It is unavailable
+for a project that runs directly on your computer rather than in a
+container, where vaibify cannot see every path to your files. Flags
+remain on the row after you turn supervision off, and the Prompt Record
+cannot be turned off while Supervised mode is on. It is optional and
+never blocks a level.</p>
+</section>
+<section id="how-it-shows-on-the-dashboard">
+<h2>How it shows on the dashboard<a class="headerlink" href="#how-it-shows-on-the-dashboard" title="Link to this heading"></a></h2>
+<p>The Project block’s <strong>AI</strong> section holds five rows: <strong>AI models</strong> and
+<strong>Personal AI Configuration</strong>, which count toward Level 2, and three
+optional ones, <strong>Project instructions</strong> (the agent’s standing
+instructions in <code class="docutils literal notranslate"><span class="pre">.vaibify/AGENTS.md</span></code>), <strong>Prompt Record</strong>, and
+<strong>Supervised mode</strong>. An optional row is never red: it shows as attained
+when it is on and in good order, a neutral dash otherwise, and a ⚠
+beside its title when it needs you. The AI Declaration’s sign-off
+appears only on its own step. The PROOF tab’s Level 2 section lists the
+same requirements, each with a link to its row.</p>
+<p>Together these rows place the project on the Replay axis described on
+the <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Ladder</span></a> page: <em>declared</em> once the models and
+the Personal AI Configuration are answered, <em>recorded</em> (and so
+“Replayable”) once the Prompt Record is on and approved, and
+<em>supervised</em> once Supervised mode is on as well. The dashboard does not
+print the state’s name; you read it from the rows.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="proofLadder.html" class="btn btn-neutral float-left" title="The PROOF Ladder" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="environmentsAndProjects.html" class="btn btn-neutral float-right" title="Environments and Projects" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025-2026, Rory Barnes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

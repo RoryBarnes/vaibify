@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Vaibify 0.0.14.dev427 documentation</title>
+  <title>Testing Model &mdash; Vaibify 0.0.14.dev437 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,14 +14,14 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7b25fe85"></script>
+      <script src="_static/documentation_options.js?v=1fea2ec1"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Known technical debt" href="knownDebt.html" />
-    <link rel="prev" title="Contributor’s Guide" href="developers.html" /> 
+    <link rel="next" title="CLI Reference" href="cli.html" />
+    <link rel="prev" title="Security Model" href="security.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,48 +45,52 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="conduct.html">Code of Conduct</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vision.html">Vision</a></li>
-<li class="toctree-l1"><a class="reference internal" href="philosophy.html">Philosophy</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickStart.html">QuickStart</a></li>
-<li class="toctree-l1"><a class="reference internal" href="install.html">Installing Vaibify</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pipelines.html">Pipelines</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dashboard.html">The Dashboard</a></li>
-<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
-<li class="toctree-l1"><a class="reference internal" href="remoteAccess.html">Working on a remote machine</a></li>
-<li class="toctree-l1"><a class="reference internal" href="testFormats.html">Supported Data Formats</a></li>
-<li class="toctree-l1"><a class="reference internal" href="templates.html">Project Templates</a></li>
-<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="install.html">Advanced Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe Coding Scientific Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="proofLadder.html">The PROOF Ladder</a></li>
+<li class="toctree-l1"><a class="reference internal" href="aiUse.html">Declaring AI Use</a></li>
+<li class="toctree-l1"><a class="reference internal" href="environmentsAndProjects.html">Environments and Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="externalResources.html">Connecting to External Resources</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility</a></li>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
-<li class="toctree-l1"><a class="reference internal" href="externalServices.html">External-service integrations: Overleaf, GitHub, Zenodo, arXiv</a></li>
-<li class="toctree-l1"><a class="reference internal" href="vibeCoding.html">Vibe coding with verification</a></li>
-<li class="toctree-l1"><a class="reference internal" href="developers.html">Contributor’s Guide</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Testing</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#why-falsification-tests-exist">Why falsification tests exist</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#how-the-falsification-suite-is-built">How the falsification suite is built</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#the-independent-oracle-rule-important">The independent-oracle rule (important)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="agentCouncil.html">Agent Council</a></li>
+<li class="toctree-l1"><a class="reference internal" href="systemPrompt.html">System Prompt</a></li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security Model</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Testing Model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#testing-your-project">Testing your project</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#test-standards">Test standards</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-tests-are-generated">How tests are generated</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#checking-that-your-tests-have-teeth">Checking that your tests have teeth</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs">Falsification testing vs. the mutation gate — two different jobs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-data-formats">Supported data formats</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#format-table">Format table</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-format-detection-works">How format detection works</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#optional-libraries">Optional libraries</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#overriding-format-detection">Overriding format detection</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#access-path-syntax">Access path syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#security-limits">Security limits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#unsupported-files">Unsupported files</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#how-vaibify-is-tested">How vaibify is tested</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#falsification-tests">Falsification tests</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-independent-oracle-rule">The independent-oracle rule</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-mutation-gate">The mutation gate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-three-execution-lanes">The three execution lanes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#continuous-integration">Continuous integration</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#check-names">Check names</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#required-status-checks">Required status checks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#check-names-and-required-checks">Check names and required checks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#what-the-readme-badges-mean">What the README badges mean</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#the-three-execution-lanes">The three execution lanes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-the-suites-locally">Running the suites locally</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="knownDebt.html">Known technical debt</a></li>
-<li class="toctree-l1"><a class="reference internal" href="lessons.html">Lessons from past sessions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="skillTesting.html">Skill Testing</a></li>
-<li class="toctree-l1"><a class="reference internal" href="releaseNotes.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">CLI Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="forAgents.html">For Agents</a></li>
 <li class="toctree-l1"><a class="reference external" href="https://github.com/RoryBarnes/Vaibify">GitHub</a></li>
-<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/vaibify/">PyPI</a></li>
 </ul>
 
         </div>
@@ -103,7 +107,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Testing</li>
+      <li class="breadcrumb-item active">Testing Model</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/testing.md.txt" rel="nofollow"> View page source</a>
       </li>
@@ -113,11 +117,546 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="testing">
-<h1>Testing<a class="headerlink" href="#testing" title="Link to this heading"></a></h1>
-<p>Vaibify’s test suite has <strong>three kinds of test</strong>, distinguished not by
-where they live (they are all <code class="docutils literal notranslate"><span class="pre">pytest</span></code> tests under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>) but by the
-question each one answers.</p>
+  <section id="testing-model">
+<h1>Testing Model<a class="headerlink" href="#testing-model" title="Link to this heading"></a></h1>
+<p>AI agents can write thousands of lines of working code in minutes, but a
+researcher may need days to be convinced that those lines are accurate.
+Verification, not code generation, is the bottleneck. Unit tests
+help, because they stop a later change from silently breaking a result
+that was already checked. But a passing test suite proves only that the
+tests and the code <strong>agree</strong>, not that the code is <strong>correct</strong>. When one
+agent writes the code, writes the tests and reviews the result, a single
+blind spot can author all three.</p>
+<p>This page has two halves. The first describes the tests vaibify writes
+and runs for <strong>your project</strong>: per-step tests generated from your own
+output files, the data formats they can read, and an optional check that
+those tests would notice a broken step. The second describes how
+<strong>vaibify itself</strong> is tested, as a worked example you can adapt for your
+own research code.</p>
+<section id="testing-your-project">
+<h2>Testing your project<a class="headerlink" href="#testing-your-project" title="Link to this heading"></a></h2>
+<p>Every step in a project can carry three categories of test. Each lives
+in the step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory, with file names suffixed by the step
+directory’s name (so steps never collide in a flat archive), and each
+reads its expectations from a JSON <strong>test standards</strong> file beside it.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Category</p></th>
+<th class="head"><p>What it checks</p></th>
+<th class="head"><p>Files</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Integrity</strong></p></td>
+<td><p>Each declared output file exists and is not empty. NumPy, CSV, JSON, JSON Lines, HDF5, whitespace-delimited and key-value files are also loaded and checked for the expected shape and, where it held at generation time, for the absence of NaN and infinity. Catches a file an agent wrote in the wrong format or left truncated.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">test_integrity_&lt;step&gt;.py</span></code>, <code class="docutils literal notranslate"><span class="pre">integrity_standards_&lt;step&gt;.json</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Qualitative</strong></p></td>
+<td><p>The categorical structure of each output is unchanged: the column names of a table, the top-level keys of a JSON file.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">test_qualitative_&lt;step&gt;.py</span></code>, <code class="docutils literal notranslate"><span class="pre">qualitative_standards_&lt;step&gt;.json</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Quantitative</strong></p></td>
+<td><p>Numerical outputs (single values, means, and for stochastic steps, standard deviations and percentiles) match the stored benchmarks within a relative and absolute tolerance.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">test_quantitative_&lt;step&gt;.py</span></code>, <code class="docutils literal notranslate"><span class="pre">quantitative_standards_&lt;step&gt;.json</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>An output in any other format is checked only for being non-empty: a
+text file must hold something besides whitespace, and a binary file (an
+image, FITS or Parquet file, for example) must hold at least one byte.</p>
+<p>The step’s <strong>Unit Tests</strong> row in the dashboard expands to show the three
+categories, with buttons to generate and run them. In-container agents
+reach the same operations through <code class="docutils literal notranslate"><span class="pre">vaibify-do</span></code> (<code class="docutils literal notranslate"><span class="pre">run-unit-tests</span></code> for
+all categories, <code class="docutils literal notranslate"><span class="pre">run-test-category</span></code> for one). Test files and standards
+are part of the step’s Level 1 surface; see
+<a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a> for how their state feeds the
+project’s level.</p>
+<p>A <strong>Passed</strong> badge is a claim about files. Every poll compares the
+content digests recorded by the last test run with the files as the
+container holds them, hashed inside the container. When that comparison
+could not be made — the container’s answer was missing, a file changed
+while it was being read, or the snapshot itself failed — nothing is
+marked stale and no test result is invalidated, but the badge reads
+<strong>? Passed, couldn’t check freshness</strong> rather than Passed, the step’s
+Level 1 requirement rows for its tests read unknown, the Level 1 cell
+cannot be attained, and the ⚠ column explains why. It is not a failure.
+Click the badge to run a diagnosis. The condition is recomputed on every
+poll and is never saved, so it clears by itself as soon as a poll can
+answer.</p>
+<section id="test-standards">
+<h3>Test standards<a class="headerlink" href="#test-standards" title="Link to this heading"></a></h3>
+<p>A quantitative standards file holds a default relative tolerance
+(<code class="docutils literal notranslate"><span class="pre">fDefaultRtol</span></code>) and a list of entries. Each entry names the value
+(<code class="docutils literal notranslate"><span class="pre">sName</span></code>), the file it comes from (<code class="docutils literal notranslate"><span class="pre">sDataFile</span></code>), how to find it in that
+file (<code class="docutils literal notranslate"><span class="pre">sAccessPath</span></code>, see <a class="reference internal" href="#access-path-syntax">Access path syntax</a>), the
+expected value (<code class="docutils literal notranslate"><span class="pre">fValue</span></code>) and its unit (<code class="docutils literal notranslate"><span class="pre">sUnit</span></code>). Optional fields set a
+per-entry relative tolerance (<code class="docutils literal notranslate"><span class="pre">fRtol</span></code>), an absolute tolerance (<code class="docutils literal notranslate"><span class="pre">fAtol</span></code>,
+default <code class="docutils literal notranslate"><span class="pre">1e-8</span></code>), an explicit file format (<code class="docutils literal notranslate"><span class="pre">sFormat</span></code>), and a note
+(<code class="docutils literal notranslate"><span class="pre">sNote</span></code>). The default relative tolerance comes from the project’s
+tolerance setting, <code class="docutils literal notranslate"><span class="pre">1e-6</span></code> unless you change it.</p>
+<p>When tests are regenerated, the per-entry <code class="docutils literal notranslate"><span class="pre">fRtol</span></code>, <code class="docutils literal notranslate"><span class="pre">fAtol</span></code>, <code class="docutils literal notranslate"><span class="pre">sNote</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sUnit</span></code> you edited by hand are kept for every entry whose <code class="docutils literal notranslate"><span class="pre">sName</span></code> still
+exists. A test file you have customized is never overwritten without
+asking: generation stops and names the edited files, and only an
+explicit confirmation replaces them.</p>
+</section>
+<section id="how-tests-are-generated">
+<h3>How tests are generated<a class="headerlink" href="#how-tests-are-generated" title="Link to this heading"></a></h3>
+<p>Test generation is <strong>deterministic</strong>. Unit tests should not be produced
+by prompting a model, whose output varies from run to run; they should
+be computed from the results. When you press <strong>Generate</strong>, a
+self-contained Python introspection script runs inside the container,
+reads each of the step’s declared output files, and records what it
+finds: shape, data type, NaN and infinity counts, column names, JSON
+keys, and benchmark values. vaibify then writes the three standards
+files and the three test files mechanically from that report. No
+language model is involved.</p>
+<p>The generator also classifies each step’s randomness, because a
+tolerance that suits a deterministic calculation is meaningless for a
+sampler:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Classification</p></th>
+<th class="head"><p>When</p></th>
+<th class="head"><p>Quantitative entries and tolerance</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">deterministic</span></code></p></td>
+<td><p>No random-number framework is used in the step’s scripts, or no array is large enough to summarize</p></td>
+<td><p>Single values and means, at the default tolerance</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">stochastic</span></code></p></td>
+<td><p>A random-number framework is used and an output array holds at least 64 samples</p></td>
+<td><p>Means, standard deviations and percentiles, each with a tolerance derived from its sampling standard error at three sigma (following Oberkampf &amp; Roy 2010 and Vehtari et al. 2021)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">stochastic_unseeded</span></code></p></td>
+<td><p>As above, and the step’s randomness is flagged as unseeded</p></td>
+<td><p>Mean and median only, at a placeholder 10% tolerance with a note asking you to seed the source of randomness</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unintrospectable</span></code></p></td>
+<td><p>Output files exist but yield no numeric benchmark</p></td>
+<td><p>None; the introspector’s errors are recorded instead</p></td>
+</tr>
+</tbody>
+</table>
+<p>The generator is a foundation, not a complete answer. Generating
+meaningful tests for arbitrary data structures is hard, so you, or an
+agent you direct, are expected to extend the standards for what matters
+in your science. An agent asked for tests is steered to the
+deterministic generator (<code class="docutils literal notranslate"><span class="pre">generate-tests-deterministic</span></code>), which pins
+what is actually in the data and never overwrites an edited file.</p>
+<p>Two other paths exist. A quantitative standards file can be refreshed
+from live data outside the dashboard, from the command line; see
+<a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>. And the generation route can still ask a language model (the
+in-container Claude Code, or a provider API key you have stored) to
+write tests, but only when a caller explicitly turns the deterministic
+mode off; the dashboard’s <strong>Generate</strong> button does not. That route is
+researcher-only, because model-written test content must be reviewed.</p>
+</section>
+<section id="checking-that-your-tests-have-teeth">
+<h3>Checking that your tests have teeth<a class="headerlink" href="#checking-that-your-tests-have-teeth" title="Link to this heading"></a></h3>
+<p>A test that passes is not evidence that it would fail on broken code.
+The expanded quantitative-tests block carries a <strong>Falsification</strong> row
+with a <strong>Check test teeth</strong> button. It mutation-tests the step’s own
+Python code with <code class="docutils literal notranslate"><span class="pre">cosmic-ray</span></code> (deliberately breaking it, for example by
+flipping a <code class="docutils literal notranslate"><span class="pre">&lt;</span></code> to a <code class="docutils literal notranslate"><span class="pre">&gt;</span></code>), re-runs the step and its quantitative tests
+for each mutant, and records the <strong>kill rate</strong>: the fraction of
+mutations the tests noticed.</p>
+<ul class="simple">
+<li><p>The kill rate measures the tests’ sensitivity to faults, never the
+accuracy of the result.</p></li>
+<li><p>It is <strong>non-gating</strong>: no PROOF level reads it. Some mutations change
+nothing observable (equivalent mutants), so 100% is unreachable in
+general and a hard pass/fail would be dishonest.</p></li>
+<li><p>It applies only to a step whose computation is Python source and
+whose quantitative standards are classified <code class="docutils literal notranslate"><span class="pre">deterministic</span></code> with at
+least one benchmark. Any other step reads <strong>not applicable</strong>, never
+green, with the reason named.</p></li>
+<li><p>The record is keyed to a digest of the step’s scripts and standards,
+so any edit to either invalidates it.</p></li>
+<li><p>Runs happen only on demand; the cost is roughly the number of mutants
+times the step’s run time, with a per-mutant time limit.</p></li>
+</ul>
+</section>
+</section>
+<section id="supported-data-formats">
+<h2>Supported data formats<a class="headerlink" href="#supported-data-formats" title="Link to this heading"></a></h2>
+<p>The test generator and the quantitative tests read output files through
+a common set of loaders. This section is the reference for which files
+they can read and how to point a benchmark at a value inside one.</p>
+<section id="format-table">
+<h3>Format table<a class="headerlink" href="#format-table" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Format</p></th>
+<th class="head"><p>Extensions</p></th>
+<th class="head"><p>Library required</p></th>
+<th class="head"><p>Domain</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>NumPy array</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npy</span></code></p></td>
+<td><p>numpy</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>NumPy archive</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.npz</span></code></p></td>
+<td><p>numpy</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.json</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON Lines</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.jsonl</span></code>, <code class="docutils literal notranslate"><span class="pre">.ndjson</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>CSV</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.csv</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>HDF5</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.h5</span></code>, <code class="docutils literal notranslate"><span class="pre">.hdf5</span></code></p></td>
+<td><p>h5py</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Whitespace-delimited</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.dat</span></code>, <code class="docutils literal notranslate"><span class="pre">.txt</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Key-value text</p></td>
+<td><p>detected in <code class="docutils literal notranslate"><span class="pre">.dat</span></code>/<code class="docutils literal notranslate"><span class="pre">.txt</span></code>, or <code class="docutils literal notranslate"><span class="pre">sFormat:</span> <span class="pre">keyvalue</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Fixed-width text</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sFormat:</span> <span class="pre">fixedwidth</span></code> only</p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Multi-table text</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sFormat:</span> <span class="pre">multitable</span></code> only</p></td>
+<td><p>(standard library)</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-even"><td><p>Excel</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.xlsx</span></code>, <code class="docutils literal notranslate"><span class="pre">.xls</span></code></p></td>
+<td><p>openpyxl</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>Parquet</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.parquet</span></code></p></td>
+<td><p>pyarrow</p></td>
+<td><p>Data science</p></td>
+</tr>
+<tr class="row-even"><td><p>Image</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.png</span></code>, <code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, <code class="docutils literal notranslate"><span class="pre">.jpeg</span></code>, <code class="docutils literal notranslate"><span class="pre">.tiff</span></code>, <code class="docutils literal notranslate"><span class="pre">.tif</span></code></p></td>
+<td><p>Pillow</p></td>
+<td><p>General</p></td>
+</tr>
+<tr class="row-odd"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fits</span></code>, <code class="docutils literal notranslate"><span class="pre">.fit</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-even"><td><p>VOTable</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vot</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-odd"><td><p>IPAC table</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.ipac</span></code></p></td>
+<td><p>astropy</p></td>
+<td><p>Astronomy</p></td>
+</tr>
+<tr class="row-even"><td><p>MATLAB</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.mat</span></code></p></td>
+<td><p>scipy</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fortran unformatted</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.unf</span></code></p></td>
+<td><p>scipy</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-even"><td><p>VTK mesh</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vtk</span></code>, <code class="docutils literal notranslate"><span class="pre">.vtu</span></code></p></td>
+<td><p>pyvista</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-odd"><td><p>CGNS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cgns</span></code></p></td>
+<td><p>h5py</p></td>
+<td><p>Engineering</p></td>
+</tr>
+<tr class="row-even"><td><p>FASTA</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fasta</span></code>, <code class="docutils literal notranslate"><span class="pre">.fa</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>FASTQ</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.fastq</span></code>, <code class="docutils literal notranslate"><span class="pre">.fq</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>VCF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.vcf</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>BED</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.bed</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>GFF/GTF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.gff</span></code>, <code class="docutils literal notranslate"><span class="pre">.gtf</span></code>, <code class="docutils literal notranslate"><span class="pre">.gff3</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>SAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sam</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-even"><td><p>BAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.bam</span></code></p></td>
+<td><p>pysam</p></td>
+<td><p>Biology</p></td>
+</tr>
+<tr class="row-odd"><td><p>SPSS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sav</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social science</p></td>
+</tr>
+<tr class="row-even"><td><p>Stata</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.dta</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social science</p></td>
+</tr>
+<tr class="row-odd"><td><p>SAS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.sas7bdat</span></code></p></td>
+<td><p>pyreadstat</p></td>
+<td><p>Social science</p></td>
+</tr>
+<tr class="row-even"><td><p>R data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.rds</span></code>, <code class="docutils literal notranslate"><span class="pre">.rdata</span></code>, <code class="docutils literal notranslate"><span class="pre">.rda</span></code></p></td>
+<td><p>pyreadr</p></td>
+<td><p>Social science</p></td>
+</tr>
+<tr class="row-odd"><td><p>Safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.safetensors</span></code></p></td>
+<td><p>safetensors</p></td>
+<td><p>AI/ML</p></td>
+</tr>
+<tr class="row-even"><td><p>TFRecord</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.tfrecord</span></code></p></td>
+<td><p>tfrecord</p></td>
+<td><p>AI/ML</p></td>
+</tr>
+<tr class="row-odd"><td><p>Syslog</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.log</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Security</p></td>
+</tr>
+<tr class="row-even"><td><p>CEF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cef</span></code></p></td>
+<td><p>(standard library)</p></td>
+<td><p>Security</p></td>
+</tr>
+<tr class="row-odd"><td><p>PCAP</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.pcap</span></code>, <code class="docutils literal notranslate"><span class="pre">.pcapng</span></code></p></td>
+<td><p>scapy</p></td>
+<td><p>Security</p></td>
+</tr>
+</tbody>
+</table>
+<p>Extensions are matched without regard to case, so <code class="docutils literal notranslate"><span class="pre">.RData</span></code> and <code class="docutils literal notranslate"><span class="pre">.FITS</span></code>
+are recognized.</p>
+</section>
+<section id="how-format-detection-works">
+<h3>How format detection works<a class="headerlink" href="#how-format-detection-works" title="Link to this heading"></a></h3>
+<ol class="arabic simple">
+<li><p>The file’s extension, lower-cased, is looked up in the table above.</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">.txt</span></code> or <code class="docutils literal notranslate"><span class="pre">.dat</span></code> file is checked for key-value structure. Ignoring
+blank lines, <code class="docutils literal notranslate"><span class="pre">#</span></code> comments and divider lines (a line of one repeated
+character), if more than a third of the lines contain <code class="docutils literal notranslate"><span class="pre">=</span></code>, the file
+is treated as key-value rather than whitespace-delimited. At test
+time, a <code class="docutils literal notranslate"><span class="pre">.txt</span></code> or <code class="docutils literal notranslate"><span class="pre">.dat</span></code> benchmark whose access path uses <code class="docutils literal notranslate"><span class="pre">key:</span></code> is
+also read as key-value.</p></li>
+<li><p>An unknown extension is inspected: if any of its first four bytes
+lies outside the ASCII range, it is reported as an unsupported binary
+format; otherwise it is read as whitespace-delimited text.</p></li>
+</ol>
+</section>
+<section id="optional-libraries">
+<h3>Optional libraries<a class="headerlink" href="#optional-libraries" title="Link to this heading"></a></h3>
+<p>Formats marked “(standard library)” need no extra packages. Every other
+library is imported only when a file of that format is read, so a
+missing library never breaks generation: that file is reported with an
+error naming the package to install, and the remaining files are
+processed normally.</p>
+</section>
+<section id="overriding-format-detection">
+<h3>Overriding format detection<a class="headerlink" href="#overriding-format-detection" title="Link to this heading"></a></h3>
+<p>When an extension is ambiguous (for example, a <code class="docutils literal notranslate"><span class="pre">.txt</span></code> file with
+fixed-width columns), set <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> on the entry in the quantitative
+standards file to override detection:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"sName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fFinalValue"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sDataFile"</span><span class="p">:</span><span class="w"> </span><span class="s2">"results.txt"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sAccessPath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"column:value,index:-1"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sFormat"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fixedwidth"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"fValue"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.25</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"sUnit"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Valid <code class="docutils literal notranslate"><span class="pre">sFormat</span></code> values are <code class="docutils literal notranslate"><span class="pre">npy</span></code>, <code class="docutils literal notranslate"><span class="pre">npz</span></code>, <code class="docutils literal notranslate"><span class="pre">json</span></code>, <code class="docutils literal notranslate"><span class="pre">jsonl</span></code>, <code class="docutils literal notranslate"><span class="pre">csv</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hdf5</span></code>, <code class="docutils literal notranslate"><span class="pre">whitespace</span></code>, <code class="docutils literal notranslate"><span class="pre">keyvalue</span></code>, <code class="docutils literal notranslate"><span class="pre">fixedwidth</span></code>, <code class="docutils literal notranslate"><span class="pre">multitable</span></code>, <code class="docutils literal notranslate"><span class="pre">excel</span></code>,
+<code class="docutils literal notranslate"><span class="pre">parquet</span></code>, <code class="docutils literal notranslate"><span class="pre">image</span></code>, <code class="docutils literal notranslate"><span class="pre">fits</span></code>, <code class="docutils literal notranslate"><span class="pre">votable</span></code>, <code class="docutils literal notranslate"><span class="pre">ipac</span></code>, <code class="docutils literal notranslate"><span class="pre">matlab</span></code>, <code class="docutils literal notranslate"><span class="pre">fortran</span></code>,
+<code class="docutils literal notranslate"><span class="pre">vtk</span></code>, <code class="docutils literal notranslate"><span class="pre">cgns</span></code>, <code class="docutils literal notranslate"><span class="pre">fasta</span></code>, <code class="docutils literal notranslate"><span class="pre">fastq</span></code>, <code class="docutils literal notranslate"><span class="pre">vcf</span></code>, <code class="docutils literal notranslate"><span class="pre">bed</span></code>, <code class="docutils literal notranslate"><span class="pre">gff</span></code>, <code class="docutils literal notranslate"><span class="pre">sam</span></code>, <code class="docutils literal notranslate"><span class="pre">bam</span></code>,
+<code class="docutils literal notranslate"><span class="pre">spss</span></code>, <code class="docutils literal notranslate"><span class="pre">stata</span></code>, <code class="docutils literal notranslate"><span class="pre">sas</span></code>, <code class="docutils literal notranslate"><span class="pre">rdata</span></code>, <code class="docutils literal notranslate"><span class="pre">safetensors</span></code>, <code class="docutils literal notranslate"><span class="pre">tfrecord</span></code>, <code class="docutils literal notranslate"><span class="pre">syslog</span></code>,
+<code class="docutils literal notranslate"><span class="pre">cef</span></code> and <code class="docutils literal notranslate"><span class="pre">pcap</span></code>.</p>
+</section>
+<section id="access-path-syntax">
+<h3>Access path syntax<a class="headerlink" href="#access-path-syntax" title="Link to this heading"></a></h3>
+<p>Each quantitative benchmark carries an access path, a comma-separated
+list of <code class="docutils literal notranslate"><span class="pre">name:value</span></code> fields that tells the test where a value lives in
+its file. The fields are <code class="docutils literal notranslate"><span class="pre">key:</span></code>, <code class="docutils literal notranslate"><span class="pre">column:</span></code>, <code class="docutils literal notranslate"><span class="pre">dataset:</span></code>, <code class="docutils literal notranslate"><span class="pre">hdu:</span></code>,
+<code class="docutils literal notranslate"><span class="pre">section:</span></code> and <code class="docutils literal notranslate"><span class="pre">index:</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">index:</span></code> takes either an integer position (negative counts from the
+end; several comma-separated integers address a multi-dimensional
+array) or an aggregate: <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">min</span></code>, <code class="docutils literal notranslate"><span class="pre">max</span></code>, <code class="docutils literal notranslate"><span class="pre">std</span></code>, <code class="docutils literal notranslate"><span class="pre">p5</span></code>, <code class="docutils literal notranslate"><span class="pre">p25</span></code>, <code class="docutils literal notranslate"><span class="pre">p50</span></code>,
+<code class="docutils literal notranslate"><span class="pre">p75</span></code> or <code class="docutils literal notranslate"><span class="pre">p95</span></code>. Without <code class="docutils literal notranslate"><span class="pre">index:</span></code>, a tabular or array value defaults to
+the last element.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Format family</p></th>
+<th class="head"><p>Example</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>CSV, whitespace, Excel, SPSS, Stata, SAS, VOTable, IPAC</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:value,index:-1</span></code></p></td>
+<td><p>Last row of the <code class="docutils literal notranslate"><span class="pre">value</span></code> column</p></td>
+</tr>
+<tr class="row-odd"><td><p>CSV, whitespace</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:value,index:mean</span></code></p></td>
+<td><p>Mean of the <code class="docutils literal notranslate"><span class="pre">value</span></code> column</p></td>
+</tr>
+<tr class="row-even"><td><p>NumPy archive, MATLAB, safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:arrayName,index:0</span></code></p></td>
+<td><p>First element of the named array</p></td>
+</tr>
+<tr class="row-odd"><td><p>NumPy archive, MATLAB, safetensors</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:arrayName,index:mean</span></code></p></td>
+<td><p>Mean of the named array</p></td>
+</tr>
+<tr class="row-even"><td><p>NumPy array (<code class="docutils literal notranslate"><span class="pre">.npy</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:0</span></code></p></td>
+<td><p>First element (flattened)</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:path.to.field</span></code></p></td>
+<td><p>Nested key traversal; a numeric segment indexes a list</p></td>
+</tr>
+<tr class="row-even"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:listName,index:0</span></code></p></td>
+<td><p>First element of a JSON list</p></td>
+</tr>
+<tr class="row-odd"><td><p>JSON</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:listName,index:mean</span></code></p></td>
+<td><p>Mean of a JSON list</p></td>
+</tr>
+<tr class="row-even"><td><p>HDF5, CGNS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dataset:/group/name,index:0</span></code></p></td>
+<td><p>First element of a dataset</p></td>
+</tr>
+<tr class="row-odd"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hdu:1,column:flux,index:0</span></code></p></td>
+<td><p>First row of a column in HDU 1</p></td>
+</tr>
+<tr class="row-even"><td><p>FITS</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hdu:0,index:mean</span></code></p></td>
+<td><p>Mean of the image data in HDU 0</p></td>
+</tr>
+<tr class="row-odd"><td><p>FASTA, FASTQ</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:mean</span></code></p></td>
+<td><p>Mean sequence length</p></td>
+</tr>
+<tr class="row-even"><td><p>VCF, BED, GFF, SAM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">column:POS,index:0</span></code></p></td>
+<td><p>First value in a column</p></td>
+</tr>
+<tr class="row-odd"><td><p>Key-value</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">key:parameterName</span></code></p></td>
+<td><p>Value associated with the key</p></td>
+</tr>
+<tr class="row-even"><td><p>PCAP</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:mean</span></code></p></td>
+<td><p>Mean packet length</p></td>
+</tr>
+<tr class="row-odd"><td><p>Syslog, CEF</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">index:0</span></code></p></td>
+<td><p>Line or record count</p></td>
+</tr>
+<tr class="row-even"><td><p>Multi-table</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">section:0,column:x,index:0</span></code></p></td>
+<td><p>First value in column <code class="docutils literal notranslate"><span class="pre">x</span></code> of the first table</p></td>
+</tr>
+</tbody>
+</table>
+<p>A <code class="docutils literal notranslate"><span class="pre">key:</span></code> value may itself contain commas; it extends until the next
+recognized field name.</p>
+</section>
+<section id="security-limits">
+<h3>Security limits<a class="headerlink" href="#security-limits" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>NumPy files are always loaded with <code class="docutils literal notranslate"><span class="pre">allow_pickle=False</span></code>, so a
+malicious <code class="docutils literal notranslate"><span class="pre">.npy</span></code> or <code class="docutils literal notranslate"><span class="pre">.npz</span></code> cannot execute code.</p></li>
+<li><p>PyTorch checkpoints (<code class="docutils literal notranslate"><span class="pre">.pt</span></code>, <code class="docutils literal notranslate"><span class="pre">.pth</span></code>) are deliberately unsupported,
+because they deserialize with pickle. Use safetensors instead.</p></li>
+<li><p>The introspection script refuses any output path that resolves
+outside the step directory.</p></li>
+<li><p>Files larger than 500 MB are not introspected.</p></li>
+<li><p>JSON traversal during introspection stops at ten levels of nesting.</p></li>
+<li><p>Each file contributes at most 250 benchmark entries, so a wide
+dataset cannot explode the test suite.</p></li>
+</ul>
+</section>
+<section id="unsupported-files">
+<h3>Unsupported files<a class="headerlink" href="#unsupported-files" title="Link to this heading"></a></h3>
+<p>A file that cannot be introspected (an unrecognized binary format, one
+over the size limit, or one whose loader fails) is reported as not
+loadable with the reason, and no benchmarks are generated from it. If
+every output of a step is like this, the quantitative standards are
+classified <code class="docutils literal notranslate"><span class="pre">unintrospectable</span></code> and carry the collected errors. A text
+file with an unknown extension falls back to whitespace-delimited
+parsing.</p>
+<p>Adding a new format takes a loader in <code class="docutils literal notranslate"><span class="pre">vaibify/gui/dataLoaders.py</span></code>, a
+matching benchmarker in the container-side introspection script, and
+integrity and no-NaN support; the two format maps must be kept in step
+by hand, because the container script cannot import from the host.
+Every new library import must degrade gracefully when the library is
+absent.</p>
+</section>
+</section>
+<section id="how-vaibify-is-tested">
+<h2>How vaibify is tested<a class="headerlink" href="#how-vaibify-is-tested" title="Link to this heading"></a></h2>
+<p>vaibify was written entirely by AI agents, so its own test suite
+carries the weight a human author’s understanding would otherwise
+carry. Its tests fall into kinds distinguished not by where they live
+(nearly all are <code class="docutils literal notranslate"><span class="pre">pytest</span></code> tests under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>) but by the question each
+answers.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Kind</p></th>
@@ -126,7 +665,7 @@ question each one answers.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><strong>Unit / behavior tests</strong></p></td>
+<tr class="row-even"><td><p><strong>Unit tests</strong></p></td>
 <td><p>Does input <em>X</em> produce output <em>Y</em>?</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
 </tr>
@@ -134,145 +673,131 @@ question each one answers.</p>
 <td><p>Is the codebase wired together the way it must be?</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">tests/testArchitecturalInvariants.py</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Falsification tests</strong></p></td>
-<td><p>If a safety guard broke, would any test <em>notice</em>?</p></td>
+<tr class="row-even"><td><p><strong>Security invariants</strong></p></td>
+<td><p>Do the security boundaries hold?</p></td>
+<td><p>the suite named in <code class="docutils literal notranslate"><span class="pre">security.yml</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Style invariants</strong></p></td>
+<td><p>Do names and signatures follow the style contract?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/testStyleInvariants.py</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Browser tests</strong></p></td>
+<td><p>Does the real dashboard behave in a real browser?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/browser/</span></code>, marked <code class="docutils literal notranslate"><span class="pre">browser</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Falsification tests</strong></p></td>
+<td><p>If a safety guard broke, would any test notice?</p></td>
 <td><p>marked <code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code> across <code class="docutils literal notranslate"><span class="pre">tests/</span></code></p></td>
 </tr>
 </tbody>
 </table>
-<p>Counts are deliberately not written here. They were, and they went
-stale: this table claimed ~146 falsification tests long after the real
-number passed 290, which is the same prose-drifts-from-code failure the
-falsification tests themselves exist to catch. The live numbers are on
-the README badges, refreshed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> on every push to <code class="docutils literal notranslate"><span class="pre">main</span></code>.
-To count them yourself:</p>
+<p>Counts are deliberately not written here, because a hand-typed count
+drifts from the code. The live numbers are on the README badges, which
+<code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> recomputes after every merge by collecting the suites. To
+count them yourself:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not docker and not docker_live"</span><span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
 python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
 python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>falsification<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser<span class="w"> </span>--collect-only<span class="w"> </span>-q<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-c<span class="w"> </span><span class="s2">"::"</span>
 </pre></div>
 </div>
-<p>The first two are conventional. The third is the one that needs
-explaining.</p>
-<section id="why-falsification-tests-exist">
-<h2>Why falsification tests exist<a class="headerlink" href="#why-falsification-tests-exist" title="Link to this heading"></a></h2>
-<p>A passing test suite proves that the tests and the code <strong>agree</strong> — not
-that the code is <strong>correct</strong>. When an AI agent writes the code, the
-tests, <em>and</em> the review, a single blind spot can author all three, and a
-green suite can hide a serious bug. (This is not hypothetical: a refactor
-once passed the entire suite while carrying a defect that would have
-broken every real session, because the fixtures used a degenerate input
-and never drove the real path.)</p>
+<p><strong>Unit tests</strong> check individual outcomes along a code path, on every
+supported operating system and Python version; line coverage is
+reported to Codecov (the README badge).</p>
+<p><strong>Invariant tests</strong> enforce design decisions rather than behavior. A new
+agent, with a short context window, will not know a decision exists
+unless it is written down <em>and</em> enforced, so these tests stop an agent
+from breaking a design choice even when its output is correct.
+Architectural invariants govern how modules may import one another, how
+paths are handled, how routes are registered and which routes an agent
+may reach, and keep science-specific identifiers out of the source.
+Security invariants cover authorization at the browser, agent and
+WebSocket boundaries (see <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>). Style
+invariants enforce the naming contract (type-prefixed variable and
+function names) against a frozen inventory of grandfathered exceptions
+whose budget may only fall. All three live under <code class="docutils literal notranslate"><span class="pre">tests/</span></code>, so they run
+in every unit-test cell; each also has its own named lane so that its
+result is visible on its own line. A separate <code class="docutils literal notranslate"><span class="pre">lint</span></code> check runs
+error-grade static analysis (pyflakes and <code class="docutils literal notranslate"><span class="pre">pylint</span> <span class="pre">--errors-only</span></code>)
+against a recorded baseline.</p>
+<p><strong>Browser tests</strong> drive the dashboard with Playwright in Chromium,
+Firefox and WebKit against a real hub; see
+<a class="reference internal" href="#the-three-execution-lanes">The three execution lanes</a>.</p>
+</section>
+<section id="falsification-tests">
+<h2>Falsification tests<a class="headerlink" href="#falsification-tests" title="Link to this heading"></a></h2>
 <p>A <strong>falsification test</strong> is the software equivalent of a laboratory
 <strong>negative control</strong>. An ordinary test is a positive result: “given good
-code, the answer is right.” A falsification test additionally proves the
-<em>negative control</em>: “given deliberately <strong>broken</strong> code, the test
+code, the answer is right.” A falsification test also proves the
+negative control: “given deliberately <strong>broken</strong> code, the test
 <strong>fails</strong>.” A test that stays green when its guard is sabotaged is an
-assay with no working negative control — it would never catch the real
-bug either.</p>
-<p>Concretely, a falsification test is <strong>kill-confirmed</strong>: it has been
-proven to <em>fail</em> when a specific one-line mutation is applied to the code
-it defends, then to pass again once that mutation is reverted.</p>
-</section>
-<section id="how-the-falsification-suite-is-built">
-<h2>How the falsification suite is built<a class="headerlink" href="#how-the-falsification-suite-is-built" title="Link to this heading"></a></h2>
-<p>Four pieces make “every falsification test still has teeth” an
-enforceable, re-checkable guarantee:</p>
-<ol class="arabic">
-<li><p><strong>The marker.</strong> Falsification tests carry <code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code>.
-Dedicated files (<code class="docutils literal notranslate"><span class="pre">tests/test*MutationCoverage.py</span></code> and the tier-1
-dedicated files) mark every test via a module-level
-<code class="docutils literal notranslate"><span class="pre">pytestmark</span> <span class="pre">=</span> <span class="pre">pytest.mark.falsification</span></code>; files that mix falsification
-tests with ordinary unit tests mark only the falsification ones with a
-per-test decorator. Run just this class with <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">-m</span> <span class="pre">falsification</span></code>.</p></li>
-<li><p><strong>The <code class="docutils literal notranslate"><span class="pre">Kills:</span></code> docstring line.</strong> Every falsification test names, in its
-docstring, the exact mutation it is proven to catch.</p></li>
-<li><p><strong>The registry</strong> — <code class="docutils literal notranslate"><span class="pre">tests/falsificationRegistry.py</span></code> — records that
-mutation in a <em>machine-applicable</em> form: one
-<code class="docutils literal notranslate"><span class="pre">Falsification(nodeid,</span> <span class="pre">source,</span> <span class="pre">old,</span> <span class="pre">new)</span></code> entry per test, where <code class="docutils literal notranslate"><span class="pre">old</span></code>
-is the exact text to replace and <code class="docutils literal notranslate"><span class="pre">new</span></code> is the break.</p>
-<p><code class="docutils literal notranslate"><span class="pre">old</span></code> must occur exactly <code class="docutils literal notranslate"><span class="pre">iExpectedOccurrences</span></code> times (default 1). A
-guard that is deliberately checked in more than one place — the
-ownership-transfer conditions run once before anything is minted and
-again at the commit point — needs <strong>every</strong> copy mutated: disabling
-one changes nothing a caller can observe, so the entry reports
-SURVIVED and reads as an undefended guard. Stating the count makes a
-copy appearing or vanishing an error rather than a quiet
-half-mutation.</p>
-</li>
-<li><p><strong>The re-kill harness</strong> — <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> — is the
-standing negative control. For every registry entry it requires the
-test to pass on clean code, applies the mutation, requires the test to
-then fail <strong>in its call phase</strong>, and restores the source. The verdict
-is read from the JUnit XML pytest writes: a collection error, a
-fixture-setup or teardown error, a mutant that does not compile (or,
-for JavaScript, does not pass <code class="docutils literal notranslate"><span class="pre">node</span> <span class="pre">--check</span></code>) and a hang are each
-reported as “not a kill”. Every replayed entry has a wall-clock limit
-(<code class="docutils literal notranslate"><span class="pre">--entry-timeout</span></code>, 600 seconds by default) enforced on its whole
-process group, and the entry that timed out is named. Results are
-flushed as they are known, so a job stopped at its ceiling leaves a
-log. The harness reports any marked test with no entry and exits
-nonzero on any gap. It
-mutates source, so it is deliberately <strong>not</strong> collected by
-<code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">tests/</span></code>; run it directly:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/reconfirmFalsification.py
-</pre></div>
-</div>
-<p>In CI the work is divided twice: <strong>across machines</strong> with
-<code class="docutils literal notranslate"><span class="pre">--shard</span> <span class="pre">I/N</span></code>, and <strong>within a machine</strong> with <code class="docutils literal notranslate"><span class="pre">--workers</span> <span class="pre">W</span></code>, each
-worker a child harness holding its own disposable worktree. The
-union of a leg’s shards is that leg’s whole registry, so every entry
-is still re-confirmed on every OS and Python in the matrix.</p>
-<p>Workers are only safe for entries that hold nothing the machine
-owns, so the registry splits into two classes. An entry whose test
-binds a port, opens a unix socket, drives the Docker daemon or
-starts a browser is <code class="docutils literal notranslate"><span class="pre">exclusive</span></code> and runs in a lane of its own at one
-worker; the other ~92% are <code class="docutils literal notranslate"><span class="pre">shareable</span></code>. Sharding across machines
-never needed this — every runner has its own daemon and its own
-ports — which is why the class split arrives only alongside workers.
-The <code class="docutils literal notranslate"><span class="pre">exclusive</span></code> marker is applied per file and enforced: a file that
-binds a port and forgets it fails the build rather than colliding
-weeks later in an unrelated test. A single shard says so in its own report and
-declines the whole-registry coverage check, because a slice cannot
-speak for the registry. The <code class="docutils literal notranslate"><span class="pre">falsification:summary</span></code> job is the only
-place the union exists: it runs that coverage check, requires every
-declared shard to have reported, and names any surviving mutation by
-leg and shard so a red lane never means opening jobs one at a time.
-Locally the flag is for machines, not people — <code class="docutils literal notranslate"><span class="pre">--only</span> <span class="pre">SUBSTRING</span></code> is
-what you want when re-confirming a chunk you just wrote.</p>
-<p>Entries whose test drives a real container (<code class="docutils literal notranslate"><span class="pre">docker_live</span></code>) cannot be
-judged on a host with no Docker daemon: the harness demands a daemon
-for every run it judges, precisely so a skip is never miscounted as a
-surviving mutant, and that same demand turns those entries into
-errors where no daemon can exist. They are reported by name as NOT
-EVALUATED and left out of the denominator instead. That is safe only
-because they <em>are</em> judged wherever a daemon exists, so the Linux CI
-legs set <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code>, which refuses the deferral
-outright — losing Docker there turns the lane red rather than
-silently shrinking what it reports against.</p>
-</li>
+assay with no working negative control; it would never catch the real
+bug either. This is mutation testing (DeMillo, Lipton &amp; Sayward 1978),
+but the breaks are chosen deliberately rather than at random, hence the
+name.</p>
+<p>Each falsification test is <strong>kill-confirmed</strong>: it has been shown to fail
+when one specific mutation is applied to the code it defends, and to
+pass again once the mutation is reverted. Four pieces keep that
+guarantee re-checkable:</p>
+<ol class="arabic simple">
+<li><p><strong>The marker.</strong> Falsification tests carry
+<code class="docutils literal notranslate"><span class="pre">&#64;pytest.mark.falsification</span></code>. Dedicated files mark every test at
+module level; mixed files mark only the falsification tests.</p></li>
+<li><p><strong>The <code class="docutils literal notranslate"><span class="pre">Kills:</span></code> line.</strong> Every falsification test names, in its
+docstring, the mutation it is proven to catch.</p></li>
+<li><p><strong>The registry.</strong> <code class="docutils literal notranslate"><span class="pre">tests/falsificationRegistry.py</span></code> records each
+mutation in machine-applicable form:
+<code class="docutils literal notranslate"><span class="pre">Falsification(nodeid,</span> <span class="pre">source,</span> <span class="pre">old,</span> <span class="pre">new)</span></code>, where <code class="docutils literal notranslate"><span class="pre">old</span></code> is the exact
+text to replace and <code class="docutils literal notranslate"><span class="pre">new</span></code> is the break. <code class="docutils literal notranslate"><span class="pre">old</span></code> must occur exactly
+<code class="docutils literal notranslate"><span class="pre">iExpectedOccurrences</span></code> times (default one). A guard checked
+deliberately in more than one place needs every copy mutated, or the
+other copy still refuses and the entry reads as undefended.</p></li>
+<li><p><strong>The re-kill harness.</strong> <code class="docutils literal notranslate"><span class="pre">tools/reconfirmFalsification.py</span></code> is the
+standing negative control. For each registry entry it requires the
+test to pass on clean code, applies the mutation in a disposable git
+worktree, requires the test then to fail in its call phase, and
+restores the source. A collection error, a fixture error, a mutant
+that does not compile (or, for JavaScript, does not pass
+<code class="docutils literal notranslate"><span class="pre">node</span> <span class="pre">--check</span></code>) and a hang are each reported as not a kill. Each
+entry has a wall-clock limit (<code class="docutils literal notranslate"><span class="pre">--entry-timeout</span></code>, 600 seconds by
+default). The harness also reports any marked test with no registry
+entry, and exits nonzero on any gap.</p></li>
 </ol>
-<p>Three architectural invariants keep the class from silently decaying:
+<p>Entries are divided by what they hold. An entry whose test binds a port,
+opens a Unix socket, drives the Docker daemon or starts a browser is
+<code class="docutils literal notranslate"><span class="pre">exclusive</span></code> and runs alone; every other entry is <code class="docutils literal notranslate"><span class="pre">shareable</span></code> and may run
+under parallel workers (<code class="docutils literal notranslate"><span class="pre">--workers</span></code>), each in its own worktree. The
+<code class="docutils literal notranslate"><span class="pre">exclusive</span></code> marker is applied per file and enforced: a file that binds a
+port without it fails the build. In CI the shareable class is also split
+across machines (<code class="docutils literal notranslate"><span class="pre">--shard</span> <span class="pre">I/N</span></code>). A single shard cannot speak for the
+whole registry and says so; the <code class="docutils literal notranslate"><span class="pre">falsification:summary</span></code> job adds the
+shards up, checks registry completeness, requires every declared shard
+to have reported, and names any surviving mutation by leg and shard.</p>
+<p>An entry whose test drives a real container cannot be judged without
+a Docker daemon; the harness reports it by name as NOT EVALUATED rather
+than counting a skip as a survivor. The Linux CI legs set
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code>, so there a missing daemon is a red
+lane, not a deferral.</p>
+<p>Three architectural invariants keep the class from decaying:
 <code class="docutils literal notranslate"><span class="pre">testFalsificationFilesDeclareMarker</span></code>,
-<code class="docutils literal notranslate"><span class="pre">testFalsificationTestsRecordTheKilledMutation</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">testFalsificationTestsRecordTheKilledMutation</span></code> and
 <code class="docutils literal notranslate"><span class="pre">testFalsificationRegistryIsWellFormed</span></code>.</p>
-<section id="the-independent-oracle-rule-important">
-<h3>The independent-oracle rule (important)<a class="headerlink" href="#the-independent-oracle-rule-important" title="Link to this heading"></a></h3>
-<p>Kill-confirmation proves a test is <strong>sensitive</strong> to change; it does
-<strong>not</strong> prove the test’s asserted value is <strong>correct</strong>. If a test is
-written against code that is itself buggy, its oracle freezes the bug —
-and the test will still catch a deliberate break, so it passes
-kill-confirmation while certifying the wrong answer. A falsification test
-is therefore trustworthy only when its expected value is derived
-<strong>independently of the code</strong> (a specification, an analytic result, a
-conservation law, a published benchmark) <strong>and</strong> it is kill-confirmed.
-Neither condition alone is enough. This rule lives in the
-<code class="docutils literal notranslate"><span class="pre">falsificationRegistry.py</span></code> docstring; do not weaken it.</p>
+<section id="the-independent-oracle-rule">
+<h3>The independent-oracle rule<a class="headerlink" href="#the-independent-oracle-rule" title="Link to this heading"></a></h3>
+<p>Kill-confirmation proves a test is <strong>sensitive</strong> to change; it does not
+prove that the value it asserts is <strong>correct</strong>. A test written against
+buggy code freezes the bug in its oracle, and it will still catch a
+deliberate break. A falsification test is trustworthy only when its
+expected value comes from somewhere independent of the code (a
+specification, an analytic result, a conservation law, a published
+benchmark) <strong>and</strong> it is kill-confirmed. Neither alone is enough. The
+rule is stated in the registry’s docstring; do not weaken it.</p>
 </section>
 </section>
-<section id="falsification-testing-vs-the-mutation-gate-two-different-jobs">
-<h2>Falsification testing vs. the mutation gate — two different jobs<a class="headerlink" href="#falsification-testing-vs-the-mutation-gate-two-different-jobs" title="Link to this heading"></a></h2>
-<p>Both use mutation testing, but they point at different things, and the CI
-runs them as two separate workflows:</p>
+<section id="the-mutation-gate">
+<h2>The mutation gate<a class="headerlink" href="#the-mutation-gate" title="Link to this heading"></a></h2>
+<p>The mutation gate and the falsification suite both use mutation
+testing, but they answer different questions:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p></p></th>
@@ -282,98 +807,98 @@ runs them as two separate workflows:</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>What it mutates</p></td>
-<td><p>the guards our <em>existing</em> falsification tests already defend</p></td>
-<td><p>the code a branch changed against a chosen base</p></td>
+<td><p>guards that existing falsification tests already defend</p></td>
+<td><p>the lines a branch changed against a chosen base</p></td>
 </tr>
 <tr class="row-odd"><td><p>What it answers</p></td>
-<td><p>“do our existing guard-tests still catch their known breaks?”</p></td>
-<td><p>“did this branch add a guard with <strong>no</strong> defending test?”</p></td>
+<td><p>“do our guard tests still catch their known breaks?”</p></td>
+<td><p>“did this branch add code that no test defends?”</p></td>
 </tr>
 <tr class="row-even"><td><p>Direction</p></td>
-<td><p>backward-looking — maintains the committed suite</p></td>
-<td><p>forward-looking — discovers new gaps</p></td>
+<td><p>backward-looking: maintains the committed suite</p></td>
+<td><p>forward-looking: discovers new gaps</p></td>
 </tr>
 <tr class="row-odd"><td><p>When it runs</p></td>
-<td><p>automatically, on every pull request</p></td>
-<td><p><strong>manually only</strong> — see below</p></td>
+<td><p>on every pull request</p></td>
+<td><p>manually only</p></td>
 </tr>
 <tr class="row-even"><td><p>On failure</p></td>
-<td><p><strong>fails the job</strong> (a guard lost its test)</p></td>
-<td><p><strong>warns only</strong> — never fails the build</p></td>
+<td><p>fails the job</p></td>
+<td><p>warns only</p></td>
 </tr>
 </tbody>
 </table>
-<p><strong>The mutation gate is manual, and that is a real gap.</strong> It triggers on
-<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code> only. It used to run per-PR, but mutation-testing a
-large feature-branch diff exceeded the 60-minute ceiling and was
-canceled before it could post any signal — an advisory gate that dies
-on the PRs that matter most is pure friction. So it was made on-demand
-(commit <code class="docutils literal notranslate"><span class="pre">94abe35</span></code>), which means <strong>Python can merge with no mutation
-feedback at all</strong>. Falsification and the architectural invariants are
-still graded for real on every PR; the mutation gate is not.</p>
-<p>Run it deliberately from the Actions tab or with
+<p>The mutation gate runs only on <code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>, so Python can merge
+with no mutation feedback at all; falsification and the invariants are
+the per-PR guarantees. Run it from the Actions tab or with
 <code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">workflow</span> <span class="pre">run</span> <span class="pre">mutation.yml</span></code>, choosing <code class="docutils literal notranslate"><span class="pre">base_ref</span></code> (default <code class="docutils literal notranslate"><span class="pre">main</span></code>) and
-<code class="docutils literal notranslate"><span class="pre">max_mutants</span></code> (default 300, <code class="docutils literal notranslate"><span class="pre">0</span></code> = uncapped). Any mutants dropped by the
+<code class="docutils literal notranslate"><span class="pre">max_mutants</span></code> (default 300; <code class="docutils literal notranslate"><span class="pre">0</span></code> means uncapped). Mutants dropped by the
 cap are reported, never silently discarded.</p>
-<p><strong>Why warn-only.</strong> Mutation testing inevitably produces <em>equivalent
-mutants</em> — code changes with no observable effect (e.g. reordering a
-commutative comparison) — that <em>no</em> test could ever catch, so failing
-the build on every survivor would cry wolf and train everyone to ignore
-it. Surviving mutants are surfaced as <code class="docutils literal notranslate"><span class="pre">::warning::</span></code> annotations on the
-changed lines and as a job-summary table (module, line, operator,
-function). The sticky-PR-comment step is still in the workflow but is
-inert while the trigger is manual: it is guarded on
-<code class="docutils literal notranslate"><span class="pre">event_name</span> <span class="pre">==</span> <span class="pre">pull_request</span></code>, kept only so re-enabling the per-PR mode
-is a one-line change.</p>
-<p><strong>Do the two gates overlap?</strong> Barely, and by design. They mutate
-<em>different</em> sets of lines: falsification re-checks only lines that already
-carry a committed falsification test, while the mutation gate touches only
-lines a branch <em>changed</em>. The two intersect just when a branch edits an
-already-guarded line — where the double coverage is harmless. Otherwise
-they are complementary: falsification stops old guarantees from decaying,
-the mutation gate flags new code that arrived without a guarantee.</p>
+<p>It warns rather than fails because mutation testing inevitably produces
+equivalent mutants, changes no test could ever detect, and failing on
+every survivor would train everyone to ignore it. Survivors appear as
+warning annotations on the changed lines and as a job-summary table.</p>
+<p>They overlap only where a branch edits an already-guarded line:
+falsification stops old guarantees from decaying, and the mutation gate
+flags new code that arrived without one.</p>
 </section>
-<section id="running-the-suites-locally">
-<h2>Running the suites locally<a class="headerlink" href="#running-the-suites-locally" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
-
-<span class="c1"># everything (unit + invariants + falsification tests):</span>
-pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not docker and not docker_live"</span>
-
-<span class="c1"># just the falsification tests:</span>
-pytest<span class="w"> </span>-m<span class="w"> </span>falsification
-
-<span class="c1"># just the architectural invariants:</span>
-pytest<span class="w"> </span>tests/testArchitecturalInvariants.py
-
-<span class="c1"># the standing negative control (re-break each guard, confirm it's caught):</span>
-python<span class="w"> </span>tools/reconfirmFalsification.py
-
-<span class="c1"># the mutation gate on a module, for the curious (heavier; separate extra):</span>
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[mutation]"</span>
-cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cosmic-ray<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cr-rate<span class="w"> </span>session.sqlite
-</pre></div>
-</div>
+<section id="the-three-execution-lanes">
+<h2>The three execution lanes<a class="headerlink" href="#the-three-execution-lanes" title="Link to this heading"></a></h2>
+<p>Most of the suite runs in one process, with no Docker daemon and no
+browser. That leaves two real boundaries unexercised, and three lanes
+exist to cover them.</p>
+<p><strong>The browser lanes</strong> (<code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code>,
+<code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code>) load the real dashboard in a real browser against
+a real uvicorn hub, recording every console error and page error. Each
+runs on one Linux and Python cell: a browser journey does not become
+more trustworthy by running across the whole operating-system and
+Python matrix. Their Docker adapter is a <strong>fail-closed fake</strong>: every
+command it answers is declared in its contract, and anything else
+raises rather than returning a default. Firefox and WebKit deselect the
+tests marked <code class="docutils literal notranslate"><span class="pre">clipboardPermissions</span></code>, which need permissions only
+Chromium grants; those tests still run on Chromium for every pull
+request.</p>
+<p><strong>The container-acceptance lane</strong> (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>) puts each
+command the fake models to a real container, so a fake that drifts from
+the daemon is caught rather than believed. Every entry in the fake’s
+contract names an assertion in <code class="docutils literal notranslate"><span class="pre">tests/testContainerAcceptance.py</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">testEveryNamedLaneTwoAssertionExists</span></code> fails if one of those names is
+fiction. It also checks repository and workflow discovery, missing-file
+behavior, atomic copy and rename, the unprivileged container-user
+declaration, file modification times and SHA-256 reads, Python
+execution, and rerun-manifest verification. It runs nightly, so drift
+is caught up to a day late.</p>
+<p><strong>The fresh-image lane</strong> (<code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code>) builds the image from
+scratch, with no cache, on an amd64 and an arm64 runner, then runs the
+acceptance assertions against it and confirms that the image’s default
+user is not root. The nightly acceptance lane reuses a cached image
+keyed by a hash of every build input (<code class="docutils literal notranslate"><span class="pre">tools/computeBuildInputHash.py</span></code>),
+so on its own it says nothing about whether the image still builds.</p>
+<p>No lane may skip itself green. <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_BROWSER</span></code> turn each lane’s convenience skip into a
+failure in CI, because a skipped lane that reports success has run
+nothing. The shell-completion tests follow the same rule with
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_SHELLS</span></code>: they drive the shipped scripts in real bash,
+zsh and fish, skip a missing shell on a developer’s machine, and fail
+on the unit workflows, which install the shells.</p>
+<p>A green browser lane does <strong>not</strong> mean the frontend is verified. Its
+fake says nothing about container launch, file ownership on write, the
+real transport, terminal content or figure rendering.</p>
 </section>
 <section id="continuous-integration">
 <h2>Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading"></a></h2>
-<p>Every workflow runs <strong>either</strong> before a merge or after it, never both.
-The test suites gate the merge; documentation, badges and distributions
-are built from <code class="docutils literal notranslate"><span class="pre">main</span></code> once the merge has happened. Until 2026-07-28 six
-workflows did both, so the whole suite ran a second time on the merge
-commit, where its answer could no longer change anything.</p>
-<p>Branch protection is what makes the pre-merge half sufficient. It is the
-reason the test workflows no longer need a <code class="docutils literal notranslate"><span class="pre">push:</span> <span class="pre">[main]</span></code> trigger, and
-it is why <code class="docutils literal notranslate"><span class="pre">main</span></code> is not left unverified by their absence. That claim
-holds only while the ruleset also requires branches to be <strong>up to date</strong>
-before merging (enabled 2026-07-29): without it, two individually-green
-pull requests that conflict semantically can both merge on stale checks,
-and the broken merge commit runs no CI at all — the exact safety net the
-removed <code class="docutils literal notranslate"><span class="pre">push:</span> <span class="pre">[main]</span></code> duplication used to provide.
-<code class="docutils literal notranslate"><span class="pre">tools/syncRequiredChecks.py</span> <span class="pre">--apply</span></code> re-asserts the up-to-date
-requirement on every run, so a UI change cannot silently reopen the
-window.</p>
-<p><strong>Before a merge — these decide whether a change may land:</strong></p>
+<p>Every merge into <code class="docutils literal notranslate"><span class="pre">main</span></code> goes through GitHub Actions, which starts each
+run on a fresh machine and blocks the merge if any required check
+fails. Each workflow runs <strong>either</strong> before a merge or after it, never
+both: the test suites gate the merge, and documentation, badges and
+distributions are built from <code class="docutils literal notranslate"><span class="pre">main</span></code> afterwards.
+<code class="docutils literal notranslate"><span class="pre">tests/testWorkflowMergeGateSplit.py</span></code> fails if a workflow drifts onto
+both sides. Running the gates only before the merge is safe only while
+the branch ruleset requires branches to be up to date with <code class="docutils literal notranslate"><span class="pre">main</span></code>
+before merging, so two individually green pull requests cannot merge
+onto a combination that never ran.</p>
+<p><strong>Before a merge.</strong> These decide whether a change may land. Each runs on
+every pull request (and can be started by hand):</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Workflow</p></th>
@@ -382,45 +907,49 @@ window.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tests-linux.yml</span></code> / <code class="docutils literal notranslate"><span class="pre">tests-macos.yml</span></code></p></td>
-<td><p>the full <code class="docutils literal notranslate"><span class="pre">pytest</span></code> suite (incl. invariants and falsification tests)</p></td>
-<td><p>Ubuntu 22/24 and macOS 26 × Python 3.9–3.14, plus macOS 15 × Python 3.9 and 3.14</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tests-linux.yml</span></code></p></td>
+<td><p>the unit suite (including the invariants and falsification tests); a named <code class="docutils literal notranslate"><span class="pre">invariants</span></code> check; a <code class="docutils literal notranslate"><span class="pre">lint</span></code> check; and <code class="docutils literal notranslate"><span class="pre">docker-smoke</span></code>, the tests that need a live Docker daemon</p></td>
+<td><p>Ubuntu 22.04 and 24.04 × Python 3.9–3.14 for the unit suite; one cell for each named check</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code></p></td>
-<td><p>the invariants, the falsification tests, and the re-kill harness</p></td>
-<td><p>a representative subset (Ubuntu + macOS × Python 3.9 &amp; 3.14), the harness sharded 8 ways on Linux and 2 on macOS, with a summary job over the union</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tests-macos.yml</span></code></p></td>
+<td><p>the same unit suite</p></td>
+<td><p>macOS 26 × Python 3.9–3.14, and macOS 15 × Python 3.9 and 3.14</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code></p></td>
-<td><p>the dashboard in real Chromium against a real uvicorn hub</p></td>
-<td><p>on pull requests (one Linux/Python cell)</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code></p></td>
+<td><p>the architectural invariants, the falsification tests, and the re-kill harness, with a summary job over the union</p></td>
+<td><p>Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, the exclusive class in its own Linux job</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code></p></td>
-<td><p>the same suite in Firefox, minus the five <code class="docutils literal notranslate"><span class="pre">clipboardPermissions</span></code> tests Playwright can only grant in Chromium</p></td>
-<td><p>on pull requests</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">security.yml</span></code></p></td>
+<td><p>the security-boundary suite, in its own named lane so a green architectural badge can never hide a red security one</p></td>
+<td><p>Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code></p></td>
-<td><p>the same suite in WebKit (Safari’s engine), same deselection</p></td>
-<td><p>on pull requests</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck.yml</span></code></p></td>
-<td><p>that every path referenced in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> resolves</p></td>
-<td><p>one Linux cell</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">security.yml</span></code></p></td>
-<td><p>the security-boundary suite, in its own named lane so a green architectural badge can never launder a red security one</p></td>
-<td><p>Ubuntu 24 + macOS 26 × Python 3.9 &amp; 3.14</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">styleContract.yml</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">styleContract.yml</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">tests/testStyleInvariants.py</span></code>, then <code class="docutils literal notranslate"><span class="pre">tools/generateStyleInventory.py</span> <span class="pre">--check</span></code> for inventory drift</p></td>
 <td><p>one Linux cell</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">remoteSsh.yml</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code></p></td>
+<td><p>the dashboard in real Chromium against a real hub</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code></p></td>
+<td><p>the same suite in Firefox, minus the <code class="docutils literal notranslate"><span class="pre">clipboardPermissions</span></code> tests</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code></p></td>
+<td><p>the same suite in WebKit (Safari’s engine), same deselection</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck.yml</span></code></p></td>
+<td><p>that every path referenced in an <code class="docutils literal notranslate"><span class="pre">AGENTS.md</span></code> or skill file resolves</p></td>
+<td><p>one Linux cell</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remoteSsh.yml</span></code></p></td>
 <td><p>the remote transport against a real <code class="docutils literal notranslate"><span class="pre">sshd</span></code>, with <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_REMOTE_SSH</span></code> turning the no-daemon skip into a failure</p></td>
 <td><p>one Linux cell</p></td>
 </tr>
 </tbody>
 </table>
-<p><strong>After a merge — these publish what <code class="docutils literal notranslate"><span class="pre">main</span></code> now is:</strong></p>
+<p><strong>After a merge.</strong> These publish the state of <code class="docutils literal notranslate"><span class="pre">main</span></code>:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Workflow</p></th>
@@ -430,12 +959,12 @@ window.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docs.yml</span></code></p></td>
-<td><p>the Sphinx build (<code class="docutils literal notranslate"><span class="pre">-W</span></code>), published to <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code></p></td>
-<td><p>one Linux cell</p></td>
+<td><p>the Sphinx build (warnings are errors), published to <code class="docutils literal notranslate"><span class="pre">gh-pages</span></code></p></td>
+<td><p>one Linux cell, on push to <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">badges.yml</span></code></p></td>
-<td><p>recomputes the live test / falsification / invariant counts</p></td>
-<td><p>one Linux cell</p></td>
+<td><p>recomputes the count badges and resolves the status badges</p></td>
+<td><p>one Linux cell, on push to <code class="docutils literal notranslate"><span class="pre">main</span></code> (and manual)</p></td>
 </tr>
 </tbody>
 </table>
@@ -449,115 +978,17 @@ window.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pip-install.yml</span></code></p></td>
-<td><p>builds the sdist and wheel, runs <code class="docutils literal notranslate"><span class="pre">tools/checkInstalledDistribution.py</span></code> against each, then uploads to PyPI</p></td>
-<td><p>the full support matrix on a release; the corners on a manual run</p></td>
+<td><p>builds the source and wheel distributions, runs <code class="docutils literal notranslate"><span class="pre">tools/checkInstalledDistribution.py</span></code> against each, then uploads to PyPI</p></td>
+<td><p>the full Ubuntu and macOS × Python 3.9–3.14 matrix on a published release; Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14 on a manual run</p></td>
 </tr>
 </tbody>
 </table>
-<p>This matches <code class="docutils literal notranslate"><span class="pre">vspace</span></code>, <code class="docutils literal notranslate"><span class="pre">bigplanet</span></code> and <code class="docutils literal notranslate"><span class="pre">multi-planet</span></code>, whose
-<code class="docutils literal notranslate"><span class="pre">pip-install.yml</span></code> is likewise <code class="docutils literal notranslate"><span class="pre">release</span></code>-only.</p>
-<p>The cost is that a packaging regression can sit on <code class="docutils literal notranslate"><span class="pre">main</span></code> until the
-next version is cut. What makes that acceptable is that <code class="docutils literal notranslate"><span class="pre">upload_pypi</span></code>
-needs <code class="docutils literal notranslate"><span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">test</span></code>, so the break is caught while cutting the
-release and blocks the upload — nothing broken is published, but the
-diagnosis lands during a release rather than beside the change that
-caused it. After touching packaging, <code class="docutils literal notranslate"><span class="pre">vaibify/resources.py</span></code>, the
-template tree or the Dockerfile <code class="docutils literal notranslate"><span class="pre">COPY</span></code> set, run <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> by hand
-(<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>) rather than waiting for release day.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Never add <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> to the required status checks for <code class="docutils literal notranslate"><span class="pre">main</span></code>. It
-does not run on pull requests, so a required check by that name can
-never report and every PR waits on it forever. This happened the day
-the split landed: two <code class="docutils literal notranslate"><span class="pre">pip-install</span></code> job names
-(<code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.9</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>, <code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">py3.14</span> <span class="pre">on</span> <span class="pre">macos-26</span></code>) were left in the
-branch ruleset and blocked an otherwise fully green pull request.</p>
-</div>
-<section id="check-names">
-<h3>Check names<a class="headerlink" href="#check-names" title="Link to this heading"></a></h3>
-<p>A ruleset matches checks by <strong>job name</strong>, and the required-checks picker
-searches those names — not workflow names. So the name is not cosmetic:
-an unfindable name is an unprotected lane.</p>
-<p>The scheme is <code class="docutils literal notranslate"><span class="pre">&lt;test-type&gt;:&lt;os&gt;:python-&lt;version&gt;</span></code> for anything that
-varies across the matrix, and a bare noun for anything that does not:</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Check</p></th>
-<th class="head"><p>Lane</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unit:ubuntu-22.04:python-3.9</span></code> … <code class="docutils literal notranslate"><span class="pre">unit:macos-26:python-3.14</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code>, <code class="docutils literal notranslate"><span class="pre">tests-macos</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nightly:&lt;os&gt;:python-&lt;version&gt;</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">tests-macos-nightly</span></code> (never required)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">falsification:ubuntu-24.04:python-3.9</span></code> …</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">falsification</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">results:&lt;os&gt;:python-&lt;version&gt;</span></code></p></td>
-<td><p>the test-results report published by <code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">browser</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">browser</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">invariants</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">docker-smoke</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">tests-linux</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">agent-docs</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">agentDocsPathCheck</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">security:&lt;os&gt;:python-&lt;version&gt;</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">security</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">style</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">styleContract</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ssh</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">remoteSsh</span></code></p></td>
-</tr>
-</tbody>
-</table>
-<p>Two failures forced this, both invisible in the workflow file. <code class="docutils literal notranslate"><span class="pre">browser</span></code>’s
-job was called <code class="docutils literal notranslate"><span class="pre">frontend</span> <span class="pre">(chromium)</span></code>, so searching “browser” returned
-nothing and the entire lane sat unprotected while appearing to gate
-every pull request. And <code class="docutils literal notranslate"><span class="pre">falsification</span></code> reused the tests matrix
-template, so <code class="docutils literal notranslate"><span class="pre">ubuntu-24.04:python-3.14</span></code> was emitted by two workflows —
-requiring it is satisfied by whichever reports, gating neither.
-<code class="docutils literal notranslate"><span class="pre">testNoTwoMergeGateLanesProduceTheSameCheckName</span></code> now fails if any name
-has two owners.</p>
-<p><code class="docutils literal notranslate"><span class="pre">invariants</span></code> exists purely to give the architectural invariants a name.
-They already run inside every matrix leg; the separate job adds about
-ten seconds and a check a reviewer can actually see.</p>
-</section>
-<section id="required-status-checks">
-<h3>Required status checks<a class="headerlink" href="#required-status-checks" title="Link to this heading"></a></h3>
-<p><strong>Requiring only some checks lets a pull request merge while the rest
-are still running</strong> — GitHub blocks on required checks alone. Derive the
-full set from the workflows rather than picking names by hand:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w">           </span><span class="c1"># print, change nothing</span>
-python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w"> </span>--apply<span class="w">   </span><span class="c1"># write the ruleset</span>
-</pre></div>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Renaming a job invalidates the ruleset entry that named it: the old name
-stops being reported and every pull request waits forever on a check
-that no longer exists. Run <code class="docutils literal notranslate"><span class="pre">syncRequiredChecks.py</span> <span class="pre">--apply</span></code> <strong>before</strong>
-merging a rename, not after — otherwise the renaming pull request is
-itself blocked by the names it is replacing. The same holds when a
-matrix cell is dropped: the pull-request macOS lane left out macOS 15
-on Python 3.10–3.13, and those four names had to leave the ruleset
-before the change could merge.</p>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">results:*</span></code> is deliberately excluded from the required set: it reports
-the same run the matching <code class="docutils literal notranslate"><span class="pre">unit:</span></code> job already gates, so requiring both
-doubles the wait for no extra signal.</p>
-<p><strong>On their own schedule — neither gate nor publisher:</strong></p>
+<p>The upload needs both the build and the install test, so a packaging
+break blocks the release rather than being published. Run it by hand
+after touching packaging, <code class="docutils literal notranslate"><span class="pre">vaibify/resources.py</span></code>, the template tree or
+the image’s file set, and never make it a required check: it cannot
+report on a pull request.</p>
+<p><strong>On their own schedule.</strong> Neither gate nor publisher:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Workflow</p></th>
@@ -571,137 +1002,106 @@ doubles the wait for no extra signal.</p>
 <td><p>manual (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tests-macos-nightly.yml</span></code></p></td>
-<td><p>the full macOS unit matrix, macOS 15 and 26 × Python 3.9–3.14, so the four cells the pull-request lane leaves out (macOS 15 on 3.10–3.13) still run within a day</p></td>
-<td><p>nightly + manual</p></td>
+<td><p>the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 on Python 3.10–3.13) still run within a day</p></td>
+<td><p>macOS 15 and 26 × Python 3.9–3.14; nightly and manual</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
-<td><p>the modeled container commands, against a real container</p></td>
-<td><p>nightly + manual</p></td>
+<td><p>the modeled container commands and core container behavior, against a real container; and, as a separate job, the Prompt Record reading transcripts the real Codex and Gemini CLIs wrote (<code class="docutils literal notranslate"><span class="pre">agent_cli_live</span></code>)</p></td>
+<td><p>one Linux cell; nightly and manual</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code></p></td>
-<td><p>a full image build from scratch on an amd64 and an arm64 runner, then acceptance</p></td>
-<td><p>weekly, manual, and on <code class="docutils literal notranslate"><span class="pre">vaibify/containerImage/**</span></code> pull requests</p></td>
+<td><p>a full image build from scratch, then acceptance</p></td>
+<td><p>amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">publishedReproduction.yml</span></code></p></td>
-<td><p>reproduces one real published project in its author’s own environment on a native amd64 runner and fails unless the report’s verdict is <code class="docutils literal notranslate"><span class="pre">reproduced</span></code> (job <code class="docutils literal notranslate"><span class="pre">weekly:published-reproduction</span></code>, never required)</p></td>
-<td><p>weekly + manual</p></td>
+<td><p>reproduces a published project in its author’s environment and fails unless the report’s verdict is <code class="docutils literal notranslate"><span class="pre">reproduced</span></code></p></td>
+<td><p>one Linux cell; weekly and manual</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code></p></td>
-<td><p>asks whether Ubuntu has moved past the pinned toolchain epoch, and opens a standing issue describing what would change</p></td>
-<td><p>monthly + manual</p></td>
+<td><p>asks whether Ubuntu has moved past the pinned toolchain snapshot and opens or updates a standing issue describing the change</p></td>
+<td><p>one Linux cell; monthly and manual</p></td>
 </tr>
 </tbody>
 </table>
-<p><code class="docutils literal notranslate"><span class="pre">tests/testWorkflowMergeGateSplit.py</span></code> fails if any workflow drifts back
-into running on both sides of the merge.</p>
-<p><strong><code class="docutils literal notranslate"><span class="pre">toolchainEpoch.yml</span></code> deliberately opens an issue, not a pull
-request, and never runs on one.</strong> Moving the epoch changes the
-compiler a researcher’s binaries are built against, so it is a
-maintainer’s decision on a chosen cadence. Asking it from a
-pull-request lane is what used to paint every unrelated pull request
-red while it waited for an answer nobody reviewing that PR could
-give. <code class="docutils literal notranslate"><span class="pre">testTheLiveArchiveComparisonIsNotOnThePullRequestPath</span></code> fails if
-the live-archive comparison moves back onto the PR path.</p>
+<section id="check-names-and-required-checks">
+<h3>Check names and required checks<a class="headerlink" href="#check-names-and-required-checks" title="Link to this heading"></a></h3>
+<p>A branch ruleset matches checks by <strong>job name</strong>, so a check nobody can
+find in the required-checks picker is an unprotected lane. Names that
+vary across a matrix follow <code class="docutils literal notranslate"><span class="pre">&lt;kind&gt;:&lt;os&gt;:python-&lt;version&gt;</span></code> (for example
+<code class="docutils literal notranslate"><span class="pre">unit:ubuntu-24.04:python-3.14</span></code>); single checks use a bare noun
+(<code class="docutils literal notranslate"><span class="pre">invariants</span></code>, <code class="docutils literal notranslate"><span class="pre">lint</span></code>, <code class="docutils literal notranslate"><span class="pre">docker-smoke</span></code>, <code class="docutils literal notranslate"><span class="pre">style</span></code>, <code class="docutils literal notranslate"><span class="pre">ssh</span></code>, <code class="docutils literal notranslate"><span class="pre">agent-docs</span></code>).
+<code class="docutils literal notranslate"><span class="pre">testNoTwoMergeGateLanesProduceTheSameCheckName</span></code> fails if two workflows
+emit the same name, because a requirement satisfied by whichever
+reports first gates neither.</p>
+<p>Requiring only some checks lets a pull request merge while the rest are
+still running, so the required set is derived from the workflows:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w">           </span><span class="c1"># print, change nothing</span>
+python<span class="w"> </span>tools/syncRequiredChecks.py<span class="w"> </span>--apply<span class="w">   </span><span class="c1"># write the ruleset</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--apply</span></code> also re-asserts the up-to-date requirement. Renaming a job or
+dropping a matrix cell orphans the ruleset entry that named it, so run
+<code class="docutils literal notranslate"><span class="pre">--apply</span></code> <strong>before</strong> merging such a change. The <code class="docutils literal notranslate"><span class="pre">results:*</span></code> checks from
+the test-results action are deliberately not required: they report the
+same run the matching <code class="docutils literal notranslate"><span class="pre">unit:</span></code> check already gates.</p>
 </section>
 <section id="what-the-readme-badges-mean">
 <h3>What the README badges mean<a class="headerlink" href="#what-the-readme-badges-mean" title="Link to this heading"></a></h3>
-<p>Two different mechanisms, which fail in different ways:</p>
-<p><strong>Count badges</strong> (<code class="docutils literal notranslate"><span class="pre">unit</span> <span class="pre">tests</span></code>, <code class="docutils literal notranslate"><span class="pre">falsification</span> <span class="pre">tests</span></code>, <code class="docutils literal notranslate"><span class="pre">architectural</span> <span class="pre">invariants</span></code>, <code class="docutils literal notranslate"><span class="pre">browser</span> <span class="pre">tests</span></code>) are computed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> after every
-merge, by <em>collecting</em> the suite rather than running it. They say how
-much test there is, never whether it passed. A count that collected
-zero fails the workflow instead of publishing, because zero is never a
-true answer here — it means a marker was renamed or a directory moved,
-and the badge would otherwise state that absence as fact.</p>
-<p><strong>Merge-gate status badges</strong> (<code class="docutils literal notranslate"><span class="pre">tests-linux</span></code>, <code class="docutils literal notranslate"><span class="pre">tests-macos</span></code>,
-<code class="docutils literal notranslate"><span class="pre">falsification</span></code>, <code class="docutils literal notranslate"><span class="pre">browser</span></code>, <code class="docutils literal notranslate"><span class="pre">agent-docs-path-check</span></code>) report the checks
-that gated <strong>the last merge into <code class="docutils literal notranslate"><span class="pre">main</span></code></strong>. <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> resolves them
-after each merge: the merge commit names the pull request it came from,
-that pull request’s head commit carries the runs that decided the merge
-was allowed, and their conclusions become the badges. Nothing is
-re-run — the merge gate already ran them, and re-running post-merge is
-the duplication this split removed.</p>
-<p>GitHub’s own workflow badges are deliberately <em>not</em> used for these
-lanes. They show the newest run of a workflow on <strong>any</strong> branch, so a
-contributor’s failing pull request would redden the README while <code class="docutils literal notranslate"><span class="pre">main</span></code>
-is perfectly healthy. (That is genuinely how they behave, and it is not
-what the docs imply: on a workflow with only pull-request runs,
-<code class="docutils literal notranslate"><span class="pre">?branch=main</span></code> renders <em>no status</em> while the unqualified badge renders
-the latest PR run.)</p>
-<p>A lane with no run against the merged pull request renders <strong>did not
-run</strong> in gray, never green. That is the case worth having: it is what a
-bypassed merge, a skipped lane, or a workflow that silently stopped
-triggering looks like.</p>
-<p>On a direct push to <code class="docutils literal notranslate"><span class="pre">main</span></code> — no pull request to resolve — the status
-badges are left exactly as they were, because an absence of information
-is not a change of state. They continue to describe the last real
-merge.</p>
-<p>The two <strong>scheduled</strong> lanes keep GitHub’s own badges, because they
-really do run on <code class="docutils literal notranslate"><span class="pre">main</span></code> on a timer, so “the latest run” is <code class="docutils literal notranslate"><span class="pre">main</span></code>’s
-state. They are on the README because nobody watches a nightly or
-weekly run: for <code class="docutils literal notranslate"><span class="pre">containerAcceptance</span></code> and <code class="docutils literal notranslate"><span class="pre">freshImageBuild</span></code> the badge
-is realistically the only place a failure becomes visible.</p>
+<p><strong>Count badges</strong> are computed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code> after every merge by
+<em>collecting</em> each suite, not running it. They say how much test there
+is, never whether it passed. A count of zero fails the workflow instead
+of publishing, because zero means a marker was renamed or a directory
+moved.</p>
+<p><strong>Status badges</strong> for the merge gates report the checks that gated
+<strong>the last merge into <code class="docutils literal notranslate"><span class="pre">main</span></code></strong>, read from the runs on the merged pull
+request’s head commit; nothing is re-run. A lane with no run against
+that pull request renders <strong>did not run</strong> in gray, never green. GitHub’s
+own workflow badges are not used for these lanes, because they show the
+newest run on any branch, so one contributor’s failing pull request
+would redden the README while <code class="docutils literal notranslate"><span class="pre">main</span></code> is healthy. The scheduled
+container-acceptance and fresh-image lanes do keep GitHub’s badges,
+because they run on <code class="docutils literal notranslate"><span class="pre">main</span></code>, and for a nightly or weekly run the badge is
+often the only place a failure becomes visible.</p>
 </section>
 </section>
-<section id="the-three-execution-lanes">
-<h2>The three execution lanes<a class="headerlink" href="#the-three-execution-lanes" title="Link to this heading"></a></h2>
-<p>Most of this suite runs in one process with the Docker daemon and the
-browser both absent. Three lanes exist because that leaves two real
-boundaries unexercised, and both have shipped bugs a green suite could
-not see.</p>
-<p><strong>The browser lanes (<code class="docutils literal notranslate"><span class="pre">browser-chromium.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">browser-firefox.yml</span></code>,
-<code class="docutils literal notranslate"><span class="pre">browser-webkit.yml</span></code>)</strong> load the real dashboard in a real browser
-against a real uvicorn hub and fails on any console error, uncaught
-promise rejection, or failed asset. It runs on one cell — a browser
-journey does not become more trustworthy by running 24 times across
-the OS/Python matrix. Its Docker adapter is a <strong>fail-closed fake</strong>:
-every command it answers is declared in <code class="docutils literal notranslate"><span class="pre">LIST_MODELLED_COMMANDS</span></code>, and
-anything else raises rather than returning a default. That rule exists
-because this suite already carries ~20 permissive Docker mocks, one of
-which answers success to any command it does not recognize.</p>
-<p><strong>The container-acceptance lane (<code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code>)</strong> puts each of those modeled
-commands to a real container, so a fake that drifts from the daemon is
-caught rather than believed. Every entry in the fake’s contract names
-an assertion in <code class="docutils literal notranslate"><span class="pre">tests/testContainerAcceptance.py</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">testEveryNamedLaneTwoAssertionExists</span></code> fails if one of those names is
-fiction. It runs nightly, which means <strong>drift is caught up to a day
-late</strong>: the browser lane failing blocks merge, container acceptance blocks the next
-release, not retroactively.</p>
-<p><strong>The fresh-image lane (<code class="docutils literal notranslate"><span class="pre">freshImageBuild.yml</span></code>)</strong> builds the image from scratch. Lane
-2 reuses a cached image keyed by <code class="docutils literal notranslate"><span class="pre">tools/computeBuildInputHash.py</span></code> —
-which hashes every build input, including the entrypoint, the agent
-CLI, the overlays, the skills, the staged-doc <em>sources</em>, and the
-generator itself — so it says nothing about whether the image still
-builds.</p>
-<p>None of the three may skip itself green. <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_DOCKER_DAEMON</span></code>
-and <code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_BROWSER</span></code> turn each lane’s convenience skip into a
-failure in CI, because the guard they replaced (<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span> <span class="pre">||</span> <span class="pre">exit</span> <span class="pre">0</span></code>)
-reported success for having run nothing.</p>
-<p>The shell-completion tests follow the same contract with
-<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_SHELLS</span></code>. They run the shipped scripts in the real bash,
-zsh and fish (including a pseudo-terminal lane that presses TAB and Enter
-in an interactive shell, because only a real shell can say whether an
-inserted name stays one word). A shell that is missing skips its tests on
-a developer’s machine and FAILS them on the unit workflows, which install
-fish and zsh for that purpose and set the variable. Only the bash tests
-are falsification tests: the lanes that replay falsification entries do
-not carry the other two shells.</p>
-<p>The harness runs on a <em>subset</em> because whether a test catches its
-mutation is deterministic and OS/Python-independent; the full-matrix
-coverage of the tests themselves already comes from the unit-test
-workflows. The count badges in the README are refreshed by <code class="docutils literal notranslate"><span class="pre">badges.yml</span></code>,
-which writes shields.io endpoint JSON to an orphan <code class="docutils literal notranslate"><span class="pre">badges</span></code> branch.</p>
-</section>
-<section id="background">
-<h2>Background<a class="headerlink" href="#background" title="Link to this heading"></a></h2>
-<p>The falsification methodology, its limits, and the literature it draws on
-(mutation testing since DeMillo, Lipton &amp; Sayward 1978; the LLM-era work
-on test-suite adequacy; metamorphic testing for oracle-free scientific
-code) are written up for reference outside the repository. In short:
-mutation-style falsification fits vaibify’s <em>plumbing</em>, where the correct
-behavior is definitional; the science code (vplanet), where there is no
-known answer to assert against, is better tested with <strong>metamorphic
-relations</strong> (e.g. “halve the timestep and the conserved energy must not
-change”) — a future direction, not yet part of this suite.</p>
+<section id="running-the-suites-locally">
+<h2>Running the suites locally<a class="headerlink" href="#running-the-suites-locally" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
+
+<span class="c1"># the unit suite, with the invariants and falsification tests:</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not docker and not docker_live and not browser"</span>
+
+<span class="c1"># just the falsification tests, or just the invariants:</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>falsification
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testArchitecturalInvariants.py
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/testStyleInvariants.py
+
+<span class="c1"># the browser lane:</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[browser]"</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser
+
+<span class="c1"># the standing negative control (re-break each guard, confirm it is caught):</span>
+python<span class="w"> </span>tools/reconfirmFalsification.py
+
+<span class="c1"># re-confirm only the entries you just wrote, then check completeness:</span>
+python<span class="w"> </span>tools/reconfirmFalsification.py<span class="w"> </span>--only<span class="w"> </span>&lt;substring&gt;
+python<span class="w"> </span>tools/reconfirmFalsification.py<span class="w"> </span>--completeness-only
+
+<span class="c1"># the mutation gate (a separate extra):</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[mutation]"</span>
+cosmic-ray<span class="w"> </span>init<span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cosmic-ray<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>cosmic-ray.toml<span class="w"> </span>session.sqlite<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cr-rate<span class="w"> </span>session.sqlite
+</pre></div>
+</div>
+<p>The re-kill harness mutates source in disposable worktrees, so it is not
+collected by <code class="docutils literal notranslate"><span class="pre">pytest</span> <span class="pre">tests/</span></code>. It refuses a checkout with uncommitted
+changes, because it would otherwise verify code you do not have; pass
+<code class="docutils literal notranslate"><span class="pre">--include-local-diff</span></code> to replay your edits into the worktree. <code class="docutils literal notranslate"><span class="pre">--only</span></code>
+re-confirms a subset and says so: its result is not the standing
+negative control, and it does not check registry completeness.</p>
+<p>Running everything on one machine is slow. That cost buys two things:
+an agent cannot silently break behavior outside the context of its
+prompt, and because the checks are deterministic, a failure points
+straight at the problem without spending model tokens to find it.</p>
 </section>
 </section>
 
@@ -709,8 +1109,8 @@ change”) — a future direction, not yet part of this suite.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="developers.html" class="btn btn-neutral float-left" title="Contributor’s Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="knownDebt.html" class="btn btn-neutral float-right" title="Known technical debt" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="security.html" class="btn btn-neutral float-left" title="Security Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="cli.html" class="btn btn-neutral float-right" title="CLI Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
