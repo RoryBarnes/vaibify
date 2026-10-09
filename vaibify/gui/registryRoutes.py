@@ -1002,6 +1002,8 @@ def _fnRegisterContainerSettings(app, dictCtx):
         listLimitOutcomes = _flistApplyLimitSettings(
             dictProject["sConfigPath"], request,
         )
+        from vaibify.config import resourceAdequacy
+        from vaibify.config.projectConfig import fconfigLoadFromFile
         return {
             "bSuccess": True,
             "bRestartRequired": bRestartRequired or any(
@@ -1009,6 +1011,9 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 for dictOutcome in listLimitOutcomes
             ),
             "listLimitOutcomes": listLimitOutcomes,
+            "listResourceAdvisories":
+                resourceAdequacy.flistDescribeResourceAdvisories(
+                    fconfigLoadFromFile(dictProject["sConfigPath"])),
         }
 
 

@@ -100,6 +100,11 @@ mounted volumes and host directories are preserved." When the size
 cannot be measured, the sentence says why and Confirm is enabled
 anyway. Copy anything you want to keep out of `/tmp` first.
 
+**Advice for AI agents.** When the project enables an AI agent and
+caps memory below 5 GB, a banner says the limit may be small for an
+agent, and saving such a limit in Settings says so too. It is advice:
+5 GB is a starting point, not a requirement.
+
 **Limits that differ from the settings.** A container keeps the CPU
 and memory limits it was created with. When they differ from the
 project's settings — after a change in Settings, or a limit raised by

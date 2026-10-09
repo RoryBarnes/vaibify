@@ -525,6 +525,7 @@ def flistRunStartPreflight(config):
         return listResults
     listResults.append(_fpreflightImage(config))
     listResults.extend(flistPreflightSecrets(config))
+    listResults.extend(_flistPreflightResourceAdvisories(config))
     listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
     listResults.extend(_flistPreflightBindMounts(config))
@@ -534,6 +535,12 @@ def flistRunStartPreflight(config):
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)
     return listResults
+
+
+def _flistPreflightResourceAdvisories(config):
+    """Return the agent-memory advisories ``vaibify doctor`` also gives."""
+    from .doctorHostChecks import flistPreflightResourceAdvisories
+    return flistPreflightResourceAdvisories(config)
 
 
 def _fnPrintWarningsIfAny(listResults):

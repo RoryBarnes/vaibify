@@ -482,6 +482,19 @@ def _flistDescribeResourceLimitDrift(connectionDocker, sContainerId):
         return []
 
 
+def _flistDescribeResourceAdvisories(connectionDocker, sContainerId):
+    """Return the agent-memory advisories for the container's project.
+
+    Recomputed per settled readiness answer from the file as it is now,
+    so raising the limit clears it. An unreadable file says nothing.
+    """
+    from vaibify.config import resourceAdequacy
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    return resourceAdequacy.flistDescribeResourceAdvisories(configProject)
+
+
 def _fconfigForContainerOrNone(connectionDocker, sContainerId):
     """Return the registered project's config for a container id, or None.
 
@@ -537,6 +550,9 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     )
     dictReadiness["listResourceLimitDrift"] = (
         _flistDescribeResourceLimitDrift(connectionDocker, sContainerId)
+    )
+    dictReadiness["listResourceAdvisories"] = (
+        _flistDescribeResourceAdvisories(connectionDocker, sContainerId)
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,

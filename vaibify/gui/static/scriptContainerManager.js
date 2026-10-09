@@ -1425,6 +1425,10 @@ var VaibifyContainerManager = (function () {
             );
             VaibifyApp.fnShowToast(
                 _fsDescribeSavedSettings(dictSaved || {}), "success");
+            var listAdvisories = (dictSaved || {}).listResourceAdvisories || [];
+            if (listAdvisories.length) {
+                VaibifyApp.fnShowToast(listAdvisories.join(" "), "warning");
+            }
         } catch (error) {
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
@@ -2539,6 +2543,9 @@ var VaibifyContainerManager = (function () {
         _fnRenderResourceLimitDriftBanner(
             (dictReadiness && dictReadiness.listResourceLimitDrift) || []
         );
+        _fnRenderResourceAdvisoryBanner(
+            (dictReadiness && dictReadiness.listResourceAdvisories) || []
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -2616,9 +2623,31 @@ var VaibifyContainerManager = (function () {
            of its own. No sentences means "no difference, or nothing
            determined", and the banner is absent. Its own banner: a
            limit takes effect at the next start, so it is neither a
-           start warning nor an image older than its file. The x hides
-           it for this visit only, like the banners beside it. */
-        var elBanner = document.getElementById("resourceLimitDriftBanner");
+           start warning nor an image older than its file. */
+        _fnRenderSentenceBanner(
+            "resourceLimitDriftBanner", "btnDismissResourceLimitDrift",
+            "This container's CPU or memory limits differ from its " +
+            "settings", listSentences);
+    }
+
+    function _fnRenderResourceAdvisoryBanner(listSentences) {
+        /* The server's advice that an AI agent may need more memory
+           than the project's limit gives it. Advice, not a refusal,
+           and recomputed on every readiness answer, so raising the
+           limit clears it. */
+        _fnRenderSentenceBanner(
+            "resourceAdvisoryBanner", "btnDismissResourceAdvisory",
+            "This project's memory limit may be small for an AI agent",
+            listSentences);
+    }
+
+    function _fnRenderSentenceBanner(
+        sBannerId, sDismissId, sHeading, listSentences,
+    ) {
+        /* A banner of the server's own sentences, one per line. No
+           sentences, no banner. The x hides it for this visit only,
+           like the banners beside it. */
+        var elBanner = document.getElementById(sBannerId);
         if (!elBanner) return;
         elBanner.textContent = "";
         if (!listSentences || !listSentences.length) {
@@ -2628,12 +2657,11 @@ var VaibifyContainerManager = (function () {
         var elHeader = document.createElement("div");
         elHeader.className = "build-warnings-banner-header";
         var elHeading = document.createElement("span");
-        elHeading.textContent = "This container's CPU or memory limits " +
-            "differ from its settings";
+        elHeading.textContent = sHeading;
         var elDismiss = document.createElement("button");
         elDismiss.type = "button";
         elDismiss.className = "build-warnings-banner-dismiss";
-        elDismiss.id = "btnDismissResourceLimitDrift";
+        elDismiss.id = sDismissId;
         elDismiss.setAttribute("aria-label",
             "Hide this notice until the container is next opened");
         elDismiss.textContent = "×";

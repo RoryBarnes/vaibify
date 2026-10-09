@@ -49,6 +49,10 @@ A process that reaches the memory cap is killed by the kernel, and AI
 agents with the jobs they start often need several GB. Leave the field
 at `0` unless you need a cap; the dashboard reports kills when they
 happen (see [the dashboard's Memory section](dashboard.md#memory)).
+When a project enables an AI agent and caps memory below 5 GB,
+`vaibify doctor`, `vaibify start`, the dashboard, and the Settings
+save each say so. That is advice, not a refusal: 5 GB is a starting
+point, not a requirement.
 
 ### List Fields
 

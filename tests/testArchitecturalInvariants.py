@@ -6931,7 +6931,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # route, beside the other name-keyed container routes; the
     # measurement and its sentence live in writableLayerPreview and
     # vaibify/docker/writableLayerLoss.py.
-    "registryRoutes.py": 2452,
+    # 2452 -> 2457 (2026-10-08): the settings save answers with the
+    # agent-memory advisory from vaibify/config/resourceAdequacy.py.
+    "registryRoutes.py": 2457,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

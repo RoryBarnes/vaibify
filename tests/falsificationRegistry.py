@@ -30564,4 +30564,11 @@ def _fdictEntry(sRel):
         old='        elOk.disabled = true;\n',
         new='        elOk.disabled = false;\n',
     ),
+    # --- 2026-10-08: the agent-memory advice is the server's sentence ---
+    Falsification(
+        nodeid='tests/browser/testTheAgentMemoryAdviceIsTheServers.py::testTheAdviceBannerShowsTheServersSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            "This project\'s memory limit may be small for an AI agent",\n            listSentences);\n',
+        new='            "This project\'s memory limit may be small for an AI agent",\n            listSentences.length\n                ? ["Give an AI agent at least 5 GB of memory."] : []);\n',
+    ),
 ]
