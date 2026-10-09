@@ -59,3 +59,26 @@ def test_every_redirected_state_constant_points_outside_the_real_home():
     listLeaked = [sPath for sPath in listConstants
                   if not _fbOutsideRealHome(sPath)]
     assert not listLeaked, f"these constants still reach the real home: {listLeaked}"
+
+
+def test_a_keep_alive_started_by_the_suite_launches_no_caffeinate(monkeypatch):
+    """A keep-alive asserted inside the suite never reaches the host.
+
+    Regression for the ``caffeinate -s`` processes a running suite left
+    behind, one per hub watchdog tick. The platform is forced to
+    support keep-alives so the guard is exercised on Linux CI as well,
+    and a launch fails the test outright rather than leaking a process.
+    """
+    def fnRefuseRealLaunch(*args, **kwargs):
+        raise AssertionError(f"the suite launched a host process: {args}")
+
+    monkeypatch.setattr(
+        keepAliveManager, "fbPlatformSupportsKeepAlive", lambda: True,
+    )
+    monkeypatch.setattr(
+        keepAliveManager.subprocess, "Popen", fnRefuseRealLaunch,
+    )
+    keepAliveManager.fnStartKeepAlive("isolationProbe")
+    assert not keepAliveManager.fbKeepAliveIsLive("isolationProbe"), (
+        "a declined spawn must record no pid for a later stop to kill"
+    )
