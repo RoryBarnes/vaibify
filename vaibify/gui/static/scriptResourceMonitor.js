@@ -300,7 +300,11 @@ var VaibifyMonitor = (function () {
             fFreePercent.toFixed(1) + "% free (" +
             (dictDisk.sFreeHuman || "?") + " of " +
             (dictDisk.sTotalHuman || "?") +
-            "). Run `vaibify clean` or grow the Colima VM.";
+            "). Delete files you no longer need, or on this computer " +
+            "run `docker builder prune` to reclaim Docker's build " +
+            "cache, or enlarge the Docker VM's disk. Do not run " +
+            "`docker system prune -a`: it removes the images your " +
+            "projects pin.";
     }
 
     function fnUpdateBanner(dictData) {

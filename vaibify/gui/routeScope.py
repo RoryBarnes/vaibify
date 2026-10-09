@@ -407,6 +407,10 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     # Reads each step script's TEXT out of the owned container to scan
     # it for determinism anti-patterns. No host path, no write.
     ("GET", "/api/workflow/{sContainerId}/determinism/scan"),
+    # Asks the owned container whether the AI Declaration file exists
+    # (one typed existence probe). The path is validated inside the
+    # project repository; no host path, no write.
+    ("GET", "/api/workflow/{sContainerId}/ai-declaration/file-state"),
     ("GET", "/api/workflow/{sContainerId}/level2/readiness"),
     ("GET", "/api/workflow/{sContainerId}/level3/attestation"),
     ("GET", "/api/workflow/{sContainerId}/level3/readiness"),

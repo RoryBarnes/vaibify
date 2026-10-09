@@ -62,3 +62,20 @@ def test_init_applies_only_known_installer_agent_defaults(tmp_path, monkeypatch)
     assert config.features.bAntigravity is True
     assert config.features.bClaude is False
     assert config.features.bGemini is False
+
+
+def test_installer_refuses_before_changing_anything(tmp_path):
+    """The script's links cannot run, so it must stop and name pip."""
+    dictEnvironment = os.environ.copy()
+    dictEnvironment.pop("VC_TESTING", None)
+    dictEnvironment["HOME"] = str(tmp_path)
+    resultProcess = subprocess.run(
+        ["sh", _S_SCRIPT_PATH, "--yes", "--install-claude"],
+        capture_output=True, text=True, env=dictEnvironment,
+        cwd=str(tmp_path), timeout=60,
+    )
+    assert resultProcess.returncode == 1
+    assert "python3 -m pip install vaibify" in resultProcess.stderr
+    assert "Nothing was installed or changed." in resultProcess.stderr
+    assert "[install]" not in resultProcess.stdout
+    assert list(tmp_path.iterdir()) == []

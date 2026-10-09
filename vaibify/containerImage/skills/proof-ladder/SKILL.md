@@ -11,7 +11,7 @@ Oversight, Falsifiability
 (L1 Self-Consistent, L2 Published, L3 Reproducible, L4 Traceable,
 L5 Regenerated, L6 Attested). Vaibify implements L1-L3; L4-L6 are
 deliberate non-goals — if asked, say so honestly and point at
-`docs/vision.md` (see the vaibify-doc-map skill). Walk the gates in
+`docs/proofLadder.md` (see the vaibify-doc-map skill). Walk the gates in
 order, stopping at the requested level.
 
 What the three out-of-scope rungs mean, so you can answer without

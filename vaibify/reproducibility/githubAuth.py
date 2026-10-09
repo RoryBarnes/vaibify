@@ -228,9 +228,13 @@ def _fsBindingFailureReason(sToken, sExpectedOwner):
         return "Could not verify token owner against GitHub /user."
     if sLogin.lower() != sExpectedOwner.lower():
         return (
-            f"Token belongs to user {sLogin} but the remote is owned "
-            f"by user {sExpectedOwner}. Configure a per-repo token "
-            f"in Settings."
+            f"The GitHub token belongs to {sLogin}, but the remote "
+            f"repository is owned by {sExpectedOwner}. vaibify pushes "
+            f"only to repositories owned by the token's own account, so "
+            f"pushing here needs a token for {sExpectedOwner}. A "
+            f"repository owned by an organization cannot be pushed "
+            f"from vaibify; push it from a terminal with your own git "
+            f"credentials."
         )
     return ""
 

@@ -227,7 +227,10 @@ class HostRepoFiles:
 
         Returns ``{sRelPath: {"sSha256": str|None,
         "sSymlinkSegment": str|None, "bEscapesRoot": bool}}``. A
-        missing or unreadable file yields ``sSha256 = None``; the
+        missing or unreadable file yields ``sSha256 = None``, and a
+        missing one also carries ``bMissing: True`` -- decided only by
+        ``FileNotFoundError``, on every leg, so "deleted" and "could not
+        read" stay distinct; the
         enforcement fields let callers (``manifestWriter``) raise the
         same errors they historically raised.
         """
@@ -255,9 +258,10 @@ class HostRepoFiles:
         if self._fbEscapesRoot(sRelPath):
             dictEntry["bEscapesRoot"] = True
             return dictEntry
-        dictEntry["sSha256"] = _fsHashHostFileOrNone(
-            os.path.realpath(self._fsAbsolute(sRelPath)),
-        )
+        sRealPath = os.path.realpath(self._fsAbsolute(sRelPath))
+        dictEntry["sSha256"] = _fsHashHostFileOrNone(sRealPath)
+        if dictEntry["sSha256"] is None and _fbPathReportsMissing(sRealPath):
+            dictEntry["bMissing"] = True
         return dictEntry
 
     def _fsFirstSymlinkSegment(self, sRelPath):
@@ -339,6 +343,18 @@ def _flockAcquireHost(sLockPath):
     )
 
 
+def _fbPathReportsMissing(sAbsPath):
+    """Return True iff the path raises FileNotFoundError, the rule the
+    container programs apply: any other failure proves nothing."""
+    try:
+        os.lstat(sAbsPath)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def _fsHashHostFileOrNone(sAbsPath):
     """Return the SHA-256 of a host file, refusing symlinks; None on error."""
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -382,6 +398,8 @@ def _fsHash(sAbs):
     iFlags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         iFd = os.open(sAbs, iFlags)
+    except FileNotFoundError:
+        return False
     except OSError:
         return None
     h = hashlib.sha256()
@@ -405,7 +423,11 @@ def _fdictEntry(sRel):
     if sReal != sRootReal and not sReal.startswith(sRootReal + os.sep):
         d["bEscapesRoot"] = True
         return d
-    d["sSha256"] = _fsHash(sReal)
+    sHash = _fsHash(sReal)
+    if sHash is False:
+        d["bMissing"] = True
+    else:
+        d["sSha256"] = sHash
     return d
 for sRel in dictArgs["listRelPaths"]:
     dictOut[sRel] = _fdictEntry(sRel)
@@ -1167,7 +1189,12 @@ class SnapshotRepoFiles:
         return dictResult
 
     def fdictHashFiles(self, listRelPaths):
-        """Return snapshotted hash entries; unsampled paths map to missing."""
+        """Return snapshotted hash entries; unsampled paths map to missing.
+
+        ``bMissing`` is carried only when the program SAW the file
+        missing; an unsampled path never claims it, so it reads as
+        unknown rather than as deleted.
+        """
         dictResult = {}
         for sRelPath in listRelPaths:
             dictEntry = self._dictHashes.get(sRelPath) or {}
@@ -1176,6 +1203,8 @@ class SnapshotRepoFiles:
                 "sSymlinkSegment": dictEntry.get("sSymlinkSegment"),
                 "bEscapesRoot": bool(dictEntry.get("bEscapesRoot")),
             }
+            if dictEntry.get("bMissing"):
+                dictResult[sRelPath]["bMissing"] = True
         return dictResult
 
     def fdictAllHashEntries(self):

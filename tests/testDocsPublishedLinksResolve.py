@@ -32,9 +32,15 @@ _SET_GENERATED_PAGES = frozenset({"genindex", "search", "index"})
 
 
 def _flistMarkdownSources():
-    """Return every prose file that may carry a published-site link."""
+    """Return every file that may carry a published-site link.
+
+    The project website (``website/public``) links into the docs too,
+    and a docs page renamed in a restructure left two of its links
+    pointing at pages that no longer existed.
+    """
     return [_PATH_REPO / "README.md"] + sorted(
         list(_PATH_DOCS.glob("*.md")) + list(_PATH_DOCS.glob("*.rst"))
+        + list((_PATH_REPO / "website" / "public").glob("*.html"))
     )
 
 

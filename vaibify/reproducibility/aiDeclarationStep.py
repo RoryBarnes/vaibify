@@ -25,6 +25,7 @@ lives — a host clone for the CLI, the container for GUI routes.
 
 import posixpath
 
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -37,8 +38,14 @@ __all__ = [
     "S_DEFAULT_DECLARATION_FILENAME",
     "S_DEFAULT_DECLARATION_STEP_NAME",
     "S_DECLARATION_TEMPLATE",
+    "S_DECLARATION_FILE_ABSENT",
+    "S_DECLARATION_FILE_PRESENT",
+    "S_DECLARATION_FILE_UNKNOWN",
     "fbStepIsAiDeclaration",
     "fbDeclarationFileExists",
+    "fbDeclarationPathEscapesRepo",
+    "fiAiDeclarationStepIndex",
+    "ftDeclarationFileState",
     "fsWriteDeclarationTemplate",
     "fdictBuildAiDeclarationStep",
 ]
@@ -55,6 +62,14 @@ S_DEFAULT_DECLARATION_STEP_NAME = "AI Declaration"
 # red ⚠ telling the researcher to rename a step the product had just
 # built for them. Pinned by testDeclarationStepHonorsTheSlugContract.
 S_DEFAULT_DECLARATION_DIRECTORY = "AIDeclaration"
+
+# The three answers to "is the declaration file there". UNKNOWN is not
+# a softer ABSENT: it means the question could not be answered (the
+# container is down, the read failed), and offering to generate a
+# template on it would invite overwriting a file nobody could see.
+S_DECLARATION_FILE_PRESENT = "present"
+S_DECLARATION_FILE_ABSENT = "absent"
+S_DECLARATION_FILE_UNKNOWN = "unknown"
 
 
 S_DECLARATION_TEMPLATE = """# AI Usage Declaration
@@ -95,6 +110,62 @@ def fbDeclarationFileExists(filesRepo, sRelativePath):
     if not filesRepo.sRootPath or not sRelativePath:
         return False
     return filesRepo.fbIsFile(sRelativePath)
+
+
+def ftDeclarationFileState(filesRepo, sRelativePath):
+    """Return ``(sState, sReason)`` for the declaration file's existence.
+
+    ``sState`` is one of the three ``S_DECLARATION_FILE_*`` answers.
+    A failed read raises ``OSError`` in the adapter, and that is the
+    UNKNOWN case; only a probe that answered "no file, no directory"
+    is ABSENT. A directory at the path is UNKNOWN with a reason that
+    names it, because neither generating nor attaching can succeed
+    there.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    if not filesRepo.sRootPath:
+        return (S_DECLARATION_FILE_UNKNOWN,
+                "The project has no repository to look in.")
+    try:
+        if filesRepo.fbIsFile(sRelativePath):
+            return (S_DECLARATION_FILE_PRESENT, "")
+        if filesRepo.fbIsDir(sRelativePath):
+            return (S_DECLARATION_FILE_UNKNOWN,
+                    f"'{sRelativePath}' is a directory, not a file.")
+    except OSError as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return (S_DECLARATION_FILE_UNKNOWN,
+                f"Could not check whether '{sRelativePath}' exists: "
+                f"{error}")
+    return (S_DECLARATION_FILE_ABSENT, "")
+
+
+def fbDeclarationPathEscapesRepo(filesRepo, sRelativePath):
+    """Return True iff the path resolves outside the project repository.
+
+    A lexical check cannot see a symlink planted inside the repository
+    that points out of it. The adapter's hash read resolves the real
+    path where the files live -- inside the container for a container
+    project -- and reports ``bEscapesRoot``. A read that fails here is
+    not an escape; the existence probe that follows answers unknown.
+    """
+    filesRepo = ffilesEnsureRepoFiles(filesRepo)
+    try:
+        dictEntries = filesRepo.fdictHashFiles([sRelativePath])
+    except OSError as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return False
+    return bool((dictEntries.get(sRelativePath) or {}).get("bEscapesRoot"))
+
+
+def fiAiDeclarationStepIndex(dictWorkflow):
+    """Return the index of the workflow's AI Declaration step, or -1."""
+    for iIndex, dictStep in enumerate(
+        (dictWorkflow or {}).get("listSteps", []) or [],
+    ):
+        if fbStepIsAiDeclaration(dictStep):
+            return iIndex
+    return -1
 
 
 def fsWriteDeclarationTemplate(filesRepo, sRelativePath):

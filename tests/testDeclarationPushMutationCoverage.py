@@ -333,8 +333,9 @@ def test_unattested_blocker_requires_a_declaration_step():
     ai-declaration-unattested blocker; an ordinary un-approved step
     must never appear in that list (its sign-off is an L1 concern).
 
-    Kills: levelGates.py blocker comprehension 'fbStepIsAiDeclaration
-    and not fbStepUserApproved' -> or.
+    Kills: levelGates.py dropping the blocker loop's
+    'if not fbStepIsAiDeclaration(dictStep): continue', which lets an
+    ordinary step's missing sign-off emit the declaration blocker.
     """
     dictWorkflow = {"listSteps": [
         {"sName": "Ordinary", "dictVerification": {"sUser": "untested"}},
@@ -344,7 +345,7 @@ def test_unattested_blocker_requires_a_declaration_step():
          "dictVerification": {"sUser": "untested"}},
     ]}
     listBlockers = levelGates._flistAiDeclarationLevel2Blockers(
-        dictWorkflow,
+        dictWorkflow, "",
     )
     assert [d["iStepIndex"] for d in listBlockers] == [2]
 
@@ -356,10 +357,10 @@ def test_attested_check_fails_closed_on_non_dict_workflow():
     Kills: levelGates.py fbWorkflowAiDeclarationAttested non-dict
     'return False' -> 'return True'.
     """
-    assert levelGates.fbWorkflowAiDeclarationAttested("junk") is False
-    assert levelGates.fbWorkflowAiDeclarationAttested(None) is False
+    assert levelGates.fbWorkflowAiDeclarationAttested("junk", "") is False
+    assert levelGates.fbWorkflowAiDeclarationAttested(None, "") is False
     assert levelGates.fbWorkflowAiDeclarationAttested(
-        {"listSteps": [{"sName": "plain step"}]},
+        {"listSteps": [{"sName": "plain step"}]}, "",
     ) is False
 
 

@@ -611,11 +611,12 @@ def fnCopyContainerScripts(sDockerDir):
 # Sphinx sources, so there is still exactly one copy to edit; both
 # builders dereference them into real files in the distribution.
 T_STAGED_DOCS = (
-    ("vaibify/docs/dashboard.md", "dashboard.md"),
+    ("vaibify/docs/environmentsAndProjects.md", "environmentsAndProjects.md"),
+    ("vaibify/docs/proofLadder.md", "proofLadder.md"),
     ("vaibify/docs/reproducibility.md", "reproducibility.md"),
-    ("vaibify/docs/vision.md", "vision.md"),
-    ("vaibify/docs/pipelines.md", "pipelines.md"),
-    ("vaibify/docs/testFormats.md", "testFormats.md"),
+    ("vaibify/docs/testing.md", "testing.md"),
+    ("vaibify/docs/forAgents.md", "forAgents.md"),
+    ("vaibify/docs/agentCouncil.md", "agentCouncil.md"),
     ("vaibify/docs/scriptAuthoring.md", "scriptAuthoring.md"),
 )
 

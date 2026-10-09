@@ -8139,3 +8139,120 @@ async def _fnWorkerThatSettlesAtOnce(sJobId, connectionDocker):
     sToken = reproductionProgress.fsStagingTokenOf(sJobId)
     reproductionProgress.fnSettleJob(sJobId, {"sReportId": "stand-in"})
     fnDiscardStagedSource(sToken)
+
+
+# ---------------------------------------------------------------------
+# The AI Declaration's file-state read and attach save. The workflow
+# the container serves carries a declaration step, and ONE repository
+# path answers "is a file" through the real typed-read gate, so attach
+# reaches its save rather than refusing an absent file.
+# ---------------------------------------------------------------------
+
+S_ATTACHABLE_DECLARATION_RELATIVE = "docs/aiUseNotes.md"
+S_ATTACHABLE_DECLARATION_ABS = posixpath.join(
+    S_PROJECT_REPO, S_ATTACHABLE_DECLARATION_RELATIVE,
+)
+
+
+def _fdictWorkflowWithADeclarationStep():
+    """Return the draft workflow plus a signed-off AI Declaration step."""
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fdictBuildAiDeclarationStep,
+    )
+    dictWorkflow = copy.deepcopy(DICT_WORKFLOW)
+    dictWorkflow["sProjectRepoPath"] = S_PROJECT_REPO
+    dictDeclaration = fdictBuildAiDeclarationStep()
+    dictDeclaration["dictVerification"]["sUser"] = "passed"
+    dictWorkflow["listSteps"].append(dictDeclaration)
+    return dictWorkflow
+
+
+class DockerDoubleServingADeclarationStep(
+    DockerDoubleThatCallsTheRealGates,
+):
+    """The gated double over a workflow holding a declaration step."""
+
+    def fbaFetchFile(self, sContainerId, sPath, iMaxBytes=None):
+        if sPath == S_WORKFLOW_PATH and sPath not in self._dictFiles:
+            self._dictFiles[sPath] = json.dumps(
+                _fdictWorkflowWithADeclarationStep(),
+            ).encode("utf-8")
+        return DockerDoubleThatCallsTheRealGates.fbaFetchFile(
+            self, sContainerId, sPath, iMaxBytes,
+        )
+
+    def fbContainerPathIsFile(self, sContainerId, sPath):
+        bAnswer = DockerDoubleThatCallsTheRealGates.fbContainerPathIsFile(
+            self, sContainerId, sPath,
+        )
+        return bAnswer or sPath == S_ATTACHABLE_DECLARATION_ABS
+
+
+@pytest.fixture
+def tclientDeclarationStep():
+    """The gated client over a workflow holding a declaration step."""
+    return _tConnectGatedClient(DockerDoubleServingADeclarationStep())
+
+
+def testTheDeclarationFileStateIsATypedRead(tclientDeclarationStep):
+    """GET .../ai-declaration/file-state reaches only typed reads.
+
+    The gated ledger must be EMPTY and the typed-probe ledger NON-empty,
+    for the reason the plot-standards test gives: either alone is
+    satisfiable by a route that returned before touching the container.
+    """
+    client, connectionDocker = tclientDeclarationStep
+    connectionDocker.listAdmittedPrimitives.clear()
+    connectionDocker.listTypedPathProbes.clear()
+    response = client.get(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state",
+        params={"sRelativePath": S_ATTACHABLE_DECLARATION_RELATIVE},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["sFileState"] == "present"
+    assert connectionDocker.listAdmittedPrimitives == []
+    assert S_ATTACHABLE_DECLARATION_ABS in (
+        connectionDocker.listTypedPathProbes
+    )
+
+
+def testTheDeclarationAttachSavesThroughTheSynchronousCarrier(
+    tclientDeclarationStep,
+):
+    """POST .../ai-declaration/attach persists project.json under mode (a).
+
+    Run against the real gate with the container's NAME distinct from
+    its id. The response must also report the sign-off withdrawn: the
+    served step was signed against the default file, and the attach
+    points it at a different one.
+    """
+    client, connectionDocker = tclientDeclarationStep
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": S_ATTACHABLE_DECLARATION_RELATIVE},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["bSignOffWithdrawn"] is True
+    _fnAssertWritesRanUnder(
+        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    )
+    dictSaved = json.loads(connectionDocker._dictFiles[S_WORKFLOW_PATH])
+    dictStep = dictSaved["listSteps"][-1]
+    assert dictStep["sDeclarationFile"] == (
+        S_ATTACHABLE_DECLARATION_RELATIVE
+    )
+
+
+def testAnAbsentDeclarationIsNotAttached(tclientDeclarationStep):
+    """An absent file is refused 409 and nothing is written."""
+    client, connectionDocker = tclientDeclarationStep
+    connectionDocker.listAdmittedPrimitives.clear()
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": "docs/neverWritten.md"},
+    )
+    assert response.status_code == 409, response.text
+    assert not any(
+        dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+        for dictReached in connectionDocker.listAdmittedPrimitives
+    )

@@ -40,6 +40,9 @@ var VaibifyPromptRecordViewer = (function () {
     var _SET_FOLDED_KINDS = new Set([
         "tool-call", "tool-result", "thinking", "context",
     ]);
+    var _DICT_PROVIDER_NAMES = {
+        claude: "Claude Code", codex: "Codex", gemini: "Gemini",
+    };
 
     var _dictViewer = {
         dictSessions: null,
@@ -146,7 +149,8 @@ var VaibifyPromptRecordViewer = (function () {
             (bSelected ? ' selected' : '') + '" data-session="' +
             fnEscapeHtml(dictSession.sSessionFileName) + '">' +
             '<span class="prompt-record-session-id">' +
-            fnEscapeHtml(_fsShortSessionName(dictSession.sSessionFileName)) +
+            fnEscapeHtml(_fsShortSessionName(
+                dictSession.sSessionFileName, dictSession.sProvider)) +
             '</span><span class="muted-text">' + fnEscapeHtml(
                 "captured " + (dictSession.sLastCapturedAtUtc || "?")
                     .slice(0, 16).replace("T", " ") + " · " +
@@ -155,11 +159,17 @@ var VaibifyPromptRecordViewer = (function () {
                 " MB") + '</span></button>';
     }
 
-    function _fsShortSessionName(sFileName) {
-        // "-workspace-project__<uuid>.jsonl" -> "<first 8 of uuid>"
+    function _fsShortSessionName(sFileName, sProvider) {
+        // Claude: "-workspace-project__<uuid>.jsonl" -> first 8 of uuid.
+        // Codex and Gemini end in a timestamp and an id, so their tail
+        // is the part that tells two sessions apart.
         var sStem = String(sFileName).replace(/\.jsonl$/, "");
         var sId = sStem.split("__").pop();
-        return "Session " + sId.slice(0, 8);
+        if (!sProvider || sProvider === "claude") {
+            return "Session " + sId.slice(0, 8);
+        }
+        return (_DICT_PROVIDER_NAMES[sProvider] || sProvider) +
+            " session " + sId.slice(-8);
     }
 
     function _fsRenderApproval(dictSessions) {
@@ -215,7 +225,7 @@ var VaibifyPromptRecordViewer = (function () {
         var bMore = _dictViewer.listTurns.length < (dictPage.iTurnCount || 0);
         _felGet("promptRecordViewerTurns").innerHTML =
             _fsRenderSessionSummary(dictPage) +
-            (listShown.map(_fsRenderTurn).join("") ||
+            (_fsRenderTurnsWithRewoundGroups(listShown) ||
                 '<p class="muted-text">No turns to show.</p>') +
             (bMore ? '<button type="button" class="btn" ' +
                 'data-viewer-action="more">Load more (' +
@@ -232,18 +242,61 @@ var VaibifyPromptRecordViewer = (function () {
             (dictPage.sLastTimestampUtc || "?").slice(0, 16)
                 .replace("T", " ") + " UTC. " +
             (dictPage.iRecordsWithoutConversation || 0) +
-            " record(s) carry no conversation (mode changes, file " +
-            "snapshots, titles) and are not shown.") + '</p>';
+            " record(s) carry no conversation (metadata, mode " +
+            "changes, snapshots, titles) and are not shown.") + '</p>';
+    }
+
+    function _fsRenderTurnsWithRewoundGroups(listTurns) {
+        // Turns the researcher took back (a Gemini rewind) stay in the
+        // record, folded into one group where they were taken back.
+        var sHtml = "";
+        var listGroup = [];
+        var iGroup = null;
+        function fnFlushGroup() {
+            if (listGroup.length === 0) return;
+            sHtml += '<details class="prompt-record-rewound"><summary>' +
+                fnEscapeHtml("Rewound · " + listGroup.length +
+                    " turn(s) taken back in the agent and not part " +
+                    "of the final conversation") + '</summary>' +
+                listGroup.map(_fsRenderTurn).join("") + '</details>';
+            listGroup = [];
+        }
+        listTurns.forEach(function (dictTurn) {
+            if (dictTurn.bRewound) {
+                // Two rewinds side by side stay two groups.
+                if (dictTurn.iRewindGroup !== iGroup) fnFlushGroup();
+                iGroup = dictTurn.iRewindGroup;
+                listGroup.push(dictTurn);
+                return;
+            }
+            fnFlushGroup();
+            sHtml += _fsRenderTurn(dictTurn);
+        });
+        fnFlushGroup();
+        return sHtml;
+    }
+
+    function _fsRenderEarlierTexts(dictTurn) {
+        var listEarlier = dictTurn.listEarlierTexts || [];
+        if (!dictTurn.bEdited || listEarlier.length === 0) return "";
+        return '<details class="prompt-record-earlier-text"><summary>' +
+            fnEscapeHtml("Earlier text (" + listEarlier.length + ")") +
+            '</summary>' + listEarlier.map(function (sText) {
+                return '<div class="prompt-record-turn-text">' +
+                    _fsHighlightRedactions(sText) + '</div>';
+            }).join("") + '</details>';
     }
 
     function _fsRenderTurn(dictTurn) {
         var sLabel = _DICT_TURN_LABELS[dictTurn.sKind] || dictTurn.sKind;
         if (dictTurn.sToolName) sLabel += " · " + dictTurn.sToolName;
+        if (dictTurn.bEdited) sLabel += " · edited";
         var sBody = '<div class="prompt-record-turn-text">' +
             _fsHighlightRedactions(dictTurn.sText) +
             (dictTurn.bTruncated ? '<p class="muted-text">… ' +
                 dictTurn.iCharacters + ' characters; the first ' +
-                dictTurn.sText.length + ' are shown.</p>' : '') + '</div>';
+                dictTurn.sText.length + ' are shown.</p>' : '') + '</div>' +
+            _fsRenderEarlierTexts(dictTurn);
         var sClass = 'prompt-record-turn prompt-record-turn-' +
             fnEscapeHtml(dictTurn.sKind) +
             (dictTurn.bRedacted ? ' has-redaction' : '');

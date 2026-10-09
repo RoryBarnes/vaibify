@@ -280,3 +280,244 @@ def test_generate_template_no_project_repo_path_returns_409(
     )
     assert response.status_code == 409
     assert "no project repo" in response.text.lower()
+
+
+# ============================================================================
+# GET .../ai-declaration/file-state and POST .../ai-declaration/attach
+# ============================================================================
+
+
+def _fnAddSignedDeclarationStep(dictWorkflow, sDeclarationFile):
+    """Append a signed-off AI Declaration step pointing at a file."""
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fdictBuildAiDeclarationStep,
+    )
+    dictStep = fdictBuildAiDeclarationStep(
+        sDeclarationFile=sDeclarationFile,
+    )
+    dictStep["dictVerification"]["sUser"] = "passed"
+    dictWorkflow["listSteps"].append(dictStep)
+    return dictStep
+
+
+def _fnWriteRepoFile(sRepo, sRelative, sText="# notes\n"):
+    sAbsolute = os.path.join(sRepo, sRelative)
+    os.makedirs(os.path.dirname(sAbsolute), exist_ok=True)
+    with open(sAbsolute, "w") as fileHandle:
+        fileHandle.write(sText)
+
+
+def test_file_state_answers_absent_then_present(
+    fixtureClient, fixtureProjectRepo,
+):
+    """With no step, the question is about the default AI_USAGE.md."""
+    sUrl = f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state"
+    dictAbsent = fixtureClient.get(sUrl).json()
+    assert dictAbsent["sRelativePath"] == "AI_USAGE.md"
+    assert dictAbsent["sFileState"] == "absent"
+    _fnWriteRepoFile(fixtureProjectRepo, "AI_USAGE.md")
+    assert fixtureClient.get(sUrl).json()["sFileState"] == "present"
+
+
+def test_file_state_asks_about_the_attached_file(
+    fixtureClient, fixtureWorkflow, fixtureProjectRepo,
+):
+    """The step's own file is the default question once one is attached."""
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "notes/declared.md")
+    _fnWriteRepoFile(fixtureProjectRepo, "notes/declared.md")
+    dictBody = fixtureClient.get(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state",
+    ).json()
+    assert dictBody == {
+        "sRelativePath": "notes/declared.md",
+        "sFileState": "present", "sReason": "",
+    }
+
+
+def test_file_state_reports_a_directory_as_unknown(
+    fixtureClient, fixtureProjectRepo,
+):
+    """A directory is neither attachable nor generatable: say so."""
+    os.makedirs(os.path.join(fixtureProjectRepo, "AI_USAGE.md"))
+    dictBody = fixtureClient.get(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state",
+    ).json()
+    assert dictBody["sFileState"] == "unknown"
+    assert "directory" in dictBody["sReason"]
+
+
+class _RepoFilesThatCannotRead:
+    """A repo adapter whose probe fails, as a stopped container's does."""
+
+    def __init__(self, sRootPath):
+        self.sRootPath = sRootPath
+
+    def fbIsFile(self, sRelPath):
+        raise OSError("the container is not running")
+
+    def fbIsDir(self, sRelPath):
+        raise OSError("the container is not running")
+
+    def fdictHashFiles(self, listRelPaths):
+        raise OSError("the container is not running")
+
+
+def _fclientWithUnreadableRepo(fixtureWorkflow):
+    app = FastAPI()
+    dictCtx = {
+        "docker": None, "workflows": {S_CONTAINER_ID: fixtureWorkflow},
+        "paths": {}, "require": lambda *aArgs: None,
+        "save": lambda sId, dictWf: None,
+        "files": lambda sId: _RepoFilesThatCannotRead(
+            fixtureWorkflow["sProjectRepoPath"]),
+    }
+    fnRegisterAll(app, dictCtx)
+    return TestClient(app)
+
+
+@pytest.mark.falsification
+def test_an_unreadable_repo_is_unknown_never_absent(fixtureWorkflow):
+    """A failed read must not offer "Generate" over an unseen file.
+
+    Kills: aiDeclarationStep answering ABSENT for a failed probe.
+    """
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "AI_USAGE.md")
+    client = _fclientWithUnreadableRepo(fixtureWorkflow)
+    dictBody = client.get(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state",
+    ).json()
+    assert dictBody["sFileState"] == "unknown"
+    assert "not running" in dictBody["sReason"]
+    response = client.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": "other.md"},
+    )
+    assert response.status_code == 503
+    assert fixtureWorkflow["listSteps"][-1]["sDeclarationFile"] == (
+        "AI_USAGE.md")
+
+
+@pytest.mark.parametrize("sHostilePath,iStatus", [
+    ("../outside.md", 400),
+    ("notes/../../outside.md", 400),
+    ("/etc/passwd", 400),
+    (".git/config", 403),
+    (".vaibify/state.json", 403),
+    ("sub/project.json", 403),
+    ("", 400),
+])
+def test_attach_refuses_paths_outside_the_declarable_repo(
+    fixtureClient, fixtureWorkflow, sHostilePath, iStatus,
+):
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "AI_USAGE.md")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": sHostilePath},
+    )
+    assert response.status_code == iStatus, response.text
+    assert fixtureWorkflow["listSteps"][-1]["sDeclarationFile"] == (
+        "AI_USAGE.md")
+
+
+def test_file_state_refuses_a_traversal_query(fixtureClient):
+    response = fixtureClient.get(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/file-state",
+        params={"sRelativePath": "../../etc/passwd"},
+    )
+    assert response.status_code == 400
+
+
+def test_attach_without_a_declaration_step_is_refused(
+    fixtureClient, fixtureProjectRepo,
+):
+    _fnWriteRepoFile(fixtureProjectRepo, "AI_USAGE.md")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": "AI_USAGE.md"},
+    )
+    assert response.status_code == 409
+    assert "no AI Declaration step" in response.json()["detail"]
+
+
+def test_attach_refuses_an_absent_file(fixtureClient, fixtureWorkflow):
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": "missing.md"},
+    )
+    assert response.status_code == 409
+    assert fixtureWorkflow["listSteps"][-1]["sDeclarationFile"] == ""
+
+
+@pytest.mark.falsification
+def test_reattaching_the_same_file_keeps_the_sign_off(
+    fixtureClient, fixtureWorkflow, fixtureProjectRepo, monkeypatch,
+):
+    """Kills: levelRoutes keeping the sign-off when a different file is
+    attached.
+    """
+    from vaibify.gui.routes import levelRoutes as moduleLevelRoutes
+    monkeypatch.setattr(
+        moduleLevelRoutes, "fdictCommitWorkflowSave",
+        lambda *aArgs, **dictKwargs: None,
+    )
+    dictStep = _fnAddSignedDeclarationStep(fixtureWorkflow, "AI_USAGE.md")
+    _fnWriteRepoFile(fixtureProjectRepo, "AI_USAGE.md")
+    _fnWriteRepoFile(fixtureProjectRepo, "notes/second.md")
+    sUrl = f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach"
+    dictSame = fixtureClient.post(
+        sUrl, json={"sRelativePath": "./AI_USAGE.md"}).json()
+    assert dictSame["bSignOffWithdrawn"] is False
+    assert dictSame["sRelativePath"] == "AI_USAGE.md"
+    assert dictStep["dictVerification"]["sUser"] == "passed"
+    dictOther = fixtureClient.post(
+        sUrl, json={"sRelativePath": "notes/second.md"}).json()
+    assert dictOther["bSignOffWithdrawn"] is True
+    assert dictStep["dictVerification"]["sUser"] == "untested"
+    assert dictStep["sDeclarationFile"] == "notes/second.md"
+
+
+@pytest.mark.falsification
+def test_attach_refuses_an_existing_file_inside_git_metadata(
+    fixtureClient, fixtureWorkflow, fixtureProjectRepo,
+):
+    """The file EXISTS, so only the metadata refusal can stop it: a
+    declaration pointing into .git/ would publish repository internals
+    through the preview and the commit button.
+
+    Kills: _fsValidateDeclarationPathInRepo dropping its
+    fnRejectWriteDenylistedPath check.
+    """
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "AI_USAGE.md")
+    _fnWriteRepoFile(fixtureProjectRepo, ".git/config", "[core]\n")
+    response = fixtureClient.post(
+        f"/api/workflow/{S_CONTAINER_ID}/ai-declaration/attach",
+        json={"sRelativePath": ".git/config"},
+    )
+    assert response.status_code == 403, response.text
+    assert fixtureWorkflow["listSteps"][-1]["sDeclarationFile"] == (
+        "AI_USAGE.md")
+
+
+@pytest.mark.falsification
+def test_attach_refuses_a_symlink_that_leaves_the_repo(
+    fixtureClient, fixtureWorkflow, fixtureProjectRepo, tmp_path,
+):
+    """A link INSIDE the repository passes every lexical check; only the
+    resolved path shows it leaves.
+
+    Kills: _fnRejectPathResolvingOutsideRepo accepting every path.
+    """
+    sOutside = tmp_path / "outside.md"
+    sOutside.write_text("not part of the project\n")
+    os.symlink(str(sOutside), os.path.join(fixtureProjectRepo, "linked.md"))
+    _fnAddSignedDeclarationStep(fixtureWorkflow, "AI_USAGE.md")
+    sBase = f"/api/workflow/{S_CONTAINER_ID}/ai-declaration"
+    responseState = fixtureClient.get(
+        sBase + "/file-state", params={"sRelativePath": "linked.md"})
+    assert responseState.status_code == 403, responseState.text
+    responseAttach = fixtureClient.post(
+        sBase + "/attach", json={"sRelativePath": "linked.md"})
+    assert responseAttach.status_code == 403, responseAttach.text
+    assert fixtureWorkflow["listSteps"][-1]["sDeclarationFile"] == (
+        "AI_USAGE.md")

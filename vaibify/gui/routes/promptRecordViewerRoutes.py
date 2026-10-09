@@ -76,22 +76,24 @@ def _fdictReadSessionPage(filesRepo, sSessionFileName, iOffset, iLimit):
     a session, never a path, so nothing outside the record is readable.
     """
     dictIndex = promptRecordManager.fdictLoadIndex(filesRepo)
-    setNames = {
-        dictSession["sSessionFileName"]
+    dictProviders = {
+        dictSession["sSessionFileName"]: dictSession["sProvider"]
         for dictSession in promptRecordManager.flistSummarizeSessions(
             dictIndex,
         )
     }
-    if sSessionFileName not in setNames:
+    if sSessionFileName not in dictProviders:
         raise HTTPException(404, "No such captured session.")
     sText = filesRepo.fsReadText(posixpath.join(
         promptRecordManager.S_PROMPT_RECORD_SESSIONS_DIRECTORY,
         sSessionFileName,
     ))
-    listTurns = promptRecordViewer.flistParseTranscriptTurns(sText)
+    listTurns = promptRecordViewer.flistParseTranscriptTurns(
+        sText, dictProviders[sSessionFileName])
     dictPage = promptRecordViewer.fdictSummarizeTurns(sText, listTurns)
     dictPage.update({
         "sSessionFileName": sSessionFileName,
+        "sProvider": dictProviders[sSessionFileName],
         "iOffset": iOffset,
         "listTurns": listTurns[iOffset:iOffset + iLimit],
     })

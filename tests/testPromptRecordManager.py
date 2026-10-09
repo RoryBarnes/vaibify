@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import zlib
 from collections import namedtuple
 
 import pytest
@@ -61,6 +62,7 @@ class _StubDockerTranscripts:
     def __init__(self, dictTranscripts, dictLaunchDirectories=None):
         self.dictTranscripts = dictTranscripts
         self.dictLaunchDirectories = dictLaunchDirectories or {}
+        self.dictProviders = {}
 
     def ftRunInContainerStreamed(self, sContainerId, sCommand):
         dictListing = {
@@ -69,6 +71,11 @@ class _StubDockerTranscripts:
                 "sLaunchDirectory": self.dictLaunchDirectories.get(
                     sPath, S_PROJECT_REPO_PATH,
                 ),
+                # A real file's mtime and ctime move on every write; a
+                # content-derived key stands in for them here, so a
+                # same-size rewrite moves the key exactly as it would.
+                "listStatKey": [zlib.crc32(baContent), len(baContent)],
+                "sProvider": self.dictProviders.get(sPath, "claude"),
             }
             for sPath, baContent in self.dictTranscripts.items()
         }
@@ -311,6 +318,65 @@ def test_rewritten_transcript_is_recaptured_whole(tmp_path):
 
 
 @pytest.mark.falsification
+def test_a_same_size_rewrite_is_recaptured_whole(tmp_path):
+    """A rewrite that leaves the size unchanged is still a rewrite.
+
+    The capture loop skipped any transcript no larger than what it had
+    captured, before ever comparing the captured prefix, so a same-size
+    rewrite was never refetched and the record kept text the transcript
+    no longer held.
+
+    Kills: skipping a transcript on its size alone.
+    """
+    _fnRequireSanitizer()
+    filesRepo, stubDocker, _ = _ftCaptureOnce(
+        tmp_path, b'{"text":"aaaa"}\n',
+    )
+    stubDocker.dictTranscripts[S_TRANSCRIPT_PATH] = b'{"text":"bbbb"}\n'
+    fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    dictIndex = fdictLoadIndex(filesRepo)
+    assert dictIndex["listCaptures"][-1]["sCaptureKind"] == "whole"
+    assert _fsLandedSessionText(filesRepo) == '{"text":"bbbb"}\n'
+    assert fbVerifyCaptureChain(dictIndex)
+
+
+@pytest.mark.falsification
+def test_a_truncated_transcript_is_recaptured_whole(tmp_path):
+    """A transcript cut back to fewer lines is recaptured as it now is.
+
+    Kills: skipping a transcript that is smaller than what was captured.
+    """
+    _fnRequireSanitizer()
+    filesRepo, stubDocker, _ = _ftCaptureOnce(
+        tmp_path, b'{"text":"kept"}\n{"text":"dropped"}\n',
+    )
+    stubDocker.dictTranscripts[S_TRANSCRIPT_PATH] = b'{"text":"kept"}\n'
+    fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    dictIndex = fdictLoadIndex(filesRepo)
+    assert dictIndex["listCaptures"][-1]["sCaptureKind"] == "whole"
+    assert _fsLandedSessionText(filesRepo) == '{"text":"kept"}\n'
+    assert flistVerifyCapturedFiles(filesRepo, dictIndex) == []
+
+
+def test_an_unchanged_transcript_is_not_fetched_again(tmp_path):
+    """The stat key spares an unchanged transcript the fetch entirely."""
+    _fnRequireSanitizer()
+    filesRepo, stubDocker, _ = _ftCaptureOnce(
+        tmp_path, b'{"text":"once"}\n',
+    )
+    listFetched = []
+    fnOriginalFetch = stubDocker.fbaFetchFile
+
+    def fbaRecordingFetch(sContainerId, sFilePath):
+        listFetched.append(sFilePath)
+        return fnOriginalFetch(sContainerId, sFilePath)
+
+    stubDocker.fbaFetchFile = fbaRecordingFetch
+    fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    assert listFetched == []
+
+
+@pytest.mark.falsification
 def test_edited_session_file_is_recaptured_not_appended_to(tmp_path):
     """New lines are never appended onto a session edited after capture.
 
@@ -445,7 +511,7 @@ def test_the_container_listing_program_reads_each_launch_directory(
     FIRST recorded working directory is the launch directory; a later
     ``cwd`` is where the session wandered, not where it started.
 
-    Kills: dropping the ``break`` after the first ``cwd`` found.
+    Kills: taking the last recorded ``cwd`` instead of the first.
     """
     sRoot = str(tmp_path / ".claude" / "projects")
     sInProject = os.path.join(sRoot, "-workspace-project", "a.jsonl")
@@ -496,3 +562,173 @@ def test_a_whole_recapture_resets_the_session_redaction_tally():
         (dictSession["sSessionFileName"], dictSession["iRedactionCount"])
         for dictSession in flistSummarizeSessions(dictIndex)
     ] == [("a.jsonl", 7), ("b.jsonl", 1)]
+
+
+# ---------------------------------------------------------------------
+# Codex and Gemini transcripts, and records written before providers.
+# The sample transcripts are synthetic and secret-free, shaped like the
+# files each CLI writes: Codex's first line is ``session_meta`` with the
+# launch directory in ``payload.cwd``; Gemini files its chats under a
+# per-project folder whose ``.project_root`` names the directory.
+# ---------------------------------------------------------------------
+
+def _fdictRunTheListingProgram(sHome):
+    dictEnvironment = dict(os.environ, HOME=sHome)
+    resultRun = subprocess.run(
+        [sys.executable, "-c", promptRecordManager._S_LIST_PROGRAM],
+        capture_output=True, text=True, env=dictEnvironment, check=True,
+    )
+    return json.loads(resultRun.stdout)
+
+
+@pytest.mark.falsification
+def test_the_listing_program_reads_codex_and_gemini_launch_directories(
+    tmp_path,
+):
+    """Kills: the Codex rule reading the launch directory from any
+    record rather than the session's own ``session_meta``.
+    """
+    sHome = str(tmp_path)
+    sCodex = os.path.join(
+        sHome, ".codex", "sessions", "2026", "10", "08",
+        "rollout-2026-10-08T10-00-00-0199aaaa.jsonl")
+    _fnWriteTranscript(sCodex, [
+        {"type": "turn_context", "payload": {"cwd": "/workspace/elsewhere"}},
+        {"type": "session_meta",
+         "payload": {"id": "0199aaaa", "cwd": "/workspace/project"}},
+    ])
+    sGeminiMarked = os.path.join(
+        sHome, ".gemini", "tmp", "project", "chats",
+        "session-2026-10-08T10-00-aaaa.jsonl")
+    _fnWriteTranscript(sGeminiMarked, [{"sessionId": "aaaa"}])
+    with open(os.path.join(sHome, ".gemini", "tmp", "project",
+                           ".project_root"), "w") as fileRoot:
+        fileRoot.write("/workspace/project\n")
+    sGeminiMapped = os.path.join(
+        sHome, ".gemini", "tmp", "other-1", "chats",
+        "session-2026-10-08T11-00-bbbb.jsonl")
+    _fnWriteTranscript(sGeminiMapped, [{"sessionId": "bbbb"}])
+    with open(os.path.join(sHome, ".gemini", "projects.json"),
+              "w") as fileMap:
+        json.dump({"projects": {"/workspace/other": "other-1"}}, fileMap)
+    dictListing = _fdictRunTheListingProgram(sHome)
+    assert dictListing[sCodex]["sProvider"] == "codex"
+    assert dictListing[sCodex]["sLaunchDirectory"] == "/workspace/project"
+    assert dictListing[sGeminiMarked]["sProvider"] == "gemini"
+    assert dictListing[sGeminiMarked]["sLaunchDirectory"] == (
+        "/workspace/project")
+    assert dictListing[sGeminiMapped]["sLaunchDirectory"] == (
+        "/workspace/other")
+    assert len(dictListing[sCodex]["listStatKey"]) == 4
+
+
+def test_the_listing_program_ignores_gemini_backups_and_temp_files(
+    tmp_path,
+):
+    """Gemini preserves an unreadable session beside a rewritten one and
+    writes through a temporary file; neither is a transcript."""
+    sHome = str(tmp_path)
+    sChats = os.path.join(sHome, ".gemini", "tmp", "project", "chats")
+    sSession = os.path.join(sChats, "session-2026-10-08T10-00-aaaa.jsonl")
+    _fnWriteTranscript(sSession, [{"sessionId": "aaaa"}])
+    _fnWriteTranscript(sSession + ".unreadable-1760000000", [{}])
+    _fnWriteTranscript(sSession + ".tmp-4242", [{}])
+    assert list(_fdictRunTheListingProgram(sHome)) == [sSession]
+
+
+def test_codex_and_gemini_sessions_land_under_provider_names(tmp_path):
+    _fnRequireSanitizer()
+    sCodex = (
+        "/home/user/.codex/sessions/2026/10/08/rollout-2026-10-08-aaaa.jsonl")
+    sGemini = (
+        "/home/user/.gemini/tmp/project/chats/session-2026-10-08-bbbb.jsonl")
+    sElsewhere = (
+        "/home/user/.codex/sessions/2026/10/08/rollout-2026-10-08-cccc.jsonl")
+    stubDocker = _StubDockerTranscripts({
+        sCodex: b'{"type":"session_meta","payload":{}}\n',
+        sGemini: b'{"sessionId":"bbbb"}\n',
+        sElsewhere: b'{"type":"session_meta","payload":{}}\n',
+    }, dictLaunchDirectories={sElsewhere: "/workspace/other"})
+    stubDocker.dictProviders = {sCodex: "codex", sGemini: "gemini",
+                                sElsewhere: "codex"}
+    filesRepo = ffilesEnsureRepoFiles(str(tmp_path))
+    dictSummary = fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    assert dictSummary["iSessionsOutsideProject"] == 1
+    dictIndex = fdictLoadIndex(filesRepo)
+    dictByName = {
+        dictRecord["sSessionFileName"]: dictRecord["sProvider"]
+        for dictRecord in dictIndex["listCaptures"]}
+    assert dictByName == {
+        "codex__rollout-2026-10-08-aaaa.jsonl": "codex",
+        "gemini__project__session-2026-10-08-bbbb.jsonl": "gemini",
+    }
+    assert fbVerifyCaptureChain(dictIndex)
+
+
+@pytest.mark.falsification
+def test_an_index_written_before_providers_still_verifies_and_extends(
+    tmp_path,
+):
+    """Provider metadata must not change the bytes the old chain hashed.
+
+    The legacy record carries no ``sProvider`` and the index no stat
+    keys. After a new capture the old record is byte-for-byte what it
+    was, the chain still verifies, and the new record chains onto it.
+
+    Kills: backfilling ``sProvider`` into records already in the index.
+    """
+    _fnRequireSanitizer()
+    filesRepo = ffilesEnsureRepoFiles(str(tmp_path))
+    sLegacyName = "-workspace-project__legacy.jsonl"
+    sLegacyText = '{"type":"user","message":{"content":"old"}}\n'
+    filesRepo.fnWriteTextAtomic(
+        S_PROMPT_RECORD_SESSIONS_DIRECTORY + "/" + sLegacyName, sLegacyText)
+    import hashlib
+    dictLegacyRecord = {
+        "sSessionFileName": sLegacyName, "sCaptureKind": "whole",
+        "iBytesCaptured": len(sLegacyText),
+        "sSha256": hashlib.sha256(sLegacyText.encode()).hexdigest(),
+        "sPreviousRecordSha256": "",
+        "sCapturedAtUtc": "2026-09-01T00:00:00+00:00",
+        "iRedactionCount": 0, "dictRedactionsByCategory": {},
+    }
+    filesRepo.fnWriteJsonAtomic(S_PROMPT_RECORD_INDEX_PATH, {
+        "listCaptures": [dictLegacyRecord], "listCoverageIntervals": [],
+        "dictSessionBytes": {}, "dictSessionRawSha256": {},
+        "iSessionsOutsideProject": 0,
+    })
+    stubDocker = _StubDockerTranscripts(
+        {S_TRANSCRIPT_PATH: b'{"text":"new"}\n'})
+    fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    dictIndex = fdictLoadIndex(filesRepo)
+    assert dictIndex["listCaptures"][0] == dictLegacyRecord
+    assert fbVerifyCaptureChain(dictIndex)
+    assert dictIndex["listCaptures"][1]["sPreviousRecordSha256"] == (
+        promptRecordManager._fsHashRecord(dictLegacyRecord))
+    assert dictIndex["listCaptures"][1]["sProvider"] == "claude"
+    dictSummaries = {
+        d["sSessionFileName"]: d["sProvider"]
+        for d in flistSummarizeSessions(dictIndex)}
+    assert dictSummaries[sLegacyName] == "claude"
+
+
+@pytest.mark.falsification
+def test_a_transcript_truncated_to_nothing_replaces_its_landed_text(tmp_path):
+    """A captured transcript emptied in place is recaptured as empty, and
+    the empty file's stat key does not freeze the old text in place.
+
+    Kills: returning no pending capture when a previously captured
+    transcript now holds no complete line.
+    """
+    _fnRequireSanitizer()
+    filesRepo, stubDocker, _ = _ftCaptureOnce(
+        tmp_path, b'{"text":"said earlier"}\n',
+    )
+    stubDocker.dictTranscripts[S_TRANSCRIPT_PATH] = b""
+    fdictRunCapturePass(stubDocker, "cid", filesRepo, [])
+    dictIndex = fdictLoadIndex(filesRepo)
+    assert dictIndex["listCaptures"][-1]["sCaptureKind"] == "whole"
+    assert dictIndex["listCaptures"][-1]["iBytesCaptured"] == 0
+    assert _fsLandedSessionText(filesRepo) == ""
+    assert fbVerifyCaptureChain(dictIndex)
+    assert flistVerifyCapturedFiles(filesRepo, dictIndex) == []
