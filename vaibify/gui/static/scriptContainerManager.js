@@ -1418,17 +1418,28 @@ var VaibifyContainerManager = (function () {
 
     async function fnSaveContainerSettings(sName, dictSettings) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictSaved = await VaibifyApi.fdictPost(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings",
                 dictSettings
             );
             VaibifyApp.fnShowToast(
-                "Settings saved. Use Restart to apply.",
-                "success");
+                _fsDescribeSavedSettings(dictSaved || {}), "success");
         } catch (error) {
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
+    }
+
+    function _fsDescribeSavedSettings(dictSaved) {
+        /* Each changed limit carries the server's own sentence saying
+           what will happen to it; only the other settings, which have
+           no per-field outcome, fall back to the Restart reminder. */
+        var listSentences = (dictSaved.listLimitOutcomes || []).map(
+            function (dictOutcome) { return dictOutcome.sSentence; });
+        if (listSentences.length === 0 && dictSaved.bRestartRequired) {
+            listSentences.push("Use Restart to apply.");
+        }
+        return ["Settings saved."].concat(listSentences).join(" ");
     }
 
     var _iBuildProgressTimer = null;
@@ -2502,6 +2513,9 @@ var VaibifyContainerManager = (function () {
         _fnRenderConfigurationDriftBanner(
             (dictReadiness && dictReadiness.listConfigurationDrift) || []
         );
+        _fnRenderResourceLimitDriftBanner(
+            (dictReadiness && dictReadiness.listResourceLimitDrift) || []
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -2571,6 +2585,51 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+    }
+
+    function _fnRenderResourceLimitDriftBanner(listSentences) {
+        /* The server's sentences about running CPU and memory limits
+           that differ from the project's settings, never a comparison
+           of its own. No sentences means "no difference, or nothing
+           determined", and the banner is absent. Its own banner: a
+           limit takes effect at the next start, so it is neither a
+           start warning nor an image older than its file. The x hides
+           it for this visit only, like the banners beside it. */
+        var elBanner = document.getElementById("resourceLimitDriftBanner");
+        if (!elBanner) return;
+        elBanner.textContent = "";
+        if (!listSentences || !listSentences.length) {
+            elBanner.style.display = "none";
+            return;
+        }
+        var elHeader = document.createElement("div");
+        elHeader.className = "build-warnings-banner-header";
+        var elHeading = document.createElement("span");
+        elHeading.textContent = "This container's CPU or memory limits " +
+            "differ from its settings";
+        var elDismiss = document.createElement("button");
+        elDismiss.type = "button";
+        elDismiss.className = "build-warnings-banner-dismiss";
+        elDismiss.id = "btnDismissResourceLimitDrift";
+        elDismiss.setAttribute("aria-label",
+            "Hide this notice until the container is next opened");
+        elDismiss.textContent = "×";
+        elDismiss.addEventListener("click", function () {
+            elBanner.style.display = "none";
+            elBanner.textContent = "";
+        });
+        elHeader.appendChild(elHeading);
+        elHeader.appendChild(elDismiss);
+        var elList = document.createElement("ul");
+        elList.className = "build-warnings-banner-list";
+        listSentences.forEach(function (sSentence) {
+            var elItem = document.createElement("li");
+            elItem.textContent = sSentence;
+            elList.appendChild(elItem);
+        });
+        elBanner.appendChild(elHeader);
+        elBanner.appendChild(elList);
+        elBanner.style.display = "block";
     }
 
     function _fnRenderBuildWarningsBanner(listWarnings) {

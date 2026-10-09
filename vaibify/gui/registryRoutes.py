@@ -998,22 +998,42 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 bRestartRequired = _fbApplyAgentAutoUpdate(
                     dictProject["sConfigPath"], sAgent, bAutoUpdate,
                 ) or bRestartRequired
-        if request.iCpuLimit is not None:
-            _fnUpdateYamlNumberField(
-                dictProject["sConfigPath"], "cpuLimit",
-                request.iCpuLimit,
-            )
-            bRestartRequired = True
-        if request.fMemoryLimitGigabytes is not None:
-            _fnUpdateYamlNumberField(
-                dictProject["sConfigPath"], "memoryLimitGigabytes",
-                request.fMemoryLimitGigabytes,
-            )
-            bRestartRequired = True
+        listLimitOutcomes = _flistApplyLimitSettings(
+            dictProject["sConfigPath"], request,
+        )
         return {
             "bSuccess": True,
-            "bRestartRequired": bRestartRequired,
+            "bRestartRequired": bRestartRequired or any(
+                dictOutcome["sOutcome"] == "nextStart"
+                for dictOutcome in listLimitOutcomes
+            ),
+            "listLimitOutcomes": listLimitOutcomes,
         }
+
+
+def _flistApplyLimitSettings(sConfigPath, request):
+    """Write the limits that differ from vaibify.yml; return each outcome.
+
+    The dashboard sends both fields on every save, so only a field whose
+    value differs from the file is written or reported. Every change
+    waits for the next start, and the outcome says so.
+    """
+    from vaibify.config import resourceLimits
+    from vaibify.config.projectConfig import fconfigLoadFromFile
+    listChanged = resourceLimits.flistChangedLimitFields(
+        fconfigLoadFromFile(sConfigPath),
+        request.iCpuLimit, request.fMemoryLimitGigabytes,
+    )
+    if resourceLimits.S_FIELD_CPU in listChanged:
+        _fnUpdateYamlNumberField(sConfigPath, "cpuLimit", request.iCpuLimit)
+    if resourceLimits.S_FIELD_MEMORY in listChanged:
+        _fnUpdateYamlNumberField(
+            sConfigPath, "memoryLimitGigabytes",
+            request.fMemoryLimitGigabytes,
+        )
+    return resourceLimits.flistDescribeNextStartOutcomes(
+        listChanged, fconfigLoadFromFile(sConfigPath),
+    )
 
 
 def _fbApplyX11Forwarding(sConfigPath, bNewValue):

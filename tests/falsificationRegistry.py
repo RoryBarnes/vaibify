@@ -30474,4 +30474,42 @@ def _fdictEntry(sRel):
         old='        var sEpisode = (_dictState.sContainerName || "") + "|" +\n            dictCurrent.sNearSinceIso;\n',
         new='        var sEpisode = (_dictState.sContainerName || "") + "|near";\n',
     ),
+    # --- 2026-10-08: limits are planned against the running container ---
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testIntroducingAMemoryLimitWaitsForTheNextStart',
+        source='vaibify/config/resourceLimits.py',
+        old='        return fdictEntry(S_ACTION_NEXT_START, (\n            "Docker cannot add a memory limit to a running container"))\n',
+        new='        return fdictEntry(S_ACTION_APPLY_LIVE, "")\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testARaiseInTheFileThatLowersTheRunningLimitIsADecrease',
+        source='vaibify/config/resourceLimits.py',
+        old='    if iDesiredBytes < iRunning:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testZeroCpusInTheFileIsAllCoresButOneNotDrift',
+        source='vaibify/config/resourceLimits.py',
+        old='        return min(iConfiguredLimit, iHostCores)\n    return max(1, iHostCores - 1)\n',
+        new='        return min(iConfiguredLimit, iHostCores)\n    return iConfiguredLimit\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testAnUnknownRunningLimitDeterminesNothing',
+        source='vaibify/config/resourceLimits.py',
+        old='    if sKind not in (S_KIND_FINITE, S_KIND_UNLIMITED):\n        return ""\n',
+        new='    if False:\n        return ""\n',
+    ),
+    # --- 2026-10-08: a limit save and limit drift speak the server's sentences ---
+    Falsification(
+        nodeid='tests/browser/testTheLimitSettingsSayWhatWillHappen.py::testTheSaveToastCarriesEachChangesOwnSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        var listSentences = (dictSaved.listLimitOutcomes || []).map(\n',
+        new='        var listSentences = [].map(\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheLimitSettingsSayWhatWillHappen.py::testTheLimitDriftBannerRendersTheServersSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        _fnRenderResourceLimitDriftBanner(\n            (dictReadiness && dictReadiness.listResourceLimitDrift) || []\n        );\n',
+        new='',
+    ),
 ]

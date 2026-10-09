@@ -25,8 +25,30 @@ file; the Python dataclass uses Hungarian notation internally.
 | `pipInstallFlags` | string  | `--prefer-binary` | Extra flags passed to `pip install` during the image build |
 | `neverSleep`      | boolean | `false`           | Keep the host awake (`caffeinate`) while the container runs; macOS only, ignored elsewhere |
 | `dashboardPort`   | integer | `0`               | The project's dashboard port. `0` means "not yet assigned": the first launch picks a free port and writes it back here so the same port is reused on every restart. A non-zero value must be 1024–65535 |
-| `cpuLimit`        | integer | `0`               | Cap on container CPU cores. `0` means no explicit limit (all host cores minus one); a positive value is clamped to the host's core count |
-| `memoryLimitGigabytes` | float | `0.0`         | Container memory cap in GB. `0` means unlimited; a non-zero value must be at least `0.25` |
+| `cpuLimit`        | integer | `0`               | Cap on container CPU cores. `0` means no explicit limit (all host cores minus one); a positive value is clamped to the host's core count. See [CPU and memory limits](#cpu-and-memory-limits) |
+| `memoryLimitGigabytes` | float | `0.0`         | Container memory cap in GB (1 GB = 2^30 bytes). `0` means unlimited; a non-zero value must be at least `0.25`. At the cap the kernel kills a process in the container. See [CPU and memory limits](#cpu-and-memory-limits) |
+
+### CPU and memory limits
+
+`cpuLimit` and `memoryLimitGigabytes` are passed to `docker run`, so a
+container keeps the limits it was created with. Changing either one,
+in this file or in the dashboard's Settings dialog, takes effect the
+next time the container starts; the dashboard's answer to a save says
+so for each field it changed, and a save that leaves a field as it was
+reports nothing for that field.
+
+When a running container's limits differ from this file — after an
+edit, or after a limit was raised by hand with `docker update` — the
+dashboard shows a banner saying which limit differs and what the next
+Restart will apply. It compares against the container as it runs, and
+reads `cpuLimit: 0` as the "all cores but one" the container was
+created with, not as "no limit". If the running limits cannot be read,
+it says nothing rather than guess.
+
+A process that reaches the memory cap is killed by the kernel, and AI
+agents with the jobs they start often need several GB. Leave the field
+at `0` unless you need a cap; the dashboard reports kills when they
+happen (see [the dashboard's Memory section](dashboard.md#memory)).
 
 ### List Fields
 

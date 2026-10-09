@@ -46,6 +46,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+from vaibify.config.resourceLimits import fsFormatBytes
 from vaibify.docker import cgroupMemory
 
 logger = logging.getLogger("vaibify")
@@ -79,7 +80,6 @@ __all__ = [
     "fdictDescribeMemoryForContainerId",
     "fsDescribeKillCount",
     "fsDescribeMemoryIncident",
-    "fsFormatBytes",
     "fsNormalizeDockerTime",
     "fsDescribeExitedOomEvidence",
     "fnRecordExitedEvidenceForApp",
@@ -126,8 +126,6 @@ S_REMEDY_GIVE_DOCKER_MEMORY = (
     "To give it more memory, give Docker more memory in Docker's own "
     "settings.")
 
-_I_BYTES_PER_GIGABYTE = 2 ** 30
-_I_BYTES_PER_MEGABYTE = 2 ** 20
 _S_DOCKER_ZERO_TIME_PREFIX = "0001-01-01"
 
 _lockMemoryStore = threading.Lock()
@@ -471,14 +469,6 @@ def fsDescribeKillCount(iKillCount):
     if not iKillCount:
         return ""
     return f"{_fsCountProcesses(iKillCount)} killed for lack of memory"
-
-
-def fsFormatBytes(iBytes):
-    """Return a byte count in the units the limit fields use (GB = 2**30)."""
-    if iBytes < _I_BYTES_PER_GIGABYTE:
-        return f"{round(iBytes / _I_BYTES_PER_MEGABYTE)} MB"
-    fGigabytes = iBytes / _I_BYTES_PER_GIGABYTE
-    return f"{fGigabytes:.1f}".rstrip("0").rstrip(".") + " GB"
 
 
 def _ffAgeSeconds(sSampledIso, datetimeNow):

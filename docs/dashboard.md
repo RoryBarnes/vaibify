@@ -88,6 +88,14 @@ kills in containers that no longer exist, and reports a running
 container's earlier kills again as kills whose time vaibify did not
 observe.
 
+**Limits that differ from the settings.** A container keeps the CPU
+and memory limits it was created with. When they differ from the
+project's settings — after a change in Settings, or a limit raised by
+hand — a banner says which limit differs and what the next Restart
+will apply. It says nothing when the running limits cannot be read.
+Saving a limit in Settings answers with one sentence for each limit
+the save changed, saying when it takes effect.
+
 ## Terminal
 
 **Containerized projects get a shell in the dashboard.** The terminal

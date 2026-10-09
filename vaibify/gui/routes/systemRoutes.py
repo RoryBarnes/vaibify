@@ -460,6 +460,28 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
+def _flistDescribeResourceLimitDrift(connectionDocker, sContainerId):
+    """Return the lines saying the running limits differ from vaibify.yml.
+
+    Three-state, like the configuration drift: an unreadable file or an
+    unreadable running limit answers NO lines, never drift. Its own
+    key, because a limit applies at the next start, not the last one.
+    """
+    from vaibify.config import resourceLimits
+    from .. import pipelineRunSlots
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    try:
+        return resourceLimits.flistDescribeLimitDrift(
+            pipelineRunSlots.fdictReadRunningLimits(
+                connectionDocker, sContainerId),
+            resourceLimits.fdictResolveDesiredLimits(configProject),
+        )
+    except Exception:
+        return []
+
+
 def _fconfigForContainerOrNone(connectionDocker, sContainerId):
     """Return the registered project's config for a container id, or None.
 
@@ -512,6 +534,9 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     dictReadiness["listConfigurationDrift"] = (
         _flistDescribeConfigurationDrift(connectionDocker, sContainerId)
         + listX11ContainerLines
+    )
+    dictReadiness["listResourceLimitDrift"] = (
+        _flistDescribeResourceLimitDrift(connectionDocker, sContainerId)
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,

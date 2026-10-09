@@ -6923,7 +6923,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # only the wizard's own -- copies it.
     # 2375 -> 2413 (2026-10-04): measured after merging the agent-free
     # environment archive branch into main; both sides' growth.
-    "registryRoutes.py": 2413,
+    # 2413 -> 2433 (2026-10-08): a settings save writes only the limits
+    # that changed and answers each with its outcome; the planning and
+    # the wording live in vaibify/config/resourceLimits.py, and only the
+    # YAML writes stay here, beside the writer they use.
+    "registryRoutes.py": 2433,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

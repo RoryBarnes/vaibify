@@ -611,6 +611,12 @@
              style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
+        <!-- Running CPU or memory limits that differ from vaibify.yml.
+             Its own banner: a limit applies at the next start, so it is
+             neither a start warning nor an image older than its file. -->
+        <div id="resourceLimitDriftBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
         <!-- One banner per out-of-memory kill the researcher has not
              dismissed, each the hub's own sentence. -->
         <div id="memoryIncidentBanners"></div>
