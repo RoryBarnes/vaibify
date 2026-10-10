@@ -4357,7 +4357,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # operator-visible trace; the lines live at the commit points they
     # describe (tests/testLifecycleLogging.py pins them).
     # 952 -> 956 (2026-10-01): type-only imports name the annotations.
-    "containerOwnership.py": 956,
+    # 956 -> 958 (2026-10-09): a refusal body says whether the lock was
+    # held or the journal was busy, so the claim path can word a retry.
+    "containerOwnership.py": 958,
     # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
     # default cap when the three exhausted-round exit routes and the
     # credential-gate refusal joined it. One cohesive responsibility —
@@ -6297,7 +6299,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-24): a transfer retags every project's run and adopts
     # every command the shared durable record has in flight.
     # 1837 -> 1839 (2026-10-01): a fenced socket's close task is kept referenced.
-    "sessionLifecycle.py": 1839,
+    # 1839 -> 1861 (2026-10-09): a claim refused busy while a reaper pass is
+    # ending an earlier hub's sessions says so; the claim path is the one
+    # place that holds both the verdict and the state the pass flags.
+    "sessionLifecycle.py": 1861,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +

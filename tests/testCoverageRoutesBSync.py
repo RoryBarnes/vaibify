@@ -726,7 +726,10 @@ def testTheStartupSweepSparesMountedFilesOnly(
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []
     syncRoutes._fnRegisterEphemeralSecretSweep(app, {"docker": dockerDouble})
-    assert len(app.state.listLifespanStartup) == 1
-    app.state.listLifespanStartup[0](app)
+    assert not app.state.listLifespanStartup, "the sweep is a reaper now"
+    [(sReaperName, fdictReaper)] = app.state.listRemnantReapers
+    assert sReaperName == "ephemeralSecretFiles"
+    dictOutcome = fdictReaper({"docker": dockerDouble})
+    assert dictOutcome["sOutcome"] == "ran"
     assert os.path.exists(sMounted)
     assert not os.path.exists(sOrphan)

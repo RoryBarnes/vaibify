@@ -1306,6 +1306,47 @@ The `vaibify sessions` CLI (see [Advanced Installation](install.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
 
+## The hub's reapers run on one cadence and record what they did
+
+A *reaper* deletes garbage the hub can prove is garbage: a container
+lock no process holds, a credential file no container mounts, a
+shadow-rerun lock nothing flocks, a terminal whose owning hub is dead.
+`vaibify/gui/remnantReapers.py` owns the registry. Each reaper is a
+synchronous function of the route context that returns one shape,
+`{iRemoved, sOutcome, sReason, sRemedy}`, where `sOutcome` is one of:
+
+- `ran` — the reaper did its work; `iRemoved` counts what it deleted.
+- `forbidden` — the reaper declined because it could not establish
+  the proof it acts on (the daemon could not list mounts, say).
+  `sReason` says what was missing and `sRemedy` what restores it.
+  Declining is the SAFE direction: a sweep that proceeds with an empty
+  protected set deletes files a live container still mounts.
+- `failed` — the reaper raised. The exception is logged, the other
+  reapers still run, and `sRemedy` names the log.
+
+A pass runs every reaper in a worker thread, one after another (several
+of them take the same flocks and journal lock), and records each
+outcome in `app.state.dictReaperHealth`, with one INFO line per reaper.
+The first pass is a task created by a startup hook, so it never delays
+readiness; the loop repeats it every ten minutes, or at once when a
+rescan is requested (`fnRequestRescan`). While a pass is in flight a
+claim refused as busy carries a sentence saying so, because the busy
+work it met may be exactly what the pass is ending.
+
+Three startup sweeps stay AWAITED startup hooks rather than reapers on
+the loop, because each must finish before the hub serves: the
+stale-lock reap, the host-scratch sweep and the abandoned-spool sweep.
+They run in a thread and record through the same registry, so the
+health block covers them too.
+
+The record exists because of a reaper that did not run. The
+credential-file sweep called `.containers.list` on a connection class
+that has no such attribute, swallowed the `AttributeError`, and
+silently did nothing for weeks while its unit test passed against a
+fake shaped like the Docker SDK client. A reaper that cannot run must
+now say why, and a reaper that is absent from the health block has
+not been registered.
+
 ## Host mode: the same hub, a different substrate
 
 A project is either **containerized** or **host**. A host project has

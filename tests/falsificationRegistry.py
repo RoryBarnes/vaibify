@@ -2134,9 +2134,9 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testEphemeralStore.py::test_sweep_is_forbidden_when_the_daemon_is_unreachable',
         source='vaibify/gui/routes/syncRoutes.py',
-        old="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        old="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if setMounted is None:""",
-        new="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        new="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if False:""",
     ),
     # The host-log-tail endpoint returns the raw host-wide log and

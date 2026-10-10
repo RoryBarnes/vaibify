@@ -3621,12 +3621,13 @@ def _fnRegisterScheduledReverify(app, dictCtx):
 
 
 def _fnRegisterEphemeralSecretSweep(app, dictCtx):
-    """Retire unreachable host credential files once, at hub startup.
+    """Register the reaper that retires unreachable host credential files.
 
     The GitHub, Overleaf and Zenodo flows registered above all drop
     live tokens into ``~/.vaibify/tmp``, and the container-mount path
     cannot unlink at the point of use, so a periodic sweep is the only
-    mechanism available.
+    mechanism available. It runs on the reaper loop's cadence with its
+    outcome recorded; the one-shot form failed silently for weeks.
 
     Age alone does not make a file garbage. A mounted secret lives as
     long as the container that mounts it, which outlives any number of
@@ -3636,9 +3637,10 @@ def _fnRegisterEphemeralSecretSweep(app, dictCtx):
     avoid causing.
     """
     from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
+    from vaibify.gui import remnantReapers
 
-    def fnSweepAtStartup(_app):
-        setMounted = _fsetMountedHostPaths(dictCtx)
+    def fdictSweepEphemeralSecrets(dictCtxPass):
+        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if setMounted is None:
             # Enumeration failed: we cannot tell which files a live
             # container still bind-mounts, so deleting any of them could
@@ -3647,10 +3649,17 @@ def _fnRegisterEphemeralSecretSweep(app, dictCtx):
             # the sweep entirely rather than proceed with nothing
             # protected -- an empty protected set is the DESTRUCTIVE
             # direction, not the safe one.
-            return
+            return remnantReapers.fdictBuildReaperOutcome(
+                remnantReapers.S_OUTCOME_FORBIDDEN,
+                sReason="the Docker daemon could not list container mounts",
+                sRemedy="Start Docker, then rescan.",
+            )
         fnSweepStaleEphemeralFiles(setProtectedPaths=setMounted)
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_RAN)
 
-    app.state.listLifespanStartup.append(fnSweepAtStartup)
+    remnantReapers.fnRegisterReaper(
+        app, "ephemeralSecretFiles", fdictSweepEphemeralSecrets)
 
 
 def _fsetMountedHostPaths(dictCtx):

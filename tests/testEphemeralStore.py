@@ -178,11 +178,8 @@ def test_hub_startup_registers_the_credential_sweep():
             "docker": object(),
         },
     )
-    listNames = [
-        getattr(fnHook, "__name__", "")
-        for fnHook in app.state.listLifespanStartup
-    ]
-    assert "fnSweepAtStartup" in listNames
+    listNames = [sName for sName, _ in app.state.listRemnantReapers]
+    assert "ephemeralSecretFiles" in listNames
 
 
 @pytest.mark.falsification
@@ -267,9 +264,9 @@ def test_sweep_is_forbidden_when_the_daemon_is_unreachable(
     enumeration failure must forbid the sweep entirely, not proceed with
     nothing protected.
 
-    Kills: in syncRoutes.fnSweepAtStartup, neutralize the
-    ``if setMounted is None: return`` guard, so the sweep proceeds with
-    nothing protected when the daemon is unreachable.
+    Kills: in syncRoutes.fdictSweepEphemeralSecrets, neutralize the
+    ``if setMounted is None:`` guard, so the sweep proceeds with nothing
+    protected when the daemon is unreachable.
     """
     from fastapi import FastAPI
     from vaibify.gui.routes import syncRoutes
@@ -287,9 +284,10 @@ def test_sweep_is_forbidden_when_the_daemon_is_unreachable(
     syncRoutes._fnRegisterEphemeralSecretSweep(
         app, {"docker": _FailingDocker()},
     )
-    for fnHook in app.state.listLifespanStartup:
-        fnHook(app)
+    [(_, fdictReaper)] = app.state.listRemnantReapers
+    dictOutcome = fdictReaper({"docker": _FailingDocker()})
 
+    assert dictOutcome["sOutcome"] == "forbidden", dictOutcome
     assert os.path.exists(sStale), (
         "the sweep deleted a credential while the daemon was unreachable"
     )

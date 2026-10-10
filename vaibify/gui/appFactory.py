@@ -23,6 +23,7 @@ from . import commitCarrier
 from . import containerMemorySampler
 from . import containerMemoryWatch
 from . import containerOwnership
+from . import remnantReapers
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
@@ -164,6 +165,7 @@ def _fnRegisterBackgroundTasks(app, dictCtx):
     serverLifespan._fnRegisterSessionLifecycleEvaluator(app)
     serverLifespan._fnRegisterDisposableReclaim(app, dictCtx)
     containerMemorySampler.fnRegisterMemorySampler(app, dictCtx)
+    remnantReapers.fnRegisterReaperLoop(app, dictCtx)
     serverLifespan._fnRegisterDefaultThreadPoolExecutor(app)
 
 
@@ -275,11 +277,27 @@ def _fnRegisterHubStartupSweepHostScratch(app):
     a daemon-less machine is never swept at all.
     """
 
-    async def fnSweepHostScratch(app):
-        del app
+    def fnSweepHostScratch():
         from vaibify.host.hostScratch import fnSweepStaleHostScratch
         fnSweepStaleHostScratch()
-    app.state.listLifespanStartup.append(fnSweepHostScratch)
+    _fnAppendRecordedStartupSweep(app, "hostScratch", fnSweepHostScratch)
+
+
+def _fnAppendRecordedStartupSweep(app, sReaperName, fnSweep):
+    """Run a sweep in a thread before serving, and record what it did.
+
+    These sweeps stay awaited startup hooks rather than reapers on the
+    periodic loop because each must finish BEFORE the hub serves. The
+    record is what makes a sweep that raised visible on the hub instead
+    of a warning line nobody reads.
+    """
+
+    async def fnSweepBeforeServing(app):
+        await remnantReapers.fnRunReaperOnce(
+            app, sReaperName, remnantReapers.ffnWrapSweepAsReaper(fnSweep),
+            getattr(app.state, "dictRouteContext", None),
+        )
+    app.state.listLifespanStartup.append(fnSweepBeforeServing)
 
 
 def _fnRegisterHubStartupSweepAbandonedSpools(app):
@@ -290,23 +308,26 @@ def _fnRegisterHubStartupSweepAbandonedSpools(app):
     live one's spool alone.
     """
 
-    async def fnSweepSpools(app):
-        del app
+    def fiSweepSpools():
         from .uploadStaging import fiSweepAbandonedSpools
-        fiSweepAbandonedSpools()
-    app.state.listLifespanStartup.append(fnSweepSpools)
+        return fiSweepAbandonedSpools()
+    _fnAppendRecordedStartupSweep(app, "abandonedUploadSpools", fiSweepSpools)
 
 
 def _fnRegisterHubStartupReapStaleClaims(app):
-    """Reap dead-PID container locks before the hub serves requests."""
+    """Reap dead-PID container locks before the hub serves requests.
 
-    async def fnReapStaleClaims(app):
-        del app
+    Still awaited at startup, so a stale lock is gone before the first
+    claim arrives; run in a thread, so the probes it makes never block
+    the event loop.
+    """
+
+    def fnReapStaleClaims():
         from vaibify.config.containerLock import (
             fnReapStaleContainerLocks,
         )
         fnReapStaleContainerLocks()
-    app.state.listLifespanStartup.append(fnReapStaleClaims)
+    _fnAppendRecordedStartupSweep(app, "staleContainerLocks", fnReapStaleClaims)
 
 
 def _fnRegisterShutdownDrainGuardedMutations(app):

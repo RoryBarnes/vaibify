@@ -424,7 +424,29 @@ async def ftClaimWithCardinality(
                 # closed: the council command gate refuses by resource
                 # name, and this name has an owner again.
                 _fnReopenCouncilAdmission(appState, sName)
-            return tClaimVerdict
+            return _ftAnnotateBusyRefusalDuringReaperPass(
+                appState, tClaimVerdict)
+
+
+def _ftAnnotateBusyRefusalDuringReaperPass(appState, tClaimVerdict):
+    """Tell a refused claimant that the busy work may be being ended.
+
+    A reaper pass ends terminals an earlier hub left running, and a
+    claim that lands mid-pass meets their journal records as "busy".
+    The sentence says why a retry is likely to succeed; the verdict
+    itself is unchanged.
+    """
+    from . import remnantReapers
+    iStatusCode, dictPayload = tClaimVerdict
+    if (
+        iStatusCode == 409 and dictPayload.get("bBusy")
+        and remnantReapers.fbReaperPassInFlight(appState)
+    ):
+        dictPayload["sMessage"] = (
+            f"{dictPayload['sMessage']} "
+            f"{remnantReapers.S_REAPER_PASS_IN_FLIGHT_SENTENCE}"
+        )
+    return (iStatusCode, dictPayload)
 
 
 async def ftReserveContainerForStart(
