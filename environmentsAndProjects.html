@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.0.14.dev438 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.0.14.dev449 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f7f08d03"></script>
+      <script src="_static/documentation_options.js?v=b6963e87"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -73,6 +73,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#running-steps">Running steps</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="#memory">Memory</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#project-size-limits">Project size limits</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#the-dashboard">The dashboard</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#layout">Layout</a></li>
@@ -387,10 +388,31 @@ set a limit, leaving one core for your operating system. Set a limit
 in the wizard’s <strong>CPU cores</strong> field or in the tile’s <strong>⚙</strong> under
 <strong>CPU core limit</strong>; it is stored as <code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code> in <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> and is
 capped at the number of cores the computer has. Memory is unlimited
-unless you set <strong>Memory (GB)</strong> (<code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code>). Both take
-effect when the container next starts. <strong>View &gt; Resource Monitor</strong>
-shows live CPU and memory use and the container’s disk usage, and
-warns when the disk is nearly full.</p>
+unless you set <strong>Memory (GB)</strong> (<code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code>). A process that
+reaches the memory limit is killed by the kernel (see
+<a class="reference internal" href="#memory">Memory</a>). The limit includes swap: the container cannot swap
+beyond it, so a limit means the same on every computer (if a Linux
+computer’s kernel cannot limit swap, Docker cannot either). An AI agent
+with the jobs it starts often needs several GB, so leave it at <code class="docutils literal notranslate"><span class="pre">0</span></code>
+unless you need a cap. When an
+environment enables an AI agent and caps memory below 5 GB,
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code>, <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>, the dashboard, and saving in <strong>⚙</strong>
+each say so; 5 GB is a starting point, not a requirement.</p>
+<p>An edit to <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> takes effect when the container next starts.
+A change saved in <strong>⚙</strong> is written there and, if the container is
+running, applied at once when that cannot kill a process: a higher
+memory limit (its swap limit rises with it, as Docker requires) or any
+change to the CPU limit. A lower memory limit, a memory limit on a
+container that had none, and removing a limit wait for the next start.
+The save says, for each limit it changed, whether it was applied,
+could not be applied (in Docker’s own words), or waits for the next
+start. When a running container’s limits differ from <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>, a
+banner says which limit differs and what the next Restart will apply,
+including when the container can swap beyond its memory limit; it says
+nothing when the running limits cannot be read.
+<strong>View &gt; Resource Monitor</strong> shows live CPU and memory use, the memory
+limit, the number of processes killed for lack of memory, and the
+container’s disk usage, and warns when the disk is nearly full.</p>
 <p>Steps run one at a time, so parallelism comes from the scripts
 themselves. The Project’s <strong>Cores</strong> setting (<code class="docutils literal notranslate"><span class="pre">iNumberOfCores</span></code>) is
 handed to commands as the <code class="docutils literal notranslate"><span class="pre">{iNumberOfCores}</span></code> token. Vaibify passes the
@@ -607,6 +629,48 @@ dashboard opened later shows it in progress. The live output is a
 stream, so have long steps write anything that matters to a file.</p>
 </section>
 </section>
+<section id="memory">
+<h2>Memory<a class="headerlink" href="#memory" title="Link to this heading"></a></h2>
+<p><strong>A process that reaches its container’s memory limit is killed by the
+kernel</strong>, often an AI agent and the jobs it started, and it cannot
+report its own death. The hub therefore checks every open container
+every 15 seconds.</p>
+<p>The <strong>memory chip</strong> beside the environment name reads, for example,
+“Memory ~1.2 / 6 GB”: memory in use, less the file cache the kernel
+would reclaim first (the figure <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">stats</span></code> reports), against the
+limit. It turns <strong>amber</strong>, with one warning toast, at 85% of the limit
+and clears below 80%; memory can reach the limit between two checks,
+so amber is not a promise of warning. It turns <strong>gray</strong>, with the
+reason in its tooltip, whenever the hub could not measure: the
+container is stopped, it did not answer within 5 seconds, or the last
+measurement is more than 45 seconds old. Gray never means “fine”. It
+says <strong>no limit</strong> for a container without one, and clicking it opens
+<strong>⚙</strong> at the memory limit.</p>
+<p><strong>Each kill is reported once</strong>, with an error toast and a banner, and
+the chip counts kills for as long as the hub holds them. When Docker
+reports that a stopped container’s main process was killed for lack
+of memory, the next start says so, in the dashboard and in
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">start</span></code>. The kernel keeps counts, not a log, so a report names
+the interval in which the count rose, mentions the container’s limit
+only when the limit counter rose in the same interval, and never names
+the process killed (that needs a kernel log only a privileged
+container can read). Every report ends with what to do: check that the
+work the killed process was part of is still healthy, resume an AI
+agent’s conversation (it is on the workspace volume; for Claude Code,
+<code class="docutils literal notranslate"><span class="pre">claude</span> <span class="pre">--resume</span></code>), and raise the limit. The history lives in the
+hub’s memory: after a hub restart, a running container’s earlier kills
+are reported again as kills whose time vaibify did not observe.</p>
+<p><strong>Recreating a container discards its writable layer.</strong> <strong>Restart</strong>,
+<strong>Rebuild</strong>, <strong>Force Rebuild</strong>, and the pinned-image actions create a
+new container, so everything outside its mounted volumes and host
+directories is lost, including an agent’s scratch files in <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>.
+Each confirmation measures <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> first and keeps <strong>Confirm</strong> disabled
+until it says, for example, “Files in the container’s writable layer,
+including 1.4 GB in /tmp, are discarded; mounted volumes and host
+directories are preserved.” When <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> cannot be measured, it says
+why and enables <strong>Confirm</strong> anyway. Copy out anything you want to keep
+first.</p>
+</section>
 <section id="project-size-limits">
 <h2>Project size limits<a class="headerlink" href="#project-size-limits" title="Link to this heading"></a></h2>
 <p>The first time a Project reaches 100 steps, vaibify shows a one-time
@@ -621,7 +685,8 @@ sibling Projects in the same repository.</p>
 <h3>Layout<a class="headerlink" href="#layout" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p><strong>Toolbar</strong> — the logo; the environment (<strong>Container:</strong>, or
-<strong>Directory:</strong> for a host environment); the <strong>Project:</strong> name, which
+<strong>Directory:</strong> for a host environment) and its memory chip (see
+<a class="reference internal" href="#memory">Memory</a>); the <strong>Project:</strong> name, which
 opens the Project switcher; up to three vaibify checks that light up as
 Levels 1–3 are attained; the <strong>Agent Council</strong> button; the <strong>Run</strong>,
 <strong>Sync</strong>, <strong>View</strong>, and <strong>Admin</strong> menus; and, at the far right, a
@@ -682,6 +747,14 @@ program.</p></li>
 </ul>
 <p>Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
 Ctrl+Insert also work.</p>
+<p>A program that is killed outright, such as an agent killed for lack of
+memory, never hands the mouse back, and every mouse move then prints
+characters like <code class="docutils literal notranslate"><span class="pre">35;97;9M</span></code> at the prompt. A container’s shell switches
+those modes off before each prompt: it reads your own <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code>
+first, adds its prompt hook after yours, and passes on your last
+command’s exit status. If a pane still misbehaves (a shell started
+earlier, or one that is not bash), press <strong>Reset</strong> in the pane’s tab
+bar, which switches the modes off and keeps the scrollback.</p>
 </section>
 <section id="moving-files-in-and-out">
 <h3>Moving files in and out<a class="headerlink" href="#moving-files-in-and-out" title="Link to this heading"></a></h3>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>System Prompt &mdash; Vaibify 0.0.14.dev438 documentation</title>
+  <title>System Prompt &mdash; Vaibify 0.0.14.dev449 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f7f08d03"></script>
+      <script src="_static/documentation_options.js?v=b6963e87"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,6 +59,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#how-to-refer-to-steps">How to refer to steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#interacting-with-the-vaibify-dashboard">Interacting with the vaibify dashboard</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#key-paths">Key Paths</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#resources">Resources</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#project-system">Project System</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#vaibified-repository-structure">Vaibified Repository Structure</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#verification">Verification</a></li>
@@ -206,6 +207,10 @@ built, so it always matches the version of vaibify described here.</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">/workspace/&lt;RepoName&gt;/.vaibify/projects/</span></code> — Project JSON files (each repository can have its own)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/logs/</span></code> — Pipeline execution logs</p></li>
 </ul>
+</section>
+<section id="resources">
+<h3>Resources<a class="headerlink" href="#resources" title="Link to this heading"></a></h3>
+<p>This container may have a memory limit: <code class="docutils literal notranslate"><span class="pre">/sys/fs/cgroup/memory.max</span></code> holds it (<code class="docutils literal notranslate"><span class="pre">max</span></code> means none), and <code class="docutils literal notranslate"><span class="pre">memory.current</span></code> and <code class="docutils literal notranslate"><span class="pre">memory.stat</span></code> beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> does not survive a container restart and <code class="docutils literal notranslate"><span class="pre">/workspace</span></code> does, so keep anything you need in <code class="docutils literal notranslate"><span class="pre">/workspace</span></code>.</p>
 </section>
 <section id="project-system">
 <h3>Project System<a class="headerlink" href="#project-system" title="Link to this heading"></a></h3>

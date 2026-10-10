@@ -117,3 +117,35 @@ without discussion:
   different things by "destroy". Widening a CLI command's blast radius
   is a product decision, so the divergence is recorded rather than
   quietly resolved.
+- The memory watch never names the process an out-of-memory kill took.
+  The kernel writes the victim's name only to the Docker virtual
+  machine's own log, which a container can read only when it is
+  privileged and shares the host's process namespace -- a container
+  vaibify will not create to answer a display question. Guessing the
+  victim by comparing process lists before and after would show a
+  guess as fact, so the sentence says "a process" and asks the
+  researcher to check what was running.
+- The memory watch keeps its incident history in the hub's memory
+  (`containerMemoryWatch`). A hub restart forgets the kills of
+  containers that have since been removed, and a running container's
+  kernel counter is reported again, as a `beforeObservation` incident
+  whose time vaibify did not see. Persisting the history is possible;
+  it was not done because a restart that loses history is honest about
+  it, and a store on disk would need its own retention rules.
+- A container terminal's prompt reset (`S_PROMPT_RESET_RCFILE` in
+  `terminalContainment.py`) is appended after the hooks in the
+  researcher's `~/.bashrc`, but a hook that a tool adds to
+  `PROMPT_COMMAND` later, at runtime, runs after it. That is harmless:
+  the reset is idempotent and hands on the exit status it received, so
+  a later hook sees what it would have seen. Running it after every
+  hook ever added would mean rewriting `PROMPT_COMMAND` on every
+  prompt, which is a larger intrusion into the researcher's shell than
+  the defect it would cure.
+- A live CPU or memory limit change (`resourceLimitApplication`) runs
+  under the per-container mutation lock, so it is serialized with
+  guarded writes and with a start's settlement, but not with a stop:
+  the stop route holds no such lock (its own comment in
+  `registryRoutes` records why). The update is pinned to the container
+  id a fresh inspect named, so it can only ever change that container,
+  and a stop that lands mid-update makes the re-inspect fail and the
+  outcome read "could not be applied", never "applied".

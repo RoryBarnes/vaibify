@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Installation &mdash; Vaibify 0.0.14.dev438 documentation</title>
+  <title>Advanced Installation &mdash; Vaibify 0.0.14.dev449 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=f7f08d03"></script>
+      <script src="_static/documentation_options.js?v=b6963e87"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -497,12 +497,12 @@ comment <code class="docutils literal notranslate"><span class="pre">#</span> <s
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cpuLimit</span></code></p></td>
 <td><p>integer</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
-<td><p>CPU cores for the container. <code class="docutils literal notranslate"><span class="pre">0</span></code> means all host cores minus one; a larger value is clamped to the host’s core count</p></td>
+<td><p>CPU cores for the container. <code class="docutils literal notranslate"><span class="pre">0</span></code> means all host cores minus one; a larger value is clamped to the host’s core count. See <a class="reference internal" href="environmentsAndProjects.html#core-allocation"><span class="std std-ref">Core allocation</span></a></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">memoryLimitGigabytes</span></code></p></td>
 <td><p>number</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
-<td><p>Memory cap in GB. <code class="docutils literal notranslate"><span class="pre">0</span></code> means unlimited; otherwise at least <code class="docutils literal notranslate"><span class="pre">0.25</span></code></p></td>
+<td><p>Memory cap in GB (1 GB = 2^30 bytes). <code class="docutils literal notranslate"><span class="pre">0</span></code> means unlimited; otherwise at least <code class="docutils literal notranslate"><span class="pre">0.25</span></code>. The cap includes swap, and at the cap the kernel kills a process in the container. See <a class="reference internal" href="environmentsAndProjects.html#core-allocation"><span class="std std-ref">Core allocation</span></a></p></td>
 </tr>
 </tbody>
 </table>

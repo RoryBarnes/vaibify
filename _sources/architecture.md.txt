@@ -2081,6 +2081,67 @@ local hash and the `syncStatus` write) and fetch the remote outside
 it, which would also improve the manual "Verify now". That was
 deliberately not done speculatively.
 
+## The memory watch reports kills it can prove, and says what it cannot
+
+A container that reaches its memory limit has a process killed by the
+kernel with SIGKILL, and the victim cannot report it. The memory watch
+(`vaibify/gui/containerMemoryWatch.py` for the record and its words,
+`containerMemorySampler.py` for the Docker side, and
+`vaibify/docker/cgroupMemory.py` for the parser) exists so that the
+dashboard says so.
+
+**The sampler is its own lifespan loop, not part of the poll.** The
+file-status poll does not run in Blank Project mode and pauses while a
+pipeline runs — the moments memory is most likely to run out. The
+sampler visits every container in `dictContainerOwners` (host projects
+excepted) every 15 seconds: one daemon inspect for the container's
+state, then one typed read (`S_TYPED_READ_CGROUP_MEMORY`) of its
+memory cgroup. The read is bounded by `asyncio.wait_for` around
+`asyncio.to_thread`. That pattern is forbidden for the carrier's
+WORKERS, because abandoning the wait does not stop a thread that is
+writing; this thread only reads, so abandoning it is safe, and a
+container whose previous read is still out gets a `timeout` rather than
+a second thread.
+
+**Current measurement and incident history are separate fields of one
+record, keyed by container name.** `dictCurrent` is the latest
+measurement and becomes unknown whenever a read fails. `listIncidents`
+only grows: a failed read never removes an incident, and a container
+recreated under the same name (a new Docker id) gets a fresh baseline
+for its kernel counters while the old container's incidents stay,
+each labeled with the id it happened in. The route resolves the URL's
+Docker id to the owner-map name exactly as the authorization did, so
+it answers without touching Docker.
+
+**Staleness is judged when the record is read.** A measurement older
+than three sample intervals reads unknown. Deciding that on the
+sampler's schedule would let a stopped sampler leave a "fresh" flag
+behind — the failure the remote-badge timeout was built around.
+
+**The sentences claim only what the counters prove.** `memory.events`
+holds totals. A kill is reported for the interval between two samples
+in which `oom_kill` rose; the container's own limit is mentioned only
+when `oom` rose in the same interval; nothing ever says the limit was
+not involved; and the victim is never named (see `docs/knownDebt.md`).
+"Near the limit" uses the cAdvisor working set (usage minus
+`inactive_file`) with hysteresis — entered at 85%, left below 80% —
+and is not a promise of warning, because memory can reach the limit
+between samples.
+
+**Kills are logged outside the host-incident ring.** A log record
+carrying `extra={"sContainerId": ...}` enters
+`hostIncidents`, whose latest entry the stale-heartbeat reconcile
+copies into a run's `sFailureCauseHost` with no time correlation. An
+out-of-memory kill logged that way would be reported as a dead
+runner's cause whether or not it was, so the watch logs without it.
+
+**A stopped container's evidence is read before it is removed.** Every
+start removes a stopped container of the same name, and that removal
+destroys Docker's `State.OOMKilled`. Both removal paths
+(`startReservation._fnClearStoppedIncarnation` and
+`commandStart.fnClearStoppedContainerBeforeLaunch`) inspect first; a
+failed inspect is logged and never blocks the removal.
+
 ## L3 tier 5 runs in a shadow container
 
 The Level 3 attestation claims two independent things: that the
