@@ -2013,24 +2013,24 @@ async def fnRunTerminalSession(
     close of ``fnClose`` a mere courtesy instead of the only teardown.
     """
     sSessionId = session.sSessionId
-    dictTerminalSessions[sSessionId] = session
-    await websocket.send_json(
-        {"sType": "connected", "sSessionId": sSessionId}
-    )
-    if sIntroductionBanner:
-        await websocket.send_bytes(
-            sIntroductionBanner.encode("utf-8"),
-        )
-    # The two loops share one slot: the input loop puts a requested
-    # resize in, the read loop takes it out and acknowledges it at a
-    # known point in the output stream.
-    dictPendingResize = {}
-    taskReader = asyncio.create_task(
-        fnTerminalReadLoop(
-            session, websocket, dictInteractive, dictPendingResize,
-        )
-    )
+    taskReader = None
     try:
+        # Inside the try: a socket closing mid-start still reaches the drain.
+        dictTerminalSessions[sSessionId] = session
+        await websocket.send_json(
+            {"sType": "connected", "sSessionId": sSessionId}
+        )
+        if sIntroductionBanner:
+            await websocket.send_bytes(sIntroductionBanner.encode("utf-8"))
+        # The two loops share one slot: the input loop puts a requested
+        # resize in, the read loop takes it out and acknowledges it at a
+        # known point in the output stream.
+        dictPendingResize = {}
+        taskReader = asyncio.create_task(
+            fnTerminalReadLoop(
+                session, websocket, dictInteractive, dictPendingResize,
+            )
+        )
         await fnTerminalInputLoop(
             session, websocket,
             fbFrameCredentialStillActive=fbFrameCredentialStillActive,
@@ -2056,7 +2056,8 @@ async def fnRunTerminalSession(
             "containment record was drained first", sSessionId,
         )
     finally:
-        taskReader.cancel()
+        if taskReader is not None:
+            taskReader.cancel()
         await _fnDrainAndCloseTerminalSession(
             session, sSessionId, dictTerminalSessions,
         )

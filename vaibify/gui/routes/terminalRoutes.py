@@ -213,24 +213,33 @@ async def _fnStartAndRunTerminal(
     except Exception as error:
         await fnRejectTerminalStart(websocket, error)
         return
-    dictInteractive = (
-        _pipelineServer.fdictInteractiveContextForContainer(sContainerId)
-    )
-    _fnRecordTerminalAttribution(
-        dictCtx, sContainerId, S_TERMINAL_OPENED_DETAIL,
-    )
+    try:
+        dictInteractive = (
+            _pipelineServer.fdictInteractiveContextForContainer(sContainerId)
+        )
+        _fnRecordTerminalAttribution(
+            dictCtx, sContainerId, S_TERMINAL_OPENED_DETAIL,
+        )
+        fbFrameCredentialStillActive = ffnBuildPerFrameCredentialCheck(
+            websocket, dictCtx.get("dictBrowserSessions"),
+        )
+        sIntroductionBanner = _fsBannerForThisShell(
+            dictCtx, websocket, bHostProject,
+        )
+    except BaseException:
+        # The session is STARTED and recorded; anything that fails
+        # before the runner takes it over must drain it here, or the
+        # record outlives a socket that is already gone.
+        await _pipelineServer._fnDrainAndCloseTerminalSession(
+            session, session.sSessionId, dictCtx["terminals"],
+        )
+        raise
     try:
         await fnRunTerminalSession(
             session, websocket, dictCtx["terminals"],
             dictInteractive=dictInteractive,
-            fbFrameCredentialStillActive=(
-                ffnBuildPerFrameCredentialCheck(
-                    websocket, dictCtx.get("dictBrowserSessions"),
-                )
-            ),
-            sIntroductionBanner=_fsBannerForThisShell(
-                dictCtx, websocket, bHostProject,
-            ),
+            fbFrameCredentialStillActive=fbFrameCredentialStillActive,
+            sIntroductionBanner=sIntroductionBanner,
         )
     finally:
         _fnRecordTerminalAttribution(
