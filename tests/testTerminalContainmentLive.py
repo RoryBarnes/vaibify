@@ -750,3 +750,38 @@ def test_a_zombie_does_not_hold_the_group_count(tLiveContainer):
         "a permanent zombie under a non-reaping init held the count — "
         "this is the unclearable-quarantine bug"
     )
+
+
+def test_a_reaper_pass_ends_a_dead_hubs_terminal_and_frees_the_claim(
+    tLiveContainer,
+):
+    """The hub that opened a real terminal is gone; its flock was never
+    held here, so the pass sees a free flock, ends the shell and the
+    descendant it detached, proves the group empty, settles the record,
+    and the container is claimable again."""
+    from vaibify.config import containerLock
+    from vaibify.gui import containerOwnership, terminalContainment
+    sName, sContainerId, connectionDocker = tLiveContainer
+    appState = SimpleNamespace(dictContainerOwners={}, dictSessionOwner={})
+    session = _fsessionStartContainedTerminal(tLiveContainer, appState)
+    _fnSpawnTrappingDescendant(session, tLiveContainer)
+    fSpawnedMonotonic = time.monotonic()
+    iProcessGroup = session.recordContainment.iProcessGroup
+    try:
+        containerLock.fnReapStaleContainerLocks(
+            connectionDocker,
+            fnTerminateOrphanedTerminals=(
+                terminalContainment.fdictTerminateOrphanedJournalRecords),
+        )
+        dictProbe = connectionDocker.fdictProbeProcessGroupMembers(
+            sContainerId, iProcessGroup)
+        assert dictProbe["bConclusive"] and dictProbe["iMemberCount"] == 0, (
+            f"the orphaned terminal's group survived the pass: {dictProbe}")
+        _fnAssertDrainedHonestly(tLiveContainer, fSpawnedMonotonic)
+        assert _fdictJournalOperations(sName) == {}, "the record did not settle"
+        iStatus, dictPayload = containerOwnership.ftClaim(
+            {}, sName, "", 8050, sContainerId=sContainerId,
+            connectionDocker=connectionDocker)
+        assert iStatus == 200, dictPayload
+    finally:
+        session.fnClose()

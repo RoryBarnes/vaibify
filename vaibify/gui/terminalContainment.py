@@ -59,6 +59,7 @@ __all__ = [
     "fdictDrainTerminalRecordsForContainer",
     "fdictDrainAllTerminalRecords",
     "fdictDrainSessionRecord",
+    "fdictTerminateOrphanedJournalRecords",
     "fbContainerHasLiveTerminalRecords",
     "fsetNamesWithLiveTerminalRecords",
 ]
@@ -732,3 +733,63 @@ def fsetNamesWithLiveTerminalRecords(appState):
         for sContainerName, dictByOperation in dictRegistry.items()
         if dictByOperation
     }
+
+
+def fdictTerminateOrphanedJournalRecords(sProjectName, connectionDocker):
+    """Terminate-and-prove the Docker terminal records of a dead hub.
+
+    Called by the stale-lock reaper under a FREE flock, which is proof
+    that the hub owning the container has died: a hub holds the flock
+    while it owns the container, release drains its terminals first,
+    and lock release keeps the flock while live terminal records
+    remain. Each record with a discovered group is rebuilt from the
+    journal and ended through the one exit every terminal record has,
+    :func:`fdictTerminateAndProveRecord`, so it ends in proof or in
+    quarantine, never in a sweep. A record already quarantined, or one
+    that never learned its group, is left for reconciliation. Host
+    records carry no exec id and are not this function's to end.
+    """
+    dictOutcomeRead = operationJournal.fdictReadJournalOutcome(sProjectName)
+    listSettled, listQuarantined, listSkipped = [], [], []
+    if dictOutcomeRead["sReadState"] != "valid":
+        return {"listSettledOperationIds": [], "listQuarantinedOperationIds": [],
+                "listSkippedOperationIds": [], "sDetail": dictOutcomeRead["sDetail"]}
+    for sOperationId, dictRecord in sorted(dictOutcomeRead["dictOperations"].items()):
+        if not _fbRecordIsOrphanTerminable(dictRecord):
+            listSkipped.append(sOperationId)
+            continue
+        recordTerminal = TerminalExecutionRecord(
+            sOperationId=sOperationId,
+            sContainerName=sProjectName,
+            sContainerId=dictRecord["sDockerContainerId"],
+            sDockerExecId=dictRecord["sDockerExecId"],
+            iOwnerGeneration=int(dictRecord.get("iOwnerGeneration") or 0),
+            connectionDocker=connectionDocker,
+            dictRegistry=None,
+            session=None,
+            iProcessGroup=int(dictRecord["iHolderProcessGroup"]),
+        )
+        with _flockDrainForContainer(sProjectName):
+            dictOutcome = fdictTerminateAndProveRecord(recordTerminal)
+        (listSettled if dictOutcome["bProvenEmpty"] else listQuarantined).append(
+            sOperationId)
+    return {
+        "listSettledOperationIds": listSettled,
+        "listQuarantinedOperationIds": listQuarantined,
+        "listSkippedOperationIds": listSkipped,
+        "sDetail": "",
+    }
+
+
+def _fbRecordIsOrphanTerminable(dictRecord):
+    """Return True for a live Docker terminal record with a known group."""
+    from vaibify.config.processLiveness import fbIsUsablePid
+    if dictRecord.get("sKind") != S_TERMINAL_OPERATION_KIND:
+        return False
+    if dictRecord.get("sState") == (
+        operationJournal.S_OPERATION_STATE_NEEDS_RECONCILIATION
+    ):
+        return False
+    if not dictRecord.get("sDockerExecId") or not dictRecord.get("sDockerContainerId"):
+        return False
+    return fbIsUsablePid(dictRecord.get("iHolderProcessGroup"))

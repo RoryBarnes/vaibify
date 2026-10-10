@@ -151,6 +151,44 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
         app, "sessionLaneKeepAlives",
         sleepPrevention.fdictReapSessionLanesOfStoppedContainers,
     )
+    remnantReapers.fnRegisterReaper(
+        app, "orphanedTerminals", _fdictReapOrphanedTerminals,
+    )
+
+
+def _fdictReapOrphanedTerminals(dictCtx):
+    """End the terminals of hubs that died, on the reaper's cadence.
+
+    The awaited startup reap keeps its Docker-less, termination-free
+    call; this one carries the daemon and the terminator, and declines
+    when the daemon cannot be reached. It is never run from the
+    registry poll, which is on a three-second cadence.
+    """
+    from vaibify.config.connectionAvailability import fbDockerReachable
+    from vaibify.config.containerLock import fnReapStaleContainerLocks
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon is unreachable",
+            sRemedy="Start Docker, then rescan.",
+        )
+    listEnded = []
+
+    def fdictTerminateAndCount(sProjectName, connectionDockerPass):
+        dictOutcome = terminalContainment.fdictTerminateOrphanedJournalRecords(
+            sProjectName, connectionDockerPass,
+        )
+        listEnded.extend(dictOutcome["listSettledOperationIds"])
+        listEnded.extend(dictOutcome["listQuarantinedOperationIds"])
+        return dictOutcome
+
+    fnReapStaleContainerLocks(
+        connectionDocker, fnTerminateOrphanedTerminals=fdictTerminateAndCount,
+    )
+    return remnantReapers.fdictBuildReaperOutcome(
+        remnantReapers.S_OUTCOME_RAN, iRemoved=len(listEnded),
+    )
 
 
 def _fnRegisterBackgroundTasks(app, dictCtx):

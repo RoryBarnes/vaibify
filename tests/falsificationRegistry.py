@@ -2148,6 +2148,17 @@ LIST_FALSIFICATIONS = [
         old="""    return connectionDocker.fsetListMountSourcesOfAllContainers()""",
         new="""    return {dictMount.get("Source") for container in connectionDocker.containers.list(all=True) for dictMount in container.attrs.get("Mounts", [])}""",
     ),
+    # A terminal whose hub died must be ended by the free-flock pass, with
+    # proof; a pass that only resolves the journal meets its running exec
+    # and leaves the container busy forever.
+    Falsification(
+        nodeid='tests/testOrphanedTerminalsAreEnded.py::test_a_free_flock_and_a_running_exec_are_terminated_and_settled',
+        source='vaibify/config/containerLock.py',
+        old="""    if fnTerminateOrphanedTerminals is not None:
+        fnTerminateOrphanedTerminals(sProjectName, connectionDocker)""",
+        new="""    if False:
+        fnTerminateOrphanedTerminals(sProjectName, connectionDocker)""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(

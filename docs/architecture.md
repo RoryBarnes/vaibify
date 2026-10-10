@@ -1364,6 +1364,21 @@ stale-lock reap, the host-scratch sweep and the abandoned-spool sweep.
 They run in a thread and record through the same registry, so the
 health block covers them too.
 
+The orphaned-terminal reaper is the stale-lock reap with Docker and a
+terminator. A terminal record holds no hub pid; owner death is known
+only from the container flock, and a FREE flock is proof of it (a hub
+holds the flock while it owns the container, release drains terminals
+first, and lock release keeps the flock while live records remain).
+Under a free flock, between taking it and resolving the journal, the
+pass rebuilds each Docker terminal record that learned its group and
+ends it through `terminalContainment.fdictTerminateAndProveRecord`,
+the one exit every terminal record has, so it settles on a proven
+empty group or quarantines. Never inside the resolve: the journal's
+write lock is not reentrant, and settling takes it again. A record
+already quarantined, or one without a group, is left to
+`vaibify reconcile`. The awaited startup reap keeps its Docker-less
+call, and the registry poll never terminates anything.
+
 The record exists because of a reaper that did not run. The
 credential-file sweep called `.containers.list` on a connection class
 that has no such attribute, swallowed the `AttributeError`, and
