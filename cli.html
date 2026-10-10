@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLI Reference &mdash; Vaibify 0.0.14.dev449 documentation</title>
+  <title>CLI Reference &mdash; Vaibify 0.0.14.dev471 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b6963e87"></script>
+      <script src="_static/documentation_options.js?v=38557d44"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -477,6 +477,11 @@ remains until you remove it with <code class="docutils literal notranslate"><spa
 <h3>vaibify verify<a class="headerlink" href="#vaibify-verify" title="Link to this heading"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code> runs <code class="docutils literal notranslate"><span class="pre">checkIsolation.sh</span></code> inside the running
 container; what it checks is in <a class="reference internal" href="security.html"><span class="std std-doc">Security Model</span></a>.</p>
+<p>Both <code class="docutils literal notranslate"><span class="pre">connect</span></code> and <code class="docutils literal notranslate"><span class="pre">verify</span></code> open an interactive exec that vaibify
+records on the host and ends on every exit: closing the window ends
+the shell and everything started in it, and a CLI killed outright is
+cleaned up by the running hub’s reaper once the CLI is provably dead.
+See <a class="reference internal" href="knownDebt.html"><span class="std std-doc">Known debt</span></a> for what the record does not cover.</p>
 </section>
 </section>
 <section id="shell-helpers">
@@ -544,7 +549,7 @@ vaibify<span class="w"> </span>--version
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
-<td><p>Open a shell inside the running container</p></td>
+<td><p>Open a shell inside the running container; closing the window ends the shell and everything started in it</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">push</span> <span class="pre">SOURCE</span> <span class="pre">DESTINATION</span> <span class="pre">[-p</span> <span class="pre">NAME]</span></code></p></td>
 <td><p>Copy a host file into the workspace. A relative container path is read from <code class="docutils literal notranslate"><span class="pre">workspaceRoot</span></code></p></td>
@@ -702,7 +707,11 @@ after a session reaches its lifetime limit.</p>
 <section id="vaibify-sessions">
 <h3>vaibify sessions<a class="headerlink" href="#vaibify-sessions" title="Link to this heading"></a></h3>
 <p>Hubs and viewers run in the foreground of the terminal that started
-them. Closing a browser tab does not stop them. On the host only:</p>
+them. Closing a browser tab does not stop them. Closing the terminal
+window does, cleanly: the hub drains the terminals it owns and
+releases its locks, the same as one Ctrl-C. A second Ctrl-C while that
+shutdown runs is ignored; Ctrl-\ (SIGQUIT) is the hard stop. On the
+host only:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>sessions<span class="w">              </span><span class="c1"># pid, role, port, start time, containers held</span>
 vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>PID<span class="w">     </span><span class="c1"># stop one session</span>
 vaibify<span class="w"> </span>sessions<span class="w"> </span>stop<span class="w"> </span>--all<span class="w">   </span><span class="c1"># stop every session except this one</span>

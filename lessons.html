@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev449 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev471 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b6963e87"></script>
+      <script src="_static/documentation_options.js?v=38557d44"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -155,6 +155,17 @@ mount and creates a directory stub where the file was). Age is not
 evidence that a host file is garbage — reachability is. Before
 deleting anything under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code>, ask the daemon what it still
 mounts.</p></li>
+<li><p>The fix for the sweep above then never ran: it asked the daemon
+through <code class="docutils literal notranslate"><span class="pre">.containers.list</span></code> on a <code class="docutils literal notranslate"><span class="pre">DockerConnection</span></code>, which has no such
+attribute, inside an <code class="docutils literal notranslate"><span class="pre">except</span> <span class="pre">Exception</span></code> that returned “unknown”, and
+its unit test passed because the fake it was handed was shaped like
+the Docker SDK client the code expected rather than the class the hub
+actually passes. A test double must be shaped like the production
+object, and a boundary call is proven only against the real class;
+<code class="docutils literal notranslate"><span class="pre">test_the_sweep_enumerates_mounts_through_the_real_connection_class</span></code>
+builds the real <code class="docutils literal notranslate"><span class="pre">DockerConnection</span></code> around a stub SDK client for
+exactly that reason. The reaper registry now records a sweep that
+raises, so the next such failure is visible on the hub.</p></li>
 <li><p>A guarantee stated only in prose is not enforced, and mutation
 testing cannot find it: there is no mutant for a guard that was
 never written. <code class="docutils literal notranslate"><span class="pre">bAgentSafe</span></code> was metadata, the force-push hook missed
@@ -729,6 +740,22 @@ and while the Environments page is showing
 (<code class="docutils literal notranslate"><span class="pre">tests/browser/testALostClaimRecoversWhereverItIsMet.py</span></code>). The
 general form: an automatic cure for a refusal has to be told about
 every deliberate act that makes the same refusal true.</p></li>
+<li><p><strong>A process vaibify started outlived every owner it had, and nothing
+noticed.</strong> One host accumulated keep-alive processes with no living
+owner, empty lock files without bound, long-lived shells inside a
+container with agents still running in them, and plaintext token
+files no container mounted, while every sweep that should have
+caught them reported nothing. The causes were four shapes of the same
+mistake: a sweep whose failure was swallowed (an attribute error
+inside <code class="docutils literal notranslate"><span class="pre">except</span> <span class="pre">Exception</span></code>), a cleanup that ran only on a path the
+owner’s death never reaches (a <code class="docutils literal notranslate"><span class="pre">finally</span></code> behind a window close, a
+shutdown hook behind a hang-up uvicorn did not handle), a registry
+that could say what it held but not what it had launched, and a
+test suite that ran the real watchdog against the real daemon with a
+fresh empty registry per test. The general form: anything vaibify
+starts needs a recorded owner, an exit that fires when that owner is
+provably gone, and a reaper whose own outcome is recorded, because a
+cleanup nobody watches is a cleanup that has already stopped.</p></li>
 </ul>
 </section>
 

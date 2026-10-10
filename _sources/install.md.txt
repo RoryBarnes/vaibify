@@ -162,7 +162,8 @@ caffeinate -s vaibify
 ```
 
 The `neverSleep` field in `vaibify.yml` does the same for as long as a
-container runs.
+container runs, and the hold is re-asserted when a running container is
+claimed again after vaibify restarts.
 
 ## Shell helpers
 

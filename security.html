@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Security Model &mdash; Vaibify 0.0.14.dev449 documentation</title>
+  <title>Security Model &mdash; Vaibify 0.0.14.dev471 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b6963e87"></script>
+      <script src="_static/documentation_options.js?v=38557d44"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -253,12 +253,16 @@ in vaibify’s own state, then bind-mounted read-only under
 GitHub through a credential helper that reads the mounted file at
 request time, answers only for <code class="docutils literal notranslate"><span class="pre">github.com</span></code>, and never writes the
 token to disk.</p></li>
-<li><p><strong>These host files outlive the container on purpose.</strong> Some Docker
-setups re-resolve bind-mount sources during later operations, and a
-missing source then breaks the container. The files are overwritten
-on the next start. At hub startup, files older than a week are
-removed unless a container still mounts them; if vaibify cannot
-enumerate the live mounts, it removes nothing.</p></li>
+<li><p><strong>A host file lives exactly as long as some container mounts it.</strong>
+Some Docker setups re-resolve bind-mount sources during later
+operations, and a missing source then breaks the container, so a
+file is never removed while any container, running or stopped,
+mounts it. Each container start writes a new file. When a container
+is removed and the daemon confirms it is gone, its files are deleted
+unless another container mounts them; and every ten minutes the hub
+removes any file in the directory that nothing mounts and that is
+more than an hour old. If vaibify cannot enumerate the live mounts,
+it removes nothing and the Environment Hub says so.</p></li>
 <li><p><strong>No token in a URL.</strong> Zenodo and GitHub API requests use an
 <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code> header. Git operations against Overleaf and
 GitHub use a one-shot credential helper that first resets any helper

@@ -535,11 +535,21 @@ launched them. There are three tiers:
   *kernel*, reaped when its holder dies.
 
 A hub or viewer runs in the foreground of its launching terminal.
-Closing the browser tab does nothing, and closing the terminal
-*orphans* the server (reparented to `launchd`/`init`, `PPID 1`), which
-keeps holding its session slot (`~/.vaibify/sessions/<pid>.slot`) and
-its container flocks. The mechanisms below keep that from graying a
-container out forever.
+Closing the browser tab does nothing. Closing the terminal window
+sends the hub a hang-up, and the hub answers it with the same full
+shutdown as Ctrl-C: `serverLaunch.ServerLoggingExitSignals` installs a
+SIGHUP handler for exactly as long as uvicorn's own signal capture
+lasts, points stdout and stderr at the null device first (a write to
+a dead terminal raises, and a stray print would otherwise abort the
+shutdown), and forwards to uvicorn's exit. A second Ctrl-C used to
+turn into uvicorn's `force_exit`, which skips every lifespan shutdown
+hook and so every terminal drain; it is now logged and ignored, and
+SIGQUIT or SIGKILL is the hard stop. Note the limit: the lifespan
+shutdown hooks have no overall timeout, and the terminal drains are
+bounded at three seconds plus two per record. A hub killed outright
+still leaves its session slot (`~/.vaibify/sessions/<pid>.slot`) and
+its container flocks behind, and the mechanisms below keep that from
+graying a container out forever.
 
 ### The lease is the access principal
 
@@ -1240,6 +1250,39 @@ the keep-alive for work its predecessor launched. The corollary is
 that a work-lane keep-alive can outlive its hub; the next hub's first
 sweep is what withdraws it.
 
+The session lane lives from a start **or a claim**. It used to start
+only when vaibify started the container, so a hub that restarted and
+claimed a running `neverSleep` container held nothing, and the work
+lane skips owned containers by design: the machine stayed awake only
+while some other container's leaked shells happened to hold a work
+lane. A granted claim of a running container now starts the session
+lane when the project's `neverSleep` is set and none is live
+(`sleepPrevention.fnEnsureSessionLaneForClaim`, under the container's
+mutation lock so two claims cannot both spawn). The liveness check is
+what keeps a tab reload from churning a process and what lets the new
+hub adopt a keep-alive a crashed one left. Saving `neverSleep` from the
+dashboard starts or stops the lane of a held, running container at
+once, and a reaper stops any session lane whose container is no longer
+running.
+
+Two more things the keep-alive registry can now say. Every
+`caffeinate` vaibify launches is appended to a spawn ledger beside the
+pid files (`~/.vaibify/caffeinate/spawnLedger.json`, keyed by pid,
+holding the registry name and the instant the spawn returned, pruned
+of dead pids on every append and read, capped as a backstop). A pid
+file names the keep-alive a registry currently holds; the ledger is
+what lets vaibify PROVE that a `caffeinate` no registry holds is one
+it launched, by pid plus start clock, and not the researcher's own
+`caffeinate -s`. The kill rule for any later removal is stricter than
+liveness: a readable start clock matching the ledger AND a command
+name of `caffeinate` (`keepAliveManager.fbCaffeinateIsProvablyOurs`),
+because the liveness check answers "alive" when the clock is
+unreadable, which is enough to leave a process alone and not enough
+to kill it. And there is exactly one host probe for `caffeinate`:
+`processLiveness.flistEnumerateProcessesNamed`, which the docker-status
+sleep hint and the remnant scanner both read, so they cannot disagree
+about what runs.
+
 ### What survives what (measured, 2026-08-29)
 
 Run against a live daemon (colima) rather than reasoned about, because
@@ -1305,6 +1348,95 @@ never reaped. No new dependency is introduced; the probe shells out to
 The `vaibify sessions` CLI (see [Advanced Installation](install.md)) is the
 host-side enumerator over these same files -- the analog of
 `jupyter server list` / `jupyter server stop`.
+
+## The hub's reapers run on one cadence and record what they did
+
+A *reaper* deletes garbage the hub can prove is garbage: a container
+lock no process holds, a credential file no container mounts, a
+shadow-rerun lock nothing flocks, a terminal whose owning hub is dead.
+`vaibify/gui/remnantReapers.py` owns the registry. Each reaper is a
+synchronous function of the route context that returns one shape,
+`{iRemoved, sOutcome, sReason, sRemedy}`, where `sOutcome` is one of:
+
+- `ran` — the reaper did its work; `iRemoved` counts what it deleted.
+- `forbidden` — the reaper declined because it could not establish
+  the proof it acts on (the daemon could not list mounts, say).
+  `sReason` says what was missing and `sRemedy` what restores it.
+  Declining is the SAFE direction: a sweep that proceeds with an empty
+  protected set deletes files a live container still mounts.
+- `failed` — the reaper raised. The exception is logged, the other
+  reapers still run, and `sRemedy` names the log.
+
+A pass runs every reaper in a worker thread, one after another (several
+of them take the same flocks and journal lock), and records each
+outcome in `app.state.dictReaperHealth`, with one INFO line per reaper.
+The first pass is a task created by a startup hook, so it never delays
+readiness; the loop repeats it every ten minutes, or at once when a
+rescan is requested (`fnRequestRescan`). While a pass is in flight a
+claim refused as busy carries a sentence saying so, because the busy
+work it met may be exactly what the pass is ending.
+
+Three startup sweeps stay AWAITED startup hooks rather than reapers on
+the loop, because each must finish before the hub serves: the
+stale-lock reap, the host-scratch sweep and the abandoned-spool sweep.
+They run in a thread and record through the same registry, so the
+health block covers them too.
+
+The orphaned-terminal reaper is the stale-lock reap with Docker and a
+terminator. A terminal record holds no hub pid; owner death is known
+only from the container flock, and a FREE flock is proof of it (a hub
+holds the flock while it owns the container, release drains terminals
+first, and lock release keeps the flock while live records remain).
+Under a free flock, between taking it and resolving the journal, the
+pass rebuilds each Docker terminal record that learned its group and
+ends it through `terminalContainment.fdictTerminateAndProveRecord`,
+the one exit every terminal record has, so it settles on a proven
+empty group or quarantines. Never inside the resolve: the journal's
+write lock is not reentrant, and settling takes it again. A record
+already quarantined, or one without a group, is left to
+`vaibify reconcile`. The awaited startup reap keeps its Docker-less
+call, and the registry poll never terminates anything.
+
+**The scanner lists what the reapers cannot prove, and says how sure
+it is.** `remnantScanner.fnRunRemnantScan` runs last in every pass
+and classifies into three tiers, worded by the server and rendered
+verbatim: *proven* (vaibify launched it, by pid plus start clock in
+the keep-alive spawn ledger, or it is a plain fact such as a container
+created without `--init`), *possibly* (an interactive session nobody
+recorded, since its originator is unknown; a `caffeinate -s` not in
+the ledger, since the docker-status hint tells researchers to start
+one themselves), and *unknown* (a question the scan could not answer,
+listed with nothing to remove). Two cross-checks keep a session
+honest: the daemon's running TTY execs minus the journaled exec ids
+must equal the session leaders found, or the container reports
+"sessions could not be attributed" and lists none; and a container
+whose records are still discovering their group, whose drain is in
+flight, or whose flock another live hub holds lists nothing (peer-hub
+safety: the other window owns whatever runs there). Every Docker read
+is bounded by the memory sampler's deadline, and nothing here runs on
+a request path. Removal (`routes/remnantRoutes.py`) re-verifies each
+item's identity live, a session by pid and start clock, a keep-alive
+by pid and start instant, a container by id and status, and acts only
+through the named authorities; an item that no longer matches is
+refused as already gone. An item id is a digest of category and
+identity, so it survives a rescan that finds the same thing and dies
+with the thing it named.
+
+The shadow-rerun lane lock (`shadowRerun._fcontextHoldShadowLaneLock`)
+is unlinked on release while its flock is still held, after an
+inode re-check that mirrors the container lock's: a lock taken on an
+inode that was unlinked between the open and the flock excludes
+nobody, and two reruns would sweep each other's containers. A reaper
+removes the backlog of empty shadow lock files nothing holds, taking
+each one's flock before unlinking it, and leaves `state-*.lock` alone.
+
+The record exists because of a reaper that did not run. The
+credential-file sweep called `.containers.list` on a connection class
+that has no such attribute, swallowed the `AttributeError`, and
+silently did nothing for weeks while its unit test passed against a
+fake shaped like the Docker SDK client. A reaper that cannot run must
+now say why, and a reaper that is absent from the health block has
+not been registered.
 
 ## Host mode: the same hub, a different substrate
 
@@ -1559,6 +1691,16 @@ summaries.
 - `routeContext.py` — typed `RouteContext` wrapper for the `dictCtx`
   dict. Provides both attribute access (`dictCtx.docker`) and dict
   access (`dictCtx["docker"]`).
+- `remnantReapers.py` — the registry of cleanup jobs, the pass that
+  runs them on a cadence, and the record of what each one did. The
+  scan runs last in every pass.
+- `remnantScanner.py` — classifies what the reapers could not prove,
+  with evidence and a tier, into the cached result the remnant routes
+  read with no I/O.
+- `cliShellContainment.py` — the `vaibify connect` and `vaibify verify`
+  shells: wrapped, recorded on the host, ended with proof on exit, and
+  reaped once their CLI is provably dead. A seam module beside
+  `terminalContainment.py`.
 
 ### Route modules
 

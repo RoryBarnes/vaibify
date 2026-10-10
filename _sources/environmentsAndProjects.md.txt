@@ -42,7 +42,35 @@ under **This machine**, with four buttons beside the heading:
 | **+** | Add an environment. |
 | **↻** | Refresh the list. |
 | **⧉** | Open a new vaibify window (a separate browser session). |
-| **?** | Help: creating an environment, a legend of tile marks, and troubleshooting. |
+| **?** | Help: creating an environment, a legend of tile marks, troubleshooting, and the leftover-processes glyph. |
+| **⚠** | Shown only when vaibify found something left over on this computer. Orange with a count while anything is listed; red when an automatic cleanup could not run. |
+
+Clicking **⚠** opens **Leftover processes and files**. vaibify cleans
+up by itself what it can prove is garbage: a lock file no process
+holds, a credential file no container mounts, a shadow-rerun lock
+nothing holds, a terminal left by a vaibify window that died, a
+`vaibify connect` shell whose command line was killed. Those cleanups
+run every ten minutes and at startup, and the bottom of the panel
+lists each one with what it did, or why it could not run. What vaibify
+cannot prove is listed with its evidence, in two tiers:
+
+- **Proven orphaned**: vaibify itself launched it, or it is a plain
+  fact, such as a container created without an init process.
+- **Possibly orphaned**: it may be left over, and it may be yours. An
+  interactive shell in a container that no vaibify window opened is
+  listed here because vaibify cannot tell your own `docker exec` or an
+  editor's from a leak; a `caffeinate -s` not in vaibify's own ledger
+  is listed here because you may have started it yourself. Read the
+  evidence before removing.
+
+**Remove selected** ends every process in a chosen session and proves
+it empty, ends a keep-alive, or removes a stopped container with its
+volumes kept; **Remove all proven** never includes a session. An item
+running an AI agent asks for confirmation first, and an item that is
+already gone by the time you act says so. A question vaibify could not
+answer, such as a container whose processes could not be read, is
+listed as *could not be checked* with nothing to remove. A container
+held by another vaibify window is never actionable from this one.
 
 Each tile shows a status light, the name, and a chip reading
 **contained** or **uncontained**. Clicking a tile opens the

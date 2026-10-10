@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Environments and Projects &mdash; Vaibify 0.0.14.dev449 documentation</title>
+  <title>Environments and Projects &mdash; Vaibify 0.0.14.dev471 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b6963e87"></script>
+      <script src="_static/documentation_options.js?v=38557d44"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -184,10 +184,39 @@ under <strong>This machine</strong>, with four buttons beside the heading:</p>
 <td><p>Open a new vaibify window (a separate browser session).</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>?</strong></p></td>
-<td><p>Help: creating an environment, a legend of tile marks, and troubleshooting.</p></td>
+<td><p>Help: creating an environment, a legend of tile marks, troubleshooting, and the leftover-processes glyph.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>⚠</strong></p></td>
+<td><p>Shown only when vaibify found something left over on this computer. Orange with a count while anything is listed; red when an automatic cleanup could not run.</p></td>
 </tr>
 </tbody>
 </table>
+<p>Clicking <strong>⚠</strong> opens <strong>Leftover processes and files</strong>. vaibify cleans
+up by itself what it can prove is garbage: a lock file no process
+holds, a credential file no container mounts, a shadow-rerun lock
+nothing holds, a terminal left by a vaibify window that died, a
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code> shell whose command line was killed. Those cleanups
+run every ten minutes and at startup, and the bottom of the panel
+lists each one with what it did, or why it could not run. What vaibify
+cannot prove is listed with its evidence, in two tiers:</p>
+<ul class="simple">
+<li><p><strong>Proven orphaned</strong>: vaibify itself launched it, or it is a plain
+fact, such as a container created without an init process.</p></li>
+<li><p><strong>Possibly orphaned</strong>: it may be left over, and it may be yours. An
+interactive shell in a container that no vaibify window opened is
+listed here because vaibify cannot tell your own <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">exec</span></code> or an
+editor’s from a leak; a <code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span></code> not in vaibify’s own ledger
+is listed here because you may have started it yourself. Read the
+evidence before removing.</p></li>
+</ul>
+<p><strong>Remove selected</strong> ends every process in a chosen session and proves
+it empty, ends a keep-alive, or removes a stopped container with its
+volumes kept; <strong>Remove all proven</strong> never includes a session. An item
+running an AI agent asks for confirmation first, and an item that is
+already gone by the time you act says so. A question vaibify could not
+answer, such as a container whose processes could not be read, is
+listed as <em>could not be checked</em> with nothing to remove. A container
+held by another vaibify window is never actionable from this one.</p>
 <p>Each tile shows a status light, the name, and a chip reading
 <strong>contained</strong> or <strong>uncontained</strong>. Clicking a tile opens the
 environment, building or starting the container first if needed. From

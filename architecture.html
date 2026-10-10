@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev449 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev471 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b6963e87"></script>
+      <script src="_static/documentation_options.js?v=38557d44"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -607,11 +607,21 @@ processes from opening the same container; it is the analog of a
 <em>kernel</em>, reaped when its holder dies.</p></li>
 </ul>
 <p>A hub or viewer runs in the foreground of its launching terminal.
-Closing the browser tab does nothing, and closing the terminal
-<em>orphans</em> the server (reparented to <code class="docutils literal notranslate"><span class="pre">launchd</span></code>/<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">PPID</span> <span class="pre">1</span></code>), which
-keeps holding its session slot (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/sessions/&lt;pid&gt;.slot</span></code>) and
-its container flocks. The mechanisms below keep that from graying a
-container out forever.</p>
+Closing the browser tab does nothing. Closing the terminal window
+sends the hub a hang-up, and the hub answers it with the same full
+shutdown as Ctrl-C: <code class="docutils literal notranslate"><span class="pre">serverLaunch.ServerLoggingExitSignals</span></code> installs a
+SIGHUP handler for exactly as long as uvicorn’s own signal capture
+lasts, points stdout and stderr at the null device first (a write to
+a dead terminal raises, and a stray print would otherwise abort the
+shutdown), and forwards to uvicorn’s exit. A second Ctrl-C used to
+turn into uvicorn’s <code class="docutils literal notranslate"><span class="pre">force_exit</span></code>, which skips every lifespan shutdown
+hook and so every terminal drain; it is now logged and ignored, and
+SIGQUIT or SIGKILL is the hard stop. Note the limit: the lifespan
+shutdown hooks have no overall timeout, and the terminal drains are
+bounded at three seconds plus two per record. A hub killed outright
+still leaves its session slot (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/sessions/&lt;pid&gt;.slot</span></code>) and
+its container flocks behind, and the mechanisms below keep that from
+graying a container out forever.</p>
 <section id="the-lease-is-the-access-principal">
 <h3>The lease is the access principal<a class="headerlink" href="#the-lease-is-the-access-principal" title="Link to this heading"></a></h3>
 <p>The host flock excludes a <em>second process</em>, but it cannot distinguish
@@ -1309,6 +1319,37 @@ in-process record, a hub that crashed and restarted <strong>re-establishes</stro
 the keep-alive for work its predecessor launched. The corollary is
 that a work-lane keep-alive can outlive its hub; the next hub’s first
 sweep is what withdraws it.</p>
+<p>The session lane lives from a start <strong>or a claim</strong>. It used to start
+only when vaibify started the container, so a hub that restarted and
+claimed a running <code class="docutils literal notranslate"><span class="pre">neverSleep</span></code> container held nothing, and the work
+lane skips owned containers by design: the machine stayed awake only
+while some other container’s leaked shells happened to hold a work
+lane. A granted claim of a running container now starts the session
+lane when the project’s <code class="docutils literal notranslate"><span class="pre">neverSleep</span></code> is set and none is live
+(<code class="docutils literal notranslate"><span class="pre">sleepPrevention.fnEnsureSessionLaneForClaim</span></code>, under the container’s
+mutation lock so two claims cannot both spawn). The liveness check is
+what keeps a tab reload from churning a process and what lets the new
+hub adopt a keep-alive a crashed one left. Saving <code class="docutils literal notranslate"><span class="pre">neverSleep</span></code> from the
+dashboard starts or stops the lane of a held, running container at
+once, and a reaper stops any session lane whose container is no longer
+running.</p>
+<p>Two more things the keep-alive registry can now say. Every
+<code class="docutils literal notranslate"><span class="pre">caffeinate</span></code> vaibify launches is appended to a spawn ledger beside the
+pid files (<code class="docutils literal notranslate"><span class="pre">~/.vaibify/caffeinate/spawnLedger.json</span></code>, keyed by pid,
+holding the registry name and the instant the spawn returned, pruned
+of dead pids on every append and read, capped as a backstop). A pid
+file names the keep-alive a registry currently holds; the ledger is
+what lets vaibify PROVE that a <code class="docutils literal notranslate"><span class="pre">caffeinate</span></code> no registry holds is one
+it launched, by pid plus start clock, and not the researcher’s own
+<code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span></code>. The kill rule for any later removal is stricter than
+liveness: a readable start clock matching the ledger AND a command
+name of <code class="docutils literal notranslate"><span class="pre">caffeinate</span></code> (<code class="docutils literal notranslate"><span class="pre">keepAliveManager.fbCaffeinateIsProvablyOurs</span></code>),
+because the liveness check answers “alive” when the clock is
+unreadable, which is enough to leave a process alone and not enough
+to kill it. And there is exactly one host probe for <code class="docutils literal notranslate"><span class="pre">caffeinate</span></code>:
+<code class="docutils literal notranslate"><span class="pre">processLiveness.flistEnumerateProcessesNamed</span></code>, which the docker-status
+sleep hint and the remnant scanner both read, so they cannot disagree
+about what runs.</p>
 </section>
 <section id="what-survives-what-measured-2026-08-29">
 <h3>What survives what (measured, 2026-08-29)<a class="headerlink" href="#what-survives-what-measured-2026-08-29" title="Link to this heading"></a></h3>
@@ -1374,6 +1415,90 @@ never reaped. No new dependency is introduced; the probe shells out to
 host-side enumerator over these same files – the analog of
 <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">list</span></code> / <code class="docutils literal notranslate"><span class="pre">jupyter</span> <span class="pre">server</span> <span class="pre">stop</span></code>.</p>
 </section>
+</section>
+<section id="the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did">
+<h2>The hub’s reapers run on one cadence and record what they did<a class="headerlink" href="#the-hub-s-reapers-run-on-one-cadence-and-record-what-they-did" title="Link to this heading"></a></h2>
+<p>A <em>reaper</em> deletes garbage the hub can prove is garbage: a container
+lock no process holds, a credential file no container mounts, a
+shadow-rerun lock nothing flocks, a terminal whose owning hub is dead.
+<code class="docutils literal notranslate"><span class="pre">vaibify/gui/remnantReapers.py</span></code> owns the registry. Each reaper is a
+synchronous function of the route context that returns one shape,
+<code class="docutils literal notranslate"><span class="pre">{iRemoved,</span> <span class="pre">sOutcome,</span> <span class="pre">sReason,</span> <span class="pre">sRemedy}</span></code>, where <code class="docutils literal notranslate"><span class="pre">sOutcome</span></code> is one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ran</span></code> — the reaper did its work; <code class="docutils literal notranslate"><span class="pre">iRemoved</span></code> counts what it deleted.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">forbidden</span></code> — the reaper declined because it could not establish
+the proof it acts on (the daemon could not list mounts, say).
+<code class="docutils literal notranslate"><span class="pre">sReason</span></code> says what was missing and <code class="docutils literal notranslate"><span class="pre">sRemedy</span></code> what restores it.
+Declining is the SAFE direction: a sweep that proceeds with an empty
+protected set deletes files a live container still mounts.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">failed</span></code> — the reaper raised. The exception is logged, the other
+reapers still run, and <code class="docutils literal notranslate"><span class="pre">sRemedy</span></code> names the log.</p></li>
+</ul>
+<p>A pass runs every reaper in a worker thread, one after another (several
+of them take the same flocks and journal lock), and records each
+outcome in <code class="docutils literal notranslate"><span class="pre">app.state.dictReaperHealth</span></code>, with one INFO line per reaper.
+The first pass is a task created by a startup hook, so it never delays
+readiness; the loop repeats it every ten minutes, or at once when a
+rescan is requested (<code class="docutils literal notranslate"><span class="pre">fnRequestRescan</span></code>). While a pass is in flight a
+claim refused as busy carries a sentence saying so, because the busy
+work it met may be exactly what the pass is ending.</p>
+<p>Three startup sweeps stay AWAITED startup hooks rather than reapers on
+the loop, because each must finish before the hub serves: the
+stale-lock reap, the host-scratch sweep and the abandoned-spool sweep.
+They run in a thread and record through the same registry, so the
+health block covers them too.</p>
+<p>The orphaned-terminal reaper is the stale-lock reap with Docker and a
+terminator. A terminal record holds no hub pid; owner death is known
+only from the container flock, and a FREE flock is proof of it (a hub
+holds the flock while it owns the container, release drains terminals
+first, and lock release keeps the flock while live records remain).
+Under a free flock, between taking it and resolving the journal, the
+pass rebuilds each Docker terminal record that learned its group and
+ends it through <code class="docutils literal notranslate"><span class="pre">terminalContainment.fdictTerminateAndProveRecord</span></code>,
+the one exit every terminal record has, so it settles on a proven
+empty group or quarantines. Never inside the resolve: the journal’s
+write lock is not reentrant, and settling takes it again. A record
+already quarantined, or one without a group, is left to
+<code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">reconcile</span></code>. The awaited startup reap keeps its Docker-less
+call, and the registry poll never terminates anything.</p>
+<p><strong>The scanner lists what the reapers cannot prove, and says how sure
+it is.</strong> <code class="docutils literal notranslate"><span class="pre">remnantScanner.fnRunRemnantScan</span></code> runs last in every pass
+and classifies into three tiers, worded by the server and rendered
+verbatim: <em>proven</em> (vaibify launched it, by pid plus start clock in
+the keep-alive spawn ledger, or it is a plain fact such as a container
+created without <code class="docutils literal notranslate"><span class="pre">--init</span></code>), <em>possibly</em> (an interactive session nobody
+recorded, since its originator is unknown; a <code class="docutils literal notranslate"><span class="pre">caffeinate</span> <span class="pre">-s</span></code> not in
+the ledger, since the docker-status hint tells researchers to start
+one themselves), and <em>unknown</em> (a question the scan could not answer,
+listed with nothing to remove). Two cross-checks keep a session
+honest: the daemon’s running TTY execs minus the journaled exec ids
+must equal the session leaders found, or the container reports
+“sessions could not be attributed” and lists none; and a container
+whose records are still discovering their group, whose drain is in
+flight, or whose flock another live hub holds lists nothing (peer-hub
+safety: the other window owns whatever runs there). Every Docker read
+is bounded by the memory sampler’s deadline, and nothing here runs on
+a request path. Removal (<code class="docutils literal notranslate"><span class="pre">routes/remnantRoutes.py</span></code>) re-verifies each
+item’s identity live, a session by pid and start clock, a keep-alive
+by pid and start instant, a container by id and status, and acts only
+through the named authorities; an item that no longer matches is
+refused as already gone. An item id is a digest of category and
+identity, so it survives a rescan that finds the same thing and dies
+with the thing it named.</p>
+<p>The shadow-rerun lane lock (<code class="docutils literal notranslate"><span class="pre">shadowRerun._fcontextHoldShadowLaneLock</span></code>)
+is unlinked on release while its flock is still held, after an
+inode re-check that mirrors the container lock’s: a lock taken on an
+inode that was unlinked between the open and the flock excludes
+nobody, and two reruns would sweep each other’s containers. A reaper
+removes the backlog of empty shadow lock files nothing holds, taking
+each one’s flock before unlinking it, and leaves <code class="docutils literal notranslate"><span class="pre">state-*.lock</span></code> alone.</p>
+<p>The record exists because of a reaper that did not run. The
+credential-file sweep called <code class="docutils literal notranslate"><span class="pre">.containers.list</span></code> on a connection class
+that has no such attribute, swallowed the <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>, and
+silently did nothing for weeks while its unit test passed against a
+fake shaped like the Docker SDK client. A reaper that cannot run must
+now say why, and a reaper that is absent from the health block has
+not been registered.</p>
 </section>
 <section id="host-mode-the-same-hub-a-different-substrate">
 <h2>Host mode: the same hub, a different substrate<a class="headerlink" href="#host-mode-the-same-hub-a-different-substrate" title="Link to this heading"></a></h2>
@@ -1623,6 +1748,16 @@ delegated to the <code class="docutils literal notranslate"><span class="pre">ro
 <li><p><code class="docutils literal notranslate"><span class="pre">routeContext.py</span></code> — typed <code class="docutils literal notranslate"><span class="pre">RouteContext</span></code> wrapper for the <code class="docutils literal notranslate"><span class="pre">dictCtx</span></code>
 dict. Provides both attribute access (<code class="docutils literal notranslate"><span class="pre">dictCtx.docker</span></code>) and dict
 access (<code class="docutils literal notranslate"><span class="pre">dictCtx[&quot;docker&quot;]</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">remnantReapers.py</span></code> — the registry of cleanup jobs, the pass that
+runs them on a cadence, and the record of what each one did. The
+scan runs last in every pass.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">remnantScanner.py</span></code> — classifies what the reapers could not prove,
+with evidence and a tier, into the cached result the remnant routes
+read with no I/O.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cliShellContainment.py</span></code> — the <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">connect</span></code> and <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">verify</span></code>
+shells: wrapped, recorded on the host, ended with proof on exit, and
+reaped once their CLI is provably dead. A seam module beside
+<code class="docutils literal notranslate"><span class="pre">terminalContainment.py</span></code>.</p></li>
 </ul>
 </section>
 <section id="route-modules">
