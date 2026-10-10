@@ -272,11 +272,12 @@ def fnApplySessionLaneSetting(appState, dictCtx, sName, bNeverSleep):
     if sName not in getattr(appState, "dictContainerOwners", {}):
         return
     connectionDocker = dictCtx.get("docker") if dictCtx else None
-    dictRunningIdByName = (
-        _fdictRunningContainerIdsByName(connectionDocker)
-        if fbDockerReachable(connectionDocker) else None
-    )
-    if dictRunningIdByName is None or sName not in dictRunningIdByName:
+    if not fbDockerReachable(connectionDocker):
+        return
+    dictRunningIdByName = _fdictRunningContainerIdsByName(connectionDocker)
+    if dictRunningIdByName is None:
+        return
+    if sName not in dictRunningIdByName:
         return
     if bNeverSleep and not keepAliveManager.fbKeepAliveIsLive(sName):
         keepAliveManager.fnStartKeepAlive(sName)
