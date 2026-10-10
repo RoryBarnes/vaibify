@@ -296,6 +296,11 @@ DICT_CONTROL_PLANE_SCOPES = {
     # warning they were shown.
     ("POST", "/api/session/renew"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/system/docker-status/retry"): S_SCOPE_BROWSER_HUB,
+    # The remnant panel reads and acts on HOST state: processes, lock
+    # files, keep-alives, every container on the daemon. Browser only.
+    ("GET", "/api/system/remnants"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/system/remnants/rescan"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/system/remnants/remove"): S_SCOPE_BROWSER_HUB,
 }
 
 # The lifecycle routes that must still be reachable WHILE a start

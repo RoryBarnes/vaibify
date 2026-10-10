@@ -32,10 +32,12 @@ refused by the Host-header check exactly as a rebinding attack on
 loopback would be.
 """
 
+import contextlib
 import logging
 import os
 import platform
 import signal
+import threading
 import socket
 
 import click
@@ -175,8 +177,25 @@ def _fsSignalName(iSignal):
         return str(iSignal)
 
 
+def fnDetachFromClosedTerminal():
+    """Point stdout and stderr at the null device after a hang-up.
+
+    Once the controlling terminal is gone, a write to it raises EIO
+    or EPIPE, and a stray print or click.echo on the shutdown path
+    would abort the shutdown that drains the terminals. Process-wide,
+    so it is never run inside the test process.
+    """
+    iNullDescriptor = os.open(os.devnull, os.O_WRONLY)
+    try:
+        for iDescriptor in (1, 2):
+            os.dup2(iNullDescriptor, iDescriptor)
+    finally:
+        os.close(iNullDescriptor)
+
+
 class ServerLoggingExitSignals(uvicorn.Server):
-    """A uvicorn server that logs which signal ended the hub.
+    """A uvicorn server that logs which signal ended the hub, and
+    shuts down fully on a hang-up and on a second Ctrl-C.
 
     uvicorn answers SIGINT and SIGTERM by setting ``should_exit`` and
     says so only below the warning level this hub logs at, so a hub
@@ -188,20 +207,58 @@ class ServerLoggingExitSignals(uvicorn.Server):
     the line is written before uvicorn's own handling, which then runs
     unchanged. Wrapped rather than overridden because the hook's name
     is uvicorn's, outside this project's naming contract.
+
+    Two shutdown gaps are closed the same way. uvicorn handles only
+    SIGINT and SIGTERM, so closing the terminal window of a foreground
+    hub (SIGHUP) killed it with every lifespan shutdown hook skipped,
+    and the terminals it owned ran on. ``capture_signals`` is wrapped
+    to install a hang-up handler for exactly as long as uvicorn's own
+    capture lasts; it detaches the dead terminal, then forwards to
+    ``handle_exit``. And uvicorn turns a SECOND SIGINT into
+    ``force_exit``, which skips the lifespan shutdown and so the
+    terminal drains; a second Ctrl-C is now logged and otherwise
+    ignored, with SIGQUIT and SIGKILL left as the hard stop.
     """
 
     def __init__(self, configUvicorn):
         super().__init__(configUvicorn)
         fnHandleExit = self.handle_exit
+        fcontextCaptureSignals = self.capture_signals
 
         def fnHandleExitLogged(iSignal, _):
+            if iSignal == signal.SIGINT and self.should_exit:
+                logger.warning(
+                    "Hub received a second SIGINT; shutdown already in "
+                    "progress, draining terminals (SIGQUIT is the hard stop)",
+                )
+                return
             logger.warning(
                 "Hub received %s (pid %d); shutting down",
                 _fsSignalName(iSignal), os.getpid(),
             )
             fnHandleExit(iSignal, _)
 
+        def fnHandleHangup(iSignal, _):
+            # Idempotent: uvicorn re-raises every captured signal once
+            # its capture ends, while this handler is still installed.
+            fnDetachFromClosedTerminal()
+            self.handle_exit(iSignal, _)
+
+        @contextlib.contextmanager
+        def fcontextCaptureWithHangup():
+            if threading.current_thread() is not threading.main_thread():
+                with fcontextCaptureSignals():
+                    yield
+                return
+            fnPrevious = signal.signal(signal.SIGHUP, fnHandleHangup)
+            try:
+                with fcontextCaptureSignals():
+                    yield
+            finally:
+                signal.signal(signal.SIGHUP, fnPrevious)
+
         self.handle_exit = fnHandleExitLogged
+        self.capture_signals = fcontextCaptureWithHangup
 
 
 def fnRunServer(

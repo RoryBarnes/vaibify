@@ -262,7 +262,6 @@ LIST_SEEDED_OFFENDERS = [
     "vaibify/gui/routes/syncRoutes.py::_fsClearArxivSyncCache::1",
     "vaibify/gui/routes/syncRoutes.py::_fsFetchCommitHashAfterPush::1",
     "vaibify/gui/routes/syncRoutes.py::_fsFetchPreviousHostCredential::1",
-    "vaibify/gui/routes/syncRoutes.py::_fsetMountedHostPaths::1",
     "vaibify/gui/routes/syncRoutes.py::_ftSnapshotContainerCredential::1",
     "vaibify/gui/routes/testRoutes.py::_fsRequireConfiguredProviderKey::1",
     "vaibify/gui/serverLifespan.py::_fbAnyHeldContainerBusy::1",

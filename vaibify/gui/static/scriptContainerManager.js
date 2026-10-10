@@ -34,6 +34,7 @@ var VaibifyContainerManager = (function () {
         var dictResult = await VaibifyApi.fdictGet(_fsRegistryUrl());
         fnRenderContainerList(dictResult.listContainers || []);
         fnRenderUnrecognizedList(dictResult.listUnrecognized || []);
+        VaibifyRemnants.fnRenderSummary(dictResult.dictRemnantSummary || null);
     }
 
     function _fnShowContainerListLoadError(error) {
@@ -2893,6 +2894,7 @@ var VaibifyContainerManager = (function () {
                     "Environment hub \u2014 Help", _S_HUB_HELP);
             }
         );
+        VaibifyRemnants.fnBindRemnantsGlyph();
         document.addEventListener("click", function () {
             document.querySelectorAll(".container-tile-menu").forEach(
                 function (el) { el.style.display = "none"; }
@@ -3078,6 +3080,18 @@ var VaibifyContainerManager = (function () {
         'with <em>Click to run a diagnosis</em>: it runs the checks of ' +
         '<code>vaibify doctor</code> on this machine and shows each ' +
         'finding with its remedy.</p>' +
+        '</details><details class="hub-help-section">' +
+        '<summary>Leftover processes and files</summary>' +
+        '<p>An orange <strong>\u26A0</strong> in this header means vaibify ' +
+        'found something left over on this machine that it could not ' +
+        'clean up by itself: a shell in a container that no window ' +
+        'opened, a keep-alive no window holds, a container the test ' +
+        'suite made, or a container running without an init process. ' +
+        'Click it to read the evidence for each item. <em>Proven</em> ' +
+        'items are ones vaibify itself launched; <em>possibly</em> ' +
+        'items may be yours, so read before removing. A red ' +
+        '<strong>\u26A0</strong> means one of the automatic cleanups ' +
+        'could not run; the panel says which and what to do.</p>' +
         '</details>';
 
     var _S_ADD_CHOICE_HELP =

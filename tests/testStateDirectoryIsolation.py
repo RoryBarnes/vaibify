@@ -18,7 +18,7 @@ from vaibify.config import (
     operationJournal,
     sessionRegistry,
 )
-from vaibify.gui import hostControlChannel
+from vaibify.gui import cliShellContainment, hostControlChannel
 
 
 def _sRealVaibifyHome():
@@ -55,7 +55,56 @@ def test_every_redirected_state_constant_points_outside_the_real_home():
         keepAliveManager._S_PID_DIRECTORY,
         operationJournal._S_JOURNAL_DIRECTORY,
         hostControlChannel._S_CONTROL_DIRECTORY,
+        cliShellContainment._S_CLI_SHELL_DIRECTORY,
     ]
     listLeaked = [sPath for sPath in listConstants
                   if not _fbOutsideRealHome(sPath)]
     assert not listLeaked, f"these constants still reach the real home: {listLeaked}"
+
+
+def _flistRealHomeLockFiles():
+    sRealLocks = os.path.join(_sRealVaibifyHome(), "locks")
+    return sorted(os.listdir(sRealLocks)) if os.path.isdir(sRealLocks) else []
+
+
+def test_the_shadow_rerun_lock_lands_in_the_redirect_not_the_real_home():
+    """The shadow-lane flock builds its path from the redirected constant.
+
+    The writer used to expand ``~/.vaibify/locks`` itself, so every
+    reproduction and shadow rerun the suite exercised left a lock file
+    in the researcher's real home. Reading the directory through
+    ``containerLock`` puts it under the one redirect.
+    """
+    from vaibify.reproducibility.shadowRerun import _fcontextHoldShadowLaneLock
+    listRealBefore = _flistRealHomeLockFiles()
+    with _fcontextHoldShadowLaneLock("resource-under-test"):
+        listRedirected = os.listdir(containerLock._S_LOCK_DIRECTORY)
+    assert any(sName.startswith("shadow-") for sName in listRedirected), (
+        f"no shadow lock inside the redirect: {listRedirected}"
+    )
+    assert _flistRealHomeLockFiles() == listRealBefore, (
+        "the shadow lock reached the real ~/.vaibify/locks"
+    )
+
+
+def test_a_keep_alive_started_by_the_suite_launches_no_caffeinate(monkeypatch):
+    """A keep-alive asserted inside the suite never reaches the host.
+
+    Regression for the ``caffeinate -s`` processes a running suite left
+    behind, one per hub watchdog tick. The platform is forced to
+    support keep-alives so the guard is exercised on Linux CI as well,
+    and a launch fails the test outright rather than leaking a process.
+    """
+    def fnRefuseRealLaunch(*args, **kwargs):
+        raise AssertionError(f"the suite launched a host process: {args}")
+
+    monkeypatch.setattr(
+        keepAliveManager, "fbPlatformSupportsKeepAlive", lambda: True,
+    )
+    monkeypatch.setattr(
+        keepAliveManager.subprocess, "Popen", fnRefuseRealLaunch,
+    )
+    keepAliveManager.fnStartKeepAlive("isolationProbe")
+    assert not keepAliveManager.fbKeepAliveIsLive("isolationProbe"), (
+        "a declined spawn must record no pid for a later stop to kill"
+    )

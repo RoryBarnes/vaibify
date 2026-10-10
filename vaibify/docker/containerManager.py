@@ -14,6 +14,7 @@ unachievable as written.
 """
 
 import json
+import logging
 import os
 import re
 import shlex
@@ -44,6 +45,8 @@ _F_SETTLEMENT_POLL_SECONDS = 0.25
 # Every probe/removal call is bounded, so a wedged daemon cannot pin a
 # worker thread forever; an expired probe reads as "did not answer".
 _F_DOCKER_PROBE_TIMEOUT_SECONDS = 10.0
+
+logger = logging.getLogger("vaibify")
 
 
 def fnStartContainer(config, sDockerDir, saCommand=None):
@@ -303,7 +306,112 @@ def _fdictConfirmReservationRemoval(sReservationId, listRemovedIds):
 
 def _fnForceRemoveContainer(sContainerId):
     """Force-remove one container by id, tolerating an already-gone id."""
+    listMountSources = _flistMountSourcesOfContainer(sContainerId)
     _ftRunProbeCommand(["docker", "rm", "-f", sContainerId])
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "ps", "-a", "-q", "--filter", f"id={sContainerId}",
+    ])
+    _fnReleaseSecretSourcesIfRemoved(
+        {"bAnswered": bAnswered, "bPresent": bool(sOutput.strip())},
+        listMountSources,
+    )
+
+
+def fnRemoveStoppedContainerById(sContainerId):
+    """Remove one STOPPED container by id; a running one is refused.
+
+    The remnant panel's removal of a container the suite created but
+    no longer tracks: ``docker rm`` without ``-f``, so a container that
+    started since the scan is refused by the daemon rather than killed,
+    and the volumes are kept. Secret files it mounted are released
+    once the daemon confirms the removal.
+    """
+    listMountSources = _flistMountSourcesOfContainer(sContainerId)
+    processResult = subprocess.run(
+        ["docker", "rm", sContainerId], capture_output=True, text=True,
+        check=False, encoding="utf-8",
+    )
+    if processResult.returncode != 0:
+        raise RuntimeError(
+            f"docker rm refused: {processResult.stderr.strip()}")
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "ps", "-a", "-q", "--filter", f"id={sContainerId}",
+    ])
+    _fnReleaseSecretSourcesIfRemoved(
+        {"bAnswered": bAnswered, "bPresent": bool(sOutput.strip())},
+        listMountSources,
+    )
+
+
+def _flistMountSourcesOfContainer(sContainerIdentifier):
+    """Return the host sources a container mounts, read before its removal."""
+    try:
+        jsonInspected = fjsonInspectContainer(sContainerIdentifier)
+    except Exception:  # noqa: BLE001 -- a removal never fails on its cleanup
+        return []
+    return [
+        dictMount.get("Source") or ""
+        for dictMount in jsonInspected.get("Mounts") or []
+        if dictMount.get("Source")
+    ]
+
+
+def _fsetMountSourcesOfSurvivingContainers():
+    """Return every source any remaining container mounts, or None.
+
+    The CLI form of ``DockerConnection.fsetListMountSourcesOfAllContainers``
+    for this module, which reaches the daemon through the CLI
+    throughout. ``None`` means the daemon did not answer, and a caller
+    must then release nothing.
+    """
+    bAnswered, sIds = _ftRunProbeCommand(["docker", "ps", "-a", "-q"])
+    if not bAnswered:
+        return None
+    listIds = sIds.split()
+    if not listIds:
+        return set()
+    bAnswered, sMounts = _ftRunProbeCommand(
+        ["docker", "inspect", "-f", "{{json .Mounts}}", *listIds])
+    if not bAnswered:
+        return None
+    setSources = set()
+    for sLine in sMounts.splitlines():
+        try:
+            listMounts = json.loads(sLine or "null") or []
+        except ValueError:
+            return None
+        setSources.update(
+            dictMount.get("Source") for dictMount in listMounts
+            if isinstance(dictMount, dict) and dictMount.get("Source"))
+    return setSources
+
+
+def _fnReleaseSecretSourcesIfRemoved(dictPresence, listMountSources):
+    """Delete the secret files of a container PROVEN removed.
+
+    A credential file must outlive its container, so nothing is
+    released until the daemon answers that the container is gone, and
+    a file some surviving container still mounts is kept. The sweep on
+    the reaper loop covers anything this cannot prove. Only counts are
+    logged, never names or contents.
+    """
+    if not listMountSources or not dictPresence["bAnswered"]:
+        return
+    if dictPresence["bPresent"]:
+        return
+    setStillMounted = _fsetMountSourcesOfSurvivingContainers()
+    if setStillMounted is None:
+        return
+    from vaibify.config.ephemeralStore import fiReleaseSecretSources
+    try:
+        iReleased = fiReleaseSecretSources(listMountSources, setStillMounted)
+    except Exception:  # noqa: BLE001 -- a removal never fails on its cleanup
+        logger.warning("could not release a removed container's secret "
+                       "files", exc_info=True)
+        return
+    if iReleased:
+        logger.info("released %d secret file(s) of a removed container",
+                    iReleased)
 
 
 def _fdictSettlement(bConclusive, listRemovedIds, sDetail):
@@ -1026,15 +1134,6 @@ def _fnMountSingleSecret(
     saRunArgs.extend(flistBuildSecretMountArguments(sTempPath, sName))
 
 
-def _fnCleanupTempFiles(listCleanupFiles):
-    """Remove temporary secret files, ignoring errors."""
-    for sPath in listCleanupFiles:
-        try:
-            os.unlink(sPath)
-        except OSError:
-            pass
-
-
 def fnStopContainer(sProjectName):
     """Stop and remove a container by project name.
 
@@ -1053,6 +1152,31 @@ def fnStopContainer(sProjectName):
             f"{processResult.stderr.strip()}"
         )
     fnRemoveStopped(sProjectName)
+
+
+def fprocessLaunchInteractiveExec(sContainerName, sUser, sWrapperScript):
+    """Start ``docker exec -it`` on this terminal; return its process.
+
+    The lifecycle gateway's one interactive exec, for ``vaibify
+    connect`` and ``vaibify verify``: the TTY is docker's own, so
+    Ctrl-C inside the shell reaches the remote shell as it always has.
+    ``sWrapperScript`` is the containment seam's group-reporting
+    wrapper, built from a validated program path and never from free
+    text; the seam discovers the session it reports and ends it on
+    exit.
+    """
+    return subprocess.Popen([
+        "docker", "exec", "-it", "-u", sUser, sContainerName,
+        "/bin/sh", "-c", sWrapperScript,
+    ])
+
+
+def fnAwaitProcessOrKill(processChild, fTimeoutSeconds):
+    """Wait for a launched process; kill it when the bound passes."""
+    try:
+        processChild.wait(timeout=fTimeoutSeconds)
+    except (subprocess.TimeoutExpired, OSError):
+        processChild.kill()
 
 
 def fdictProbeContainerPresence(sProjectName):
@@ -1146,7 +1270,12 @@ def _fnRestartContainerInPlace(sProjectName):
 
 
 def fnRemoveStopped(sProjectName):
-    """Remove a stopped container if it still exists."""
+    """Remove a stopped container if it still exists.
+
+    Its secret files are released once the daemon confirms the removal;
+    see :func:`_fnReleaseSecretSourcesIfRemoved`.
+    """
+    listMountSources = _flistMountSourcesOfContainer(sProjectName)
     saCommand = ["docker", "rm", sProjectName]
     try:
         subprocess.run(
@@ -1155,6 +1284,12 @@ def fnRemoveStopped(sProjectName):
         )
     except Exception:
         pass
+    try:
+        _fnReleaseSecretSourcesIfRemoved(
+            fdictProbeContainerPresence(sProjectName), listMountSources)
+    except Exception:  # noqa: BLE001 -- a removal never fails on its cleanup
+        logger.warning("secret-file release after removal failed",
+                       exc_info=True)
 
 
 def fbContainerIsRunning(sProjectName):

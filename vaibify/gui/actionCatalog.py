@@ -1346,6 +1346,13 @@ SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
     # Docker-runtime retry — agents run inside the container that
     # needs Docker, so the UI is the only sensible caller.
     ("POST", "/api/system/docker-status/retry"),
+    # The remnant panel is researcher-only, like reconcile: ending a
+    # session nobody recorded, killing a keep-alive, or removing a
+    # container are host-side judgements an agent inside a container
+    # must never make, and a rescan reaps host state. Both handlers
+    # also reject the agent token lane explicitly.
+    ("POST", "/api/system/remnants/rescan"),
+    ("POST", "/api/system/remnants/remove"),
     # Configuration surface owned by the researcher.
     ("PUT", "/api/settings/{sContainerId}"),
     # Repos-panel operations — user-only repo management.

@@ -149,6 +149,16 @@ def fsLockPathFor(sProjectName):
     return os.path.join(_S_LOCK_DIRECTORY, f"{sProjectName}{_S_LOCK_SUFFIX}")
 
 
+def fsGetLockDirectory():
+    """Return the lock directory, read at call time so a redirect applies.
+
+    Every lock-file writer builds its path through this one constant;
+    the test suite redirects the constant, so a writer that reads it
+    here lands inside the redirect instead of the real home.
+    """
+    return _S_LOCK_DIRECTORY
+
+
 def _fnEnsureLockDirectory():
     """Create ~/.vaibify/locks/ with mode 0o700 if missing."""
     pidFileRegistry.fnEnsureDirectory(_S_LOCK_DIRECTORY)
@@ -319,7 +329,9 @@ def _fbHandleMatchesPath(fileHandle, sPath):
     )
 
 
-def fnReapStaleContainerLocks(connectionDocker=None):
+def fnReapStaleContainerLocks(
+    connectionDocker=None, fnTerminateOrphanedTerminals=None,
+):
     """Remove lock files whose recorded holder process has exited.
 
     Called at hub startup and on every container-list refresh so a
@@ -334,22 +346,37 @@ def fnReapStaleContainerLocks(connectionDocker=None):
     journal itself. This pass exists so provably-dead, provably-settled
     leftovers are cleared (with a logged note) on the same cadence the
     lock reaper already runs: startup and each container-list refresh.
+
+    ``fnTerminateOrphanedTerminals(sProjectName, connectionDocker)``,
+    when given, is called for every container whose flock is FREE
+    before its journal is resolved: a free flock is proof that the hub
+    owning the container has died, so the terminals it left are ended,
+    with proof, instead of holding the container "busy" forever. It
+    is injected because this module must not import the gui package.
     """
     pidFileRegistry.fnReapStaleFilesIn(
         _S_LOCK_DIRECTORY, _fbLockFileIsStale, _S_LOCK_SUFFIX,
     )
-    _fnAutoProbeJournaledContainers(connectionDocker)
+    _fnAutoProbeJournaledContainers(
+        connectionDocker, fnTerminateOrphanedTerminals,
+    )
 
 
-def _fnAutoProbeJournaledContainers(connectionDocker):
+def _fnAutoProbeJournaledContainers(
+    connectionDocker, fnTerminateOrphanedTerminals=None,
+):
     """Run the journal's automatic resolution for every journaled name."""
     for sProjectName in operationJournal.flistJournaledContainerNames():
         if not fbIsValidProjectName(sProjectName):
             continue
-        _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker)
+        _fnAutoProbeOneJournaledContainer(
+            sProjectName, connectionDocker, fnTerminateOrphanedTerminals,
+        )
 
 
-def _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker):
+def _fnAutoProbeOneJournaledContainer(
+    sProjectName, connectionDocker, fnTerminateOrphanedTerminals=None,
+):
     """Resolve one container's journal, under its flock when one exists.
 
     A held flock means a live vaibify process owns the container and
@@ -359,11 +386,15 @@ def _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker):
     exists at all there is no holder to race beyond the atomicity the
     journal's own writes provide, so the resolution runs directly
     rather than creating a lock file as a side effect.
+
+    The orphan terminator runs BETWEEN taking the flock and the
+    resolve, never inside it: the resolve holds the journal's
+    non-reentrant write lock, and settling a record takes it again.
     """
     sPath = fsLockPathFor(sProjectName)
     if not os.path.exists(sPath):
-        operationJournal.fdictResolveContainerJournal(
-            sProjectName, connectionDocker,
+        _fnTerminateOrphansThenResolve(
+            sProjectName, connectionDocker, fnTerminateOrphanedTerminals,
         )
         return
     try:
@@ -376,13 +407,24 @@ def _fnAutoProbeOneJournaledContainer(sProjectName, connectionDocker):
         except BlockingIOError:
             return
         try:
-            operationJournal.fdictResolveContainerJournal(
-                sProjectName, connectionDocker,
+            _fnTerminateOrphansThenResolve(
+                sProjectName, connectionDocker, fnTerminateOrphanedTerminals,
             )
         finally:
             fcntl.flock(fileHandle, fcntl.LOCK_UN)
     finally:
         fileHandle.close()
+
+
+def _fnTerminateOrphansThenResolve(
+    sProjectName, connectionDocker, fnTerminateOrphanedTerminals,
+):
+    """End a dead hub's terminals, with proof, then resolve the journal."""
+    if fnTerminateOrphanedTerminals is not None:
+        fnTerminateOrphanedTerminals(sProjectName, connectionDocker)
+    operationJournal.fdictResolveContainerJournal(
+        sProjectName, connectionDocker,
+    )
 
 
 def _fbLockFileIsStale(sPath):
@@ -504,3 +546,30 @@ def _fdictHolderUnlessStale(fileHandle, sPath):
         pidFileRegistry.fnUnlinkQuietly(sPath)
         return {}
     return dictHolder
+
+
+def fbContainerLockIsHeld(sProjectName):
+    """Return True when some process holds the container's flock now.
+
+    A read for the remnant scanner's peer-hub safety: a container whose
+    flock is held, by this hub or another, has a live owner, and
+    nothing in it may be listed for removal. No lock file means no
+    holder. The probe takes the flock non-blockingly and releases it
+    at once, so it never waits and never keeps anything.
+    """
+    sPath = fsLockPathFor(sProjectName)
+    if not os.path.exists(sPath):
+        return False
+    try:
+        fileHandle = _ffileOpenLockFileNoFollow(sPath)
+    except OSError:
+        return True
+    try:
+        try:
+            fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fileHandle, fcntl.LOCK_UN)
+        return False
+    finally:
+        fileHandle.close()

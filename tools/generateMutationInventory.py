@@ -194,6 +194,9 @@ DICT_PRIMITIVE_ACCESS = {
     "fnSignalProcessGroupMembers": S_ACCESS_SIGNAL,
     # --- vaibify/docker/dockerConnection.py: read / cache ---
     "flistGetRunningContainers": S_ACCESS_TYPED_READ,
+    # Every container's bind-mount sources, running or stopped: the
+    # proof the credential-file sweep acts on. Daemon metadata, no exec.
+    "fsetListMountSourcesOfAllContainers": S_ACCESS_TYPED_READ,
     # Whether a local image tag exists: a daemon lookup that runs no
     # program anywhere, over a tag the caller composes from a validated
     # project name. The start guard that asks may refuse only on its
@@ -269,6 +272,12 @@ DICT_PRIMITIVE_ACCESS = {
     # adapter); the state read asks the DAEMON for a container's State
     # block and runs no program at all.
     "fsReadCgroupMemory": S_ACCESS_TYPED_READ,
+    # The remnant scanner's reads: the in-container process table (a
+    # typed read taking no caller value), the daemon's HostConfig block,
+    # and the listing of every container with its labels.
+    "fsReadProcessTable": S_ACCESS_TYPED_READ,
+    "fdictReadContainerHostConfig": S_ACCESS_TYPED_READ,
+    "flistListAllContainers": S_ACCESS_TYPED_READ,
     # The recreate confirmation's /tmp measurement: a declared typed
     # read of ``du -sxk`` with the path fixed in the adapter.
     "fiReadTmpBytes": S_ACCESS_TYPED_READ,
@@ -370,6 +379,14 @@ DICT_PRIMITIVE_ACCESS = {
     "fbContainerIsRunning": S_ACCESS_TYPED_READ,
     "fdictGetContainerStatus": S_ACCESS_TYPED_READ,
     "fdictProbeContainerPresence": S_ACCESS_TYPED_READ,
+    # The CLI's interactive exec: a docker exec of the containment
+    # seam's wrapper, attached to the researcher's own terminal, and
+    # the bounded wait that kills it when its session has been ended.
+    "fprocessLaunchInteractiveExec": S_ACCESS_ARBITRARY_COMMAND,
+    # The remnant panel's removal of a stopped, untracked container:
+    # docker rm by id without -f, so a running one is refused.
+    "fnRemoveStoppedContainerById": S_ACCESS_LIFECYCLE,
+    "fnAwaitProcessOrKill": S_ACCESS_SIGNAL,
     "fdictFindContainersForReservation": S_ACCESS_TYPED_READ,
     "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,
     # The full `docker inspect` object, read by the CLI diagnostics.

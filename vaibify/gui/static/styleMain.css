@@ -1129,6 +1129,60 @@ body.proof-level-3 .toolbar-label {
     cursor: default;
 }
 
+/* The hub's leftover-processes glyph: orange while anything is listed,
+   red when an automatic cleanup could not run. */
+.btn-icon--remnants {
+    color: var(--color-orange);
+}
+
+.btn-icon--remnants.btn-icon--remnants-failed {
+    color: var(--color-red);
+}
+
+.remnants-category h3,
+.remnants-health h3 {
+    margin: 12px 0 4px;
+    font-size: 15px;
+}
+
+.remnants-tier {
+    margin: 6px 0 2px;
+    font-size: 13px;
+    color: var(--color-label);
+}
+
+.remnants-items {
+    list-style: none;
+    padding-left: 0;
+}
+
+.remnants-item {
+    margin: 4px 0;
+}
+
+/* The evidence is the server's sentence, rendered verbatim: the form
+   styling of <label> (uppercase, bold) would rewrite it. */
+.modal .remnants-item label {
+    text-transform: none;
+    font-weight: normal;
+    font-size: inherit;
+    letter-spacing: normal;
+    color: inherit;
+    display: inline;
+}
+
+.remnants-actions {
+    margin-top: 12px;
+}
+
+.remnants-scan-error {
+    color: var(--color-red-text);
+}
+
+.remnants-health-row--failed {
+    color: var(--color-red-text);
+}
+
 /* --- Left Panel --- */
 
 #panelLeft {

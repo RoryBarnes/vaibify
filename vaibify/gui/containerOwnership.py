@@ -69,6 +69,7 @@ from dataclasses import dataclass, field
 
 from vaibify.config import pidFileRegistry
 from vaibify.config.containerLock import (
+    ContainerBusyOperationError,
     ContainerLockedError,
     ContainerQuarantinedError,
     ffileAcquireContainerLock,
@@ -592,6 +593,7 @@ def _fdictCrossHubRefused(sName, error):
         "sName": sName,
         "bClaimed": False,
         "sMessage": str(error),
+        "bBusy": isinstance(error, ContainerBusyOperationError),
         "iLockedByPid": error.iHolderPid,
         "iLockedByPort": error.iHolderPort,
     }

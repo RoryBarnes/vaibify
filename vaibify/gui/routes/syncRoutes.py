@@ -3621,12 +3621,13 @@ def _fnRegisterScheduledReverify(app, dictCtx):
 
 
 def _fnRegisterEphemeralSecretSweep(app, dictCtx):
-    """Retire unreachable host credential files once, at hub startup.
+    """Register the reaper that retires unreachable host credential files.
 
     The GitHub, Overleaf and Zenodo flows registered above all drop
     live tokens into ``~/.vaibify/tmp``, and the container-mount path
     cannot unlink at the point of use, so a periodic sweep is the only
-    mechanism available.
+    mechanism available. It runs on the reaper loop's cadence with its
+    outcome recorded; the one-shot form failed silently for weeks.
 
     Age alone does not make a file garbage. A mounted secret lives as
     long as the container that mounts it, which outlives any number of
@@ -3635,10 +3636,14 @@ def _fnRegisterEphemeralSecretSweep(app, dictCtx):
     permanently unstartable, which is the failure this sweep exists to
     avoid causing.
     """
-    from vaibify.config.ephemeralStore import fnSweepStaleEphemeralFiles
+    from vaibify.config.ephemeralStore import fiSweepUnmountedEphemeralFiles
+    from vaibify.gui import agentCouncilStagedCopies, remnantReapers
+    tCouncilCopyPrefixes = tuple(
+        f"vc_secret_{sName}_"
+        for sName in agentCouncilStagedCopies.TUPLE_STAGED_CREDENTIAL_NAMES)
 
-    def fnSweepAtStartup(_app):
-        setMounted = _fsetMountedHostPaths(dictCtx)
+    def fdictSweepEphemeralSecrets(dictCtxPass):
+        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if setMounted is None:
             # Enumeration failed: we cannot tell which files a live
             # container still bind-mounts, so deleting any of them could
@@ -3647,30 +3652,33 @@ def _fnRegisterEphemeralSecretSweep(app, dictCtx):
             # the sweep entirely rather than proceed with nothing
             # protected -- an empty protected set is the DESTRUCTIVE
             # direction, not the safe one.
-            return
-        fnSweepStaleEphemeralFiles(setProtectedPaths=setMounted)
+            return remnantReapers.fdictBuildReaperOutcome(
+                remnantReapers.S_OUTCOME_FORBIDDEN,
+                sReason="the Docker daemon could not list container mounts",
+                sRemedy="Start Docker, then rescan.",
+            )
+        iRemoved = fiSweepUnmountedEphemeralFiles(
+            setMounted, tExcludedPrefixes=tCouncilCopyPrefixes)
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_RAN, iRemoved=iRemoved)
 
-    app.state.listLifespanStartup.append(fnSweepAtStartup)
+    remnantReapers.fnRegisterReaper(
+        app, "ephemeralSecretFiles", fdictSweepEphemeralSecrets)
 
 
 def _fsetMountedHostPaths(dictCtx):
     """Return every host path bind-mounted by any container, or None.
 
-    Includes stopped containers: a stopped container is restartable, and
-    its mounts are re-resolved at start. An unreachable daemon returns
-    ``None`` -- deliberately distinct from an empty set (enumerated, no
-    mounts) -- so the caller forbids the sweep entirely rather than
-    proceeding with nothing protected, which would delete files a live
-    container still mounts. Age is not evidence of garbage; reachability
-    is, and an unreachable daemon means reachability is unknown.
+    Asked of the ``DockerConnection`` through its own method, and ONLY
+    that way: the previous form called ``.containers.list`` on the
+    connection, an attribute the class has never had, inside a swallowed
+    except, so the sweep ran for weeks without ever deleting a file. A
+    missing daemon returns ``None`` -- deliberately distinct from an
+    empty set -- so the caller declines rather than proceeding with
+    nothing protected; an unexpected error propagates to the reaper
+    registry, which records it.
     """
-    setPaths = set()
-    try:
-        for container in dictCtx["docker"].containers.list(all=True):
-            for dictMount in container.attrs.get("Mounts", []) or []:
-                sSource = dictMount.get("Source") or ""
-                if sSource:
-                    setPaths.add(sSource)
-    except Exception:  # noqa: BLE001 — never block hub startup
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if connectionDocker is None:
         return None
-    return setPaths
+    return connectionDocker.fsetListMountSourcesOfAllContainers()

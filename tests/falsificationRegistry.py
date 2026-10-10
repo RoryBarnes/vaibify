@@ -2134,10 +2134,86 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testEphemeralStore.py::test_sweep_is_forbidden_when_the_daemon_is_unreachable',
         source='vaibify/gui/routes/syncRoutes.py',
-        old="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        old="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if setMounted is None:""",
-        new="""        setMounted = _fsetMountedHostPaths(dictCtx)
+        new="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if False:""",
+    ),
+    # The credential-file sweep must enumerate mounts through the
+    # connection class's own method: the SDK-shaped form raised an
+    # AttributeError inside a swallowed except and never ran.
+    Falsification(
+        nodeid='tests/testEphemeralStore.py::test_the_sweep_enumerates_mounts_through_the_real_connection_class',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old="""    return connectionDocker.fsetListMountSourcesOfAllContainers()""",
+        new="""    return {dictMount.get("Source") for container in connectionDocker.containers.list(all=True) for dictMount in container.attrs.get("Mounts", [])}""",
+    ),
+    # A terminal whose hub died must be ended by the free-flock pass, with
+    # proof; a pass that only resolves the journal meets its running exec
+    # and leaves the container busy forever.
+    Falsification(
+        nodeid='tests/testOrphanedTerminalsAreEnded.py::test_a_free_flock_and_a_running_exec_are_terminated_and_settled',
+        source='vaibify/config/containerLock.py',
+        old="""    if fnTerminateOrphanedTerminals is not None:
+        fnTerminateOrphanedTerminals(sProjectName, connectionDocker)""",
+        new="""    if False:
+        fnTerminateOrphanedTerminals(sProjectName, connectionDocker)""",
+    ),
+    # A SIGHUP'd `vaibify connect` must leave no session in the container:
+    # the hang-up reaches the CLI's exit path, which ends the session with
+    # proof. Kill-confirmation needs a reachable daemon (docker_live).
+    Falsification(
+        nodeid='tests/testCliExecLive.py::test_a_hangup_ends_the_cli_shell_and_everything_in_it',
+        source='vaibify/gui/cliShellContainment.py',
+        old="""        _fnEndCliSessionAndRecord(
+            connectionDocker, sContainerName, sContainerId, iSessionId,
+            sRecordPath, processChild,
+        )""",
+        new="""        del connectionDocker, sContainerName, sContainerId, iSessionId
+        del sRecordPath, processChild""",
+    ),
+    # Removal of a session whose pid was recycled must be refused: the
+    # live re-check compares the start clock, never the pid alone.
+    Falsification(
+        nodeid='tests/testRemnantRoutes.py::test_a_session_whose_pid_was_recycled_is_refused_without_a_signal',
+        source='vaibify/gui/routes/remnantRoutes.py',
+        old="""    return any(
+        dictRow["iPid"] == iLeaderPid and dictRow["iStartTicks"] == iStartTicks""",
+        new="""    return True or any(
+        dictRow["iPid"] == iLeaderPid and dictRow["iStartTicks"] == iStartTicks""",
+    ),
+    # The "already gone" guard must REFUSE: returning instead would let the
+    # removal continue past a live identity that no longer matches and
+    # signal a recycled pid.
+    Falsification(
+        nodeid='tests/testRemnantRoutes.py::test_the_already_gone_guard_refuses_rather_than_returns',
+        source='vaibify/gui/routes/remnantRoutes.py',
+        old="""    raise HTTPException(
+        409, f"{sWhat} is already gone, or has been replaced since the scan.")""",
+        new="""    return (
+        409, f"{sWhat} is already gone, or has been replaced since the scan.")""",
+    ),
+    # A keep-alive removal reports "ended" only once the host confirms the
+    # process has left the table; a kill that silently returns on a
+    # mismatch must not read as success, or the panel claims an ending it
+    # never saw.
+    Falsification(
+        nodeid='tests/testKeepAliveSpawnLedger.py::test_the_stop_reports_a_signalled_process_that_is_still_running',
+        source='vaibify/config/keepAliveManager.py',
+        old="""    _fnKillIfRunning(iPid, dictLedger[iPid]["sStartedIso"])
+    return _fbAwaitProcessExit(iPid)""",
+        new="""    _fnKillIfRunning(iPid, dictLedger[iPid]["sStartedIso"])
+    return True""",
+    ),
+    # A granted claim of a running neverSleep container must start the
+    # session-lane keep-alive, or a restarted hub holds nothing for it.
+    Falsification(
+        nodeid='tests/testSessionLaneFollowsClaim.py::test_a_claim_of_a_running_never_sleep_container_leaves_a_live_keep_alive',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""        if tClaimVerdict[0] == 200:
+            # Under the container-mutation lock still, so two concurrent""",
+        new="""        if False:
+            # Under the container-mutation lock still, so two concurrent""",
     ),
     # The host-log-tail endpoint returns the raw host-wide log and
     # free-text incidents; the agent lane must receive only an
@@ -2979,8 +3055,8 @@ LIST_FALSIFICATIONS = [
         # while reporting success.
         nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
         source='vaibify/config/ephemeralStore.py',
-        old='            os.remove(sPath)',
-        new='            pass',
+        old='        os.unlink(sPath)\n    except OSError:\n        return 0',
+        new='        pass\n    except OSError:\n        return 0',
     ),
     Falsification(
         # githubAuth._PATTERN_SEGMENT allows dots in owner and repo
@@ -3538,12 +3614,12 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testEphemeralStore.py::test_sweep_spares_a_stale_file_a_container_still_mounts',
         source='vaibify/config/ephemeralStore.py',
         old=(
-            '            if sPath in setProtected:\n'
-            '                continue'
+            '        if sPath in setMountedSources:\n'
+            '            continue'
         ),
         new=(
-            '            if False:\n'
-            '                continue'
+            '        if False:\n'
+            '            continue'
         ),
     ),
 
@@ -21823,10 +21899,31 @@ LIST_FALSIFICATIONS = [
             'tests/testSleepPreventionFollowsWork.py::'
             'testARouterWithNoDaemonLegIsNeverAsked'
         ),
-        # the reachability question is skipped and the router is listed
+        # the reachability question is skipped and the router is listed.
+        # Anchored through the work-lane sweep's own trailing lines, so it
+        # stays unique now that the session-lane setter asks the same
+        # reachability question with the same two lines.
         source='vaibify/gui/sleepPrevention.py',
-        old='    if not fbDockerReachable(connectionDocker):\n        return\n',
-        new='    if connectionDocker is None:\n        return\n',
+        old=(
+            '    if not fbDockerReachable(connectionDocker):\n'
+            '        return\n'
+            '    dictRunningIdByName = _fdictRunningContainerIdsByName('
+            'connectionDocker)\n'
+            '    if dictRunningIdByName is None:\n'
+            '        return\n'
+            '    dictContainerOwners = getattr(appState, '
+            '"dictContainerOwners", {})\n'
+        ),
+        new=(
+            '    if connectionDocker is None:\n'
+            '        return\n'
+            '    dictRunningIdByName = _fdictRunningContainerIdsByName('
+            'connectionDocker)\n'
+            '    if dictRunningIdByName is None:\n'
+            '        return\n'
+            '    dictContainerOwners = getattr(appState, '
+            '"dictContainerOwners", {})\n'
+        ),
     ),
     Falsification(
         nodeid=(
@@ -27288,9 +27385,9 @@ LIST_FALSIFICATIONS = [
         # Antigravity is asked for by its overlay name, a command no
         # image installs, so its version is never recorded.
         nodeid='tests/testAiProvenanceStamp.py::test_the_capture_asks_each_agent_by_the_command_it_installs',
-        source='vaibify/gui/aiProvenanceCapture.py',
-        old='_DICT_AGENT_COMMANDS = {"antigravity": "agy"}\n',
-        new='_DICT_AGENT_COMMANDS = {}\n',
+        source='vaibify/docker/imageBuilder.py',
+        old='DICT_AGENT_COMMANDS["antigravity"] = "agy"\n',
+        new='DICT_AGENT_COMMANDS["antigravity"] = "antigravity"\n',
     ),
     Falsification(
         nodeid=(

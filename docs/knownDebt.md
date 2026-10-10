@@ -149,3 +149,32 @@ without discussion:
   id a fresh inspect named, so it can only ever change that container,
   and a stop that lands mid-update makes the re-inspect fail and the
   outcome read "could not be applied", never "applied".
+
+- A `vaibify connect` or `vaibify verify` shell is recorded on the host
+  (`~/.vaibify/cliShells/`) and ended when its window closes or, once
+  the CLI is provably dead, by the hub's reaper, but it takes no
+  container flock and writes no journal record, so it remains
+  invisible to the quiescence claim: a project in which only a CLI
+  shell has run still reports its quiescence as it did before. The
+  record exists for cleanup, not for the claim; giving the claim sight
+  of CLI execs is a later step that needs no lock to add.
+- An interactive session in a container that no vaibify window or CLI
+  opened cannot be attributed: vaibify cannot tell a researcher's own
+  `docker exec` or an editor's remote shell from a leak, so the remnant
+  panel lists it as *possibly* orphaned and never ends it on its own.
+- The `setsid` escape: a descendant that calls `setsid` leaves the
+  session the containment record tracks, so every group-based proof,
+  the dashboard terminal's, the CLI shell's and the scanner's, can miss
+  it. Whether the agent CLIs or their tool subprocesses do this has
+  not been measured; measure before building anything on the answer.
+- A `caffeinate -s` that is not in vaibify's spawn ledger cannot be
+  told from one the researcher started by hand, which the docker-status
+  hint invites them to do. It is listed as *possibly* and removed only
+  on the researcher's confirmation, start-clock gated.
+- A terminal or CLI shell orphaned by a hub that died abruptly runs
+  until the next reaper pass, up to ten minutes, or until a hub is
+  started. A dead-man switch in the container was considered and not
+  built: the VM freezes while the host sleeps, so an in-container
+  watcher would kill live sessions on wake, exactly when the researcher
+  returns. The reaper logs how many it ends per pass; revisit if that is
+  non-zero at more than one hub start in a month.

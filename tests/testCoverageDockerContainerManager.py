@@ -173,9 +173,16 @@ def testAnUnansweredReservationQueryIsNotAnEmptyAnswer(
 def testASettlementIsInconclusiveWhenTheConfirmationGoesUnanswered(
     monkeypatch,
 ):
-    """Removing the containers proves nothing until the label reads empty."""
+    """Removing the containers proves nothing until the label reads empty.
+
+    Each removal reads the container's mounts before ``rm`` and probes
+    its presence by id afterwards (the secret-file release); the label
+    confirmation is the ``ps`` that goes unanswered.
+    """
     dockerScripted = fdockerInstallScripted(monkeypatch, {
-        "ps": [(0, "aaa111\nbbb222\n", ""), FileNotFoundError("docker")],
+        "ps": [(0, "aaa111\nbbb222\n", ""), (0, "", ""), (0, "", ""),
+               FileNotFoundError("docker")],
+        "inspect": (1, "", ""),
         "rm": (0, "", ""),
     })
     dictSettlement = containerManager.fdictSettleReservationContainers(
@@ -253,8 +260,10 @@ def testARecreateStopsTheOldContainerAndRunsTheImageId(monkeypatch):
     assert dictOutcome == {
         "sOperation": "recreate", "sContainerId": S_CONTAINER_ID,
     }
+    # The removal reads the old container's mounts before ``rm`` and
+    # confirms its absence afterwards, so its secret files can go with it.
     assert dockerScripted.flistSubcommands() == [
-        "inspect", "stop", "rm", "image", "run"]
+        "inspect", "stop", "inspect", "rm", "ps", "image", "run"]
     saRun = dockerScripted.listCalls[-1]
     assert saRun[-3:] == [S_BASE_ID, "sleep", "infinity"]
     assert f"{S_PROJECT_NAME}:latest" not in saRun

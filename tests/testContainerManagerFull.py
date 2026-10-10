@@ -29,7 +29,6 @@ from vaibify.docker.containerManager import (
     fbContainerIsRunning,
     fdictGetContainerStatus,
     _flistAssembleRunCommand,
-    _fnCleanupTempFiles,
     _fnAddPortForwarding,
     _fnAddBindMounts,
     _fnMountSingleSecret,
@@ -81,9 +80,8 @@ def test_fnStopContainer_calls_stop(
 @patch("subprocess.run")
 def test_fnRemoveStopped_calls_rm(mockRun):
     fnRemoveStopped("testproj")
-    saArgs = mockRun.call_args[0][0]
-    assert "rm" in saArgs
-    assert "testproj" in saArgs
+    listCommands = [tCall[0][0] for tCall in mockRun.call_args_list]
+    assert ["docker", "rm", "testproj"] in listCommands
 
 
 @patch("subprocess.run", side_effect=Exception("fail"))
@@ -172,24 +170,6 @@ def test_flistAssembleRunCommand_with_cmd():
         config, ["--rm"], ["bash"]
     )
     assert "bash" in saResult
-
-
-# -----------------------------------------------------------------------
-# _fnCleanupTempFiles
-# -----------------------------------------------------------------------
-
-
-def test_fnCleanupTempFiles_removes_files(tmp_path):
-    sPath = str(tmp_path / "secret.txt")
-    with open(sPath, "w") as fh:
-        fh.write("secret")
-    _fnCleanupTempFiles([sPath])
-    import os
-    assert not os.path.exists(sPath)
-
-
-def test_fnCleanupTempFiles_ignores_missing():
-    _fnCleanupTempFiles(["/nonexistent_xyz_test"])
 
 
 # -----------------------------------------------------------------------
@@ -321,14 +301,13 @@ def test_flistMountSecrets_iterates(mockMount, mockUnresolvable):
 # -----------------------------------------------------------------------
 
 
-@patch("vaibify.docker.containerManager._fnCleanupTempFiles")
 @patch("vaibify.docker.containerManager._fnRunDockerCommand")
 @patch("vaibify.docker.containerManager.flistMountSecrets",
        return_value=[])
 @patch("vaibify.docker.containerManager.flistBuildRunArgs",
        return_value=["--rm"])
 def test_fnStartContainer_success(
-    mockBuild, mockSecrets, mockRun, mockCleanup,
+    mockBuild, mockSecrets, mockRun,
 ):
     config = _fConfigMinimal()
     fnStartContainer(config, "/docker")

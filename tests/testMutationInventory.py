@@ -164,7 +164,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # batched typed read, and the per-marker read it replaced is gone.
 # 276 -> 275 (2026-10-06): the download route moved to downloadRoutes and
 # its one unclassified stream row became two classified confined reads.
-I_UNCLASSIFIED_ROW_BUDGET = 275
+I_UNCLASSIFIED_ROW_BUDGET = 272
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -412,7 +412,19 @@ I_UNCLASSIFIED_ROW_BUDGET = 275
 # per-container mutation lock. The `docker update` itself is inside the
 # lifecycle gateway; something outside it has to ask for it, as the stop
 # route asks for a stop. Classified at birth.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
+# 228 (2026-10-09, unchanged): the two bare `docker exec -it` sites in
+# the CLI's connect and verify commands became the CLI-shell seam's one
+# launch through the lifecycle gateway plus its bounded wait-or-kill of
+# that client; reach moved from cli/main.py to gui/cliShellContainment.py
+# and the count did not rise.
+# 229 (2026-10-09), and this rise is a NEW reach, named so it cannot be
+# missed: the remnant panel's removal route removes a stopped container
+# the suite created but no longer tracks, through the lifecycle gateway's
+# fnRemoveStoppedContainerById. The site is excluded with its rationale
+# (agent lane rejected, catalog-excluded, id re-verified present and
+# stopped immediately before, docker rm without -f so the daemon refuses
+# a running one), and the recycled-identity refusal is kill-confirmed.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
 
 
 # Every acquisition of a declared capability that still has no reviewed
@@ -448,7 +460,7 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 # replacement's neighbour, acquires nothing -- it touches only
 # two known host directories and never the daemon.
 # 58 -> 57 (2026-10-01): the removed second setup wizard's subprocess import.
-I_UNDISPOSED_ACQUISITION_BUDGET = 57
+I_UNDISPOSED_ACQUISITION_BUDGET = 55
 
 
 def _fmoduleGenerator():
@@ -720,7 +732,21 @@ DICT_UNRESOLVED_BUDGET = {
     # it unreadable to the scan is the same thing that makes it correct:
     # the client is the disposable lane's own, constructed by
     # fdockerCreateDisposableClient rather than threaded in.
-    "untraceable-docker-sdk-root": 53,
+    # 54 since fsetListMountSourcesOfAllContainers (2026-10-09): the
+    # credential-file reaper asks the gateway which host paths ANY
+    # container, running or stopped, bind-mounts, so it can delete only
+    # the files nothing mounts. A read -- ``containers.list(all=True)``
+    # -- through the same root as flistGetRunningContainers beside it,
+    # inside the gateway, which is where the ratchet wants it. It
+    # replaces a route-side call to ``.containers.list`` on the
+    # connection object, an attribute the class never had, that failed
+    # silently for weeks.
+    # 55 since flistListAllContainers (2026-10-09): the remnant scanner's
+    # one listing of every container with its labels, so a stopped
+    # container the suite created but no longer tracks can be told from a
+    # researcher's by the label only a test writes. A read, inside the
+    # gateway, through the same root as flistGetRunningContainers.
+    "untraceable-docker-sdk-root": 55,
 }
 
 

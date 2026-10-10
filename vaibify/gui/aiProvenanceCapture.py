@@ -36,10 +36,6 @@ def _fsHashWorkspacePrompt(connectionDocker, sContainerId):
     return fsHashFileObjectSha256(io.BytesIO(baContent))
 
 
-# The command an agent overlay installs, where it differs from the name.
-_DICT_AGENT_COMMANDS = {"antigravity": "agy"}
-
-
 def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
     """Return installed CLI versions observed inside the live container.
 
@@ -47,9 +43,11 @@ def _fdictCaptureAgentCliVersions(connectionDocker, sContainerId):
     this capture and the stamp's validation read, so an agent added to
     the builder cannot go unrecorded here.
     """
-    from vaibify.docker.imageBuilder import T_AGENT_OVERLAY_NAMES
+    from vaibify.docker.imageBuilder import (
+        DICT_AGENT_COMMANDS, T_AGENT_OVERLAY_NAMES,
+    )
     sPairs = " ".join(
-        f"{sAgent}:{_DICT_AGENT_COMMANDS.get(sAgent, sAgent)}"
+        f"{sAgent}:{DICT_AGENT_COMMANDS[sAgent]}"
         for sAgent in T_AGENT_OVERLAY_NAMES
     )
     sCommand = (

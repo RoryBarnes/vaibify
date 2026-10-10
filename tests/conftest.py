@@ -96,6 +96,28 @@ def fnRedirectVaibifyLogFileForTests(tmp_path_factory):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def fnKeepTheSuiteFromLaunchingCaffeinate():
+    """Never launch a real ``caffeinate`` from the test session.
+
+    A hub booted by a test runs the real sleep-prevention watchdog
+    against the researcher's real Docker daemon, while the per-test
+    redirect below hands every test an empty caffeinate registry. Each
+    watchdog tick therefore found no keep-alive and spawned another
+    ``caffeinate -s`` into its own session, where it outlived the
+    suite and accumulated on the host, pinning it awake. The spawn
+    declines exactly as it
+    does on a host without caffeinate (pid 0), never with a fake pid
+    that a later stop would SIGTERM as if it were ours. Session scope,
+    because the module-scoped browser hub ticks between tests too.
+    """
+    from vaibify.config import keepAliveManager
+    fiOriginalSpawnCaffeinate = keepAliveManager._fiSpawnCaffeinate
+    keepAliveManager._fiSpawnCaffeinate = lambda: 0
+    yield
+    keepAliveManager._fiSpawnCaffeinate = fiOriginalSpawnCaffeinate
+
+
+@pytest.fixture(scope="session", autouse=True)
 def fnSweepContainersLeftByAKilledLiveLane(request):
     """Reclaim labelled throwaway containers at both ends of a session.
 
@@ -201,7 +223,7 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
         containerLock, hubPortRegistry, keepAliveManager,
         operationJournal, sessionRegistry,
     )
-    from vaibify.gui import hostControlChannel, stateWriteLock
+    from vaibify.gui import cliShellContainment, hostControlChannel, stateWriteLock
     from vaibify.reproducibility import reproductionSource
     # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
     # their whole tmp_path to model a missing directory, and a home
@@ -223,6 +245,9 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(keepAliveManager, "_S_PID_DIRECTORY", "caffeinate")
     fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")
     fnRedirectDirectory(hostControlChannel, "_S_CONTROL_DIRECTORY", "control")
+    fnRedirectDirectory(
+        cliShellContainment, "_S_CLI_SHELL_DIRECTORY", "cliShells",
+    )
     fnRedirectDirectory(commandBuild, "_S_BUILD_STAGING_DIRECTORY", "build")
     fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
     fnRedirectDirectory(

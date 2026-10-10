@@ -3686,6 +3686,11 @@ _SET_TERMINAL_CREATION_SYMBOLS = frozenset({
 _SET_TERMINAL_SEAM_MODULES = frozenset({
     "terminalSession.py",
     "terminalContainment.py",
+    # The `vaibify connect` / `vaibify verify` lane (2026-10-09): it
+    # wraps the CLI's exec in the seam's group-reporting script and
+    # discovers the session, so it needs the creation symbols, and it
+    # ends every session it opens with the seam's own proof.
+    "cliShellContainment.py",
 })
 
 
@@ -4276,6 +4281,15 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
     # worker threads, and the reaper reads the probe's snapshot.
     "serverLifespan.py": 885,
+    # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
+    # dead hub's terminal records from the journal and ends them, and
+    # the record-free group terminate-and-prove the CLI-shell lane
+    # shares. Both are the one exit every terminal session has, so
+    # they belong beside it; the CLI lane itself was split out into
+    # cliShellContainment.py for exactly that reason.
+    # 823 -> 834 (2026-10-09): the remnant scanner asks whether a drain
+    # is in progress before attributing a container's sessions.
+    "terminalContainment.py": 834,
     # NEW at 819 (2026-10-01): the credential test publishes only
     # sanitized sentences (fsSanitizeJobDetail) and records an
     # unexpected fault by type; one cohesive job module.
@@ -4357,7 +4371,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # operator-visible trace; the lines live at the commit points they
     # describe (tests/testLifecycleLogging.py pins them).
     # 952 -> 956 (2026-10-01): type-only imports name the annotations.
-    "containerOwnership.py": 956,
+    # 956 -> 958 (2026-10-09): a refusal body says whether the lock was
+    # held or the journal was busy, so the claim path can word a retry.
+    "containerOwnership.py": 958,
     # NEW at 822 (2026-08-20, remediation R6): councilRoutes crossed the
     # default cap when the three exhausted-round exit routes and the
     # credential-gate refusal joined it. One cohesive responsibility —
@@ -6297,7 +6313,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-24): a transfer retags every project's run and adopts
     # every command the shared durable record has in flight.
     # 1837 -> 1839 (2026-10-01): a fenced socket's close task is kept referenced.
-    "sessionLifecycle.py": 1839,
+    # 1839 -> 1870 (2026-10-09): a claim refused busy while a reaper pass is
+    # ending an earlier hub's sessions says so, and a granted claim of a
+    # running neverSleep container starts its session lane; the claim path
+    # is the one place that holds the verdict, the state and the lock.
+    "sessionLifecycle.py": 1870,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6942,7 +6962,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # to the running container where that is safe; the route's carrier
     # declaration names the gateway call, and the planning, the update
     # and the re-inspection live in resourceLimitApplication.
-    "registryRoutes.py": 2469,
+    # 2469 -> 2476 (2026-10-09): saving neverSleep starts or stops the
+    # session lane of a held, running container, beside the file write,
+    # and the registry poll carries the remnant glyph's summary.
+    # 2476 -> 2481 (2026-10-10): the neverSleep save takes the
+    # per-container mutation lock, so it and a concurrent claim cannot
+    # both spawn a session lane.
+    "registryRoutes.py": 2481,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7145,7 +7171,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # declared not agent-safe, with the reason beside it.
     # 1475 -> 1499 (2026-10-08): the AI Declaration's file-state read
     # and attach action; the catalog is one cohesive list of entries.
-    "actionCatalog.py": 1499,
+    # 1499 -> 1506 (2026-10-08): the remnant panel's two writes join the
+    # intentional exclusions, with why an agent must never make them.
+    "actionCatalog.py": 1506,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7650,7 +7678,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cohesive list of route scopes.
     # 1154 -> 1158 (2026-10-08): the memory watch's GET joins the
     # container-read allowlist, with why it is a read.
-    "routeScope.py": 1158,
+    # 1158 -> 1163 (2026-10-09): the remnant panel's three routes join
+    # the browser-hub control plane, with why they read host state.
+    "routeScope.py": 1163,
 }
 
 

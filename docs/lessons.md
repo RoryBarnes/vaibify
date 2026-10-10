@@ -43,6 +43,17 @@ correct approach.
   evidence that a host file is garbage — reachability is. Before
   deleting anything under `~/.vaibify`, ask the daemon what it still
   mounts.
+- The fix for the sweep above then never ran: it asked the daemon
+  through `.containers.list` on a `DockerConnection`, which has no such
+  attribute, inside an `except Exception` that returned "unknown", and
+  its unit test passed because the fake it was handed was shaped like
+  the Docker SDK client the code expected rather than the class the hub
+  actually passes. A test double must be shaped like the production
+  object, and a boundary call is proven only against the real class;
+  `test_the_sweep_enumerates_mounts_through_the_real_connection_class`
+  builds the real `DockerConnection` around a stub SDK client for
+  exactly that reason. The reaper registry now records a sweep that
+  raises, so the next such failure is visible on the hub.
 - A guarantee stated only in prose is not enforced, and mutation
   testing cannot find it: there is no mutant for a guard that was
   never written. `bAgentSafe` was metadata, the force-push hook missed
@@ -621,3 +632,19 @@ correct approach.
   (`tests/browser/testALostClaimRecoversWhereverItIsMet.py`). The
   general form: an automatic cure for a refusal has to be told about
   every deliberate act that makes the same refusal true.
+- **A process vaibify started outlived every owner it had, and nothing
+  noticed.** One host accumulated keep-alive processes with no living
+  owner, empty lock files without bound, long-lived shells inside a
+  container with agents still running in them, and plaintext token
+  files no container mounted, while every sweep that should have
+  caught them reported nothing. The causes were four shapes of the same
+  mistake: a sweep whose failure was swallowed (an attribute error
+  inside `except Exception`), a cleanup that ran only on a path the
+  owner's death never reaches (a `finally` behind a window close, a
+  shutdown hook behind a hang-up uvicorn did not handle), a registry
+  that could say what it held but not what it had launched, and a
+  test suite that ran the real watchdog against the real daemon with a
+  fresh empty registry per test. The general form: anything vaibify
+  starts needs a recorded owner, an exit that fires when that owner is
+  provably gone, and a reaper whose own outcome is recorded, because a
+  cleanup nobody watches is a cleanup that has already stopped.

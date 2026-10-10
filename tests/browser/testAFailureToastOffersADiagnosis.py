@@ -71,15 +71,16 @@ def testAFailedStopToastOpensTheDoctorReport(pageDashboard, serverHub):
     assert "colima start" in sReport
 
 
-def testTheHubHelpExplainsTheThreeBlocks(pageDashboard, serverHub):
+def testTheHubHelpExplainsTheFourBlocks(pageDashboard, serverHub):
     _fnLoadTheHub(pageDashboard, serverHub)
     pageDashboard.click("#btnHubHelp")
     pageDashboard.wait_for_selector("#modalInfo", timeout=5000)
-    # An outline: three folded sections whose headings read first.
-    assert pageDashboard.locator("#modalInfo details.hub-help-section").count() == 3
+    # An outline: four folded sections whose headings read first.
+    assert pageDashboard.locator("#modalInfo details.hub-help-section").count() == 4
     assert pageDashboard.locator("#modalInfo details[open]").count() == 0
     sOutline = pageDashboard.locator("#modalInfo").inner_text()
-    for sHeading in ("Creating an environment", "Legend", "Troubleshooting"):
+    for sHeading in ("Creating an environment", "Legend", "Troubleshooting",
+                     "Leftover processes and files"):
         assert sHeading in sOutline
     assert "One environment per browser tab" not in sOutline
     for elSummary in pageDashboard.locator("#modalInfo summary").all():

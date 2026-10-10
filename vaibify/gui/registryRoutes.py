@@ -277,9 +277,11 @@ def _fnRegisterGetRegistry(app, dictCtx):
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
         _fnAnnotatePinnedImageObtainable(listContainers)
+        from .remnantScanner import fdictSummarizeForPoll
         return {
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
+            "dictRemnantSummary": fdictSummarizeForPoll(app.state),
         }
 
 
@@ -996,6 +998,16 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 dictProject["sConfigPath"], "neverSleep",
                 request.bNeverSleep,
             )
+            from .sleepPrevention import fnApplySessionLaneSetting
+            from .sessionLifecycle import flockContainerMutationForAppState
+            # Under the per-container mutation lock, so this save and a
+            # concurrent claim of the same container cannot both spawn a
+            # session lane (the claim path takes the same lock).
+            async with flockContainerMutationForAppState(app.state, sName):
+                await asyncio.to_thread(
+                    fnApplySessionLaneSetting,
+                    app.state, dictCtx, sName, request.bNeverSleep,
+                )
         if request.bX11Forwarding is not None:
             bRestartRequired = _fbApplyX11Forwarding(
                 dictProject["sConfigPath"], request.bX11Forwarding,

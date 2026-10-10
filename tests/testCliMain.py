@@ -103,24 +103,23 @@ def test_stop_not_running_exits(mockConfig):
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-@patch("subprocess.run")
-def test_connect_calls_docker_exec(mockRun, mockConfig):
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_connect_runs_the_cleaned_up_exec_as_the_container_user(
+    mockExec, mockConfig,
+):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="proj",
         sContainerUser="researcher",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["connect"])
-    assert mockRun.called
-    listArgs = mockRun.call_args[0][0]
-    assert "docker" in listArgs
-    assert "exec" in listArgs
-    assert "researcher" in listArgs
+    assert result.exit_code == 0, result.output
+    mockExec.assert_called_once_with("proj", "researcher", ["bash"])
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-@patch("subprocess.run")
-def test_connect_with_project_option(mockRun, mockConfig):
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_connect_with_project_option(mockExec, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="myproj",
         sContainerUser="researcher",
@@ -128,7 +127,20 @@ def test_connect_with_project_option(mockRun, mockConfig):
     runner = CliRunner()
     result = runner.invoke(main, ["connect", "-p", "myproj"])
     mockConfig.assert_called_once_with("myproj")
-    assert mockRun.called
+    assert mockExec.called
+
+
+@patch("vaibify.cli.main.fconfigResolveProject")
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_connect_reports_a_refused_exec_and_exits_nonzero(mockExec, mockConfig):
+    from vaibify.gui.terminalContainment import TerminalContainmentError
+    mockConfig.return_value = SimpleNamespace(
+        sProjectName="proj", sContainerUser="researcher")
+    mockExec.side_effect = TerminalContainmentError("Container 'proj' is not running")
+    runner = CliRunner()
+    result = runner.invoke(main, ["connect"])
+    assert result.exit_code == 1
+    assert "not running" in result.output
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
@@ -170,17 +182,17 @@ def test_pull_with_project_option(mockPull, mockConfig):
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-@patch("subprocess.run")
-def test_verify_calls_check_isolation(mockRun, mockConfig):
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_verify_calls_check_isolation(mockExec, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="proj",
         sContainerUser="researcher",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["verify"])
-    assert mockRun.called
-    listArgs = mockRun.call_args[0][0]
-    assert "checkIsolation" in listArgs[-1]
+    assert mockExec.called
+    listCommand = mockExec.call_args[0][2]
+    assert "checkIsolation" in listCommand[-1]
 
 
 # -----------------------------------------------------------------------

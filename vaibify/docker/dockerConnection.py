@@ -599,6 +599,7 @@ S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 # written to no file and no log.
 S_TYPED_READ_KEYRING_SECRET = "keyringSecretValue"
 S_TYPED_READ_CGROUP_MEMORY = "cgroupMemory"
+S_TYPED_READ_PROCESS_TABLE = "processTable"
 S_TYPED_READ_TMP_SIZE = "tmpSize"
 
 # A provider login document is kilobytes. The council's credential read
@@ -837,6 +838,52 @@ _DICT_TYPED_READ_PROGRAMS = {
     # fixes /tmp). ``-x`` keeps the count on the writable layer's own
     # filesystem. du reports unreadable subdirectories on stderr and
     # still prints its total, so only an empty answer is a failure.
+    # Every process in the container, one per line, from /proc: pid,
+    # ppid, pgid, sid, tty_nr, state, start time (clock ticks since
+    # boot), rss (pages), uid, comm (spaces replaced). A header line
+    # carries the boot time, the tick rate, the page size and the
+    # program's own pid and parent pid, so the host can convert the
+    # clocks and exclude the probe itself. The remnant scanner's one
+    # look inside a container; it takes no argument.
+    S_TYPED_READ_PROCESS_TABLE: (
+        "_=" + _S_TYPED_READ_PATH_SLOT + "\n"
+        "import os,sys\n"
+        "def fiSysconf(sName, iDefault):\n"
+        "    try:\n"
+        "        return int(os.sysconf(sName))\n"
+        "    except (ValueError, OSError):\n"
+        "        return iDefault\n"
+        "iBoot = 0\n"
+        "try:\n"
+        "    for sLine in open('/proc/stat'):\n"
+        "        if sLine.startswith('btime '):\n"
+        "            iBoot = int(sLine.split()[1])\n"
+        "except Exception:\n"
+        "    pass\n"
+        "sys.stdout.write('@@ clock %d %d %d %d %d\\n' % (iBoot,"
+        " fiSysconf('SC_CLK_TCK', 100), fiSysconf('SC_PAGE_SIZE', 4096),"
+        " os.getpid(), os.getppid()))\n"
+        "for sName in sorted(os.listdir('/proc')):\n"
+        "    if not sName.isdigit():\n"
+        "        continue\n"
+        "    try:\n"
+        "        sStat = open('/proc/' + sName + '/stat').read()\n"
+        "        iClose = sStat.rindex(')')\n"
+        "        sComm = sStat[sStat.index('(') + 1:iClose]\n"
+        "        aFields = sStat[iClose + 2:].split()\n"
+        "        iUid = -1\n"
+        "        for sLine in open('/proc/' + sName + '/status'):\n"
+        "            if sLine.startswith('Uid:'):\n"
+        "                iUid = int(sLine.split()[1])\n"
+        "                break\n"
+        "    except Exception:\n"
+        "        continue\n"
+        "    if len(aFields) < 22:\n"
+        "        continue\n"
+        "    sys.stdout.write('%s %s %s %s %s %s %s %s %d %s\\n' % (sName,"
+        " aFields[1], aFields[2], aFields[3], aFields[4], aFields[0],"
+        " aFields[19], aFields[21], iUid, sComm.replace(' ', '_')))\n"
+    ),
     S_TYPED_READ_TMP_SIZE: (
         "import subprocess,sys\n"
         "processDu = subprocess.run(['du', '-sxk', "
@@ -1811,6 +1858,30 @@ class DockerConnection:
         self.fnEvictAbsentContainers(setRunning)
         return listResult
 
+    def fsetListMountSourcesOfAllContainers(self):
+        """Return every host path any container mounts, or None.
+
+        Metadata only, like :meth:`fdictReadContainerState`: it asks the
+        daemon and never enters a container. Stopped containers count,
+        because a stopped container is restartable and its mounts are
+        re-resolved at start. ``None`` means the daemon could not be
+        asked, which is deliberately distinct from an empty set: a
+        sweep handed nothing to protect would delete files a live
+        container still mounts.
+        """
+        try:
+            listContainers = self._clientDocker.containers.list(all=True)
+        except Exception as error:  # noqa: BLE001 -- unknown, never "nothing mounted"
+            mutationAdmission.fnReRaiseControlPlaneRefusal(error)
+            return None
+        setSources = set()
+        for container in listContainers:
+            for dictMount in (container.attrs or {}).get("Mounts") or []:
+                sSource = dictMount.get("Source") or ""
+                if sSource:
+                    setSources.add(sSource)
+        return setSources
+
     def fcontainerGetById(self, sContainerId):
         """Return the container object, refreshing if needed.
 
@@ -2722,6 +2793,61 @@ class DockerConnection:
                 f"{tExecResult.sStderr.strip()}"
             )
         return tExecResult.sStdout.strip()
+
+    def fsReadProcessTable(self, sContainerId):
+        """Return every process in the container as marked text.
+
+        An AUDITED ADAPTER taking no caller value: the program walks
+        ``/proc`` and prints one line per process, parsed on the host by
+        ``remnantScanner.fdictParseProcessTable``. A non-zero exit raises
+        ``OSError``; the scanner then reports the container as not
+        assessable rather than as clean.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_PROCESS_TABLE, "/proc",
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read the container's process table: "
+                f"{tExecResult.sStdout[-200:]}"
+            )
+        return tExecResult.sStdout
+
+    def fdictReadContainerHostConfig(self, sContainerId):
+        """Return the daemon's ``HostConfig`` block, or None if gone.
+
+        Metadata only, on the terms of :meth:`fdictReadContainerState`
+        beside it, through the same cached handle; ``Init`` is the
+        field the remnant scanner reads, since a container created
+        without ``--init`` has no reaper for its zombies.
+        """
+        from docker.errors import NotFound
+        try:
+            container = self.fcontainerGetById(sContainerId)
+            container.reload()
+        except NotFound:
+            self._dictContainers.pop(sContainerId, None)
+            return None
+        return dict(container.attrs.get("HostConfig") or {})
+
+    def flistListAllContainers(self):
+        """Return every container, running or stopped, with its labels.
+
+        Metadata only: ``{sContainerId, sName, sStatus, dictLabels}``
+        per container. The remnant scanner's one listing, used to find
+        stopped containers vaibify created but no longer tracks; a
+        Docker-generated name carries no vaibify label or prefix and is
+        never attributed.
+        """
+        listRows = []
+        for container in self._clientDocker.containers.list(all=True):
+            listRows.append({
+                "sContainerId": container.id,
+                "sName": container.name,
+                "sStatus": str(container.status),
+                "dictLabels": dict(container.labels or {}),
+            })
+        return listRows
 
     def fsReadCgroupMemory(self, sContainerId):
         """Return the container's memory cgroup files as marked text.

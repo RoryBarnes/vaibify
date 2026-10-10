@@ -48,6 +48,10 @@ __all__ = [
     "S_WORK_LANE_SEPARATOR",
     "fsWorkLaneKeepAliveName",
     "fbContainerShowsRunningWorkEvidence",
+    "fconfigLoadForSessionLane",
+    "fdictReapSessionLanesOfStoppedContainers",
+    "fnApplySessionLaneSetting",
+    "fnEnsureSessionLaneForClaim",
     "fnSweepWorkLaneKeepAlives",
 ]
 
@@ -205,3 +209,114 @@ def _fnApplyWorkLaneDecision(sName, bEvidence):
             "exec is visible in it",
             sName,
         )
+
+
+def fconfigLoadForSessionLane(sName):
+    """Return the project's config, or None when it cannot be loaded.
+
+    The non-raising sibling of the registry routes' loader: a claim must
+    succeed whether or not ``vaibify.yml`` loads, so a lane the config
+    cannot decide is simply not started, and the reason is logged.
+    """
+    from vaibify.cli.configLoader import fconfigLoadFromPath
+    from vaibify.config.registryManager import fdictGetProject
+    dictProject = fdictGetProject(sName)
+    if not dictProject or not dictProject.get("sConfigPath"):
+        return None
+    try:
+        return fconfigLoadFromPath(dictProject["sConfigPath"])
+    except Exception as error:  # noqa: BLE001 — a lane, not the claim
+        logger.warning(
+            "SLEEP PREVENTION cannot read the config of %r to decide its "
+            "session lane: %s", sName, error,
+        )
+        return None
+
+
+def fnEnsureSessionLaneForClaim(sName, sContainerId):
+    """Hold a claimed, running ``neverSleep`` container awake.
+
+    The session lane used to start only when vaibify STARTED a
+    container, so a hub that restarted and claimed a running
+    ``neverSleep`` container held nothing, and the machine stayed awake
+    only while some other lane happened to. A claim now starts the lane
+    when the project asks for it and none is live; the liveness check
+    is what keeps a tab reload from churning a process, and what lets
+    this hub adopt a keep-alive a crashed hub left behind.
+    """
+    if not sContainerId or sContainerId == sName:
+        return
+    if not keepAliveManager.fbPlatformSupportsKeepAlive():
+        return
+    configProject = fconfigLoadForSessionLane(sName)
+    if not getattr(configProject, "bNeverSleep", False):
+        return
+    if keepAliveManager.fbKeepAliveIsLive(sName):
+        return
+    keepAliveManager.fnStartKeepAlive(sName)
+    logger.info(
+        "SLEEP PREVENTION holding the machine awake for claimed neverSleep "
+        "container %r", sName,
+    )
+
+
+def fnApplySessionLaneSetting(appState, dictCtx, sName, bNeverSleep):
+    """Start or stop the session lane of a held, running container.
+
+    Called when ``neverSleep`` is saved from the dashboard. A container
+    this hub does not hold, or that is not running, is left alone: the
+    next start or claim reads the file.
+    """
+    if not keepAliveManager.fbPlatformSupportsKeepAlive():
+        return
+    if sName not in getattr(appState, "dictContainerOwners", {}):
+        return
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return
+    dictRunningIdByName = _fdictRunningContainerIdsByName(connectionDocker)
+    if dictRunningIdByName is None:
+        return
+    if sName not in dictRunningIdByName:
+        return
+    if bNeverSleep and not keepAliveManager.fbKeepAliveIsLive(sName):
+        keepAliveManager.fnStartKeepAlive(sName)
+    elif not bNeverSleep:
+        keepAliveManager.fnStopKeepAlive(sName)
+
+
+def fdictReapSessionLanesOfStoppedContainers(dictCtx):
+    """Stop every session-lane keep-alive whose container is not running.
+
+    A reaper (see ``remnantReapers``). A running container's lane is
+    left alone, whoever started it, for the next claim to adopt; a lane
+    whose container is gone holds the machine awake for nothing.
+    """
+    from . import remnantReapers
+    if not keepAliveManager.fbPlatformSupportsKeepAlive():
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_RAN)
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon is unreachable",
+            sRemedy="Start Docker, then rescan.",
+        )
+    dictRunningIdByName = _fdictRunningContainerIdsByName(connectionDocker)
+    if dictRunningIdByName is None:
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon could not list running containers",
+            sRemedy="Check that Docker answers 'docker ps', then rescan.",
+        )
+    iRemoved = 0
+    for sRegistryName in keepAliveManager.flistKeepAliveNames():
+        if S_WORK_LANE_SEPARATOR in sRegistryName:
+            continue
+        if sRegistryName in dictRunningIdByName:
+            continue
+        keepAliveManager.fnStopKeepAlive(sRegistryName)
+        iRemoved += 1
+    return remnantReapers.fdictBuildReaperOutcome(
+        remnantReapers.S_OUTCOME_RAN, iRemoved=iRemoved)

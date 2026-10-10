@@ -62,6 +62,7 @@ import logging
 import os
 import posixpath
 import re
+import stat
 
 from vaibify.docker import coherentExport
 from vaibify.docker import daemonCapacity
@@ -79,6 +80,7 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
+    "fiReapFreeShadowLaneLocks",
     "ShadowRerunRefusedError",
     "S_SHADOW_ROLE",
     "S_SHADOW_WORKSPACE_ROOT",
@@ -800,27 +802,128 @@ def _fcontextHoldShadowLaneLock(sResourceName):
     if not sResourceName:
         yield
         return
-    from vaibify.config.pidFileRegistry import (
-        ffileOpenNoFollow,
-        fnEnsureDirectory,
-    )
-    sLockDirectory = os.path.expanduser("~/.vaibify/locks")
+    from vaibify.config.containerLock import fsGetLockDirectory
+    from vaibify.config.pidFileRegistry import fnEnsureDirectory
+    sLockDirectory = fsGetLockDirectory()
     fnEnsureDirectory(sLockDirectory)
     sDigest = hashlib.sha256(sResourceName.encode()).hexdigest()[:16]
-    fileHandleLock = ffileOpenNoFollow(
-        os.path.join(sLockDirectory, f"shadow-{sDigest}.lock"))
+    sLockPath = os.path.join(sLockDirectory, f"shadow-{sDigest}.lock")
+    fileHandleLock = _ffileAcquireShadowLaneLock(sLockPath)
     try:
+        yield
+    finally:
+        _fnReleaseShadowLaneLock(fileHandleLock, sLockPath)
+
+
+# How many times an acquisition retries after finding that the inode it
+# flocked is no longer the file at the path (a release or the reaper
+# unlinked it between the open and the flock).
+_I_SHADOW_LOCK_ATTEMPTS = 3
+
+_REGEX_SHADOW_LOCK_NAME = re.compile(r"^shadow-[0-9a-f]{16}\.lock$")
+
+
+def _ffileAcquireShadowLaneLock(sLockPath):
+    """Flock the path's CURRENT inode; refuse when another rerun holds it.
+
+    The flock is taken on whatever inode the open found, so a file
+    unlinked between the open and the flock leaves the caller holding
+    a lock on an orphan that excludes nobody: a second rerun would open
+    the path afresh and take its own lock, and the two would sweep each
+    other's containers. The handle is therefore checked against the
+    path after the flock, and the acquisition retried when they differ.
+    """
+    from vaibify.config.pidFileRegistry import ffileOpenNoFollow
+    for _ in range(_I_SHADOW_LOCK_ATTEMPTS):
+        fileHandleLock = ffileOpenNoFollow(sLockPath)
         try:
             fcntl.flock(fileHandleLock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
+            fileHandleLock.close()
             raise ShadowRerunRefusedError(
                 "Another shadow rerun for this project is live on this "
                 "machine. Two reruns of one repository would sweep each "
                 "other's containers; wait for the running one to finish."
             )
-        yield
+        if _fbLockHandleIsStillThePath(fileHandleLock, sLockPath):
+            return fileHandleLock
+        fileHandleLock.close()
+    raise ShadowRerunRefusedError(
+        "The shadow lane lock file kept being replaced while this rerun "
+        "tried to take it; try again in a moment."
+    )
+
+
+def _fbLockHandleIsStillThePath(fileHandleLock, sLockPath):
+    """Return True when the open handle is still the file at the path."""
+    try:
+        tStatHandle = os.fstat(fileHandleLock.fileno())
+        tStatPath = os.stat(sLockPath)
+    except OSError:
+        return False
+    return (tStatHandle.st_ino, tStatHandle.st_dev) == (
+        tStatPath.st_ino, tStatPath.st_dev,
+    )
+
+
+def _fnReleaseShadowLaneLock(fileHandleLock, sLockPath):
+    """Unlink the lock file while still holding the flock, then close.
+
+    Unlinking under the flock is what makes the file's absence mean
+    something: nobody else can have the lock while it goes, and a
+    rerun that opens the path afterwards creates a fresh inode. The
+    lock files used to be never unlinked, and hundreds accumulated.
+    """
+    try:
+        if _fbLockHandleIsStillThePath(fileHandleLock, sLockPath):
+            os.unlink(sLockPath)
+    except OSError:
+        pass
     finally:
         fileHandleLock.close()
+
+
+def fiReapFreeShadowLaneLocks():
+    """Delete the shadow lock files nothing holds; return how many.
+
+    The backlog from before locks were unlinked on release. A
+    candidate is an empty regular file named like a shadow lock whose
+    flock can be taken; it is unlinked while that flock is held, so a
+    live rerun's lock is never touched. ``state-*.lock`` and every
+    other file in the directory are left alone by design.
+    """
+    from vaibify.config.containerLock import fsGetLockDirectory
+    from vaibify.config.pidFileRegistry import ffileOpenNoFollow
+    sLockDirectory = fsGetLockDirectory()
+    try:
+        listNames = os.listdir(sLockDirectory)
+    except FileNotFoundError:
+        return 0
+    iRemoved = 0
+    for sName in listNames:
+        sLockPath = os.path.join(sLockDirectory, sName)
+        if not _REGEX_SHADOW_LOCK_NAME.match(sName):
+            continue
+        if not _fbIsEmptyRegularFile(sLockPath):
+            continue
+        fileHandleLock = ffileOpenNoFollow(sLockPath)
+        try:
+            fcntl.flock(fileHandleLock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fileHandleLock.close()
+            continue
+        _fnReleaseShadowLaneLock(fileHandleLock, sLockPath)
+        iRemoved += 1
+    return iRemoved
+
+
+def _fbIsEmptyRegularFile(sPath):
+    """Return True for a regular, non-symlink file of size zero."""
+    try:
+        tStat = os.lstat(sPath)
+    except OSError:
+        return False
+    return stat.S_ISREG(tStat.st_mode) and tStat.st_size == 0
 
 
 # The command both lock-satisfaction lanes run to learn what an image

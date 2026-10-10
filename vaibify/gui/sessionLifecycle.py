@@ -106,6 +106,7 @@ from vaibify.config import mutationAdmission
 from vaibify.config import operationJournal
 from vaibify.config import preferencesStore
 from . import browserSession
+from . import sleepPrevention
 from . import containerOwnership
 from .backgroundTasks import fnKeepTaskReferenced
 
@@ -424,7 +425,37 @@ async def ftClaimWithCardinality(
                 # closed: the council command gate refuses by resource
                 # name, and this name has an owner again.
                 _fnReopenCouncilAdmission(appState, sName)
-            return tClaimVerdict
+        if tClaimVerdict[0] == 200:
+            # Under the container-mutation lock still, so two concurrent
+            # claims cannot both spawn; after the cardinality lock, which
+            # has nothing to do with a keep-alive.
+            await asyncio.to_thread(
+                sleepPrevention.fnEnsureSessionLaneForClaim,
+                sName, sContainerId,
+            )
+        return _ftAnnotateBusyRefusalDuringReaperPass(
+            appState, tClaimVerdict)
+
+
+def _ftAnnotateBusyRefusalDuringReaperPass(appState, tClaimVerdict):
+    """Tell a refused claimant that the busy work may be being ended.
+
+    A reaper pass ends terminals an earlier hub left running, and a
+    claim that lands mid-pass meets their journal records as "busy".
+    The sentence says why a retry is likely to succeed; the verdict
+    itself is unchanged.
+    """
+    from . import remnantReapers
+    iStatusCode, dictPayload = tClaimVerdict
+    if (
+        iStatusCode == 409 and dictPayload.get("bBusy")
+        and remnantReapers.fbReaperPassInFlight(appState)
+    ):
+        dictPayload["sMessage"] = (
+            f"{dictPayload['sMessage']} "
+            f"{remnantReapers.S_REAPER_PASS_IN_FLIGHT_SENTENCE}"
+        )
+    return (iStatusCode, dictPayload)
 
 
 async def ftReserveContainerForStart(

@@ -33,6 +33,7 @@ __all__ = [
     "councilCredentialRoutes",
     "councilSnapshotRoutes",
     "imageTrustRoutes",
+    "remnantRoutes",
     "uploadRoutes",
     "downloadRoutes",
 ]
@@ -70,6 +71,7 @@ from . import (
     councilCredentialRoutes,
     councilSnapshotRoutes,
     imageTrustRoutes,
+    remnantRoutes,
     uploadRoutes,
     downloadRoutes,
 )

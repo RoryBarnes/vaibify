@@ -19,13 +19,17 @@ from . import agentCouncilController
 from . import agentCouncilRegistry
 from . import agentCouncilStore
 from . import browserSession
+from . import cliShellContainment
 from . import commitCarrier
 from . import containerMemorySampler
 from . import containerMemoryWatch
 from . import containerOwnership
+from . import remnantReapers
+from . import remnantScanner
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
+from . import sleepPrevention
 from . import startResultStore
 from . import terminalContainment
 
@@ -41,6 +45,7 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     """Seed the shared app.state fields used by routes and middleware."""
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []
+    app.state.dictRemnantScan = remnantScanner.fdictCreateRemnantScanState()
     app.state.sSessionToken = sSessionToken
     app.state.sTerminalUser = dictConfig["sTerminalUser"]
     app.state.dictContainerOwners = (
@@ -139,12 +144,100 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
         return
     from .registryRoutes import fnRegisterRegistryRoutes
     from .hostControlChannel import fnRegisterHostControlChannel
-    from .routes import imageTrustRoutes
+    from .routes import imageTrustRoutes, remnantRoutes
     fnRegisterRegistryRoutes(app, dictCtx)
     imageTrustRoutes.fnRegisterAll(app, dictCtx)
+    remnantRoutes.fnRegisterAll(app, dictCtx)
     fnRegisterHostControlChannel(app, dictCtx)
     _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)
+    remnantReapers.fnRegisterReaper(
+        app, "sessionLaneKeepAlives",
+        sleepPrevention.fdictReapSessionLanesOfStoppedContainers,
+    )
+    remnantReapers.fnRegisterReaper(
+        app, "orphanedTerminals", _fdictReapOrphanedTerminals,
+    )
+    remnantReapers.fnRegisterReaper(
+        app, "orphanedCliShells", _fdictReapOrphanedCliShells,
+    )
+    remnantReapers.fnRegisterReaper(
+        app, "shadowLaneLocks",
+        remnantReapers.ffnWrapSweepAsReaper(_fiReapFreeShadowLaneLocks),
+    )
+    remnantReapers.fnRegisterPostPassScan(app, remnantScanner.fnRunRemnantScan)
+
+
+def _fiReapFreeShadowLaneLocks():
+    """Delete shadow-rerun lock files nothing holds (imported lazily)."""
+    from vaibify.reproducibility.shadowRerun import fiReapFreeShadowLaneLocks
+    return fiReapFreeShadowLaneLocks()
+
+
+def _fdictReapOrphanedCliShells(dictCtx):
+    """End the shells of `vaibify connect` CLIs that died, on proof."""
+    from vaibify.config.connectionAvailability import fbDockerReachable
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon is unreachable",
+            sRemedy="Start Docker, then rescan.",
+        )
+    dictOutcome = cliShellContainment.fdictReapOrphanedCliShells(
+        connectionDocker,
+    )
+    iDropped = len(dictOutcome["listDeleted"])
+    return remnantReapers.fdictBuildReaperOutcome(
+        remnantReapers.S_OUTCOME_RAN, iRemoved=len(dictOutcome["listEnded"]),
+        sReason=(
+            f"{iDropped} record(s) of sessions already gone were dropped"
+            if iDropped else ""
+        ),
+    )
+
+
+def _fdictReapOrphanedTerminals(dictCtx):
+    """End the terminals of hubs that died, on the reaper's cadence.
+
+    The awaited startup reap keeps its Docker-less, termination-free
+    call; this one carries the daemon and the terminator, and declines
+    when the daemon cannot be reached. It is never run from the
+    registry poll, which is on a three-second cadence.
+    """
+    from vaibify.config.connectionAvailability import fbDockerReachable
+    from vaibify.config.containerLock import fnReapStaleContainerLocks
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon is unreachable",
+            sRemedy="Start Docker, then rescan.",
+        )
+    listEnded, listQuarantined = [], []
+
+    def fdictTerminateAndCount(sProjectName, connectionDockerPass):
+        dictOutcome = terminalContainment.fdictTerminateOrphanedJournalRecords(
+            sProjectName, connectionDockerPass,
+        )
+        listEnded.extend(dictOutcome["listSettledOperationIds"])
+        listQuarantined.extend(dictOutcome["listQuarantinedOperationIds"])
+        return dictOutcome
+
+    fnReapStaleContainerLocks(
+        connectionDocker, fnTerminateOrphanedTerminals=fdictTerminateAndCount,
+    )
+    # Only a PROVEN-empty group counts as removed; a record that could
+    # not be proven is quarantined for reconcile, and saying so is the
+    # whole point of recording the outcome.
+    return remnantReapers.fdictBuildReaperOutcome(
+        remnantReapers.S_OUTCOME_RAN, iRemoved=len(listEnded),
+        sReason=(
+            f"{len(listQuarantined)} terminal record(s) could not be proven "
+            "empty and were quarantined for reconcile"
+            if listQuarantined else ""
+        ),
+    )
 
 
 def _fnRegisterBackgroundTasks(app, dictCtx):
@@ -164,6 +257,7 @@ def _fnRegisterBackgroundTasks(app, dictCtx):
     serverLifespan._fnRegisterSessionLifecycleEvaluator(app)
     serverLifespan._fnRegisterDisposableReclaim(app, dictCtx)
     containerMemorySampler.fnRegisterMemorySampler(app, dictCtx)
+    remnantReapers.fnRegisterReaperLoop(app, dictCtx)
     serverLifespan._fnRegisterDefaultThreadPoolExecutor(app)
 
 
@@ -275,11 +369,27 @@ def _fnRegisterHubStartupSweepHostScratch(app):
     a daemon-less machine is never swept at all.
     """
 
-    async def fnSweepHostScratch(app):
-        del app
+    def fnSweepHostScratch():
         from vaibify.host.hostScratch import fnSweepStaleHostScratch
         fnSweepStaleHostScratch()
-    app.state.listLifespanStartup.append(fnSweepHostScratch)
+    _fnAppendRecordedStartupSweep(app, "hostScratch", fnSweepHostScratch)
+
+
+def _fnAppendRecordedStartupSweep(app, sReaperName, fnSweep):
+    """Run a sweep in a thread before serving, and record what it did.
+
+    These sweeps stay awaited startup hooks rather than reapers on the
+    periodic loop because each must finish BEFORE the hub serves. The
+    record is what makes a sweep that raised visible on the hub instead
+    of a warning line nobody reads.
+    """
+
+    async def fnSweepBeforeServing(app):
+        await remnantReapers.fnRunReaperOnce(
+            app, sReaperName, remnantReapers.ffnWrapSweepAsReaper(fnSweep),
+            getattr(app.state, "dictRouteContext", None),
+        )
+    app.state.listLifespanStartup.append(fnSweepBeforeServing)
 
 
 def _fnRegisterHubStartupSweepAbandonedSpools(app):
@@ -290,23 +400,26 @@ def _fnRegisterHubStartupSweepAbandonedSpools(app):
     live one's spool alone.
     """
 
-    async def fnSweepSpools(app):
-        del app
+    def fiSweepSpools():
         from .uploadStaging import fiSweepAbandonedSpools
-        fiSweepAbandonedSpools()
-    app.state.listLifespanStartup.append(fnSweepSpools)
+        return fiSweepAbandonedSpools()
+    _fnAppendRecordedStartupSweep(app, "abandonedUploadSpools", fiSweepSpools)
 
 
 def _fnRegisterHubStartupReapStaleClaims(app):
-    """Reap dead-PID container locks before the hub serves requests."""
+    """Reap dead-PID container locks before the hub serves requests.
 
-    async def fnReapStaleClaims(app):
-        del app
+    Still awaited at startup, so a stale lock is gone before the first
+    claim arrives; run in a thread, so the probes it makes never block
+    the event loop.
+    """
+
+    def fnReapStaleClaims():
         from vaibify.config.containerLock import (
             fnReapStaleContainerLocks,
         )
         fnReapStaleContainerLocks()
-    app.state.listLifespanStartup.append(fnReapStaleClaims)
+    _fnAppendRecordedStartupSweep(app, "staleContainerLocks", fnReapStaleClaims)
 
 
 def _fnRegisterShutdownDrainGuardedMutations(app):
@@ -508,7 +621,7 @@ def _fnRegisterCredentialTestSweep(app):
 
     async def fnStartStagedCopySweep(app):
         app.state.taskStagedCopySweep = asyncio.create_task(
-            _fnStagedCopySweepLoop(F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            _fnStagedCopySweepLoop(app, F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
             name="vaibify-council-staged-copy-sweep")
 
     async def fnStopStagedCopySweep(app):
@@ -520,18 +633,22 @@ def _fnRegisterCredentialTestSweep(app):
         app, fnStartStagedCopySweep, fnStopStagedCopySweep)
 
 
-async def _fnStagedCopySweepLoop(fInterval):
+async def _fnStagedCopySweepLoop(app, fInterval):
     """Remove council token copies no live process holds, forever.
 
-    One failed pass is logged and the loop continues, like the chat
-    reaper beside it.
+    The loop keeps its own, shorter cadence because the copies are
+    credentials, but each pass is run and recorded through the reaper
+    registry, so a failing pass shows in the hub's cleanup health
+    instead of only in the log.
     """
     from . import agentCouncilStagedCopies
+    fdictSweep = remnantReapers.ffnWrapSweepAsReaper(
+        agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
     while True:
         try:
             await asyncio.sleep(fInterval)
-            await asyncio.to_thread(
-                agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
+            await remnantReapers.fnRunReaperOnce(
+                app, "councilStagedCopies", fdictSweep, {})
         except asyncio.CancelledError:
             return
         except Exception:
