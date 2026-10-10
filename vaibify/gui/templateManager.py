@@ -41,10 +41,15 @@ import re
 
 
 def _fsComputeTemplateHash(sTemplate):
-    """Strip any existing hash line, then SHA-256 the remainder."""
+    """Strip any existing hash line, then SHA-256 the remainder.
+
+    The stamp sits on the SECOND line of a generated file, so the strip
+    must match at any line start: hashing a generated file then yields
+    the hash stamped into it.
+    """
     sStripped = re.sub(
         r"^# vaibify-template-hash: [0-9a-f]+\n", "",
-        sTemplate, count=1,
+        sTemplate, count=1, flags=re.MULTILINE,
     )
     sDigest = hashlib.sha256(sStripped.encode("utf-8")).hexdigest()
     return sDigest[:16]
@@ -54,9 +59,17 @@ def _fsComputeTemplateHash(sTemplate):
 # file stamped with one of these was written by vaibify from a template
 # that has since changed, so it is neither a researcher's custom test
 # nor unsafe to regenerate. When a template changes, add its outgoing
-# hash here; testTemplateHashesArePinned fails until you do.
+# hash here; testTemplateHashesArePinned fails until you do. This set
+# was recovered from every template state on every branch since stamps
+# began (2026-04-07), including the loader source the quantitative
+# template embeds from dataLoaders.py.
 SET_PRIOR_TEMPLATE_HASHES = frozenset({
-    "982f58ad4c6745d4",
+    "090a2a920c2b644d", "0ccc97aca67bf292", "11cc91e482b8d820",
+    "40f3ee6077b966f0", "7e22364c432d473b", "821f14ef71f21392",
+    "c57bb651124ec908", "ceb9b5c2df7d9688", "d51b9f208b37d5b9",
+    "d9eaaaee8d060432", "e8ecfeb08b7c4baa",
+    "2f2bcca297cdbe84", "a0b0edd935351486", "cb40b69c8238fb37",
+    "306871107a074847", "58c5e9fcc16b62ec",
 })
 
 
