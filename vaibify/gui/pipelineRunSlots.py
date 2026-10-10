@@ -21,6 +21,8 @@ completion callback fires after a transfer.
 
 import logging
 
+from vaibify.config import resourceLimits
+
 from . import workflowManager
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "S_JOINABLE_PIPELINE_WORK",
     "fdictBuildConcurrentRunNotice",
     "fdictReadContainerLimits",
+    "fdictReadRunningLimits",
     "fnRegisterRun",
     "fdictLastRunOfProject",
     "flistLiveRuns",
@@ -46,7 +49,6 @@ S_REFUSAL_CONCURRENT_RUN = "concurrentRun"
 # projects share ONE durable record per container (commitCarrier).
 S_JOINABLE_PIPELINE_WORK = "pipeline-runs"
 I_BYTES_PER_GIGABYTE = 1024 ** 3
-F_NANO_CPUS_PER_CPU = 1e9
 
 
 def fnRegisterRun(
@@ -128,25 +130,34 @@ def fdictReadContainerLimits(connectionDocker, sContainerId):
     reported core count is NOT its limit: under a CPU quota ``nproc``
     still counts the VM's cores, which is why a warning names the quota.
     """
-    dictLimits = {"fCpuLimit": None, "fMemoryGigabytes": None}
+    dictRunning = fdictReadRunningLimits(connectionDocker, sContainerId)
+    iMemoryBytes = dictRunning["dictMemory"]["iBytes"]
+    return {
+        "fCpuLimit": dictRunning["dictCpu"]["fCpus"],
+        "fMemoryGigabytes": (
+            None if iMemoryBytes is None
+            else iMemoryBytes / I_BYTES_PER_GIGABYTE),
+    }
+
+
+def fdictReadRunningLimits(connectionDocker, sContainerId):
+    """Return the container's TAGGED memory, swap and CPU limits.
+
+    The one reader of a running container's limits: finite, unlimited,
+    unknown (the inspect failed), or for CPU the quota form
+    (``resourceLimits.fdictParseRunningLimits``). The concurrent-run
+    notice reads it through :func:`fdictReadContainerLimits`; the
+    readiness answer's limit drift and the settings save read it
+    directly.
+    """
     try:
         container = connectionDocker.fcontainerGetById(sContainerId)
         container.reload()
         dictHostConfig = dict(container.attrs["HostConfig"])
-        iNanoCpus = int(dictHostConfig.get("NanoCpus") or 0)
-        iQuota = int(dictHostConfig.get("CpuQuota") or 0)
-        iPeriod = int(dictHostConfig.get("CpuPeriod") or 0)
-        iMemoryBytes = int(dictHostConfig.get("Memory") or 0)
-    except Exception as error:  # noqa: BLE001 -- a warning degrades, never fails
+    except Exception as error:  # noqa: BLE001 -- unknown, never a failure
         logger.warning("Could not read limits of %s: %s", sContainerId, error)
-        return dictLimits
-    if iNanoCpus > 0:
-        dictLimits["fCpuLimit"] = iNanoCpus / F_NANO_CPUS_PER_CPU
-    elif iQuota > 0 and iPeriod > 0:
-        dictLimits["fCpuLimit"] = iQuota / iPeriod
-    if iMemoryBytes > 0:
-        dictLimits["fMemoryGigabytes"] = iMemoryBytes / I_BYTES_PER_GIGABYTE
-    return dictLimits
+        return resourceLimits.fdictUnknownRunningLimits()
+    return resourceLimits.fdictParseRunningLimits(dictHostConfig)
 
 
 def fdictBuildConcurrentRunNotice(listOtherRuns, dictLimits):

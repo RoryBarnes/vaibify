@@ -166,7 +166,7 @@ def testARecreateAnnouncesTheImageAndReturnsTheNewId(monkeypatch):
     ))
     assert dictRecord["sTarget"] == "repair-recreate"
     assert S_IMAGE_IDENTITY in listAnnounced[0]
-    assert "discarding its writable layer" in listAnnounced[0]
+    assert "including /tmp, are discarded" in listAnnounced[0]
     assert fbJournalIsEmpty(S_CONTAINER_NAME)
 
 

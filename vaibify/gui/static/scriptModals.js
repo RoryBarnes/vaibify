@@ -18,6 +18,7 @@ var VaibifyModals = (function () {
             '<h2>' + fnEscapeHtml(sTitle) + '</h2>' +
             '<p style="white-space:pre-wrap;margin-bottom:16px">' +
             fnEscapeHtml(sMessage) + '</p>' +
+            _fsBuildPendingSentence(dictDetails) +
             _fsBuildConfirmDetails(dictDetails) +
             _fsBuildConfirmCheckbox(dictDetails) +
             '<div class="modal-actions">' +
@@ -32,6 +33,7 @@ var VaibifyModals = (function () {
             '</button>' +
             '</div></div>';
         document.body.appendChild(elModal);
+        _fnResolvePendingSentence(elModal, dictDetails);
         document.getElementById("btnConfirmCancel").addEventListener(
             "click", function () {
                 // Declining can have consequences of its own -- the
@@ -59,6 +61,37 @@ var VaibifyModals = (function () {
                 fnOnConfirm(bCheckboxChecked);
             }
         );
+    }
+
+    /* A sentence the server must supply before the researcher may
+       confirm (dictDetails.fpromisePendingSentence, a function that
+       returns a promise of it). The dialog opens on sPendingText with
+       Confirm disabled and enables it only once the sentence is on
+       screen, so nobody acts on an interim text. A request that fails
+       shows sPendingFailureText and still enables Confirm: the answer
+       informs the action, it never blocks it. */
+    function _fsBuildPendingSentence(dictDetails) {
+        if (!dictDetails || !dictDetails.fpromisePendingSentence) return "";
+        return '<p id="confirmModalPendingSentence" ' +
+            'style="white-space:pre-wrap;margin-bottom:16px">' +
+            fnEscapeHtml(dictDetails.sPendingText || "") + '</p>';
+    }
+
+    function _fnResolvePendingSentence(elModal, dictDetails) {
+        if (!dictDetails || !dictDetails.fpromisePendingSentence) return;
+        var elOk = elModal.querySelector("#btnConfirmOk");
+        var elSentence = elModal.querySelector(
+            "#confirmModalPendingSentence");
+        elOk.disabled = true;
+        function fnShow(sSentence) {
+            elSentence.textContent = sSentence;
+            elOk.disabled = false;
+        }
+        dictDetails.fpromisePendingSentence().then(function (sSentence) {
+            fnShow(sSentence || dictDetails.sPendingFailureText || "");
+        }, function () {
+            fnShow(dictDetails.sPendingFailureText || "");
+        });
     }
 
     function fnShowTypedConfirmModal(dictOptions) {

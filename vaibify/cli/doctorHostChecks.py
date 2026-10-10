@@ -47,6 +47,7 @@ from .preflightResult import (
 __all__ = [
     "fbInterpreterRunsTranslated",
     "flistCheckDepositScratchSpace", "flistCheckResourceAllocation",
+    "flistPreflightResourceAdvisories",
     "fpreflightInterpreterArchitecture", "fpreflightShellCompletions",
 ]
 
@@ -236,6 +237,7 @@ def _flistCheckMemoryAllocation(config, dictDaemon):
 
 def flistCheckResourceAllocation(config):
     """Check what vaibify will ask the daemon for against what it has."""
+    listAdvisories = flistPreflightResourceAdvisories(config)
     dictDaemon = fdictReadDaemonFacts()
     if not dictDaemon["bAnswered"] or dictDaemon["iCpuCount"] <= 0:
         return [PreflightResult(
@@ -246,10 +248,32 @@ def flistCheckResourceAllocation(config):
                 "so what vaibify will request could not be compared "
                 "against them."
             ),
-        )]
+        )] + listAdvisories
     listResults = _flistCheckCpuAllocation(config, dictDaemon)
     listResults.extend(_flistCheckMemoryAllocation(config, dictDaemon))
-    return listResults
+    return listResults + listAdvisories
+
+
+def flistPreflightResourceAdvisories(config):
+    """Return a warn-level result per advisory the one authority gives.
+
+    Shared by ``vaibify doctor`` and the ``vaibify start`` pre-flight;
+    the threshold and the sentence belong to ``resourceAdequacy``. It
+    advises and never fails: the researcher may know the workload needs
+    less.
+    """
+    from vaibify.config import resourceAdequacy
+    return [
+        PreflightResult(
+            sName="agent-memory", sLevel=S_LEVEL_WARN, sScope=S_SCOPE_HOST,
+            sMessage=sAdvisory,
+            sRemediation=(
+                "In vaibify.yml, raise memoryLimitGigabytes, or set it to "
+                "0 for no limit."),
+        )
+        for sAdvisory in resourceAdequacy.flistDescribeResourceAdvisories(
+            config)
+    ]
 
 
 def fbInterpreterRunsTranslated():

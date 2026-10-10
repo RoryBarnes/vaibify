@@ -376,6 +376,10 @@ SET_CONTAINER_READ_ROUTES = frozenset({
     ("GET", "/api/logs/{sContainerId}"),
     ("GET", "/api/logs/{sContainerId}/{sLogFilename}"),
     ("GET", "/api/monitor/{sContainerId}"),
+    # The memory watch's answer: the record the hub's sampler keeps,
+    # judged as of the request. It reaches no container and writes
+    # nothing; the lease holder is the one entitled to see it.
+    ("GET", "/api/monitor/{sContainerId}/memory"),
     ("GET", "/api/overleaf/{sContainerId}/mirror/tree"),
     ("GET", "/api/pipeline/{sContainerId}/file-status"),
     ("GET", "/api/pipeline/{sContainerId}/host-log-tail"),

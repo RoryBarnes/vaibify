@@ -274,7 +274,10 @@ def test_claude_md_delegates_ladder_and_step_authoring_to_skills():
         "the harness must not teach the deprecated positional token"
     )
     # The verbose walkthrough is gone (a body this size proves it).
-    assert sBody.count("\n") < 220, (
+    # 220 -> 225 (2026-10-08): the one-paragraph Resources section --
+    # memory limit, headroom, background jobs, what /tmp loses -- which
+    # the agent needs before it fans out, not after a skill is loaded.
+    assert sBody.count("\n") < 225, (
         "CLAUDE.md body did not shrink — the heavy sections are "
         "still inlined"
     )

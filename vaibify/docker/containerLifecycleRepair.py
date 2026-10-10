@@ -173,11 +173,14 @@ def fdictRecreateUnderJournal(
             "could silently change the environment."
         )
     if fnAnnounce is not None:
+        from vaibify.docker.writableLayerLoss import (
+            S_STATE_NOT_MEASURED, fsDescribeWritableLayerLoss,
+        )
         fnAnnounce(
             fsDescribeRestartConsequences(sContainerName)
             + "\n  - recreate the container from image "
-            + sImageIdentity + ", discarding its writable layer "
-            "(everything outside the workspace volume)."
+            + sImageIdentity + ". "
+            + fsDescribeWritableLayerLoss(S_STATE_NOT_MEASURED)
         )
     sOperationId = _fsPrepareJournalRecord(sContainerName, "recreate")
     try:

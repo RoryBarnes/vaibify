@@ -103,6 +103,10 @@ const VaibifyTerminal = (function () {
             iPaneId + '" title="Give the mouse to this pane instead of ' +
             'to the program running in it, so dragging selects text ' +
             'and the wheel scrolls the scrollback">Select text</button>' +
+            '<button class="terminal-pane-reset" data-pane="' +
+            iPaneId + '" title="Switch off mouse reporting and the other ' +
+            'input modes a program that died left on, keeping the ' +
+            'scrollback">Reset</button>' +
             '</div>' +
             '<div class="terminal-pane-container"></div>';
         elStrip.appendChild(elPane);
@@ -195,6 +199,34 @@ const VaibifyTerminal = (function () {
             };
             fnRenderSelectTextButton(dictPane);
         }
+        var elReset = dictPane.elPane.querySelector(".terminal-pane-reset");
+        if (elReset) {
+            elReset.dataset.pane = String(iPaneId);
+            elReset.onclick = function () {
+                fnResetPaneInputModes(iPaneId);
+            };
+        }
+    }
+
+    /* The modes a full-screen program switches on and a SIGKILLed one
+       never switches off: X10, button-event and any-event mouse
+       tracking, the UTF-8, SGR and urxvt mouse encodings, focus
+       reporting, and a hidden cursor. The container shell's prompt
+       hook prints the same sequence (terminalContainment's
+       S_PROMPT_RESET_RCFILE); this is the by-hand fallback for a shell
+       that never got it. Written as program output so xterm parses it,
+       never terminal.reset(), which would also throw away the
+       scrollback the researcher may be about to copy. */
+    var S_INPUT_MODE_RESET_SEQUENCE =
+        "\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1005l" +
+        "\u001b[?1006l\u001b[?1015l\u001b[?1004l\u001b[?25h";
+
+    function fnResetPaneInputModes(iPaneId) {
+        var dictPane = listPanes[iPaneId];
+        if (!dictPane) return;
+        var dictTab = dictPane.listTabs[dictPane.iActiveTabIndex];
+        if (!dictTab || !dictTab.terminal) return;
+        dictTab.terminal.write(S_INPUT_MODE_RESET_SEQUENCE);
     }
 
     /* The mode has to be visible, because while it is on the mouse

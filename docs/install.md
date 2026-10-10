@@ -281,8 +281,8 @@ Keys are camelCase. Every field except `projectName` has a default.
 | `x11Forwarding` | boolean | `false` | Let graphical programs in the container open windows on your display. A connected client can read the screen and send input (see [Security Model](security.md)). Refused with `networkIsolation: true`. Takes effect when the container is created |
 | `neverSleep` | boolean | `false` | Keep the Mac awake (`caffeinate`) while the container runs. Ignored elsewhere |
 | `dashboardPort` | integer | `0` | Port for the single-project viewer started from the command line ([CLI Reference](cli.md)). `0` means unassigned: the first launch picks a free port and writes it here. Otherwise 1024–65535 |
-| `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count |
-| `memoryLimitGigabytes` | number | `0` | Memory cap in GB. `0` means unlimited; otherwise at least `0.25` |
+| `cpuLimit` | integer | `0` | CPU cores for the container. `0` means all host cores minus one; a larger value is clamped to the host's core count. See [Core allocation](environmentsAndProjects.md#core-allocation) |
+| `memoryLimitGigabytes` | number | `0` | Memory cap in GB (1 GB = 2^30 bytes). `0` means unlimited; otherwise at least `0.25`. The cap includes swap, and at the cap the kernel kills a process in the container. See [Core allocation](environmentsAndProjects.md#core-allocation) |
 
 List fields:
 

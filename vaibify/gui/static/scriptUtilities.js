@@ -14,6 +14,12 @@ var VaibifyUtilities = (function () {
         ".gz", ".tar", ".zip", ".bz2", ".xz",
     ]);
 
+    // The one help sentence beside every CPU and memory limit field, so
+    // the creation wizard and the settings dialog cannot disagree.
+    var S_RESOURCE_LIMIT_HELP = "Leave blank unless you need a cap. " +
+        "A process is killed when the container reaches its memory " +
+        "limit, and AI agents in the container often need several GB.";
+
     function fnEscapeHtml(sText) {
         // Escapes quotes as well as angle brackets so the result is
         // safe inside double- or single-quoted HTML attributes
@@ -441,5 +447,6 @@ var VaibifyUtilities = (function () {
         fnSpawnNewSession: fnSpawnNewSession,
         SET_FIGURE_EXTENSIONS: SET_FIGURE_EXTENSIONS,
         SET_BINARY_EXTENSIONS: SET_BINARY_EXTENSIONS,
+        S_RESOURCE_LIMIT_HELP: S_RESOURCE_LIMIT_HELP,
     };
 })();

@@ -1172,6 +1172,10 @@ It fetches origin, re-runs the GitHub content verify that the Level 2 cells read
 - `/workspace/<RepoName>/.vaibify/projects/` — Project JSON files (each repository can have its own)
 - `/workspace/.vaibify/logs/` — Pipeline execution logs
 
+## Resources
+
+This container may have a memory limit: `/sys/fs/cgroup/memory.max` holds it (`max` means none), and `memory.current` and `memory.stat` beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. `/tmp` does not survive a container restart and `/workspace` does, so keep anything you need in `/workspace`.
+
 ## Project System
 
 Each vaibified repository has a `.vaibify/projects/` directory with JSON files defining pipeline steps. Each step has:

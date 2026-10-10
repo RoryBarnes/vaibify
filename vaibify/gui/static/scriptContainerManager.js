@@ -1237,13 +1237,16 @@ var VaibifyContainerManager = (function () {
         return null;
     }
 
-    async function fnShowContainerSettings(sName) {
+    async function fnShowContainerSettings(sName, sFocusFieldId) {
         try {
             var dictSettings = await VaibifyApi.fdictGet(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings"
             );
             fnShowContainerSettingsModal(sName, dictSettings);
+            var elFocus = sFocusFieldId
+                ? document.getElementById(sFocusFieldId) : null;
+            if (elFocus) elFocus.focus();
         } catch (error) {
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
@@ -1261,8 +1264,10 @@ var VaibifyContainerManager = (function () {
             '<h2>Settings for ' +
             VaibifyUtilities.fnEscapeHtml(sName) + '</h2>' +
             '<p class="settings-intro">Configure how this ' +
-            'container behaves while running. Changes take ' +
-            'effect the next time the container starts.</p>' +
+            'container behaves while running. Most changes take ' +
+            'effect the next time the container starts; a raised ' +
+            'memory limit or a changed CPU limit applies at once, ' +
+            'and saving says which.</p>' +
             '<div class="settings-option">' +
             '<label class="settings-option-row">' +
             '<input type="checkbox" id="settingNeverSleep"' +
@@ -1399,8 +1404,7 @@ var VaibifyContainerManager = (function () {
             '<span class="settings-option-label">' +
             'Memory limit (GB)</span></div>' +
             '<p class="settings-option-help">' +
-            'Blank means no limit. Applied via docker run the ' +
-            'next time the container starts.</p>' +
+            VaibifyUtilities.S_RESOURCE_LIMIT_HELP + '</p>' +
             '</div>';
     }
 
@@ -1416,17 +1420,32 @@ var VaibifyContainerManager = (function () {
 
     async function fnSaveContainerSettings(sName, dictSettings) {
         try {
-            await VaibifyApi.fdictPost(
+            var dictSaved = await VaibifyApi.fdictPost(
                 "/api/containers/" + encodeURIComponent(sName)
                 + "/settings",
                 dictSettings
             );
             VaibifyApp.fnShowToast(
-                "Settings saved. Use Restart to apply.",
-                "success");
+                _fsDescribeSavedSettings(dictSaved || {}), "success");
+            var listAdvisories = (dictSaved || {}).listResourceAdvisories || [];
+            if (listAdvisories.length) {
+                VaibifyApp.fnShowToast(listAdvisories.join(" "), "warning");
+            }
         } catch (error) {
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
+    }
+
+    function _fsDescribeSavedSettings(dictSaved) {
+        /* Each changed limit carries the server's own sentence saying
+           what will happen to it; only the other settings, which have
+           no per-field outcome, fall back to the Restart reminder. */
+        var listSentences = (dictSaved.listLimitOutcomes || []).map(
+            function (dictOutcome) { return dictOutcome.sSentence; });
+        if (listSentences.length === 0 && dictSaved.bRestartRequired) {
+            listSentences.push("Use Restart to apply.");
+        }
+        return ["Settings saved."].concat(listSentences).join(" ");
     }
 
     var _iBuildProgressTimer = null;
@@ -1660,18 +1679,17 @@ var VaibifyContainerManager = (function () {
             "Stop the container, obtain the author’s pinned image " +
             "again through the published chain (registry, then the " +
             "archived deposit, then a copy on this daemon), stack the " +
-            "agents this project adds, and start a fresh container. " +
-            "Workspace files are preserved.",
+            "agents this project adds, and start a fresh container.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Re-obtaining the pinned image"))) return;
                 await fnAcquireImage(sName, bAllowEmulation, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: "The image the author pinned is what every " +
                     "verification grades. Re-obtaining it repairs a " +
                     "tag that moved or an image that was pruned.",
-            }
+            })
         );
     }
 
@@ -1681,8 +1699,7 @@ var VaibifyContainerManager = (function () {
             "This project runs the author’s pinned image. Switching " +
             "builds an image of your own from the Dockerfile instead: " +
             "it will carry a different digest, so it cannot reproduce " +
-            "the author’s bytes, and the origin record is cleared. " +
-            "Workspace files are preserved.",
+            "the author’s bytes, and the origin record is cleared.",
             async function () {
                 /* The stop comes FIRST, and a failed one ends it here:
                    the switch clears the registry entry and the origin
@@ -1704,12 +1721,12 @@ var VaibifyContainerManager = (function () {
                 }
                 await fnBuildContainer(sName, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: "Use this when you want your own " +
                     "environment rather than the author’s. To keep " +
                     "the author’s, choose Re-obtain the pinned image.",
                 sCommand: "vaibify stop && vaibify build && vaibify start",
-            }
+            })
         );
     }
 
@@ -1737,7 +1754,7 @@ var VaibifyContainerManager = (function () {
             "environment fields in vaibify.yml from the committed copy, " +
             "obtains the image the envelope pins (registry, then the " +
             "archived deposit, then a copy on this daemon), and starts " +
-            "a fresh container from it. Workspace files are preserved." +
+            "a fresh container from it." +
             (bOfferEmulation ? "\n\nAllow emulation?" : ""),
             async function () {
                 /* Stop first; a failed stop ends the transition here,
@@ -1757,11 +1774,11 @@ var VaibifyContainerManager = (function () {
                 }
                 await fnAcquireImage(sName, bOfferEmulation, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails: sDetails,
                 sConfirmLabel: bOfferEmulation
                     ? "Switch and allow emulation" : "Switch",
-            }
+            })
         );
     }
 
@@ -2247,18 +2264,44 @@ var VaibifyContainerManager = (function () {
         return false;
     }
 
+    /* Every action that recreates the container discards its writable
+       layer -- an agent's scratch files in /tmp above all. Its
+       confirmation asks the hub what that would cost, /tmp measured,
+       and Confirm is enabled only once the hub's sentence is on screen.
+       A request that fails still enables Confirm, with a sentence that
+       says the size is unknown and why. */
+    var S_DISCARD_CHECKING = "Checking what this would discard\u2026";
+    var S_DISCARD_UNMEASURED = "Files in the container's writable " +
+        "layer, including /tmp, are discarded (the size of /tmp could " +
+        "not be measured: this dashboard could not reach the hub); " +
+        "mounted volumes and host directories are preserved.";
+
+    function _fdictAskWhatRecreateDiscards(sName, dictDetails) {
+        var dictAsked = Object.assign({}, dictDetails);
+        dictAsked.sPendingText = S_DISCARD_CHECKING;
+        dictAsked.sPendingFailureText = S_DISCARD_UNMEASURED;
+        dictAsked.fpromisePendingSentence = function () {
+            return VaibifyApi.fdictGet(
+                "/api/containers/" + encodeURIComponent(sName) +
+                "/writable-layer-preview"
+            ).then(function (dictPreview) {
+                return dictPreview.sSentence;
+            });
+        };
+        return dictAsked;
+    }
+
     async function fnRestartContainer(sName) {
         VaibifyApp.fnShowConfirmModal(
             "Restart Container",
             "Stop the container and start it again using the " +
-            "current image. Open terminal sessions will close. " +
-            "Workspace files are preserved.",
+            "current image. Open terminal sessions will close.",
             async function () {
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Restart"))) return;
                 await fnStartContainer(sName);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Restart when you've rebuilt the image from " +
                     "the command line (vaibify build) and want the " +
@@ -2267,7 +2310,7 @@ var VaibifyContainerManager = (function () {
                     "and needs a fresh process. No image rebuild " +
                     "happens, so this is fast.",
                 sCommand: "vaibify stop && vaibify start",
-            }
+            })
         );
     }
 
@@ -2276,15 +2319,14 @@ var VaibifyContainerManager = (function () {
             "Rebuild Container",
             "Stop the container, rebuild the image with your " +
             "current vaibify.yml settings, then start a fresh " +
-            "container. Open terminal sessions will close. " +
-            "Workspace files are preserved.",
+            "container. Open terminal sessions will close.",
             async function () {
                 if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Rebuild"))) return;
                 await fnBuildContainer(sName, false);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Rebuild after editing vaibify.yml to change " +
                     "Python packages, system packages, repositories, " +
@@ -2292,7 +2334,7 @@ var VaibifyContainerManager = (function () {
                     "layers where possible, so only the parts that " +
                     "changed are rebuilt \u2014 usually seconds.",
                 sCommand: "vaibify stop && vaibify build && vaibify start",
-            }
+            })
         );
     }
 
@@ -2301,14 +2343,14 @@ var VaibifyContainerManager = (function () {
             "Force Rebuild (Slow)",
             "Rebuild every layer of the image from scratch, " +
             "ignoring the build cache. This can take several " +
-            "minutes. Workspace files are preserved.",
+            "minutes.",
             async function () {
                 if (!(await _fbBuildPreflightPasses(sName))) return;
                 VaibifyTerminal.fnCloseAll();
                 if (!(await _fbStoppedBefore(sName, "Force Rebuild"))) return;
                 await fnBuildContainer(sName, true);
             },
-            {
+            _fdictAskWhatRecreateDiscards(sName, {
                 sDetails:
                     "Use Force Rebuild only when the image seems " +
                     "corrupted, or when a layer needs to re-fetch " +
@@ -2320,7 +2362,7 @@ var VaibifyContainerManager = (function () {
                 sCommand:
                     "vaibify stop && vaibify build --no-cache && "
                     + "vaibify start",
-            }
+            })
         );
     }
 
@@ -2500,6 +2542,12 @@ var VaibifyContainerManager = (function () {
         _fnRenderConfigurationDriftBanner(
             (dictReadiness && dictReadiness.listConfigurationDrift) || []
         );
+        _fnRenderResourceLimitDriftBanner(
+            (dictReadiness && dictReadiness.listResourceLimitDrift) || []
+        );
+        _fnRenderResourceAdvisoryBanner(
+            (dictReadiness && dictReadiness.listResourceAdvisories) || []
+        );
         if (!dictReadiness) return;
         var sStatus = dictReadiness.sStatus || "";
         if (sStatus === "failed") {
@@ -2569,6 +2617,72 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+    }
+
+    function _fnRenderResourceLimitDriftBanner(listSentences) {
+        /* The server's sentences about running CPU and memory limits
+           that differ from the project's settings, never a comparison
+           of its own. No sentences means "no difference, or nothing
+           determined", and the banner is absent. Its own banner: a
+           limit takes effect at the next start, so it is neither a
+           start warning nor an image older than its file. */
+        _fnRenderSentenceBanner(
+            "resourceLimitDriftBanner", "btnDismissResourceLimitDrift",
+            "This container's CPU or memory limits differ from its " +
+            "settings", listSentences);
+    }
+
+    function _fnRenderResourceAdvisoryBanner(listSentences) {
+        /* The server's advice that an AI agent may need more memory
+           than the project's limit gives it. Advice, not a refusal,
+           and recomputed on every readiness answer, so raising the
+           limit clears it. */
+        _fnRenderSentenceBanner(
+            "resourceAdvisoryBanner", "btnDismissResourceAdvisory",
+            "This project's memory limit may be small for an AI agent",
+            listSentences);
+    }
+
+    function _fnRenderSentenceBanner(
+        sBannerId, sDismissId, sHeading, listSentences,
+    ) {
+        /* A banner of the server's own sentences, one per line. No
+           sentences, no banner. The x hides it for this visit only,
+           like the banners beside it. */
+        var elBanner = document.getElementById(sBannerId);
+        if (!elBanner) return;
+        elBanner.textContent = "";
+        if (!listSentences || !listSentences.length) {
+            elBanner.style.display = "none";
+            return;
+        }
+        var elHeader = document.createElement("div");
+        elHeader.className = "build-warnings-banner-header";
+        var elHeading = document.createElement("span");
+        elHeading.textContent = sHeading;
+        var elDismiss = document.createElement("button");
+        elDismiss.type = "button";
+        elDismiss.className = "build-warnings-banner-dismiss";
+        elDismiss.id = sDismissId;
+        elDismiss.setAttribute("aria-label",
+            "Hide this notice until the container is next opened");
+        elDismiss.textContent = "×";
+        elDismiss.addEventListener("click", function () {
+            elBanner.style.display = "none";
+            elBanner.textContent = "";
+        });
+        elHeader.appendChild(elHeading);
+        elHeader.appendChild(elDismiss);
+        var elList = document.createElement("ul");
+        elList.className = "build-warnings-banner-list";
+        listSentences.forEach(function (sSentence) {
+            var elItem = document.createElement("li");
+            elItem.textContent = sSentence;
+            elList.appendChild(elItem);
+        });
+        elBanner.appendChild(elHeader);
+        elBanner.appendChild(elList);
+        elBanner.style.display = "block";
     }
 
     function _fnRenderBuildWarningsBanner(listWarnings) {
@@ -3050,5 +3164,6 @@ var VaibifyContainerManager = (function () {
         fnBuildContainer: fnBuildContainer,
         fnAcquireImage: fnAcquireImage,
         fnSurfaceReadinessOutcome: _fnSurfaceReadinessOutcome,
+        fnShowContainerSettings: fnShowContainerSettings,
     };
 })();

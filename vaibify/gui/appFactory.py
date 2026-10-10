@@ -20,6 +20,8 @@ from . import agentCouncilRegistry
 from . import agentCouncilStore
 from . import browserSession
 from . import commitCarrier
+from . import containerMemorySampler
+from . import containerMemoryWatch
 from . import containerOwnership
 from . import serverLifespan
 from . import serverMiddleware
@@ -67,6 +69,9 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     )
     app.state.dictStartResults = (
         startResultStore.fdictCreateStartResultStore()
+    )
+    app.state.dictContainerMemory = (
+        containerMemoryWatch.fdictCreateMemoryStore()
     )
     # The council's two app-owned authorities (design sections 9.3, 7.3):
     # the registry accounts for live runner/API work and vetoes idle
@@ -158,6 +163,7 @@ def _fnRegisterBackgroundTasks(app, dictCtx):
     serverLifespan._fnRegisterIdleShutdownWatchdog(app, dictCtx)
     serverLifespan._fnRegisterSessionLifecycleEvaluator(app)
     serverLifespan._fnRegisterDisposableReclaim(app, dictCtx)
+    containerMemorySampler.fnRegisterMemorySampler(app, dictCtx)
     serverLifespan._fnRegisterDefaultThreadPoolExecutor(app)
 
 

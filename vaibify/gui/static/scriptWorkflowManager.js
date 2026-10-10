@@ -2379,9 +2379,8 @@ var VaibifyWorkflowManager = (function () {
             'min="0.25" step="0.25" placeholder="unlimited" ' +
             'value="' + sMemoryValue + '">' +
             '<span>Memory (GB)</span></div>' +
-            '<div class="wizard-helper-text">Applied via docker ' +
-            'run each time the container starts. A minimal demo ' +
-            'container runs comfortably at 1 CPU and 1 GB.' +
+            '<div class="wizard-helper-text">' +
+            VaibifyUtilities.S_RESOURCE_LIMIT_HELP +
             '</div></div>';
     }
 

@@ -207,10 +207,32 @@ set a limit, leaving one core for your operating system. Set a limit
 in the wizard's **CPU cores** field or in the tile's **⚙** under
 **CPU core limit**; it is stored as `cpuLimit` in `vaibify.yml` and is
 capped at the number of cores the computer has. Memory is unlimited
-unless you set **Memory (GB)** (`memoryLimitGigabytes`). Both take
-effect when the container next starts. **View > Resource Monitor**
-shows live CPU and memory use and the container's disk usage, and
-warns when the disk is nearly full.
+unless you set **Memory (GB)** (`memoryLimitGigabytes`). A process that
+reaches the memory limit is killed by the kernel (see
+[Memory](#memory)). The limit includes swap: the container cannot swap
+beyond it, so a limit means the same on every computer (if a Linux
+computer's kernel cannot limit swap, Docker cannot either). An AI agent
+with the jobs it starts often needs several GB, so leave it at `0`
+unless you need a cap. When an
+environment enables an AI agent and caps memory below 5 GB,
+`vaibify doctor`, `vaibify start`, the dashboard, and saving in **⚙**
+each say so; 5 GB is a starting point, not a requirement.
+
+An edit to `vaibify.yml` takes effect when the container next starts.
+A change saved in **⚙** is written there and, if the container is
+running, applied at once when that cannot kill a process: a higher
+memory limit (its swap limit rises with it, as Docker requires) or any
+change to the CPU limit. A lower memory limit, a memory limit on a
+container that had none, and removing a limit wait for the next start.
+The save says, for each limit it changed, whether it was applied,
+could not be applied (in Docker's own words), or waits for the next
+start. When a running container's limits differ from `vaibify.yml`, a
+banner says which limit differs and what the next Restart will apply,
+including when the container can swap beyond its memory limit; it says
+nothing when the running limits cannot be read.
+**View > Resource Monitor** shows live CPU and memory use, the memory
+limit, the number of processes killed for lack of memory, and the
+container's disk usage, and warns when the disk is nearly full.
 
 Steps run one at a time, so parallelism comes from the scripts
 themselves. The Project's **Cores** setting (`iNumberOfCores`) is
@@ -389,6 +411,51 @@ belongs to vaibify's server process, not to the browser tab, and a
 dashboard opened later shows it in progress. The live output is a
 stream, so have long steps write anything that matters to a file.
 
+## Memory
+
+**A process that reaches its container's memory limit is killed by the
+kernel**, often an AI agent and the jobs it started, and it cannot
+report its own death. The hub therefore checks every open container
+every 15 seconds.
+
+The **memory chip** beside the environment name reads, for example,
+"Memory ~1.2 / 6 GB": memory in use, less the file cache the kernel
+would reclaim first (the figure `docker stats` reports), against the
+limit. It turns **amber**, with one warning toast, at 85% of the limit
+and clears below 80%; memory can reach the limit between two checks,
+so amber is not a promise of warning. It turns **gray**, with the
+reason in its tooltip, whenever the hub could not measure: the
+container is stopped, it did not answer within 5 seconds, or the last
+measurement is more than 45 seconds old. Gray never means "fine". It
+says **no limit** for a container without one, and clicking it opens
+**⚙** at the memory limit.
+
+**Each kill is reported once**, with an error toast and a banner, and
+the chip counts kills for as long as the hub holds them. When Docker
+reports that a stopped container's main process was killed for lack
+of memory, the next start says so, in the dashboard and in
+`vaibify start`. The kernel keeps counts, not a log, so a report names
+the interval in which the count rose, mentions the container's limit
+only when the limit counter rose in the same interval, and never names
+the process killed (that needs a kernel log only a privileged
+container can read). Every report ends with what to do: check that the
+work the killed process was part of is still healthy, resume an AI
+agent's conversation (it is on the workspace volume; for Claude Code,
+`claude --resume`), and raise the limit. The history lives in the
+hub's memory: after a hub restart, a running container's earlier kills
+are reported again as kills whose time vaibify did not observe.
+
+**Recreating a container discards its writable layer.** **Restart**,
+**Rebuild**, **Force Rebuild**, and the pinned-image actions create a
+new container, so everything outside its mounted volumes and host
+directories is lost, including an agent's scratch files in `/tmp`.
+Each confirmation measures `/tmp` first and keeps **Confirm** disabled
+until it says, for example, "Files in the container's writable layer,
+including 1.4 GB in /tmp, are discarded; mounted volumes and host
+directories are preserved." When `/tmp` cannot be measured, it says
+why and enables **Confirm** anyway. Copy out anything you want to keep
+first.
+
 ## Project size limits
 
 The first time a Project reaches 100 steps, vaibify shows a one-time
@@ -401,7 +468,8 @@ sibling Projects in the same repository.
 ### Layout
 
 - **Toolbar** — the logo; the environment (**Container:**, or
-  **Directory:** for a host environment); the **Project:** name, which
+  **Directory:** for a host environment) and its memory chip (see
+  [Memory](#memory)); the **Project:** name, which
   opens the Project switcher; up to three vaibify checks that light up as
   Levels 1–3 are attained; the **Agent Council** button; the **Run**,
   **Sync**, **View**, and **Admin** menus; and, at the far right, a
@@ -463,6 +531,15 @@ an editor, also takes your drag gestures. To get text out:
 
 Selected text is copied automatically; Cmd+C, Ctrl+Shift+C, and
 Ctrl+Insert also work.
+
+A program that is killed outright, such as an agent killed for lack of
+memory, never hands the mouse back, and every mouse move then prints
+characters like `35;97;9M` at the prompt. A container's shell switches
+those modes off before each prompt: it reads your own `~/.bashrc`
+first, adds its prompt hook after yours, and passes on your last
+command's exit status. If a pane still misbehaves (a shell started
+earlier, or one that is not bash), press **Reset** in the pane's tab
+bar, which switches the modes off and keeps the scrollback.
 
 ### Moving files in and out
 

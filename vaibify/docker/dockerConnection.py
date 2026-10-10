@@ -598,6 +598,8 @@ S_TYPED_READ_CREDENTIAL_FILE = "credentialFileBase64"
 # is held in the hub process for the length of one upload and is
 # written to no file and no log.
 S_TYPED_READ_KEYRING_SECRET = "keyringSecretValue"
+S_TYPED_READ_CGROUP_MEMORY = "cgroupMemory"
+S_TYPED_READ_TMP_SIZE = "tmpSize"
 
 # A provider login document is kilobytes. The council's credential read
 # bounds itself IN the container at this ceiling rather than inheriting
@@ -798,6 +800,51 @@ _DICT_TYPED_READ_PROGRAMS = {
         "import os,sys; "
         "sys.stdout.write(chr(10).join(sorted(os.listdir("
         + _S_TYPED_READ_PATH_SLOT + "))))"
+    ),
+    # The container's own memory cgroup, for the memory watch. The slot
+    # carries the cgroup ROOT, which the adapter fixes to /sys/fs/cgroup
+    # (a test points it at a fake tree). Each file is printed under a
+    # marker line naming it, and an unopenable one says MISSING, so the
+    # host parser (vaibify/docker/cgroupMemory.py, which owns the
+    # marker spelling) can tell an absent file from an empty one. A v2
+    # cgroup is recognized by memory.current; otherwise the v1 memory
+    # controller's files are read from its own directory.
+    S_TYPED_READ_CGROUP_MEMORY: (
+        "import os,sys\n"
+        "sRoot = " + _S_TYPED_READ_PATH_SLOT + "\n"
+        "if os.path.exists(os.path.join(sRoot, 'memory.current')):\n"
+        "    sDirectory, sVersion = sRoot, 'v2'\n"
+        "    tNames = ('memory.current', 'memory.max', 'memory.events',"
+        " 'memory.stat')\n"
+        "else:\n"
+        "    sDirectory, sVersion = os.path.join(sRoot, 'memory'), 'v1'\n"
+        "    tNames = ('memory.usage_in_bytes', 'memory.limit_in_bytes',"
+        " 'memory.oom_control', 'memory.stat')\n"
+        "sys.stdout.write('@@ cgroup ' + sVersion + '\\n')\n"
+        "for sName in tNames:\n"
+        "    try:\n"
+        "        with open(os.path.join(sDirectory, sName)) as fileIn:\n"
+        "            sText = fileIn.read()\n"
+        "    except OSError:\n"
+        "        sys.stdout.write('@@ file ' + sName + ' MISSING\\n')\n"
+        "        continue\n"
+        "    if sText and not sText.endswith('\\n'):\n"
+        "        sText += '\\n'\n"
+        "    sys.stdout.write('@@ file ' + sName + '\\n' + sText)\n"
+    ),
+    # How much a recreate would discard from /tmp, for the confirmation
+    # that asks first: ``du -sxk`` over the slot's path (the adapter
+    # fixes /tmp). ``-x`` keeps the count on the writable layer's own
+    # filesystem. du reports unreadable subdirectories on stderr and
+    # still prints its total, so only an empty answer is a failure.
+    S_TYPED_READ_TMP_SIZE: (
+        "import subprocess,sys\n"
+        "processDu = subprocess.run(['du', '-sxk', "
+        + _S_TYPED_READ_PATH_SLOT + "],\n"
+        "    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,\n"
+        "    universal_newlines=True)\n"
+        "sys.stdout.write(processDu.stdout)\n"
+        "sys.exit(0 if processDu.stdout.strip() else 1)\n"
     ),
     # The container's own wall clock, in the format a sign-off is
     # stamped in. The read takes no argument: the slot is bound to a
@@ -1776,6 +1823,26 @@ class DockerConnection:
         container = self._clientDocker.containers.get(sContainerId)
         return self._dictContainers.setdefault(sContainerId, container)
 
+    def fdictReadContainerState(self, sContainerId):
+        """Return the daemon's ``State`` block for a container, or None if gone.
+
+        Metadata only, like :meth:`flistRunningExecIdentifiers`: it asks
+        the daemon about a container and never enters it, so it needs no
+        command authority. ``None`` is a POSITIVE "no such container";
+        any other failure (a daemon that did not answer) raises, because
+        the memory watch must not read an unanswered question as a
+        removed container. The cached handle is refreshed, so the state
+        is the daemon's answer now, not at the last sweep.
+        """
+        from docker.errors import NotFound
+        try:
+            container = self.fcontainerGetById(sContainerId)
+            container.reload()
+        except NotFound:
+            self._dictContainers.pop(sContainerId, None)
+            return None
+        return dict(container.attrs.get("State") or {})
+
     def flistRunningExecIdentifiers(self, sContainerId):
         """Return the ids of exec sessions the daemon still reports running.
 
@@ -2655,6 +2722,40 @@ class DockerConnection:
                 f"{tExecResult.sStderr.strip()}"
             )
         return tExecResult.sStdout.strip()
+
+    def fsReadCgroupMemory(self, sContainerId):
+        """Return the container's memory cgroup files as marked text.
+
+        An AUDITED ADAPTER taking no caller value: the cgroup root is
+        fixed here, and the text is parsed by
+        ``cgroupMemory.fdictParseCgroupMemory``. A non-zero exit raises
+        ``OSError``; a file the container could not open is not an
+        error, it is a ``MISSING`` marker the parser turns into None.
+        """
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_CGROUP_MEMORY, "/sys/fs/cgroup",
+        )
+        if tExecResult.iExitCode != 0:
+            raise OSError(
+                "Cannot read the container's memory cgroup: "
+                f"{tExecResult.sStderr.strip()}"
+            )
+        return tExecResult.sStdout
+
+    def fiReadTmpBytes(self, sContainerId):
+        """Return the bytes in the container's /tmp, as ``du -sxk`` counts them.
+
+        An AUDITED ADAPTER taking no caller value: the path is fixed
+        here. ``OSError`` when the measurement produced no total.
+        """
+        from vaibify.docker.writableLayerLoss import fiParseTmpBytes
+        tExecResult = self._ftRunTypedRead(
+            sContainerId, S_TYPED_READ_TMP_SIZE, "/tmp",
+        )
+        iBytes = fiParseTmpBytes(tExecResult.sStdout)
+        if tExecResult.iExitCode != 0 or iBytes is None:
+            raise OSError("Cannot measure the container's /tmp")
+        return iBytes
 
     def fdictReadFilesystemUsage(self, sContainerId, sPath):
         """Return total/used/free bytes for the filesystem holding a path.

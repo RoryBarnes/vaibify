@@ -281,14 +281,19 @@ def fnClearStoppedContainerBeforeLaunch(config):
     from vaibify.docker.containerManager import (
         fdictGetContainerStatus, fnRemoveStopped,
     )
+    from vaibify.gui.containerMemorySampler import fdictReadExitedOomEvidence
+    from vaibify.gui.containerMemoryWatch import fsDescribeExitedOomEvidence
     dictStatus = fdictGetContainerStatus(config.sProjectName)
     if not dictStatus["bExists"] or dictStatus["bRunning"]:
         return
+    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)
     fnRemoveStopped(config.sProjectName)
     click.echo(
         f"Removed stopped container '{config.sProjectName}' "
         "from a prior session."
     )
+    if dictEvidence["bOomKilled"]:
+        click.echo(fsDescribeExitedOomEvidence(dictEvidence))
 
 
 def _fpreflightRunningContainer(sProjectName):
@@ -520,6 +525,7 @@ def flistRunStartPreflight(config):
         return listResults
     listResults.append(_fpreflightImage(config))
     listResults.extend(flistPreflightSecrets(config))
+    listResults.extend(_flistPreflightResourceAdvisories(config))
     listResults.extend(_flistPreflightPorts(config))
     listResults.append(_fpreflightContainerName(config))
     listResults.extend(_flistPreflightBindMounts(config))
@@ -529,6 +535,12 @@ def flistRunStartPreflight(config):
     if resultColimaVersion is not None:
         listResults.append(resultColimaVersion)
     return listResults
+
+
+def _flistPreflightResourceAdvisories(config):
+    """Return the agent-memory advisories ``vaibify doctor`` also gives."""
+    from .doctorHostChecks import flistPreflightResourceAdvisories
+    return flistPreflightResourceAdvisories(config)
 
 
 def _fnPrintWarningsIfAny(listResults):

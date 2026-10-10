@@ -30589,4 +30589,256 @@ LIST_FALSIFICATIONS = [
         old='        raise HTTPException(501, str(error))\n',
         new='        raise HTTPException(500, str(error))\n',
     ),
+    # --- 2026-10-08: the resource-limit help never recommends a cap ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheResourceHelpDoesNotRecommendACap.py::'
+            'testTheWizardSaysWhatACapCosts'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        old=(
+            "            '<div class=\"wizard-helper-text\">' +\n"
+            "            VaibifyUtilities.S_RESOURCE_LIMIT_HELP +\n"
+        ),
+        new=(
+            "            '<div class=\"wizard-helper-text\">Applied via docker ' +\n"
+            "            'run each time the container starts. A minimal demo ' +\n"
+            "            'container runs comfortably at 1 CPU and 1 GB.' +\n"
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheResourceHelpDoesNotRecommendACap.py::'
+            'testTheSettingsDialogSaysWhatACapCosts'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old="            VaibifyUtilities.S_RESOURCE_LIMIT_HELP + '</p>' +\n",
+        new=(
+            "            'Blank means no limit. Applied via docker run the ' +\n"
+            "            'next time the container starts.</p>' +\n"
+        ),
+    ),
+    # --- 2026-10-08: the memory watch reports out-of-memory kills honestly ---
+    Falsification(
+        nodeid='tests/testCgroupMemory.py::testTheWorkingSetIsUsageMinusInactiveFile',
+        source='vaibify/docker/cgroupMemory.py',
+        old='    return max(0, iUsage - iInactiveFile)\n',
+        new='    return dictParsed.get("iAnonBytes")\n',
+    ),
+    Falsification(
+        nodeid='tests/testCgroupMemory.py::testAMissingFileIsNoneNeverZero',
+        source='vaibify/docker/cgroupMemory.py',
+        old='    """Return a file holding one integer as an int, or None."""\n    if sText is None:\n        return None\n',
+        new='    """Return a file holding one integer as an int, or None."""\n    if sText is None:\n        return 0\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testARecreateUnderTheSameNameResetsCountersAndKeepsHistory',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        dictRecord["dictCurrent"] = None\n        dictRecord["dictBaseline"] = None\n    return dictRecord\n',
+        new='        dictRecord["dictCurrent"] = None\n    return dictRecord\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testStalenessIsJudgedWhenTheRecordIsRead',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    fAge = _ffAgeSeconds(dictCurrent.get("sSampledIso"), datetimeNow)\n',
+        new='    fAge = _ffAgeSeconds(\n        dictCurrent.get("sSampledIso"),\n        _fdatetimeParseIso(dictCurrent.get("sSampledIso")) or datetimeNow)\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFailedReadKeepsEveryIncident',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        dictRecord["dictCurrent"] = dictCurrent\n',
+        new='        dictRecord["dictCurrent"] = dictCurrent\n        dictRecord["listIncidents"] = []\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testNoSentenceClaimsTheLimitWithoutALimitEvent',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if dictIncident.get("bLimitEventInWindow"):\n',
+        new='    if dictIncident.get("sLimitKind") == cgroupMemory.S_LIMIT_FINITE:\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAnOomLogNeverReachesTheHostIncidentRing',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        fsDescribeMemoryIncident(dictIncident, datetime.now(timezone.utc)),\n    )\n',
+        new='        fsDescribeMemoryIncident(dictIncident, datetime.now(timezone.utc)),\n        extra={"sContainerId": dictIncident["sContainerId"]},\n    )\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAHungReadIsATimeoutAndNeverANumber',
+        source='vaibify/gui/containerMemorySampler.py',
+        old='    if sReadText is None:\n        _fnRecordUnknown(\n            dictStore, sName, sContainerId,\n            containerMemoryWatch.S_STATE_TIMEOUT)\n        return\n',
+        new='    if sReadText is None:\n        return\n',
+    ),
+    # --- 2026-10-08: a stopped container's OOM evidence is read before its removal ---
+    Falsification(
+        nodeid='tests/testExitedContainerEvidence.py::testTheHubReadsTheEvidenceBeforeItRemovesTheContainer',
+        source='vaibify/gui/startReservation.py',
+        old='        recordTask.dictExitedOomEvidence = (\n            containerMemorySampler.fdictReadExitedOomEvidence(sName))\n        containerManager.fnRemoveStopped(sName)\n',
+        new='        containerManager.fnRemoveStopped(sName)\n        recordTask.dictExitedOomEvidence = (\n            containerMemorySampler.fdictReadExitedOomEvidence(sName))\n',
+    ),
+    Falsification(
+        nodeid='tests/testExitedContainerEvidence.py::testTheCliReadsTheEvidenceBeforeItRemovesTheContainer',
+        source='vaibify/cli/commandStart.py',
+        old='    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)\n    fnRemoveStopped(config.sProjectName)\n',
+        new='    fnRemoveStopped(config.sProjectName)\n    dictEvidence = fdictReadExitedOomEvidence(config.sProjectName)\n',
+    ),
+    # --- 2026-10-08: the memory route reads the name-keyed record ---
+    Falsification(
+        nodeid='tests/testContainerMemoryRoute.py::testTheRouteAnswersFromTheNameKeyedRecordForTheIdInTheUrl',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    sKey = sName or sContainerId\n',
+        new='    sKey = sContainerId\n',
+    ),
+    # --- 2026-10-08: the memory watch tells a kill once ---
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testTheBannerCarriesTheServersSentenceVerbatim',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elSentence.textContent = dictIncident.sSentence || "";\n',
+        new='        elSentence.textContent = "A process in this container was " +\n            "killed for lack of memory.";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAKillIsToastedOnceAcrossPollsAndAReload',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='            _fnRemember(S_SHOWN_KEY, sIncidentId);\n',
+        new='            _fnRemember(S_SHOWN_KEY, sIncidentId + ":" + Date.now());\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testNearToastsOncePerEpisode',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        var sEpisode = (_dictState.sContainerName || "") + "|" +\n            dictCurrent.sNearSinceIso;\n',
+        new='        var sEpisode = (_dictState.sContainerName || "") + "|near";\n',
+    ),
+    # --- 2026-10-08: limits are planned against the running container ---
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testIntroducingAMemoryLimitWaitsForTheNextStart',
+        source='vaibify/config/resourceLimits.py',
+        old='        return fdictEntry(S_ACTION_NEXT_START, (\n            "Docker cannot add a memory limit to a running container"))\n',
+        new='        return fdictEntry(S_ACTION_APPLY_LIVE, "")\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testARaiseInTheFileThatLowersTheRunningLimitIsADecrease',
+        source='vaibify/config/resourceLimits.py',
+        old='    if iDesiredBytes < iRunning:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testZeroCpusInTheFileIsAllCoresButOneNotDrift',
+        source='vaibify/config/resourceLimits.py',
+        old='        return min(iConfiguredLimit, iHostCores)\n    return max(1, iHostCores - 1)\n',
+        new='        return min(iConfiguredLimit, iHostCores)\n    return iConfiguredLimit\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testAnUnknownRunningLimitDeterminesNothing',
+        source='vaibify/config/resourceLimits.py',
+        old='    if sKind not in (S_KIND_FINITE, S_KIND_UNLIMITED):\n        return ""\n',
+        new='    if False:\n        return ""\n',
+    ),
+    # --- 2026-10-08: a limit save and limit drift speak the server's sentences ---
+    Falsification(
+        nodeid='tests/browser/testTheLimitSettingsSayWhatWillHappen.py::testTheSaveToastCarriesEachChangesOwnSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        var listSentences = (dictSaved.listLimitOutcomes || []).map(\n',
+        new='        var listSentences = [].map(\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheLimitSettingsSayWhatWillHappen.py::testTheLimitDriftBannerRendersTheServersSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        _fnRenderResourceLimitDriftBanner(\n            (dictReadiness && dictReadiness.listResourceLimitDrift) || []\n        );\n',
+        new='',
+    ),
+    # --- 2026-10-08: a terminal's prompt resets the input modes a killed program left on ---
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheResetRunsLastAfterTheResearchersArrayHooks',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]];\'\n    " then\\n"\n    "    PROMPT_COMMAND+=(fnVaibifyResetInputModes)\\n"\n    "else\\n"\n',
+        new='    "if false; then\\n"\n    "    :\\n"\n    "else\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheResetHandsOnTheStatusItWasGiven',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'    return "$iStatus"\\n\'\n',
+        new='    "    return 0\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptResetLive.py::testTheRcfileAndItsDirectoryAreGoneOnceTheShellStarts',
+        source='vaibify/gui/terminalContainment.py',
+        old='    \'rm -f -- "${BASH_SOURCE[0]}" && rmdir -- "${BASH_SOURCE[0]%/*}"\\n\'\n',
+        new='    ": the rcfile is kept\\n"\n',
+    ),
+    Falsification(
+        nodeid='tests/testTerminalPromptReset.py::testABashTerminalGetsTheResetRcfileThenThePlainFallback',
+        source='vaibify/gui/terminalContainment.py',
+        old='        + _fsBuildRcfileLaunch(sShellCommand)\n        + f"exec {sShellCommand}"\n',
+        new='        + _fsBuildRcfileLaunch(sShellCommand).rstrip(" &")\n',
+    ),
+    # --- 2026-10-08: the terminal Reset button keeps the scrollback ---
+    Falsification(
+        nodeid='tests/browser/testTheTerminalResetGivesTheMouseBack.py::testResetGivesTheMouseBackAndKeepsTheScrollback',
+        source='vaibify/gui/static/scriptTerminal.js',
+        old='        dictTab.terminal.write(S_INPUT_MODE_RESET_SEQUENCE);\n',
+        new='        dictTab.terminal.reset();\n',
+    ),
+    # --- 2026-10-08: a recreate confirmation measures /tmp, and a timeout is never a size ---
+    Falsification(
+        nodeid='tests/testWritableLayerLoss.py::testAHungReadIsATimeoutNeverASize',
+        source='vaibify/gui/writableLayerPreview.py',
+        old='    if iTmpBytes is None:\n        return _fdictAnswer(loss.S_STATE_TIMEOUT, sReason=(\n',
+        new='    if iTmpBytes is None:\n        return _fdictAnswer(loss.S_STATE_MEASURED, iTmpBytes=0)\n    if False:\n        return _fdictAnswer(loss.S_STATE_TIMEOUT, sReason=(\n',
+    ),
+    # --- 2026-10-08: a recreate confirmation waits for the hub's sentence ---
+    Falsification(
+        nodeid='tests/browser/testARecreateSaysWhatItDiscards.py::testRestartWaitsForTheHubBeforeItCanBeConfirmed',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            _fdictAskWhatRecreateDiscards(sName, {\n                sDetails:\n                    "Use Restart when you\'ve rebuilt the image from " +\n                    "the command line (vaibify build) and want the " +\n                    "container to switch to the new image, or when " +\n                    "a running container has gotten into a bad state " +\n                    "and needs a fresh process. No image rebuild " +\n                    "happens, so this is fast.",\n                sCommand: "vaibify stop && vaibify start",\n            })\n        );\n    }\n\n',
+        new='            {\n                sDetails:\n                    "Use Restart when you\'ve rebuilt the image from " +\n                    "the command line (vaibify build) and want the " +\n                    "container to switch to the new image, or when " +\n                    "a running container has gotten into a bad state " +\n                    "and needs a fresh process. No image rebuild " +\n                    "happens, so this is fast.",\n                sCommand: "vaibify stop && vaibify start",\n            }\n        );\n    }\n\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testARecreateSaysWhatItDiscards.py::testConfirmIsDisabledUntilTheAnswerArrives',
+        source='vaibify/gui/static/scriptModals.js',
+        old='        elOk.disabled = true;\n',
+        new='        elOk.disabled = false;\n',
+    ),
+    # --- 2026-10-08: the agent-memory advice is the server's sentence ---
+    Falsification(
+        nodeid='tests/browser/testTheAgentMemoryAdviceIsTheServers.py::testTheAdviceBannerShowsTheServersSentence',
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='            "This project\'s memory limit may be small for an AI agent",\n            listSentences);\n',
+        new='            "This project\'s memory limit may be small for an AI agent",\n            listSentences.length\n                ? ["Give an AI agent at least 5 GB of memory."] : []);\n',
+    ),
+    # --- 2026-10-08 (gated): live limit changes and the in-container Resources guidance ---
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testEveryMemoryRaiseCarriesItsSwapLimit',
+        source='vaibify/docker/containerManager.py',
+        old='                "--memory", str(dictChange["iDesiredBytes"]),\n                "--memory-swap", str(dictChange["iSwapBytes"]),\n',
+        new='                "--memory", str(dictChange["iDesiredBytes"]),\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testAMemoryDecreaseIsNeverSentLive',
+        source='vaibify/config/resourceLimits.py',
+        old='    if iDesiredBytes < iRunning:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimitLiveApply.py::testAPartialResultIsReportedFieldByField',
+        source='vaibify/config/resourceLimits.py',
+        old='    if _fbRunningEqualsDesired(dictPlan, dictRunningAfter):\n',
+        new='    if not sFailure:\n',
+    ),
+    # --- 2026-10-09: a memory cap allows no swap beyond it ---
+    Falsification(
+        nodeid='tests/testContainerManager.py::testACappedContainerHasNoSwapBeyondItsCap',
+        source='vaibify/docker/containerManager.py',
+        old='            "--memory", sMemoryArgument, "--memory-swap", sMemoryArgument])\n',
+        new='            "--memory", sMemoryArgument])\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testALiveRaiseNeverLowersTheSwapLimit',
+        source='vaibify/config/resourceLimits.py',
+        old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
+        new='    iSwapBytes = iDesiredBytes\n',
+    ),
+    Falsification(
+        nodeid='tests/testEntrypointResourcesGuidance.py::testTheGuideTellsTheAgentWhereItsMemoryLimitIs',
+        source='vaibify/containerImage/entrypoint.sh',
+        old='## Resources\n\nThis container may have a memory limit: `/sys/fs/cgroup/memory.max` holds it (`max` means none), and `memory.current` and `memory.stat` beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. `/tmp` does not survive a container restart and `/workspace` does, so keep anything you need in `/workspace`.\n\n',
+        new='',
+    ),
 ]

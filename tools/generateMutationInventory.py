@@ -264,6 +264,15 @@ DICT_PRIMITIVE_ACCESS = {
     # caller value. It dates the researcher's sign-off by the clock that
     # stamps the files it is later compared against.
     "fsReadClockUtc": S_ACCESS_TYPED_READ,
+    # The memory watch's two reads. The cgroup read is a declared typed
+    # read with no caller value (the cgroup root is fixed in the
+    # adapter); the state read asks the DAEMON for a container's State
+    # block and runs no program at all.
+    "fsReadCgroupMemory": S_ACCESS_TYPED_READ,
+    # The recreate confirmation's /tmp measurement: a declared typed
+    # read of ``du -sxk`` with the path fixed in the adapter.
+    "fiReadTmpBytes": S_ACCESS_TYPED_READ,
+    "fdictReadContainerState": S_ACCESS_TYPED_READ,
     "fdictWeighRepository": S_ACCESS_TYPED_READ,
     # A DAEMON-info query, not a container call: it runs no program
     # anywhere, takes no caller value, and reads only how much memory
@@ -351,6 +360,9 @@ DICT_PRIMITIVE_ACCESS = {
     "fnStartCreatedContainer": S_ACCESS_LIFECYCLE,
     "fnStopContainer": S_ACCESS_LIFECYCLE,
     "fnRemoveStopped": S_ACCESS_LIFECYCLE,
+    # A live CPU or memory limit change: one `docker update` on a
+    # running container's HostConfig, daemon-side, never an exec.
+    "fnApplyResourceChangesLive": S_ACCESS_LIFECYCLE,
     "fdictSettleReservationContainers": S_ACCESS_LIFECYCLE,
     "fdictTerminateDockerProcess": S_ACCESS_SIGNAL,
     "fbStopContainerProvenSettled": S_ACCESS_LIFECYCLE,

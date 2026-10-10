@@ -69,6 +69,8 @@ from vaibify.docker.dockerConnection import (
     S_IMAGE_STATE_BUILT, S_IMAGE_STATE_MISSING, S_IMAGE_STATE_UNANSWERED,
 )
 from . import commitCarrier
+from . import containerMemorySampler
+from . import containerMemoryWatch
 from . import containerOwnership
 from . import sessionLifecycle
 from . import startResultStore
@@ -118,13 +120,16 @@ class StartTaskRecord:
     cancel that arrived first terminates the process the moment it is
     adopted, so the window between spawn and registration cannot leak a
     live launch. ``sJournalOperationId`` is the write-ahead record
-    written BEFORE anything launched.
+    written BEFORE anything launched. ``dictExitedOomEvidence`` is what
+    Docker said about the stopped container this start removed; the
+    worker thread has no app state, so it rides here to the settlement.
     """
 
     sStartTaskId: str
     sJournalOperationId: str
     processDocker: Optional["Popen"] = None
     sCreatedContainerId: str = ""
+    dictExitedOomEvidence: Optional[dict] = None
     bCancelRequested: bool = False
     bProcessWasSignalled: bool = False
     lockProcess: threading.Lock = field(default_factory=threading.Lock)
@@ -546,7 +551,7 @@ def _fsExecuteReservedStart(sName, reservation, configProject):
         },
     )
     _fnRefuseIfCancelled(recordTask)
-    _fnClearStoppedIncarnation(sName)
+    _fnClearStoppedIncarnation(sName, recordTask)
     _fnStampHeartbeat(reservation)
     sContainerId = containerManager.fsCreateContainerForReservation(
         configProject, reservation.sReservationId,
@@ -630,18 +635,22 @@ def _fnStampHeartbeat(reservation):
     reservation.fHeartbeatMonotonic = time.monotonic()
 
 
-def _fnClearStoppedIncarnation(sName):
+def _fnClearStoppedIncarnation(sName, recordTask):
     """Remove a stopped container of this name so a fresh one can be made.
 
     A restarted container skips the secret mounts (they are volume args
     fixed at creation), so vaibify always creates rather than restarts. A
     RUNNING container is refused instead: starting it again would be a
-    lie, and the honest answer belongs in the result record.
+    lie, and the honest answer belongs in the result record. Docker's
+    word on how the old container ended is read BEFORE the removal that
+    destroys it, and a failed read never blocks the removal.
     """
     dictStatus = containerManager.fdictGetContainerStatus(sName)
     if dictStatus["bRunning"]:
         raise RuntimeError(f"Container '{sName}' is already running")
     if dictStatus["bExists"]:
+        recordTask.dictExitedOomEvidence = (
+            containerMemorySampler.fdictReadExitedOomEvidence(sName))
         containerManager.fnRemoveStopped(sName)
 
 
@@ -653,6 +662,8 @@ async def _fnSettleStartSuccess(
     appState, sName, reservation, sContainerId, configProject,
 ):
     """Clear the reservation, keep the ownership, publish SUCCEEDED."""
+    containerMemoryWatch.fnRecordExitedEvidenceForApp(
+        appState, sName, reservation.recordStartTask.dictExitedOomEvidence)
     await asyncio.to_thread(
         _fnSettleJournalQuietly, sName,
         reservation.recordStartTask.sJournalOperationId,
@@ -687,6 +698,8 @@ async def _fnSettleStartFailure(appState, sName, reservation, errorStart):
     the journal record is poisoned and the record keeps its flock, so the
     next hub sees the quarantine even though the flock died with this one.
     """
+    containerMemoryWatch.fnRecordExitedEvidenceForApp(
+        appState, sName, reservation.recordStartTask.dictExitedOomEvidence)
     dictTermination = await asyncio.to_thread(
         reservation.recordStartTask.fdictTerminateLaunch,
     )

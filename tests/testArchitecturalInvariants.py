@@ -6484,7 +6484,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1119 -> 1122 (2026-10-01): type-only imports name the annotations.
     # 1122 -> 1123 (2026-10-03): the process handle's annotation names
     # its import, under the type-only guard.
-    "startReservation.py": 1123,
+    # 1123 -> 1136 (2026-10-08): the start reads how the stopped
+    # container it removes ended, BEFORE removing it, and records an
+    # out-of-memory kill when the start settles; the worker thread has
+    # no app state, so the evidence rides the start task record.
+    "startReservation.py": 1136,
     # +5 (2026-07-02): push-staged guards the commit on "anything
     # staged?" so an already-committed repo still pushes.
     # +13 (2026-07-10): the host ls-remote validation resets ambient
@@ -6924,7 +6928,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # only the wizard's own -- copies it.
     # 2375 -> 2413 (2026-10-04): measured after merging the agent-free
     # environment archive branch into main; both sides' growth.
-    "registryRoutes.py": 2413,
+    # 2413 -> 2433 (2026-10-08): a settings save writes only the limits
+    # that changed and answers each with its outcome; the planning and
+    # the wording live in vaibify/config/resourceLimits.py, and only the
+    # YAML writes stay here, beside the writer they use.
+    # 2433 -> 2452 (2026-10-08): the read-only writable-layer preview
+    # route, beside the other name-keyed container routes; the
+    # measurement and its sentence live in writableLayerPreview and
+    # vaibify/docker/writableLayerLoss.py.
+    # 2452 -> 2457 (2026-10-08): the settings save answers with the
+    # agent-memory advisory from vaibify/config/resourceAdequacy.py.
+    # 2457 -> 2469 (2026-10-08): the settings save applies a saved limit
+    # to the running container where that is safe; the route's carrier
+    # declaration names the gateway call, and the planning, the update
+    # and the re-inspection live in resourceLimitApplication.
+    "registryRoutes.py": 2469,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7630,7 +7648,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1150 -> 1154 (2026-10-08): the AI Declaration file-state GET joins
     # the container-read allowlist the same way; the module is one
     # cohesive list of route scopes.
-    "routeScope.py": 1154,
+    # 1154 -> 1158 (2026-10-08): the memory watch's GET joins the
+    # container-read allowlist, with why it is a read.
+    "routeScope.py": 1158,
 }
 
 

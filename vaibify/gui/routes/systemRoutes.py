@@ -6,9 +6,11 @@ import asyncio
 import concurrent.futures
 import json
 import os
+from datetime import datetime, timezone
 
 from fastapi import Request
 
+from .. import containerMemoryWatch
 from .. import pipelineServer as _pipelineServer
 from ..dockerStatus import (
     fdictGetDockerStatus,
@@ -32,9 +34,28 @@ def _fnRegisterMonitor(app, dictCtx):
 
     @app.get("/api/monitor/{sContainerId}")
     async def fdictGetMonitorStats(sContainerId: str):
-        return await asyncio.to_thread(
+        dictStats = await asyncio.to_thread(
             fdictGetContainerStats, dictCtx["docker"], sContainerId,
         )
+        dictMemory = containerMemoryWatch.fdictDescribeMemoryForContainerId(
+            app.state, sContainerId, datetime.now(timezone.utc))
+        dictStats["sMemoryKillText"] = containerMemoryWatch.fsDescribeKillCount(
+            dictMemory["iKillCount"])
+        return dictStats
+
+
+def _fnRegisterMemoryWatch(app):
+    """Register GET /api/monitor/{id}/memory, the memory watch's answer.
+
+    It never execs: it returns the record the sampler keeps, judged as
+    of now, so a sampler that has stopped reads as stale here.
+    """
+
+    @app.get("/api/monitor/{sContainerId}/memory")
+    @ffnDeclareCarrierMode(S_CARRIER_TYPED_READ)
+    async def fdictGetContainerMemory(sContainerId: str):
+        return containerMemoryWatch.fdictDescribeMemoryForContainerId(
+            app.state, sContainerId, datetime.now(timezone.utc))
 
 
 def _fnRegisterRuntimeInfo(app, dictCtx):
@@ -439,6 +460,41 @@ def _ftDescribeX11Findings(connectionDocker, sContainerId):
         return [], []
 
 
+def _flistDescribeResourceLimitDrift(connectionDocker, sContainerId):
+    """Return the lines saying the running limits differ from vaibify.yml.
+
+    Three-state, like the configuration drift: an unreadable file or an
+    unreadable running limit answers NO lines, never drift. Its own
+    key, because a limit applies at the next start, not the last one.
+    """
+    from vaibify.config import resourceLimits
+    from .. import pipelineRunSlots
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    try:
+        return resourceLimits.flistDescribeLimitDrift(
+            pipelineRunSlots.fdictReadRunningLimits(
+                connectionDocker, sContainerId),
+            resourceLimits.fdictResolveDesiredLimits(configProject),
+        )
+    except Exception:
+        return []
+
+
+def _flistDescribeResourceAdvisories(connectionDocker, sContainerId):
+    """Return the agent-memory advisories for the container's project.
+
+    Recomputed per settled readiness answer from the file as it is now,
+    so raising the limit clears it. An unreadable file says nothing.
+    """
+    from vaibify.config import resourceAdequacy
+    configProject = _fconfigForContainerOrNone(connectionDocker, sContainerId)
+    if configProject is None:
+        return []
+    return resourceAdequacy.flistDescribeResourceAdvisories(configProject)
+
+
 def _fconfigForContainerOrNone(connectionDocker, sContainerId):
     """Return the registered project's config for a container id, or None.
 
@@ -491,6 +547,12 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     dictReadiness["listConfigurationDrift"] = (
         _flistDescribeConfigurationDrift(connectionDocker, sContainerId)
         + listX11ContainerLines
+    )
+    dictReadiness["listResourceLimitDrift"] = (
+        _flistDescribeResourceLimitDrift(connectionDocker, sContainerId)
+    )
+    dictReadiness["listResourceAdvisories"] = (
+        _flistDescribeResourceAdvisories(connectionDocker, sContainerId)
     )
     listSecretWarnings = _flistDescribeUnresolvableSecrets(
         connectionDocker, sContainerId,
@@ -706,6 +768,7 @@ def _fnRegisterEnvironmentInfo(app, dictCtx):
 def fnRegisterAll(app, dictCtx):
     """Register all system routes."""
     _fnRegisterMonitor(app, dictCtx)
+    _fnRegisterMemoryWatch(app)
     _fnRegisterEnvironmentInfo(app, dictCtx)
     _fnRegisterRuntimeInfo(app, dictCtx)
     _fnRegisterUserInfo(app)
