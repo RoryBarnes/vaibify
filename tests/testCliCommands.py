@@ -67,18 +67,16 @@ def test_stop_calls_stop_container(mockStop, mockConfig):
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-@patch("subprocess.run")
-def test_connect_invokes_docker_exec(mockRun, mockConfig):
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_connect_invokes_the_cleaned_up_exec(mockExec, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
         sContainerUser="researcher",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["connect"])
-    mockRun.assert_called_once()
-    listArgs = mockRun.call_args[0][0]
-    assert "docker" in listArgs
-    assert "exec" in listArgs
+    assert result.exit_code == 0, result.output
+    mockExec.assert_called_once_with("testproj", "researcher", ["bash"])
 
 
 # -----------------------------------------------------------------------
@@ -87,17 +85,17 @@ def test_connect_invokes_docker_exec(mockRun, mockConfig):
 
 
 @patch("vaibify.cli.main.fconfigResolveProject")
-@patch("subprocess.run")
-def test_verify_invokes_check_isolation(mockRun, mockConfig):
+@patch("vaibify.gui.cliShellContainment.fnRunCleanedUpCliExec")
+def test_verify_invokes_check_isolation(mockExec, mockConfig):
     mockConfig.return_value = SimpleNamespace(
         sProjectName="testproj",
         sContainerUser="researcher",
     )
     runner = CliRunner()
     result = runner.invoke(main, ["verify"])
-    mockRun.assert_called_once()
-    listArgs = mockRun.call_args[0][0]
-    assert "checkIsolation" in listArgs[-1]
+    assert result.exit_code == 0, result.output
+    mockExec.assert_called_once_with(
+        "testproj", "researcher", ["/home/researcher/checkIsolation.sh"])
 
 
 # -----------------------------------------------------------------------

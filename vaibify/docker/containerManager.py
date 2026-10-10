@@ -1128,6 +1128,31 @@ def fnStopContainer(sProjectName):
     fnRemoveStopped(sProjectName)
 
 
+def fprocessLaunchInteractiveExec(sContainerName, sUser, sWrapperScript):
+    """Start ``docker exec -it`` on this terminal; return its process.
+
+    The lifecycle gateway's one interactive exec, for ``vaibify
+    connect`` and ``vaibify verify``: the TTY is docker's own, so
+    Ctrl-C inside the shell reaches the remote shell as it always has.
+    ``sWrapperScript`` is the containment seam's group-reporting
+    wrapper, built from a validated program path and never from free
+    text; the seam discovers the session it reports and ends it on
+    exit.
+    """
+    return subprocess.Popen([
+        "docker", "exec", "-it", "-u", sUser, sContainerName,
+        "/bin/sh", "-c", sWrapperScript,
+    ])
+
+
+def fnAwaitProcessOrKill(processChild, fTimeoutSeconds):
+    """Wait for a launched process; kill it when the bound passes."""
+    try:
+        processChild.wait(timeout=fTimeoutSeconds)
+    except (subprocess.TimeoutExpired, OSError):
+        processChild.kill()
+
+
 def fdictProbeContainerPresence(sProjectName):
     """Return ``{bAnswered, bPresent}`` for a container NAME.
 

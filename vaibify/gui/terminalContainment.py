@@ -60,6 +60,7 @@ __all__ = [
     "fdictDrainAllTerminalRecords",
     "fdictDrainSessionRecord",
     "fdictTerminateOrphanedJournalRecords",
+    "fdictTerminateAndProveGroup",
     "fbContainerHasLiveTerminalRecords",
     "fsetNamesWithLiveTerminalRecords",
 ]
@@ -480,6 +481,33 @@ def fdictTerminateAndProveRecord(
         "the terminal process group could not be proven empty: "
         f"{dictProbe.get('sDetail', '')}",
     )
+
+
+def fdictTerminateAndProveGroup(
+    connectionDocker, sContainerName, sContainerId, iProcessGroup,
+):
+    """TERM, then KILL, a bare session group and PROVE it empty.
+
+    The record-free form of :func:`fdictTerminateAndProveRecord`, for a
+    session that has no journal record: a CLI exec's. Same signals,
+    same waits, same proof; it settles nothing because there is
+    nothing to settle. Returns ``{bProvenEmpty, sDetail}``.
+    """
+    recordTerminal = TerminalExecutionRecord(
+        sOperationId="", sContainerName=sContainerName,
+        sContainerId=sContainerId, sDockerExecId="", iOwnerGeneration=0,
+        connectionDocker=connectionDocker, dictRegistry=None,
+        session=None, iProcessGroup=iProcessGroup,
+    )
+    dictProbe = _fdictSignalAndAwaitEmpty(
+        recordTerminal, "TERM", F_TERMINATE_WAIT_SECONDS,
+    )
+    if not _fbProbeProvesEmpty(dictProbe):
+        dictProbe = _fdictSignalAndAwaitEmpty(
+            recordTerminal, "KILL", F_KILL_WAIT_SECONDS,
+        )
+    return {"bProvenEmpty": _fbProbeProvesEmpty(dictProbe),
+            "sDetail": dictProbe.get("sDetail", "")}
 
 
 def _fnFenceSessionQuietly(recordTerminal):

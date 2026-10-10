@@ -234,6 +234,12 @@ remains until you remove it with `docker volume rm`.
 `vaibify verify [-p NAME]` runs `checkIsolation.sh` inside the running
 container; what it checks is in [Security Model](security.md).
 
+Both `connect` and `verify` open an interactive exec that vaibify
+records on the host and ends on every exit: closing the window ends
+the shell and everything started in it, and a CLI killed outright is
+cleaned up by the running hub's reaper once the CLI is provably dead.
+See [Known debt](knownDebt.md) for what the record does not cover.
+
 ## Shell helpers
 
 The first `vaibify` command after an install or upgrade configures
@@ -279,7 +285,7 @@ vaibify --version
 
 | Command | Meaning |
 |---------|---------|
-| `vaibify connect [-p NAME]` | Open a shell inside the running container |
+| `vaibify connect [-p NAME]` | Open a shell inside the running container; closing the window ends the shell and everything started in it |
 | `vaibify push SOURCE DESTINATION [-p NAME]` | Copy a host file into the workspace. A relative container path is read from `workspaceRoot` |
 | `vaibify pull SOURCE DESTINATION [-p NAME]` | Copy a workspace file to the host. A relative container path is read from `workspaceRoot` |
 | `vaibify ls [PATH] [--json] [-p NAME]` | List a container directory (default `/workspace`); a relative path is read from `/workspace` |

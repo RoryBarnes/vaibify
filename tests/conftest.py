@@ -223,7 +223,7 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
         containerLock, hubPortRegistry, keepAliveManager,
         operationJournal, sessionRegistry,
     )
-    from vaibify.gui import hostControlChannel, stateWriteLock
+    from vaibify.gui import cliShellContainment, hostControlChannel, stateWriteLock
     from vaibify.reproducibility import reproductionSource
     # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
     # their whole tmp_path to model a missing directory, and a home
@@ -245,6 +245,9 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(keepAliveManager, "_S_PID_DIRECTORY", "caffeinate")
     fnRedirectDirectory(operationJournal, "_S_JOURNAL_DIRECTORY", "journal")
     fnRedirectDirectory(hostControlChannel, "_S_CONTROL_DIRECTORY", "control")
+    fnRedirectDirectory(
+        cliShellContainment, "_S_CLI_SHELL_DIRECTORY", "cliShells",
+    )
     fnRedirectDirectory(commandBuild, "_S_BUILD_STAGING_DIRECTORY", "build")
     fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
     fnRedirectDirectory(

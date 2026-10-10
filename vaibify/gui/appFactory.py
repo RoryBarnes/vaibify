@@ -19,6 +19,7 @@ from . import agentCouncilController
 from . import agentCouncilRegistry
 from . import agentCouncilStore
 from . import browserSession
+from . import cliShellContainment
 from . import commitCarrier
 from . import containerMemorySampler
 from . import containerMemoryWatch
@@ -153,6 +154,28 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     )
     remnantReapers.fnRegisterReaper(
         app, "orphanedTerminals", _fdictReapOrphanedTerminals,
+    )
+    remnantReapers.fnRegisterReaper(
+        app, "orphanedCliShells", _fdictReapOrphanedCliShells,
+    )
+
+
+def _fdictReapOrphanedCliShells(dictCtx):
+    """End the shells of `vaibify connect` CLIs that died, on proof."""
+    from vaibify.config.connectionAvailability import fbDockerReachable
+    connectionDocker = dictCtx.get("docker") if dictCtx else None
+    if not fbDockerReachable(connectionDocker):
+        return remnantReapers.fdictBuildReaperOutcome(
+            remnantReapers.S_OUTCOME_FORBIDDEN,
+            sReason="the Docker daemon is unreachable",
+            sRemedy="Start Docker, then rescan.",
+        )
+    dictOutcome = cliShellContainment.fdictReapOrphanedCliShells(
+        connectionDocker,
+    )
+    return remnantReapers.fdictBuildReaperOutcome(
+        remnantReapers.S_OUTCOME_RAN,
+        iRemoved=len(dictOutcome["listEnded"]) + len(dictOutcome["listDeleted"]),
     )
 
 

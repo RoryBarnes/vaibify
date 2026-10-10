@@ -2159,6 +2159,19 @@ LIST_FALSIFICATIONS = [
         new="""    if False:
         fnTerminateOrphanedTerminals(sProjectName, connectionDocker)""",
     ),
+    # A SIGHUP'd `vaibify connect` must leave no session in the container:
+    # the hang-up reaches the CLI's exit path, which ends the session with
+    # proof. Kill-confirmation needs a reachable daemon (docker_live).
+    Falsification(
+        nodeid='tests/testCliExecLive.py::test_a_hangup_ends_the_cli_shell_and_everything_in_it',
+        source='vaibify/gui/cliShellContainment.py',
+        old="""        _fnEndCliSessionAndRecord(
+            connectionDocker, sContainerName, sContainerId, iSessionId,
+            sRecordPath, processChild,
+        )""",
+        new="""        del connectionDocker, sContainerName, sContainerId, iSessionId
+        del sRecordPath, processChild""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(

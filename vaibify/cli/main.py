@@ -6,7 +6,6 @@ Registers all subcommands with the top-level Click group.
 import logging
 import logging.handlers
 import os
-import subprocess
 import sys
 
 import click
@@ -375,10 +374,8 @@ def fnStopCommand(sProjectName):
 def fnConnectCommand(project):
     """Open a shell inside the running container."""
     configProject = fconfigResolveProject(project)
-    sUser = configProject.sContainerUser
-    sName = configProject.sProjectName
-    subprocess.run(
-        ["docker", "exec", "-it", "-u", sUser, sName, "bash"]
+    _fnRunCliExecOrExit(
+        configProject.sProjectName, configProject.sContainerUser, ["bash"],
     )
 
 
@@ -392,11 +389,27 @@ def fnVerifyCommand(sProjectName):
     """Run the isolation check script inside the container."""
     configProject = fconfigResolveProject(sProjectName)
     sUser = configProject.sContainerUser
-    sScript = f"/home/{sUser}/checkIsolation.sh"
-    subprocess.run(
-        ["docker", "exec", "-it", "-u", sUser,
-         configProject.sProjectName, sScript]
+    _fnRunCliExecOrExit(
+        configProject.sProjectName, sUser, [f"/home/{sUser}/checkIsolation.sh"],
     )
+
+
+def _fnRunCliExecOrExit(sName, sUser, listCommand):
+    """Run an interactive exec that ends with its window; exit on refusal.
+
+    Both ``connect`` and ``verify`` were a bare ``docker exec -it``,
+    which outlives a closed window together with everything started in
+    it. The containment seam wraps the exec so that closing the window
+    ends the session, and a CLI killed outright is cleaned up by the
+    hub's reaper once the CLI is provably dead.
+    """
+    from vaibify.gui.cliShellContainment import fnRunCleanedUpCliExec
+    from vaibify.gui.terminalContainment import TerminalContainmentError
+    try:
+        fnRunCleanedUpCliExec(sName, sUser, listCommand)
+    except TerminalContainmentError as error:
+        click.echo(f"ERROR: {error}")
+        sys.exit(1)
 
 
 @main.command("setup")

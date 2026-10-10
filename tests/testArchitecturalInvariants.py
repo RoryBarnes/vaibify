@@ -3686,6 +3686,11 @@ _SET_TERMINAL_CREATION_SYMBOLS = frozenset({
 _SET_TERMINAL_SEAM_MODULES = frozenset({
     "terminalSession.py",
     "terminalContainment.py",
+    # The `vaibify connect` / `vaibify verify` lane (2026-10-09): it
+    # wraps the CLI's exec in the seam's group-reporting script and
+    # discovers the session, so it needs the creation symbols, and it
+    # ends every session it opens with the seam's own proof.
+    "cliShellContainment.py",
 })
 
 
@@ -4276,6 +4281,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
     # worker threads, and the reaper reads the probe's snapshot.
     "serverLifespan.py": 885,
+    # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
+    # dead hub's terminal records from the journal and ends them, and
+    # the record-free group terminate-and-prove the CLI-shell lane
+    # shares. Both are the one exit every terminal session has, so
+    # they belong beside it; the CLI lane itself was split out into
+    # cliShellContainment.py for exactly that reason.
+    "terminalContainment.py": 823,
     # NEW at 819 (2026-10-01): the credential test publishes only
     # sanitized sentences (fsSanitizeJobDetail) and records an
     # unexpected fault by type; one cohesive job module.

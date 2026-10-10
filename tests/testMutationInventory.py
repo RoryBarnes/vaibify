@@ -164,7 +164,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # batched typed read, and the per-marker read it replaced is gone.
 # 276 -> 275 (2026-10-06): the download route moved to downloadRoutes and
 # its one unclassified stream row became two classified confined reads.
-I_UNCLASSIFIED_ROW_BUDGET = 274
+I_UNCLASSIFIED_ROW_BUDGET = 272
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -412,6 +412,11 @@ I_UNCLASSIFIED_ROW_BUDGET = 274
 # per-container mutation lock. The `docker update` itself is inside the
 # lifecycle gateway; something outside it has to ask for it, as the stop
 # route asks for a stop. Classified at birth.
+# 228 (2026-10-09, unchanged): the two bare `docker exec -it` sites in
+# the CLI's connect and verify commands became the CLI-shell seam's one
+# launch through the lifecycle gateway plus its bounded wait-or-kill of
+# that client; reach moved from cli/main.py to gui/cliShellContainment.py
+# and the count did not rise.
 I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 
 
@@ -448,7 +453,7 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 # replacement's neighbour, acquires nothing -- it touches only
 # two known host directories and never the daemon.
 # 58 -> 57 (2026-10-01): the removed second setup wizard's subprocess import.
-I_UNDISPOSED_ACQUISITION_BUDGET = 57
+I_UNDISPOSED_ACQUISITION_BUDGET = 56
 
 
 def _fmoduleGenerator():

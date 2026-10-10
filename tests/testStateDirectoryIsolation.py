@@ -18,7 +18,7 @@ from vaibify.config import (
     operationJournal,
     sessionRegistry,
 )
-from vaibify.gui import hostControlChannel
+from vaibify.gui import cliShellContainment, hostControlChannel
 
 
 def _sRealVaibifyHome():
@@ -55,6 +55,7 @@ def test_every_redirected_state_constant_points_outside_the_real_home():
         keepAliveManager._S_PID_DIRECTORY,
         operationJournal._S_JOURNAL_DIRECTORY,
         hostControlChannel._S_CONTROL_DIRECTORY,
+        cliShellContainment._S_CLI_SHELL_DIRECTORY,
     ]
     listLeaked = [sPath for sPath in listConstants
                   if not _fbOutsideRealHome(sPath)]

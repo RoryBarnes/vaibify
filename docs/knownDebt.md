@@ -149,3 +149,12 @@ without discussion:
   id a fresh inspect named, so it can only ever change that container,
   and a stop that lands mid-update makes the re-inspect fail and the
   outcome read "could not be applied", never "applied".
+
+- A `vaibify connect` or `vaibify verify` shell is recorded on the host
+  (`~/.vaibify/cliShells/`) and ended when its window closes or, once
+  the CLI is provably dead, by the hub's reaper, but it takes no
+  container flock and writes no journal record, so it remains
+  invisible to the quiescence claim: a project in which only a CLI
+  shell has run still reports its quiescence as it did before. The
+  record exists for cleanup, not for the claim; giving the claim sight
+  of CLI execs is a later step that needs no lock to add.

@@ -373,6 +373,11 @@ DICT_PRIMITIVE_ACCESS = {
     "fbContainerIsRunning": S_ACCESS_TYPED_READ,
     "fdictGetContainerStatus": S_ACCESS_TYPED_READ,
     "fdictProbeContainerPresence": S_ACCESS_TYPED_READ,
+    # The CLI's interactive exec: a docker exec of the containment
+    # seam's wrapper, attached to the researcher's own terminal, and
+    # the bounded wait that kills it when its session has been ended.
+    "fprocessLaunchInteractiveExec": S_ACCESS_ARBITRARY_COMMAND,
+    "fnAwaitProcessOrKill": S_ACCESS_SIGNAL,
     "fdictFindContainersForReservation": S_ACCESS_TYPED_READ,
     "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,
     # The full `docker inspect` object, read by the CLI diagnostics.
