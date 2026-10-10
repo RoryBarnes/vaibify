@@ -4287,7 +4287,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # shares. Both are the one exit every terminal session has, so
     # they belong beside it; the CLI lane itself was split out into
     # cliShellContainment.py for exactly that reason.
-    "terminalContainment.py": 823,
+    # 823 -> 834 (2026-10-09): the remnant scanner asks whether a drain
+    # is in progress before attributing a container's sessions.
+    "terminalContainment.py": 834,
     # NEW at 819 (2026-10-01): the credential test publishes only
     # sanitized sentences (fsSanitizeJobDetail) and records an
     # unexpected fault by type; one cohesive job module.

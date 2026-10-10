@@ -289,3 +289,8 @@ def fnStopProvablyOursKeepAlive(iPid):
             "left alone"
         )
     _fnKillIfRunning(iPid, fdictReadSpawnLedger()[iPid]["sStartedIso"])
+
+
+def fdictReadKeepAliveRecord(sContainerName):
+    """Return a registry name's ``{iPid, sStartedIso}`` record, or {}."""
+    return _fdictReadPidPayload(_fsPidFilePath(sContainerName))

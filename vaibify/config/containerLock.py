@@ -546,3 +546,30 @@ def _fdictHolderUnlessStale(fileHandle, sPath):
         pidFileRegistry.fnUnlinkQuietly(sPath)
         return {}
     return dictHolder
+
+
+def fbContainerLockIsHeld(sProjectName):
+    """Return True when some process holds the container's flock now.
+
+    A read for the remnant scanner's peer-hub safety: a container whose
+    flock is held, by this hub or another, has a live owner, and
+    nothing in it may be listed for removal. No lock file means no
+    holder. The probe takes the flock non-blockingly and releases it
+    at once, so it never waits and never keeps anything.
+    """
+    sPath = fsLockPathFor(sProjectName)
+    if not os.path.exists(sPath):
+        return False
+    try:
+        fileHandle = _ffileOpenLockFileNoFollow(sPath)
+    except OSError:
+        return True
+    try:
+        try:
+            fcntl.flock(fileHandle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fileHandle, fcntl.LOCK_UN)
+        return False
+    finally:
+        fileHandle.close()

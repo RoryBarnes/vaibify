@@ -25,6 +25,7 @@ from . import containerMemorySampler
 from . import containerMemoryWatch
 from . import containerOwnership
 from . import remnantReapers
+from . import remnantScanner
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
@@ -44,6 +45,7 @@ def _fnInitialiseApplicationState(app, dictConfig, sSessionToken):
     """Seed the shared app.state fields used by routes and middleware."""
     app.state.listLifespanStartup = []
     app.state.listLifespanShutdown = []
+    app.state.dictRemnantScan = remnantScanner.fdictCreateRemnantScanState()
     app.state.sSessionToken = sSessionToken
     app.state.sTerminalUser = dictConfig["sTerminalUser"]
     app.state.dictContainerOwners = (
@@ -162,6 +164,7 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
         app, "shadowLaneLocks",
         remnantReapers.ffnWrapSweepAsReaper(_fiReapFreeShadowLaneLocks),
     )
+    remnantReapers.fnRegisterPostPassScan(app, remnantScanner.fnRunRemnantScan)
 
 
 def _fiReapFreeShadowLaneLocks():

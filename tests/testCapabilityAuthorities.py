@@ -309,6 +309,16 @@ DICT_NAMED_AUTHORITIES = {
             "runs no program in any container and is a typed read in "
             "DICT_PRIMITIVE_ACCESS.",
         ),
+    "docker/dockerConnection.py|fdictReadContainerHostConfig|docker-client|"
+    "docker.errors.NotFound|import-from|0":
+        _fdictAuthority(
+            ["background"],
+            "The same exception class, for the gateway's HostConfig read: "
+            "the remnant scanner learns whether a container was created "
+            "with an init process, and a positive 'no such container' is "
+            "told from a daemon that did not answer. A typed read in "
+            "DICT_PRIMITIVE_ACCESS; no program runs in any container.",
+        ),
     "docker/dockerConnection.py|fsImageState|docker-client|"
     "docker.errors.ImageNotFound|import-from|0":
         _fdictAuthority(

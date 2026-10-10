@@ -34,6 +34,7 @@ __all__ = [
     "fdictReaperHealth",
     "ffnWrapSweepAsReaper",
     "fnRecordReaperOutcome",
+    "fnRegisterPostPassScan",
     "fnRegisterReaper",
     "fnRegisterReaperLoop",
     "fnRequestRescan",
@@ -174,6 +175,18 @@ async def fnRunReaperPass(app, dictCtx):
             await fnRunReaperOnce(app, sReaperName, fnReaper, dictCtx)
     finally:
         app.state.bReaperPassInFlight = False
+    fnScan = getattr(app.state, "fnRemnantScanAfterPass", None)
+    if fnScan is not None:
+        await fnScan(app, dictCtx)
+
+
+def fnRegisterPostPassScan(app, fnScan):
+    """Name the coroutine function every pass ends with: the scan.
+
+    The scan classifies what the reapers could not prove, so it runs
+    after them, from the same pass, and never on a request path.
+    """
+    app.state.fnRemnantScanAfterPass = fnScan
 
 
 def fnRequestRescan(app):

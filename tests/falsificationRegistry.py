@@ -27331,9 +27331,9 @@ LIST_FALSIFICATIONS = [
         # Antigravity is asked for by its overlay name, a command no
         # image installs, so its version is never recorded.
         nodeid='tests/testAiProvenanceStamp.py::test_the_capture_asks_each_agent_by_the_command_it_installs',
-        source='vaibify/gui/aiProvenanceCapture.py',
-        old='_DICT_AGENT_COMMANDS = {"antigravity": "agy"}\n',
-        new='_DICT_AGENT_COMMANDS = {}\n',
+        source='vaibify/docker/imageBuilder.py',
+        old='DICT_AGENT_COMMANDS["antigravity"] = "agy"\n',
+        new='DICT_AGENT_COMMANDS["antigravity"] = "antigravity"\n',
     ),
     Falsification(
         nodeid=(

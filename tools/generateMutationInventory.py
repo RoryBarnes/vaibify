@@ -272,6 +272,12 @@ DICT_PRIMITIVE_ACCESS = {
     # adapter); the state read asks the DAEMON for a container's State
     # block and runs no program at all.
     "fsReadCgroupMemory": S_ACCESS_TYPED_READ,
+    # The remnant scanner's reads: the in-container process table (a
+    # typed read taking no caller value), the daemon's HostConfig block,
+    # and the listing of every container with its labels.
+    "fsReadProcessTable": S_ACCESS_TYPED_READ,
+    "fdictReadContainerHostConfig": S_ACCESS_TYPED_READ,
+    "flistListAllContainers": S_ACCESS_TYPED_READ,
     # The recreate confirmation's /tmp measurement: a declared typed
     # read of ``du -sxk`` with the path fixed in the adapter.
     "fiReadTmpBytes": S_ACCESS_TYPED_READ,

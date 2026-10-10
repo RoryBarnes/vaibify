@@ -31,6 +31,7 @@ logger = logging.getLogger("vaibify")
 __all__ = [
     "CliExecInterruptedError",
     "fdictReapOrphanedCliShells",
+    "flistCliShellRecords",
     "fnRunCleanedUpCliExec",
 ]
 
@@ -271,3 +272,16 @@ def _fsReapOneDeadCliShell(connectionDocker, dictRecord, sRecordPath):
         return "kept"
     _fnUnlinkCliShellRecord(sRecordPath)
     return "ended"
+
+
+def flistCliShellRecords():
+    """Return every well-formed CLI shell record on this host."""
+    from vaibify.config import pidFileRegistry
+    listRecords = []
+    for sRecordPath in pidFileRegistry.flistRegistryFiles(
+        _S_CLI_SHELL_DIRECTORY, _S_CLI_SHELL_SUFFIX,
+    ):
+        dictRecord = pidFileRegistry.fdictReadPayload(sRecordPath)
+        if _fbCliShellRecordIsWellFormed(dictRecord):
+            listRecords.append(dictRecord)
+    return listRecords

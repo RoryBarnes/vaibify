@@ -61,6 +61,7 @@ __all__ = [
     "fdictDrainSessionRecord",
     "fdictTerminateOrphanedJournalRecords",
     "fdictTerminateAndProveGroup",
+    "fbContainerDrainInProgress",
     "fbContainerHasLiveTerminalRecords",
     "fsetNamesWithLiveTerminalRecords",
 ]
@@ -733,6 +734,16 @@ def fdictDrainSessionRecord(session):
         return None
     with _flockDrainForContainer(recordTerminal.sContainerName):
         return fdictTerminateAndProveRecord(recordTerminal)
+
+
+def fbContainerDrainInProgress(sContainerName):
+    """Return True while a drain holds the container's drain lock.
+
+    The remnant scanner asks before attributing sessions: a drain in
+    flight is ending a session whose record may already be gone, and
+    listing that session as untracked would be false for a moment.
+    """
+    return _flockDrainForContainer(sContainerName).locked()
 
 
 def fbContainerHasLiveTerminalRecords(appState, sContainerName):

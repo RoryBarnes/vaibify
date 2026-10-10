@@ -734,7 +734,12 @@ DICT_UNRESOLVED_BUDGET = {
     # replaces a route-side call to ``.containers.list`` on the
     # connection object, an attribute the class never had, that failed
     # silently for weeks.
-    "untraceable-docker-sdk-root": 54,
+    # 55 since flistListAllContainers (2026-10-09): the remnant scanner's
+    # one listing of every container with its labels, so a stopped
+    # container the suite created but no longer tracks can be told from a
+    # researcher's by the label only a test writes. A read, inside the
+    # gateway, through the same root as flistGetRunningContainers.
+    "untraceable-docker-sdk-root": 55,
 }
 
 

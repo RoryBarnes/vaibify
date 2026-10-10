@@ -103,6 +103,15 @@ T_AGENT_OVERLAY_NAMES = (
     "claude", "codex", "gemini", "antigravity", "opencode", "cline",
     "openhands", "pi",
 )
+# The command each agent overlay installs. Most install a binary named
+# after the overlay; Antigravity's installer provides ``agy``. Read by
+# the provenance capture and by the remnant scanner, which flags a
+# session running any of these for confirmation before it is ended.
+DICT_AGENT_COMMANDS = {
+    sAgent: sAgent for sAgent in T_AGENT_OVERLAY_NAMES
+}
+DICT_AGENT_COMMANDS["antigravity"] = "agy"
+
 T_BASE_OVERLAY_NAMES = (
     "gpu", "jupyter", "rlang", "julia", "database", "dvc", "nestedSampling",
 )
