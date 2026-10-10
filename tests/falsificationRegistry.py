@@ -21899,10 +21899,31 @@ LIST_FALSIFICATIONS = [
             'tests/testSleepPreventionFollowsWork.py::'
             'testARouterWithNoDaemonLegIsNeverAsked'
         ),
-        # the reachability question is skipped and the router is listed
+        # the reachability question is skipped and the router is listed.
+        # Anchored through the work-lane sweep's own trailing lines, so it
+        # stays unique now that the session-lane setter asks the same
+        # reachability question with the same two lines.
         source='vaibify/gui/sleepPrevention.py',
-        old='    if not fbDockerReachable(connectionDocker):\n        return\n',
-        new='    if connectionDocker is None:\n        return\n',
+        old=(
+            '    if not fbDockerReachable(connectionDocker):\n'
+            '        return\n'
+            '    dictRunningIdByName = _fdictRunningContainerIdsByName('
+            'connectionDocker)\n'
+            '    if dictRunningIdByName is None:\n'
+            '        return\n'
+            '    dictContainerOwners = getattr(appState, '
+            '"dictContainerOwners", {})\n'
+        ),
+        new=(
+            '    if connectionDocker is None:\n'
+            '        return\n'
+            '    dictRunningIdByName = _fdictRunningContainerIdsByName('
+            'connectionDocker)\n'
+            '    if dictRunningIdByName is None:\n'
+            '        return\n'
+            '    dictContainerOwners = getattr(appState, '
+            '"dictContainerOwners", {})\n'
+        ),
     ),
     Falsification(
         nodeid=(
