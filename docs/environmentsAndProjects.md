@@ -209,8 +209,11 @@ in the wizard's **CPU cores** field or in the tile's **⚙** under
 capped at the number of cores the computer has. Memory is unlimited
 unless you set **Memory (GB)** (`memoryLimitGigabytes`). A process that
 reaches the memory limit is killed by the kernel (see
-[Memory](#memory)), and an AI agent with the jobs it starts often
-needs several GB, so leave it at `0` unless you need a cap. When an
+[Memory](#memory)). The limit includes swap: the container cannot swap
+beyond it, so a limit means the same on every computer (if a Linux
+computer's kernel cannot limit swap, Docker cannot either). An AI agent
+with the jobs it starts often needs several GB, so leave it at `0`
+unless you need a cap. When an
 environment enables an AI agent and caps memory below 5 GB,
 `vaibify doctor`, `vaibify start`, the dashboard, and saving in **⚙**
 each say so; 5 GB is a starting point, not a requirement.
@@ -218,14 +221,15 @@ each say so; 5 GB is a starting point, not a requirement.
 An edit to `vaibify.yml` takes effect when the container next starts.
 A change saved in **⚙** is written there and, if the container is
 running, applied at once when that cannot kill a process: a higher
-memory limit (its swap limit moves with it, as Docker requires) or any
+memory limit (its swap limit rises with it, as Docker requires) or any
 change to the CPU limit. A lower memory limit, a memory limit on a
 container that had none, and removing a limit wait for the next start.
 The save says, for each limit it changed, whether it was applied,
 could not be applied (in Docker's own words), or waits for the next
 start. When a running container's limits differ from `vaibify.yml`, a
-banner says which limit differs and what the next Restart will apply;
-it says nothing when the running limits cannot be read.
+banner says which limit differs and what the next Restart will apply,
+including when the container can swap beyond its memory limit; it says
+nothing when the running limits cannot be read.
 **View > Resource Monitor** shows live CPU and memory use, the memory
 limit, the number of processes killed for lack of memory, and the
 container's disk usage, and warns when the disk is nearly full.

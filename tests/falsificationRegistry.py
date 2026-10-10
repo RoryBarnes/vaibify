@@ -30822,6 +30822,19 @@ LIST_FALSIFICATIONS = [
         old='    if _fbRunningEqualsDesired(dictPlan, dictRunningAfter):\n',
         new='    if not sFailure:\n',
     ),
+    # --- 2026-10-09: a memory cap allows no swap beyond it ---
+    Falsification(
+        nodeid='tests/testContainerManager.py::testACappedContainerHasNoSwapBeyondItsCap',
+        source='vaibify/docker/containerManager.py',
+        old='            "--memory", sMemoryArgument, "--memory-swap", sMemoryArgument])\n',
+        new='            "--memory", sMemoryArgument])\n',
+    ),
+    Falsification(
+        nodeid='tests/testResourceLimits.py::testALiveRaiseNeverLowersTheSwapLimit',
+        source='vaibify/config/resourceLimits.py',
+        old='    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])\n',
+        new='    iSwapBytes = iDesiredBytes\n',
+    ),
     Falsification(
         nodeid='tests/testEntrypointResourcesGuidance.py::testTheGuideTellsTheAgentWhereItsMemoryLimitIs',
         source='vaibify/containerImage/entrypoint.sh',

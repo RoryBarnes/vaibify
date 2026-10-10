@@ -3,7 +3,9 @@
 The planner's rules rest on three facts measured on Docker 28.3.3: a
 memory raise applies live only when the swap limit moves with it,
 ``--memory 0`` and ``--cpus 0`` are silently ignored, and a CPU cap can
-change either way on a running container. These tests apply real
+change either way on a running container. A container vaibify creates
+has its swap limit pinned to its memory limit; one created before that
+may allow more, and a live raise never lowers it. These tests apply real
 changes to THROWAWAY containers -- uniquely named, labeled, and
 force-removed in teardown -- and read the result back from the daemon,
 so each rule is checked against the thing it is about.
@@ -15,13 +17,15 @@ Live-daemon convention: skips with no daemon unless
 import asyncio
 import os
 import secrets
+import subprocess
 from types import SimpleNamespace
 
 import pytest
 
-from tests.liveContainerLabels import fdictLabels
+from tests.liveContainerLabels import fdictLabels, flistLabelArguments
 from tests.testDockerConnectionLive import fnRequireDaemonReachable
 from vaibify.config import resourceLimits
+from vaibify.docker import containerManager
 from vaibify.gui import resourceLimitApplication
 
 pytestmark = pytest.mark.docker_live
@@ -66,13 +70,43 @@ def _fdictApply(container, listFields, iCpuLimit, fMemoryGigabytes):
     return {d["sField"]: d for d in listOutcomes}
 
 
-def testAMemoryRaiseAppliesInPlaceAndCarriesTheSwap(fnCreateThrowaway):
-    container = fnCreateThrowaway(mem_limit="256m")
+def testTheArgumentsACappedContainerIsCreatedWithPinItsSwap():
+    fnRequireDaemonReachable()
+    saMemoryArgs = []
+    containerManager._fnAddMemoryAllocation(
+        SimpleNamespace(fMemoryLimitGigabytes=0.25), saMemoryArgs)
+    sName = "vaibify-limits-live-" + secrets.token_hex(6)
+    try:
+        subprocess.run(
+            ["docker", "run", "-d", "--name", sName, *flistLabelArguments(),
+             *saMemoryArgs, S_TEST_IMAGE, "sleep", "600"],
+            check=True, capture_output=True, timeout=120)
+        sOutput = subprocess.run(
+            ["docker", "inspect", "--format",
+             "{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}", sName],
+            check=True, capture_output=True, text=True).stdout
+    finally:
+        subprocess.run(["docker", "rm", "-f", sName], capture_output=True)
+    assert sOutput.split() == [str(256 * I_MEBIBYTE)] * 2
+
+
+def testAMemoryRaiseOnAPinnedContainerKeepsItPinned(fnCreateThrowaway):
+    container = fnCreateThrowaway(mem_limit="256m", memswap_limit="256m")
     sIdBefore = container.id
     dictOutcomes = _fdictApply(
         container, [resourceLimits.S_FIELD_MEMORY], 1, 0.5)
     assert dictOutcomes["memory"]["sOutcome"] == "applied", dictOutcomes
     assert container.id == sIdBefore
+    dictHostConfig = container.attrs["HostConfig"]
+    assert dictHostConfig["Memory"] == 512 * I_MEBIBYTE
+    assert dictHostConfig["MemorySwap"] == 512 * I_MEBIBYTE
+
+
+def testAMemoryRaiseNeverLowersAnOlderContainersSwap(fnCreateThrowaway):
+    container = fnCreateThrowaway(mem_limit="256m", memswap_limit="1g")
+    dictOutcomes = _fdictApply(
+        container, [resourceLimits.S_FIELD_MEMORY], 1, 0.5)
+    assert dictOutcomes["memory"]["sOutcome"] == "applied", dictOutcomes
     dictHostConfig = container.attrs["HostConfig"]
     assert dictHostConfig["Memory"] == 512 * I_MEBIBYTE
     assert dictHostConfig["MemorySwap"] == 1024 * I_MEBIBYTE

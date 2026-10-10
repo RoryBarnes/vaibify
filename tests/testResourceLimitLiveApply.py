@@ -79,13 +79,13 @@ def testARaiseIsSentWithItsSwapAndReportedApplied(fnInstallDaemon):
     daemonFake = fnInstallDaemon(_FakeDaemon(
         {"Memory": I_GIGABYTE, "MemorySwap": 2 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO},
-        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 8 * I_GIGABYTE,
+        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 4 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO}))
     dictOutcomes = _fdictByField(_flistApply(
         [resourceLimits.S_FIELD_MEMORY], _fconfig(fMemoryLimitGigabytes=4.0)))
     assert daemonFake.listUpdates == [(S_ID, [
         "--memory", str(4 * I_GIGABYTE),
-        "--memory-swap", str(8 * I_GIGABYTE)])]
+        "--memory-swap", str(4 * I_GIGABYTE)])]
     dictMemory = dictOutcomes[resourceLimits.S_FIELD_MEMORY]
     assert dictMemory["sOutcome"] == resourceLimits.S_OUTCOME_APPLIED
     assert dictMemory["sSentence"].endswith("The running container has it now.")
@@ -101,7 +101,7 @@ def testAPartialResultIsReportedFieldByField(fnInstallDaemon):
     fnInstallDaemon(_FakeDaemon(
         {"Memory": I_GIGABYTE, "MemorySwap": 2 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO},
-        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 8 * I_GIGABYTE,
+        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 4 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO}))
     dictOutcomes = _fdictByField(_flistApply(
         [resourceLimits.S_FIELD_MEMORY, resourceLimits.S_FIELD_CPU],
@@ -131,7 +131,7 @@ def testARefusedUpdateKeepsDockersWords(fnInstallDaemon):
 def testAMemoryDecreaseIsNeverSentLive(fnInstallDaemon):
     """Kills: applying a memory decrease to the running container."""
     daemonFake = fnInstallDaemon(_FakeDaemon(
-        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 8 * I_GIGABYTE,
+        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 4 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO}))
     dictMemory = _fdictByField(_flistApply(
         [resourceLimits.S_FIELD_MEMORY], _fconfig(fMemoryLimitGigabytes=1.0))
@@ -172,7 +172,7 @@ def testTheUpdateWaitsForTheContainersMutationLock(fnInstallDaemon):
     daemonFake = fnInstallDaemon(_FakeDaemon(
         {"Memory": I_GIGABYTE, "MemorySwap": 2 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO},
-        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 8 * I_GIGABYTE,
+        {"Memory": 4 * I_GIGABYTE, "MemorySwap": 4 * I_GIGABYTE,
          "NanoCpus": 2 * I_NANO}))
     appState = SimpleNamespace()
 

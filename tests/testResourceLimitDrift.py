@@ -57,7 +57,7 @@ def _fconfig(iCpuLimit=0, fMemoryLimitGigabytes=0.0):
 
 def testTheDriftRidesItsOwnKeyAndNeverTheStartWarnings():
     dictRunning = resourceLimits.fdictParseRunningLimits({
-        "Memory": 6 * I_GIGABYTE, "MemorySwap": 12 * I_GIGABYTE,
+        "Memory": 6 * I_GIGABYTE, "MemorySwap": 6 * I_GIGABYTE,
         "NanoCpus": 0, "CpuQuota": 0})
     dictReadiness = _fdictReadinessWith(
         _fconfig(fMemoryLimitGigabytes=1.0), dictRunning)

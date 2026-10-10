@@ -696,11 +696,20 @@ def _fnAddCpuAllocation(config, saRunArgs):
 
 
 def _fnAddMemoryAllocation(config, saRunArgs):
-    """Add the memory cap ``resourceLimits`` resolves; none means unlimited."""
+    """Add the memory cap ``resourceLimits`` resolves; none means unlimited.
+
+    The swap limit equals the memory limit, so the container has no swap
+    beyond its cap. Docker's default lets a capped container swap past
+    it, which on a computer with swap turns the cap from a kill into a
+    slowdown: a 1 GiB allocation ran to completion under a 256 MB cap
+    on a CI runner while the same allocation died where there was no
+    swap. Pinning makes the cap behave the same on every computer.
+    """
     from vaibify.config.resourceLimits import fsResolveMemoryArgument
     sMemoryArgument = fsResolveMemoryArgument(config)
     if sMemoryArgument is not None:
-        saRunArgs.extend(["--memory", sMemoryArgument])
+        saRunArgs.extend([
+            "--memory", sMemoryArgument, "--memory-swap", sMemoryArgument])
 
 
 _F_DOCKER_UPDATE_TIMEOUT_SECONDS = 30.0

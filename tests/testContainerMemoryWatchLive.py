@@ -110,7 +110,10 @@ def _fdictGetMemory(app, sContainerId):
 
 
 def testABalloonUnderACapIsReportedAsAKillWithALimitEvent(fnCreateThrowaway):
-    container = fnCreateThrowaway(mem_limit="256m")
+    container = fnCreateThrowaway(mem_limit="256m", memswap_limit="256m")
+    assert container.attrs["HostConfig"]["MemorySwap"] == 256 * I_MEBIBYTE, (
+        "swap must be pinned to the cap: on a host with swap, an unpinned "
+        "256 MB container ran this 1 GiB balloon to completion")
     sName = "memory-live-project"
     assert sName != container.id
     app = _fappWithOwner(sName, container.id)

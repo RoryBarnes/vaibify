@@ -16,6 +16,12 @@ cites the one it rests on:
 And one rule the researcher set (D3): a change that could kill a
 process -- lowering memory -- is never applied live.
 
+Because of fact 2, vaibify creates a capped container with
+``--memory-swap`` equal to ``--memory`` (2026-10-09): with Docker's
+default, a 1 GiB allocation ran to completion under a 256 MB cap on a
+CI runner that had swap, so the cap did not mean the same thing on
+every computer.
+
 The desired limits are pinned against ``flistBuildRunArgs`` itself: the
 equivalence table asserts that the resolver produces exactly the
 ``--cpus`` and ``--memory`` a container is created with, so the planner
@@ -67,6 +73,7 @@ def testTheResolverEqualsWhatDockerRunIsGiven(mockX11, iCpuLimit, fMemory):
         limits.fiResolveCpuCount(config))
     sMemory = _fsArgumentAfter(saArgs, "--memory")
     assert sMemory == limits.fsResolveMemoryArgument(config)
+    assert _fsArgumentAfter(saArgs, "--memory-swap") == sMemory
     if sMemory is None:
         assert limits.fiResolveMemoryBytes(config) is None
     else:
@@ -238,11 +245,11 @@ def testACpuChangeEitherWayAppliesLive():
 # ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("iSwap,iExpected", [
-    (2 * I_GIGABYTE, 8 * I_GIGABYTE),
     (1 * I_GIGABYTE, 4 * I_GIGABYTE),
+    (2 * I_GIGABYTE, 4 * I_GIGABYTE),
     (-1, -1),
 ])
-def testSwapMovesWithMemory(iSwap, iExpected):
+def testARaiseSetsTheSwapLimitToTheNewMemoryLimit(iSwap, iExpected):
     listPlan = limits.flistPlanLimitChanges(
         _fdictRunning(iMemory=I_GIGABYTE, iSwap=iSwap),
         {"iMemoryBytes": 4 * I_GIGABYTE, "iCpuCount": 2})
@@ -265,11 +272,21 @@ def testAnUnsetOrUnknownSwapIsNeverGuessed():
         assert "swap" in dictMemory["sReason"]
 
 
-def testAFractionalSwapScaleRoundsToWholeBytes():
+@pytest.mark.falsification
+def testALiveRaiseNeverLowersTheSwapLimit():
+    """Kills: setting the swap limit to the new memory limit outright.
+
+    A container created before swap was pinned may allow more swap than
+    the raised memory limit. Lowering a running container's swap limit
+    can kill a process that is using it, so the larger limit stays
+    until the next start.
+    """
     listPlan = limits.flistPlanLimitChanges(
-        _fdictRunning(iMemory=3, iSwap=5),
-        {"iMemoryBytes": 7, "iCpuCount": 2})
-    assert _fdictEntry(listPlan, limits.S_FIELD_MEMORY)["iSwapBytes"] == 12
+        _fdictRunning(iMemory=I_GIGABYTE, iSwap=8 * I_GIGABYTE),
+        {"iMemoryBytes": 4 * I_GIGABYTE, "iCpuCount": 2})
+    dictMemory = _fdictEntry(listPlan, limits.S_FIELD_MEMORY)
+    assert dictMemory["sAction"] == limits.S_ACTION_APPLY_LIVE
+    assert dictMemory["iSwapBytes"] == 8 * I_GIGABYTE
 
 
 # ---------------------------------------------------------------------
@@ -283,7 +300,7 @@ def _flistDrift(dictRunning, config, iHostCores=12):
 
 def testARunningLimitAboveTheFileSaysTheNextRestartLowersIt():
     listLines = _flistDrift(
-        _fdictRunning(iMemory=6 * I_GIGABYTE, iSwap=12 * I_GIGABYTE,
+        _fdictRunning(iMemory=6 * I_GIGABYTE, iSwap=6 * I_GIGABYTE,
                       iNanoCpus=11 * I_NANO),
         _fconfig(fMemoryLimitGigabytes=1.0))
     assert listLines == [
@@ -293,7 +310,7 @@ def testARunningLimitAboveTheFileSaysTheNextRestartLowersIt():
 
 def testARunningLimitBelowTheFileSaysWhatSavingWillDo():
     listLines = _flistDrift(
-        _fdictRunning(iMemory=I_GIGABYTE, iSwap=2 * I_GIGABYTE,
+        _fdictRunning(iMemory=I_GIGABYTE, iSwap=I_GIGABYTE,
                       iNanoCpus=11 * I_NANO),
         _fconfig(fMemoryLimitGigabytes=6.0))
     assert listLines == [
@@ -313,6 +330,26 @@ def testAMissingOrExtraLimitIsDescribed():
     assert listRemoved == [
         "This container runs with a 1 GB memory limit, but vaibify.yml "
         "sets none; the next Restart will remove it."]
+
+
+def testAContainerThatCanSwapPastItsCapIsDescribed():
+    listLines = _flistDrift(
+        _fdictRunning(iMemory=I_GIGABYTE, iSwap=2 * I_GIGABYTE,
+                      iNanoCpus=11 * I_NANO),
+        _fconfig(fMemoryLimitGigabytes=1.0))
+    assert listLines == [
+        "This container can also use swap beyond its 1 GB memory limit, "
+        "where a process slows down before it is killed; the next "
+        "Restart removes that allowance."]
+
+
+@pytest.mark.parametrize("iSwap", [I_GIGABYTE, -1, 0])
+def testAPinnedUnlimitedOrUnsetSwapIsNotDescribed(iSwap):
+    """Pinned is what a start creates; unlimited or unset may be all this
+    computer's Docker can do, which a Restart would not change."""
+    assert _flistDrift(
+        _fdictRunning(iMemory=I_GIGABYTE, iSwap=iSwap, iNanoCpus=11 * I_NANO),
+        _fconfig(fMemoryLimitGigabytes=1.0)) == []
 
 
 def testACpuDifferenceIsDescribed():

@@ -143,11 +143,29 @@ def test_fnAddMemoryAllocation_formats_whole_and_fractional():
     config.fMemoryLimitGigabytes = 1.0
     saRunArgs = []
     _fnAddMemoryAllocation(config, saRunArgs)
-    assert saRunArgs == ["--memory", "1g"]
+    assert saRunArgs == ["--memory", "1g", "--memory-swap", "1g"]
     config.fMemoryLimitGigabytes = 1.5
     saRunArgs = []
     _fnAddMemoryAllocation(config, saRunArgs)
-    assert saRunArgs == ["--memory", "1.5g"]
+    assert saRunArgs == ["--memory", "1.5g", "--memory-swap", "1.5g"]
+
+
+@pytest.mark.falsification
+def testACappedContainerHasNoSwapBeyondItsCap():
+    """Kills: creating a capped container with Docker's default swap.
+
+    Docker's default lets a capped container swap past its cap: on a CI
+    runner with swap, a 1 GiB allocation completed under a 256 MB cap,
+    so the cap slowed a process down instead of killing it, and only
+    where there was no swap did it behave as the documentation says.
+    """
+    config = _fConfigMinimal()
+    config.fMemoryLimitGigabytes = 0.25
+    saRunArgs = []
+    _fnAddMemoryAllocation(config, saRunArgs)
+    iMemory = saRunArgs.index("--memory")
+    iSwap = saRunArgs.index("--memory-swap")
+    assert saRunArgs[iSwap + 1] == saRunArgs[iMemory + 1] == "0.25g"
 
 
 def test_fdictParseContainerState_running():

@@ -220,16 +220,22 @@ def _fdictPlanMemory(dictRunning, iDesiredBytes):
             "lowering a running container's memory limit can make the "
             "kernel kill a process"))
     return _fdictPlanMemoryRaise(
-        fdictEntry, dictRunning["dictSwap"], iRunning, iDesiredBytes)
+        fdictEntry, dictRunning["dictSwap"], iDesiredBytes)
 
 
-def _fdictPlanMemoryRaise(fdictEntry, dictSwap, iRunning, iDesiredBytes):
-    """Plan a memory raise: live only when the swap limit can move with it."""
+def _fdictPlanMemoryRaise(fdictEntry, dictSwap, iDesiredBytes):
+    """Plan a memory raise: live only when the swap limit can move with it.
+
+    The swap limit becomes the new memory limit, as a container created
+    now has it, but never falls below what the container already has:
+    lowering a running container's swap limit can kill a process, so an
+    older container's larger allowance waits for the next start.
+    """
     if dictSwap["sKind"] == S_KIND_UNLIMITED:
         return fdictEntry(S_ACTION_APPLY_LIVE, "", iSwapBytes=-1)
     if dictSwap["sKind"] != S_KIND_FINITE:
         return fdictEntry(S_ACTION_NEXT_START, "the swap limit is unknown")
-    iSwapBytes = round(dictSwap["iBytes"] * iDesiredBytes / iRunning)
+    iSwapBytes = max(iDesiredBytes, dictSwap["iBytes"])
     return fdictEntry(S_ACTION_APPLY_LIVE, "", iSwapBytes=iSwapBytes)
 
 
@@ -273,6 +279,11 @@ def flistDescribeLimitDrift(dictRunning, dictDesired):
         dictRunning["dictMemory"], dictDesired.get("iMemoryBytes"))
     if sMemory:
         listLines.append(sMemory)
+    sSwap = _fsDescribeSwapDrift(
+        dictRunning["dictMemory"], dictRunning["dictSwap"],
+        dictDesired.get("iMemoryBytes"))
+    if sSwap:
+        listLines.append(sSwap)
     sCpu = _fsDescribeCpuDrift(
         dictRunning["dictCpu"], dictDesired.get("iCpuCount"))
     if sCpu:
@@ -295,6 +306,26 @@ def _fsDescribeMemoryDrift(dictMemory, iDesiredBytes):
     sDesired = fsFormatBytes(iDesiredBytes)
     return (f"This container runs with {sRunning}, but vaibify.yml says "
             f"{sDesired}; the next Restart will apply {sDesired}.")
+
+
+def _fsDescribeSwapDrift(dictMemory, dictSwap, iDesiredBytes):
+    """Say when a container may swap past the memory limit the file sets.
+
+    A container vaibify creates has a swap limit equal to its memory
+    limit; an older one may have more. Only a finite larger limit is
+    described: an unlimited or unset one may be all this computer's
+    Docker can do, which a Restart would not change.
+    """
+    if iDesiredBytes is None or dictMemory["sKind"] != S_KIND_FINITE:
+        return ""
+    if dictSwap["sKind"] != S_KIND_FINITE:
+        return ""
+    if dictSwap["iBytes"] <= dictMemory["iBytes"]:
+        return ""
+    return (f"This container can also use swap beyond its "
+            f"{fsFormatBytes(dictMemory['iBytes'])} memory limit, where a "
+            "process slows down before it is killed; the next Restart "
+            "removes that allowance.")
 
 
 def _fsDescribeCpuDrift(dictCpu, iDesiredCpuCount):
