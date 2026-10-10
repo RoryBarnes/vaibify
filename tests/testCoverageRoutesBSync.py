@@ -714,13 +714,10 @@ def testTheStartupSweepSparesMountedFilesOnly(
     sOrphan = fsWriteStaleEphemeralFile(
         fixtureIsolateHostState, "orphanSecret",
     )
-    containerStandIn = SimpleNamespace(
-        attrs={"Mounts": [{"Source": sMounted}, {"Source": ""}]},
-    )
+    # Shaped like the DockerConnection the hub passes, never like the
+    # SDK client: an SDK-shaped double is how the dead sweep stayed green.
     dockerDouble = SyncExecDouble()
-    dockerDouble.containers = SimpleNamespace(
-        list=lambda all=False: [containerStandIn],
-    )
+    dockerDouble.fsetListMountSourcesOfAllContainers = lambda: {sMounted}
     fnStandCarrierDown(monkeypatch, syncRoutes)
     app = FastAPI()
     app.state.listLifespanStartup = []

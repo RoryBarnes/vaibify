@@ -164,7 +164,7 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # batched typed read, and the per-marker read it replaced is gone.
 # 276 -> 275 (2026-10-06): the download route moved to downloadRoutes and
 # its one unclassified stream row became two classified confined reads.
-I_UNCLASSIFIED_ROW_BUDGET = 275
+I_UNCLASSIFIED_ROW_BUDGET = 274
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the
@@ -720,7 +720,16 @@ DICT_UNRESOLVED_BUDGET = {
     # it unreadable to the scan is the same thing that makes it correct:
     # the client is the disposable lane's own, constructed by
     # fdockerCreateDisposableClient rather than threaded in.
-    "untraceable-docker-sdk-root": 53,
+    # 54 since fsetListMountSourcesOfAllContainers (2026-10-09): the
+    # credential-file reaper asks the gateway which host paths ANY
+    # container, running or stopped, bind-mounts, so it can delete only
+    # the files nothing mounts. A read -- ``containers.list(all=True)``
+    # -- through the same root as flistGetRunningContainers beside it,
+    # inside the gateway, which is where the ratchet wants it. It
+    # replaces a route-side call to ``.containers.list`` on the
+    # connection object, an attribute the class never had, that failed
+    # silently for weeks.
+    "untraceable-docker-sdk-root": 54,
 }
 
 

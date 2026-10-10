@@ -1811,6 +1811,29 @@ class DockerConnection:
         self.fnEvictAbsentContainers(setRunning)
         return listResult
 
+    def fsetListMountSourcesOfAllContainers(self):
+        """Return every host path any container mounts, or None.
+
+        Metadata only, like :meth:`fdictReadContainerState`: it asks the
+        daemon and never enters a container. Stopped containers count,
+        because a stopped container is restartable and its mounts are
+        re-resolved at start. ``None`` means the daemon could not be
+        asked, which is deliberately distinct from an empty set: a
+        sweep handed nothing to protect would delete files a live
+        container still mounts.
+        """
+        try:
+            listContainers = self._clientDocker.containers.list(all=True)
+        except Exception:  # noqa: BLE001 -- unknown, never "nothing mounted"
+            return None
+        setSources = set()
+        for container in listContainers:
+            for dictMount in (container.attrs or {}).get("Mounts") or []:
+                sSource = dictMount.get("Source") or ""
+                if sSource:
+                    setSources.add(sSource)
+        return setSources
+
     def fcontainerGetById(self, sContainerId):
         """Return the container object, refreshing if needed.
 

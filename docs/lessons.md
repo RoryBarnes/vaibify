@@ -43,6 +43,17 @@ correct approach.
   evidence that a host file is garbage — reachability is. Before
   deleting anything under `~/.vaibify`, ask the daemon what it still
   mounts.
+- The fix for the sweep above then never ran: it asked the daemon
+  through `.containers.list` on a `DockerConnection`, which has no such
+  attribute, inside an `except Exception` that returned "unknown", and
+  its unit test passed because the fake it was handed was shaped like
+  the Docker SDK client the code expected rather than the class the hub
+  actually passes. A test double must be shaped like the production
+  object, and a boundary call is proven only against the real class;
+  `test_the_sweep_enumerates_mounts_through_the_real_connection_class`
+  builds the real `DockerConnection` around a stub SDK client for
+  exactly that reason. The reaper registry now records a sweep that
+  raises, so the next such failure is visible on the hub.
 - A guarantee stated only in prose is not enforced, and mutation
   testing cannot find it: there is no mutant for a guard that was
   never written. `bAgentSafe` was metadata, the force-push hook missed

@@ -2139,6 +2139,15 @@ LIST_FALSIFICATIONS = [
         new="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if False:""",
     ),
+    # The credential-file sweep must enumerate mounts through the
+    # connection class's own method: the SDK-shaped form raised an
+    # AttributeError inside a swallowed except and never ran.
+    Falsification(
+        nodeid='tests/testEphemeralStore.py::test_the_sweep_enumerates_mounts_through_the_real_connection_class',
+        source='vaibify/gui/routes/syncRoutes.py',
+        old="""    return connectionDocker.fsetListMountSourcesOfAllContainers()""",
+        new="""    return {dictMount.get("Source") for container in connectionDocker.containers.list(all=True) for dictMount in container.attrs.get("Mounts", [])}""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(
@@ -2989,8 +2998,8 @@ LIST_FALSIFICATIONS = [
         # while reporting success.
         nodeid='tests/testEphemeralStore.py::test_sweep_removes_stale_credential_files',
         source='vaibify/config/ephemeralStore.py',
-        old='            os.remove(sPath)',
-        new='            pass',
+        old='        os.unlink(sPath)\n    except OSError:\n        return 0',
+        new='        pass\n    except OSError:\n        return 0',
     ),
     Falsification(
         # githubAuth._PATTERN_SEGMENT allows dots in owner and repo
@@ -3548,12 +3557,12 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testEphemeralStore.py::test_sweep_spares_a_stale_file_a_container_still_mounts',
         source='vaibify/config/ephemeralStore.py',
         old=(
-            '            if sPath in setProtected:\n'
-            '                continue'
+            '        if sPath in setMountedSources:\n'
+            '            continue'
         ),
         new=(
-            '            if False:\n'
-            '                continue'
+            '        if False:\n'
+            '            continue'
         ),
     ),
 

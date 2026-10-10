@@ -129,12 +129,16 @@ in shell history, in Git configuration or in a committed file.
    GitHub through a credential helper that reads the mounted file at
    request time, answers only for `github.com`, and never writes the
    token to disk.
-3. **These host files outlive the container on purpose.** Some Docker
-   setups re-resolve bind-mount sources during later operations, and a
-   missing source then breaks the container. The files are overwritten
-   on the next start. At hub startup, files older than a week are
-   removed unless a container still mounts them; if vaibify cannot
-   enumerate the live mounts, it removes nothing.
+3. **A host file lives exactly as long as some container mounts it.**
+   Some Docker setups re-resolve bind-mount sources during later
+   operations, and a missing source then breaks the container, so a
+   file is never removed while any container, running or stopped,
+   mounts it. Each container start writes a new file. When a container
+   is removed and the daemon confirms it is gone, its files are deleted
+   unless another container mounts them; and every ten minutes the hub
+   removes any file in the directory that nothing mounts and that is
+   more than an hour old. If vaibify cannot enumerate the live mounts,
+   it removes nothing and the Environment Hub says so.
 4. **No token in a URL.** Zenodo and GitHub API requests use an
    `Authorization: Bearer` header. Git operations against Overleaf and
    GitHub use a one-shot credential helper that first resets any helper

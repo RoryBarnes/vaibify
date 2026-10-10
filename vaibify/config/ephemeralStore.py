@@ -13,12 +13,16 @@ Audit finding M2.
 """
 
 import os
+import stat
 import time
 
 
 __all__ = [
+    "F_SECRET_FILE_GRACE_SECONDS",
+    "S_SECRET_FILE_PREFIX",
+    "fiReleaseSecretSources",
+    "fiSweepUnmountedEphemeralFiles",
     "fsGetEphemeralRoot",
-    "fnSweepStaleEphemeralFiles",
 ]
 
 
@@ -26,10 +30,18 @@ __all__ = [
 # that consumed it: on macOS the Colima daemon lazily re-resolves
 # bind-mount sources during later operations, so unlinking one
 # mid-session breaks that container (see
-# ``containerManager.fsStartContainerDetached``). The cutoff is
-# therefore an age, chosen to exceed any plausible container session,
-# rather than an unlink at the point of use.
-F_STALE_EPHEMERAL_AGE_SECONDS = 7 * 24 * 60 * 60
+# ``containerManager.fsStartContainerDetached``). What makes a file
+# garbage is therefore that NO container mounts it, which only the
+# daemon can say; the grace below only keeps a file that was written
+# a moment ago, for a ``docker run`` still being composed, out of the
+# sweep's reach.
+F_SECRET_FILE_GRACE_SECONDS = 60 * 60
+
+# The prefix ``secretManager._fsWriteEphemeralFile`` gives a mounted
+# secret. A removal releases only files carrying it; the periodic
+# sweep retires everything in the root, because askpass helpers and
+# Overleaf token files hold a credential or a path to one as well.
+S_SECRET_FILE_PREFIX = "vc_secret_"
 
 
 def fsGetEphemeralRoot():
@@ -39,49 +51,72 @@ def fsGetEphemeralRoot():
     return sRoot
 
 
-def fnSweepStaleEphemeralFiles(
-    fMaxAgeSeconds=F_STALE_EPHEMERAL_AGE_SECONDS,
-    setProtectedPaths=None,
+def fiSweepUnmountedEphemeralFiles(
+    setMountedSources, tExcludedPrefixes=(),
+    fGraceSeconds=F_SECRET_FILE_GRACE_SECONDS,
 ):
-    """Delete ephemeral files older than ``fMaxAgeSeconds``.
+    """Delete the root's files no container mounts; return how many.
 
-    ``setProtectedPaths`` names absolute paths that must survive the
-    sweep whatever their age. A mounted secret is bind-mounted into a
-    container for that container's whole life, which outlives any
-    number of hub restarts, and deleting the source leaves the
-    container permanently unstartable: Docker fails the mount and
-    silently creates a directory stub where the file was. Age alone is
-    therefore not evidence that a file is garbage -- reachability is,
-    and only the caller can enumerate what the daemon still mounts.
-
-    Live credentials must not accumulate on disk: every mounted secret
-    and every askpass helper written here holds a usable token or a
-    path to one. Nothing in this directory is meant to survive the
-    session that produced it, so anything older than the cutoff is
-    unreachable garbage. Failures are swallowed — a sweep must never
-    be the reason a container fails to start.
+    ``setMountedSources`` is every host path the daemon reports any
+    container, running or stopped, as mounting. The caller must have
+    ENUMERATED it: an empty protected set is the destructive direction,
+    so a caller that could not ask the daemon must not call this at
+    all. A regular file older than the grace that is not mounted and
+    does not carry an excluded prefix (the council's staged copies have
+    their own lock-aware sweep) is removed. Symlinks, directories and
+    files younger than the grace are left alone. A root that cannot be
+    listed raises, so the reaper records the failure.
     """
-    setProtected = set(setProtectedPaths or ())
-    try:
-        sRoot = fsGetEphemeralRoot()
-        fCutoff = time.time() - fMaxAgeSeconds
-        for sName in _flistFindStaleEphemeralFiles(sRoot, fCutoff):
-            sPath = os.path.join(sRoot, sName)
-            if sPath in setProtected:
-                continue
-            os.remove(sPath)
-    except OSError:
-        return
-
-
-def _flistFindStaleEphemeralFiles(sRoot, fCutoff):
-    """Return the names under sRoot last modified before fCutoff."""
-    listStale = []
+    sRoot = fsGetEphemeralRoot()
+    fCutoff = time.time() - fGraceSeconds
+    iRemoved = 0
     for sName in os.listdir(sRoot):
         sPath = os.path.join(sRoot, sName)
-        try:
-            if os.path.isfile(sPath) and os.path.getmtime(sPath) < fCutoff:
-                listStale.append(sName)
-        except OSError:
+        if sName.startswith(tuple(tExcludedPrefixes)):
             continue
-    return listStale
+        if sPath in setMountedSources:
+            continue
+        if _fbIsRegularFileOlderThan(sPath, fCutoff):
+            iRemoved += _fiUnlinkQuietly(sPath)
+    return iRemoved
+
+
+def _fbIsRegularFileOlderThan(sPath, fCutoff):
+    """Return True for a regular, non-symlink file modified before fCutoff."""
+    try:
+        tStat = os.lstat(sPath)
+    except OSError:
+        return False
+    return stat.S_ISREG(tStat.st_mode) and tStat.st_mtime < fCutoff
+
+
+def _fiUnlinkQuietly(sPath):
+    """Unlink one file; return 1 when it went, 0 when it could not."""
+    try:
+        os.unlink(sPath)
+    except OSError:
+        return 0
+    return 1
+
+
+def fiReleaseSecretSources(listMountSources, setStillMountedSources):
+    """Delete a removed container's secret files; return how many.
+
+    ``listMountSources`` is what the container mounted, read before it
+    was removed; ``setStillMountedSources`` is what every surviving
+    container mounts, read after. A source is released only when it is
+    a secret file inside the ephemeral root and no surviving container
+    mounts it, so a file shared by two containers outlives the first.
+    """
+    sRoot = fsGetEphemeralRoot()
+    iRemoved = 0
+    for sSource in listMountSources:
+        if os.path.dirname(sSource) != sRoot:
+            continue
+        if not os.path.basename(sSource).startswith(S_SECRET_FILE_PREFIX):
+            continue
+        if sSource in setStillMountedSources:
+            continue
+        if _fbIsRegularFileOlderThan(sSource, float("inf")):
+            iRemoved += _fiUnlinkQuietly(sSource)
+    return iRemoved

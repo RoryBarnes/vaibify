@@ -43,7 +43,7 @@ validation, and only allowlisted metadata — never raw commands,
 environment values, leases, tokens, or credentials. The
 ``.operationJournal`` suffix and the ``~/.vaibify/journal`` directory
 are matched by no sweeper in this repository:
-``ephemeralStore.fnSweepStaleEphemeralFiles`` (the age-based sweep)
+``ephemeralStore.fiSweepUnmountedEphemeralFiles`` (the mount-aware sweep)
 deletes only inside ``~/.vaibify/tmp``, and
 ``pidFileRegistry.fnReapStaleFilesIn`` is invoked only for
 ``~/.vaibify/locks/*.lock`` and ``~/.vaibify/sessions/*.slot``. The
