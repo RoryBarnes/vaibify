@@ -158,6 +158,16 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     remnantReapers.fnRegisterReaper(
         app, "orphanedCliShells", _fdictReapOrphanedCliShells,
     )
+    remnantReapers.fnRegisterReaper(
+        app, "shadowLaneLocks",
+        remnantReapers.ffnWrapSweepAsReaper(_fiReapFreeShadowLaneLocks),
+    )
+
+
+def _fiReapFreeShadowLaneLocks():
+    """Delete shadow-rerun lock files nothing holds (imported lazily)."""
+    from vaibify.reproducibility.shadowRerun import fiReapFreeShadowLaneLocks
+    return fiReapFreeShadowLaneLocks()
 
 
 def _fdictReapOrphanedCliShells(dictCtx):

@@ -1379,6 +1379,14 @@ already quarantined, or one without a group, is left to
 `vaibify reconcile`. The awaited startup reap keeps its Docker-less
 call, and the registry poll never terminates anything.
 
+The shadow-rerun lane lock (`shadowRerun._fcontextHoldShadowLaneLock`)
+is unlinked on release while its flock is still held, after an
+inode re-check that mirrors the container lock's: a lock taken on an
+inode that was unlinked between the open and the flock excludes
+nobody, and two reruns would sweep each other's containers. A reaper
+removes the backlog of empty shadow lock files nothing holds, taking
+each one's flock before unlinking it, and leaves `state-*.lock` alone.
+
 The record exists because of a reaper that did not run. The
 credential-file sweep called `.containers.list` on a connection class
 that has no such attribute, swallowed the `AttributeError`, and
