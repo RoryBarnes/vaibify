@@ -386,7 +386,11 @@ after a session reaches its lifetime limit.
 ### vaibify sessions
 
 Hubs and viewers run in the foreground of the terminal that started
-them. Closing a browser tab does not stop them. On the host only:
+them. Closing a browser tab does not stop them. Closing the terminal
+window does, cleanly: the hub drains the terminals it owns and
+releases its locks, the same as one Ctrl-C. A second Ctrl-C while that
+shutdown runs is ignored; Ctrl-\ (SIGQUIT) is the hard stop. On the
+host only:
 
 ```bash
 vaibify sessions              # pid, role, port, start time, containers held

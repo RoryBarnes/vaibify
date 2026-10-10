@@ -535,11 +535,21 @@ launched them. There are three tiers:
   *kernel*, reaped when its holder dies.
 
 A hub or viewer runs in the foreground of its launching terminal.
-Closing the browser tab does nothing, and closing the terminal
-*orphans* the server (reparented to `launchd`/`init`, `PPID 1`), which
-keeps holding its session slot (`~/.vaibify/sessions/<pid>.slot`) and
-its container flocks. The mechanisms below keep that from graying a
-container out forever.
+Closing the browser tab does nothing. Closing the terminal window
+sends the hub a hang-up, and the hub answers it with the same full
+shutdown as Ctrl-C: `serverLaunch.ServerLoggingExitSignals` installs a
+SIGHUP handler for exactly as long as uvicorn's own signal capture
+lasts, points stdout and stderr at the null device first (a write to
+a dead terminal raises, and a stray print would otherwise abort the
+shutdown), and forwards to uvicorn's exit. A second Ctrl-C used to
+turn into uvicorn's `force_exit`, which skips every lifespan shutdown
+hook and so every terminal drain; it is now logged and ignored, and
+SIGQUIT or SIGKILL is the hard stop. Note the limit: the lifespan
+shutdown hooks have no overall timeout, and the terminal drains are
+bounded at three seconds plus two per record. A hub killed outright
+still leaves its session slot (`~/.vaibify/sessions/<pid>.slot`) and
+its container flocks behind, and the mechanisms below keep that from
+graying a container out forever.
 
 ### The lease is the access principal
 
