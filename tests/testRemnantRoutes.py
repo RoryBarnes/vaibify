@@ -9,7 +9,6 @@ refused without a signal; and each action reaches exactly its named
 authority.
 """
 
-import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -59,6 +58,26 @@ def _fdictSessionItem():
             "dictIdentity": {"sContainerId": S_ID, "iLeaderPid": 40, "iStartTicks": 500}}
 
 
+class _RescanEventStub:
+    """A loop-free stand-in for app.state.eventReaperRescan.
+
+    The routes only ``.set()`` the rescan event and the tests only read
+    ``.is_set()``; the asyncio behaviour is exercised by the reaper-loop
+    test. A real ``asyncio.Event()`` binds the running loop AT
+    CONSTRUCTION on Python 3.9 and raises when built outside one, so a
+    stub keeps these sync TestClient tests identical across versions.
+    """
+
+    def __init__(self):
+        self._bSet = False
+
+    def set(self):
+        self._bSet = True
+
+    def is_set(self):
+        return self._bSet
+
+
 def test_every_route_refuses_the_agent_token_lane(tHub):
     app, clientBrowser, _ = tHub
     dictAgent = {"X-Vaibify-Session": "agent-token-from-inside-a-container"}
@@ -82,7 +101,7 @@ def test_the_read_returns_the_cached_scan_and_the_reaper_health(tHub):
 
 def test_a_rescan_only_sets_the_loops_event(tHub):
     app, clientBrowser, _ = tHub
-    app.state.eventReaperRescan = asyncio.Event()
+    app.state.eventReaperRescan = _RescanEventStub()
     with patch.object(remnantScanner, "fnRunRemnantScan") as mockScan:
         assert clientBrowser.post("/api/system/remnants/rescan").json() == {"bRequested": True}
         mockScan.assert_not_called()
@@ -91,7 +110,7 @@ def test_a_rescan_only_sets_the_loops_event(tHub):
 
 def test_a_stale_id_answers_already_gone(tHub):
     app, clientBrowser, _ = tHub
-    app.state.eventReaperRescan = asyncio.Event()
+    app.state.eventReaperRescan = _RescanEventStub()
     [dictOutcome] = clientBrowser.post(
         "/api/system/remnants/remove", json={"listItemIds": ["nope"]}).json()["listOutcomes"]
     assert dictOutcome["bRemoved"] is False

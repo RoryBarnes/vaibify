@@ -276,7 +276,7 @@ def fnApplySessionLaneSetting(appState, dictCtx, sName, bNeverSleep):
         _fdictRunningContainerIdsByName(connectionDocker)
         if fbDockerReachable(connectionDocker) else None
     )
-    if not dictRunningIdByName or sName not in dictRunningIdByName:
+    if dictRunningIdByName is None or sName not in dictRunningIdByName:
         return
     if bNeverSleep and not keepAliveManager.fbKeepAliveIsLive(sName):
         keepAliveManager.fnStartKeepAlive(sName)
