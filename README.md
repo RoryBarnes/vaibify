@@ -60,6 +60,6 @@ Note that a full `vaibify` installation can take over an hour; the container req
 
 Found a bug or something confusing? Please [open an issue](https://github.com/RoryBarnes/vaibify/issues). Two things make a report much easier to act on: the output of `vaibify doctor` (a pre-flight check of your Docker environment), and the relevant lines from the host log at `~/.vaibify/vaibify.log`.
 
-If you use `vaibify` in your research, please consider citing "Barnes, R. (2026), PASP, submitted."
+If you use `vaibify` in your research, please consider citing Barnes, R. (2026) "Integrating AI Agents into Scientific Research."
 
 © 2026 Rory Barnes.
