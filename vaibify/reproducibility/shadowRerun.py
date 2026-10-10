@@ -800,11 +800,12 @@ def _fcontextHoldShadowLaneLock(sResourceName):
     if not sResourceName:
         yield
         return
+    from vaibify.config.containerLock import fsGetLockDirectory
     from vaibify.config.pidFileRegistry import (
         ffileOpenNoFollow,
         fnEnsureDirectory,
     )
-    sLockDirectory = os.path.expanduser("~/.vaibify/locks")
+    sLockDirectory = fsGetLockDirectory()
     fnEnsureDirectory(sLockDirectory)
     sDigest = hashlib.sha256(sResourceName.encode()).hexdigest()[:16]
     fileHandleLock = ffileOpenNoFollow(

@@ -61,6 +61,31 @@ def test_every_redirected_state_constant_points_outside_the_real_home():
     assert not listLeaked, f"these constants still reach the real home: {listLeaked}"
 
 
+def _flistRealHomeLockFiles():
+    sRealLocks = os.path.join(_sRealVaibifyHome(), "locks")
+    return sorted(os.listdir(sRealLocks)) if os.path.isdir(sRealLocks) else []
+
+
+def test_the_shadow_rerun_lock_lands_in_the_redirect_not_the_real_home():
+    """The shadow-lane flock builds its path from the redirected constant.
+
+    The writer used to expand ``~/.vaibify/locks`` itself, so every
+    reproduction and shadow rerun the suite exercised left a lock file
+    in the researcher's real home. Reading the directory through
+    ``containerLock`` puts it under the one redirect.
+    """
+    from vaibify.reproducibility.shadowRerun import _fcontextHoldShadowLaneLock
+    listRealBefore = _flistRealHomeLockFiles()
+    with _fcontextHoldShadowLaneLock("resource-under-test"):
+        listRedirected = os.listdir(containerLock._S_LOCK_DIRECTORY)
+    assert any(sName.startswith("shadow-") for sName in listRedirected), (
+        f"no shadow lock inside the redirect: {listRedirected}"
+    )
+    assert _flistRealHomeLockFiles() == listRealBefore, (
+        "the shadow lock reached the real ~/.vaibify/locks"
+    )
+
+
 def test_a_keep_alive_started_by_the_suite_launches_no_caffeinate(monkeypatch):
     """A keep-alive asserted inside the suite never reaches the host.
 

@@ -149,6 +149,16 @@ def fsLockPathFor(sProjectName):
     return os.path.join(_S_LOCK_DIRECTORY, f"{sProjectName}{_S_LOCK_SUFFIX}")
 
 
+def fsGetLockDirectory():
+    """Return the lock directory, read at call time so a redirect applies.
+
+    Every lock-file writer builds its path through this one constant;
+    the test suite redirects the constant, so a writer that reads it
+    here lands inside the redirect instead of the real home.
+    """
+    return _S_LOCK_DIRECTORY
+
+
 def _fnEnsureLockDirectory():
     """Create ~/.vaibify/locks/ with mode 0o700 if missing."""
     pidFileRegistry.fnEnsureDirectory(_S_LOCK_DIRECTORY)
