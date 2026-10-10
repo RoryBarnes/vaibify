@@ -27,6 +27,7 @@ from . import remnantReapers
 from . import serverLifespan
 from . import serverMiddleware
 from . import sessionLifecycle
+from . import sleepPrevention
 from . import startResultStore
 from . import terminalContainment
 
@@ -146,6 +147,10 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
     fnRegisterHostControlChannel(app, dictCtx)
     _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)
+    remnantReapers.fnRegisterReaper(
+        app, "sessionLaneKeepAlives",
+        sleepPrevention.fdictReapSessionLanesOfStoppedContainers,
+    )
 
 
 def _fnRegisterBackgroundTasks(app, dictCtx):

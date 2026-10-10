@@ -1240,6 +1240,21 @@ the keep-alive for work its predecessor launched. The corollary is
 that a work-lane keep-alive can outlive its hub; the next hub's first
 sweep is what withdraws it.
 
+The session lane lives from a start **or a claim**. It used to start
+only when vaibify started the container, so a hub that restarted and
+claimed a running `neverSleep` container held nothing, and the work
+lane skips owned containers by design: the machine stayed awake only
+while some other container's leaked shells happened to hold a work
+lane. A granted claim of a running container now starts the session
+lane when the project's `neverSleep` is set and none is live
+(`sleepPrevention.fnEnsureSessionLaneForClaim`, under the container's
+mutation lock so two claims cannot both spawn). The liveness check is
+what keeps a tab reload from churning a process and what lets the new
+hub adopt a keep-alive a crashed one left. Saving `neverSleep` from the
+dashboard starts or stops the lane of a held, running container at
+once, and a reaper stops any session lane whose container is no longer
+running.
+
 ### What survives what (measured, 2026-08-29)
 
 Run against a live daemon (colima) rather than reasoned about, because

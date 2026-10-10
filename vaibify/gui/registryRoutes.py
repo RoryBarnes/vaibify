@@ -996,6 +996,11 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 dictProject["sConfigPath"], "neverSleep",
                 request.bNeverSleep,
             )
+            from .sleepPrevention import fnApplySessionLaneSetting
+            await asyncio.to_thread(
+                fnApplySessionLaneSetting,
+                app.state, dictCtx, sName, request.bNeverSleep,
+            )
         if request.bX11Forwarding is not None:
             bRestartRequired = _fbApplyX11Forwarding(
                 dictProject["sConfigPath"], request.bX11Forwarding,

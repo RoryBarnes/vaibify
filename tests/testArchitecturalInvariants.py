@@ -6299,10 +6299,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # +2 (2026-09-24): a transfer retags every project's run and adopts
     # every command the shared durable record has in flight.
     # 1837 -> 1839 (2026-10-01): a fenced socket's close task is kept referenced.
-    # 1839 -> 1861 (2026-10-09): a claim refused busy while a reaper pass is
-    # ending an earlier hub's sessions says so; the claim path is the one
-    # place that holds both the verdict and the state the pass flags.
-    "sessionLifecycle.py": 1861,
+    # 1839 -> 1870 (2026-10-09): a claim refused busy while a reaper pass is
+    # ending an earlier hub's sessions says so, and a granted claim of a
+    # running neverSleep container starts its session lane; the claim path
+    # is the one place that holds the verdict, the state and the lock.
+    "sessionLifecycle.py": 1870,
     # NEW at 963 (2026-08-20, review fixes): the controller crossed the
     # default cap when the enabled launch path became real — the
     # once-per-campaign runner-access provisioner (egress boundary +
@@ -6947,7 +6948,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # to the running container where that is safe; the route's carrier
     # declaration names the gateway call, and the planning, the update
     # and the re-inspection live in resourceLimitApplication.
-    "registryRoutes.py": 2469,
+    # 2469 -> 2474 (2026-10-09): saving neverSleep starts or stops the
+    # session lane of a held, running container, beside the file write.
+    "registryRoutes.py": 2474,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

@@ -2139,6 +2139,16 @@ LIST_FALSIFICATIONS = [
         new="""        setMounted = _fsetMountedHostPaths(dictCtxPass)
         if False:""",
     ),
+    # A granted claim of a running neverSleep container must start the
+    # session-lane keep-alive, or a restarted hub holds nothing for it.
+    Falsification(
+        nodeid='tests/testSessionLaneFollowsClaim.py::test_a_claim_of_a_running_never_sleep_container_leaves_a_live_keep_alive',
+        source='vaibify/gui/sessionLifecycle.py',
+        old="""        if tClaimVerdict[0] == 200:
+            # Under the container-mutation lock still, so two concurrent""",
+        new="""        if False:
+            # Under the container-mutation lock still, so two concurrent""",
+    ),
     # The host-log-tail endpoint returns the raw host-wide log and
     # free-text incidents; the agent lane must receive only an
     # allowlisted per-container view, never the raw log or free text.
