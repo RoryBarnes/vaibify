@@ -353,6 +353,40 @@ class FailClosedDockerAdapter:
             "sImageIdentity": S_IMAGE_IDENTITY,
         }] + list(self.listStartedContainers)
 
+    # The reaper loop and the remnant scanner run inside the lane's hub
+    # on their own cadence. Each call they make is modelled with a world
+    # that holds nothing left over, so the glyph stays hidden unless a
+    # journey seeds the scan itself; an unmodelled call would be recorded
+    # as a failed cleanup and paint the glyph red for a reason that has
+    # nothing to do with the behaviour under test.
+    def fsetListMountSourcesOfAllContainers(self):
+        return set()
+
+    def flistListAllContainers(self):
+        return [{
+            "sContainerId": dictRow["sContainerId"], "sName": dictRow["sName"],
+            "sStatus": "running", "dictLabels": {},
+        } for dictRow in self.flistGetRunningContainers()]
+
+    def fsReadProcessTable(self, sContainerId):
+        self._fnRequireKnownContainer(sContainerId)
+        return "@@ clock 1700000000 100 4096 900 899\n1 0 1 1 0 S 10 300 0 sleep\n"
+
+    def fdictReadContainerHostConfig(self, sContainerId):
+        self._fnRequireKnownContainer(sContainerId)
+        return {"Init": True}
+
+    def flistRunningExecIdentifiers(self, sContainerId):
+        self._fnRequireKnownContainer(sContainerId)
+        return []
+
+    def _fnRequireKnownContainer(self, sContainerId):
+        setKnown = {dictRow["sContainerId"] for dictRow in self.flistGetRunningContainers()}
+        if sContainerId not in setKnown:
+            raise UnmodelledContainerCall(
+                f"the hub asked about container {sContainerId!r}, which this "
+                "lane is not running")
+
     def fnRecordContainerStarted(self, sName, sContainerId):
         """Make a container the lane just STARTED report as running.
 
