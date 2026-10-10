@@ -478,14 +478,6 @@ DICT_NAMED_AUTHORITIES = {
             "holder-identity assertion plus the journaling gate -- see "
             "testTheGatedHelperRefusesWithoutItsHoldersIdentity.",
         ),
-    "gui/dockerStatus.py|_fbCaffeinateRunning|process-launch|subprocess|"
-    "import|0":
-        _fdictAuthority(
-            ["http", "background"],
-            "Asks `pgrep` whether this host's caffeinate keep-alive is "
-            "live, so the dashboard reports sleep state honestly. Host "
-            "process read.",
-        ),
     "gui/dockerStatus.py|fdictDetectDockerRuntime|process-launch|subprocess|"
     "import|0":
         _fdictAuthority(
@@ -614,7 +606,7 @@ DICT_NAMED_AUTHORITIES = {
 # fbErrorMeansContainerUnreachable predicate, leaving zero Docker-client
 # acquisitions under vaibify/gui/.
 # 12 -> 11 (2026-10-01): the removed second setup wizard.
-I_GUI_RAW_CAPABILITY_BUDGET = 11
+I_GUI_RAW_CAPABILITY_BUDGET = 10
 
 
 def _fmoduleGenerator():

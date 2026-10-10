@@ -1265,6 +1265,24 @@ dashboard starts or stops the lane of a held, running container at
 once, and a reaper stops any session lane whose container is no longer
 running.
 
+Two more things the keep-alive registry can now say. Every
+`caffeinate` vaibify launches is appended to a spawn ledger beside the
+pid files (`~/.vaibify/caffeinate/spawnLedger.json`, keyed by pid,
+holding the registry name and the instant the spawn returned, pruned
+of dead pids on every append and read, capped as a backstop). A pid
+file names the keep-alive a registry currently holds; the ledger is
+what lets vaibify PROVE that a `caffeinate` no registry holds is one
+it launched, by pid plus start clock, and not the researcher's own
+`caffeinate -s`. The kill rule for any later removal is stricter than
+liveness: a readable start clock matching the ledger AND a command
+name of `caffeinate` (`keepAliveManager.fbCaffeinateIsProvablyOurs`),
+because the liveness check answers "alive" when the clock is
+unreadable, which is enough to leave a process alone and not enough
+to kill it. And there is exactly one host probe for `caffeinate`:
+`processLiveness.flistEnumerateProcessesNamed`, which the docker-status
+sleep hint and the remnant scanner both read, so they cannot disagree
+about what runs.
+
 ### What survives what (measured, 2026-08-29)
 
 Run against a live daemon (colima) rather than reasoned about, because

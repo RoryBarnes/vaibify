@@ -904,7 +904,7 @@ class TestWorkflowDir:
 # ---------------------------------------------------------------
 
 class TestCaffeinateRunning:
-    def test_returns_false_on_file_not_found(self):
+    def test_returns_false_when_the_enumerator_cannot_run(self):
         from vaibify.gui.pipelineServer import _fbCaffeinateRunning
         with patch("subprocess.run", side_effect=FileNotFoundError):
             bResult = _fbCaffeinateRunning()

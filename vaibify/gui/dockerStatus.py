@@ -8,7 +8,6 @@ factory and the retry route.
 """
 
 import logging
-import os
 
 from fastapi import HTTPException
 
@@ -24,16 +23,13 @@ __all__ = [
 
 
 def _fbCaffeinateRunning():
-    """Return True if a caffeinate process is active for this user."""
-    import subprocess
-    try:
-        processResult = subprocess.run(
-            ["pgrep", "-u", str(os.getuid()), "-x", "caffeinate"],
-            capture_output=True, timeout=2,
-        )
-        return processResult.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+    """Return True if a caffeinate process is active for this user.
+
+    Answered by the one host process enumerator, so the sleep hint and
+    the remnant scanner can never disagree about what runs.
+    """
+    from vaibify.config.processLiveness import flistEnumerateProcessesNamed
+    return bool(flistEnumerateProcessesNamed("caffeinate"))
 
 
 def _fdictSleepWarningForContext(sContext):

@@ -453,7 +453,7 @@ I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
 # replacement's neighbour, acquires nothing -- it touches only
 # two known host directories and never the daemon.
 # 58 -> 57 (2026-10-01): the removed second setup wizard's subprocess import.
-I_UNDISPOSED_ACQUISITION_BUDGET = 56
+I_UNDISPOSED_ACQUISITION_BUDGET = 55
 
 
 def _fmoduleGenerator():

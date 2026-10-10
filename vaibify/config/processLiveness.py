@@ -24,6 +24,8 @@ the claim and the check cannot make a live holder look recycled.
 """
 
 __all__ = [
+    "flistEnumerateProcessesNamed",
+    "fsReadProcessCommandName",
     "fbIsUsablePid",
     "fbIsProcessAlive",
     "fbIsProcessAliveSince",
@@ -216,6 +218,70 @@ def ftEnumerateSessionMembers(iSessionLeader):
         if iSessionId == iSessionLeader or iProcessGroup == iSessionLeader:
             listMemberPids.append(iPid)
     return (True, listMemberPids)
+
+
+def flistEnumerateProcessesNamed(sCommandName):
+    """Return this user's processes whose command is ``sCommandName``.
+
+    One row per process: ``{iPid, iParentPid, sCommand, datetimeStart}``,
+    with ``datetimeStart`` read by :func:`fdatetimeReadProcessStartClock`
+    and ``None`` when that clock is unreadable. The enumeration is
+    ``ps -axo pid=,ppid=,uid=,command=`` with the command LAST, so the
+    one variable-width field is the tail of each line. ``None`` means
+    the enumeration itself failed, which a caller must report as
+    unknown and never as "none running".
+    """
+    try:
+        processResult = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,uid=,command="],
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if processResult.returncode != 0:
+        return None
+    return _flistParseProcessesNamed(
+        processResult.stdout, sCommandName, os.getuid(),
+    )
+
+
+def _flistParseProcessesNamed(sOutput, sCommandName, iOwnUid):
+    """Parse the four-column ``ps`` listing into this user's named rows."""
+    listRows = []
+    for sLine in sOutput.splitlines():
+        tParts = sLine.split(None, 3)
+        if len(tParts) < 4:
+            continue
+        try:
+            iPid, iParentPid, iUid = int(tParts[0]), int(tParts[1]), int(tParts[2])
+        except ValueError:
+            continue
+        sCommand = tParts[3].strip()
+        if iUid != iOwnUid or not sCommand:
+            continue
+        if os.path.basename(sCommand.split()[0]) != sCommandName:
+            continue
+        listRows.append({
+            "iPid": iPid, "iParentPid": iParentPid, "sCommand": sCommand,
+            "datetimeStart": fdatetimeReadProcessStartClock(iPid),
+        })
+    return listRows
+
+
+def fsReadProcessCommandName(iPid):
+    """Return a PID's command name (``ps -o comm=``), or '' when unreadable."""
+    if not fbIsUsablePid(iPid):
+        return ""
+    try:
+        processResult = subprocess.run(
+            ["ps", "-o", "comm=", "-p", str(iPid)],
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if processResult.returncode != 0:
+        return ""
+    return os.path.basename(processResult.stdout.strip())
 
 
 def fdatetimeParseClaimIso(sClaimIso):
