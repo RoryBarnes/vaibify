@@ -1871,7 +1871,8 @@ class DockerConnection:
         """
         try:
             listContainers = self._clientDocker.containers.list(all=True)
-        except Exception:  # noqa: BLE001 -- unknown, never "nothing mounted"
+        except Exception as error:  # noqa: BLE001 -- unknown, never "nothing mounted"
+            mutationAdmission.fnReRaiseControlPlaneRefusal(error)
             return None
         setSources = set()
         for container in listContainers:

@@ -187,3 +187,25 @@ def test_a_running_container_is_not_removed(tHub, monkeypatch):
         "/api/system/remnants/remove", json={"listItemIds": ["r1"]}).json()["listOutcomes"]
     assert listCalls == [] and dictOutcome["bRemoved"] is False
     assert "running now" in dictOutcome["sOutcome"]
+
+
+@pytest.mark.falsification
+def test_the_already_gone_guard_refuses_rather_than_returns(tHub, monkeypatch):
+    """Kills: ``_fnRefuseAlreadyGone`` returning its sentence instead of
+    raising, so a removal continues past an identity that no longer
+    matches and signals a recycled pid.
+    """
+    from fastapi import HTTPException
+    from vaibify.gui.routes import remnantRoutes
+    with pytest.raises(HTTPException) as errorInfo:
+        remnantRoutes._fnRefuseAlreadyGone("Session 40")
+    assert errorInfo.value.status_code == 409
+    assert "already gone" in str(errorInfo.value.detail)
+    app, clientBrowser, connectionFake = tHub
+    app.state.dictRemnantScan["listItems"] = [_fdictSessionItem()]
+    connectionFake.sTable = S_TABLE.replace("40 0 40 40 34816 S 500", "40 0 40 40 34816 S 777")
+    listCalls = []
+    monkeypatch.setattr(terminalContainment, "fdictTerminateAndProveGroup",
+                        lambda *tArgs: listCalls.append(tArgs) or {"bProvenEmpty": True, "sDetail": ""})
+    clientBrowser.post("/api/system/remnants/remove", json={"listItemIds": ["s1"]})
+    assert listCalls == []

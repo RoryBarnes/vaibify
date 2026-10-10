@@ -2182,6 +2182,17 @@ LIST_FALSIFICATIONS = [
         new="""    return True or any(
         dictRow["iPid"] == iLeaderPid and dictRow["iStartTicks"] == iStartTicks""",
     ),
+    # The "already gone" guard must REFUSE: returning instead would let the
+    # removal continue past a live identity that no longer matches and
+    # signal a recycled pid.
+    Falsification(
+        nodeid='tests/testRemnantRoutes.py::test_the_already_gone_guard_refuses_rather_than_returns',
+        source='vaibify/gui/routes/remnantRoutes.py',
+        old="""    raise HTTPException(
+        409, f"{sWhat} is already gone, or has been replaced since the scan.")""",
+        new="""    return (
+        409, f"{sWhat} is already gone, or has been replaced since the scan.")""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(
