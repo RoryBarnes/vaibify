@@ -136,10 +136,10 @@ def test_a_session_whose_pid_was_recycled_is_refused_without_a_signal(tHub, monk
 def test_each_action_reaches_exactly_its_authority(tHub, monkeypatch):
     app, clientBrowser, connectionFake = tHub
     listCalls = []
-    monkeypatch.setattr(keepAliveManager, "fnStopProvablyOursKeepAlive",
-                        lambda iPid: listCalls.append(("ours", iPid)))
-    monkeypatch.setattr(keepAliveManager, "fnStopKeepAliveProcess",
-                        lambda iPid, sIso: listCalls.append(("gated", iPid, sIso)))
+    monkeypatch.setattr(keepAliveManager, "fbStopProvablyOursKeepAlive",
+                        lambda iPid: listCalls.append(("ours", iPid)) or True)
+    monkeypatch.setattr(keepAliveManager, "fbStopKeepAliveProcess",
+                        lambda iPid, sIso: listCalls.append(("gated", iPid, sIso)) or True)
     monkeypatch.setattr(keepAliveManager, "fnStopKeepAlive",
                         lambda sName: listCalls.append(("lane", sName)))
     monkeypatch.setattr(keepAliveManager, "fdictReadKeepAliveRecord",
@@ -147,9 +147,9 @@ def test_each_action_reaches_exactly_its_authority(tHub, monkeypatch):
     monkeypatch.setattr(containerManager, "fnRemoveStoppedContainerById",
                         lambda sId: listCalls.append(("remove", sId)))
     from datetime import datetime, timezone
-    monkeypatch.setattr("vaibify.config.processLiveness.flistEnumerateProcessesNamed",
-                        lambda sName: [{"iPid": 55, "iParentPid": 1, "sCommand": "caffeinate -s",
-                                        "datetimeStart": datetime(2026, 1, 1, tzinfo=timezone.utc)}])
+    monkeypatch.setattr(keepAliveManager, "fdictEnumerateKeepAlivesByPid",
+                        lambda: {55: {"iPid": 55, "iParentPid": 1, "sCommand": "caffeinate -s",
+                                      "datetimeStart": datetime(2026, 1, 1, tzinfo=timezone.utc)}})
     app.state.dictRemnantScan["listItems"] = [
         {"sItemId": "k1", "sTier": "proven", "sAction": remnantScanner.S_ACTION_KILL,
          "sContainerName": "", "dictIdentity": {"iPid": 44, "sStartedIso": "i"}},

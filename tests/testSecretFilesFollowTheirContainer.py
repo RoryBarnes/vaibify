@@ -1,9 +1,9 @@
 """A removed container's secret files go with it, on proof of removal.
 
 Each container start writes a fresh credential file, and nothing
-deleted the old one when the container went away, so eleven plaintext
-token files that no container mounted sat on one researcher's disk for
-seven weeks. The removal paths now read the container's mounts before
+deleted the old one when the container went away, so plaintext token
+files that no container mounted accumulated on disk. The removal paths
+now read the container's mounts before
 ``docker rm``, confirm with the daemon that the container is gone, and
 release the sources no surviving container mounts. Every proof step is
 driven here through the CLI probe seam the module uses throughout.

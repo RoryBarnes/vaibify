@@ -24,7 +24,9 @@ the claim and the check cannot make a live holder look recycled.
 """
 
 __all__ = [
+    "fdictEnumerateStartClocks",
     "flistEnumerateProcessesNamed",
+    "fbStartClockIsConsistentWithClaim",
     "fsReadProcessCommandName",
     "fbIsUsablePid",
     "fbIsProcessAlive",
@@ -86,6 +88,19 @@ def fbIsProcessAliveSince(iPid, sClaimIso, dictStartClockCache=None):
     if not fbIsProcessAlive(iPid):
         return False
     datetimeStart = fdatetimeReadProcessStartClockCached(iPid, dictStartClockCache)
+    return fbStartClockIsConsistentWithClaim(datetimeStart, sClaimIso)
+
+
+def fbStartClockIsConsistentWithClaim(datetimeStart, sClaimIso):
+    """Return False only when a readable start clock postdates the claim.
+
+    The one recycled-pid rule, shared by every liveness and kill
+    decision: a process that started after the recorded claim (beyond
+    the tolerance) is a different process wearing the same pid. Either
+    side unreadable answers True, which is enough to leave a process
+    alone and never enough to kill one; a kill rule must demand the
+    clock be readable before asking this.
+    """
     datetimeClaim = fdatetimeParseClaimIso(sClaimIso)
     if datetimeStart is None or datetimeClaim is None:
         return True
@@ -223,17 +238,19 @@ def ftEnumerateSessionMembers(iSessionLeader):
 def flistEnumerateProcessesNamed(sCommandName):
     """Return this user's processes whose command is ``sCommandName``.
 
-    One row per process: ``{iPid, iParentPid, sCommand, datetimeStart}``,
-    with ``datetimeStart`` read by :func:`fdatetimeReadProcessStartClock`
-    and ``None`` when that clock is unreadable. The enumeration is
-    ``ps -axo pid=,ppid=,uid=,command=`` with the command LAST, so the
-    one variable-width field is the tail of each line. ``None`` means
-    the enumeration itself failed, which a caller must report as
-    unknown and never as "none running".
+    One row per process: ``{iPid, iParentPid, sCommand, datetimeStart}``.
+    ONE ``ps`` spawn answers the whole listing, start clocks included:
+    the elapsed time rides in the listing as ``etime``, so no per-pid
+    probe follows, and a host carrying hundreds of matching processes
+    costs the same one spawn as a host carrying none. ``datetimeStart``
+    is ``None`` when the elapsed field is unreadable. The command is
+    the LAST column, so the one variable-width field is the tail of
+    each line. ``None`` means the enumeration itself failed, which a
+    caller must report as unknown and never as "none running".
     """
     try:
         processResult = subprocess.run(
-            ["ps", "-axo", "pid=,ppid=,uid=,command="],
+            ["ps", "-axo", "pid=,ppid=,uid=,etime=,command="],
             capture_output=True, text=True, timeout=10, encoding="utf-8",
         )
     except (OSError, subprocess.SubprocessError):
@@ -246,26 +263,62 @@ def flistEnumerateProcessesNamed(sCommandName):
 
 
 def _flistParseProcessesNamed(sOutput, sCommandName, iOwnUid):
-    """Parse the four-column ``ps`` listing into this user's named rows."""
+    """Parse the five-column ``ps`` listing into this user's named rows."""
     listRows = []
+    datetimeNow = datetime.datetime.now(datetime.timezone.utc)
     for sLine in sOutput.splitlines():
-        tParts = sLine.split(None, 3)
-        if len(tParts) < 4:
+        tParts = sLine.split(None, 4)
+        if len(tParts) < 5:
             continue
         try:
             iPid, iParentPid, iUid = int(tParts[0]), int(tParts[1]), int(tParts[2])
         except ValueError:
             continue
-        sCommand = tParts[3].strip()
+        sCommand = tParts[4].strip()
         if iUid != iOwnUid or not sCommand:
             continue
         if os.path.basename(sCommand.split()[0]) != sCommandName:
             continue
         listRows.append({
             "iPid": iPid, "iParentPid": iParentPid, "sCommand": sCommand,
-            "datetimeStart": fdatetimeReadProcessStartClock(iPid),
+            "datetimeStart": _fdatetimeStartFromElapsed(datetimeNow, tParts[3]),
         })
     return listRows
+
+
+def _fdatetimeStartFromElapsed(datetimeNow, sElapsed):
+    """Return the start instant for a ``ps`` elapsed field, or None."""
+    dElapsedSeconds = fdParseElapsedSeconds(sElapsed)
+    if dElapsedSeconds is None:
+        return None
+    return datetimeNow - datetime.timedelta(seconds=dElapsedSeconds)
+
+
+def fdictEnumerateStartClocks():
+    """Return ``{iPid: datetimeStart or None}`` for every process, in one spawn.
+
+    The batch form of :func:`fdatetimeReadProcessStartClock` for a
+    caller that must judge many recorded pids at once (the keep-alive
+    spawn ledger's prune): one ``ps`` instead of one per pid. ``None``
+    means the listing itself failed.
+    """
+    try:
+        processResult = subprocess.run(
+            ["ps", "-axo", "pid=,etime="],
+            capture_output=True, text=True, timeout=10, encoding="utf-8",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if processResult.returncode != 0:
+        return None
+    datetimeNow = datetime.datetime.now(datetime.timezone.utc)
+    dictClocks = {}
+    for sLine in processResult.stdout.splitlines():
+        tParts = sLine.split()
+        if len(tParts) != 2 or not tParts[0].isdigit():
+            continue
+        dictClocks[int(tParts[0])] = _fdatetimeStartFromElapsed(datetimeNow, tParts[1])
+    return dictClocks
 
 
 def fsReadProcessCommandName(iPid):

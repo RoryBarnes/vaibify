@@ -6,7 +6,7 @@ owning hub is dead. Before this module each reaper was its own
 startup hook, and a hook that raised was logged once and never ran
 again; the secret sweep in particular called an attribute its client
 did not have, swallowed the ``AttributeError``, and silently did
-nothing for weeks. Every reaper now runs through one pass, and the
+nothing for as long as it ran. Every reaper now runs through one pass, and the
 pass records one outcome per reaper -- ``ran`` with a count,
 ``forbidden`` with the reason it declined, or ``failed`` with the
 remedy -- so a reaper that cannot run is visible rather than absent.
@@ -198,13 +198,16 @@ def fnRequestRescan(app):
 async def _fnReaperLoop(app, dictCtx, fInterval):
     """Run a pass at once, then every ``fInterval`` seconds or on request."""
     while True:
+        # Cleared BEFORE the pass: a rescan requested while a pass is
+        # running asks for what that pass cannot have seen, so it must
+        # start the next one rather than be erased by its end.
+        app.state.eventReaperRescan.clear()
         try:
             await fnRunReaperPass(app, dictCtx)
         except asyncio.CancelledError:
             return
         except Exception:  # noqa: BLE001 — one pass, not the loop
             logger.warning("reaper pass failed", exc_info=True)
-        app.state.eventReaperRescan.clear()
         try:
             await asyncio.wait_for(
                 app.state.eventReaperRescan.wait(), fInterval)

@@ -29,14 +29,15 @@ var VaibifyRemnants = (function () {
         if (!elGlyph) return;
         var iCount = dictSummary ? (dictSummary.iCount || 0) : 0;
         var bFailed = !!(dictSummary && dictSummary.bReaperFailed);
-        if (!dictSummary || (iCount === 0 && !bFailed)) {
+        var bScanError = !!(dictSummary && dictSummary.bScanError);
+        if (!dictSummary || (iCount === 0 && !bFailed && !bScanError)) {
             elGlyph.style.display = "none";
             return;
         }
         elGlyph.style.display = "";
-        elGlyph.textContent = "⚠ " + iCount;
+        elGlyph.textContent = iCount ? "⚠ " + iCount : "⚠";
         elGlyph.title = dictSummary.sGlyphTitle || _S_PANEL_TITLE;
-        elGlyph.classList.toggle("btn-icon--remnants-failed", bFailed);
+        elGlyph.classList.toggle("btn-icon--remnants-failed", bFailed || bScanError);
     }
 
     function fnBindRemnantsGlyph() {

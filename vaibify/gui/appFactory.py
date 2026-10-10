@@ -187,9 +187,13 @@ def _fdictReapOrphanedCliShells(dictCtx):
     dictOutcome = cliShellContainment.fdictReapOrphanedCliShells(
         connectionDocker,
     )
+    iDropped = len(dictOutcome["listDeleted"])
     return remnantReapers.fdictBuildReaperOutcome(
-        remnantReapers.S_OUTCOME_RAN,
-        iRemoved=len(dictOutcome["listEnded"]) + len(dictOutcome["listDeleted"]),
+        remnantReapers.S_OUTCOME_RAN, iRemoved=len(dictOutcome["listEnded"]),
+        sReason=(
+            f"{iDropped} record(s) of sessions already gone were dropped"
+            if iDropped else ""
+        ),
     )
 
 
@@ -210,21 +214,29 @@ def _fdictReapOrphanedTerminals(dictCtx):
             sReason="the Docker daemon is unreachable",
             sRemedy="Start Docker, then rescan.",
         )
-    listEnded = []
+    listEnded, listQuarantined = [], []
 
     def fdictTerminateAndCount(sProjectName, connectionDockerPass):
         dictOutcome = terminalContainment.fdictTerminateOrphanedJournalRecords(
             sProjectName, connectionDockerPass,
         )
         listEnded.extend(dictOutcome["listSettledOperationIds"])
-        listEnded.extend(dictOutcome["listQuarantinedOperationIds"])
+        listQuarantined.extend(dictOutcome["listQuarantinedOperationIds"])
         return dictOutcome
 
     fnReapStaleContainerLocks(
         connectionDocker, fnTerminateOrphanedTerminals=fdictTerminateAndCount,
     )
+    # Only a PROVEN-empty group counts as removed; a record that could
+    # not be proven is quarantined for reconcile, and saying so is the
+    # whole point of recording the outcome.
     return remnantReapers.fdictBuildReaperOutcome(
         remnantReapers.S_OUTCOME_RAN, iRemoved=len(listEnded),
+        sReason=(
+            f"{len(listQuarantined)} terminal record(s) could not be proven "
+            "empty and were quarantined for reconcile"
+            if listQuarantined else ""
+        ),
     )
 
 
@@ -609,7 +621,7 @@ def _fnRegisterCredentialTestSweep(app):
 
     async def fnStartStagedCopySweep(app):
         app.state.taskStagedCopySweep = asyncio.create_task(
-            _fnStagedCopySweepLoop(F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
+            _fnStagedCopySweepLoop(app, F_COUNCIL_CHAT_REAPER_INTERVAL_SECONDS),
             name="vaibify-council-staged-copy-sweep")
 
     async def fnStopStagedCopySweep(app):
@@ -621,18 +633,22 @@ def _fnRegisterCredentialTestSweep(app):
         app, fnStartStagedCopySweep, fnStopStagedCopySweep)
 
 
-async def _fnStagedCopySweepLoop(fInterval):
+async def _fnStagedCopySweepLoop(app, fInterval):
     """Remove council token copies no live process holds, forever.
 
-    One failed pass is logged and the loop continues, like the chat
-    reaper beside it.
+    The loop keeps its own, shorter cadence because the copies are
+    credentials, but each pass is run and recorded through the reaper
+    registry, so a failing pass shows in the hub's cleanup health
+    instead of only in the log.
     """
     from . import agentCouncilStagedCopies
+    fdictSweep = remnantReapers.ffnWrapSweepAsReaper(
+        agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
     while True:
         try:
             await asyncio.sleep(fInterval)
-            await asyncio.to_thread(
-                agentCouncilStagedCopies.fiSweepOrphanedStagedCopies)
+            await remnantReapers.fnRunReaperOnce(
+                app, "councilStagedCopies", fdictSweep, {})
         except asyncio.CancelledError:
             return
         except Exception:

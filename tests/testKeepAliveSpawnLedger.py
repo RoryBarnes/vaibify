@@ -70,8 +70,8 @@ def test_the_cap_keeps_the_newest_entries():
 
 
 def test_concurrent_appends_lose_nothing(monkeypatch):
-    monkeypatch.setattr(keepAliveManager, "fbIsProcessAliveSince",
-                        lambda iPid, sIso, dictCache=None: True)
+    monkeypatch.setattr(keepAliveManager, "fdictEnumerateStartClocks", lambda: None)
+    monkeypatch.setattr(keepAliveManager, "fbIsProcessAlive", lambda iPid: True)
     listThreads = [
         threading.Thread(target=keepAliveManager._fnRecordSpawnInLedger,
                          args=(f"name{iIndex}", 100000 + iIndex, fsNowClaimIso()))
@@ -84,36 +84,50 @@ def test_concurrent_appends_lose_nothing(monkeypatch):
 
 
 S_PS_LISTING = (
-    "    1     0     0 /sbin/launchd\n"
-    "  4242     1  1234 caffeinate -s\n"
-    "  4243  4242  1234 /usr/bin/caffeinate -w 99\n"
-    "  4244     1  5678 caffeinate -s\n"
-    "  4245     1  1234 /usr/bin/python3 -m vaibify --port 8050 with spaces\n"
-    "  4246     1  1234 caffeinated-thing\n"
+    "    1     0     0       10:00 /sbin/launchd\n"
+    "  4242     1  1234    01:00 caffeinate -s\n"
+    "  4243  4242  1234       30 /usr/bin/caffeinate -w 99\n"
+    "  4244     1  5678    02:00 caffeinate -s\n"
+    "  4245     1  1234    05:00 /usr/bin/python3 -m vaibify --port 8050 with spaces\n"
+    "  4246     1  1234    00:10 caffeinated-thing\n"
     "garbage line\n"
 )
 
 
-def test_the_enumerator_parses_the_four_column_listing(monkeypatch):
+def test_the_enumerator_parses_the_five_column_listing(monkeypatch):
     monkeypatch.setattr(processLiveness.os, "getuid", lambda: 1234)
     monkeypatch.setattr(
         processLiveness.subprocess, "run",
         lambda *tArgs, **dictKeywords: SimpleNamespace(returncode=0, stdout=S_PS_LISTING))
-    datetimeFixed = datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc)
-    monkeypatch.setattr(processLiveness, "fdatetimeReadProcessStartClock",
-                        lambda iPid: datetimeFixed if iPid == 4242 else None)
     listRows = processLiveness.flistEnumerateProcessesNamed("caffeinate")
     assert [dictRow["iPid"] for dictRow in listRows] == [4242, 4243]
-    assert listRows[0] == {"iPid": 4242, "iParentPid": 1, "sCommand": "caffeinate -s",
-                           "datetimeStart": datetimeFixed}
-    assert listRows[1]["datetimeStart"] is None
-    assert processLiveness.flistEnumerateProcessesNamed("python3")[0]["sCommand"].endswith("with spaces")
+    assert listRows[0]["sCommand"] == "caffeinate -s"
+    assert listRows[0]["iParentPid"] == 1
+    # The start clock is now derived from the listing's own etime, in one
+    # spawn: a one-minute elapsed time reads back as ~one minute ago.
+    fAgeSeconds = (datetime.datetime.now(datetime.timezone.utc)
+                   - listRows[0]["datetimeStart"]).total_seconds()
+    assert 55 <= fAgeSeconds <= 65, fAgeSeconds
+    assert processLiveness.flistEnumerateProcessesNamed(
+        "python3")[0]["sCommand"].endswith("with spaces")
 
 
 def test_the_enumerator_answers_none_when_ps_cannot_run(monkeypatch):
     monkeypatch.setattr(processLiveness.subprocess, "run",
                         lambda *tArgs, **dictKeywords: (_ for _ in ()).throw(FileNotFoundError()))
     assert processLiveness.flistEnumerateProcessesNamed("caffeinate") is None
+
+
+def test_the_start_clocks_come_from_one_spawn(monkeypatch):
+    listCalls = []
+
+    def fnFakeRun(tArgv, **dictKeywords):
+        listCalls.append(tArgv)
+        return SimpleNamespace(returncode=0, stdout="  4242    01:00\n  4243    bad\n")
+    monkeypatch.setattr(processLiveness.subprocess, "run", fnFakeRun)
+    dictClocks = processLiveness.fdictEnumerateStartClocks()
+    assert len(listCalls) == 1, "one ps spawn answers every pid"
+    assert dictClocks[4242] is not None and dictClocks[4243] is None
 
 
 def test_the_sleep_hint_reads_the_one_enumerator(monkeypatch):
@@ -125,17 +139,30 @@ def test_the_sleep_hint_reads_the_one_enumerator(monkeypatch):
     assert dockerStatus._fbCaffeinateRunning() is False, "unknown is never 'running'"
 
 
-def test_the_kill_rule_demands_the_ledger_a_clock_and_the_command_name(monkeypatch):
+def _fnArrangeLiveCaffeinate(monkeypatch, iPid, sStartedIso):
+    """Make the host list iPid as a caffeinate started at the given instant."""
+    import datetime as _dt
+    datetimeStart = _dt.datetime.fromisoformat(sStartedIso)
+    monkeypatch.setattr(
+        keepAliveManager, "fdictEnumerateKeepAlivesByPid",
+        lambda: {iPid: {"iPid": iPid, "iParentPid": 1,
+                        "sCommand": "caffeinate -s", "datetimeStart": datetimeStart}})
+
+
+def test_the_kill_rule_demands_the_ledger_and_a_consistent_live_clock(monkeypatch):
     iPid = os.getpid()
-    keepAliveManager._fnRecordSpawnInLedger("ours", iPid, fsNowClaimIso())
-    monkeypatch.setattr(keepAliveManager, "fsReadProcessCommandName",
-                        lambda iQuery: "caffeinate")
+    sStartedIso = fsNowClaimIso()
+    keepAliveManager._fnRecordSpawnInLedger("ours", iPid, sStartedIso)
+    _fnArrangeLiveCaffeinate(monkeypatch, iPid, sStartedIso)
     assert keepAliveManager.fbCaffeinateIsProvablyOurs(iPid) is True
     assert keepAliveManager.fbCaffeinateIsProvablyOurs(iPid + 1) is False, "not ledgered"
-    monkeypatch.setattr(keepAliveManager, "fsReadProcessCommandName", lambda iQuery: "python3")
-    assert keepAliveManager.fbCaffeinateIsProvablyOurs(iPid) is False, "wrong command"
-    monkeypatch.setattr(keepAliveManager, "fsReadProcessCommandName", lambda iQuery: "caffeinate")
-    monkeypatch.setattr(keepAliveManager, "fdatetimeReadProcessStartClock", lambda iQuery: None)
+    # Host no longer lists it as a caffeinate: not provably ours.
+    monkeypatch.setattr(keepAliveManager, "fdictEnumerateKeepAlivesByPid", lambda: {})
+    assert keepAliveManager.fbCaffeinateIsProvablyOurs(iPid) is False, "not listed"
+    # Listed but with an unreadable clock: not enough to kill.
+    monkeypatch.setattr(
+        keepAliveManager, "fdictEnumerateKeepAlivesByPid",
+        lambda: {iPid: {"iPid": iPid, "datetimeStart": None}})
     assert keepAliveManager.fbCaffeinateIsProvablyOurs(iPid) is False, "unreadable clock"
 
 
@@ -143,9 +170,27 @@ def test_the_stop_refuses_what_it_cannot_prove_and_signals_what_it_can(monkeypat
     listKilled = []
     monkeypatch.setattr(keepAliveManager, "_fnKillIfRunning",
                         lambda iPid, sIso: listKilled.append(iPid))
+    monkeypatch.setattr(keepAliveManager, "_fbAwaitProcessExit", lambda iPid: True)
     with pytest.raises(ValueError, match="left alone"):
-        keepAliveManager.fnStopProvablyOursKeepAlive(os.getpid())
-    keepAliveManager._fnRecordSpawnInLedger("ours", os.getpid(), fsNowClaimIso())
-    monkeypatch.setattr(keepAliveManager, "fsReadProcessCommandName", lambda iQuery: "caffeinate")
-    keepAliveManager.fnStopProvablyOursKeepAlive(os.getpid())
+        keepAliveManager.fbStopProvablyOursKeepAlive(os.getpid())
+    sStartedIso = fsNowClaimIso()
+    keepAliveManager._fnRecordSpawnInLedger("ours", os.getpid(), sStartedIso)
+    _fnArrangeLiveCaffeinate(monkeypatch, os.getpid(), sStartedIso)
+    assert keepAliveManager.fbStopProvablyOursKeepAlive(os.getpid()) is True
     assert listKilled == [os.getpid()]
+
+
+def test_the_stop_reports_a_signalled_process_that_is_still_running(monkeypatch):
+    sStartedIso = fsNowClaimIso()
+    keepAliveManager._fnRecordSpawnInLedger("ours", os.getpid(), sStartedIso)
+    _fnArrangeLiveCaffeinate(monkeypatch, os.getpid(), sStartedIso)
+    monkeypatch.setattr(keepAliveManager, "_fnKillIfRunning", lambda iPid, sIso: None)
+    monkeypatch.setattr(keepAliveManager, "_fbAwaitProcessExit", lambda iPid: False)
+    assert keepAliveManager.fbStopProvablyOursKeepAlive(os.getpid()) is False
+
+
+def test_the_confirmed_stop_refuses_a_recycled_pid(monkeypatch):
+    monkeypatch.setattr(keepAliveManager, "fbIsProcessAliveSince",
+                        lambda iPid, sIso: False)
+    with pytest.raises(ValueError, match="already gone"):
+        keepAliveManager.fbStopKeepAliveProcess(os.getpid(), fsNowClaimIso())

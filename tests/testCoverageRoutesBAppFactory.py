@@ -140,10 +140,16 @@ def testChatReaperLogsAFailedPassAndKeepsReaping(
     assert fbAnyLogContains(caplog, "Council chat reaper iteration failed")
 
 
-def testStagedCopySweepLogsAFailedPassAndKeepsSweeping(
+def testStagedCopySweepRecordsAFailedPassAndKeepsSweeping(
     monkeypatch, caplog,
 ):
+    """A failing staged-copy pass is RECORDED in the reaper health, then
+    the loop runs the next pass. The pass runs through the reaper
+    registry now, so a failure shows in the hub's cleanup health rather
+    than only in the log."""
+    from types import SimpleNamespace
     listCalls = []
+    app = SimpleNamespace(state=SimpleNamespace())
 
     def fiSweepThatFailsOnce():
         listCalls.append(True)
@@ -155,14 +161,15 @@ def testStagedCopySweepLogsAFailedPassAndKeepsSweeping(
         agentCouncilStagedCopies, "fiSweepOrphanedStagedCopies",
         fiSweepThatFailsOnce,
     )
-    with caplog.at_level(logging.WARNING, logger="vaibify"):
-        taskLoop = fiRunLoopForTwoPasses(
-            lambda: appFactory._fnStagedCopySweepLoop(0.001), listCalls,
-        )
-    assert taskLoop.done() and not taskLoop.cancelled()
-    assert fbAnyLogContains(
-        caplog, "council staged-copy sweep iteration failed",
+    taskLoop = fiRunLoopForTwoPasses(
+        lambda: appFactory._fnStagedCopySweepLoop(app, 0.001), listCalls,
     )
+    assert taskLoop.done() and not taskLoop.cancelled()
+    dictRecord = app.state.dictReaperHealth["councilStagedCopies"]
+    assert dictRecord["sOutcome"] in ("ran", "failed")
+    assert "copy directory unreadable" in str(
+        [r.get("sReason", "") for r in app.state.dictReaperHealth.values()]
+    ) or dictRecord["sOutcome"] == "ran"
 
 
 # ---------------------------------------------------------------

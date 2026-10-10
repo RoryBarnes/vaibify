@@ -104,8 +104,8 @@ def fnKeepTheSuiteFromLaunchingCaffeinate():
     redirect below hands every test an empty caffeinate registry. Each
     watchdog tick therefore found no keep-alive and spawned another
     ``caffeinate -s`` into its own session, where it outlived the
-    suite: 847 had accumulated on one researcher's machine
-    (2026-10-09), pinning it awake. The spawn declines exactly as it
+    suite and accumulated on the host, pinning it awake. The spawn
+    declines exactly as it
     does on a host without caffeinate (pid 0), never with a fake pid
     that a later stop would SIGTERM as if it were ours. Session scope,
     because the module-scoped browser hub ticks between tests too.

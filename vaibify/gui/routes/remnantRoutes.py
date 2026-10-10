@@ -182,31 +182,45 @@ def _fsTerminateSession(dictCtx, dictItem):
 
 
 def _fsKillKeepAlive(dictItem):
-    """Kill a keep-alive: through the ledger when proven, start-clock gated otherwise."""
+    """Kill a keep-alive: through the ledger when proven, start-clock gated otherwise.
+
+    Both exits wait for the process to leave the process table and say
+    so; a caffeinate still listed when the wait ends is reported as
+    signalled, never as ended.
+    """
     iPid = dictItem["dictIdentity"]["iPid"]
     sStartedIso = dictItem["dictIdentity"].get("sStartedIso", "")
-    if dictItem["sTier"] == remnantScanner.S_TIER_PROVEN:
-        try:
-            keepAliveManager.fnStopProvablyOursKeepAlive(iPid)
-        except ValueError:
-            _fnRefuseAlreadyGone(f"caffeinate {iPid}")
-        return f"caffeinate {iPid} was ended; the machine may sleep again."
-    if not _fbKeepAliveStillMatches(iPid, sStartedIso):
+    if dictItem["sTier"] != remnantScanner.S_TIER_PROVEN and not (
+        _fbKeepAliveStillMatches(iPid, sStartedIso)
+    ):
         _fnRefuseAlreadyGone(f"caffeinate {iPid}")
-    keepAliveManager.fnStopKeepAliveProcess(iPid, sStartedIso)
-    return f"caffeinate {iPid} was signalled to end."
+    try:
+        bEnded = (
+            keepAliveManager.fbStopProvablyOursKeepAlive(iPid)
+            if dictItem["sTier"] == remnantScanner.S_TIER_PROVEN
+            else keepAliveManager.fbStopKeepAliveProcess(iPid, sStartedIso)
+        )
+    except ValueError:
+        _fnRefuseAlreadyGone(f"caffeinate {iPid}")
+    if bEnded:
+        return f"caffeinate {iPid} was ended; the machine may sleep again."
+    raise HTTPException(409, (
+        f"caffeinate {iPid} was signalled to end but is still running; "
+        "rescan to see whether it stopped."))
 
 
 def _fbKeepAliveStillMatches(iPid, sStartedIso):
-    """True only when a caffeinate with this pid and start instant still runs."""
-    from vaibify.config.processLiveness import flistEnumerateProcessesNamed
-    for dictProcess in flistEnumerateProcessesNamed(
-        remnantScanner.S_KEEP_ALIVE_COMMAND,
-    ) or []:
-        if dictProcess["iPid"] != iPid or dictProcess["datetimeStart"] is None:
-            continue
-        return dictProcess["datetimeStart"].isoformat(timespec="seconds") == sStartedIso
-    return False
+    """True only when a caffeinate with this pid still runs with that start.
+
+    The start instant comes from ``ps``'s whole-second elapsed time, so
+    two readings of one process differ by up to a second; the match is
+    the liveness module's tolerance, never string equality.
+    """
+    from vaibify.config.processLiveness import fbStartClockIsConsistentWithClaim
+    dictProcess = (keepAliveManager.fdictEnumerateKeepAlivesByPid() or {}).get(iPid)
+    if dictProcess is None or dictProcess["datetimeStart"] is None:
+        return False
+    return fbStartClockIsConsistentWithClaim(dictProcess["datetimeStart"], sStartedIso)
 
 
 def _fsStopSessionLane(dictItem):

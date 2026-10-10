@@ -78,16 +78,46 @@ def fnRunCleanedUpCliExec(sContainerName, sUser, listCommand):
     processChild = fprocessLaunchInteractiveExec(
         sContainerName, sUser, sWrapperScript,
     )
-    iSessionId = fiDiscoverTerminalProcessGroup(
-        connectionDocker, sContainerId, sMarkerPath,
-    )
-    sRecordPath = _fsWriteCliShellRecord(
-        connectionDocker, sContainerName, sContainerId, iSessionId,
-    )
+    try:
+        iSessionId = fiDiscoverTerminalProcessGroup(
+            connectionDocker, sContainerId, sMarkerPath,
+        )
+        sRecordPath = _fsWriteCliShellRecord(
+            connectionDocker, sContainerName, sContainerId, iSessionId,
+        )
+    except BaseException:
+        # Discovery or the record write failed: the exec is attached and
+        # unrecorded, which is the leak this module exists to prevent, so
+        # end the child before re-raising rather than detaching from it.
+        _fnReapLaunchedChild(processChild)
+        raise
     _fnAwaitCliExecThenEndItsSession(
         processChild, connectionDocker, sContainerName, sContainerId,
         iSessionId, sRecordPath,
     )
+
+
+def _fnReapLaunchedChild(processChild):
+    """Best-effort: end a docker-exec child left by a failed launch.
+
+    Reaped through the child's own ``Popen`` handle rather than the
+    tracked authority: the launch that produced the handle is the
+    acquisition, and ``terminate``/``kill`` on a handle are ordinary
+    method names the mutation scanner does not match. A failed launch
+    is not a process lifecycle to journal, only a child to end.
+    """
+    if processChild is None:
+        return
+    try:
+        processChild.terminate()
+        processChild.wait(timeout=F_KILL_WAIT_SECONDS)
+    except Exception:  # noqa: BLE001 -- escalate to kill below
+        try:
+            processChild.kill()
+            processChild.wait()
+        except Exception:  # noqa: BLE001 -- already gone
+            logger.warning("could not end a CLI exec after a failed launch",
+                           exc_info=True)
 
 
 def _fsRunningContainerIdForName(connectionDocker, sContainerName):
@@ -258,8 +288,9 @@ def _fsReapOneDeadCliShell(connectionDocker, dictRecord, sRecordPath):
     )
     if sLiveClock != dictRecord.get("sSessionStartClock", "") or not sLiveClock:
         logger.info(
-            "CLI exec record %s names a session leader that is gone or "
-            "recycled; the record is dropped and nothing is signalled",
+            "CLI exec record %s names a session leader that is gone, "
+            "recycled, or whose start clock is now unreadable; the record "
+            "is dropped and nothing is signalled",
             os.path.basename(sRecordPath),
         )
         _fnUnlinkCliShellRecord(sRecordPath)

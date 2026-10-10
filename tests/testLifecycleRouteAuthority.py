@@ -101,17 +101,23 @@ DICT_LIFECYCLE_AUDIT = {
     },
     ("POST", "/api/containers/{sName}/settings"): {
         "sHandler": "fdictSetContainerSettings",
-        "bHoldsMutationLock": False,
+        "bHoldsMutationLock": True,
         "bWritesJournalRecord": False,
         "sTransfer": "not-applicable",
         "sFinding": (
             "Classified container-lifecycle for AUTHORIZATION -- one "
-            "session must not reconfigure a container another owns -- but "
-            "it reaches no container at all. It rewrites vaibify.yml on "
-            "the HOST, and the settings take effect at the next start. So "
-            "the transfer question does not arise; the race it does have "
-            "is two sessions rewriting the same YAML file, which the "
-            "mutation lock would not address either."
+            "session must not reconfigure a container another owns. Most "
+            "of it rewrites vaibify.yml on the HOST, taking effect at the "
+            "next start, so the transfer question does not arise. One "
+            "branch does reach the running container: saving neverSleep "
+            "starts or stops the session-lane keep-alive of a held, "
+            "running container at once. That branch -- and only that "
+            "branch -- takes the per-container mutation lock, because a "
+            "save racing a concurrent claim of the same container could "
+            "otherwise both spawn a session lane. No journal record: the "
+            "keep-alive is a host process, not a container operation to "
+            "quarantine, and the YAML write races two sessions over a "
+            "file, which no container lock addresses."
         ),
     },
     ("POST", "/api/registry/{sName}/delete-environment"): {

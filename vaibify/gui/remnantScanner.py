@@ -130,11 +130,20 @@ def fsItemId(sCategory, dictIdentity):
 
 def _fdictItem(
     sCategory, sTier, dictIdentity, sEvidence, sRemedy, sAction,
-    sContainerName="", bConfirmRequired=False,
+    sContainerName="", bConfirmRequired=False, dictDigestIdentity=None,
 ):
-    """Return one item in the shape every category shares."""
+    """Return one item in the shape every category shares.
+
+    ``dictDigestIdentity`` names the id across scans when the identity
+    carries a value that drifts between scans -- a start instant
+    derived from one-second ``etime`` jitters by up to a second -- so
+    the same leftover keeps the same id and a panel selection survives
+    a rescan.
+    """
     return {
-        "sItemId": fsItemId(sCategory, dictIdentity),
+        "sItemId": fsItemId(
+            sCategory,
+            dictIdentity if dictDigestIdentity is None else dictDigestIdentity),
         "sCategory": sCategory,
         "sTier": sTier,
         "sContainerName": sContainerName,
@@ -172,10 +181,10 @@ async def fnRunRemnantScan(app, dictCtx):
 async def _flistScanEverything(app, dictCtx):
     """Run every classifier; the host ones in a thread, the Docker ones bounded."""
     connectionDocker = dictCtx.get("docker") if dictCtx else None
-    listItems = await asyncio.to_thread(
-        flistClassifyHostKeepAlives, app.state, _fdictRunningIdByName(connectionDocker),
-    )
+    dictReadsInFlight = _fdictReadsInFlight(app.state)
     if not fbDockerReachable(connectionDocker):
+        listItems = await asyncio.to_thread(
+            flistClassifyHostKeepAlives, app.state, {})
         listItems.append(_fdictItem(
             S_CATEGORY_UNTRACKED_SESSION, S_TIER_UNKNOWN, {"sScope": "daemon"},
             "Docker is unreachable, so nothing inside containers could be "
@@ -183,9 +192,26 @@ async def _flistScanEverything(app, dictCtx):
         ))
         return listItems
     setRegisteredNames = await asyncio.to_thread(_fsetRegisteredContainerNames)
-    listAll = await asyncio.to_thread(connectionDocker.flistListAllContainers)
+    listAll = await containerMemorySampler.fgenericReadWithDeadline(
+        dictReadsInFlight, "remnant-containers",
+        connectionDocker.flistListAllContainers,
+    )
+    if listAll is None:
+        listItems = await asyncio.to_thread(
+            flistClassifyHostKeepAlives, app.state, {})
+        listItems.append(_fdictItem(
+            S_CATEGORY_UNTRACKED_SESSION, S_TIER_UNKNOWN, {"sScope": "listing"},
+            "The Docker daemon did not list its containers within the "
+            "deadline.", "Rescan once the daemon answers.", S_ACTION_NONE,
+        ))
+        return listItems
+    dictRunningIdByName = {
+        dictRow["sName"]: dictRow["sContainerId"] for dictRow in listAll
+        if dictRow["sStatus"] == "running"
+    }
+    listItems = await asyncio.to_thread(
+        flistClassifyHostKeepAlives, app.state, dictRunningIdByName)
     listItems.extend(flistClassifyStoppedContainers(listAll, setRegisteredNames))
-    dictReadsInFlight = _fdictReadsInFlight(app.state)
     for dictContainer in listAll:
         if dictContainer["sStatus"] != "running":
             continue
@@ -204,19 +230,6 @@ def _fdictReadsInFlight(appState):
         dictReads = {}
         appState.dictRemnantReadsInFlight = dictReads
     return dictReads
-
-
-def _fdictRunningIdByName(connectionDocker):
-    """Return ``{sName: sContainerId}`` for running containers, or {}."""
-    if not fbDockerReachable(connectionDocker):
-        return {}
-    try:
-        return {
-            dictRow["sName"]: dictRow["sContainerId"]
-            for dictRow in connectionDocker.flistGetRunningContainers()
-        }
-    except Exception:  # noqa: BLE001 -- unknown, reported by the Docker leg
-        return {}
 
 
 def _fsetRegisteredContainerNames():
@@ -531,10 +544,11 @@ def flistClassifyHostKeepAlives(appState, dictRunningIdByName):
         ))
         listFound = []
     dictLedger = keepAliveManager.fdictReadSpawnLedger()
+    dictRunningByPid = {dictProcess["iPid"]: dictProcess for dictProcess in listFound}
     for dictProcess in listFound:
         if dictProcess["iPid"] in dictRegistered:
             continue
-        dictItem = _fdictKeepAliveItem(dictProcess, dictLedger)
+        dictItem = _fdictKeepAliveItem(dictProcess, dictLedger, dictRunningByPid)
         if dictItem is not None:
             listItems.append(dictItem)
     listItems.extend(_flistUnownedSessionLaneItems(
@@ -553,14 +567,16 @@ def _fdictRegistryPids():
     return dictPids
 
 
-def _fdictKeepAliveItem(dictProcess, dictLedger):
+def _fdictKeepAliveItem(dictProcess, dictLedger, dictRunningByPid):
     """Classify one caffeinate no registry holds, or None to ignore it."""
     iPid = dictProcess["iPid"]
     sStartedIso = (
         dictProcess["datetimeStart"].isoformat(timespec="seconds")
         if dictProcess["datetimeStart"] is not None else ""
     )
-    if iPid in dictLedger and keepAliveManager.fbCaffeinateIsProvablyOurs(iPid):
+    if iPid in dictLedger and keepAliveManager.fbCaffeinateIsProvablyOurs(
+        iPid, dictLedger=dictLedger, dictRunningByPid=dictRunningByPid,
+    ):
         return _fdictItem(
             S_CATEGORY_UNREGISTERED_KEEP_ALIVE, S_TIER_PROVEN,
             {"iPid": iPid, "sStartedIso": dictLedger[iPid]["sStartedIso"]},
@@ -580,7 +596,7 @@ def _fdictKeepAliveItem(dictProcess, dictLedger):
             "ledger: it may be one an earlier vaibify launched, or one you "
             "started yourself, as the Docker status hint suggests.",
             "Remove it only if you did not start it yourself.", S_ACTION_KILL,
-            bConfirmRequired=True,
+            bConfirmRequired=True, dictDigestIdentity={"iPid": iPid},
         )
     return None
 
@@ -654,6 +670,7 @@ def fdictSummarizeForPoll(appState):
         "sScannedIso": dictScan["sScannedIso"],
         "sGlyphTitle": _fsGlyphTitle(len(listItems), bReaperFailed, dictScan["sScanError"]),
         "bReaperFailed": bReaperFailed,
+        "bScanError": bool(dictScan["sScanError"]),
         "bScanning": dictScan["bScanning"],
     }
 

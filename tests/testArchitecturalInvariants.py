@@ -6965,7 +6965,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2469 -> 2476 (2026-10-09): saving neverSleep starts or stops the
     # session lane of a held, running container, beside the file write,
     # and the registry poll carries the remnant glyph's summary.
-    "registryRoutes.py": 2476,
+    # 2476 -> 2481 (2026-10-10): the neverSleep save takes the
+    # per-container mutation lock, so it and a concurrent claim cannot
+    # both spawn a session lane.
+    "registryRoutes.py": 2481,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

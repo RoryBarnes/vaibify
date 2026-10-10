@@ -2193,6 +2193,18 @@ LIST_FALSIFICATIONS = [
         new="""    return (
         409, f"{sWhat} is already gone, or has been replaced since the scan.")""",
     ),
+    # A keep-alive removal reports "ended" only once the host confirms the
+    # process has left the table; a kill that silently returns on a
+    # mismatch must not read as success, or the panel claims an ending it
+    # never saw.
+    Falsification(
+        nodeid='tests/testKeepAliveSpawnLedger.py::test_the_stop_reports_a_signalled_process_that_is_still_running',
+        source='vaibify/config/keepAliveManager.py',
+        old="""    _fnKillIfRunning(iPid, dictLedger[iPid]["sStartedIso"])
+    return _fbAwaitProcessExit(iPid)""",
+        new="""    _fnKillIfRunning(iPid, dictLedger[iPid]["sStartedIso"])
+    return True""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(

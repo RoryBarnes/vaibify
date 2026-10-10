@@ -1,7 +1,8 @@
 """Shadow-rerun lock files stop accumulating, and the backlog clears safely.
 
 The lane lock was never unlinked: one file per container incarnation
-and per reproduction token, hundreds of empty files over a season. The
+and per reproduction token, so empty lock files accumulated without
+bound. The
 release now unlinks the file while still holding its flock, after an
 inode re-check that keeps a lock on an orphaned inode from passing as
 exclusion, and a reaper removes the backlog by taking each free file's
@@ -100,13 +101,21 @@ def test_a_lock_held_by_another_handle_survives_the_reap():
 
 
 def test_the_hub_registers_the_shadow_lock_reaper():
-    from fastapi import FastAPI
-    from vaibify.gui import appFactory, remnantReapers
-    app = FastAPI()
-    app.state.listLifespanStartup = []
-    app.state.listLifespanShutdown = []
-    remnantReapers.fnRegisterReaper(
-        app, "shadowLaneLocks",
-        remnantReapers.ffnWrapSweepAsReaper(appFactory._fiReapFreeShadowLaneLocks))
-    [(sName, fdictReaper)] = app.state.listRemnantReapers
-    assert fdictReaper({}) == {"sOutcome": "ran", "iRemoved": 0, "sReason": "", "sRemedy": ""}
+    """The REAL hub registration names the shadow-lock reaper.
+
+    Asserting against a manually registered copy passes even when the
+    registration is deleted from the hub, which is the hole this test
+    was closing; it now builds the hub and reads its reaper registry.
+    """
+    from unittest.mock import patch
+    from vaibify.gui import pipelineServer
+    class _ConnectionFake:
+        def flistGetRunningContainers(self):
+            return []
+        def flistListAllContainers(self):
+            return []
+    with patch.object(pipelineServer, "_fconnectionCreateDocker", lambda: _ConnectionFake()):
+        app = pipelineServer.fappCreateHubApplication(iExpectedPort=0)
+    dictReapers = dict(app.state.listRemnantReapers)
+    assert "shadowLaneLocks" in dictReapers, sorted(dictReapers)
+    assert dictReapers["shadowLaneLocks"]({})["sOutcome"] == "ran"

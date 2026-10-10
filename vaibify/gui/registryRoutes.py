@@ -999,10 +999,15 @@ def _fnRegisterContainerSettings(app, dictCtx):
                 request.bNeverSleep,
             )
             from .sleepPrevention import fnApplySessionLaneSetting
-            await asyncio.to_thread(
-                fnApplySessionLaneSetting,
-                app.state, dictCtx, sName, request.bNeverSleep,
-            )
+            from .sessionLifecycle import flockContainerMutationForAppState
+            # Under the per-container mutation lock, so this save and a
+            # concurrent claim of the same container cannot both spawn a
+            # session lane (the claim path takes the same lock).
+            async with flockContainerMutationForAppState(app.state, sName):
+                await asyncio.to_thread(
+                    fnApplySessionLaneSetting,
+                    app.state, dictCtx, sName, request.bNeverSleep,
+                )
         if request.bX11Forwarding is not None:
             bRestartRequired = _fbApplyX11Forwarding(
                 dictProject["sConfigPath"], request.bX11Forwarding,

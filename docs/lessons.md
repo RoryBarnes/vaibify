@@ -633,8 +633,8 @@ correct approach.
   general form: an automatic cure for a refusal has to be told about
   every deliberate act that makes the same refusal true.
 - **A process vaibify started outlived every owner it had, and nothing
-  noticed.** One host accumulated hundreds of keep-alive processes, a
-  season's worth of empty lock files, shells three months old inside a
+  noticed.** One host accumulated keep-alive processes with no living
+  owner, empty lock files without bound, long-lived shells inside a
   container with agents still running in them, and plaintext token
   files no container mounted, while every sweep that should have
   caught them reported nothing. The causes were four shapes of the same

@@ -177,7 +177,8 @@ def fnHostKeepAlives(monkeypatch):
         monkeypatch.setattr(remnantScanner, "flistEnumerateProcessesNamed",
                             lambda sName: listProcesses)
         monkeypatch.setattr(keepAliveManager, "fdictReadSpawnLedger", lambda: dictLedger)
-        monkeypatch.setattr(keepAliveManager, "fbCaffeinateIsProvablyOurs", lambda iPid: bOurs)
+        monkeypatch.setattr(keepAliveManager, "fbCaffeinateIsProvablyOurs",
+                            lambda iPid, dictLedger=None, dictRunningByPid=None: bOurs)
     return fnArrange
 
 
@@ -273,10 +274,21 @@ def test_the_poll_summary_reads_state_alone():
     dictSummary = remnantScanner.fdictSummarizeForPoll(appState)
     assert dictSummary == {"iCount": 2, "iProvenCount": 1, "sScannedIso": "2026-01-01T00:00:00+00:00",
                            "sGlyphTitle": "2 leftover processes or files; click to review.",
-                           "bReaperFailed": False, "bScanning": False}
+                           "bReaperFailed": False, "bScanError": False, "bScanning": False}
     appState.dictReaperHealth["b"] = {"sOutcome": "failed"}
     assert remnantScanner.fdictSummarizeForPoll(appState)["sGlyphTitle"] == (
         "A cleanup could not run; click to review.")
+
+
+def test_a_failed_scan_with_no_items_still_shows_the_glyph():
+    appState = SimpleNamespace(dictRemnantScan={
+        "sScannedIso": "2026-01-01T00:00:00+00:00", "bScanning": False,
+        "sScanError": "The scan failed: boom.", "listItems": []},
+        dictReaperHealth={})
+    dictSummary = remnantScanner.fdictSummarizeForPoll(appState)
+    assert dictSummary["iCount"] == 0
+    assert dictSummary["bScanError"] is True, "a failed scan must not vanish at zero"
+    assert "scan for leftover processes and files failed" in dictSummary["sGlyphTitle"]
 
 
 def test_a_failing_scan_records_a_sentence_and_never_raises():
