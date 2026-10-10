@@ -1397,6 +1397,31 @@ already quarantined, or one without a group, is left to
 `vaibify reconcile`. The awaited startup reap keeps its Docker-less
 call, and the registry poll never terminates anything.
 
+**The scanner lists what the reapers cannot prove, and says how sure
+it is.** `remnantScanner.fnRunRemnantScan` runs last in every pass
+and classifies into three tiers, worded by the server and rendered
+verbatim: *proven* (vaibify launched it, by pid plus start clock in
+the keep-alive spawn ledger, or it is a plain fact such as a container
+created without `--init`), *possibly* (an interactive session nobody
+recorded, since its originator is unknown; a `caffeinate -s` not in
+the ledger, since the docker-status hint tells researchers to start
+one themselves), and *unknown* (a question the scan could not answer,
+listed with nothing to remove). Two cross-checks keep a session
+honest: the daemon's running TTY execs minus the journaled exec ids
+must equal the session leaders found, or the container reports
+"sessions could not be attributed" and lists none; and a container
+whose records are still discovering their group, whose drain is in
+flight, or whose flock another live hub holds lists nothing (peer-hub
+safety: the other window owns whatever runs there). Every Docker read
+is bounded by the memory sampler's deadline, and nothing here runs on
+a request path. Removal (`routes/remnantRoutes.py`) re-verifies each
+item's identity live, a session by pid and start clock, a keep-alive
+by pid and start instant, a container by id and status, and acts only
+through the named authorities; an item that no longer matches is
+refused as already gone. An item id is a digest of category and
+identity, so it survives a rescan that finds the same thing and dies
+with the thing it named.
+
 The shadow-rerun lane lock (`shadowRerun._fcontextHoldShadowLaneLock`)
 is unlinked on release while its flock is still held, after an
 inode re-check that mirrors the container lock's: a lock taken on an
@@ -1666,6 +1691,16 @@ summaries.
 - `routeContext.py` — typed `RouteContext` wrapper for the `dictCtx`
   dict. Provides both attribute access (`dictCtx.docker`) and dict
   access (`dictCtx["docker"]`).
+- `remnantReapers.py` — the registry of cleanup jobs, the pass that
+  runs them on a cadence, and the record of what each one did. The
+  scan runs last in every pass.
+- `remnantScanner.py` — classifies what the reapers could not prove,
+  with evidence and a tier, into the cached result the remnant routes
+  read with no I/O.
+- `cliShellContainment.py` — the `vaibify connect` and `vaibify verify`
+  shells: wrapped, recorded on the host, ended with proof on exit, and
+  reaped once their CLI is provably dead. A seam module beside
+  `terminalContainment.py`.
 
 ### Route modules
 

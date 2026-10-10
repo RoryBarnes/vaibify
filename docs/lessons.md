@@ -632,3 +632,19 @@ correct approach.
   (`tests/browser/testALostClaimRecoversWhereverItIsMet.py`). The
   general form: an automatic cure for a refusal has to be told about
   every deliberate act that makes the same refusal true.
+- **A process vaibify started outlived every owner it had, and nothing
+  noticed.** One host accumulated hundreds of keep-alive processes, a
+  season's worth of empty lock files, shells three months old inside a
+  container with agents still running in them, and plaintext token
+  files no container mounted, while every sweep that should have
+  caught them reported nothing. The causes were four shapes of the same
+  mistake: a sweep whose failure was swallowed (an attribute error
+  inside `except Exception`), a cleanup that ran only on a path the
+  owner's death never reaches (a `finally` behind a window close, a
+  shutdown hook behind a hang-up uvicorn did not handle), a registry
+  that could say what it held but not what it had launched, and a
+  test suite that ran the real watchdog against the real daemon with a
+  fresh empty registry per test. The general form: anything vaibify
+  starts needs a recorded owner, an exit that fires when that owner is
+  provably gone, and a reaper whose own outcome is recorded, because a
+  cleanup nobody watches is a cleanup that has already stopped.
