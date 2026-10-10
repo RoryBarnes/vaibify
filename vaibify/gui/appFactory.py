@@ -144,9 +144,10 @@ def _fnRegisterHubLifecycle(app, dictCtx, dictConfig):
         return
     from .registryRoutes import fnRegisterRegistryRoutes
     from .hostControlChannel import fnRegisterHostControlChannel
-    from .routes import imageTrustRoutes
+    from .routes import imageTrustRoutes, remnantRoutes
     fnRegisterRegistryRoutes(app, dictCtx)
     imageTrustRoutes.fnRegisterAll(app, dictCtx)
+    remnantRoutes.fnRegisterAll(app, dictCtx)
     fnRegisterHostControlChannel(app, dictCtx)
     _fnRegisterHubShutdownStopKeepAlive(app)
     _fnRegisterHubLockLifecycle(app)

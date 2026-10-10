@@ -317,6 +317,32 @@ def _fnForceRemoveContainer(sContainerId):
     )
 
 
+def fnRemoveStoppedContainerById(sContainerId):
+    """Remove one STOPPED container by id; a running one is refused.
+
+    The remnant panel's removal of a container the suite created but
+    no longer tracks: ``docker rm`` without ``-f``, so a container that
+    started since the scan is refused by the daemon rather than killed,
+    and the volumes are kept. Secret files it mounted are released
+    once the daemon confirms the removal.
+    """
+    listMountSources = _flistMountSourcesOfContainer(sContainerId)
+    processResult = subprocess.run(
+        ["docker", "rm", sContainerId], capture_output=True, text=True,
+        check=False, encoding="utf-8",
+    )
+    if processResult.returncode != 0:
+        raise RuntimeError(
+            f"docker rm refused: {processResult.stderr.strip()}")
+    bAnswered, sOutput = _ftRunProbeCommand([
+        "docker", "ps", "-a", "-q", "--filter", f"id={sContainerId}",
+    ])
+    _fnReleaseSecretSourcesIfRemoved(
+        {"bAnswered": bAnswered, "bPresent": bool(sOutput.strip())},
+        listMountSources,
+    )
+
+
 def _flistMountSourcesOfContainer(sContainerIdentifier):
     """Return the host sources a container mounts, read before its removal."""
     try:

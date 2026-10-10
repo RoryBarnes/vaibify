@@ -294,3 +294,15 @@ def fnStopProvablyOursKeepAlive(iPid):
 def fdictReadKeepAliveRecord(sContainerName):
     """Return a registry name's ``{iPid, sStartedIso}`` record, or {}."""
     return _fdictReadPidPayload(_fsPidFilePath(sContainerName))
+
+
+def fnStopKeepAliveProcess(iPid, sStartedIso):
+    """SIGTERM one caffeinate the researcher chose, start-clock gated.
+
+    The exit for a keep-alive the scanner listed as "possibly" ours:
+    not in the ledger, so nothing proves vaibify launched it, which is
+    why the researcher confirms it. The gate is the one every kill in
+    this module uses: a pid whose start clock is later than the
+    instant recorded is a recycled pid and is left alone.
+    """
+    _fnKillIfRunning(iPid, sStartedIso)

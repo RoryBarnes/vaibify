@@ -2172,6 +2172,16 @@ LIST_FALSIFICATIONS = [
         new="""        del connectionDocker, sContainerName, sContainerId, iSessionId
         del sRecordPath, processChild""",
     ),
+    # Removal of a session whose pid was recycled must be refused: the
+    # live re-check compares the start clock, never the pid alone.
+    Falsification(
+        nodeid='tests/testRemnantRoutes.py::test_a_session_whose_pid_was_recycled_is_refused_without_a_signal',
+        source='vaibify/gui/routes/remnantRoutes.py',
+        old="""    return any(
+        dictRow["iPid"] == iLeaderPid and dictRow["iStartTicks"] == iStartTicks""",
+        new="""    return True or any(
+        dictRow["iPid"] == iLeaderPid and dictRow["iStartTicks"] == iStartTicks""",
+    ),
     # A granted claim of a running neverSleep container must start the
     # session-lane keep-alive, or a restarted hub holds nothing for it.
     Falsification(

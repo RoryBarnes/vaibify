@@ -383,6 +383,9 @@ DICT_PRIMITIVE_ACCESS = {
     # seam's wrapper, attached to the researcher's own terminal, and
     # the bounded wait that kills it when its session has been ended.
     "fprocessLaunchInteractiveExec": S_ACCESS_ARBITRARY_COMMAND,
+    # The remnant panel's removal of a stopped, untracked container:
+    # docker rm by id without -f, so a running one is refused.
+    "fnRemoveStoppedContainerById": S_ACCESS_LIFECYCLE,
     "fnAwaitProcessOrKill": S_ACCESS_SIGNAL,
     "fdictFindContainersForReservation": S_ACCESS_TYPED_READ,
     "fbContainerIsNetworkIsolated": S_ACCESS_TYPED_READ,

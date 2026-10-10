@@ -417,7 +417,14 @@ I_UNCLASSIFIED_ROW_BUDGET = 272
 # launch through the lifecycle gateway plus its bounded wait-or-kill of
 # that client; reach moved from cli/main.py to gui/cliShellContainment.py
 # and the count did not rise.
-I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 228
+# 229 (2026-10-09), and this rise is a NEW reach, named so it cannot be
+# missed: the remnant panel's removal route removes a stopped container
+# the suite created but no longer tracks, through the lifecycle gateway's
+# fnRemoveStoppedContainerById. The site is excluded with its rationale
+# (agent lane rejected, catalog-excluded, id re-verified present and
+# stopped immediately before, docker rm without -f so the daemon refuses
+# a running one), and the recycled-identity refusal is kill-confirmed.
+I_MUTATION_CAPABLE_OUTSIDE_GATEWAY_BUDGET = 229
 
 
 # Every acquisition of a declared capability that still has no reviewed

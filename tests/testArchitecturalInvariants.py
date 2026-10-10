@@ -6962,9 +6962,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # to the running container where that is safe; the route's carrier
     # declaration names the gateway call, and the planning, the update
     # and the re-inspection live in resourceLimitApplication.
-    # 2469 -> 2474 (2026-10-09): saving neverSleep starts or stops the
-    # session lane of a held, running container, beside the file write.
-    "registryRoutes.py": 2474,
+    # 2469 -> 2476 (2026-10-09): saving neverSleep starts or stops the
+    # session lane of a held, running container, beside the file write,
+    # and the registry poll carries the remnant glyph's summary.
+    "registryRoutes.py": 2476,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7167,7 +7168,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # declared not agent-safe, with the reason beside it.
     # 1475 -> 1499 (2026-10-08): the AI Declaration's file-state read
     # and attach action; the catalog is one cohesive list of entries.
-    "actionCatalog.py": 1499,
+    # 1499 -> 1506 (2026-10-08): the remnant panel's two writes join the
+    # intentional exclusions, with why an agent must never make them.
+    "actionCatalog.py": 1506,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7672,7 +7675,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # cohesive list of route scopes.
     # 1154 -> 1158 (2026-10-08): the memory watch's GET joins the
     # container-read allowlist, with why it is a read.
-    "routeScope.py": 1158,
+    # 1158 -> 1163 (2026-10-09): the remnant panel's three routes join
+    # the browser-hub control plane, with why they read host state.
+    "routeScope.py": 1163,
 }
 
 

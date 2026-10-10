@@ -277,9 +277,11 @@ def _fnRegisterGetRegistry(app, dictCtx):
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
         _fnAnnotatePinnedImageObtainable(listContainers)
+        from .remnantScanner import fdictSummarizeForPoll
         return {
             "listContainers": listContainers,
             "listUnrecognized": listUnrecognized,
+            "dictRemnantSummary": fdictSummarizeForPoll(app.state),
         }
 
 
