@@ -126,17 +126,75 @@ def test_a_subdirectory_input_compiles_through_the_staging_path(tmp_path):
     a stubbed compiler would never open the file and would pass
     against the broken join. The pin assertion is the second guard:
     the resolver is constrained to the installed set, so the lock must
-    name this host's packaging, not the newest on the index.
+    name this host's version, not the newest on the index.
+
+    The probe package is one the host actually PINS. The constraint
+    lane can only hold a package that ``pip freeze`` reports as a pip
+    pin (``name==version``); a package the host's own manager installed
+    as a direct reference (conda records ``name @ file://.../work``)
+    is correctly excluded from the constraints and so resolves to the
+    newest on the index. Assuming ``packaging`` is always pinnable made
+    this fail on a conda host, where ``packaging`` is conda-managed --
+    so the probe is chosen from the host's pinnable set instead.
     """
-    sInstalledPackaging = _fsInstalledVersionOrNone("packaging")
-    if not sInstalledPackaging:
-        pytest.skip("packaging is not installed on this host")
+    sName, sVersion = _tResolvePinnableProbePackage()
+    if sName is None:
+        pytest.skip("no pip-pinnable package is installed to constrain against")
     (tmp_path / ".vaibify").mkdir()
-    (tmp_path / ".vaibify" / "requirements.txt").write_text(
-        "packaging>=23.0\n",
-    )
+    (tmp_path / ".vaibify" / "requirements.txt").write_text(sName + "\n")
     filesRepo = ContainerLikeRepoFiles(tmp_path)
     fnGenerateRequirementsLock(filesRepo)
     sLock = filesRepo.dictWritten["requirements.lock"]
     assert "--hash=sha256:" in sLock
-    assert f"packaging=={sInstalledPackaging}" in sLock
+    assert (_fsCanonicalPackageName(sName), sVersion) in _flistLockPins(sLock), (
+        f"the lock must pin the constrained {sName}=={sVersion}, not the "
+        f"newest on the index: {sLock}")
+
+
+def _tResolvePinnableProbePackage():
+    """Return ``(name, version)`` for a package THIS host pins, or ``(None, None)``.
+
+    Reads the host's freeze through the same filter the production code
+    uses, so the probe is exactly a package the constraint lane can
+    hold. Prefers dependency-light, pure-Python names so the real
+    compile stays quick; ``packaging`` is first, keeping a pip-based
+    host (CI) resolving the same package it always has.
+    """
+    import subprocess
+    import sys
+    from vaibify.reproducibility.dependencyPinning import (
+        flistConstraintPinsFromFreeze,
+    )
+    processResult = subprocess.run(
+        [sys.executable, "-m", "pip", "freeze", "--exclude-editable"],
+        capture_output=True, text=True,
+    )
+    dictPins = {}
+    for sPin in flistConstraintPinsFromFreeze(processResult.stdout or ""):
+        sPinName, _, sPinVersion = sPin.partition("==")
+        dictPins[_fsCanonicalPackageName(sPinName)] = (sPinName, sPinVersion)
+    for sPreferred in (
+        "packaging", "typing-extensions", "zstandard", "iniconfig",
+        "six", "wheel", "toml",
+    ):
+        if sPreferred in dictPins:
+            return dictPins[sPreferred]
+    return (None, None)
+
+
+def _fsCanonicalPackageName(sName):
+    """Return a package name normalized for comparison (lowercase, hyphens)."""
+    return sName.strip().lower().replace("_", "-")
+
+
+def _flistLockPins(sLock):
+    """Return ``(canonical-name, version)`` for every pin line in a lock."""
+    listPins = []
+    for sLine in sLock.splitlines():
+        sStripped = sLine.strip()
+        if sStripped.startswith("#") or "==" not in sStripped:
+            continue
+        sLeft, _, sRight = sStripped.partition("==")
+        listPins.append(
+            (_fsCanonicalPackageName(sLeft), sRight.split()[0].strip()))
+    return listPins
