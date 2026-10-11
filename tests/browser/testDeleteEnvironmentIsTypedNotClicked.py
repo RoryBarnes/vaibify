@@ -226,3 +226,81 @@ def testEscapeAbandonsTheDialogWithoutDeleting(pageDashboard, serverHub):
         timeout=5000)
     assert listPostBodies == []
     assert pageDashboard.listPageErrors == []
+
+
+def testTheTileSaysDeletingUntilTheServerAnswers(pageDashboard, serverHub):
+    """A deletion in flight is visible on its tile, through a hub poll.
+
+    The server answers only after every container, volume and image is
+    gone -- tens of seconds -- and the only signal used to be a toast
+    that vanished after four, so a researcher concluded the delete had
+    not worked (researcher-reported, 2026-10-11). The answer is held
+    across a hub poll, because the poll re-renders every tile and a
+    marking it did not know about would be wiped by it.
+    """
+    listHeldRoutes = []
+
+    def fnHoldTheAnswer(routeIntercepted):
+        listHeldRoutes.append(routeIntercepted)
+
+    pageDashboard.route(S_DELETE_ROUTE_GLOB, fnHoldTheAnswer)
+    sTile = _fnOpenTheKebab(pageDashboard, serverHub, S_CONTAINER_NAME)
+    pageDashboard.click(f'{sTile} [data-action="delete-environment"]')
+    pageDashboard.wait_for_selector("#modalTypedConfirm", timeout=10000)
+    pageDashboard.fill("#typedConfirmField", S_PHRASE)
+    pageDashboard.wait_for_function(
+        "() => document.getElementById('btnTypedConfirmOk')"
+        ".disabled === false", timeout=5000)
+    pageDashboard.click("#btnTypedConfirmOk")
+    sDeletingTile = f"{sTile}.container-tile--deleting"
+    pageDashboard.wait_for_selector(sDeletingTile, timeout=10000)
+    # Longer than the hub's poll interval, so a re-render has happened.
+    pageDashboard.wait_for_timeout(4500)
+    assert pageDashboard.locator(sDeletingTile).count() == 1, (
+        "a hub poll wiped the in-flight deletion off its tile"
+    )
+    assert "Deleting" in pageDashboard.text_content(sDeletingTile)
+    assert pageDashboard.locator(
+        f"{sDeletingTile} .status-dot.status-pending").count() == 1
+    assert len(listHeldRoutes) == 1
+    listHeldRoutes[0].fulfill(
+        status=409, content_type="application/json",
+        body=json.dumps({"detail": {"sMessage": (
+            "open in a browser session right now")}}))
+    pageDashboard.wait_for_selector(
+        sDeletingTile, state="detached", timeout=10000)
+    assert pageDashboard.locator(sTile).count() == 1
+    assert pageDashboard.listPageErrors == []
+
+
+def testRemovingFromTheListSaysAnEnvironmentWasRemoved(
+    pageDashboard, serverHub,
+):
+    """The list holds environments, host projects included, not containers.
+
+    "Container removed" was the toast for un-registering a host project,
+    which never had a container (researcher-reported, 2026-10-11). Only
+    the DELETE is stubbed, so the shared registry keeps the tile for the
+    journeys after this one.
+    """
+    listDeletes = []
+
+    def fnAnswerTheRemoval(routeIntercepted):
+        if routeIntercepted.request.method != "DELETE":
+            routeIntercepted.fallback()
+            return
+        listDeletes.append(routeIntercepted.request.url)
+        routeIntercepted.fulfill(
+            status=200, content_type="application/json", body="{}")
+
+    pageDashboard.route(
+        f"**/api/registry/{S_HOST_PROJECT_READY}", fnAnswerTheRemoval)
+    sTile = _fnOpenTheKebab(pageDashboard, serverHub, S_HOST_PROJECT_READY)
+    pageDashboard.click(f'{sTile} [data-action="remove"]')
+    pageDashboard.wait_for_selector("#modalConfirm", timeout=10000)
+    pageDashboard.click("#btnConfirmOk")
+    pageDashboard.wait_for_selector("text=Environment removed", timeout=10000)
+    assert listDeletes, "confirming never issued the DELETE"
+    assert "Container removed" not in pageDashboard.text_content(
+        "#toastContainer")
+    assert pageDashboard.listPageErrors == []

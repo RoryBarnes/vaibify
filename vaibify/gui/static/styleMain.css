@@ -696,6 +696,20 @@ html, body {
     cursor: not-allowed;
 }
 
+/* A deletion in flight: the tile itself says "Deleting…", so it can
+   take no clicks without leaving the researcher unanswered. */
+.container-tile--deleting {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.container-tile-progress {
+    margin-left: 8px;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+    font-style: italic;
+}
+
 /* The click must still land: fnHandleContainerClick answers a locked
    tile with the reason and the remedy. Swallowing pointer events here
    left the researcher a grey tile that explained nothing. */
