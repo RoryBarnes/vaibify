@@ -13,19 +13,28 @@ __all__ = [
 ]
 
 
-def fnRunDockerCommand(saCommand):
-    """Execute a docker command, raising RuntimeError on failure."""
-    processResult = subprocess.run(
-        saCommand,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
+def fnRunDockerCommand(saCommand, bCaptureOutput=False):
+    """Execute a docker command, raising RuntimeError on failure.
+
+    The output streams to the caller's terminal by default, which a
+    foreground ``docker run`` needs. ``bCaptureOutput`` keeps it off
+    the terminal for a command whose only output is an echo of its
+    argument (``docker volume rm`` printed bare volume names into the
+    hub's terminal mid-deletion), and puts Docker's own reason into
+    the error instead.
+    """
+    dictStreams = (
+        {"capture_output": True, "encoding": "utf-8", "errors": "replace"}
+        if bCaptureOutput else {"stdout": sys.stdout, "stderr": sys.stderr}
     )
+    processResult = subprocess.run(saCommand, **dictStreams)
     if processResult.returncode != 0:
         sCommandStr = " ".join(saCommand)
+        sReason = (processResult.stderr or "").strip() if bCaptureOutput else ""
         raise RuntimeError(
             f"Docker command failed "
             f"(exit {processResult.returncode}): "
-            f"{sCommandStr}"
+            f"{sCommandStr}" + (f": {sReason}" if sReason else "")
         )
 
 
