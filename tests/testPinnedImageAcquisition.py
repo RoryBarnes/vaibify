@@ -1010,10 +1010,17 @@ def test_a_derived_image_is_labelled_with_the_set_in_canonical_order(
         imageBuilder, "_fnRunDockerBuild",
         lambda saCommand: listBuildCommands.append(list(saCommand)),
     )
+    monkeypatch.setattr(
+        imageBuilder, "fnRunDockerCommand",
+        lambda saCommand, **kwargs: listBuildCommands.append(list(saCommand)),
+    )
     _flistPatchTheSeparationCheck(monkeypatch)
     dictRecord = fdictAcquireForProject(
         dictProject, False, dockerDisposable=store, sDockerDir=str(tmp_path),
     )
+    assert listBuildCommands.pop(0) == [
+        "docker", "tag", S_BASE_ID, "proj:pinned-base",
+    ]
     listStages = [
         _fdictLabelsOfBuild(saCommand) for saCommand in listBuildCommands
     ]
@@ -1406,6 +1413,31 @@ def test_an_acquisition_failure_is_reported_whole():
     assert "the archive's decisive reason" in sMessage
     assert sMessage.startswith("Obtaining the author's pinned image")
     assert "Build of" not in sMessage
+
+
+@pytest.mark.falsification
+def test_a_failed_stacking_stage_shows_what_docker_said():
+    """The toast once named only the command, never Docker's reason.
+
+    Kills: dropping the decisive lines of the failed stage's output.
+    """
+    errorBuild = RuntimeError(
+        "Docker command failed (exit 1): docker buildx build -f x"
+    )
+    errorBuild.sStderrTail = (
+        "#2 transferring context\n"
+        "ERROR: failed to solve: example: pull access denied\n"
+    )
+    dictDetail = buildRoutes._fdictAcquisitionFailureDetail(errorBuild, "proj")
+    assert dictDetail["sMessage"].startswith(
+        "Obtaining the author's pinned image for 'proj' failed: Docker command"
+    )
+    assert "(Docker said: " in dictDetail["sMessage"]
+    assert "ERROR: failed to solve: example: pull access denied" in (
+        dictDetail["sMessage"]
+    )
+    assert "vaibify.yml" not in dictDetail["sMessage"]
+    assert dictDetail["sStderrTail"] == errorBuild.sStderrTail
 
 
 @pytest.mark.falsification

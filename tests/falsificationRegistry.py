@@ -27967,8 +27967,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/buildRoutes.py',
         # the acquisition message is cut the way the build one is
-        old='            f"{error}"\n',
-        new='            f"{str(error)[:240]}"\n',
+        old='        f"{error}"\n',
+        new='        f"{str(error)[:240]}"\n',
     ),
     Falsification(
         nodeid=(
@@ -30937,5 +30937,25 @@ LIST_FALSIFICATIONS = [
         source='vaibify/containerImage/entrypoint.sh',
         old='## Resources\n\nThis container may have a memory limit: `/sys/fs/cgroup/memory.max` holds it (`max` means none), and `memory.current` and `memory.stat` beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. `/tmp` does not survive a container restart and `/workspace` does, so keep anything you need in `/workspace`.\n\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerImageBuilder.py::'
+            'testAStackChainsItsStagesAndOmitsAnAbsentPlatform'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the first stage builds FROM the bare ID, which BuildKit pulls
+        old='    sPreviousReference = _fsTagObtainedBase(sProjectName, sBaseImageId)\n',
+        new='    sPreviousReference = sBaseImageId\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_failed_stacking_stage_shows_what_docker_said'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the toast names the command and drops Docker's reason
+        old='    if listDecisive:\n',
+        new='    if False:\n',
     ),
 ]

@@ -545,13 +545,24 @@ def _fdictAcquisitionFailureDetail(error, sName):
     archived image produces, cut off before the reasons the archived
     copy and the local copy gave (2026-09-26). The chain's refusal
     names every source it tried, and all of it is the message.
+
+    When an overlay stage's build failed, the error names only the
+    command; Docker's decisive lines are appended untranslated, since
+    the build catalog's hints speak of vaibify.yml and the pinned image
+    is not built from it.
     """
+    from vaibify.docker.dockerErrorDiagnosis import flistDecisiveBuildLines
+    sStderrTail = str(getattr(error, "sStderrTail", "") or "")
+    sMessage = (
+        f"Obtaining the author's pinned image for '{sName}' failed: "
+        f"{error}"
+    )
+    listDecisive = flistDecisiveBuildLines(sStderrTail, 3)
+    if listDecisive:
+        sMessage += " (Docker said: " + " | ".join(listDecisive) + ")"
     return {
-        "sMessage": (
-            f"Obtaining the author's pinned image for '{sName}' failed: "
-            f"{error}"
-        ),
+        "sMessage": sMessage,
         "sError": str(error),
-        "sStderrTail": "",
+        "sStderrTail": sStderrTail,
         "sAction": str(getattr(error, "sAction", "") or ""),
     }

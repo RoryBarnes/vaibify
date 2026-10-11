@@ -315,7 +315,7 @@ def fsStackOverlaysOnObtainedBase(
     )
     if not listOverlayChain:
         return sBaseImageId
-    sPreviousReference = sBaseImageId
+    sPreviousReference = _fsTagObtainedBase(sProjectName, sBaseImageId)
     for iIndex, sOverlayName in enumerate(listOverlayChain):
         listLabelOverlays = flistCanonicalizeOverlaySet(
             list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1]),
@@ -342,6 +342,23 @@ def fsStackOverlaysOnObtainedBase(
         _fnRunDockerBuild(saCommand)
         sPreviousReference = sNewTag
     return sPreviousReference
+
+
+def _fsTagObtainedBase(sProjectName, sBaseImageId):
+    """Tag the obtained base so a ``FROM`` line can name it; return the tag.
+
+    BuildKit reads a bare image ID in ``FROM`` as a repository called
+    ``sha256`` on Docker Hub and fails with "pull access denied", so the
+    first stage builds from this tag instead. The tag is set from the
+    ID immediately before the build, the stage labels still record the
+    ID, and the agent-layer separation check afterwards proves the
+    built image's layers begin with the base's.
+    """
+    sBaseTag = f"{sProjectName}:pinned-base"
+    fnRunDockerCommand(
+        ["docker", "tag", sBaseImageId, sBaseTag], bCaptureOutput=True,
+    )
+    return sBaseTag
 
 
 def _fsComputeChainFingerprint(sDockerDir, listOverlays):
