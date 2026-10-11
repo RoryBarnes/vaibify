@@ -25,6 +25,8 @@ window, so the test drives the real refusal on the real route without
 being a timing test.
 """
 
+import time
+
 import pytest
 
 from tests.browser.conftest import (
@@ -35,11 +37,43 @@ from tests.browser.conftest import (
 
 pytestmark = pytest.mark.browser
 
+F_DRAIN_TIMEOUT_SECONDS = 20.0
+
+
+def _fnWaitForTheJourneyToDrain(serverHub):
+    """Let the closed page's last requests finish before the claim goes.
+
+    Closing the page does not stop a request the server has already
+    started: its handler runs on, and its execs are journaled against
+    the project. Dropping the claim under one made the next journey's
+    picker read the project as BUSY -- its tile locked before the click
+    -- and failed the next journey nine runs in ten (measured,
+    2026-10-11). Bounded, and a timeout fails loudly rather than
+    handing the next journey a project that is still busy.
+    """
+    from vaibify.config import operationJournal
+    fDeadline = time.monotonic() + F_DRAIN_TIMEOUT_SECONDS
+    while True:
+        iInFlight = serverHub.fiCountInFlightRequests()
+        sResolution = operationJournal.fdictResolveContainerJournal(
+            S_HOST_PROJECT_READY, None, bPersistResolution=False,
+        )["sResolution"]
+        if iInFlight == 0 and (
+                sResolution == operationJournal.S_RESOLUTION_SETTLED):
+            return
+        if time.monotonic() > fDeadline:
+            pytest.fail(
+                f"the journey left {iInFlight} request(s) in flight and "
+                f"the project's journal {sResolution} after "
+                f"{F_DRAIN_TIMEOUT_SECONDS:g} s")
+        time.sleep(0.05)
+
 
 @pytest.fixture(autouse=True)
 def fixtureDropClaimsBetweenJourneys(serverHub):
-    """Give every claim back after each journey."""
+    """Give every claim back after each journey, once its work has drained."""
     yield
+    _fnWaitForTheJourneyToDrain(serverHub)
     from vaibify.config.containerLock import fnReleaseContainerLock
     dictContainerOwners = serverHub.app.state.dictContainerOwners
     for _sName, recordOwner in list(dictContainerOwners.items()):
@@ -194,3 +228,49 @@ def testALostClaimIsReclaimedWhenABlankProjectOpens(
         serverHub.app.state.dictContainerOwners
     ), "the Blank Project opened without re-claiming the project"
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+def testABusyProjectSaysAnOperationIsFinishingNotAnotherSession(
+    pageDashboard, serverHub,
+):
+    """A BUSY journal names its cause, not a session that does not exist.
+
+    The listing locks a project whose journal holds a live in-flight
+    operation -- usually this very hub's own, a request a closed tab
+    started. The tile said "In use by another vaibify session" and sent
+    the researcher to close a window or run ``vaibify sessions``, where
+    nothing would be found (measured, 2026-10-11). Driven with a real
+    live process recorded as a host exec, the shape that was measured.
+
+    Kills: rendering a BUSY journal with the cross-hub lock message.
+    """
+    import subprocess
+    from vaibify.config import operationJournal
+    processHolder = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_HOST_PROJECT_READY, "host-exec", "exec")
+    try:
+        operationJournal.fnPromoteOperationToInFlight(
+            S_HOST_PROJECT_READY, sOperationId,
+            {"iHolderPid": processHolder.pid,
+             "iHolderProcessGroup": processHolder.pid},
+        )
+        sTile = f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]'
+        pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+        pageDashboard.wait_for_selector(
+            f'{sTile}[data-locked="true"]', timeout=15000)
+        pageDashboard.click(f"{sTile} .container-tile-main")
+        pageDashboard.wait_for_function(
+            """() => document.getElementById('toastContainer')
+                .innerText.trim().length > 0""",
+            timeout=10000,
+        )
+        sToastText = pageDashboard.text_content("#toastContainer")
+        assert "still finishing" in sToastText, sToastText
+        assert "another vaibify session" not in sToastText, sToastText
+        assert "vaibify sessions" not in sToastText, sToastText
+        assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+    finally:
+        processHolder.kill()
+        processHolder.wait()
+        operationJournal.fnSettleOperation(S_HOST_PROJECT_READY, sOperationId)

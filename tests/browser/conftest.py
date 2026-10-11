@@ -520,6 +520,11 @@ def serverHub():
                 sHome=sHome,
                 adapterDocker=adapterDocker,
                 app=app,
+                # A closed page does not stop a request the server has
+                # already started; a journey that must not leak work
+                # into the next one waits for this to reach zero.
+                fiCountInFlightRequests=lambda: len(
+                    server.server_state.tasks),
             )
         finally:
             server.should_exit = True
