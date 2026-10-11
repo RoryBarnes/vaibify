@@ -44,6 +44,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # stale copies without parsing the source.
 S_CONFTEST_VERSION = "9"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
+S_NO_TESTS_DIRECTORY = "no-tests-directory"
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
 )
@@ -287,9 +288,11 @@ def fdictReadInstalledConftestVersions(
     """Probe ``# vaibify-conftest-version:`` stamps in one docker exec.
 
     Returns ``{sPath: sVersion}`` for every conftest that was readable
-    and carried the sentinel. Paths that are missing, unreadable, or
-    lack the sentinel are omitted — the refresh helper treats absence
-    the same as "needs rewriting". One batched probe keeps switch-time
+    and carried the sentinel, and ``S_NO_TESTS_DIRECTORY`` for a path
+    whose ``tests/`` directory does not exist. Paths that are missing,
+    unreadable, or lack the sentinel are omitted — the refresh helper
+    treats absence the same as "needs rewriting". One batched probe
+    keeps switch-time
     flat at N=100 steps; the single-file
     ``fsReadInstalledConftestVersion`` stays available for callers
     (and tests) that probe one path at a time.
@@ -310,11 +313,14 @@ def _fsBuildVersionsProbeCommand(listConftestPaths):
     from .pipelineRunner import fsShellQuote
     sPathsJson = json.dumps(list(listConftestPaths))
     sScript = (
-        "import json, re, sys\n"
+        "import json, os, re, sys\n"
         "rx = re.compile("
         "r'^# vaibify-conftest-version:\\s*(\\S+)\\s*$', re.M)\n"
         "out = {}\n"
         "for p in json.loads(sys.stdin.read()):\n"
+        "    if not os.path.isdir(os.path.dirname(p)):\n"
+        f"        out[p] = {S_NO_TESTS_DIRECTORY!r}\n"
+        "        continue\n"
         "    try:\n"
         "        with open(p, 'r', encoding='utf-8') as f: s = f.read()\n"
         "    except OSError:\n"
@@ -530,10 +536,18 @@ def _flistPathsWithinRoot(listPaths, sRoot):
 
 
 def _flistStalePaths(listConftestPaths, dictInstalled):
-    """Return paths whose installed version does not match the current stamp."""
+    """Return paths whose installed version does not match the current stamp.
+
+    A step with no ``tests/`` directory is not stale: creating one put an
+    untracked conftest into a fresh clone's AI declaration, a modified
+    tree to a reproduction (researcher-reported, 2026-10-11). The test
+    generator installs it when it makes the directory.
+    """
     return [
         sPath for sPath in listConftestPaths
-        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
+        if dictInstalled.get(sPath) not in (
+            S_CONFTEST_VERSION, S_NO_TESTS_DIRECTORY,
+        )
     ]
 
 

@@ -4348,7 +4348,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # split along is the template text against the deploy and refresh
     # logic, which change for different reasons; no force has made that
     # split necessary yet, so it is recorded here, not taken.
-    "conftestManager.py": 1221,
+    # 1235 (2026-10-11): the refresh's version probe learned to report a
+    # step with no tests/ directory, so a refresh stops creating one --
+    # the deploy-and-refresh half, the same job.
+    "conftestManager.py": 1235,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
