@@ -25,8 +25,6 @@ window, so the test drives the real refusal on the real route without
 being a timing test.
 """
 
-import time
-
 import pytest
 
 from tests.browser.conftest import (
@@ -37,43 +35,14 @@ from tests.browser.conftest import (
 
 pytestmark = pytest.mark.browser
 
-F_DRAIN_TIMEOUT_SECONDS = 20.0
-
-
-def _fnWaitForTheJourneyToDrain(serverHub):
-    """Let the closed page's last requests finish before the claim goes.
-
-    Closing the page does not stop a request the server has already
-    started: its handler runs on, and its execs are journaled against
-    the project. Dropping the claim under one made the next journey's
-    picker read the project as BUSY -- its tile locked before the click
-    -- and failed the next journey nine runs in ten (measured,
-    2026-10-11). Bounded, and a timeout fails loudly rather than
-    handing the next journey a project that is still busy.
-    """
-    from vaibify.config import operationJournal
-    fDeadline = time.monotonic() + F_DRAIN_TIMEOUT_SECONDS
-    while True:
-        iInFlight = serverHub.fiCountInFlightRequests()
-        sResolution = operationJournal.fdictResolveContainerJournal(
-            S_HOST_PROJECT_READY, None, bPersistResolution=False,
-        )["sResolution"]
-        if iInFlight == 0 and (
-                sResolution == operationJournal.S_RESOLUTION_SETTLED):
-            return
-        if time.monotonic() > fDeadline:
-            pytest.fail(
-                f"the journey left {iInFlight} request(s) in flight and "
-                f"the project's journal {sResolution} after "
-                f"{F_DRAIN_TIMEOUT_SECONDS:g} s")
-        time.sleep(0.05)
-
-
 @pytest.fixture(autouse=True)
 def fixtureDropClaimsBetweenJourneys(serverHub):
-    """Give every claim back after each journey, once its work has drained."""
+    """Give every claim back after each journey.
+
+    The page's teardown, which runs first, has already waited for the
+    journey's work to drain (``fnWaitForTheHubToDrain``).
+    """
     yield
-    _fnWaitForTheJourneyToDrain(serverHub)
     from vaibify.config.containerLock import fnReleaseContainerLock
     dictContainerOwners = serverHub.app.state.dictContainerOwners
     for _sName, recordOwner in list(dictContainerOwners.items()):

@@ -650,7 +650,43 @@ def pageDashboard(browserEngine, serverHub, request):
             "\n".join(page.listConsoleErrors + page.listPageErrors)
         )
         contextBrowser.close()
-        return
-    contextBrowser.tracing.stop()
-    contextBrowser.close()
-    shutil.rmtree(pathArtifacts, ignore_errors=True)
+    else:
+        contextBrowser.tracing.stop()
+        contextBrowser.close()
+        shutil.rmtree(pathArtifacts, ignore_errors=True)
+    fnWaitForTheHubToDrain(serverHub)
+
+
+F_HUB_DRAIN_TIMEOUT_SECONDS = 20.0
+
+
+def fnWaitForTheHubToDrain(serverHub):
+    """Return once the closed page's requests and their execs have finished.
+
+    Closing a page does not stop a request the server already started;
+    its handler runs on, and its execs are journaled against the
+    project. A journey's own teardown then dropped its claims under
+    that work, and the next journey found the project BUSY -- its tile
+    locked before the click -- in nine runs of ten on one file and now
+    and then on others (measured, 2026-10-11). This runs in the page's
+    teardown, which pytest runs before every autouse claim-dropping
+    fixture's, so each journey's work settles while its claim stands.
+    Bounded, and a timeout fails naming what was still pending.
+    """
+    from vaibify.config import operationJournal
+    fDeadline = time.monotonic() + F_HUB_DRAIN_TIMEOUT_SECONDS
+    while True:
+        iInFlight = serverHub.fiCountInFlightRequests()
+        listBusy = [
+            sName for sName in operationJournal.flistJournaledContainerNames()
+            if operationJournal.fdictResolveContainerJournal(
+                sName, None, bPersistResolution=False,
+            )["sResolution"] == operationJournal.S_RESOLUTION_BUSY]
+        if iInFlight == 0 and not listBusy:
+            return
+        if time.monotonic() > fDeadline:
+            pytest.fail(
+                f"the journey left {iInFlight} request(s) in flight and "
+                f"these projects busy: {listBusy} after "
+                f"{F_HUB_DRAIN_TIMEOUT_SECONDS:g} s")
+        time.sleep(0.05)
