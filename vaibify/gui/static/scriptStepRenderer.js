@@ -984,7 +984,29 @@ var VaibifyStepRenderer = (function () {
             iIndex + '" data-approver="' + sCategory + '">' +
             '<span class="verification-label">' +
             sTriangle + fnEscapeHtml(sLabel) + '</span>' +
-            sBadge + '</div>';
+            sBadge + '</div>' +
+            _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext);
+    }
+
+    function _fsRenderNeverRunNote(sState, sCategory, iIndex, dictContext) {
+        /* The server's list of this tier's test files that no run has
+           ever recorded. One such file holds the tier at untested no
+           matter how often the others pass, so the row names it
+           rather than leaving a bare "Untested" nobody can clear. */
+        if (sState === "failed" || sState === "unnecessary" ||
+                !dictContext.flistNeverRunTestFiles) {
+            return "";
+        }
+        var listNames = dictContext.flistNeverRunTestFiles(
+            iIndex, sCategory);
+        if (!listNames.length) return "";
+        return '<div class="sub-test-note">' +
+            fnEscapeHtml(listNames.join(", ")) +
+            (listNames.length === 1 ? " has" : " have") +
+            " never run, so this tier cannot pass. Run " +
+            (listNames.length === 1 ? "it" : "them") +
+            ", or remove " + (listNames.length === 1 ? "it" : "them") +
+            " if left over.</div>";
     }
 
     function fsRenderSubTestExpanded(

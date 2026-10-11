@@ -195,3 +195,37 @@ def test_a_new_run_is_announced_again(pageDashboard, serverHub):
         "run-two", {"integrity": _fdictState("failed")}, iExitStatus=1)
     _fnWaitForPollsCarryingMarkers(pageDashboard, dictScript, 2)
     assert _fiAnnouncements(pageDashboard) == 2
+
+
+def test_a_tier_names_the_test_file_no_run_has_recorded(
+    pageDashboard, serverHub,
+):
+    """A file nothing runs is named on its tier, not hidden in "Untested".
+
+    An obsolete ``test_qualitative.py`` left beside its renamed
+    successor held the tier at untested however often the successor
+    passed, and the row gave no reason (researcher-reported,
+    2026-10-11). The server names the file; the row must show it.
+
+    Kills: dropping the note from the tier row.
+    """
+    from tests.browser.conftest import S_HOST_STEP_NAME
+    dictScript = _fnOpenAndHoldTheStepAs(pageDashboard, serverHub, {
+        "sUnitTest": "untested", "sIntegrity": "passed",
+        "sQualitative": "untested", "sQuantitative": "passed",
+        "sUser": "untested"})
+    dictQualitative = dict(
+        _fdictState("untested"), listNeverRunFiles=["test_qualitative.py"])
+    dictScript["dictMarkers"] = _fdictMarkersOfRun("run-one", {
+        "integrity": _fdictState("passed"),
+        "qualitative": dictQualitative,
+        "quantitative": _fdictState("passed")})
+    _fnWaitForPollsCarryingMarkers(pageDashboard, dictScript, 2)
+    pageDashboard.click(f'.step-item:has-text("{S_HOST_STEP_NAME}")')
+    pageDashboard.click(
+        '.verification-row[data-approver="unitTest"][data-step="0"]')
+    pageDashboard.wait_for_selector(".sub-test-note", timeout=15000)
+    sNote = pageDashboard.text_content(".sub-test-note")
+    assert "test_qualitative.py has never run" in sNote, sNote
+    assert pageDashboard.locator(".sub-test-note").count() == 1
+    assert pageDashboard.listPageErrors == []

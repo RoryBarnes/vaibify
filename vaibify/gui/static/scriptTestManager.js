@@ -11,6 +11,8 @@ var VaibifyTestManager = (function () {
     var _dictSeenNewTestFiles = {};
     var _bFirstTestFilePoll = true;
     var _dictFalsificationByStep = {};
+    /* Step index -> {category: [file names no run has recorded]}. */
+    var _dictNeverRunFilesByStep = {};
     var _setFalsificationFetchInFlight = new Set();
 
     /* --- Test Generation --- */
@@ -803,8 +805,35 @@ var VaibifyTestManager = (function () {
         if (!dictStep) return false;
         var dictVerify = dictStep.dictVerification || {};
         dictStep.dictVerification = dictVerify;
+        var bNamesChanged = fbRecordNeverRunFiles(
+            iStep, dictEntry.dictCategoryStates || {});
         return fbApplyCategoryStates(
-            dictVerify, dictEntry.dictCategoryStates || {});
+            dictVerify, dictEntry.dictCategoryStates || {}) || bNamesChanged;
+    }
+
+    function fbRecordNeverRunFiles(iStep, dictCategoryStates) {
+        /* The server names the test files no run has ever recorded;
+           kept per step for the tier rows, never saved with the
+           workflow. Returns True when the names changed, so the rows
+           re-render with them. */
+        var dictNames = {};
+        for (var sCategory in dictCategoryStates) {
+            var listNames =
+                (dictCategoryStates[sCategory] || {}).listNeverRunFiles;
+            if (listNames && listNames.length) {
+                dictNames[sCategory] = listNames.slice();
+            }
+        }
+        var sKey = String(iStep);
+        var bChanged = JSON.stringify(dictNames) !==
+            JSON.stringify(_dictNeverRunFilesByStep[sKey] || {});
+        _dictNeverRunFilesByStep[sKey] = dictNames;
+        return bChanged;
+    }
+
+    function flistNeverRunTestFiles(iStep, sCategory) {
+        return ((_dictNeverRunFilesByStep[String(iStep)] || {})[sCategory])
+            || [];
     }
 
     function fbApplyCategoryStates(dictVerify, dictCategoryStates) {
@@ -900,6 +929,7 @@ var VaibifyTestManager = (function () {
         _dictSeenNewTestFiles = {};
         _bFirstTestFilePoll = true;
         _dictFalsificationByStep = {};
+        _dictNeverRunFilesByStep = {};
         setStepsWithData.clear();
         setExpandedUnitTests.clear();
         setGeneratingInFlight.clear();
@@ -934,6 +964,7 @@ var VaibifyTestManager = (function () {
         fnDeleteTestCommand: fnDeleteTestCommand,
         fnApplyTestMarkers: fnApplyTestMarkers,
         fbApplyStepMarker: fbApplyStepMarker,
+        flistNeverRunTestFiles: flistNeverRunTestFiles,
         fbApplyCategoryStates: fbApplyCategoryStates,
         fnNotifyTestFileChanges: fnNotifyTestFileChanges,
         flistFilterUnseenTestFiles: flistFilterUnseenTestFiles,

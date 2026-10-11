@@ -2262,6 +2262,8 @@ const VaibifyApp = (function () {
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
+            flistNeverRunTestFiles:
+                VaibifyTestManager.flistNeverRunTestFiles,
             setStepsWithData: VaibifyTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: VaibifyTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,

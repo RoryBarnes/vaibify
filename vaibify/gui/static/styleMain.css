@@ -4035,6 +4035,12 @@ body.proof-level-3 .toolbar-label {
     font-size: 11px;
 }
 
+.sub-test-note {
+    padding: 0 0 2px 16px;
+    color: var(--color-orange);
+    font-size: 11px;
+}
+
 .falsification-block {
     margin-top: 6px;
     padding-top: 4px;
