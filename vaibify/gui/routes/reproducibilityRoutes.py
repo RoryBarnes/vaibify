@@ -37,7 +37,6 @@ from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import gitEvidence, reproductionRecord
 from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
 from ...reproducibility.manifestWriter import (
-    S_REPRODUCED_MANIFEST_FILENAME,
     fdictCompareManifestEntries,
     flistParseManifestLines,
 )
@@ -1472,7 +1471,8 @@ def _fbPersistAttestation(
     reproduction record for a clone whose attestation is somebody
     else's. The paths written are left on the outcome as
     ``listRecordPathsWritten`` for the commit that follows, and the
-    root manifest's path as ``sReproducedManifestPath`` for the toast.
+    manifest the record names as ``sReproducedManifestPath`` for the
+    toast: the root file for the author, the dated copy for a reader.
     """
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
 
@@ -1517,8 +1517,7 @@ def _fbPersistAttestation(
         return False
     dictResult["listRecordPathsWritten"] = listWritten
     dictResult["sReproducedManifestPath"] = (
-        S_REPRODUCED_MANIFEST_FILENAME
-        if S_REPRODUCED_MANIFEST_FILENAME in listWritten else ""
+        reproductionRecord.fsReproducedManifestNamedBy(sRecordKind, listWritten)
     )
     return True
 

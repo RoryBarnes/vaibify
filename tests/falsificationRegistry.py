@@ -19226,7 +19226,7 @@ LIST_FALSIFICATIONS = [
         old=(
             '    sReproducedPath = fsWriteReproducedManifest(\n'
             '        filesRepo, dictOutcome.get("listFileOutcomes") or [],\n'
-            '        sTimestampUtc, sStatus,\n'
+            '        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,\n'
             '    )\n'
         ),
         new='    sReproducedPath = "REPRODUCED.sha256"\n',
@@ -31519,5 +31519,55 @@ LIST_FALSIFICATIONS = [
             '    if False:\n'
             '        return\n'
         ),
+    ),
+    # --- 2026-10-12 ruling: a reader's verification never writes the
+    # root REPRODUCED.sha256, the author's committed file ---
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_pass_leaves_the_authors_root_manifest_untouched'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,\n',
+        new='        sTimestampUtc, sStatus, bWriteRootCopy=True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_divergence_lands_only_in_the_dated_copy'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        old=(
+            '    if not bWriteRootCopy:\n'
+            '        return sHistoryPath\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return sHistoryPath\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_settled_card_names_the_dated_copy'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old=(
+            '            if sPath.startswith('
+            'S_REPRODUCED_MANIFEST_HISTORY_DIR + "/"):\n'
+        ),
+        new='            if sPath == S_REPRODUCED_MANIFEST_FILENAME:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_the_authors_attestation_is_still_committed'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        old=(
+            '    filesRepo.fnWriteTextAtomic('
+            'S_REPRODUCED_MANIFEST_FILENAME, sText)\n'
+        ),
+        new='    pass\n',
     ),
 ]

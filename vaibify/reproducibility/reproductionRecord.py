@@ -44,6 +44,7 @@ __all__ = [
     "fdictLatestReproductionRecord",
     "flistReadReproductionRecords",
     "flistWriteVerificationOutcome",
+    "fsReproducedManifestNamedBy",
     "fsRecordKindForRepository",
     "fsWriteReproductionRecord",
 ]
@@ -71,7 +72,11 @@ from vaibify.reproducibility.l3Attestation import (
     fsReproducedManifestHistoryPath,
     fsWriteReproducedManifest,
 )
-from vaibify.reproducibility.manifestWriter import S_REPRODUCTIONS_DIR
+from vaibify.reproducibility.manifestWriter import (
+    S_REPRODUCED_MANIFEST_FILENAME,
+    S_REPRODUCED_MANIFEST_HISTORY_DIR,
+    S_REPRODUCTIONS_DIR,
+)
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -138,10 +143,12 @@ def flistWriteVerificationOutcome(
 ):
     """Write a verification's files in the only safe order; return their paths.
 
-    The reproduced manifest lands first -- its timestamped copy, then
-    the root ``REPRODUCED.sha256`` -- and only THEN the record that
-    names it, so a record can never point at a manifest that was not
-    written. Which record is decided by ``sRecordKind``: the author's
+    The reproduced manifest lands first -- its timestamped copy, then,
+    for the author's attestation only, the root ``REPRODUCED.sha256``
+    -- and only THEN the record that names it, so a record can never
+    point at a manifest that was not written. A reader's reproduction
+    record names its timestamped copy, and the root file, which in
+    their clone is the author's committed one, is never written. Which record is decided by ``sRecordKind``: the author's
     attestation, built by the lane through ``fdictBuildAttestationAt(
     sTimestampUtc, sReproducedManifestPath)``, or a reproduction record
     in the report schema for a clone whose attestation is somebody
@@ -160,21 +167,21 @@ def flistWriteVerificationOutcome(
     dictBaseline = dictOutcome.get("dictBaselineEvidence")
     sStatus = S_STATUS_PASSED if dictOutcome.get("bPassed") else S_STATUS_FAILED
     sTimestampUtc = fsCurrentTimestampUtc()
+    bReaderRecord = sRecordKind == S_RECORD_KIND_REPRODUCTION
     sReproducedPath = fsWriteReproducedManifest(
         filesRepo, dictOutcome.get("listFileOutcomes") or [],
-        sTimestampUtc, sStatus,
+        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,
     )
     listPaths = []
     if sReproducedPath:
         listPaths.append(fsReproducedManifestHistoryPath(sTimestampUtc, sStatus))
-        listPaths.append(sReproducedPath)
-    if sRecordKind == S_RECORD_KIND_REPRODUCTION:
+        if not bReaderRecord:
+            listPaths.append(sReproducedPath)
+    if bReaderRecord:
         dictRecord = fdictBuildReproductionRecord(
             dictOutcome, fdictReadEnvironmentJson(filesRepo) or {},
             dictWorkflow, fsRepoRootOf(filesRepo), fDurationSeconds,
-            fsReproducedManifestHistoryPath(sTimestampUtc, sStatus)
-            if sReproducedPath else None,
-            dictBaseline,
+            sReproducedPath or None, dictBaseline,
         )
         listPaths.append(
             fsWriteReproductionRecord(filesRepo, dictRecord, sTimestampUtc),
@@ -186,6 +193,22 @@ def flistWriteVerificationOutcome(
     )
     listPaths.append(_S_ATTESTATION_RELATIVE_PATH)
     return listPaths
+
+
+def fsReproducedManifestNamedBy(sRecordKind, listWrittenPaths):
+    """Return the reproduced manifest a just-written record names, or ``""``.
+
+    The author's attestation names the root ``REPRODUCED.sha256``; a
+    reader's reproduction record names its timestamped copy, because a
+    reader's verification never writes the author's root file.
+    """
+    for sPath in listWrittenPaths:
+        if sRecordKind == S_RECORD_KIND_REPRODUCTION:
+            if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR + "/"):
+                return sPath
+        elif sPath == S_REPRODUCED_MANIFEST_FILENAME:
+            return sPath
+    return ""
 
 
 def fdictBuildReproductionRecord(

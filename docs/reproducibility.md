@@ -238,8 +238,11 @@ line. Commit both.
 If someone else committed the clone's attestation, as when you check an
 author's published project, the result is saved instead as a
 reproduction record in `.vaibify/reproductions/` in your clone, and the
-author's attestation is left alone. Vaibify does not stage or commit
-that record. It is yours, so commit it only if you choose to.
+author's attestation is left alone. The hashes your rerun observed go
+to a dated file in `.vaibify/reproducedManifests/`, which the record
+names; the author's `REPRODUCED.sha256` is never written. Vaibify does
+not stage or commit any of these files. They are yours, so commit them
+only if you choose to.
 
 You do not have to take vaibify's word for any of this. Every check is
 a standard tool that anyone can run by hand: `sha256sum` for the files,

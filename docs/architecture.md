@@ -2837,7 +2837,11 @@ No git operation is ever made on a reproduction record (ruled
 attestation, but a reader's record and reproduced manifest stay
 untracked files in their clone, because a commit in somebody else's
 repository on the reader's behalf needs an identity the reader never
-gave, and the record is the reader's to publish or not.
+gave, and the record is the reader's to publish or not. For the same
+reason a reader's verification writes only the dated copy under
+`.vaibify/reproducedManifests/`, which their record names, and never
+the root `REPRODUCED.sha256`: in their clone that is the author's
+committed file, and a diverged attempt used to overwrite it.
 
 The question is three-state, and the third state refuses
 (2026-09-12). A review found that a committer git could not read was

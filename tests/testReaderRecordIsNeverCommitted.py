@@ -83,9 +83,9 @@ def _fsBuildCloneWithTheAuthorsAttestation(tmp_path):
     return sRepo
 
 
-def _fdictRunTheVerificationWorker(sRepo, monkeypatch):
+def _fdictRunTheVerificationWorker(sRepo, monkeypatch, dictOutcome=None):
     """Drive the real worker once; return the settled status record."""
-    dictOutcome = _fdictOutcomeFor(sRepo)
+    dictOutcome = dictOutcome or _fdictOutcomeFor(sRepo)
 
     def _fdictRerunReturningTheOutcome(*args, **kwargs):
         return dict(dictOutcome)
@@ -162,8 +162,14 @@ def test_a_readers_record_is_saved_untracked_and_still_labelled(
     assert dictLabel["sState"] == "reproduced"
 
 
+@pytest.mark.falsification
 def test_the_authors_attestation_is_still_committed(tmp_path, monkeypatch):
-    """The author's own lane is unchanged: its record is committed."""
+    """The author's own lane is unchanged: its record and root manifest commit.
+
+    Kills: the reproduced-manifest writer no longer writing the root
+    ``REPRODUCED.sha256`` for anyone, which would take the author's
+    published comparison file away with the reader's.
+    """
     sRepo = _fsBuildReaderClone(tmp_path)
     fsRunGit(["config", "user.email", "author@example.invalid"], sRepo)
     sHeadBefore = fsRunGit(["rev-parse", "HEAD"], sRepo)
@@ -175,6 +181,8 @@ def test_the_authors_attestation_is_still_committed(tmp_path, monkeypatch):
     sCommitted = fsRunGit(
         ["show", "--name-only", "--format=", "HEAD"], sRepo)
     assert ".vaibify/l3_attestation.json" in sCommitted.splitlines()
+    assert "REPRODUCED.sha256" in sCommitted.splitlines()
+    assert dictStatus["sReproducedManifestPath"] == "REPRODUCED.sha256"
     assert json.loads(
         fsRunGit(["show", "HEAD:.vaibify/l3_attestation.json"], sRepo),
     )["sStatus"] == "passed"
@@ -309,3 +317,103 @@ def test_a_second_verification_by_the_reader_is_neither_refused_nor_degraded(
     assert dictSecondRecord["bBaselineKnown"] is True
     assert dictSecondRecord["listPathsDifferingFromBaseline"] == (
         listUntracked)
+
+
+S_AUTHORS_REPRODUCED_TEXT = (
+    "# the author's committed REPRODUCED.sha256, as published\n"
+)
+
+
+def _fsBuildCloneWithTheAuthorsReproducedManifest(tmp_path):
+    """Return a reader's clone in which the author committed REPRODUCED.sha256."""
+    sRepo = _fsBuildCloneWithTheAuthorsAttestation(tmp_path)
+    with open(os.path.join(sRepo, "REPRODUCED.sha256"), "w") as fileHandle:
+        fileHandle.write(S_AUTHORS_REPRODUCED_TEXT)
+    fnCommitEverything(sRepo, "author publishes the reproduced manifest")
+    return sRepo
+
+
+def _fsReadRepositoryText(sRepo, sRelativePath):
+    with open(os.path.join(sRepo, sRelativePath)) as fileHandle:
+        return fileHandle.read()
+
+
+def _flistDatedManifests(sRepo, sStatus):
+    """Return the dated reproduced manifests of one status, repo-relative."""
+    sDirectory = os.path.join(sRepo, ".vaibify", "reproducedManifests")
+    return sorted(
+        ".vaibify/reproducedManifests/" + sName
+        for sName in os.listdir(sDirectory)
+        if sName.endswith(f"_{sStatus}.sha256")
+    )
+
+
+@pytest.mark.falsification
+def test_a_readers_pass_leaves_the_authors_root_manifest_untouched(
+    tmp_path, monkeypatch,
+):
+    """A reader's PASS writes only the dated copy; the root stays the author's.
+
+    Kills: a reader's verification writing the root REPRODUCED.sha256,
+    which is the author's committed file.
+    """
+    sRepo = _fsBuildCloneWithTheAuthorsReproducedManifest(tmp_path)
+
+    dictStatus = _fdictRunTheVerificationWorker(sRepo, monkeypatch)
+
+    assert dictStatus["sRecordKind"] == "reproduction"
+    assert _fsReadRepositoryText(sRepo, "REPRODUCED.sha256") == (
+        S_AUTHORS_REPRODUCED_TEXT)
+    assert subprocess.run(
+        ["git", "status", "--porcelain", "--", "REPRODUCED.sha256"],
+        cwd=sRepo, capture_output=True, text=True, check=True,
+    ).stdout == ""
+    assert len(_flistDatedManifests(sRepo, "passed")) == 1
+
+
+@pytest.mark.falsification
+def test_a_readers_divergence_lands_only_in_the_dated_copy(
+    tmp_path, monkeypatch,
+):
+    """A diverged reader attempt leaves the root alone; the dated copy holds it.
+
+    Kills: the reproduced-manifest writer ignoring the instruction not
+    to write the root copy, so a reader's diverged hashes replace the
+    author's committed file.
+    """
+    sRepo = _fsBuildCloneWithTheAuthorsReproducedManifest(tmp_path)
+    dictOutcome = _fdictOutcomeFor(sRepo, sVerdictPassed=False)
+    sDivergedHash = "f" * 64
+    dictOutcome["listFileOutcomes"][0]["sObserved"] = sDivergedHash
+
+    dictStatus = _fdictRunTheVerificationWorker(
+        sRepo, monkeypatch, dictOutcome)
+
+    assert dictStatus["sPhase"] == "failed"
+    assert " M REPRODUCED.sha256" not in _flistGitStatusLines(sRepo)
+    assert _fsReadRepositoryText(sRepo, "REPRODUCED.sha256") == (
+        S_AUTHORS_REPRODUCED_TEXT)
+    listFailed = _flistDatedManifests(sRepo, "failed")
+    assert len(listFailed) == 1
+    assert sDivergedHash in _fsReadRepositoryText(sRepo, listFailed[0])
+
+
+@pytest.mark.falsification
+def test_a_readers_settled_card_names_the_dated_copy(tmp_path, monkeypatch):
+    """The settled status names the reader's dated copy, never the root file.
+
+    Kills: the status naming no reproduced manifest (or the author's
+    root file) for a reader, so the card would point at the wrong file
+    or at nothing.
+    """
+    sRepo = _fsBuildCloneWithTheAuthorsReproducedManifest(tmp_path)
+
+    dictStatus = _fdictRunTheVerificationWorker(sRepo, monkeypatch)
+
+    listPassed = _flistDatedManifests(sRepo, "passed")
+    assert dictStatus["sReproducedManifestPath"] == listPassed[0]
+    dictRecord = json.loads(_fsReadRepositoryText(sRepo, [
+        sLine[3:] for sLine in _flistGitStatusLines(sRepo)
+        if ".vaibify/reproductions/" in sLine
+    ][0]))
+    assert dictRecord["sReproducedManifestPath"] == listPassed[0]
