@@ -31221,4 +31221,66 @@ LIST_FALSIFICATIONS = [
         old='            if fbErrorIsDiskFull(processDf.stderr):\n                return 0\n',
         new='',
     ),
+    # --- 2026-10-12: a container running the author's pinned image is
+    # never told to rebuild, and the agents vaibify stacked on it are
+    # not a difference in its environment ---
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testAPinnedImageIsNeverToldToRebuild'
+        ),
+        # every container is routed through the rebuild sentences
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        if not fbProjectImageIsObtained(dictProject):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testTheAgentsVaibifyStackedAreNotADifference'
+        ),
+        # the reader's own agent switches are compared with the stamp
+        source='vaibify/config/configurationFingerprint.py',
+        old='    for sField in flistAgentFeatureFields():\n',
+        new='    for sField in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testWithoutTheAuthorsCommittedFileNothingIsDetermined'
+        ),
+        # an unreadable author's file falls back to the reader's switches
+        source='vaibify/config/configurationFingerprint.py',
+        old=(
+            '        return fdictCompareConfigurationAgainstImage('
+            'sStampedFingerprint, None)\n'
+        ),
+        new=(
+            '        return fdictCompareConfigurationAgainstImage('
+            'sStampedFingerprint, config)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testABuiltImageStillNamesTheRebuild'
+        ),
+        # the drift banner is silenced for every container
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        listBuiltDrift\n        + listX11ContainerLines\n',
+        new='        []\n        + listX11ContainerLines\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePinnedEnvironmentNoteIsTheServers.py::'
+            'testThePinnedNoteShowsTheServersSentencesUnderItsOwnHeading'
+        ),
+        # the pinned sentences are dropped instead of rendered
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '            (dictReadiness && '
+            'dictReadiness.listPinnedEnvironmentDrift) || []\n'
+        ),
+        new='            []\n',
+    ),
 ]

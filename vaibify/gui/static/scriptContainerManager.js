@@ -2573,6 +2573,9 @@ var VaibifyContainerManager = (function () {
         _fnRenderConfigurationDriftBanner(
             (dictReadiness && dictReadiness.listConfigurationDrift) || []
         );
+        _fnRenderPinnedEnvironmentDriftBanner(
+            (dictReadiness && dictReadiness.listPinnedEnvironmentDrift) || []
+        );
         _fnRenderResourceLimitDriftBanner(
             (dictReadiness && dictReadiness.listResourceLimitDrift) || []
         );
@@ -2648,6 +2651,19 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+    }
+
+    function _fnRenderPinnedEnvironmentDriftBanner(listSentences) {
+        /* The server's sentences for a container running the author's
+           pinned image whose settings differ from the ones that image
+           was built from, never a comparison of its own. Its own
+           banner: the image is not out of date, and the rebuild the
+           drift banner offers would replace the author's environment. */
+        _fnRenderSentenceBanner(
+            "pinnedEnvironmentDriftBanner",
+            "btnDismissPinnedEnvironmentDrift",
+            "This environment's settings differ from the author's " +
+            "pinned image", listSentences);
     }
 
     function _fnRenderResourceLimitDriftBanner(listSentences) {

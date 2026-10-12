@@ -107,7 +107,7 @@ def testTheReadinessPayloadCarriesTheX11FindingsToTheDashboard():
     ), patch.object(
         systemRoutes, "_flistDescribeUnresolvableSecrets", return_value=[],
     ), patch.object(
-        systemRoutes, "_flistDescribeConfigurationDrift", return_value=[],
+        systemRoutes, "_ftDescribeConfigurationDrift", return_value=([], []),
     ), patch.object(
         systemRoutes, "_ftDescribeX11Findings",
         return_value=(["container line"], ["host line"]),

@@ -34,9 +34,13 @@ __all__ = [
     "T_BAKED_CONFIGURATION_FIELDS",
     "fsComputeConfigurationFingerprint",
     "fdictCompareConfigurationAgainstImage",
+    "fdictCompareConfigurationAgainstObtainedImage",
+    "flistAgentFeatureFields",
     "flistDescribeConfigurationDrift",
+    "flistDescribePinnedEnvironmentDrift",
 ]
 
+import copy
 import hashlib
 import json
 
@@ -157,4 +161,73 @@ def flistDescribeConfigurationDrift(dictComparison):
         "Environment snapshot, click Regenerate now, and verify again.",
         "Ports, shared folders, passwords and memory limits never need "
         "a rebuild: they take effect the next time the container starts.",
+    ]
+
+
+def flistAgentFeatureFields():
+    """Return every feature switch that installs or auto-updates an agent.
+
+    Read from the image builder's own agent list, so an agent added
+    there is covered here without a second list to forget.
+    """
+    from vaibify.docker.imageBuilder import (
+        T_AGENT_OVERLAY_NAMES,
+        fsFeatureFieldForOverlay,
+    )
+    listFields = []
+    for sOverlay in T_AGENT_OVERLAY_NAMES:
+        sInstallField = fsFeatureFieldForOverlay(sOverlay)
+        listFields.extend([sInstallField, sInstallField + "AutoUpdate"])
+    return listFields
+
+
+def fdictCompareConfigurationAgainstObtainedImage(
+    sStampedFingerprint, config, configAuthor,
+):
+    """Compare a configuration with the author's OBTAINED image, agents aside.
+
+    The stamp on an obtained image hashes the AUTHOR's configuration,
+    agent switches included. The reader's file carries the agents
+    vaibify stacked on that image and the auto-update choices the
+    conversion wrote -- vaibify's own edits, never a difference in the
+    environment -- so the reader's agent switches are replaced by the
+    author's committed ones before hashing. Without the author's file
+    they cannot be set aside, and nothing is determined.
+    """
+    if configAuthor is None or config is None:
+        return fdictCompareConfigurationAgainstImage(sStampedFingerprint, None)
+    configWithAuthorAgents = copy.deepcopy(config)
+    for sField in flistAgentFeatureFields():
+        setattr(
+            configWithAuthorAgents.features, sField,
+            getattr(configAuthor.features, sField),
+        )
+    return fdictCompareConfigurationAgainstImage(
+        sStampedFingerprint, configWithAuthorAgents,
+    )
+
+
+def flistDescribePinnedEnvironmentDrift(dictComparison):
+    """Return the sentences for an obtained image that differs, or none.
+
+    Never a rebuild: the image is the author's environment, and a
+    rebuild would replace the bytes a reproduction rests on. Nor does it
+    say who changed what -- the difference may be the reader's edit or
+    a published file that never matched the author's image.
+    """
+    if not dictComparison.get("bConfigurationChanged"):
+        return []
+    return [
+        "This container runs the author's pinned environment image. The "
+        "environment's settings (its packages, repositories, Python "
+        "version or features) differ from the ones that image was built "
+        "from; the coding agents vaibify added on top of it are left out "
+        "of this comparison.",
+        "The pinned image, not those settings, defines this environment: "
+        "the differences are not in effect here, and the image is the "
+        "environment the published results are pinned to.",
+        "Do not rebuild to apply them. A rebuild replaces the author's "
+        "environment with a new one, and results from it would no longer "
+        "be a reproduction in the environment that produced the published "
+        "ones.",
     ]

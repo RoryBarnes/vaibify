@@ -40,6 +40,7 @@ __all__ = [
     "fdictDescribeImageOriginForProject",
     "fdictDescribePinnedEnvironmentForWizard",
     "fdictOverlayRuntimeFieldsOnly",
+    "fconfigReadAuthorConfigurationOrNone",
     "fnRestoreAuthorBaseFieldsFromGit",
     "fnRewriteConfigForObtainedImage",
 ]
@@ -401,6 +402,37 @@ def fnRestoreAuthorBaseFieldsFromGit(dictProject):
             "vaibify.yml."
         )})
     fnSaveToFile(fconfigFromYamlDict(dictMerged), sConfigPath)
+
+
+def fconfigReadAuthorConfigurationOrNone(dictProject):
+    """Return the author's ``vaibify.yml`` as committed at HEAD, or ``None``.
+
+    The working copy is the reader's; HEAD is the author's. ``None``
+    covers every way that copy cannot be read -- a config outside the
+    clone, an uncommitted file, text that is not a configuration --
+    because the caller's only use is to set the reader's agent switches
+    aside, and without the author's file it determines nothing.
+    """
+    import yaml
+    from vaibify.config.projectConfig import fconfigFromYamlDict
+    from vaibify.reproducibility.reproductionSource import (
+        fsReadCommittedFileOrNone,
+    )
+    sDirectory = (dictProject or {}).get("sDirectory") or ""
+    sConfigPath = (dictProject or {}).get("sConfigPath") or ""
+    if not sDirectory or not sConfigPath:
+        return None
+    sRelativePath = os.path.relpath(sConfigPath, sDirectory)
+    if sRelativePath.startswith(os.pardir):
+        return None
+    sCommitted = fsReadCommittedFileOrNone(sDirectory, sRelativePath)
+    try:
+        dictAuthor = yaml.safe_load(sCommitted) if sCommitted else None
+        if not isinstance(dictAuthor, dict):
+            return None
+        return fconfigFromYamlDict(dictAuthor)
+    except (yaml.YAMLError, TypeError, ValueError):
+        return None
 
 
 def _fdictAuthorBaseOntoRuntime(dictAuthor, dictExisting):
