@@ -20,6 +20,8 @@ import json
 
 import pytest
 
+from tests.browser.conftest import fnLoadThePickerUntilItsButtonsListen
+
 
 pytestmark = pytest.mark.browser
 
@@ -117,8 +119,7 @@ def _fdictInterceptTheJob(pageDashboard, iLivePolls=2):
 
 
 def _fnOpenTheCard(pageDashboard, serverHub):
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector("#btnAddContainer", timeout=15000)
+    fnLoadThePickerUntilItsButtonsListen(pageDashboard, serverHub)
     pageDashboard.click("#btnAddContainer")
     pageDashboard.wait_for_selector("#modalAddChoice", timeout=5000)
 

@@ -102,8 +102,37 @@ Run the browser lane locally when you want the fast signal:
 
 ```bash
 pip install -e '.[browser]' && python -m playwright install chromium
-python -m pytest tests/browser -m browser
+VAIBIFY_REQUIRE_BROWSER=1 python -m pytest tests/browser -m browser -n 6 --dist loadfile
 ```
+
+`-n 6 --dist loadfile` splits the lane across six worker processes and
+keeps every test of one file on one worker, which the lane requires:
+each file starts its own hub (module-scoped fixtures) and its tests
+build on that hub's state. On a 10-core Mac the full lane took about
+10 minutes this way, against about 45 minutes serially. Pick a worker
+count below your core count; each worker runs a hub and a browser.
+`VAIBIFY_REQUIRE_BROWSER=1` turns a missing Playwright into a failure
+instead of a quiet skip.
+
+The serial command is still the reference, and the one to fall back on
+when diagnosing:
+
+```bash
+VAIBIFY_REQUIRE_BROWSER=1 python -m pytest tests/browser -m browser
+```
+
+**A failure that appears only in parallel is a bug in the lane, not
+noise.** Rerun the failing file alone (`python -m pytest
+tests/browser/<file>.py -m browser`); if it passes there, look for what
+two workers share — a fixed path under `.browserLaneTmp/` or
+`test-results/`, a port learned and released before it is bound, a
+file under `~/.vaibify` the hub writes outside the lane's redirects, or
+a wait that assumed an idle machine. Fix it at that cause. Do not skip
+or deselect the test, loosen its assertion, or drop to serial to make it
+pass; if a test genuinely cannot share the machine, give it an explicit,
+documented mechanism (an `xdist_group` or a file lock) and say why.
+`tests/testBrowserLaneParallelSafety.py` pins the two collisions found so
+far: held ports and per-module artifact directories.
 
 **What the browser lane does not cover.** It drives a fail-closed fake
 Docker adapter, so it says nothing about container launch, file

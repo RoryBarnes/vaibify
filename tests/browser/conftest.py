@@ -98,11 +98,20 @@ def _fnRequirePlaywright():
     )
 
 
-def _fiFreePort():
-    """Return a port the OS has just confirmed is free."""
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def fsocketBindLoopbackPort():
+    """Return a socket HELD on a free loopback port, for uvicorn to serve.
+
+    The lane used to ask the OS for a free port, release it, and let
+    uvicorn bind that number moments later. Under parallel workers the
+    release is a window: another worker's hub can be handed the same
+    number in between, and the loser's readiness probe then connects to
+    the WINNER's hub. Holding the bound socket and passing it to
+    ``uvicorn.Server.run(sockets=...)`` closes the window, because the
+    port is never free again until this hub is done with it.
+    """
+    socketListening = socket.socket()
+    socketListening.bind(("127.0.0.1", 0))
+    return socketListening
 
 
 def _fnWaitUntilServing(iPort, fTimeoutSeconds=20.0):
@@ -259,6 +268,22 @@ def fnOpenTheSeededHostWorkflow(
         pageDashboard.wait_for_selector(
             "#projectBlock .requirement-group", timeout=30000,
         )
+
+
+def fnLoadThePickerUntilItsButtonsListen(pageDashboard, serverHub):
+    """Load the dashboard and return once a click on the picker is heard.
+
+    The picker's buttons (``#btnAddContainer`` and its neighbours) are
+    static HTML, visible the moment the page loads, but their handlers
+    are bound only after the session-token round trip. Waiting for a
+    button to be visible therefore returns before a click on it does
+    anything; on an idle machine the round trip had finished by the
+    click, and under parallel workers the click landed first and was
+    lost. A project tile is rendered from a fetch issued after the
+    handlers are bound, so it is the earliest proof they are.
+    """
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector(".container-tile", timeout=15000)
 
 
 def fnSeedRunnableHostWorkflow(sProjectDirectory):
@@ -472,8 +497,9 @@ def serverHub():
     from vaibify.gui import browserSession
 
     adapterDocker = FailClosedDockerAdapter()
-    iPort = _fiFreePort()
-    with _fnIsolateProjectRegistry() as sHome, patch.object(
+    socketListening = fsocketBindLoopbackPort()
+    iPort = socketListening.getsockname()[1]
+    with socketListening, _fnIsolateProjectRegistry() as sHome, patch.object(
         pipelineServer, "_fconnectionCreateDocker",
         lambda *args, **kwargs: adapterDocker,
     ):
@@ -494,7 +520,10 @@ def serverHub():
             app, host="127.0.0.1", port=iPort, log_level="warning",
         )
         server = uvicorn.Server(configServer)
-        threadServer = threading.Thread(target=server.run, daemon=True)
+        threadServer = threading.Thread(
+            target=server.run, kwargs={"sockets": [socketListening]},
+            daemon=True,
+        )
         threadServer.start()
         sBaseUrl = f"http://127.0.0.1:{iPort}"
 
@@ -525,10 +554,32 @@ def serverHub():
                 # into the next one waits for this to reach zero.
                 fiCountInFlightRequests=lambda: len(
                     server.server_state.tasks),
+                fgenericCallOnTheHubLoop=lambda fnCall: (
+                    fgenericCallOnTheLoopOf(server, fnCall)),
             )
         finally:
             server.should_exit = True
             threadServer.join(timeout=10)
+
+
+def fgenericCallOnTheLoopOf(server, fnCall):
+    """Run ``fnCall()`` on a served hub's event loop; return its result.
+
+    The hub changes its owner map and its live-work registries on that
+    loop, so a check-then-change made from the test thread is not the
+    check-then-change the hub makes: the hub can admit work between
+    the two. Run on the loop, both happen in one tick, as they do
+    inside the hub.
+    """
+    import asyncio
+    loopHub = server.servers[0].get_loop()
+
+    async def fgenericCallInsideTheLoop():
+        return fnCall()
+
+    return asyncio.run_coroutine_threadsafe(
+        fgenericCallInsideTheLoop(), loopHub,
+    ).result(timeout=10)
 
 
 @pytest.fixture(scope="module")
@@ -547,15 +598,18 @@ def serverSetupWizard():
     PATH_BROWSER_LANE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         dir=str(PATH_BROWSER_LANE_TMP_ROOT),
-    ) as sOutputDirectory:
-        iPort = _fiFreePort()
+    ) as sOutputDirectory, fsocketBindLoopbackPort() as socketListening:
+        iPort = socketListening.getsockname()[1]
         app = fappCreateSetupWizard(
             sOutputDirectory=sOutputDirectory, iExpectedPort=iPort,
         )
         server = uvicorn.Server(uvicorn.Config(
             app, host="127.0.0.1", port=iPort, log_level="warning",
         ))
-        threadServer = threading.Thread(target=server.run, daemon=True)
+        threadServer = threading.Thread(
+            target=server.run, kwargs={"sockets": [socketListening]},
+            daemon=True,
+        )
         threadServer.start()
         sBaseUrl = f"http://127.0.0.1:{iPort}"
 
@@ -591,6 +645,23 @@ def browserEngine():
 S_ARTIFACT_DIRECTORY = "test-results"
 
 
+def fpathArtifactDirectoryForTest(nodeTest):
+    """Return the one directory that holds a test's trace, video and log.
+
+    Keyed by the test's MODULE as well as its name, because a name is
+    not unique across the lane (two modules each define
+    ``test_an_unready_project_is_told_what_is_missing``). Keyed by name
+    alone, a passing test's cleanup deleted the directory a same-named
+    test was still recording into on another worker -- and, even run
+    serially, deleted the failure artifacts an earlier same-named test
+    had left for CI to upload.
+    """
+    return (
+        pathlib.Path(S_ARTIFACT_DIRECTORY)
+        / f"{nodeTest.path.stem}.{nodeTest.name}"
+    )
+
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Stash each phase's report so fixtures can see the outcome."""
@@ -615,9 +686,7 @@ def pageDashboard(browserEngine, serverHub, request):
     command line produced no artifacts at all -- a CI step that
     promised a trace on failure and uploaded an empty directory.
     """
-    pathArtifacts = (
-        pathlib.Path(S_ARTIFACT_DIRECTORY) / request.node.name
-    )
+    pathArtifacts = fpathArtifactDirectoryForTest(request.node)
     pathArtifacts.mkdir(parents=True, exist_ok=True)
     contextBrowser = browserEngine.new_context(
         record_video_dir=str(pathArtifacts),

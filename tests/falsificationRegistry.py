@@ -31806,4 +31806,33 @@ LIST_FALSIFICATIONS = [
             '        if sPath.endswith("REPRODUCED.sha256")), "")\n'
         ),
     ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserLaneParallelSafety.py::'
+            'testAHubPortStaysHeldUntilItsServerServesIt'
+        ),
+        # The lane learns a free port and releases it before uvicorn
+        # binds it, so a sibling worker's hub can take the same port.
+        source='tests/browser/conftest.py',
+        old=(
+            '    socketListening = socket.socket()\n'
+            '    socketListening.bind(("127.0.0.1", 0))\n'
+            '    return socketListening\n'
+        ),
+        new=(
+            '    with socket.socket() as socketProbe:\n'
+            '        socketProbe.bind(("127.0.0.1", 0))\n'
+            '    return socket.socket()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserLaneParallelSafety.py::'
+            'testSameNamedTestsInTwoModulesKeepSeparateArtifacts'
+        ),
+        # Artifacts keyed by test name alone collide across modules.
+        source='tests/browser/conftest.py',
+        old='        / f"{nodeTest.path.stem}.{nodeTest.name}"\n',
+        new='        / nodeTest.name\n',
+    ),
 ]

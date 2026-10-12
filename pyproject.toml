@@ -101,6 +101,10 @@ browser = [
     # Python binding manages its own browser binary, so no npm, no
     # package.json, and no JS toolchain enters the repository.
     "pytest-playwright",
+    # The lane's documented command splits it across worker processes
+    # (`-n 6 --dist loadfile`), so the extra that installs the lane must
+    # install the plugin that command needs.
+    "pytest-xdist",
 ]
 mutation = [
     "cosmic-ray",
