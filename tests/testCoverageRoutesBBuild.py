@@ -198,6 +198,22 @@ def testAcquireSuccessRecordsLinesAndReturnsTheOrigin(
 
 
 @pytest.mark.falsification
+def testTheDiskGuardRaisesTheRefusalItMeasured(monkeypatch):
+    """Kills: a guard that asks the disk and ignores a failed answer."""
+    from fastapi import HTTPException
+    from vaibify.cli import daemonDiskPreflight
+    monkeypatch.setattr(
+        daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        buildRoutes._fnRefuseAcquisitionWhenDaemonDiskIsFull()
+    assert excinfo.value.status_code == 507
+    assert excinfo.value.detail["sRefusal"] == (
+        buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    )
+
+
+@pytest.mark.falsification
 def testAcquireIsRefusedBeforeAnythingIsObtainedWhenTheDaemonDiskIsFull(
     clientBuild, tmp_path, monkeypatch,
 ):
