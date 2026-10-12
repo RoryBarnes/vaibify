@@ -3773,17 +3773,50 @@ var VaibifyWorkflowRequirements = (function () {
     function _fsReproducedHoverText(dictLabel) {
         /* The server decided; this only phrases it. The date is the
            day of the record, and an emulated success still reads
-           "(reproduced)" with the emulation named here. */
+           "Reproduced" with the emulation named here. */
         var sDay = String(dictLabel.sRecordedIso || "").slice(0, 10);
-        var sText = "Reproduced on " + sDay +
+        return "Reproduced on " + sDay +
             (dictLabel.sPlatform ? " (" + dictLabel.sPlatform + ")" : "") +
             (dictLabel.bEmulated ? " under emulation" : "") + ".";
-        if (dictLabel.sLatestAttemptVerdict === "no-verdict") {
-            sText += " The latest attempt, on " +
-                String(dictLabel.sLatestAttemptIso || "").slice(0, 10) +
-                ", reached no verdict: " + (dictLabel.sReason || "") + ".";
+    }
+
+    function _fsRenderInconclusiveAttemptGlyph(dictLabel) {
+        /* A later attempt that reached no verdict does not take an
+           earlier success away (the server's rule), but it is not
+           nothing either: the dashboard's own warning glyph sits
+           beside the kept badge and carries the attempt's date and
+           the server's reason. A later attempt WITH a verdict clears
+           it, because the server then reports no such attempt. */
+        if (dictLabel.sLatestAttemptVerdict !== "no-verdict") return "";
+        var sText = "The latest attempt, on " +
+            String(dictLabel.sLatestAttemptIso || "").slice(0, 10) +
+            ", reached no verdict: " + (dictLabel.sReason || "") + ".";
+        return '<span class="step-regression-cell ' +
+            'regression-warning-orange project-reproduction-warning" ' +
+            'title="' + fnEscapeHtml(sText) + '">\u26a0</span>';
+    }
+
+    function _fsRenderReproductionBadge(dictContext, dictDetail) {
+        /* One badge, right of the level strip, for the two things a
+           verification can say about the project: it is being re-run
+           NOW (the poll's running flag -- the server's recorded phase,
+           never a client timer, so it survives a reload), or a reader's
+           copy has BEEN reproduced (the server's label decision, which
+           replaced a "(reproduced)" suffix on the heading). A failed
+           attempt shows neither; its toast says why. */
+        if (dictDetail.bRebuildAttestationRunning === true) {
+            return '<span class="project-reproduction-badge ' +
+                'project-reproduction-badge-running" role="status" ' +
+                'title="A Level 3 verification is re-running this ' +
+                'project in a throwaway copy.">Reproducing</span>';
         }
-        return sText;
+        if (!_fbReproducedLabelShows(dictContext)) return "";
+        var dictLabel = dictContext.dictReproductionLabel;
+        return '<span class="project-reproduction-badge ' +
+            'project-reproduction-badge-reproduced" title="' +
+            fnEscapeHtml(_fsReproducedHoverText(dictLabel)) +
+            '">Reproduced</span>' +
+            _fsRenderInconclusiveAttemptGlyph(dictLabel);
     }
 
     function _fbReproducedLabelShows(dictContext) {
@@ -3862,19 +3895,15 @@ var VaibifyWorkflowRequirements = (function () {
            that have none. */
         _dictBlockedRowReasons = _fdictHomeBlockedRows(
             dictDetail.dictBlockedRows || {});
-        var bReproduced = _fbReproducedLabelShows(dictContext);
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
-            'title="' + (bReproduced
-                ? fnEscapeHtml(_fsReproducedHoverText(
-                    dictContext.dictReproductionLabel))
-                : 'Requirements that apply to the project as a ' +
-                  'whole rather than to any single step. Click the ' +
-                  'banner to collapse or expand.') + '">' +
+            'title="Requirements that apply to the project as a ' +
+            'whole rather than to any single step. Click the ' +
+            'banner to collapse or expand.">' +
             _fsExpandTriangle(bOpen) + 'Project' +
-            (bReproduced ? ' (reproduced)' : '') +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
+            _fsRenderReproductionBadge(dictContext, dictDetail) +
             '</div>';
         if (!bOpen) return sHtml;
         var sBody = '<div class="project-block-body">' +

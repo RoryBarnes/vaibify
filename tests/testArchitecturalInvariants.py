@@ -7574,7 +7574,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2344 -> 2350 (2026-09-30): the attestation carries the pinned-input
     # split and the pre-run deletions; the copied Dockerfile composes
     # overlays for the resolved container name.
-    "routes/reproducibilityRoutes.py": 2350,
+    # 2350 -> 2353 (2026-10-12): the attestation payload carries how
+    # the last verification ENDED (dictLastSettled), the one read the
+    # dashboard makes after watching a run go quiet. Same attestation
+    # concern; the record itself lives in verificationProgress.
+    "routes/reproducibilityRoutes.py": 2353,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

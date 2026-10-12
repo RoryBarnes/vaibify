@@ -7354,6 +7354,29 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin-left: auto;
 }
 
+/* Right of the level strip: "Reproducing" while the server reports a
+   Level 3 verification live, "Reproduced" when the server's label
+   says a reader's copy reproduced. The pulse is the run lights' own
+   @keyframes pulse, and it exists only while the server says live. */
+.project-reproduction-badge {
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: help;
+    color: var(--bg-primary, #fff);
+}
+
+.project-reproduction-badge-running {
+    background: var(--color-orange);
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+.project-reproduction-badge-reproduced {
+    background: var(--highlight-color);
+}
+
 .project-block-body {
     border-bottom: 1px solid var(--border-color);
 }

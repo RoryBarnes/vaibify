@@ -37,7 +37,7 @@ from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import gitEvidence, reproductionRecord
 from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
 from ...reproducibility.manifestWriter import (
-    S_REPRODUCED_MANIFEST_FILENAME,
+    S_REPRODUCED_MANIFEST_HISTORY_DIR,
     fdictCompareManifestEntries,
     flistParseManifestLines,
 )
@@ -647,6 +647,9 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
             sContainerId, fsRepoRootOf(filesRepo),
         ),
+        "dictLastSettled": verificationProgress.fdictReadLastSettled(
+            sContainerId, fsRepoRootOf(filesRepo),
+        ),
         "dictUnsettledTeardown": (
             verificationProgress.fdictReadUnsettledTeardown(sContainerId)
         ),
@@ -1100,8 +1103,8 @@ async def _fnRunVerificationWorker(
     dictStatus["listCarriedPaths"] = list(
         dictResult.get("listCarriedPaths") or []
     )
-    # What the settled toast offers: the record it wrote, and whether
-    # a reproduced manifest now sits beside the pinned one to compare.
+    # What the settled report offers: the record it wrote, and THIS
+    # attempt's dated reproduced manifest, if it wrote one.
     dictStatus["sRecordKind"] = sRecordKind if bAttestationWritten else ""
     dictStatus["sReproducedManifestPath"] = (
         dictResult.get("sReproducedManifestPath") or ""
@@ -1451,8 +1454,9 @@ def _fbPersistAttestation(
     ``sRecordKind`` decides between the author's attestation and a
     reproduction record for a clone whose attestation is somebody
     else's. The paths written are left on the outcome as
-    ``listRecordPathsWritten`` for the commit that follows, and the
-    root manifest's path as ``sReproducedManifestPath`` for the toast.
+    ``listRecordPathsWritten`` for the commit that follows, and THIS
+    attempt's dated manifest as ``sReproducedManifestPath`` -- never
+    the root file, which on a reader's clone is the author's.
     """
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
 
@@ -1493,10 +1497,9 @@ def _fbPersistAttestation(
         logger.error("Could not persist L3 attestation: %s", errorCaught)
         return False
     dictResult["listRecordPathsWritten"] = listWritten
-    dictResult["sReproducedManifestPath"] = (
-        S_REPRODUCED_MANIFEST_FILENAME
-        if S_REPRODUCED_MANIFEST_FILENAME in listWritten else ""
-    )
+    dictResult["sReproducedManifestPath"] = next((
+        sPath for sPath in listWritten
+        if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR + "/")), "")
     return True
 
 

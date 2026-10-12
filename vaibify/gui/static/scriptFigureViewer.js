@@ -1834,6 +1834,16 @@ const VaibifyFigureViewer = (function () {
             });
     }
 
+    function fnShowPlaceholderInViewer(sViewerLetter, sHtml, sIncomingPath) {
+        /* A named viewer says what is NOT there, rather than keeping
+           whatever an earlier display left in it. */
+        _fdictResolveTargetViewer(
+            sViewerLetter, sIncomingPath || "placeholder",
+            function (dictViewer) {
+                fnGetViewport(dictViewer).innerHTML = sHtml;
+            });
+    }
+
     return {
         fnLoadStepFigures: fnLoadStepFigures,
         fnDisplayFigureByTemplate: fnDisplayFigureByTemplate,
@@ -1846,6 +1856,7 @@ const VaibifyFigureViewer = (function () {
         fnClaimNextViewerForReplacement:
             fnClaimNextViewerForReplacement,
         fnShowPlaceholderInNextViewer: fnShowPlaceholderInNextViewer,
+        fnShowPlaceholderInViewer: fnShowPlaceholderInViewer,
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
