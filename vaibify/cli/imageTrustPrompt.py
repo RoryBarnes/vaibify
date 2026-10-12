@@ -87,8 +87,10 @@ def _fnPrintPrompt(dictPrompt):
         f"  Size:       {dictPrompt['iSizeBytes']} bytes\n"
         f"  User:       {dictPrompt['sDeclaredUser'] or '(not declared)'}\n"
         f"  Entrypoint: "
-        f"{' '.join(dictPrompt['listDeclaredEntrypoint']) or '(none)'}\n"
-        f"  Obtained from: {dictPrompt['sObtainedFrom'] or '(unknown)'}\n")
+        f"{' '.join(dictPrompt['listDeclaredEntrypoint']) or '(none)'}")
+    for dictRow in dictPrompt["listProvenanceRows"]:
+        click.echo(f"  {dictRow['sLabel']}: {dictRow['sValue']}")
+    click.echo("")
     for iIndex, dictOption in enumerate(dictPrompt["listOptions"], start=1):
         click.echo(f"{iIndex}. {dictOption['sLabel']} -- {dictOption['sSummary']}")
         for sLine in dictOption["listDetailLines"]:

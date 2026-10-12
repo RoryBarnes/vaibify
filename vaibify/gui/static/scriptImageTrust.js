@@ -36,16 +36,17 @@ var VaibifyImageTrust = (function () {
             "<td>" + _fsEscape(sValue) + "</td></tr>";
     }
 
+    /* The rows after the digest are the server's words, because only the
+       server knows whether the image asked about is the obtained base
+       or the image vaibify stacked agents on it. */
     function _fsProvenanceMarkup(dictPrompt) {
-        var sVerified = dictPrompt.bDigestMatchesRecordedDeposit
-            ? "yes" : "no record to compare against";
+        var sServerRows = (dictPrompt.listProvenanceRows || []).map(
+            function (dictRow) {
+                return _fsProvenanceRow(dictRow.sLabel, dictRow.sValue);
+            }).join("");
         return "<table class=\"image-trust-provenance\">" +
             _fsProvenanceRow("Digest", dictPrompt.sImageDigest) +
-            _fsProvenanceRow("Obtained from",
-                dictPrompt.sObtainedFrom || dictPrompt.sVersionDoi ||
-                dictPrompt.sPinnedImageReference || "unknown") +
-            _fsProvenanceRow("Matches the deposit's recorded digest",
-                sVerified) +
+            sServerRows +
             _fsProvenanceRow("Size", _fsMegabytes(dictPrompt.iSizeBytes)) +
             _fsProvenanceRow("Declared USER",
                 dictPrompt.sDeclaredUser || "none declared") +
