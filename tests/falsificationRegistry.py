@@ -31199,6 +31199,20 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testCoverageRoutesBBuild.py::'
+            'testAcquireIsRefusedBeforeAnythingIsObtainedWhenTheDaemonDiskIsFull'
+        ),
+        # the guard asks the disk and ignores a failed answer
+        source='vaibify/gui/buildRoutes.py',
+        old=(
+            '    _fnRefuseOnFailedPreflight(\n'
+            '        fpreflightDaemonFreeDisk(), S_REFUSAL_DAEMON_DISK_FULL, iStatus=507,\n'
+            '    )\n'
+        ),
+        new='    fpreflightDaemonFreeDisk()\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testDaemonDiskPreflight.py::'
             'test_a_probe_the_daemon_refuses_for_want_of_space_is_a_full_disk'
         ),
