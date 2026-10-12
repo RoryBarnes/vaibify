@@ -30958,4 +30958,37 @@ LIST_FALSIFICATIONS = [
         old='    if listDecisive:\n',
         new='    if False:\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerImageBuilder.py::'
+            'testAnIntelImageOnAnArmDaemonGetsClaudesArmBuild'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the ARM build is chosen without knowing the daemon is ARM
+        old='    if sPlatform == "linux/amd64" and sDaemonArchitecture == "arm64":\n',
+        new='    if sPlatform == "linux/amd64":\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerPinnedImage.py::'
+            'testAnArmDaemonStacksClaudesArmBuildOnTheIntelImage'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the acquisition stacks without asking the daemon its architecture
+        old=(
+            '            sDaemonArchitecture=disposableContainer.fsReadDaemonArchitecture(\n'
+            '                dockerDisposable),\n'
+        ),
+        new='            sDaemonArchitecture="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildSilenceIsReported.py::'
+            'test_a_quiet_build_is_reported_between_its_lines'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the watcher treats every wait as if a line had just arrived
+        old='        if time.monotonic() - dictSilence["fLastLine"] < fSilence:\n',
+        new='        if True:\n',
+    ),
 ]

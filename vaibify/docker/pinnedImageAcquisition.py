@@ -408,6 +408,8 @@ def _fsStackAndResolve(
         sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
             dictProject["sName"], sBaseImageId, listChain, sStagedDir,
             sPlatform, list(listProven),
+            sDaemonArchitecture=disposableContainer.fsReadDaemonArchitecture(
+                dockerDisposable),
         )
     finally:
         fnDiscardBuildContext(sStagedDir)

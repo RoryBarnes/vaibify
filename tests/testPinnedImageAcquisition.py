@@ -223,7 +223,13 @@ def test_every_overlay_is_classified_and_every_dockerfile_is_an_overlay():
         for sName in os.listdir(os.path.join(sImageDirectory, "overlays"))
         if sName.endswith(".dockerfile")
     }
-    assert setShipped == set(_DICT_OVERLAY_DOCKERFILE_MAP.values())
+    from vaibify.docker.imageBuilder import (
+        _DICT_ARM_ON_INTEL_OVERLAY_DOCKERFILE_MAP,
+    )
+    assert set(_DICT_ARM_ON_INTEL_OVERLAY_DOCKERFILE_MAP) <= set(
+        T_AGENT_OVERLAY_NAMES)
+    assert setShipped == set(_DICT_OVERLAY_DOCKERFILE_MAP.values()) | set(
+        _DICT_ARM_ON_INTEL_OVERLAY_DOCKERFILE_MAP.values())
 
 
 # ---------------------------------------------------------------------

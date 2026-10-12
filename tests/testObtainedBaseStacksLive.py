@@ -71,3 +71,50 @@ def testAnAgentStacksOnAnImageNamedOnlyByItsId(tmp_path, tObtainedBase):
     assert dictStacked["Config"]["Labels"][S_PINNED_BASE_LABEL] == (
         sBaseImageId
     )
+
+
+S_INTEL_BASE_DOCKERFILE = (
+    "FROM debian:bookworm-slim\n"
+    "RUN useradd -m -s /bin/bash researcher\n"
+    "ENV CONTAINER_USER=researcher\n"
+    "USER researcher\n"
+)
+
+
+@pytest.mark.agent_cli_live
+def testClaudeRunsInAnIntelImageOnAnArmDaemon(tmp_path, tObtainedBase):
+    """Claude's ARM build runs inside the Intel image; the image stays Intel.
+
+    Claude Code's Intel binary crashes or spins under qemu, so on an
+    Apple Silicon daemon a reader's Claude never installed. This stacks
+    the real overlay through the shipped build context, runs the
+    installed ``claude`` as the container user, and runs the same
+    separation check the acquisition runs before tagging.
+    """
+    from vaibify.cli.configLoader import fsDockerDir
+    from vaibify.reproducibility.agentLayerSeparation import (
+        fdictCheckAgentLayerSeparation,
+    )
+    if _fsRunDocker(["version", "--format", "{{.Server.Arch}}"]) != "arm64":
+        pytest.skip("needs an ARM daemon, where an Intel image is emulated")
+    sProjectName, _ = tObtainedBase
+    (tmp_path / "Dockerfile").write_text(S_INTEL_BASE_DOCKERFILE, encoding="utf-8")
+    sBaseTag = f"{sProjectName}:intel-base"
+    _fsRunDocker([
+        "build", "--platform", "linux/amd64", "-t", sBaseTag, str(tmp_path),
+    ])
+    sBaseImageId = _fdictInspect(sBaseTag)["Id"]
+    sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
+        sProjectName, sBaseImageId, ["claude"], fsDockerDir(), "linux/amd64",
+        [], sDaemonArchitecture="arm64",
+    )
+    sOutput = _fsRunDocker([
+        "run", "--rm", "--platform", "linux/amd64", "--entrypoint", "bash",
+        sLastReference, "-lc", "claude --version; uname -m",
+    ])
+    assert "(Claude Code)" in sOutput
+    assert sOutput.splitlines()[-1] == "x86_64"
+    dictChecked = fdictCheckAgentLayerSeparation(
+        sBaseImageId, _fdictInspect(sLastReference)["Id"],
+    )
+    assert dictChecked["listViolations"] == []

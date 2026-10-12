@@ -9,6 +9,7 @@ recipe fingerprint stamped on the chain is computed over real texts.
 """
 
 import io
+import os
 import subprocess
 from types import SimpleNamespace
 
@@ -168,6 +169,43 @@ def testAStackChainsItsStagesAndOmitsAnAbsentPlatform(monkeypatch):
         assert fsLabelValue(saBuild, S_OVERLAYS_IMAGE_LABEL) == (
             "node,claude,gemini"
         )
+
+
+def _flistStackedDockerfiles(monkeypatch, sPlatform, sDaemonArchitecture):
+    """Stack claude then codex; return the basename each stage built from."""
+    monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: True)
+    monkeypatch.setattr(
+        imageBuilder, "fnRunDockerCommand", lambda saCommand, **kwargs: None,
+    )
+    listBuilds = flistRecordDockerBuilds(monkeypatch)
+    imageBuilder.fsStackOverlaysOnObtainedBase(
+        S_PROJECT_NAME, "sha256:" + "e" * 64, ["claude", "codex"],
+        fsDockerDir(), sPlatform, [],
+        sDaemonArchitecture=sDaemonArchitecture,
+    )
+    return [
+        os.path.basename(saBuild[saBuild.index("-f") + 1])
+        for saBuild in listBuilds
+    ]
+
+
+@pytest.mark.falsification
+def testAnIntelImageOnAnArmDaemonGetsClaudesArmBuild(monkeypatch):
+    """Claude's Intel binary crashes under qemu; its ARM build runs natively.
+
+    Only claude is swapped: codex's Intel build runs under qemu.
+
+    Kills: choosing the ARM build without checking the daemon is ARM.
+    """
+    assert _flistStackedDockerfiles(monkeypatch, "linux/amd64", "arm64") == [
+        "Dockerfile.claudeArmOnIntel", "Dockerfile.codex",
+    ]
+    for sPlatform, sDaemonArchitecture in [
+        ("linux/amd64", "amd64"), ("linux/amd64", ""), ("linux/arm64", "arm64"),
+    ]:
+        assert _flistStackedDockerfiles(
+            monkeypatch, sPlatform, sDaemonArchitecture,
+        ) == ["Dockerfile.claude", "Dockerfile.codex"]
 
 
 def testASingleOverlayCarriesNoCacheBeforeItsLabels(monkeypatch):
