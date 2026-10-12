@@ -235,6 +235,12 @@ the hashes the rerun observed are written to `REPRODUCED.sha256`, laid
 out exactly like `MANIFEST.sha256` so the two can be compared line by
 line. Commit both.
 
+If someone else committed the clone's attestation, as when you check an
+author's published project, the result is saved instead as a
+reproduction record in `.vaibify/reproductions/` in your clone, and the
+author's attestation is left alone. Vaibify does not stage or commit
+that record. It is yours, so commit it only if you choose to.
+
 You do not have to take vaibify's word for any of this. Every check is
 a standard tool that anyone can run by hand: `sha256sum` for the files,
 `pip` for the packages, and `docker` for the image. Vaibify just runs

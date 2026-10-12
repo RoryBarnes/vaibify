@@ -1246,8 +1246,6 @@ def _fsPhaseForOutcome(dictResult):
 _DICT_RECORD_COMMIT_MESSAGES = {
     reproductionRecord.S_RECORD_KIND_ATTESTATION:
         "Record the Level 3 rebuild attestation",
-    reproductionRecord.S_RECORD_KIND_REPRODUCTION:
-        "Record a reproduction of the published result",
 }
 
 # What a log line calls each record: a reader's lane writes a
@@ -1281,9 +1279,16 @@ def _fnCommitAttestation(
     unrelated staged work. A failure is logged and swallowed, because
     turning a git problem into a failed scientific claim is the error
     the no-verdict branch already exists to avoid.
+
+    A READER's reproduction record is never staged or committed (ruled
+    2026-10-12): it is the reader's own artefact, saved as plain files
+    in ``.vaibify/reproductions/`` of their clone, and no git operation
+    on somebody else's repository is made on their behalf.
     """
     from ...config.registryManager import fbIsHostProject
     from .. import containerGit
+    if sRecordKind == reproductionRecord.S_RECORD_KIND_REPRODUCTION:
+        return
     if fbIsHostProject(sContainerId):
         return
     sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""

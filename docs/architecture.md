@@ -2832,6 +2832,12 @@ reproduction record is the reproduction REPORT's schema under
 `.vaibify/reproductions/`, read on the attestation GET only — never on
 the file-status poll, whose snapshot adapter cannot enumerate a
 directory. The Level 3 cell keeps reading the author's attestation.
+No git operation is ever made on a reproduction record (ruled
+2026-10-12): the dashboard lane stages and commits the author's
+attestation, but a reader's record and reproduced manifest stay
+untracked files in their clone, because a commit in somebody else's
+repository on the reader's behalf needs an identity the reader never
+gave, and the record is the reader's to publish or not.
 
 The question is three-state, and the third state refuses
 (2026-09-12). A review found that a committer git could not read was

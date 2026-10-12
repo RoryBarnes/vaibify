@@ -390,30 +390,32 @@ def testAFailedCommitIsLoggedButNothingToCommitIsNot(caplog):
 
 
 @pytest.mark.falsification
-def testAReadersFailedCommitIsLoggedAsAReproductionRecord(caplog):
+def testAReadersFailedSaveIsLoggedAsAReproductionRecord(
+    monkeypatch, caplog, tmp_path,
+):
     """A reader's verification writes a reproduction record, and the log says so.
 
-    Kills: the commit warning naming every record "the L3 attestation",
-    which told a reader whose identity was unset that an attestation --
-    the author's claim, which their lane never writes -- had failed.
+    Kills: the persist warning naming every record "the L3 attestation",
+    which tells a reader that an attestation -- the author's claim,
+    which their lane never writes -- is what failed.
     """
-    connectionDocker = RecordingConnection(
-        [(0, ""), (128, "Author identity unknown")],
+    def flistRaiseDiskFull(*aArgs, **dictKwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        reproducibilityRoutes.reproductionRecord,
+        "flistWriteVerificationOutcome", flistRaiseDiskFull,
     )
-    with caplog.at_level(logging.WARNING):
-        reproducibilityRoutes._fnCommitAttestation(
-            connectionDocker, S_CONTAINER_ID,
-            {"sProjectRepoPath": "/workspace/projectAlpha"},
-            listRelPaths=[".vaibify/reproductions/record.json"],
+    with caplog.at_level(logging.ERROR):
+        bWritten = reproducibilityRoutes._fbPersistAttestation(
+            str(tmp_path), "sha256:" + "0" * 64, {"bPassed": True}, 1.0,
             sRecordKind="reproduction",
         )
-    listWarnings = [
+    assert bWritten is False
+    assert [
         recordLog.getMessage() for recordLog in caplog.records
-        if "Could not commit" in recordLog.getMessage()
-    ]
-    assert listWarnings == [
-        "Could not commit the reproduction record: Author identity unknown",
-    ]
+        if "Could not persist" in recordLog.getMessage()
+    ] == ["Could not persist the reproduction record: disk full"]
 
 
 def testAnExecErrorDuringTheCommitIsLoggedNotRaised(caplog):

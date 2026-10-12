@@ -31491,7 +31491,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testCoverageRoutesBReproducibility.py::'
-            'testAReadersFailedCommitIsLoggedAsAReproductionRecord'
+            'testAReadersFailedSaveIsLoggedAsAReproductionRecord'
         ),
         source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
@@ -31501,6 +31501,23 @@ LIST_FALSIFICATIONS = [
         new=(
             '    reproductionRecord.S_RECORD_KIND_REPRODUCTION:'
             ' "L3 attestation",\n'
+        ),
+    ),
+    # --- 2026-10-12 ruling: a reader's reproduction record is saved in
+    # the clone and never staged or committed ---
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_record_is_saved_untracked_and_still_labelled'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    if sRecordKind == reproductionRecord.S_RECORD_KIND_REPRODUCTION:\n'
+            '        return\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return\n'
         ),
     ),
 ]

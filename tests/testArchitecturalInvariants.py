@@ -7578,7 +7578,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the record they failed on -- a reader's lane writes a
     # reproduction record and was told an "L3 attestation" failed. Log
     # wording for this module's own write; no new concern.
-    "routes/reproducibilityRoutes.py": 2368,
+    # 2368 -> 2373 (2026-10-12): a reader's reproduction record is
+    # never staged or committed (ruled that day); the guard sits in
+    # the one function that commits a verification's files.
+    "routes/reproducibilityRoutes.py": 2373,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
