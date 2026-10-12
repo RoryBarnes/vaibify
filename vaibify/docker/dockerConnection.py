@@ -3215,10 +3215,48 @@ class DockerConnection:
             bReplaceAllowed=bReplaceAllowed, iExpectedBytes=iExpectedBytes,
             bCreateParents=bCreateParents,
         )
-        tExecResult = self._ftRunProgramWithStdin(
-            sContainerId, ["python3", "-c", sProgram], fileStdin=fileSource,
+        tExecResult = self._ftRunConfinedWriteProgram(
+            sContainerId, sFilePath, sProgram, fileSource, bReplaceAllowed,
         )
         confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
+
+    def _ftRunConfinedWriteProgram(
+        self, sContainerId, sFilePath, sProgram, fileSource, bRetryAllowed,
+    ):
+        """Run the confined write program; rerun it once if it was killed.
+
+        An image built for another architecture runs every process under
+        user-mode emulation, and there the interpreter is occasionally
+        killed before it does anything: about one ``python3 -c pass`` in
+        four hundred died of SIGSEGV (exit 139) with no output, measured
+        on an x86_64 image under qemu on an ARM daemon. The program
+        renames into place only after every byte landed, so a killed
+        attempt left the target unchanged or complete, and sending the
+        same bytes again is the same write. Only a seekable source can
+        send them again, and only a replacing write is rerun: a
+        no-replace attempt killed after its link landed would make the
+        rerun refuse its own file as already existing.
+        """
+        import logging
+        listCommand = ["python3", "-c", sProgram]
+        fbSeekable = getattr(fileSource, "seekable", None)
+        bRewindable = bRetryAllowed and callable(fbSeekable) and fbSeekable()
+        iStartOffset = fileSource.tell() if bRewindable else 0
+        tExecResult = self._ftRunProgramWithStdin(
+            sContainerId, listCommand, fileStdin=fileSource,
+        )
+        iSignal = confinedWrite.fiSignalThatKilledWriter(tExecResult)
+        if not (bRewindable and iSignal):
+            return tExecResult
+        logging.getLogger("vaibify").warning(
+            "Writing %s: the program was killed by signal %d (exit %d); "
+            "sending the bytes once more", sFilePath, iSignal,
+            tExecResult.iExitCode,
+        )
+        fileSource.seek(iStartOffset)
+        return self._ftRunProgramWithStdin(
+            sContainerId, listCommand, fileStdin=fileSource,
+        )
 
     def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
         """Run a program as the container user with ``baStdin`` as its input.

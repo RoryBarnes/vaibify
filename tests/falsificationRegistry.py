@@ -31221,4 +31221,89 @@ LIST_FALSIFICATIONS = [
         old='            if fbErrorIsDiskFull(processDf.stderr):\n                return 0\n',
         new='',
     ),
+    # --- 2026-10-12: a confined write killed by a signal (an emulated
+    # interpreter's SIGSEGV) names the signal and exit code, and a
+    # replacing write is sent once more ---
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testASignalDeathNamesTheSignalAndTheExitCode'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old=(
+            '    iSignal = fiSignalThatKilledWriter(tExecResult)\n'
+            '    if iSignal:\n'
+        ),
+        new=(
+            '    iSignal = fiSignalThatKilledWriter(tExecResult)\n'
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAStartFailureNamesTheDaemonsOwnWords'
+        ),
+        # the daemon's start-failure sentence arrives on stdout
+        source='vaibify/docker/confinedWrite.py',
+        old='        or (tExecResult.sStdout or "").strip().splitlines()\n',
+        new='        or []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAnUnexplainedFailureNamesItsExitCode'
+        ),
+        # the generic failure drops its exit code again
+        source='vaibify/docker/confinedWrite.py',
+        old=(
+            '        f"Cannot write {sFilePath} in the container: {sLastLine} "\n'
+            '        f"(exit {tExecResult.iExitCode})"\n'
+        ),
+        new='        f"Cannot write {sFilePath} in the container: {sLastLine}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testOnlyTheSignalRangeCountsAsADeath'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    return iSignal if 0 < iSignal <= I_HIGHEST_LINUX_SIGNAL else 0\n',
+        new='    return iSignal if 0 < iSignal else 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAWriterKilledByASignalIsSentOnceMoreAndLands'
+        ),
+        # the first attempt's result is returned without a rerun
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        if not (bRewindable and iSignal):\n'
+            '            return tExecResult\n'
+        ),
+        new='        return tExecResult\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testTheRerunSendsTheSourceFromWhereTheFirstAttemptStarted'
+        ),
+        # the rerun sends the rest of an already-drained source
+        source='vaibify/docker/dockerConnection.py',
+        old='        fileSource.seek(iStartOffset)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testANoReplaceWriteIsNeverSentTwice'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        bRewindable = bRetryAllowed and callable(fbSeekable) '
+            'and fbSeekable()\n'
+        ),
+        new='        bRewindable = callable(fbSeekable) and fbSeekable()\n',
+    ),
 ]
