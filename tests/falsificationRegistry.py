@@ -31081,4 +31081,59 @@ LIST_FALSIFICATIONS = [
         old='    if not dictHeld or dictHeld.get("sId") != sLoadedId:\n',
         new='    if False:\n',
     ),
+    # --- 2026-10-11: every image-trust provenance row describes the
+    # image it names; a stack on an obtained base is not the base ---
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testAStackedImageNeverClaimsTheBasesProvenanceAsItsOwn'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the stacked image is described with the base's origin facts
+        old='    if sBaseImageId and sImageId == sBaseImageId:\n',
+        new=(
+            '    if sBaseImageId and sImageId in (\n'
+            '            sBaseImageId, dictOrigin.get("sRunningImageId")):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testTheAddedRowNamesOnlyWhatVaibifyStacked'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the author's own overlays are listed as vaibify's additions
+        old='        if sOverlay not in listAuthorOverlays\n',
+        new='        if True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testAnImageTheRecordDoesNotNameHasNoRecordedOrigin'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # any image is described as the stack once a record exists
+        old='    if sBaseImageId and sImageId == dictOrigin.get("sRunningImageId"):\n',
+        new='    if sBaseImageId:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testTheCommandLinePrintsTheServersRows'
+        ),
+        source='vaibify/cli/imageTrustPrompt.py',
+        # the command line drops the server's provenance rows
+        old='    for dictRow in dictPrompt["listProvenanceRows"]:\n',
+        new='    for dictRow in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::'
+            'testAStackedImagesProvenanceRowsAreTheServersRows'
+        ),
+        source='vaibify/gui/static/scriptImageTrust.js',
+        # the modal renders no server rows after the digest
+        old='        var sServerRows = (dictPrompt.listProvenanceRows || []).map(\n',
+        new='        var sServerRows = [].map(\n',
+    ),
 ]

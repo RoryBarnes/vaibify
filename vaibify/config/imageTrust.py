@@ -54,6 +54,7 @@ import copy
 from datetime import datetime, timezone
 
 from vaibify.config.registryManager import (
+    S_IMAGE_SOURCE_KEY,
     S_IMAGE_TRUST_KEY,
     fbProjectImageIsObtained,
 )
@@ -322,12 +323,76 @@ def fdictResolveLaunchPosture(
     }
 
 
+def _fdictProvenanceRow(sLabel, sValue):
+    """Return one labelled provenance fact, as the modal and the CLI show it."""
+    return {"sLabel": sLabel, "sValue": str(sValue)}
+
+
+def _fsDescribeAddedOverlays(dictProject, dictOrigin):
+    """Return the overlays vaibify stacked on the obtained base, as words.
+
+    The origin record lists every overlay the running image holds; the
+    registry's ``listAuthorOverlays`` is the set the author's image was
+    proven to hold before anything was stacked, so the difference is
+    vaibify's addition. Without that set, which ones were added is not
+    known, and the words say so rather than naming them all.
+    """
+    dictSource = (dictProject or {}).get(S_IMAGE_SOURCE_KEY) or {}
+    listAuthorOverlays = dictSource.get("listAuthorOverlays")
+    if not isinstance(listAuthorOverlays, list):
+        return "agent overlays (which ones is not recorded)"
+    listAdded = [
+        sOverlay for sOverlay in dictOrigin.get("listResolvedOverlays") or []
+        if sOverlay not in listAuthorOverlays
+    ]
+    return ", ".join(listAdded) or "none recorded"
+
+
+def _flistDescribeProvenanceRows(dictProject, dictImage, dictOrigin):
+    """Return the provenance rows, each true of the image it names.
+
+    The obtained-from and deposit-digest facts belong to the BASE the
+    origin record says was obtained. When the image asked about is that
+    base, they describe it directly; when it is the image vaibify
+    stacked agents on, the rows say so and attribute those facts to the
+    base by name, never to the stack. An image the record does not name
+    has no recorded origin.
+    """
+    sImageId = str(dictImage.get("sId") or "")
+    sBaseImageId = str(dictOrigin.get("sBaseImageId") or "")
+    sObtainedFrom = str(
+        dictOrigin.get("sObtainedFrom") or dictOrigin.get("sVersionDoi")
+        or dictOrigin.get("sPinnedImageReference") or "unknown")
+    if sBaseImageId and sImageId == sBaseImageId:
+        return [
+            _fdictProvenanceRow("Obtained from", sObtainedFrom),
+            _fdictProvenanceRow("Matches the deposit's recorded digest", "yes"),
+        ]
+    if sBaseImageId and sImageId == dictOrigin.get("sRunningImageId"):
+        return [
+            _fdictProvenanceRow("Built by", "vaibify, on the base image below"),
+            _fdictProvenanceRow("Added by vaibify",
+                                _fsDescribeAddedOverlays(dictProject, dictOrigin)),
+            _fdictProvenanceRow("Base image", sBaseImageId),
+            _fdictProvenanceRow("Base obtained from", sObtainedFrom),
+            _fdictProvenanceRow(
+                "Base matches the deposit's recorded digest", "yes"),
+        ]
+    return [
+        _fdictProvenanceRow("Obtained from", "unknown"),
+        _fdictProvenanceRow("Matches the deposit's recorded digest",
+                            "no record to compare against"),
+    ]
+
+
 def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
     """Return what the modal and the command line show before asking.
 
     Provenance is facts the daemon and the origin record state, never
     claims the image makes about itself. ``dictOriginRecord`` is the
-    live origin record (or ``None``).
+    live origin record (or ``None``). ``listProvenanceRows`` is the
+    server's wording for every row after the digest; the modal and the
+    command line render it and derive nothing of their own.
     """
     dictOrigin = dictOriginRecord or {}
     return {
@@ -336,8 +401,8 @@ def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
         "iSizeBytes": int(dictImage.get("iSizeBytes") or 0),
         "sDeclaredUser": str(dictImage.get("sUser") or ""),
         "listDeclaredEntrypoint": list(dictImage.get("listEntrypoint") or []),
-        "sObtainedFrom": str(dictOrigin.get("sObtainedFrom") or ""),
-        "sVersionDoi": str(dictOrigin.get("sVersionDoi") or ""),
+        "listProvenanceRows": _flistDescribeProvenanceRows(
+            dictProject, dictImage, dictOrigin),
         "sPinnedImageReference": str(
             dictOrigin.get("sPinnedImageReference") or ""),
         "bDigestMatchesRecordedDeposit": bool(
