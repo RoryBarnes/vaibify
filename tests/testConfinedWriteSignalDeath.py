@@ -1,7 +1,7 @@
 """A confined write whose program was killed says so, and is sent once more.
 
 Source: ``vaibify/docker/confinedWrite.py`` (``fnRaiseWhenWriteFailed``,
-``fiSignalThatKilledWriter``) and
+``fiSignalThatKilledProgram``) and
 ``DockerConnection._ftRunConfinedWriteProgram``.
 
 An image built for another architecture runs every container process
@@ -121,14 +121,14 @@ def testAnUnexplainedFailureNamesItsExitCode():
 def testOnlyTheSignalRangeCountsAsADeath():
     """A code above the highest Linux signal is a failure, never a rerun.
 
-    Kills: ``fiSignalThatKilledWriter`` answering any code above 128,
+    Kills: ``fiSignalThatKilledProgram`` answering any code above 128,
     which would rerun a write that containerd reported as status
     unknown (255).
     """
-    assert confinedWrite.fiSignalThatKilledWriter(_ftExecResult(137)) == 9
-    assert confinedWrite.fiSignalThatKilledWriter(_ftExecResult(192)) == 64
+    assert confinedWrite.fiSignalThatKilledProgram(_ftExecResult(137)) == 9
+    assert confinedWrite.fiSignalThatKilledProgram(_ftExecResult(192)) == 64
     for iExitCode in (0, 1, confinedWrite.I_REFUSED_EXIT_CODE, 128, 255):
-        assert confinedWrite.fiSignalThatKilledWriter(
+        assert confinedWrite.fiSignalThatKilledProgram(
             _ftExecResult(iExitCode)) == 0
 
 

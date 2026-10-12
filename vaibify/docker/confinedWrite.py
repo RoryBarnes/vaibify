@@ -61,7 +61,7 @@ __all__ = [
     "T_WRITE_DENYLISTED_NAMES",
     "fsRenderConfinedTreeProgram",
     "fsRenderConfinedWriteProgram",
-    "fiSignalThatKilledWriter",
+    "fiSignalThatKilledProgram",
     "fnRaiseWhenTreeWriteFailed",
     "fnRaiseWhenWriteFailed",
 ]
@@ -515,7 +515,7 @@ def fnRaiseWhenWriteFailed(tExecResult, sFilePath):
             errno.ENOSPC,
             f"Cannot write {sFilePath} in the container: {sLastLine}",
         )
-    iSignal = fiSignalThatKilledWriter(tExecResult)
+    iSignal = fiSignalThatKilledProgram(tExecResult)
     if iSignal:
         raise OSError(
             f"Cannot write {sFilePath} in the container: the writing "
@@ -530,13 +530,16 @@ def fnRaiseWhenWriteFailed(tExecResult, sFilePath):
     )
 
 
-def fiSignalThatKilledWriter(tExecResult):
+def fiSignalThatKilledProgram(tExecResult):
     """Return the signal a confined program died of, or 0 if it exited.
 
     Docker reports a process killed by signal N as exit 128 + N. The
     confined programs only ever exit with small codes of their own, so
-    a code in the signal range is a death, never a refusal.
+    a code in the signal range is a death, never a refusal. An exit
+    status the daemon never reported (``None``) is not a death.
     """
+    if tExecResult.iExitCode is None:
+        return 0
     iSignal = tExecResult.iExitCode - I_SIGNAL_EXIT_CODE_BASE
     return iSignal if 0 < iSignal <= I_HIGHEST_LINUX_SIGNAL else 0
 

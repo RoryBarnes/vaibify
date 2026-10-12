@@ -24660,7 +24660,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testConfinedRead.py::testAnExecTheDaemonNeverSettlesIsAnErrorNotASuccess',
         source='vaibify/docker/dockerConnection.py',
-        old='        raise OSError(\n            "The container did not report how the read ended, so the "\n            "bytes received cannot be trusted as complete"\n        )\n',
+        old='        raise OSError(\n            "The container did not report how the program ended, so "\n            "its result cannot be trusted as complete"\n        )\n',
         new='        return 0\n',
     ),
     Falsification(
@@ -31231,11 +31231,11 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/docker/confinedWrite.py',
         old=(
-            '    iSignal = fiSignalThatKilledWriter(tExecResult)\n'
+            '    iSignal = fiSignalThatKilledProgram(tExecResult)\n'
             '    if iSignal:\n'
         ),
         new=(
-            '    iSignal = fiSignalThatKilledWriter(tExecResult)\n'
+            '    iSignal = fiSignalThatKilledProgram(tExecResult)\n'
             '    if False:\n'
         ),
     ),
@@ -31305,5 +31305,87 @@ LIST_FALSIFICATIONS = [
             'and fbSeekable()\n'
         ),
         new='        bRewindable = callable(fbSeekable) and fbSeekable()\n',
+    ),
+    # --- 2026-10-12: a typed read that failed is never reported as a
+    # path that is not there; a killed read is read once more; an exec
+    # whose exit status has not settled is awaited, never read as 0 ---
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testTheFileReadProgramAnswersAbsenceWithItsOwnStatus'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='    "    sys.exit(" + str(_I_TYPED_READ_NOT_FOUND_EXIT_CODE) + ")\\n"\n',
+        new='    "    raise\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testACrashedFileReadIsNeverReportedAsMissing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if iExitCode == _I_TYPED_READ_NOT_FOUND_EXIT_CODE:\n'
+            '        raise FileNotFoundError(sFailure)\n'
+        ),
+        new=(
+            '    if iExitCode != 0:\n'
+            '        raise FileNotFoundError(sFailure)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAnUnreportedExitIsNeverMissing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if iExitCode is None:\n'
+            '        raise OSError(\n'
+            '            f"{sFailure}: the container did not report how the read "\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise OSError(\n'
+            '            f"{sFailure}: the container did not report how the read "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAReadKilledByASignalIsReadOnceMore'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            for _ in range(_I_TYPED_READ_ATTEMPTS):\n',
+        new='            for _ in range(1):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testACrashedStateReadRefusesTheMergeAndWritesNothing'
+        ),
+        # fbaFetchFile maps every failed read to absence again
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        _fnRaiseWhenTypedReadFailed(\n'
+            '            tExecResult, f"Cannot read file from container: {sFilePath}",\n'
+            '        )\n'
+        ),
+        new=(
+            '        if tExecResult.iExitCode != 0:\n'
+            '            raise FileNotFoundError(sFilePath)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAWriteRefusedBeforeTheDaemonSettledIsStillARefusal'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            iExitCode=self._fiAwaitExecExitCode(sExecId),\n',
+        new=(
+            '            iExitCode=int(\n'
+            '                self.fdictInspectExec(sExecId).get("ExitCode") or 0),\n'
+        ),
     ),
 ]
