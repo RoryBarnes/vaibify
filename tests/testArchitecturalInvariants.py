@@ -6971,7 +6971,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2476 -> 2481 (2026-10-10): the neverSleep save takes the
     # per-container mutation lock, so it and a concurrent claim cannot
     # both spawn a session lane.
-    "registryRoutes.py": 2481,
+    # 2481 -> 2487 (2026-10-11): the conversion carries the wizard's
+    # image-trust answer for the author's pin; the rule itself lives in
+    # imageTrust and pinnedEnvironmentConversion, the route only routes.
+    "registryRoutes.py": 2487,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

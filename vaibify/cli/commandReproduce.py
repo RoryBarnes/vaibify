@@ -1142,6 +1142,11 @@ def _fnPrintAcquisitionEvent(dictEvent):
             + (f" ({sDetail})" if sDetail and not dictEvent.get(
                 "bSucceeded") else "")
         )
+    elif sPhase == "reused":
+        click.echo(
+            "  the deposit was downloaded, verified and loaded here on "
+            f"{str(dictEvent.get('sLoadedIso'))[:10]}; Docker still holds "
+            "it, so it is not downloaded again")
     elif sPhase == "downloading" and dictEvent.get("iTotalBytes"):
         iBytes = int(dictEvent.get("iBytes") or 0)
         iTotal = int(dictEvent.get("iTotalBytes") or 0)

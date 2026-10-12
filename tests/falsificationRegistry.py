@@ -25338,8 +25338,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testANewDigestAsksAgain',
         source='vaibify/config/imageTrust.py',
-        old='    if dictRecord.get("sImageDigest") != dictImage["sId"]:',
-        new='    if not dictRecord:',
+        old='    if dictRecord.get("sImageDigest") == sImageId:',
+        new='    if dictRecord:',
     ),
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testRestrictedDropsRootCapabilitiesAndTheImageEntrypoint',
@@ -26126,8 +26126,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRefusedArchiveConversionChangesNothing.py::testARefusedArchiveConversionKeepsTheSessionAndScaffoldsNothing',
         source='vaibify/gui/registryRoutes.py',
-        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
-        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
+        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
+        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n",
     ),
     # --- Nothing to reconcile is a success on the live-hub lane too ---
     Falsification(
@@ -30990,5 +30990,95 @@ LIST_FALSIFICATIONS = [
         # the watcher treats every wait as if a line had just arrived
         old='        if time.monotonic() - dictSilence["fLastLine"] < fSilence:\n',
         new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForThePinCoversTheImageStackedOnIt'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # an answer naming the pin answers for no image at all
+        old='    return sImageId in (\n',
+        new='    return False and sImageId in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForThePinDoesNotCoverAnImageTheOriginDoesNotName'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # once the pins agree, any image under the tag is covered
+        old='    return sImageId in (\n',
+        new='    return True or sImageId in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForAnotherPinCoversNothing'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the answer's pin is never compared with the origin's
+        old='    if not sPinned or sPinned != dictOrigin.get("sPinnedImageReference"):\n',
+        new='    if not sPinned:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAModalAnswerForAnObtainedImageAlsoNamesItsPin'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the modal's answer stays tied to the stacked digest alone
+        old='        if dictPrompt.get("bDigestMatchesRecordedDeposit") else ""\n',
+        new='        if False else ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testTheLaunchGuardReadsTheHostHeldOriginRecord'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the guard never hands the origin record to the rule
+        old='        fdictReadOriginRecord(sProjectName),\n',
+        new='        None,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testTheWizardsAnswerIsRecordedForThePin'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # the conversion drops the answer the wizard sent
+        old='                sName, request.sProjectName, dictImageSource, dictTrustRecord,\n',
+        new='                sName, request.sProjectName, dictImageSource, None,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testThePinnedImageAsksHowItMayRunBeforeTheDownload'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # the Environment page lets a pinned choice past unanswered
+        old='                _fbUsingPinnedImage() && !_dictWizardData.sImageTrustChoice) {\n',
+        new='                false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDepositIsNotDownloadedTwice.py::'
+            'testASecondAcquisitionOfAHeldDepositDownloadsNothing'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # every retry downloads the deposit the daemon already holds
+        old='    if dictPreviousLoad is not None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDepositIsNotDownloadedTwice.py::'
+            'testADaemonThatNoLongerHoldsTheImageDownloadsAgain'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the host's note is trusted without asking the daemon
+        old='    if not dictHeld or dictHeld.get("sId") != sLoadedId:\n',
+        new='    if False:\n',
     ),
 ]

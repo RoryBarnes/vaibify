@@ -19,6 +19,15 @@ answer is stored in the host-held registry; a different digest is a new
 question. The modal is a convenience and the launch path is the guard:
 :func:`fdictResolveLaunchPosture` raises for an unanswered digest, so no
 caller can skip the question by skipping the modal.
+
+An answer may instead name the author's PINNED image, because what the
+researcher decides to trust is the author's code, and the agents
+vaibify stacks on it are vaibify's own build. The conversion wizard
+asks that way, before the image is obtained; the modal records the pin
+too whenever it is answering for an obtained image. Such an answer
+covers the obtained base and the image stacked on it -- the IDs the
+host-held origin record binds to that pin, never a label the image
+carries about itself -- so adding agents later does not ask again.
 """
 
 __all__ = [
@@ -32,8 +41,10 @@ __all__ = [
     "S_TRUST_RESTRICTED",
     "TUPLE_TRUST_CHOICES",
     "fbImageWasBuiltByVaibify",
+    "fbTrustRecordCoversImage",
     "fdictBuildTrustPrompt",
     "fdictBuildTrustRecord",
+    "fdictBuildTrustRecordForPrompt",
     "fdictDescribeTrustChoices",
     "fdictResolveLaunchPosture",
     "fnRequireValidTrustChoice",
@@ -217,14 +228,21 @@ def fbImageWasBuiltByVaibify(dictProject, dictImage):
     return bool((dictImage.get("dictLabels") or {}).get(S_RECIPE_IMAGE_LABEL))
 
 
-def fdictBuildTrustRecord(sImageDigest, sChoice, bWithCredentials):
-    """Return the record stored for one answered digest.
+def fdictBuildTrustRecord(
+    sImageDigest, sChoice, bWithCredentials, sPinnedImageReference="",
+):
+    """Return the record stored for one answer.
 
-    Inspect only never carries credentials, whatever the caller passed.
+    ``sImageDigest`` names the exact image answered for;
+    ``sPinnedImageReference`` names the author's pinned image instead
+    (or as well), which :func:`fbTrustRecordCoversImage` extends to the
+    images obtained and stacked for that pin. Inspect only never
+    carries credentials, whatever the caller passed.
     """
     fnRequireValidTrustChoice(sChoice)
     return {
         "sImageDigest": str(sImageDigest),
+        "sPinnedImageReference": str(sPinnedImageReference),
         "sChoice": sChoice,
         "bWithCredentials": bool(bWithCredentials)
         and sChoice != S_TRUST_INSPECT,
@@ -232,11 +250,55 @@ def fdictBuildTrustRecord(sImageDigest, sChoice, bWithCredentials):
     }
 
 
-def fdictResolveLaunchPosture(dictProject, dictImage, sProjectName):
+def fdictBuildTrustRecordForPrompt(dictPrompt, sChoice, bWithCredentials):
+    """Return the record for an answer given to a shown prompt.
+
+    When the prompt's image is the one the live origin record binds to
+    the author's pin, the answer names that pin as well, so a later
+    restack of agents on the same author's image is already answered.
+    """
+    sPinned = (
+        dictPrompt.get("sPinnedImageReference") or ""
+        if dictPrompt.get("bDigestMatchesRecordedDeposit") else ""
+    )
+    return fdictBuildTrustRecord(
+        dictPrompt["sImageDigest"], sChoice, bWithCredentials, sPinned,
+    )
+
+
+def fbTrustRecordCoversImage(dictRecord, dictImage, dictOriginRecord):
+    """True when the recorded answer was given for this exact image.
+
+    Either the image's own digest was answered, or the author's pinned
+    image was and this image is the base the host-held origin record
+    says was obtained for that pin, or the image vaibify stacked its
+    agent overlays on it. ``dictOriginRecord`` is that record (or
+    ``None``); nothing the image says about itself is read.
+    """
+    dictRecord = dictRecord or {}
+    sImageId = str((dictImage or {}).get("sId") or "")
+    if not sImageId:
+        return False
+    if dictRecord.get("sImageDigest") == sImageId:
+        return True
+    sPinned = str(dictRecord.get("sPinnedImageReference") or "")
+    dictOrigin = dictOriginRecord or {}
+    if not sPinned or sPinned != dictOrigin.get("sPinnedImageReference"):
+        return False
+    return sImageId in (
+        dictOrigin.get("sBaseImageId"), dictOrigin.get("sRunningImageId"),
+    )
+
+
+def fdictResolveLaunchPosture(
+    dictProject, dictImage, sProjectName, dictOriginRecord=None,
+):
     """Return how a persistent container may be launched, or raise.
 
     ``dictImage`` is the daemon's description of the image the launch
-    would use (``None`` when it could not be described). Returns
+    would use (``None`` when it could not be described), and
+    ``dictOriginRecord`` the project's host-held origin record, which an
+    answer naming the author's pin is checked against. Returns
     ``{"sMode", "bWithCredentials", "sImageDigest"}`` where ``sMode`` is
     ``built``, ``restricted`` or ``as-built``.
     """
@@ -248,7 +310,7 @@ def fdictResolveLaunchPosture(dictProject, dictImage, sProjectName):
             "sImageDigest": dictImage["sId"],
         }
     dictRecord = (dictProject or {}).get(S_IMAGE_TRUST_KEY) or {}
-    if dictRecord.get("sImageDigest") != dictImage["sId"]:
+    if not fbTrustRecordCoversImage(dictRecord, dictImage, dictOriginRecord):
         raise ImageTrustRequiredError(sProjectName, dictImage["sId"])
     if dictRecord.get("sChoice") == S_TRUST_INSPECT:
         raise ImageTrustInspectOnlyError(sProjectName)
@@ -287,5 +349,9 @@ def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
         ),
         "dictCurrentAnswer": dict(
             (dictProject or {}).get(S_IMAGE_TRUST_KEY) or {}),
+        "bAnswerCoversImage": fbTrustRecordCoversImage(
+            (dictProject or {}).get(S_IMAGE_TRUST_KEY), dictImage,
+            dictOriginRecord,
+        ),
         **fdictDescribeTrustChoices(),
     }

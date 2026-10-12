@@ -7658,6 +7658,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin: 2px 0 6px 24px;
 }
 
+.wizard-image-trust {
+    margin: 8px 0 12px 24px;
+}
+
+.wizard-image-trust .wizard-environment-note {
+    margin-left: 0;
+}
+
 .wizard-environment-facts {
     margin: 4px 0 10px 24px;
     font-size: 12px;

@@ -31,10 +31,12 @@ __all__ = [
     "T_BASE_FEATURE_KEYS",
     "T_BASE_YAML_KEYS",
     "T_RUNTIME_YAML_KEYS",
+    "T_WIZARD_TRUST_CHOICES",
     "S_REMEDY_SWITCH_TO_PINNED_IMAGE",
     "fbSwitchToPinnedImageIsTheRemedy",
     "fdictBuildArchiveImageSource",
     "fdictBuildArchiveImageSourceForSwitch",
+    "fdictBuildPinnedImageTrustRecord",
     "fdictDescribeImageOriginForProject",
     "fdictDescribePinnedEnvironmentForWizard",
     "fdictOverlayRuntimeFieldsOnly",
@@ -45,6 +47,8 @@ __all__ = [
 import os
 
 from fastapi import HTTPException
+
+from vaibify.config import imageTrust
 
 
 S_ENVIRONMENT_SOURCE_BUILD = "build"
@@ -140,6 +144,44 @@ def fdictDescribePinnedEnvironmentForWizard(dictProject, connectionDocker):
         listAuthorOverlays=_flistCandidateOverlaysOrEmpty(dictProject),
         listAgentOverlays=list(T_AGENT_OVERLAY_NAMES),
         listBaseFeatureKeys=list(T_BASE_FEATURE_KEYS),
+        # The same words the start's modal and the command line use,
+        # so the page asks the image-trust question in them.
+        dictImageTrustChoices=imageTrust.fdictDescribeTrustChoices(),
+        listWizardTrustChoices=list(T_WIZARD_TRUST_CHOICES),
+    )
+
+
+# Inspect only creates no persistent container, which is the one thing
+# a conversion exists to make; the wizard offers the other two answers
+# and the start's modal still offers all three.
+T_WIZARD_TRUST_CHOICES = (
+    imageTrust.S_TRUST_RESTRICTED, imageTrust.S_TRUST_AS_BUILT,
+)
+
+
+def fdictBuildPinnedImageTrustRecord(dictImageSource, request):
+    """Return the trust record the wizard's answer makes, ``None``, or 400.
+
+    Asked on the Environment page beside the choice to obtain the
+    author's image, rather than by the start after the download. The
+    answer names the author's PIN, read from the image-source record
+    the conversion just built from the clone -- never from the request
+    -- so it covers exactly the image this conversion will obtain and
+    the agents stacked on it. A built conversion (no source) or no
+    answer is ``None``: a built image never asks, and the start asks
+    an unanswered one.
+    """
+    if dictImageSource is None or not request.sImageTrustChoice:
+        return None
+    if request.sImageTrustChoice not in T_WIZARD_TRUST_CHOICES:
+        raise HTTPException(400, detail={"sMessage": (
+            f"{request.sImageTrustChoice!r} cannot be chosen while "
+            "converting; choose " + " or ".join(T_WIZARD_TRUST_CHOICES)
+            + ". Inspect only creates no container to convert into."
+        )})
+    return imageTrust.fdictBuildTrustRecord(
+        "", request.sImageTrustChoice, request.bImageTrustWithCredentials,
+        dictImageSource["sPinnedImageReference"],
     )
 
 

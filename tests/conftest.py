@@ -220,11 +220,11 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     """
     from vaibify.cli import commandBuild
     from vaibify.config import (
-        containerLock, hubPortRegistry, keepAliveManager,
+        containerLock, hubPortRegistry, imageOrigins, keepAliveManager,
         operationJournal, sessionRegistry,
     )
     from vaibify.gui import cliShellContainment, hostControlChannel, stateWriteLock
-    from vaibify.reproducibility import reproductionSource
+    from vaibify.reproducibility import imageAcquisition, reproductionSource
     # A dedicated dir, never a test's own ``tmp_path``: some tests rmdir
     # their whole tmp_path to model a missing directory, and a home
     # created inside it would make that rmdir fail on a non-empty tree.
@@ -252,6 +252,17 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(commandBuild, "_S_BUILD_HASH_DIRECTORY", "cache")
     fnRedirectDirectory(
         reproductionSource, "_S_REPRODUCTIONS_DIRECTORY", "reproductions",
+    )
+    fnRedirectDirectory(
+        imageAcquisition, "_S_DEPOSIT_LOADS_DIRECTORY", "depositLoads",
+    )
+    # Origin records resolve their directory per call, not as a constant;
+    # a live test that obtains an image once left one in the real home.
+    sOriginsDirectory = os.path.join(sHome, "imageOrigins")
+    monkeypatch.setattr(
+        imageOrigins, "fsOriginsDirectory",
+        lambda: os.makedirs(sOriginsDirectory, exist_ok=True)
+        or sOriginsDirectory,
     )
     # registryManager and preferencesStore are deliberately NOT
     # redirected here. Each precomputes full-path constants that the

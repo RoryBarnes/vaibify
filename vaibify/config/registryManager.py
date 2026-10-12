@@ -325,7 +325,9 @@ S_IMAGE_SOURCE_KEY = "dictImageSource"
 S_IMAGE_SOURCE_ARCHIVE = "archive"
 
 
-def fnConvertProjectToContainer(sOldName, sNewName, dictImageSource=None):
+def fnConvertProjectToContainer(
+    sOldName, sNewName, dictImageSource=None, dictImageTrust=None,
+):
     """Re-register a host project as a container under a new name.
 
     Conversion is the one path that changes a registered project's mode
@@ -338,6 +340,9 @@ def fnConvertProjectToContainer(sOldName, sNewName, dictImageSource=None):
     built from the Dockerfile: written in the same locked mutation,
     because after this call (and after a hub restart) the author's
     original feature set exists nowhere else on this host.
+    ``dictImageTrust`` is the answer the wizard gave about the image
+    (see :mod:`vaibify.config.imageTrust`), written in the same
+    mutation so a converted project never exists without it.
 
     Parameters
     ----------
@@ -371,6 +376,9 @@ def fnConvertProjectToContainer(sOldName, sNewName, dictImageSource=None):
         dictEntry.pop(S_IMAGE_SOURCE_KEY, None)
         if dictImageSource:
             dictEntry[S_IMAGE_SOURCE_KEY] = dict(dictImageSource)
+        dictEntry.pop(S_IMAGE_TRUST_KEY, None)
+        if dictImageTrust:
+            dictEntry[S_IMAGE_TRUST_KEY] = dict(dictImageTrust)
 
     _fnMutateRegistryLocked(fnRewriteEntry)
 

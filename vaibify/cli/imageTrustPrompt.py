@@ -34,7 +34,7 @@ def fnConfirmImageTrustOrExit(config, sChoice, bWithCredentials):
     if dictPrompt is None or dictPrompt["bBuiltByVaibify"]:
         return
     if sChoice is None:
-        if _fbAnswerMatchesImage(dictPrompt):
+        if dictPrompt["bAnswerCoversImage"]:
             return
         sChoice, bWithCredentials = _ftAskOrExit(dictPrompt)
     _fnRecordAnswer(config.sProjectName, dictPrompt, sChoice, bWithCredentials)
@@ -46,16 +46,10 @@ def fnConfirmImageTrustOrExit(config, sChoice, bWithCredentials):
         sys.exit(0)
 
 
-def _fbAnswerMatchesImage(dictPrompt):
-    """True when an answer is recorded for exactly this image digest."""
-    dictAnswer = dictPrompt["dictCurrentAnswer"]
-    return dictAnswer.get("sImageDigest") == dictPrompt["sImageDigest"]
-
-
 def _fnRecordAnswer(sProjectName, dictPrompt, sChoice, bWithCredentials):
-    """Store the answer for the prompt's digest in the host registry."""
-    fnRecordImageTrust(sProjectName, imageTrust.fdictBuildTrustRecord(
-        dictPrompt["sImageDigest"], sChoice, bWithCredentials))
+    """Store the answer for the prompt's image in the host registry."""
+    fnRecordImageTrust(sProjectName, imageTrust.fdictBuildTrustRecordForPrompt(
+        dictPrompt, sChoice, bWithCredentials))
 
 
 def _ftAskOrExit(dictPrompt):

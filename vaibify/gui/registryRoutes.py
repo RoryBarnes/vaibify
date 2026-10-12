@@ -167,6 +167,9 @@ class ConvertToContainerRequest(BaseModel):
     # attempt: an obtained image built for another architecture runs
     # under emulation only when the researcher said so twice.
     bAllowEmulation: bool = False
+    # The Environment page's image-trust answer (pinnedEnvironmentConversion).
+    sImageTrustChoice: str = ""
+    bImageTrustWithCredentials: bool = False
     # The Files page: what to copy into the container once it first
     # runs, and whether pinned files that differ from the last commit
     # start as their committed versions. Recorded on the entry, never
@@ -1802,6 +1805,9 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE
             else None
         )
+        dictTrustRecord = (
+            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(
+                dictImageSource, request))
         # Every validator runs BEFORE the caller's own session is
         # released: a refused name must never cost the researcher the
         # project view they are converting from.
@@ -1834,7 +1840,7 @@ def _fnRegisterConvertToContainer(app, dictCtx):
             )
         try:
             registryManager.fnConvertProjectToContainer(
-                sName, request.sProjectName, dictImageSource,
+                sName, request.sProjectName, dictImageSource, dictTrustRecord,
             )
             if request.saSeedPaths:
                 registryManager.fnSetPendingSeed(request.sProjectName, {

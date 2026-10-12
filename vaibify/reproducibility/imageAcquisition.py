@@ -30,14 +30,27 @@ snapshot carries and checked BEFORE anything is handed to the daemon;
 a download that differs is deleted and the link reports "did not match
 its hash", never a load. The tarball is removed on every exit path.
 
+**A deposit is downloaded once per daemon that still holds it.** After
+a verified load the host notes which image ID that tarball produced
+(``~/.vaibify/depositLoads``). The next time the same deposit is asked
+for, a daemon still holding that exact ID serves the archive link
+without a download: the ID is a content address, so it is the bytes
+the hash check passed. The link still reports ``archive``, because
+that is where the bytes came from; a daemon that no longer holds the
+ID, or a note for another deposit, falls through to the download.
+
 No subprocess and no Docker SDK is acquired here: the three links that
 touch the daemon live in ``docker.disposableContainer``, the SDK
 authority for disposable work, and this module composes them.
 """
 
 import gzip
+import json
 import os
+import re
 import shutil
+import tempfile
+from datetime import datetime, timezone
 
 import requests
 
@@ -96,6 +109,14 @@ _I_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 # A download is refused once it has grown past what the envelope
 # recorded, with some slack for a record that predates exact sizes.
 _F_DOWNLOAD_SIZE_SLACK = 1.25
+# A deposit already downloaded, verified and loaded here is not fetched
+# again while the daemon still holds the image it produced. Without
+# this, every retry after a later step failed (an agent overlay, a
+# full disk) repeated a download of most of a gigabyte.
+_S_DEPOSIT_LOADS_DIRECTORY = os.path.join(
+    os.path.expanduser("~"), ".vaibify", "depositLoads",
+)
+_REGEX_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
 def fsArchitectureOfPlatform(sPlatform):
@@ -284,6 +305,14 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
             "no deposit on record",
         )
         return ""
+    dictPreviousLoad = _fdictPreviousLoadStillHeld(dockerDisposable, dictRecord)
+    if dictPreviousLoad is not None:
+        fnStatus({"sPhase": "reused", **dictPreviousLoad})
+        _fnRecordAttempt(
+            listAttempts, fnStatus, S_LINK_ARCHIVE, True,
+            dictPreviousLoad["sLoadedImageId"],
+        )
+        return dictPreviousLoad["sLoadedImageId"]
     try:
         _fnRefuseWithoutACodecFor(str(dictRecord.get("sTarballName") or ""))
     except ImageAcquisitionRefusedError as error:
@@ -297,6 +326,7 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
             dictRecord, sScratchDirectory, fnStatus,
         )
         sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)
+        _fnRecordDepositLoad(dictRecord, sLoadedId)
     except ImageAcquisitionRefusedError as error:
         _fnRecordAttempt(
             listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
@@ -306,6 +336,75 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
         shutil.rmtree(sScratchDirectory, ignore_errors=True)
     _fnRecordAttempt(listAttempts, fnStatus, S_LINK_ARCHIVE, True, sLoadedId)
     return sLoadedId
+
+
+def _fsDepositLoadPath(dictRecord):
+    """Return where this host notes loading a deposit, or ``""``.
+
+    One file per tarball hash, under ``~/.vaibify``, where nothing in a
+    container reaches. A record with no well-formed hash has no note.
+    """
+    sHex = str(dictRecord.get("sTarballSha256") or "").partition(":")[2]
+    if not _REGEX_SHA256_HEX.fullmatch(sHex):
+        return ""
+    os.makedirs(_S_DEPOSIT_LOADS_DIRECTORY, mode=0o700, exist_ok=True)
+    return os.path.join(_S_DEPOSIT_LOADS_DIRECTORY, sHex + ".json")
+
+
+def _fnRecordDepositLoad(dictRecord, sLoadedId):
+    """Note that this deposit's verified tarball loaded as ``sLoadedId``.
+
+    Written only after the hash check passed and the daemon loaded the
+    bytes. A note that cannot be written costs one future download and
+    nothing else, so the failure is not raised.
+    """
+    try:
+        sPath = _fsDepositLoadPath(dictRecord)
+        if not sPath:
+            return
+        iHandle, sTemporary = tempfile.mkstemp(
+            dir=os.path.dirname(sPath), suffix=".json")
+        with os.fdopen(iHandle, "w", encoding="utf-8") as fileNote:
+            json.dump({
+                "sTarballSha256": str(dictRecord["sTarballSha256"]),
+                "sVersionDoi": str(dictRecord.get("sVersionDoi") or ""),
+                "sLoadedImageId": str(sLoadedId),
+                "sLoadedIso": datetime.now(timezone.utc).isoformat(),
+            }, fileNote)
+        os.chmod(sTemporary, 0o600)
+        os.replace(sTemporary, sPath)
+    except OSError:
+        return
+
+
+def _fdictPreviousLoadStillHeld(dockerDisposable, dictRecord):
+    """Return this host's note of loading the deposit, if its image is still held.
+
+    The note binds the envelope's tarball hash and DOI to the image ID
+    the verified tarball produced. An image ID is a content address, so
+    a daemon that still holds that exact ID holds the bytes the deposit
+    delivered and the download would only repeat itself. ``None`` when
+    there is no note, the note names another deposit, or the daemon no
+    longer holds the image -- every case the download then decides.
+    """
+    try:
+        with open(_fsDepositLoadPath(dictRecord), "r", encoding="utf-8") as fileNote:
+            dictNote = json.load(fileNote)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(dictNote, dict):
+        return None
+    if dictNote.get("sTarballSha256") != dictRecord.get("sTarballSha256"):
+        return None
+    if dictNote.get("sVersionDoi") != str(dictRecord.get("sVersionDoi") or ""):
+        return None
+    sLoadedId = str(dictNote.get("sLoadedImageId") or "")
+    if not sLoadedId:
+        return None
+    dictHeld = disposableContainer.fdictInspectImage(dockerDisposable, sLoadedId)
+    if not dictHeld or dictHeld.get("sId") != sLoadedId:
+        return None
+    return dictNote
 
 
 def fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
