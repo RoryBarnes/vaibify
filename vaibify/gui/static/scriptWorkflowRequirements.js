@@ -3796,14 +3796,19 @@ var VaibifyWorkflowRequirements = (function () {
             'title="' + fnEscapeHtml(sText) + '">\u26a0</span>';
     }
 
-    function _fsRenderReproductionBadge(dictContext, dictDetail) {
-        /* One badge, right of the level strip, for the two things a
-           verification can say about the project: it is being re-run
-           NOW (the poll's running flag -- the server's recorded phase,
-           never a client timer, so it survives a reload), or a reader's
-           copy has BEEN reproduced (the server's label decision, which
-           replaced a "(reproduced)" suffix on the heading). A failed
-           attempt shows neither; its toast says why. */
+    function fsRenderReproductionBadge(dictContext) {
+        /* One badge, in the TOP BAR right of the project name's
+           right-most PROOF check, for the two things a verification
+           can say about the project: it is being re-run NOW (the
+           poll's running flag -- the server's recorded phase, never a
+           client timer, so it survives a reload), or the project has
+           BEEN reproduced (the server's label decision: the author's
+           current Level 3 attestation, or a reader's own
+           reproduction). A failed attempt shows neither; its toast
+           says why. Nothing while the Project block still awaits its
+           first answer, exactly as when the badge lived there. */
+        if (dictContext.bProjectBlockAwaitsFirstAnswer === true) return "";
+        var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
         if (dictDetail.bRebuildAttestationRunning === true) {
             return '<span class="project-reproduction-badge ' +
                 'project-reproduction-badge-running" role="status" ' +
@@ -3821,8 +3826,8 @@ var VaibifyWorkflowRequirements = (function () {
 
     function _fbReproducedLabelShows(dictContext) {
         /* The server decided; absent, diverged, stale and unreadable
-           all draw nothing. This is a reader's achievement, never a
-           state to be inferred from silence. */
+           all draw nothing. A reproduction is evidence, never a state
+           to be inferred from silence. */
         var dictLabel = dictContext.dictReproductionLabel;
         return Boolean(dictLabel) && dictLabel.bShow === true;
     }
@@ -3903,7 +3908,6 @@ var VaibifyWorkflowRequirements = (function () {
             _fsExpandTriangle(bOpen) + 'Project' +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
-            _fsRenderReproductionBadge(dictContext, dictDetail) +
             '</div>';
         if (!bOpen) return sHtml;
         var sBody = '<div class="project-block-body">' +
@@ -3929,6 +3933,9 @@ var VaibifyWorkflowRequirements = (function () {
 
     return {
         fsRenderProjectBlock: fsRenderProjectBlock,
+        // The top bar's reproduction badge; scriptApplication places
+        // it beside the project name's PROOF checks.
+        fsRenderReproductionBadge: fsRenderReproductionBadge,
         // The reconcile handler hands Zenodo's answer back here; the
         // poll must not carry it, because the poll asking Zenodo on
         // every tick is exactly what the row's explicit "Ask Zenodo"

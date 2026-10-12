@@ -7369,9 +7369,23 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin-left: auto;
 }
 
-/* Right of the level strip: "Reproducing" while the server reports a
-   Level 3 verification live, "Reproduced" when the server's label
-   says a reader's copy reproduced. The pulse is the run lights' own
+/* The top bar's slot, right of the right-most PROOF check beside the
+   project name. Collapses to nothing when the server says nothing. */
+.toolbar-reproduction-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.toolbar-reproduction-badge:empty {
+    display: none;
+}
+
+/* In that slot: "Reproducing" while the server reports a Level 3
+   verification live, "Reproduced" when the server's label says the
+   project reproduced. The pulse is the run lights' own
    @keyframes pulse, and it exists only while the server says live. */
 .project-reproduction-badge {
     border-radius: 4px;

@@ -462,7 +462,11 @@ if dictArgs.get("bReadReproductions"):
                 and sWorkflow and sWorkflow not in setWorkflowsDecided):
             setWorkflowsDecided.add(sWorkflow)
             dictOut["dictReproductionRecords"][sName] = sBody
-    if dictOut["dictReproductionRecords"]:
+    # Whose manifest this is decides both labels: a reader's needs a
+    # decisive record to judge, an author's an attestation on file.
+    # Asked only when one exists, so a project with neither pays no git.
+    if dictOut["dictReproductionRecords"] or os.path.isfile(
+            os.path.join(sRoot, ".vaibify", "l3_attestation.json")):
         dictFacts = {}
         for tQuestion in @@QUESTIONS@@:
             try:

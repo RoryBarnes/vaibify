@@ -1,21 +1,26 @@
-"""The Project header's reproduction badge renders the server's answers.
+"""The top bar's reproduction badge renders the server's answers.
 
-The badge sits right of the Project block's level strip and replaces
-the "(reproduced)" suffix the heading used to carry (researcher's
-ruling). It says one of two things, each the server's:
+The badge sits in the TOP BAR, immediately right of the right-most
+PROOF check beside the project name (researcher's placement ruling,
+2026-10-12; it had lived on the left column's Project header, right of
+its level strip, and before that as a "(reproduced)" suffix on that
+heading). It says one of two things, each the server's:
 
 - "Reproducing" while the poll reports a Level 3 verification live;
 - "Reproduced" when the server's reproduction label has ``bShow``
-  true, with hover text naming the date, the platform and any
-  emulation. Every other label state (absent, diverged, evidence
-  changed, unreadable, no payload at all) draws nothing, because a
-  badge is a claim and silence is not evidence.
+  true -- for the AUTHOR, their own current Level 3 attestation; for a
+  READER, their own reproduction -- with hover text naming the date,
+  the platform and any emulation. Every other label state (absent,
+  diverged, evidence changed, unreadable, no payload at all) draws
+  nothing, because a badge is a claim and silence is not evidence.
 
 A later attempt that reached NO verdict keeps an earlier "Reproduced"
 (the server's rule), and the dashboard's own warning glyph appears to
 its right carrying that attempt's date and the server's reason -- the
 sentence lives on the glyph, not on the badge.
 """
+
+import json
 
 import pytest
 
@@ -42,7 +47,7 @@ def fixtureDropClaimsBetweenTests(serverHub):
 
 
 _S_RENDER = """([dictLabel, bRunning]) => {
-    var sHtml = VaibifyWorkflowRequirements.fsRenderProjectBlock({
+    var dictContext = {
         dictWorkflowEnvelopeDetail: {
             listLevel3EnvelopePaths: [], dictArtifacts: {},
             listBinaries: [], bRebuildAttestationRunning: bRunning,
@@ -53,27 +58,26 @@ _S_RENDER = """([dictLabel, bRunning]) => {
         bProjectBlockCollapsed: false,
         setExpandedRequirementGroups: new Set(),
         setExpandedRequirementRows: new Set(),
-        // The level strip renders only with a level projection; any
-        // will do, since only its POSITION is read here.
         fsLevelCellState: () => "not-started",
         fsLevelCellTooltip: () => "",
-    });
+    };
     var el = document.createElement("div");
-    el.innerHTML = sHtml;
+    el.innerHTML =
+        VaibifyWorkflowRequirements.fsRenderReproductionBadge(dictContext);
+    var elBlock = document.createElement("div");
+    elBlock.innerHTML =
+        VaibifyWorkflowRequirements.fsRenderProjectBlock(dictContext);
     document.body.appendChild(el);
-    var elTitle = el.querySelector(".project-block-title");
-    var elBadge = el.querySelector(
-        ".project-block-header .project-reproduction-badge");
-    var elGlyph = el.querySelector(
-        ".project-block-header .project-reproduction-warning");
-    var elStrip = el.querySelector(".project-block-header .step-level-strip");
+    document.body.appendChild(elBlock);
+    var elTitle = elBlock.querySelector(".project-block-title");
+    var elBadge = el.querySelector(".project-reproduction-badge");
+    var elGlyph = el.querySelector(".project-reproduction-warning");
     var dictAnswer = {
         sHeading: elTitle.textContent.replace(/[\\u25b8\\u25be]/g, "").trim(),
         sBadgeText: elBadge ? elBadge.textContent : "",
         sBadgeTitle: elBadge ? elBadge.title : "",
-        bBadgeRightOfStrip: Boolean(elBadge && elStrip &&
-            (elStrip.compareDocumentPosition(elBadge) &
-                Node.DOCUMENT_POSITION_FOLLOWING)),
+        bProjectBlockCarriesBadge: Boolean(elBlock.querySelector(
+            ".project-reproduction-badge, .project-reproduction-warning")),
         sGlyphText: elGlyph ? elGlyph.textContent : "",
         sGlyphTitle: elGlyph ? elGlyph.title : "",
         bGlyphFollowsBadge: Boolean(elGlyph && elBadge &&
@@ -81,6 +85,7 @@ _S_RENDER = """([dictLabel, bRunning]) => {
         sGlyphColor: elGlyph ? getComputedStyle(elGlyph).color : "",
     };
     el.remove();
+    elBlock.remove();
     return dictAnswer;
 }"""
 
@@ -121,8 +126,8 @@ def test_the_badge_reads_reproduced_only_for_a_shown_label(
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     dictShown = _fdictRender(pageDashboard, _fdictShown())
     assert dictShown["sBadgeText"] == "Reproduced", dictShown
-    assert dictShown["bBadgeRightOfStrip"] is True, (
-        "the badge is not to the right of the level strip"
+    assert dictShown["bProjectBlockCarriesBadge"] is False, (
+        "the Project block's header still carries the badge"
     )
     assert dictShown["sHeading"] == "Project", (
         f"the heading still carries the label: {dictShown['sHeading']!r}"
@@ -201,3 +206,169 @@ def test_a_running_verification_reads_reproducing_over_any_label(
     assert dictRunning["sGlyphText"] == ""
     dictUnlabelled = _fdictRender(pageDashboard, None, bRunning=True)
     assert dictUnlabelled["sBadgeText"] == "Reproducing"
+
+
+# --- Where the badge sits, read off the live dashboard ---
+#
+# The hub's own file-status answer is fetched and only the label is
+# rewritten, so every other part of the page is what the real poll
+# drew. The geometry is read twice in ONE evaluate: as the page stands
+# (no level reached, so the name is the right-most thing) and with all
+# three checks lit, restoring the class before the page can render.
+
+_S_READ_TOP_BAR = """() => {
+    const elSlot = document.getElementById("projectReproductionBadge");
+    const elBadge = document.querySelector(
+        "#toolbar #workflowSwitcher .project-reproduction-badge");
+    const elGlyph = document.querySelector(
+        "#toolbar #workflowSwitcher .project-reproduction-warning");
+    const listChecks = Array.from(document.querySelectorAll(
+        "#workflowSwitcher .vaibify-checkmark"));
+    const elLastCheck = listChecks[listChecks.length - 1];
+    const fsAnchorRight = () => {
+        const listLit = listChecks.filter(
+            (el) => getComputedStyle(el).display !== "none");
+        const elAnchor = listLit.length ? listLit[listLit.length - 1]
+            : document.getElementById("activeWorkflowName");
+        return elAnchor.getBoundingClientRect().right;
+    };
+    const fdictMeasure = () => {
+        const rectBadge = elBadge.getBoundingClientRect();
+        const rectName = document.getElementById("activeWorkflowName")
+            .getBoundingClientRect();
+        return {
+            fBadgeLeft: rectBadge.left, fAnchorRight: fsAnchorRight(),
+            bSameRow: Math.abs((rectBadge.top + rectBadge.bottom) / 2 -
+                (rectName.top + rectName.bottom) / 2) < rectName.height,
+        };
+    };
+    if (!elBadge) return null;
+    const dictAtPageLevel = fdictMeasure();
+    const listLevelClasses = ["proof-level-1", "proof-level-2",
+        "proof-level-3"].filter((s) => document.body.classList.contains(s));
+    document.body.classList.remove(...listLevelClasses);
+    document.body.classList.add("proof-level-3");
+    const dictAtLevelThree = fdictMeasure();
+    document.body.classList.remove("proof-level-3");
+    document.body.classList.add(...listLevelClasses);
+    return {
+        sText: elBadge.textContent, sTitle: elBadge.title,
+        bSlotFollowsLastCheck: Boolean(elSlot && elLastCheck &&
+            elSlot.previousElementSibling === elLastCheck),
+        bBadgeInSlot: elSlot.contains(elBadge),
+        sGlyphText: elGlyph ? elGlyph.textContent : "",
+        sGlyphTitle: elGlyph ? elGlyph.title : "",
+        bGlyphFollowsBadge: Boolean(elGlyph &&
+            elBadge.nextElementSibling === elGlyph),
+        dictAtPageLevel: dictAtPageLevel,
+        dictAtLevelThree: dictAtLevelThree,
+        bProjectBlockCarriesBadge: Boolean(document.querySelector(
+            "#projectBlock .project-reproduction-badge, " +
+            "#projectBlock .project-reproduction-warning")),
+        bProjectBlockRendered: Boolean(document.querySelector(
+            "#projectBlock .project-block-header")),
+    };
+}"""
+
+
+def _fnServeTheLabel(pageDashboard, dictLabel):
+    """Rewrite only the label on the hub's own file-status answer."""
+    def fnFileStatus(route):
+        dictStatus = json.loads(route.fetch().text())
+        dictStatus["dictReproductionLabel"] = dictLabel
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(dictStatus))
+    pageDashboard.route("**/api/pipeline/*/file-status*", fnFileStatus)
+
+
+def _fdictReadTopBarOnceShown(pageDashboard):
+    dictRead = None
+    for _ in range(120):
+        dictRead = pageDashboard.evaluate(_S_READ_TOP_BAR)
+        if dictRead and dictRead["bProjectBlockRendered"]:
+            return dictRead
+        pageDashboard.wait_for_timeout(250)
+    return dictRead
+
+
+def _fdictBuildAuthorLabel(tmp_path, monkeypatch, dictLastNoVerdict=None):
+    """The label the REAL server code gives an author, from real files.
+
+    A real git repository whose manifest is the viewer's own, a real
+    attestation over it, and the real poll snapshot program -- the
+    browser then renders exactly what the server built.
+    """
+    from tests.testReproductionLabelInPollResponse import (
+        fdictPollAuthorLabel, fnWriteAuthorAttestation, fsBuildAuthorProject,
+    )
+    with monkeypatch.context() as patchIdentity:
+        for sName, sValue in (
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+            ("GIT_CONFIG_GLOBAL", __import__("os").devnull),
+            ("GIT_COMMITTER_EMAIL", "author@example.invalid"),
+            ("GIT_AUTHOR_EMAIL", "author@example.invalid"),
+            ("GIT_COMMITTER_NAME", "Author"),
+            ("GIT_AUTHOR_NAME", "Author"),
+        ):
+            patchIdentity.setenv(sName, sValue)
+        sRepo = fsBuildAuthorProject(tmp_path)
+        fnWriteAuthorAttestation(sRepo)
+        return fdictPollAuthorLabel(sRepo, dictLastNoVerdict)
+
+
+@pytest.mark.falsification
+def test_the_badge_sits_in_the_top_bar_right_of_the_last_check(
+    pageDashboard, serverHub,
+):
+    """In the top bar, immediately right of the right-most PROOF check.
+
+    Kills: placing the badge's slot before the Level 3 check -- the
+    badge would then sit between the checks rather than after them.
+    """
+    _fnServeTheLabel(pageDashboard, _fdictShown(
+        sLatestAttemptIso="2026-10-05T08:00:00+00:00",
+        sLatestAttemptVerdict="no-verdict",
+        sReason="the daemon was unreachable"))
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True)
+    dictRead = _fdictReadTopBarOnceShown(pageDashboard)
+    assert dictRead, "no reproduction badge in the top bar"
+    assert dictRead["sText"] == "Reproduced", dictRead
+    assert dictRead["bBadgeInSlot"] is True
+    assert dictRead["bSlotFollowsLastCheck"] is True, (
+        "the badge's slot is not immediately after the last PROOF check")
+    for sLevel in ("dictAtPageLevel", "dictAtLevelThree"):
+        dictGeometry = dictRead[sLevel]
+        assert dictGeometry["fBadgeLeft"] >= dictGeometry["fAnchorRight"], (
+            f"the badge is left of the right-most check ({sLevel}): "
+            f"{dictGeometry!r}")
+        assert dictGeometry["bSameRow"] is True, (sLevel, dictGeometry)
+    assert dictRead["sGlyphText"] == "⚠", dictRead
+    assert dictRead["bGlyphFollowsBadge"] is True
+    assert "the daemon was unreachable" in dictRead["sGlyphTitle"]
+    assert dictRead["bProjectBlockCarriesBadge"] is False, (
+        "the left column's Project header still carries the badge")
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def test_an_authors_current_attestation_reads_reproduced_in_the_top_bar(
+    pageDashboard, serverHub, tmp_path, monkeypatch,
+):
+    """The author's label, as the server builds it, renders in the top bar.
+
+    Kills: never rendering the top bar's badge -- the author's
+    "Reproduced" would then appear nowhere on the page.
+    """
+    dictLabel = _fdictBuildAuthorLabel(tmp_path, monkeypatch)
+    assert dictLabel["bShow"] is True, dictLabel
+    _fnServeTheLabel(pageDashboard, dictLabel)
+    fnOpenTheSeededHostWorkflow(
+        pageDashboard, serverHub, bAwaitProjectBlock=True)
+    dictRead = _fdictReadTopBarOnceShown(pageDashboard)
+    assert dictRead and dictRead["sText"] == "Reproduced", dictRead
+    assert dictRead["sTitle"] == (
+        "Reproduced on 2026-10-12 (linux/arm64) under emulation."), dictRead
+    assert dictRead["sGlyphText"] == "", dictRead
+    assert dictRead["bProjectBlockCarriesBadge"] is False
+    assert pageDashboard.listPageErrors == []

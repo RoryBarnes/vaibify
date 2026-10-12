@@ -4,8 +4,10 @@ A verification runs for minutes to hours. Its only in-progress display
 was the PROOF tab's card, so from any other view the researcher saw
 one toast at the start and then nothing (researcher-reported). Now:
 
-- the Project block's header carries a badge reading "Reproducing",
-  orange and pulsing, from the moment the server accepts the start and
+- the top bar carries a badge reading "Reproducing", right of the
+  project name's PROOF checks (it lived on the Project block's header
+  until the researcher's 2026-10-12 placement ruling), orange and
+  pulsing, from the moment the server accepts the start and
   for as long as the file-status poll -- the server's recorded phase,
   never a client timer -- says the run is live, including after a
   reload;
@@ -32,7 +34,7 @@ from tests.browser.conftest import fnOpenTheSeededHostWorkflow
 
 pytestmark = pytest.mark.browser
 
-S_BADGE = ".project-block-header .project-reproduction-badge"
+S_BADGE = "#workflowSwitcher #projectReproductionBadge .project-reproduction-badge"
 S_MATCHED_PATH = "MakeNumbers/numbers.json"
 S_DIVERGED_PATH = "SecondStage/table.csv"
 S_MANIFEST_TEXT = "\n".join([
@@ -144,12 +146,16 @@ def _fnWaitUntil(pageDashboard, fbCondition, iTimeoutSeconds=30):
         pageDashboard.wait_for_timeout(250)
 
 
-_S_READ_BADGE = """() => {
-    const elBadge = document.querySelector(
-        ".project-block-header .project-reproduction-badge");
+_S_READ_BADGE = """(sBadgeSelector) => {
+    const elBadge = document.querySelector(sBadgeSelector);
     if (!elBadge) return null;
-    const elStrip = document.querySelector(
-        ".project-block-header .step-level-strip");
+    // What the badge must sit right of: the last LIT PROOF check beside
+    // the project name, or the name itself before any level is reached.
+    const listLit = Array.from(document.querySelectorAll(
+        "#workflowSwitcher .vaibify-checkmark")).filter(
+            (el) => getComputedStyle(el).display !== "none");
+    const elStrip = listLit.length ? listLit[listLit.length - 1]
+        : document.getElementById("activeWorkflowName");
     const elProbe = document.createElement("span");
     elProbe.style.background = "var(--highlight-color)";
     document.body.appendChild(elProbe);
@@ -182,7 +188,7 @@ _S_READ_VIEWERS = """() => {
 
 
 def _fdictReadBadge(pageDashboard):
-    return pageDashboard.evaluate(_S_READ_BADGE)
+    return pageDashboard.evaluate(_S_READ_BADGE, S_BADGE)
 
 
 def _fsBadgeText(pageDashboard):

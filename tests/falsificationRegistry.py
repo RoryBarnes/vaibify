@@ -28586,9 +28586,75 @@ LIST_FALSIFICATIONS = [
             'test_the_label_never_shows_for_ones_own_manifest'
         ),
         # The label shows for a manifest that is the viewer's own.
+        # Retargeted 2026-10-12: an own manifest is now routed to the
+        # author's evidence (the attestation) before the reader's
+        # records are read, so dropping that routing is what lets a
+        # reader's record speak for the author.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return _fdictLabel(\n            S_STATE_ABSENT, "the manifest is this project\'s own",\n        )\n',
-        new='',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+    ),
+    # --- 2026-10-12: the author sees "Reproduced" for their own
+    # CURRENT Level 3 attestation ---
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_an_authors_current_attestation_shows_the_label'
+        ),
+        # The snapshot asks whose manifest it is only when a reader's record exists.
+        source='vaibify/docker/dockerConnection.py',
+        old='    if dictOut["dictReproductionRecords"] or os.path.isfile(\n            os.path.join(sRoot, ".vaibify", "l3_attestation.json")):\n',
+        new='    if dictOut["dictReproductionRecords"]:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_stale_authors_attestation_hides_the_label'
+        ),
+        # A passed attestation is read as current whatever the manifest now says.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        new='    if (l3Attestation.fdictReadAttestation(filesPoll) or {}).get("sStatus") != "passed":\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_later_failed_authors_attestation_hides_the_label'
+        ),
+        # Any attestation on file shows the label, failed or not.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        new='    if l3Attestation.fdictReadAttestation(filesPoll) is None:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_later_no_verdict_keeps_the_authors_label_and_is_named'
+        ),
+        # The author's label never names a later attempt that reached no verdict.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
+        new='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_no_verdict_in_the_attestations_own_second_is_still_later'
+        ),
+        # The attempt and the evidence are ordered as strings, not instants.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        return _fdatetimeParseUtc(sLaterIso) > _fdatetimeParseUtc(sEarlierIso)\n',
+        new='        return sLaterIso > sEarlierIso\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_the_authors_attestation_in_a_readers_clone_is_not_the_readers_label'
+        ),
+        # A reader's clone is judged by the author's attestation it carries.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
     ),
     Falsification(
         nodeid=(
@@ -31703,6 +31769,43 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old='        if (dictLabel.sLatestAttemptVerdict !== "no-verdict") return "";\n',
         new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_the_badge_sits_in_the_top_bar_right_of_the_last_check'
+        ),
+        # The badge's slot moves before the Level 3 check, between the checks.
+        source='vaibify/gui/static/index.html',
+        old=(
+            '                <span class="vaibify-checkmark" data-proof-level="3"\n'
+            '                      title="PROOF L3: Reproducible"><img\n'
+            '                      src="/static/favicon.png" alt="L3"></span>\n'
+            '                <!-- Right of the right-most PROOF check: "Reproducing"\n'
+            '                     while a Level 3 verification runs, "Reproduced"\n'
+            '                     when the server\'s label says so, and the warning\n'
+            '                     glyph for a later attempt with no verdict. Filled\n'
+            '                     from the poll on every render. -->\n'
+            '                <span id="projectReproductionBadge"\n'
+            '                      class="toolbar-reproduction-badge"></span>\n'
+        ),
+        new=(
+            '                <span id="projectReproductionBadge"\n'
+            '                      class="toolbar-reproduction-badge"></span>\n'
+            '                <span class="vaibify-checkmark" data-proof-level="3"\n'
+            '                      title="PROOF L3: Reproducible"><img\n'
+            '                      src="/static/favicon.png" alt="L3"></span>\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_an_authors_current_attestation_reads_reproduced_in_the_top_bar'
+        ),
+        # The top bar's badge is never rendered.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnRenderToolbarReproductionBadge(dictContext);\n',
+        new='',
     ),
     Falsification(
         nodeid=(

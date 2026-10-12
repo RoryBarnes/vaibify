@@ -2526,6 +2526,7 @@ const VaibifyApp = (function () {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) {
             elList.innerHTML = "";
             _fnInvalidateAllRenderCaches();
+            _fnRenderToolbarReproductionBadge(null);
             return;
         }
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
@@ -2540,6 +2541,7 @@ const VaibifyApp = (function () {
                 elList, listSteps, dictVars, dictContext);
         }
         _fnRenderProjectBlock(dictContext);
+        _fnRenderToolbarReproductionBadge(dictContext);
         _fnApplyStepsCollapsedClass();
         fnApplyTimestampVisibility();
         fnBindStepEvents();
@@ -2640,6 +2642,26 @@ const VaibifyApp = (function () {
         if (fbProjectFormFieldFocused()) return;
         elBlock.innerHTML = sHtml;
         _sLastProjectBlockHtml = sHtml;
+    }
+
+    var _sLastToolbarReproductionHtml = null;
+
+    function _fnRenderToolbarReproductionBadge(dictContext) {
+        /* The badge sits in the top bar, immediately right of the
+           right-most PROOF check beside the project name -- the
+           researcher's placement: the checks there ARE the project's
+           level, and "Reproduced" is a statement about the same
+           project. Rebuilt from the poll's server state on every
+           render, so it survives a reload; written only on change. */
+        var elSlot = document.getElementById("projectReproductionBadge");
+        if (!elSlot) return;
+        var sHtml = dictContext
+            ? VaibifyWorkflowRequirements.fsRenderReproductionBadge(
+                dictContext)
+            : "";
+        if (sHtml === _sLastToolbarReproductionHtml) return;
+        elSlot.innerHTML = sHtml;
+        _sLastToolbarReproductionHtml = sHtml;
     }
 
     function _fnApplyStepsCollapsedClass() {
@@ -7057,7 +7079,7 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflowLevelHighWater,
             _dictWorkflowState.dictWorkflowEnvelopeDetail,
             _dictWorkflowState.bEnvelopeDetailStale,
-            // The Project header's Reproduced badge and its glyph.
+            // The top bar's Reproduced badge and its glyph.
             _dictWorkflowState.dictReproductionLabel,
         ]);
     }
