@@ -602,6 +602,16 @@ S_TYPED_READ_CGROUP_MEMORY = "cgroupMemory"
 S_TYPED_READ_PROCESS_TABLE = "processTable"
 S_TYPED_READ_TMP_SIZE = "tmpSize"
 
+# The one exit status a path-reading program uses to say "not there".
+# It is answered only for a missing path or a missing parent directory,
+# never for a crash or a refusal: see ``_fnRaiseWhenTypedReadFailed``.
+_I_TYPED_READ_NOT_FOUND_EXIT_CODE = 5
+_I_TYPED_READ_ATTEMPTS = 2
+_S_TYPED_READ_ABSENCE_HANDLER = (
+    "except (FileNotFoundError,NotADirectoryError):\n"
+    "    sys.exit(" + str(_I_TYPED_READ_NOT_FOUND_EXIT_CODE) + ")\n"
+)
+
 # A provider login document is kilobytes. The council's credential read
 # bounds itself IN the container at this ceiling rather than inheriting
 # the 64 MB general-file cap, which can only reject after the bytes
@@ -615,9 +625,11 @@ I_MAX_SMALL_FILE_BYTES = 4 * 1024 * 1024
 
 _DICT_TYPED_READ_PROGRAMS = {
     S_TYPED_READ_FILE_BASE64: (
-        "import base64,sys; "
-        "sys.stdout.buffer.write(base64.b64encode(open("
-        + _S_TYPED_READ_PATH_SLOT + ",'rb').read()))"
+        "import base64,sys\n"
+        "try:\n"
+        "    fileIn=open(" + _S_TYPED_READ_PATH_SLOT + ",'rb')\n"
+        + _S_TYPED_READ_ABSENCE_HANDLER
+        + "sys.stdout.buffer.write(base64.b64encode(fileIn.read()))\n"
     ),
     # A credential document read with the bound enforced IN THE
     # CONTAINER. The general file read above materializes the whole
@@ -781,8 +793,10 @@ _DICT_TYPED_READ_PROGRAMS = {
     ),
     S_TYPED_READ_CREDENTIAL_FILE: (
         "import base64,sys\n"
-        "with open(" + _S_TYPED_READ_PATH_SLOT + ",'rb') as fileIn:\n"
-        "    baHead=fileIn.read(" + str(I_MAX_CREDENTIAL_FILE_BYTES + 1)
+        "try:\n"
+        "    fileIn=open(" + _S_TYPED_READ_PATH_SLOT + ",'rb')\n"
+        + _S_TYPED_READ_ABSENCE_HANDLER
+        + "baHead=fileIn.read(" + str(I_MAX_CREDENTIAL_FILE_BYTES + 1)
         + ")\n"
         "sys.stdout.buffer.write(base64.b64encode(baHead))\n"
     ),
@@ -798,9 +812,11 @@ _DICT_TYPED_READ_PROGRAMS = {
         + _S_TYPED_READ_PATH_SLOT + ") or '')\n"
     ),
     S_TYPED_READ_DIRECTORY: (
-        "import os,sys; "
-        "sys.stdout.write(chr(10).join(sorted(os.listdir("
-        + _S_TYPED_READ_PATH_SLOT + "))))"
+        "import os,sys\n"
+        "try:\n"
+        "    listNames=os.listdir(" + _S_TYPED_READ_PATH_SLOT + ")\n"
+        + _S_TYPED_READ_ABSENCE_HANDLER
+        + "sys.stdout.write(chr(10).join(sorted(listNames)))\n"
     ),
     # The container's own memory cgroup, for the memory watch. The slot
     # carries the cgroup ROOT, which the adapter fixes to /sys/fs/cgroup
@@ -907,9 +923,11 @@ _DICT_TYPED_READ_PROGRAMS = {
     # user -- because that is what df's Available column has always
     # meant, and the dashboard's low-disk warning is calibrated to it.
     S_TYPED_READ_FILESYSTEM_USAGE: (
-        "import json,os,sys; "
-        "st=os.statvfs(" + _S_TYPED_READ_PATH_SLOT + "); "
-        "sys.stdout.write(json.dumps({"
+        "import json,os,sys\n"
+        "try:\n"
+        "    st=os.statvfs(" + _S_TYPED_READ_PATH_SLOT + ")\n"
+        + _S_TYPED_READ_ABSENCE_HANDLER
+        + "sys.stdout.write(json.dumps({"
         "'iTotalBytes': st.f_blocks*st.f_frsize, "
         "'iUsedBytes': (st.f_blocks-st.f_bfree)*st.f_frsize, "
         "'iFreeBytes': st.f_bavail*st.f_frsize}))"
@@ -1606,6 +1624,38 @@ def _fdictParseJsonTypedRead(tExecResult, sWhat):
             f"The {sWhat} read answered unparseable output: {errorParse}")
 
 
+def _fnRaiseWhenTypedReadFailed(tExecResult, sFailure):
+    """Raise for a failed path read; ``FileNotFoundError`` ONLY for absence.
+
+    Callers read ``FileNotFoundError`` as "the path is not there": the
+    state loader then falls back to its checkpoint or bootstraps an
+    empty document, which a later save writes over every other
+    project's section. So only the program's own not-found answer
+    (``_I_TYPED_READ_NOT_FOUND_EXIT_CODE``) may raise it. A killed
+    interpreter, an unreadable file, or an exit the daemon never
+    reported says nothing about whether the path exists, and raises
+    ``OSError`` naming what happened.
+    """
+    iExitCode = tExecResult.iExitCode
+    if iExitCode == 0:
+        return
+    if iExitCode == _I_TYPED_READ_NOT_FOUND_EXIT_CODE:
+        raise FileNotFoundError(sFailure)
+    if iExitCode is None:
+        raise OSError(
+            f"{sFailure}: the container did not report how the read "
+            f"ended, so whether the path exists is unknown")
+    iSignal = confinedWrite.fiSignalThatKilledProgram(tExecResult)
+    if iSignal:
+        raise OSError(
+            f"{sFailure}: the reading program was killed by signal "
+            f"{iSignal} (exit {iExitCode}), so whether the path exists "
+            f"is unknown")
+    listLines = (tExecResult.sStderr or "").strip().splitlines()
+    sReason = listLines[-1] if listLines else "the program gave no reason"
+    raise OSError(f"{sFailure}: {sReason} (exit {iExitCode})")
+
+
 def flistBuildRepoSnapshotArguments(
     sRootPath, listContentPaths, listSkipTextPaths, listHashPaths,
     listAbsHashPaths, dictCachedKeys, bHashManifestEntries,
@@ -2200,7 +2250,15 @@ class DockerConnection:
         the only thing an adapter chooses is which of a fixed set of
         programs to run, and an unknown name raises rather than
         executing anything.
+
+        A read killed by a signal is run once more
+        (``_I_TYPED_READ_ATTEMPTS``). Under user-mode emulation the
+        interpreter occasionally dies of SIGSEGV before it reads
+        anything (about one start in four hundred), and a read changes
+        nothing, so the second answer is the one the first would have
+        given.
         """
+        import logging
         sTemplate = _DICT_TYPED_READ_PROGRAMS.get(sOperation)
         if sTemplate is None:
             raise ValueError(
@@ -2216,7 +2274,18 @@ class DockerConnection:
         )
         tokenRead = mutationAdmission.ftokenEnterAuditedRead()
         try:
-            return self.ftRunInContainerStreamed(sContainerId, sCommand)
+            for _ in range(_I_TYPED_READ_ATTEMPTS):
+                tExecResult = self.ftRunInContainerStreamed(
+                    sContainerId, sCommand,
+                )
+                iSignal = confinedWrite.fiSignalThatKilledProgram(tExecResult)
+                if not iSignal:
+                    break
+                logging.getLogger("vaibify").warning(
+                    "Read %s was killed by signal %d (exit %d)",
+                    sOperation, iSignal, tExecResult.iExitCode,
+                )
+            return tExecResult
         finally:
             mutationAdmission.fnExitAuditedRead(tokenRead)
 
@@ -2230,17 +2299,17 @@ class DockerConnection:
         hostile multi-gigabyte file planted at the credential path
         costs the ceiling rather than its own size. Over-ceiling
         raises ``ValueError`` (the program returned the one extra byte
-        that distinguishes "at the limit" from "over" it); an
-        unreadable path raises ``FileNotFoundError``, as the general
-        read does.
+        that distinguishes "at the limit" from "over" it); a missing
+        path raises ``FileNotFoundError`` and any other failure
+        ``OSError``, as the general read does.
         """
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_CREDENTIAL_FILE, sFilePath,
         )
-        if tExecResult.iExitCode != 0:
-            raise FileNotFoundError(
-                f"Cannot read credential file from container: {sFilePath}"
-            )
+        _fnRaiseWhenTypedReadFailed(
+            tExecResult,
+            f"Cannot read credential file from container: {sFilePath}",
+        )
         baContent = base64.b64decode(tExecResult.sStdout.strip())
         if len(baContent) > I_MAX_CREDENTIAL_FILE_BYTES:
             raise ValueError(
@@ -2391,14 +2460,17 @@ class DockerConnection:
         The command is not built here: this names a declared read
         operation and :meth:`_ftRunTypedRead` builds it, so a path
         cannot become program or shell syntax.
+
+        A missing file raises ``FileNotFoundError``; any other failure,
+        a killed reader included, raises ``OSError``, because callers
+        read the first as "absent" (see :func:`_fnRaiseWhenTypedReadFailed`).
         """
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILE_BASE64, sFilePath,
         )
-        if tExecResult.iExitCode != 0:
-            raise FileNotFoundError(
-                f"Cannot read file from container: {sFilePath}"
-            )
+        _fnRaiseWhenTypedReadFailed(
+            tExecResult, f"Cannot read file from container: {sFilePath}",
+        )
         baContent = base64.b64decode(tExecResult.sStdout.strip())
         if iMaxBytes is not None and len(baContent) > iMaxBytes:
             raise ValueError(
@@ -2423,17 +2495,18 @@ class DockerConnection:
         command execution triggered by a path argument -- and broke on
         any path containing a space.
 
-        A missing or unreadable directory raises ``FileNotFoundError``;
+        A missing directory raises ``FileNotFoundError`` and any other
+        failure (an unreadable directory, a killed program) ``OSError``;
         an empty directory returns an empty list, which is a different
         answer and must stay one.
         """
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_DIRECTORY, sDirectoryPath,
         )
-        if tExecResult.iExitCode != 0:
-            raise FileNotFoundError(
-                f"Cannot list directory in container: {sDirectoryPath}"
-            )
+        _fnRaiseWhenTypedReadFailed(
+            tExecResult,
+            f"Cannot list directory in container: {sDirectoryPath}",
+        )
         return [
             sEntry for sEntry in tExecResult.sStdout.split("\n") if sEntry
         ]
@@ -2740,8 +2813,9 @@ class DockerConnection:
 
         The many-file sibling of :meth:`fbaFetchFile`, for documents
         bounded by design (test markers, state JSON). ``None`` means the
-        file could not be opened -- absent or unreadable -- exactly the
-        case in which :meth:`fbaFetchFile` raises ``FileNotFoundError``.
+        file could not be opened -- absent or unreadable -- where
+        :meth:`fbaFetchFile` raises ``FileNotFoundError`` for absence and
+        ``OSError`` otherwise.
         A file over :data:`I_MAX_SMALL_FILE_BYTES` raises ``ValueError``
         naming it, and a failed batch raises ``OSError``: a partial map
         would read as "these files are absent" for the ones it omits.
@@ -2901,10 +2975,9 @@ class DockerConnection:
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_FILESYSTEM_USAGE, sPath,
         )
-        if tExecResult.iExitCode != 0:
-            raise FileNotFoundError(
-                f"Cannot stat filesystem in container: {sPath}"
-            )
+        _fnRaiseWhenTypedReadFailed(
+            tExecResult, f"Cannot stat filesystem in container: {sPath}",
+        )
         return json.loads(tExecResult.sStdout.strip())
 
     def fdictReadDaemonCapacity(self):
@@ -2980,10 +3053,10 @@ class DockerConnection:
         tExecResult = self._ftRunTypedRead(
             sContainerId, S_TYPED_READ_REPOSITORY_WEIGHT, sRepositoryPath,
         )
-        if tExecResult.iExitCode != 0:
-            raise FileNotFoundError(
-                f"Cannot weigh repository in container: {sRepositoryPath}"
-            )
+        _fnRaiseWhenTypedReadFailed(
+            tExecResult,
+            f"Cannot weigh repository in container: {sRepositoryPath}",
+        )
         return json.loads(tExecResult.sStdout.strip())
 
     def fiterStreamFile(
@@ -3113,8 +3186,8 @@ class DockerConnection:
 
         The stream ends when the program closes its output, which can be
         a moment before the daemon records how it exited. Treating that
-        gap as exit status 0 would let a failed read pass as a complete
-        one, so an unsettled exec is an error, never a success.
+        gap as exit status 0 would let a failed read or write pass as a
+        complete one, so an unsettled exec is an error, never a success.
         """
         import time
         for _ in range(_I_EXEC_SETTLE_ATTEMPTS):
@@ -3124,8 +3197,8 @@ class DockerConnection:
                 return int(dictInspect["ExitCode"])
             time.sleep(_F_EXEC_SETTLE_INTERVAL_SECONDS)
         raise OSError(
-            "The container did not report how the read ended, so the "
-            "bytes received cannot be trusted as complete"
+            "The container did not report how the program ended, so "
+            "its result cannot be trusted as complete"
         )
 
     def fnWriteFile(
@@ -3215,10 +3288,48 @@ class DockerConnection:
             bReplaceAllowed=bReplaceAllowed, iExpectedBytes=iExpectedBytes,
             bCreateParents=bCreateParents,
         )
-        tExecResult = self._ftRunProgramWithStdin(
-            sContainerId, ["python3", "-c", sProgram], fileStdin=fileSource,
+        tExecResult = self._ftRunConfinedWriteProgram(
+            sContainerId, sFilePath, sProgram, fileSource, bReplaceAllowed,
         )
         confinedWrite.fnRaiseWhenWriteFailed(tExecResult, sFilePath)
+
+    def _ftRunConfinedWriteProgram(
+        self, sContainerId, sFilePath, sProgram, fileSource, bRetryAllowed,
+    ):
+        """Run the confined write program; rerun it once if it was killed.
+
+        An image built for another architecture runs every process under
+        user-mode emulation, and there the interpreter is occasionally
+        killed before it does anything: about one ``python3 -c pass`` in
+        four hundred died of SIGSEGV (exit 139) with no output, measured
+        on an x86_64 image under qemu on an ARM daemon. The program
+        renames into place only after every byte landed, so a killed
+        attempt left the target unchanged or complete, and sending the
+        same bytes again is the same write. Only a seekable source can
+        send them again, and only a replacing write is rerun: a
+        no-replace attempt killed after its link landed would make the
+        rerun refuse its own file as already existing.
+        """
+        import logging
+        listCommand = ["python3", "-c", sProgram]
+        fbSeekable = getattr(fileSource, "seekable", None)
+        bRewindable = bRetryAllowed and callable(fbSeekable) and fbSeekable()
+        iStartOffset = fileSource.tell() if bRewindable else 0
+        tExecResult = self._ftRunProgramWithStdin(
+            sContainerId, listCommand, fileStdin=fileSource,
+        )
+        iSignal = confinedWrite.fiSignalThatKilledProgram(tExecResult)
+        if not (bRewindable and iSignal):
+            return tExecResult
+        logging.getLogger("vaibify").warning(
+            "Writing %s: the program was killed by signal %d (exit %d); "
+            "sending the bytes once more", sFilePath, iSignal,
+            tExecResult.iExitCode,
+        )
+        fileSource.seek(iStartOffset)
+        return self._ftRunProgramWithStdin(
+            sContainerId, listCommand, fileStdin=fileSource,
+        )
 
     def ftRunProgramWithStdin(self, sContainerId, listCommand, baStdin):
         """Run a program as the container user with ``baStdin`` as its input.
@@ -3260,9 +3371,8 @@ class DockerConnection:
             )
         finally:
             socketExec.close()
-        dictInspect = self.fdictInspectExec(sExecId)
         return ExecResult(
-            iExitCode=int(dictInspect.get("ExitCode") or 0),
+            iExitCode=self._fiAwaitExecExitCode(sExecId),
             sStdout=baStdout.decode("utf-8", errors="replace"),
             sStderr=baStderr.decode("utf-8", errors="replace"),
         )

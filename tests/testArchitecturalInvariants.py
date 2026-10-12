@@ -1324,7 +1324,12 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         "symlinks"
     )
     assert "confinedWrite.fsRenderConfinedWriteProgram" in sFunnelSource
-    assert "_ftRunProgramWithStdin" in sFunnelSource
+    assert "self._ftRunConfinedWriteProgram(" in sFunnelSource
+    sRunSource = inspect.getsource(
+        DockerConnection._ftRunConfinedWriteProgram
+    )
+    assert "_ftRunProgramWithStdin" in sRunSource
+    assert "sUser" not in sRunSource
     sTransportSource = inspect.getsource(
         DockerConnection._ftRunProgramWithStdin
     )
