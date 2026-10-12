@@ -31081,4 +31081,34 @@ LIST_FALSIFICATIONS = [
         old='    if not dictHeld or dictHeld.get("sId") != sLoadedId:\n',
         new='    if False:\n',
     ),
+    # A claim lost mid-request answers the authority's refusal, never a
+    # 500; a refusal while the claim still holds is never dressed as one.
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_a_poll_whose_claim_lapses_mid_exec_answers_claim_required'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # the stale-admission refusal reaches the last-resort 500
+        old=(
+            '                if not iCodeNow:\n'
+            '                    raise\n'
+            '                return _fresponseRefused(iCodeNow)\n'
+        ),
+        new='                raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_a_refusal_while_the_claim_still_holds_stays_loud'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # every refusal is answered as a lost claim, held or not
+        old=(
+            '                iCodeNow = _fiAuthorizeForScope(\n'
+            '                    request, request.app.state, dictScope,\n'
+            '                )\n'
+        ),
+        new='                iCodeNow = I_REJECT_CLAIM_REQUIRED\n',
+    ),
 ]

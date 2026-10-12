@@ -47,6 +47,8 @@ import logging
 from fastapi.routing import APIRoute
 from starlette.responses import Response
 
+from vaibify.config.mutationAdmission import ControlPlaneRefusalError
+
 from . import actionCatalog
 from . import browserSession
 from . import containerOwnership
@@ -953,6 +955,12 @@ class ContainerAwareRoute(APIRoute):
     route without container authority that reaches a container-mutating
     primitive is refused there, which is what makes the primitives
     unreachable directly from a route.
+
+    Losing a claim never surfaces a 500. A claim lost mid-request makes
+    the primitive refuse; the authority is then asked again, and if it
+    now refuses, its answer (``claim-required`` for a lapsed claim) is
+    the response. A request still authorized was refused for something
+    else -- a quarantined journal, a forgotten carrier -- and re-raises.
     """
 
     def get_route_handler(self):
@@ -977,19 +985,29 @@ class ContainerAwareRoute(APIRoute):
                 self.methods, self.path, request,
             ):
                 return _fresponseSupervisedHostRefusal()
-            if bContainerScoped and _fbServeOnAmbientAdmission(self):
-                tAdmissionTokens = commitCarrier.ftOpenRequestAdmission(
-                    request.app.state, dictScope, request,
-                )
+            try:
+                if bContainerScoped and _fbServeOnAmbientAdmission(self):
+                    tAdmissionTokens = commitCarrier.ftOpenRequestAdmission(
+                        request.app.state, dictScope, request,
+                    )
+                    try:
+                        return await fnOriginalHandler(request)
+                    finally:
+                        commitCarrier.fnCloseRequestAdmission(tAdmissionTokens)
+                tokenLane = commitCarrier.ftokenMarkEnforcedRequestLane()
                 try:
                     return await fnOriginalHandler(request)
                 finally:
-                    commitCarrier.fnCloseRequestAdmission(tAdmissionTokens)
-            tokenLane = commitCarrier.ftokenMarkEnforcedRequestLane()
-            try:
-                return await fnOriginalHandler(request)
-            finally:
-                commitCarrier.fnResetEnforcedRequestLane(tokenLane)
+                    commitCarrier.fnResetEnforcedRequestLane(tokenLane)
+            except ControlPlaneRefusalError:
+                if not bContainerScoped:
+                    raise
+                iCodeNow = _fiAuthorizeForScope(
+                    request, request.app.state, dictScope,
+                )
+                if not iCodeNow:
+                    raise
+                return _fresponseRefused(iCodeNow)
 
         return fresponseHandleAuthorized
 

@@ -7686,7 +7686,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container-read allowlist, with why it is a read.
     # 1158 -> 1163 (2026-10-09): the remnant panel's three routes join
     # the browser-hub control plane, with why they read host state.
-    "routeScope.py": 1163,
+    # 1163 -> 1181 (2026-10-11): a claim lost mid-request answers the
+    # authority's refusal instead of a 500; it re-asks the same
+    # authority this route class already runs, so it belongs here.
+    "routeScope.py": 1181,
 }
 
 
