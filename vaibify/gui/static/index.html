@@ -612,6 +612,12 @@
         <div id="configurationDriftBanner"
              class="build-warnings-banner configuration-drift-banner"
              style="display: none;"></div>
+        <!-- The same comparison for a container running the author's
+             pinned image. Its own banner: that image is not out of
+             date, and a rebuild would replace it. -->
+        <div id="pinnedEnvironmentDriftBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"
              style="display: none;"></div>
         <!-- Running CPU or memory limits that differ from vaibify.yml.

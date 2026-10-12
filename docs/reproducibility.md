@@ -281,6 +281,13 @@ the archived image. New results come from a different environment,
 though, so regenerate the envelope and verify again before mixing them
 with older ones.
 
+A container running the author's pinned image never shows that banner.
+If its settings differ from the ones the pinned image was built from,
+leaving aside the coding agents vaibify added on top of it, it shows
+**This environment's settings differ from the author's pinned image**
+instead. The pinned image defines that environment, so do not rebuild
+to apply the settings: a rebuild replaces the author's environment.
+
 ### When a pinned toolchain version disappears
 
 If a build stops with "the pinned compiler toolchain is no longer
