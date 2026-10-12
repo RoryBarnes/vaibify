@@ -75,8 +75,12 @@ def fiDaemonFreeDiskBytes(fnRun=subprocess.run):
 
     Runs ``df`` inside an image the daemon already holds; the first
     image whose ``df`` answers decides. An image with no ``df`` is
-    skipped, and no answering image means no answer.
+    skipped, and no answering image means no answer. A probe the
+    daemon refused for want of space is the measurement itself, and
+    answers zero: skipping it reported the one disk this check exists
+    for as unmeasured.
     """
+    from vaibify.docker.dockerErrorDiagnosis import fbErrorIsDiskFull
     for sImageId in _flistLocalImageIds(fnRun):
         try:
             processDf = fnRun(
@@ -88,6 +92,8 @@ def fiDaemonFreeDiskBytes(fnRun=subprocess.run):
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return -1
         if processDf.returncode != 0:
+            if fbErrorIsDiskFull(processDf.stderr):
+                return 0
             continue
         iBytes = fiParseAvailableBytesFromDf(processDf.stdout)
         if iBytes >= 0:

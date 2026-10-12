@@ -22148,7 +22148,7 @@ LIST_FALSIFICATIONS = [
         ),
         # the disk branch is gone; the banner's own words are the sentence
         source='vaibify/docker/dockerErrorDiagnosis.py',
-        old='    if "no space left on device" in sLower:\n        # Judged before every other cause',
+        old='    if fbErrorIsDiskFull(sLower):\n        # Judged before every other cause',
         new='    if False:\n        # Judged before every other cause',
     ),
     Falsification(
@@ -27967,8 +27967,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/buildRoutes.py',
         # the acquisition message is cut the way the build one is
-        old='        f"{error}"\n',
-        new='        f"{str(error)[:240]}"\n',
+        old='    return f"{sFailed}: {error}"\n',
+        new='    return f"{sFailed}: {str(error)[:240]}"\n',
     ),
     Falsification(
         nodeid=(
@@ -30955,7 +30955,7 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/buildRoutes.py',
         # the toast names the command and drops Docker's reason
-        old='    if listDecisive:\n',
+        old='    if sDecisive:\n',
         new='    if False:\n',
     ),
     Falsification(
@@ -31080,5 +31080,46 @@ LIST_FALSIFICATIONS = [
         # the host's note is trusted without asking the daemon
         old='    if not dictHeld or dictHeld.get("sId") != sLoadedId:\n',
         new='    if False:\n',
+    ),
+    # --- 2026-10-11: a full daemon disk is named before an obtain, and after one fails ---
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_pull_that_ran_out_of_disk_is_named_a_full_disk_not_an_unbuilt_image'
+        ),
+        # a pull that could not write is called an image nobody built
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    if fbErrorIsDiskFull(sLower):\n        # First: a pull',
+        new='    if False:\n        # First: a pull',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_acquisition_that_filled_the_daemon_disk_names_the_remedy'
+        ),
+        # the chain's refusal is reported untranslated, with no remedy
+        source='vaibify/gui/buildRoutes.py',
+        old='    if fbErrorIsDiskFull(f"{error}\\n{sStderrTail}"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBBuild.py::'
+            'testAcquireIsRefusedBeforeAnythingIsObtainedWhenTheDaemonDiskIsFull'
+        ),
+        # the acquire route never asks the disk
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseAcquisitionWhenDaemonDiskIsFull)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDaemonDiskPreflight.py::'
+            'test_a_probe_the_daemon_refuses_for_want_of_space_is_a_full_disk'
+        ),
+        # a probe refused for want of space is skipped as one with no df
+        source='vaibify/cli/daemonDiskPreflight.py',
+        old='            if fbErrorIsDiskFull(processDf.stderr):\n                return 0\n',
+        new='',
     ),
 ]

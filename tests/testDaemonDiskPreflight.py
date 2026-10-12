@@ -71,8 +71,10 @@ def _fnRunFake(dictAnswers):
         if listCommand[:2] == ["docker", "images"]:
             return SimpleNamespace(returncode=0, stdout=dictAnswers["images"])
         sImageId = listCommand[5]
-        iCode, sStdout = dictAnswers[sImageId]
-        return SimpleNamespace(returncode=iCode, stdout=sStdout)
+        iCode, sStdout, *listStderr = dictAnswers[sImageId]
+        return SimpleNamespace(
+            returncode=iCode, stdout=sStdout, stderr="".join(listStderr),
+        )
 
     fnRun.listCalls = listCalls
     return fnRun
@@ -87,6 +89,29 @@ def test_the_probe_runs_df_inside_a_local_image_and_skips_one_without_df():
     assert fiDaemonFreeDiskBytes(fnRun) == 0
     assert fnRun.listCalls[1][:5] == ["docker", "run", "--rm", "--entrypoint", "df"]
     assert [listCall[5] for listCall in fnRun.listCalls[1:]] == ["aaa", "bbb"]
+
+
+@pytest.mark.falsification
+def test_a_probe_the_daemon_refuses_for_want_of_space_is_a_full_disk():
+    """The daemon's refusal to create the probe IS the measurement.
+
+    On a disk with no room left, ``docker run`` fails before ``df``
+    can answer. Read as "no image answered", the one disk this check
+    exists for was reported as not measured and the build went ahead.
+
+    Kills: skipping a probe the daemon refused for want of space the
+    way one with no ``df`` is skipped.
+    """
+    fnRun = _fnRunFake({
+        "images": "aaa\nbbb\n",
+        "aaa": (125, "", "docker: Error response from daemon: mkdir "
+                "/var/lib/docker/containers/x: no space left on device."),
+        "bbb": (0, S_DF_ROOMY),
+    })
+    assert fiDaemonFreeDiskBytes(fnRun) == 0
+    assert fpreflightDaemonFreeDisk(
+        lambda: fiDaemonFreeDiskBytes(fnRun),
+    ).sLevel == S_LEVEL_FAIL
 
 
 def test_no_local_image_or_no_docker_is_no_answer():

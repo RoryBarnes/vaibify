@@ -456,6 +456,100 @@ def test_a_full_disk_uses_the_runtime_remedy_not_a_blanket_prune():
     assert "system prune -a" in dictDiagnosis["sHint"]
 
 
+S_PULL_THAT_RAN_OUT_OF_DISK = (
+    "docker create failed: Unable to find image 'example:latest' locally "
+    "latest: Pulling from example docker: failed to register layer: "
+    "write /usr/lib/x86_64-linux-gnu/libLLVM.so.18: no space left on device"
+)
+
+
+@pytest.mark.falsification
+def test_a_pull_that_ran_out_of_disk_is_named_a_full_disk_not_an_unbuilt_image():
+    """A full disk is judged before any other cause, here as in a build.
+
+    ``docker run`` of an image the daemon lacks pulls it first, so a
+    pull that could not write carries "Unable to find image" ahead of
+    the reason. Read in the catalog's old order, a researcher whose
+    daemon disk was full was told to build an image they had.
+
+    Kills: dropping the disk check that stands ahead of the
+    image-not-built patterns, under which this text is explained as an
+    image nobody built.
+    """
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        S_PULL_THAT_RAN_OUT_OF_DISK, "proj",
+        dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA),
+    )
+    assert "not been built" not in dictDiagnosis["sHint"]
+    assert "disk is full" in dictDiagnosis["sHint"]
+    assert dictDiagnosis["sCommand"] == "docker builder prune"
+
+
+@pytest.mark.parametrize("sDaemonText", [
+    "npm ERR! code ENOSPC npm ERR! syscall write",
+    "Error: failed to write session file (os error 28)",
+    "OSError: [Errno 28] while writing /home/researcher/.cache/x",
+    "write /var/lib/docker/tmp/GetImageBlob1: No Space Left On Device",
+])
+def test_every_spelling_of_a_full_disk_is_recognized(sDaemonText):
+    """Docker's own text, a container program's errno, and Node's code.
+
+    Recognized by the message's pattern, never by a status code: the
+    same 500 carries every daemon failure there is.
+    """
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        sDaemonText, "proj", dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA),
+    )
+    assert dictDiagnosis["sCommand"] == "docker builder prune"
+
+
+@pytest.mark.parametrize("sDaemonText", [
+    "OSError: [Errno 280] something unrelated",
+    "FileNotFoundError: [Errno 2] No such file or directory: 'x'",
+    "listening on 0.0.0.0:28080",
+])
+def test_a_number_that_merely_contains_28_is_not_a_full_disk(sDaemonText):
+    dictDiagnosis = fdictDiagnoseContainerOperationError(
+        sDaemonText, "proj", dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA),
+    )
+    assert dictDiagnosis is None or (
+        dictDiagnosis["sCommand"] != "docker builder prune"
+    )
+
+
+def test_a_daemon_that_failed_for_a_full_disk_is_told_to_reclaim_not_restart():
+    """The init catalog reads journal and hostagent-log lines too."""
+    dictDiagnosis = fdictDiagnoseDockerError(
+        "failed to start daemon: write /var/lib/docker/engine-id: no "
+        "space left on device",
+        dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA, "default"),
+    )
+    assert dictDiagnosis["sCommand"] == "docker builder prune"
+    assert "disk is full" in dictDiagnosis["sHint"]
+
+
+def test_the_full_disk_remedy_says_what_holds_the_space_and_how_to_grow_it():
+    """Reclaim first; enlarging is the runtime's own sentence, or no guess."""
+    sError = "write /var/lib/docker/x: no space left on device"
+    dictColima = fdictDiagnoseContainerOperationError(
+        sError, "proj", dictRuntime=_fdictRuntime(S_RUNTIME_COLIMA, "gpu"),
+    )
+    assert "docker system df" in dictColima["sHint"]
+    assert "colima start --profile gpu --disk" in dictColima["sHint"]
+    with patch("vaibify.docker.runtimeRemedies.sys.platform", "darwin"):
+        dictDesktop = fdictDiagnoseContainerOperationError(
+            sError, "proj",
+            dictRuntime=_fdictRuntime(S_RUNTIME_DOCKER_DESKTOP),
+        )
+    assert "Virtual disk limit" in dictDesktop["sHint"]
+    dictUnknown = fdictDiagnoseContainerOperationError(
+        sError, "proj", dictRuntime=_fdictRuntime(S_RUNTIME_UNKNOWN),
+    )
+    assert "enlarge the daemon's disk" in dictUnknown["sHint"]
+    assert "colima" not in dictUnknown["sHint"].lower()
+    assert dictUnknown["sCommand"] == "docker builder prune"
+
+
 def test_unrecognised_daemon_text_is_not_guessed_at():
     assert fdictDiagnoseContainerOperationError(
         "docker create failed: something entirely new", "proj",

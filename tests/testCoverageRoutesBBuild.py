@@ -197,6 +197,48 @@ def testAcquireSuccessRecordsLinesAndReturnsTheOrigin(
     assert dictProgress["saTailLines"] == ["pulling layer one"]
 
 
+@pytest.mark.falsification
+def testAcquireIsRefusedBeforeAnythingIsObtainedWhenTheDaemonDiskIsFull(
+    clientBuild, tmp_path, monkeypatch,
+):
+    """Obtaining loads gigabytes and then builds the agent overlays.
+
+    Kills: dropping the disk refusal from the acquire route, under
+    which the image is downloaded, loaded and stacked onto a disk that
+    cannot hold it (2026-10-11: a full daemon disk was first noticed
+    by an agent inside the started container).
+
+    507, never the build route's 409: the dashboard reads a 409 from
+    this route that names no action as an acquisition already running,
+    and would attach to a progress record that does not exist.
+    """
+    from vaibify.cli import daemonDiskPreflight
+    from vaibify.docker import pinnedImageAcquisition
+    fdictWriteProjectEntry(tmp_path, bObtained=True)
+    fnSetContainerStatus(
+        monkeypatch, {"bExists": False, "bRunning": False, "sStatus": ""},
+    )
+    listAcquisitions = []
+    monkeypatch.setattr(
+        pinnedImageAcquisition, "fdictAcquireForProject",
+        lambda *aArgs, **dictArgs: listAcquisitions.append(aArgs),
+    )
+    monkeypatch.setattr(
+        daemonDiskPreflight, "fiDaemonFreeDiskBytes", lambda: 0,
+    )
+    responseHttp = clientBuild.post(
+        f"/api/containers/{S_PROJECT_NAME}/acquire-image",
+    )
+    assert responseHttp.status_code == 507, responseHttp.text
+    dictDetail = responseHttp.json()["detail"]
+    assert "0.0 GB free" in dictDetail["sMessage"]
+    assert "docker builder prune" in dictDetail["sMessage"]
+    assert dictDetail["sRefusal"] == buildRoutes.S_REFUSAL_DAEMON_DISK_FULL
+    assert "sAction" not in dictDetail
+    assert listAcquisitions == []
+    assert S_PROJECT_NAME not in buildRoutes._DICT_BUILD_PROGRESS
+
+
 def testAcquireFailureClosesTheRecordAndCarriesTheAction(
     clientBuild, tmp_path, monkeypatch,
 ):

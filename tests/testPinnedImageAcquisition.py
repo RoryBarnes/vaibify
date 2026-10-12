@@ -1446,6 +1446,81 @@ def test_a_failed_stacking_stage_shows_what_docker_said():
     assert dictDetail["sStderrTail"] == errorBuild.sStderrTail
 
 
+def _fnClassifyTheRuntimeAsColima(monkeypatch):
+    """Answer the runtime question without asking this machine's daemon."""
+    from vaibify.docker import dockerContext
+    monkeypatch.setattr(dockerContext, "fdictClassifyDockerRuntime", lambda: {
+        "sRuntime": dockerContext.S_RUNTIME_COLIMA, "sContextName": "colima",
+        "sEndpoint": "", "sColimaProfile": "default", "bDaemonAnswered": True,
+    })
+
+
+@pytest.mark.falsification
+def test_an_acquisition_that_filled_the_daemon_disk_names_the_remedy(
+    monkeypatch,
+):
+    """The obtain lane reports a full daemon disk with what to do about it.
+
+    A researcher obtained an author's pinned image, stacked agents on
+    it, and filled the daemon's disk; nothing on the way named it, and
+    the next thing to notice was an agent inside the container printing
+    "No space left on device" (2026-10-11).
+
+    Kills: the acquisition formatter reporting the chain's refusal
+    untranslated, with no remedy in the sentence.
+    """
+    _fnClassifyTheRuntimeAsColima(monkeypatch)
+    errorRefused = PinnedImageAcquisitionRefusedError(
+        "the pinned image could not be obtained. Links tried: archived "
+        "deposit: failed (the daemon could not load the archived image: "
+        "APIError: 500 Server Error: write /var/lib/containerd/io.containerd"
+        ".content.v1.content/ingest/x/data: no space left on device)."
+    )
+    sMessage = buildRoutes._fdictAcquisitionFailureDetail(
+        errorRefused, "proj")["sMessage"]
+    assert sMessage.startswith(
+        "Obtaining the author's pinned image for 'proj' failed. The Docker "
+        "daemon's disk is full."
+    )
+    assert "Command: docker builder prune" in sMessage
+    assert "(Docker said: the pinned image could not be obtained." in sMessage
+    assert "archived deposit: failed" in sMessage
+
+
+def test_a_stacking_stage_that_ran_out_of_disk_names_the_remedy(monkeypatch):
+    _fnClassifyTheRuntimeAsColima(monkeypatch)
+    errorBuild = RuntimeError(
+        "Docker command failed (exit 1): docker buildx build -f x"
+    )
+    errorBuild.sStderrTail = (
+        "#7 0.402 mkdir: cannot create directory '/home/researcher/.codex':"
+        " No space left on device\n"
+        "ERROR: failed to solve: process did not complete successfully\n"
+    )
+    sMessage = buildRoutes._fdictAcquisitionFailureDetail(
+        errorBuild, "proj")["sMessage"]
+    assert "The Docker daemon's disk is full." in sMessage
+    assert "Command: docker builder prune" in sMessage
+    assert "No space left on device" in sMessage.split("(Docker said:", 1)[1]
+
+
+def test_a_full_disk_on_this_machine_is_never_blamed_on_docker(monkeypatch):
+    """The deposit lands on THIS machine before the daemon sees a byte.
+
+    A host write that ran out of room raises the same words Docker
+    does, and pruning Docker frees nothing on the filesystem that is
+    full -- on Colima or Docker Desktop it is a different disk.
+    """
+    import errno
+    _fnClassifyTheRuntimeAsColima(monkeypatch)
+    errorHost = OSError(errno.ENOSPC, "No space left on device")
+    sMessage = buildRoutes._fdictAcquisitionFailureDetail(
+        errorHost, "proj")["sMessage"]
+    assert "own machine's filesystem" in sMessage
+    assert "docker builder prune" not in sMessage
+    assert "Docker daemon's disk is full" not in sMessage
+
+
 @pytest.mark.falsification
 def test_the_files_a_conversion_chose_stay_pending_until_copied(tmp_path):
     """Kills: seeding from the request instead of the recorded choice.

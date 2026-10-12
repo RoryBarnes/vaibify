@@ -167,14 +167,16 @@ def _flistConfigurationPreflights():
     ]
 
 
-def _fnRefuseOnFailedPreflight(preflightResult, sRefusal):
+def _fnRefuseOnFailedPreflight(preflightResult, sRefusal, iStatus=409):
     """409 a build on a failed preflight; log anything weaker and go on.
 
     The refusal carries a CODE because the dashboard reads a bare 409
     from this route as "a build is already running" and attaches to it:
     a refusal that is not a build must say so or it renders as one. A
     not-checked answer -- an index, archive or remote that could not be
-    asked -- is never a refusal.
+    asked -- is never a refusal. ``iStatus`` exists for the acquire
+    route, whose page reads a 409 naming no action the same way and
+    has no reader of the code.
     """
     from vaibify.cli.preflightResult import S_LEVEL_FAIL
     if preflightResult is None:
@@ -182,7 +184,7 @@ def _fnRefuseOnFailedPreflight(preflightResult, sRefusal):
     if preflightResult.sLevel != S_LEVEL_FAIL:
         logger.info("Build preflight: %s", preflightResult.sMessage)
         return
-    raise HTTPException(409, detail={
+    raise HTTPException(iStatus, detail={
         "sMessage": (
             f"{preflightResult.sMessage} {preflightResult.sRemediation}"
         ),
@@ -216,6 +218,22 @@ def _fnRefuseWhenDaemonDiskIsFull():
     from vaibify.cli.daemonDiskPreflight import fpreflightDaemonFreeDisk
     _fnRefuseOnFailedPreflight(
         fpreflightDaemonFreeDisk(), S_REFUSAL_DAEMON_DISK_FULL,
+    )
+
+
+def _fnRefuseAcquisitionWhenDaemonDiskIsFull():
+    """507 an acquisition the daemon's disk cannot hold, before a byte moves.
+
+    Obtaining loads the pinned image into the daemon and then BUILDS
+    the agent overlays on it, so it needs the room a build needs (a
+    full daemon disk was first noticed by an agent inside the started
+    container, 2026-10-11). The status is 507 because the page reads a
+    409 from this route that names no action as an acquisition already
+    running, and would attach to a progress record that does not exist.
+    """
+    from vaibify.cli.daemonDiskPreflight import fpreflightDaemonFreeDisk
+    _fnRefuseOnFailedPreflight(
+        fpreflightDaemonFreeDisk(), S_REFUSAL_DAEMON_DISK_FULL, iStatus=507,
     )
 
 
@@ -311,6 +329,7 @@ def _fnRegisterAcquireImage(app, dictCtx):
             await asyncio.to_thread(_fdictContainerStatusOrNone, dictProject),
             "Obtaining the pinned image",
         )
+        await asyncio.to_thread(_fnRefuseAcquisitionWhenDaemonDiskIsFull)
         dictProgress = _fdictOpenBuildProgress(sName)
         try:
             dictOrigin = await asyncio.to_thread(
@@ -319,9 +338,9 @@ def _fnRegisterAcquireImage(app, dictCtx):
             )
         except Exception as error:
             logger.error("Acquisition failed for %s: %s", sName, error)
-            raise HTTPException(
-                500, detail=_fdictAcquisitionFailureDetail(error, sName),
-            )
+            raise HTTPException(500, detail=await asyncio.to_thread(
+                _fdictAcquisitionFailureDetail, error, sName,
+            ))
         return {
             "bSuccess": True, "sMessage": "Image obtained",
             "dictImageOrigin": dictOrigin,
@@ -549,20 +568,62 @@ def _fdictAcquisitionFailureDetail(error, sName):
     When an overlay stage's build failed, the error names only the
     command; Docker's decisive lines are appended untranslated, since
     the build catalog's hints speak of vaibify.yml and the pinned image
-    is not built from it.
+    is not built from it. A full disk is the one cause translated here,
+    because its remedy is the same whatever wrote the bytes.
     """
-    from vaibify.docker.dockerErrorDiagnosis import flistDecisiveBuildLines
     sStderrTail = str(getattr(error, "sStderrTail", "") or "")
-    sMessage = (
-        f"Obtaining the author's pinned image for '{sName}' failed: "
-        f"{error}"
-    )
-    listDecisive = flistDecisiveBuildLines(sStderrTail, 3)
-    if listDecisive:
-        sMessage += " (Docker said: " + " | ".join(listDecisive) + ")"
     return {
-        "sMessage": sMessage,
+        "sMessage": _fsExplainAcquisitionFailure(error, sName, sStderrTail),
         "sError": str(error),
         "sStderrTail": sStderrTail,
         "sAction": str(getattr(error, "sAction", "") or ""),
     }
+
+
+def _fsExplainAcquisitionFailure(error, sName, sStderrTail):
+    """Return the sentence a researcher reads for a failed acquisition.
+
+    WHOSE disk is full is decided before the daemon's is assumed: the
+    deposit lands on this machine before the daemon sees a byte, a host
+    write that ran out of room says the same words Docker does, and
+    pruning Docker frees nothing on a host disk that is full.
+    """
+    from vaibify.docker.dockerErrorDiagnosis import (
+        fbErrorIsDiskFull, fdictDiagnoseDaemonDiskFull,
+        flistDecisiveBuildLines,
+    )
+    from vaibify.docker.runtimeRemedies import (
+        S_SITUATION_MORE_HOST_DISK, ftRemedyForSituation,
+    )
+    sFailed = f"Obtaining the author's pinned image for '{sName}' failed"
+    sDecisive = " | ".join(flistDecisiveBuildLines(sStderrTail, 3))
+    if _fbHostWriteRanOutOfRoom(error):
+        sRemedy, _ = ftRemedyForSituation(S_SITUATION_MORE_HOST_DISK, None)
+        return f"{sFailed}. {sRemedy} (the write failed: {error})"
+    if fbErrorIsDiskFull(f"{error}\n{sStderrTail}"):
+        dictDiagnosis = fdictDiagnoseDaemonDiskFull()
+        sEvidence = " | ".join(filter(None, [str(error), sDecisive]))
+        return (
+            f"{sFailed}. {dictDiagnosis['sHint']} Command: "
+            f"{dictDiagnosis['sCommand']} (Docker said: {sEvidence})"
+        )
+    if sDecisive:
+        return f"{sFailed}: {error} (Docker said: {sDecisive})"
+    return f"{sFailed}: {error}"
+
+
+def _fbHostWriteRanOutOfRoom(error):
+    """True if THIS process's own write failed for want of space.
+
+    Read from the exception, never from its text, which is the same
+    whichever disk was full. A daemon's refusal arrives as an SDK or
+    subprocess error carrying no ``errno``.
+    """
+    import errno
+    setSeen = set()
+    while error is not None and id(error) not in setSeen:
+        if isinstance(error, OSError) and error.errno == errno.ENOSPC:
+            return True
+        setSeen.add(id(error))
+        error = error.__cause__ or error.__context__
+    return False

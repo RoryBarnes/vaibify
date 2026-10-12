@@ -32,7 +32,57 @@ __all__ = [
     "fdictDiagnoseDockerError", "fdictDiagnoseContainerOperationError",
     "fsExplainContainerOperationFailure", "flistDecisiveBuildLines",
     "fdictDiagnoseBuildFailure", "fsExplainBuildFailure",
+    "fbErrorIsDiskFull", "fdictDiagnoseDaemonDiskFull",
 ]
+
+
+# ENOSPC is 28 on Linux and macOS alike. Docker and Go say the phrase;
+# a program inside the container may say only its errno (Python's
+# "[Errno 28]", Rust's "(os error 28)") or Node's code.
+_RE_DISK_FULL = re.compile(
+    r"no space left|\benospc\b|(?:errno|os error)\s*28\b", re.IGNORECASE,
+)
+
+
+def fbErrorIsDiskFull(sError):
+    """True if the text says a write failed because a disk had no room."""
+    return bool(_RE_DISK_FULL.search(sError or ""))
+
+
+def fdictDiagnoseDaemonDiskFull(
+    dictRuntime=None, sCause="The Docker daemon's disk is full.",
+):
+    """Return ``{sHint, sCommand}`` for a Docker daemon with no room left.
+
+    Reclaiming is the command, because it costs nothing an envelope
+    pins. Enlarging the disk is the runtime's own sentence, and an
+    unidentified runtime is told only that it can be done -- a guessed
+    ``colima`` command on Docker Desktop is the failure the remedy
+    catalog exists to prevent.
+    """
+    from .dockerContext import S_RUNTIME_UNKNOWN
+    from .runtimeRemedies import (
+        S_SITUATION_MORE_DAEMON_DISK, S_SITUATION_RECLAIM_DISK,
+        ftRemedyForSituation,
+    )
+    dictRuntime = _fdictResolveRuntime(dictRuntime)
+    sReclaim, sCommand = ftRemedyForSituation(
+        S_SITUATION_RECLAIM_DISK, dictRuntime,
+    )
+    sHint = f"{sCause} `docker system df` shows what holds it. {sReclaim}"
+    if dictRuntime.get("sRuntime", S_RUNTIME_UNKNOWN) == S_RUNTIME_UNKNOWN:
+        return {
+            "sHint": sHint + " If that is not enough, enlarge the "
+                             "daemon's disk.",
+            "sCommand": sCommand,
+        }
+    sEnlarge, sEnlargeCommand = ftRemedyForSituation(
+        S_SITUATION_MORE_DAEMON_DISK, dictRuntime,
+    )
+    sHint += f" If that is not enough: {sEnlarge}"
+    if sEnlargeCommand:
+        sHint += f" ({sEnlargeCommand})"
+    return {"sHint": sHint, "sCommand": sCommand}
 
 
 def fdictDiagnoseDockerError(
@@ -53,6 +103,8 @@ def fdictDiagnoseDockerError(
     on the branches that need it, so the common paths cost nothing.
     """
     sLower = (sError or "").lower()
+    if fbErrorIsDiskFull(sLower):
+        return fdictDiagnoseDaemonDiskFull(dictRuntime)
     if "in use by instance" in sLower:
         return _fdictColimaStaleLockDiagnosis(
             _fdictResolveRuntime(dictRuntime),
@@ -316,6 +368,11 @@ def fdictDiagnoseContainerOperationError(
     sLower = (sError or "").lower()
     if not sLower:
         return None
+    if fbErrorIsDiskFull(sLower):
+        # First: a pull that could not write leads with "Unable to find
+        # image", and a create that could not write with whatever the
+        # daemon was doing when the disk ran out.
+        return fdictDiagnoseDaemonDiskFull(dictRuntime)
     if (
         "unable to find image" in sLower
         or "pull access denied" in sLower
@@ -331,11 +388,6 @@ def fdictDiagnoseContainerOperationError(
         "invalid mount config" in sLower
     ):
         return _fdictMountSourceMissingDiagnosis()
-    if "no space left on device" in sLower:
-        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
-        return _fdictRuntimeRemedy(
-            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
-        )
     if _fbErrorIsDaemonUnreachable(sLower):
         return _fdictDaemonUnreachableDiagnosis(
             _fdictResolveRuntime(dictRuntime),
@@ -369,6 +421,7 @@ _RE_BUILDKIT_LINE_PREFIX = re.compile(r"^#\d+\s+(?:\d+\.\d+\s+)?")
 _T_BUILD_DECISIVE_MARKERS = (
     "this build stopped on purpose", "e: ", "error", "could not resolve",
     "temporary failure resolving", "failed to fetch", "no space left",
+    "enospc", "errno 28",
     "pull access denied", "not found", "unable to locate package",
     "no matching distribution", "could not find a version",
     "did not complete successfully", "returned a non-zero code",
@@ -431,22 +484,14 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
     sLower = "\n".join(flistDecisiveBuildLines(sStderrTail, 200)).lower()
     if not sLower:
         return None
-    if "no space left on device" in sLower:
+    if fbErrorIsDiskFull(sLower):
         # Judged before every other cause: a step that could not write
         # fails in whatever way it fails, and its own banner may blame
         # the network (an overlay installer did, 2026-09-21).
-        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
-        dictRemedy = _fdictRuntimeRemedy(
-            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
-        )
-        return {
-            "sHint": (
-                "The Docker daemon's disk is full, so the failing step "
-                "could not write; whatever else that step printed follows "
-                f"from that. {dictRemedy['sHint']}"
-            ),
-            "sCommand": dictRemedy["sCommand"],
-        }
+        return fdictDiagnoseDaemonDiskFull(dictRuntime, sCause=(
+            "The Docker daemon's disk is full, so the failing step could "
+            "not write; whatever else that step printed follows from that."
+        ))
     if "this build stopped on purpose" in sLower or "toolchain" in sLower:
         return {
             "sHint": (
@@ -486,11 +531,6 @@ def fdictDiagnoseBuildFailure(sStderrTail, sProjectName, dictRuntime=None):
             ),
             "sCommand": "vaibify doctor",
         }
-    if "no space left" in sLower:
-        from .runtimeRemedies import S_SITUATION_RECLAIM_DISK
-        return _fdictRuntimeRemedy(
-            S_SITUATION_RECLAIM_DISK, _fdictResolveRuntime(dictRuntime),
-        )
     if "pull access denied" in sLower or "manifest unknown" in sLower:
         return {
             "sHint": (
