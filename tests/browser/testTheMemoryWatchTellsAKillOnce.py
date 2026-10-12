@@ -20,6 +20,11 @@ measure", a held kill after its banner is dismissed, and "near" after
 its toast is closed. Hiding is ``display: none``, so a hidden chip has
 no box and leaves no gap in the toolbar.
 
+Before the first measurement since opening, the chip reads "Checking
+Memory" -- neutral and pulsing, not the gray "could not tell" -- and
+the SERVER decides it, so those journeys are answered with the
+server's own description of an opening, never a hand-written one.
+
 WHAT THIS DOES NOT COVER: the sampler, the kernel counters and the
 route, which ``testContainerMemoryWatch*.py`` drive (the live file
 against a real daemon); and whether the chip is legible in every
@@ -27,10 +32,12 @@ browser's rendering of the toolbar, which is checked by hand.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from tests.browser.fakeDockerAdapter import S_CONTAINER_ID, S_CONTAINER_NAME
+from vaibify.gui import containerMemoryWatch
 from tests.browser.filesLane import fixtureDropClaimsBetweenJourneys  # noqa: F401
 
 
@@ -70,6 +77,24 @@ def _fdictAnswer(sLevel="ok", listIncidents=None, sNearSinceIso=""):
             "sNearSinceIso": sNearSinceIso,
         },
     }
+
+
+DT_OPENED = datetime(2026, 10, 12, 9, 0, 0, tzinfo=timezone.utc)
+
+
+def _fdictServerAnswerAfterOpening(fSeconds):
+    """The hub's own answer for an opening not yet measured, fSeconds in."""
+    dictStore = containerMemoryWatch.fdictCreateMemoryStore()
+    containerMemoryWatch.fnNoteWatchBegan(
+        dictStore, S_CONTAINER_NAME, DT_OPENED)
+    return containerMemoryWatch.fdictDescribeMemory(
+        dictStore, S_CONTAINER_NAME, DT_OPENED + timedelta(seconds=fSeconds))
+
+
+def _fsChipStyle(page, sProperty):
+    return page.evaluate(
+        "(sProperty) => getComputedStyle(document.getElementById("
+        "'memoryWatchChip'))[sProperty]", sProperty)
 
 
 def _fdictKill():
@@ -343,4 +368,58 @@ def testAnUnreachableMemoryWatchShowsTheUnknownChip(pageDashboard, serverHub):
     assert pageDashboard.get_attribute("#memoryWatchChip", "title") == (
         "Memory could not be checked: this dashboard could not reach the "
         "hub's memory watch.")
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAJustOpenedContainerReadsCheckingMemoryThenNothing(
+    pageDashboard, serverHub,
+):
+    """Kills: treating the server's "pending" as a quiet state.
+
+    Pending is shown, neutral and pulsing -- neither hidden (nothing is
+    known yet) nor the gray italic "could not tell" (nothing failed).
+    The first quiet measurement then takes the chip away, live.
+    """
+    dictHolder = {"dictAnswer": _fdictServerAnswerAfterOpening(5)}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    _fnAssertChipShows(pageDashboard, "Checking Memory")
+    assert pageDashboard.get_attribute(
+        "#memoryWatchChip", "data-level") == "pending"
+    assert _fsChipStyle(pageDashboard, "fontStyle") == "normal"
+    assert _fsChipStyle(pageDashboard, "animationName") == "pulse"
+    dictHolder["dictAnswer"] = _fdictAnswer(sLevel="ok")
+    _fnWaitForTheNextPoll(pageDashboard, listRequests)
+    assert _fbChipHasNoBox(pageDashboard), (
+        "the chip stayed after the first quiet measurement")
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAPendingThatOutlastsItsWindowReadsMemoryUnknown(
+    pageDashboard, serverHub,
+):
+    """Kills: the page deciding "Checking Memory" from the measurement state.
+
+    Only the server's level says pending. Past its window the server
+    says it could not measure, and the chip must show that warning even
+    though nothing has been measured yet.
+    """
+    dictHolder = {"dictAnswer": _fdictServerAnswerAfterOpening(5)}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    _fnAssertChipShows(pageDashboard, "Checking Memory")
+    dictOverdue = _fdictServerAnswerAfterOpening(
+        containerMemoryWatch.F_MEMORY_STALE_AFTER_SECONDS + 1)
+    dictHolder["dictAnswer"] = dictOverdue
+    _fnWaitForTheNextPoll(pageDashboard, listRequests)
+    _fnAssertChipShows(pageDashboard, "Memory unknown")
+    assert pageDashboard.get_attribute(
+        "#memoryWatchChip", "data-level") == "unknown"
+    assert pageDashboard.get_attribute("#memoryWatchChip", "title") == (
+        dictOverdue["dictCurrent"]["sSentence"])
+    assert _fsChipStyle(pageDashboard, "fontStyle") == "italic"
     assert pageDashboard.listPageErrors == []

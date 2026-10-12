@@ -17,7 +17,10 @@
 
    The chip appears only while one of those warnings holds -- a kill,
    "near", the server's "unknown", or this page failing to reach the
-   hub -- and is absent while memory is measured and below the limit. */
+   hub -- or while the server says "pending" ("Checking Memory": the
+   container has not been measured since it was opened, which the
+   server alone decides and bounds). It is absent while memory is
+   measured and below the limit. */
 
 var VaibifyMemoryWatch = (function () {
     "use strict";
@@ -103,8 +106,9 @@ var VaibifyMemoryWatch = (function () {
 
     /* The chip speaks only when there is something to say: a kill the
        hub still holds, or any level other than the server's "ok" --
-       "near", "unknown", or one this page does not know, which shows
-       rather than hides. Measured and below the limit, it is absent. */
+       "near", "unknown", "pending", or one this page does not know,
+       which shows rather than hides. Measured and below the limit, it
+       is absent. */
     function _fbChipHasSomethingToSay(dictMemory) {
         var dictCurrent = dictMemory.dictCurrent || {};
         if (!dictCurrent.sChipText) return false;

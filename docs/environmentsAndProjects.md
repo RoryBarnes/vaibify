@@ -448,7 +448,10 @@ every 15 seconds.
 
 The **memory chip** beside the environment name appears only when
 there is something to warn about; while memory is measured and below
-the limit, the toolbar shows nothing. When it appears it reads, for
+the limit, the toolbar shows nothing. Just after you open an
+environment, before the hub's first measurement of it, it reads
+**Checking Memory** (neutral, pulsing); if no measurement arrives
+within 45 seconds it turns gray, as below. When it warns it reads, for
 example, "Memory ~5.2 / 6 GB": memory in use, less the file cache the
 kernel would reclaim first (the figure `docker stats` reports), against
 the limit. It appears **amber**, with one warning toast, at 85% of the

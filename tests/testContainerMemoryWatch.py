@@ -16,6 +16,7 @@ import asyncio
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -278,6 +279,132 @@ def testAHostProjectIsNotWatched():
         watch.fdictCreateMemoryStore(), S_NAME, DT_START, bHostProject=True)
     assert dictDescribed["dictCurrent"]["sLevel"] == (
         watch.S_LEVEL_NOT_APPLICABLE)
+
+
+# ---------------------------------------------------------------------
+# An opening awaiting its first measurement: pending, then bounded
+# ---------------------------------------------------------------------
+
+def _fdatetimeAfterOpening(fSeconds):
+    return DT_START + timedelta(seconds=fSeconds)
+
+
+@pytest.mark.falsification
+def testAnOpeningAwaitingItsFirstMeasurementIsPendingNotUnknown():
+    """Kills: reading a container not yet measured as "could not measure".
+
+    Nothing has failed in the seconds after a container is opened; a
+    warning there is a false alarm (researcher ruling, 2026-10-12).
+    """
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    dictCurrent = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(5))["dictCurrent"]
+    assert dictCurrent["sLevel"] == watch.S_LEVEL_PENDING
+    assert dictCurrent["bAwaitingFirstSample"] is True
+    assert dictCurrent["sChipText"] == "Checking Memory"
+    assert not dictCurrent["sSentence"].startswith(
+        "Memory could not be checked")
+
+
+@pytest.mark.falsification
+def testAFirstMeasurementOverdueReadsCouldNotMeasure():
+    """Kills: a pending window that never closes.
+
+    The window is the tolerance a measurement already has before it
+    reads stale; past it, a sampler that never ran must read unknown.
+    """
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    fWindow = watch.F_MEMORY_STALE_AFTER_SECONDS
+    dictAtEdge = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(fWindow))["dictCurrent"]
+    assert dictAtEdge["sLevel"] == watch.S_LEVEL_PENDING
+    dictCurrent = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(fWindow + 1))["dictCurrent"]
+    assert dictCurrent["sLevel"] == watch.S_LEVEL_UNKNOWN
+    assert dictCurrent["bAwaitingFirstSample"] is False
+    assert dictCurrent["sChipText"] == "Memory unknown"
+    assert dictCurrent["sSentence"].startswith("Memory could not be checked:")
+
+
+@pytest.mark.falsification
+def testEveryPollLeavesTheOpeningStampWhereItWas():
+    """Kills: re-stamping the opening on every read.
+
+    The dashboard polls every ten seconds, so a stamp each read moved
+    would keep the window open, and the chip "checking", for ever.
+    """
+    dictStore = watch.fdictCreateMemoryStore()
+    for fSeconds in (0, 10, 20, 30, 40):
+        watch.fnNoteWatchBegan(
+            dictStore, S_NAME, _fdatetimeAfterOpening(fSeconds))
+    fLate = watch.F_MEMORY_STALE_AFTER_SECONDS + 1
+    dictCurrent = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(fLate))["dictCurrent"]
+    assert dictCurrent["sLevel"] == watch.S_LEVEL_UNKNOWN
+
+
+@pytest.mark.falsification
+def testAFailedFirstMeasurementIsUnknownNotPending():
+    """Kills: deciding pending from the stamp alone.
+
+    A measurement that was tried and failed inside the window is a
+    real failure, and keeps its warning.
+    """
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    watch.fnRecordFailure(
+        dictStore, S_NAME, S_ID_OLD, watch.S_STATE_TIMEOUT, "",
+        _fdatetimeAfterOpening(3))
+    dictCurrent = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(4))["dictCurrent"]
+    assert dictCurrent["sLevel"] == watch.S_LEVEL_UNKNOWN
+    assert dictCurrent["bAwaitingFirstSample"] is False
+    assert "did not answer" in dictCurrent["sSentence"]
+
+
+def testTheFirstMeasurementEndsThePending():
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    _fnMeasure(dictStore, _fdatetimeAfterOpening(3))
+    dictCurrent = _fdictDescribe(
+        dictStore, _fdatetimeAfterOpening(4))["dictCurrent"]
+    assert dictCurrent["sLevel"] == watch.S_LEVEL_OK
+    assert dictCurrent["bAwaitingFirstSample"] is False
+
+
+@pytest.mark.falsification
+def testAReopeningIsCheckedAfreshAndKeepsItsHistory():
+    """Kills: keeping an opening's stamp and measurement after release.
+
+    Reopened ten minutes later, the old measurement is ten minutes old:
+    kept, it reads "could not measure" until the next sample -- the
+    same false alarm the pending state exists to prevent.
+    """
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    _fnMeasure(dictStore, _fdatetimeAfterOpening(5), iKills=1)
+    watch.fnForgetOpeningsOfUnownedNames(dictStore, set())
+    watch.fnNoteWatchBegan(dictStore, S_NAME, _fdatetimeAfterOpening(600))
+    dictDescribed = _fdictDescribe(dictStore, _fdatetimeAfterOpening(601))
+    assert dictDescribed["dictCurrent"]["sLevel"] == watch.S_LEVEL_PENDING
+    assert dictDescribed["iKillCount"] == 1
+    assert dictStore[S_NAME]["dictBaseline"]["iOomKillCount"] == 1
+
+
+@pytest.mark.falsification
+def testTheSamplerForgetsTheOpeningOfAReleasedContainer():
+    """Kills: a sampler pass that never forgets a released name's opening."""
+    dictStore = watch.fdictCreateMemoryStore()
+    watch.fnNoteWatchBegan(dictStore, S_NAME, DT_START)
+    _fnMeasure(dictStore, _fdatetimeAfterOpening(5))
+    appReleased = SimpleNamespace(state=SimpleNamespace(
+        dictContainerOwners={}, dictContainerMemory=dictStore))
+    asyncio.run(sampler.fnSampleOwnedContainers(
+        appReleased, {"docker": _ConnectionDouble()}, {}))
+    assert dictStore[S_NAME]["sWatchedSinceIso"] == ""
+    assert dictStore[S_NAME]["dictCurrent"] is None
 
 
 # ---------------------------------------------------------------------

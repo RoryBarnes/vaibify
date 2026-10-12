@@ -572,10 +572,12 @@ html, body {
     white-space: nowrap;
 }
 
-/* The memory watch chip, shown only while it warns: amber at "near",
-   gray and italic when the server could not tell, and red-edged while
-   the hub holds a kill for this container (neutral fill if the level
-   is "ok"). Absent while memory is measured and below the limit. */
+/* The memory watch chip, shown only while it warns or is checking:
+   amber at "near", gray and italic when the server could not tell,
+   neutral and pulsing while the first measurement since opening is
+   pending, and red-edged while the hub holds a kill for this container
+   (neutral fill if the level is "ok"). Absent while memory is measured
+   and below the limit. */
 .memory-watch-chip {
     background: rgba(128, 128, 160, 0.10);
     border: 1px solid var(--border-color);
@@ -597,6 +599,18 @@ html, body {
 .memory-watch-chip[data-level="unknown"] {
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* "Checking Memory": the server has not measured the container since
+   it was opened. Neutral, and pulsed like the dashboard's other
+   in-flight checks (the run lights' @keyframes pulse) -- never the
+   gray italic above, which says "could not tell". */
+.memory-watch-chip[data-level="pending"] {
+    animation: pulse 1.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .memory-watch-chip[data-level="pending"] { animation: none; }
 }
 
 .memory-watch-chip.memory-watch-chip-killed {

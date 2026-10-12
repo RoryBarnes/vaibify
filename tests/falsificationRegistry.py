@@ -30840,6 +30840,61 @@ LIST_FALSIFICATIONS = [
         old='        elChip.textContent = "Memory unknown";\n        elChip.title = S_POLL_FAILED_TITLE;\n        elChip.setAttribute("data-level", "unknown");\n        elChip.style.display = "";\n',
         new='        _fnHideChip();\n',
     ),
+    # --- 2026-10-12: an opening reads pending, bounded, never unknown ---
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAnOpeningAwaitingItsFirstMeasurementIsPendingNotUnknown',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if dictCurrent.get("bAwaitingFirstSample"):\n        return S_LEVEL_PENDING, _fsPendingSentence()\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFirstMeasurementOverdueReadsCouldNotMeasure',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    return fWaited <= F_MEMORY_STALE_AFTER_SECONDS\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testEveryPollLeavesTheOpeningStampWhereItWas',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        if not dictRecord.get("sWatchedSinceIso"):\n            dictRecord["sWatchedSinceIso"] = datetimeNow.isoformat()\n',
+        new='        dictRecord["sWatchedSinceIso"] = datetimeNow.isoformat()\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFailedFirstMeasurementIsUnknownNotPending',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    bAwaitingFirstSample = not dictCurrent and _fbFirstSampleStillDue(\n',
+        new='    bAwaitingFirstSample = _fbFirstSampleStillDue(\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAReopeningIsCheckedAfreshAndKeepsItsHistory',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='                dictRecord["sWatchedSinceIso"] = ""\n                dictRecord["dictCurrent"] = None\n',
+        new='                pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testTheSamplerForgetsTheOpeningOfAReleasedContainer',
+        source='vaibify/gui/containerMemorySampler.py',
+        old='    containerMemoryWatch.fnForgetOpeningsOfUnownedNames(\n        dictStore, setSampledNames)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryRoute.py::testAContainerJustOpenedReadsPendingNeitherOkNorUnknown',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if sName and not bHostProject:\n        fnNoteWatchBegan(dictStore, sName, datetimeNow)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAJustOpenedContainerReadsCheckingMemoryThenNothing',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel !== S_LEVEL_OK &&\n            dictCurrent.sLevel !== "pending";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAPendingThatOutlastsItsWindowReadsMemoryUnknown',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elChip.textContent = dictCurrent.sChipText;\n',
+        new='        elChip.textContent = dictCurrent.sState === "noSampleYet" ?\n            "Checking Memory" : dictCurrent.sChipText;\n',
+    ),
     # --- 2026-10-08: limits are planned against the running container ---
     Falsification(
         nodeid='tests/testResourceLimits.py::testIntroducingAMemoryLimitWaitsForTheNextStart',
