@@ -33,15 +33,25 @@ Nothing was established, so nothing is persisted — but the researcher
 is still told, which is what this record is for. It outlives its task
 (a finished task is evicted at once) because the reason has to be
 readable after the run is gone.
+
+``DICT_LAST_SETTLED`` is the status of the most recent verification of
+each project AS IT ENDED: the phase it settled into, its reasons and
+the reproduced manifest it wrote. The task's own entry is evicted the
+moment the task finishes, so without this a dashboard that watched the
+run go quiet could not ask how it ended -- and could only say that it
+had. A task that finished without settling its phase is recorded as
+``stopped``, never as the live phase it was abandoned in.
 """
 
 from datetime import datetime, timezone
 
 __all__ = [
     "DICT_LAST_NO_VERDICT",
+    "DICT_LAST_SETTLED",
     "DICT_UNSETTLED_TEARDOWN",
     "DICT_VERIFY_TASKS",
     "fbVerificationIsLive",
+    "fdictReadLastSettled",
     "fdictReadNoVerdict",
     "fdictReadStatus",
     "fdictReadUnsettledTeardown",
@@ -62,6 +72,7 @@ __all__ = [
 # See the module docstring for why each is in-process.
 DICT_VERIFY_TASKS = {}
 DICT_LAST_NO_VERDICT = {}
+DICT_LAST_SETTLED = {}
 
 # The most recent rerun whose SHADOW container could not be proven
 # destroyed. In-process like the records above, but for a different
@@ -77,6 +88,7 @@ DICT_UNSETTLED_TEARDOWN = {}
 # outside this set is a settled one, so a caller cannot make the row
 # pulse forever by inventing a name.
 _T_LIVE_PHASES = ("starting", "running")
+S_PHASE_STOPPED = "stopped"
 
 
 def fnRegisterTask(sContainerId, taskWorker, dictStatus):
@@ -93,10 +105,34 @@ def fnRegisterTask(sContainerId, taskWorker, dictStatus):
     }
 
     def fnEvictOnDone(taskCompleted):
+        _fnRecordSettled(sContainerId, dictStatus)
         dictEntry = DICT_VERIFY_TASKS.get(sContainerId)
         if dictEntry is not None and dictEntry.get("task") is taskCompleted:
             DICT_VERIFY_TASKS.pop(sContainerId, None)
     taskWorker.add_done_callback(fnEvictOnDone)
+
+
+def _fnRecordSettled(sContainerId, dictStatus):
+    """Keep how a finished verification ended, after its entry is evicted."""
+    dictSettled = dict(dictStatus)
+    if dictSettled.get("sPhase") in _T_LIVE_PHASES:
+        dictSettled["sPhase"] = S_PHASE_STOPPED
+    dictSettled["sSettledIso"] = datetime.now(timezone.utc).isoformat()
+    DICT_LAST_SETTLED[
+        (sContainerId, dictSettled.get("sProjectRepoPath"))] = dictSettled
+
+
+def fdictReadLastSettled(sContainerId, sProjectRepoPath):
+    """Return how this project's most recent verification ended, or ``None``.
+
+    The live entry answers first when its phase has already settled:
+    the worker records the outcome a moment before the task finishes,
+    and a poll in that window has already reported the run over.
+    """
+    dictStatus = fdictReadStatus(sContainerId, sProjectRepoPath)
+    if dictStatus and dictStatus.get("sPhase") not in _T_LIVE_PHASES:
+        return dictStatus
+    return DICT_LAST_SETTLED.get((sContainerId, sProjectRepoPath))
 
 
 def fdictReadStatus(sContainerId, sProjectRepoPath):

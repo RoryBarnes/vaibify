@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.carrierStandDown import fnStandCarrierDown
+from vaibify.gui import verificationProgress
 from vaibify.gui.routes import reproducibilityRoutes
 from vaibify.reproducibility import reproductionRecord
 from vaibify.gui.routes.reproducibilityRoutes import (
@@ -94,8 +95,10 @@ def fixtureCarrierStoodDown(monkeypatch):
 def fixtureClearTaskRegistry():
     """Ensure each test starts with a clean verify-task registry."""
     _DICT_VERIFY_TASKS.clear()
+    verificationProgress.DICT_LAST_SETTLED.clear()
     yield
     _DICT_VERIFY_TASKS.clear()
+    verificationProgress.DICT_LAST_SETTLED.clear()
 
 
 @pytest.fixture
@@ -838,6 +841,36 @@ def test_persist_attestation_writes_passed_status(fixtureProjectRepo):
     assert dictPayload["iOutputHashesMatched"] == 5
 
 
+@pytest.mark.falsification
+def test_the_outcome_names_this_attempts_dated_manifest(fixtureProjectRepo):
+    """The settled report opens the attempt's own file, never the root.
+
+    Kills: naming the root REPRODUCED.sha256 -- on a reader's clone that
+    is the author's file, and in any repository it is whichever attempt
+    wrote last, not necessarily this one.
+    """
+    dictResult = {
+        "bPassed": False,
+        "iOutputHashesMatched": 0,
+        "iOutputHashesTotal": 1,
+        "listDivergedHashes": ["out.csv"],
+        "listFileOutcomes": [{
+            "sPath": "out.csv", "sExpected": "a" * 64,
+            "sObserved": "b" * 64, "sStatus": "diverged",
+        }],
+        "sImageDigest": "img@sha256:abc",
+        "sRunLogPath": "",
+    }
+    assert _fbPersistAttestation(
+        fixtureProjectRepo, "sha256:manifest", dictResult, 2.5,
+    ) is True
+    sNamed = dictResult["sReproducedManifestPath"]
+    assert sNamed.startswith(".vaibify/reproducedManifests/"), sNamed
+    assert sNamed.endswith("_failed.sha256"), sNamed
+    assert sNamed in dictResult["listRecordPathsWritten"]
+    assert os.path.isfile(os.path.join(fixtureProjectRepo, sNamed))
+
+
 def test_persist_attestation_writes_failed_status(fixtureProjectRepo):
     """A failed rerun result writes a failed attestation."""
     dictResult = {
@@ -1091,6 +1124,87 @@ def test_register_verify_task_old_callback_does_not_evict_new_entry():
         return _DICT_VERIFY_TASKS.get(S_CONTAINER_ID, {}).get("task")
     objectTaskInSlot = asyncio.run(fnRunOnce())
     assert objectTaskInSlot is not None
+
+
+def _fdictSettleOneTask(dictStatus, fnMutateWhileRunning=None):
+    """Run one registered task to completion; return the settled record."""
+    async def fnRunOnce():
+        async def fnWork():
+            if fnMutateWhileRunning:
+                fnMutateWhileRunning(dictStatus)
+        taskWorker = asyncio.create_task(fnWork())
+        reproducibilityRoutes._fnRegisterVerifyTask(
+            S_CONTAINER_ID, taskWorker, dictStatus,
+        )
+        await taskWorker
+        await asyncio.sleep(0)
+    asyncio.run(fnRunOnce())
+    return verificationProgress.fdictReadLastSettled(
+        S_CONTAINER_ID, dictStatus["sProjectRepoPath"],
+    )
+
+
+def _fnSettleAsPassed(dictStatus):
+    dictStatus["sPhase"] = "passed"
+    dictStatus["sReproducedManifestPath"] = "REPRODUCED.sha256"
+
+
+@pytest.mark.falsification
+def test_a_finished_verification_still_says_how_it_ended(fixtureProjectRepo):
+    """The outcome is readable after the task's own entry is evicted.
+
+    Kills: dropping the settled record from the eviction callback --
+    the entry vanishes with the task, and a dashboard that watched the
+    run go quiet can only say that it ended, never how.
+    """
+    dictSettled = _fdictSettleOneTask(
+        {"sPhase": "running", "sProjectRepoPath": fixtureProjectRepo},
+        _fnSettleAsPassed,
+    )
+    assert S_CONTAINER_ID not in _DICT_VERIFY_TASKS
+    assert dictSettled is not None
+    assert dictSettled["sPhase"] == "passed"
+    assert dictSettled["sReproducedManifestPath"] == "REPRODUCED.sha256"
+    dictResponse = _fdictBuildAttestationResponse(
+        S_CONTAINER_ID, fixtureProjectRepo,
+    )
+    assert dictResponse["dictLastSettled"]["sPhase"] == "passed"
+    dictOther = _fdictBuildAttestationResponse(
+        S_CONTAINER_ID, fixtureProjectRepo + "Other",
+    )
+    assert dictOther["dictLastSettled"] is None, (
+        "another project's outcome was shown as this project's"
+    )
+
+
+@pytest.mark.falsification
+def test_a_task_that_ended_unsettled_is_recorded_as_stopped(
+    fixtureProjectRepo,
+):
+    """A worker that died mid-run is not remembered as still running.
+
+    Kills: keeping the live phase on the settled record -- the
+    dashboard would read a run that is over as one that is not.
+    """
+    dictSettled = _fdictSettleOneTask(
+        {"sPhase": "running", "sProjectRepoPath": fixtureProjectRepo},
+    )
+    assert dictSettled["sPhase"] == verificationProgress.S_PHASE_STOPPED
+
+
+def test_a_settled_phase_answers_before_the_task_is_evicted(
+    fixtureProjectRepo,
+):
+    """The window between the outcome and the eviction reads the outcome."""
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "failed",
+                       "sProjectRepoPath": fixtureProjectRepo},
+    }
+    dictSettled = verificationProgress.fdictReadLastSettled(
+        S_CONTAINER_ID, fixtureProjectRepo,
+    )
+    assert dictSettled["sPhase"] == "failed"
 
 
 # --- delete-determinism / verify-dependency-lock / regenerate-envelope ---

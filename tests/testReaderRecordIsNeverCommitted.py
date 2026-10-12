@@ -182,7 +182,8 @@ def test_the_authors_attestation_is_still_committed(tmp_path, monkeypatch):
         ["show", "--name-only", "--format=", "HEAD"], sRepo)
     assert ".vaibify/l3_attestation.json" in sCommitted.splitlines()
     assert "REPRODUCED.sha256" in sCommitted.splitlines()
-    assert dictStatus["sReproducedManifestPath"] == "REPRODUCED.sha256"
+    assert dictStatus["sReproducedManifestPath"].startswith(
+        ".vaibify/reproducedManifests/")
     assert json.loads(
         fsRunGit(["show", "HEAD:.vaibify/l3_attestation.json"], sRepo),
     )["sStatus"] == "passed"

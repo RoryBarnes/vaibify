@@ -28592,10 +28592,10 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testTheProjectHeadingReadsReproduced.py::'
-            'test_the_heading_reads_reproduced_only_for_a_shown_label'
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_the_badge_reads_reproduced_only_for_a_shown_label'
         ),
-        # The heading draws the label whatever the server's verdict says.
+        # The badge draws the label whatever the server's verdict says.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old='        return Boolean(dictLabel) && dictLabel.bShow === true;\n',
         new='        return Boolean(dictLabel);\n',
@@ -31551,12 +31551,12 @@ LIST_FALSIFICATIONS = [
             'tests/testReaderRecordIsNeverCommitted.py::'
             'test_a_readers_settled_card_names_the_dated_copy'
         ),
-        source='vaibify/reproducibility/reproductionRecord.py',
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
         old=(
-            '            if sPath.startswith('
-            'S_REPRODUCED_MANIFEST_HISTORY_DIR + "/"):\n'
+            '        if sPath.startswith('
+            'S_REPRODUCED_MANIFEST_HISTORY_DIR + "/")), "")\n'
         ),
-        new='            if sPath == S_REPRODUCED_MANIFEST_FILENAME:\n',
+        new='        if sPath == "REPRODUCED.sha256"), "")\n',
     ),
     Falsification(
         nodeid=(
@@ -31569,5 +31569,149 @@ LIST_FALSIFICATIONS = [
             'S_REPRODUCED_MANIFEST_FILENAME, sText)\n'
         ),
         new='    pass\n',
+    ),
+    # --- 2026-10-12: Run-menu checks acknowledge the click; a Level 3
+    # verification is followed on the Project block until it ends ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunMenuCheckSaysItIsWorking.py::'
+            'test_the_manifest_check_says_it_started_until_it_answers'
+        ),
+        # The start notice is never dismissed, so it outlives the answer.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            } finally {\n'
+            '                fnDismissStartNotice();\n'
+            '            }\n'
+        ),
+        new=(
+            '            } finally {\n'
+            '            }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunMenuCheckSaysItIsWorking.py::'
+            'test_the_level3_opener_says_it_is_checking_until_it_can_ask'
+        ),
+        # The readiness pre-flight is announced with an empty notice, i.e. not at all.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            "Checking whether this project is ready for Level 3 " +\n'
+            '            "verification\\u2026");\n'
+        ),
+        new='            "");\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_a_later_inconclusive_attempt_puts_a_warning_beside_the_badge'
+        ),
+        # The inconclusive-attempt glyph is never drawn beside a kept badge.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictLabel.sLatestAttemptVerdict !== "no-verdict") return "";\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_choosing_verify_shows_a_pulsing_reproducing_badge_until_it_ends'
+        ),
+        # The running badge loses its pulse.
+        source='vaibify/gui/static/styleMain.css',
+        old=(
+            '    background: var(--color-orange);\n'
+            '    animation: pulse 1.4s ease-in-out infinite;\n'
+        ),
+        new='    background: var(--color-orange);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_live_verification_is_shown_again_after_a_reload'
+        ),
+        # The running badge is never rendered from the poll's flag.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (dictDetail.bRebuildAttestationRunning === true) {\n'
+            '            return \'<span class="project-reproduction-badge \' +\n'
+        ),
+        new=(
+            '        if (false) {\n'
+            '            return \'<span class="project-reproduction-badge \' +\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_diverged_run_is_told_with_its_reasons_and_both_manifests_open'
+        ),
+        # A verification that did not pass ends without any failure report.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictSettled.sPhase !== "passed") {\n'
+            '            VaibifyDiagnosis.fnReportFailure(\n'
+            '                _fsDescribeUnreproducedVerification(dictSettled));\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_an_attempt_with_no_verdict_says_it_wrote_no_reproduced_manifest'
+        ),
+        # The page guesses the root REPRODUCED.sha256 when the attempt wrote none.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var sAttemptManifestPath = '
+            'dictSettled.sReproducedManifestPath || "";\n'
+        ),
+        new='        var sAttemptManifestPath = "REPRODUCED.sha256";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_reproduced_run_turns_the_badge_and_opens_both_manifests'
+        ),
+        # The manifests are not opened when the verification ends.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnDisplaySettledManifests(dictPayload || {}, dictSettled);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_finished_verification_still_says_how_it_ended'
+        ),
+        # The eviction callback keeps no record of how the run ended.
+        source='vaibify/gui/verificationProgress.py',
+        old='        _fnRecordSettled(sContainerId, dictStatus)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_task_that_ended_unsettled_is_recorded_as_stopped'
+        ),
+        # A task that ended mid-run is remembered in its live phase.
+        source='vaibify/gui/verificationProgress.py',
+        old='        dictSettled["sPhase"] = S_PHASE_STOPPED\n',
+        new='        dictSettled["sPhase"] = dictSettled["sPhase"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_outcome_names_this_attempts_dated_manifest'
+        ),
+        # The outcome names the root REPRODUCED.sha256 again.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR '
+            '+ "/")), "")\n'
+        ),
+        new=(
+            '        if sPath.endswith("REPRODUCED.sha256")), "")\n'
+        ),
     ),
 ]

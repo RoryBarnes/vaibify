@@ -7580,9 +7580,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # wording for this module's own write; no new concern.
     # 2368 -> 2373 (2026-10-12): a reader's reproduction record is
     # never staged or committed (ruled that day); the guard sits in
-    # the one function that commits a verification's files. -> 2372
-    # the same day, when the toast's manifest path moved to the writer.
-    "routes/reproducibilityRoutes.py": 2372,
+    # the one function that commits a verification's files.
+    # -> 2376 the same day: the attestation payload carries how the
+    # last verification ENDED (dictLastSettled), the one read the
+    # dashboard makes after watching a run go quiet, and the toast
+    # names THIS attempt's dated manifest for author and reader alike.
+    "routes/reproducibilityRoutes.py": 2376,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

@@ -44,7 +44,6 @@ __all__ = [
     "fdictLatestReproductionRecord",
     "flistReadReproductionRecords",
     "flistWriteVerificationOutcome",
-    "fsReproducedManifestNamedBy",
     "fsRecordKindForRepository",
     "fsWriteReproductionRecord",
 ]
@@ -72,11 +71,7 @@ from vaibify.reproducibility.l3Attestation import (
     fsReproducedManifestHistoryPath,
     fsWriteReproducedManifest,
 )
-from vaibify.reproducibility.manifestWriter import (
-    S_REPRODUCED_MANIFEST_FILENAME,
-    S_REPRODUCED_MANIFEST_HISTORY_DIR,
-    S_REPRODUCTIONS_DIR,
-)
+from vaibify.reproducibility.manifestWriter import S_REPRODUCTIONS_DIR
 from vaibify.reproducibility.repoFiles import (
     ffilesEnsureRepoFiles,
     fsRepoRootOf,
@@ -193,22 +188,6 @@ def flistWriteVerificationOutcome(
     )
     listPaths.append(_S_ATTESTATION_RELATIVE_PATH)
     return listPaths
-
-
-def fsReproducedManifestNamedBy(sRecordKind, listWrittenPaths):
-    """Return the reproduced manifest a just-written record names, or ``""``.
-
-    The author's attestation names the root ``REPRODUCED.sha256``; a
-    reader's reproduction record names its timestamped copy, because a
-    reader's verification never writes the author's root file.
-    """
-    for sPath in listWrittenPaths:
-        if sRecordKind == S_RECORD_KIND_REPRODUCTION:
-            if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR + "/"):
-                return sPath
-        elif sPath == S_REPRODUCED_MANIFEST_FILENAME:
-            return sPath
-    return ""
 
 
 def fdictBuildReproductionRecord(
