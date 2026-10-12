@@ -30803,6 +30803,43 @@ LIST_FALSIFICATIONS = [
         old='        var sEpisode = (_dictState.sContainerName || "") + "|" +\n            dictCurrent.sNearSinceIso;\n',
         new='        var sEpisode = (_dictState.sContainerName || "") + "|near";\n',
     ),
+    # --- 2026-10-12: the memory chip appears only while it warns ---
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAQuietMemoryStateShowsNoChip',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n',
+        new='        if (!(dictMemory.dictCurrent || {}).sChipText) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testTheChipComesAndGoesWithTheWarningWithoutAReload',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n            _fnHideChip();\n            return;\n',
+        new='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n            return;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testNearKeepsTheChipAfterItsToastIsClosed',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel === "unknown";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAnUnknownChipIsGrayAndSaysWhy',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel === "near";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testADismissedBannerStaysDismissedAndTheChipKeepsTheCount',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if ((dictMemory.iKillCount || 0) > 0) return true;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAnUnreachableMemoryWatchShowsTheUnknownChip',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elChip.textContent = "Memory unknown";\n        elChip.title = S_POLL_FAILED_TITLE;\n        elChip.setAttribute("data-level", "unknown");\n        elChip.style.display = "";\n',
+        new='        _fnHideChip();\n',
+    ),
     # --- 2026-10-08: limits are planned against the running container ---
     Falsification(
         nodeid='tests/testResourceLimits.py::testIntroducingAMemoryLimitWaitsForTheNextStart',

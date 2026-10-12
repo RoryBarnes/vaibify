@@ -572,9 +572,10 @@ html, body {
     white-space: nowrap;
 }
 
-/* The memory watch chip. Neutral when the server says "ok", amber at
-   "near", gray and italic when it could not tell, and red-edged while
-   the hub holds a kill for this container. */
+/* The memory watch chip, shown only while it warns: amber at "near",
+   gray and italic when the server could not tell, and red-edged while
+   the hub holds a kill for this container (neutral fill if the level
+   is "ok"). Absent while memory is measured and below the limit. */
 .memory-watch-chip {
     background: rgba(128, 128, 160, 0.10);
     border: 1px solid var(--border-color);

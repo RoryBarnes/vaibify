@@ -13,7 +13,11 @@
    dismissed. Dismissing hides that banner only; the chip keeps the
    kill count for as long as the hub holds the incidents. "Near the
    limit" toasts once per episode, keyed by the time the server says
-   the episode began, so it never repeats while memory stays high. */
+   the episode began, so it never repeats while memory stays high.
+
+   The chip appears only while one of those warnings holds -- a kill,
+   "near", the server's "unknown", or this page failing to reach the
+   hub -- and is absent while memory is measured and below the limit. */
 
 var VaibifyMemoryWatch = (function () {
     "use strict";
@@ -23,6 +27,8 @@ var VaibifyMemoryWatch = (function () {
     var S_SHOWN_KEY = "vaibify.memoryWatch.toastedIncidents";
     var S_DISMISSED_KEY = "vaibify.memoryWatch.dismissedIncidents";
     var S_NEAR_KEY = "vaibify.memoryWatch.toastedNearEpisodes";
+    /* containerMemoryWatch.S_LEVEL_OK: the server's quiet level. */
+    var S_LEVEL_OK = "ok";
     var S_POLL_FAILED_TITLE = "Memory could not be checked: this " +
         "dashboard could not reach the hub's memory watch.";
 
@@ -95,14 +101,25 @@ var VaibifyMemoryWatch = (function () {
 
     /* --- The chip --- */
 
+    /* The chip speaks only when there is something to say: a kill the
+       hub still holds, or any level other than the server's "ok" --
+       "near", "unknown", or one this page does not know, which shows
+       rather than hides. Measured and below the limit, it is absent. */
+    function _fbChipHasSomethingToSay(dictMemory) {
+        var dictCurrent = dictMemory.dictCurrent || {};
+        if (!dictCurrent.sChipText) return false;
+        if ((dictMemory.iKillCount || 0) > 0) return true;
+        return dictCurrent.sLevel !== S_LEVEL_OK;
+    }
+
     function _fnRenderChip(dictMemory) {
         var elChip = document.getElementById("memoryWatchChip");
         if (!elChip) return;
-        var dictCurrent = dictMemory.dictCurrent || {};
-        if (!dictCurrent.sChipText) {
+        if (!_fbChipHasSomethingToSay(dictMemory)) {
             _fnHideChip();
             return;
         }
+        var dictCurrent = dictMemory.dictCurrent;
         elChip.textContent = dictCurrent.sChipText;
         elChip.title = dictCurrent.sSentence || "";
         elChip.setAttribute("data-level", dictCurrent.sLevel || "unknown");

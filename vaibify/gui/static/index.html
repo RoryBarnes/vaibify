@@ -421,9 +421,11 @@
             <span id="activeContainerName" class="toolbar-value"></span>
             <!-- The memory watch: the hub's estimate of memory in use
                  against the container's limit, and its kill count.
-                 Rendered from the server's answer; gray means the
-                 server could not tell. A click opens Settings on the
-                 memory limit. -->
+                 Rendered from the server's answer, and only while it
+                 warns: near the limit, a kill, or unknown (gray means
+                 the server could not tell). Absent while memory is
+                 measured and below the limit. A click opens Settings
+                 on the memory limit. -->
             <span id="memoryWatchChip" class="memory-watch-chip"
                   role="button" tabindex="0" style="display: none;"
                   ></span>

@@ -446,17 +446,21 @@ kernel**, often an AI agent and the jobs it started, and it cannot
 report its own death. The hub therefore checks every open container
 every 15 seconds.
 
-The **memory chip** beside the environment name reads, for example,
-"Memory ~1.2 / 6 GB": memory in use, less the file cache the kernel
-would reclaim first (the figure `docker stats` reports), against the
-limit. It turns **amber**, with one warning toast, at 85% of the limit
-and clears below 80%; memory can reach the limit between two checks,
-so amber is not a promise of warning. It turns **gray**, with the
-reason in its tooltip, whenever the hub could not measure: the
+The **memory chip** beside the environment name appears only when
+there is something to warn about; while memory is measured and below
+the limit, the toolbar shows nothing. When it appears it reads, for
+example, "Memory ~5.2 / 6 GB": memory in use, less the file cache the
+kernel would reclaim first (the figure `docker stats` reports), against
+the limit. It appears **amber**, with one warning toast, at 85% of the
+limit and leaves below 80%; memory can reach the limit between two
+checks, so amber is not a promise of warning. It appears **gray**, with
+the reason in its tooltip, whenever the hub could not measure (the
 container is stopped, it did not answer within 5 seconds, or the last
-measurement is more than 45 seconds old. Gray never means "fine". It
-says **no limit** for a container without one, and clicking it opens
-**⚙** at the memory limit.
+measurement is more than 45 seconds old) or the dashboard could not
+reach the hub. Gray never means "fine". It also appears, red-edged,
+while the hub holds a kill for the container. It says **no limit** for
+a container without one, and clicking it opens **⚙** at the memory
+limit.
 
 **Each kill is reported once**, with an error toast and a banner, and
 the chip counts kills for as long as the hub holds them. When Docker
@@ -496,8 +500,8 @@ sibling Projects in the same repository.
 ### Layout
 
 - **Toolbar** — the logo; the environment (**Container:**, or
-  **Directory:** for a host environment) and its memory chip (see
-  [Memory](#memory)); the **Project:** name, which
+  **Directory:** for a host environment) and, when there is a warning,
+  its memory chip (see [Memory](#memory)); the **Project:** name, which
   opens the Project switcher; up to three vaibify checks that light up as
   Levels 1–3 are attained; the **Agent Council** button; the **Run**,
   **Sync**, **View**, and **Admin** menus; and, at the far right, a

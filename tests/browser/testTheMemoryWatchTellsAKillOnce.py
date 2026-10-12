@@ -11,6 +11,15 @@ A kill must be told ONCE: one error toast per incident across polls and
 across a reload, and the banner must carry the server's sentence
 verbatim, never a sentence of the frontend's own.
 
+The chip appears ONLY while it warns (ruled 2026-10-12): absent while
+memory is measured and below the limit, and present -- read off the
+live element's visibility, not its text -- for each of the four
+warnings it alone carries once the banner and toasts are gone: the
+dashboard failing to reach the memory watch, the server's "could not
+measure", a held kill after its banner is dismissed, and "near" after
+its toast is closed. Hiding is ``display: none``, so a hidden chip has
+no box and leaves no gap in the toolbar.
+
 WHAT THIS DOES NOT COVER: the sampler, the kernel counters and the
 route, which ``testContainerMemoryWatch*.py`` drive (the live file
 against a real daemon); and whether the chip is legible in every
@@ -108,6 +117,26 @@ def _fnWaitForRequests(page, listRequests, iCount, fSeconds=25.0):
     page.wait_for_timeout(300)
 
 
+def _fnWaitForTheNextPoll(page, listRequests):
+    """Wait for the dashboard's own interval poll, never a forced one.
+
+    ``fnStart`` hides the chip before it polls, so forcing a poll
+    would make a chip that failed to hide itself look hidden.
+    """
+    _fnWaitForRequests(page, listRequests, len(listRequests) + 1)
+
+
+def _fbChipHasNoBox(page):
+    """True when the chip occupies no space: hidden, and leaving no gap."""
+    return page.query_selector("#memoryWatchChip").bounding_box() is None
+
+
+def _fnAssertChipShows(page, sText):
+    assert page.is_visible("#memoryWatchChip"), (
+        f"the chip should warn with {sText!r} but is hidden")
+    assert page.text_content("#memoryWatchChip") == sText
+
+
 def _fiCountToasts(page, sType, sSentence):
     return page.evaluate(
         """([sType, sSentence]) => Array.from(
@@ -148,9 +177,15 @@ def testAKillIsToastedOnceAcrossPollsAndAReload(pageDashboard, serverHub):
     assert pageDashboard.listPageErrors == []
 
 
+@pytest.mark.falsification
 def testADismissedBannerStaysDismissedAndTheChipKeepsTheCount(
     pageDashboard, serverHub,
 ):
+    """Kills: hiding the chip at level "ok" while a kill is still held.
+
+    The level is "ok" on purpose: once the banner is dismissed, the
+    chip is the only place the kill count survives.
+    """
     dictAnswer = _fdictAnswer(listIncidents=[_fdictKill()])
     dictAnswer["dictCurrent"]["sChipText"] = "Memory ~0.2 / 1 GB · 1 process killed"
     dictHolder = {"dictAnswer": dictAnswer}
@@ -161,8 +196,7 @@ def testADismissedBannerStaysDismissedAndTheChipKeepsTheCount(
         ".memory-incident-banner .build-warnings-banner-dismiss")
     _fnWaitForRequests(pageDashboard, listRequests, 2)
     assert pageDashboard.query_selector(".memory-incident-banner") is None
-    assert pageDashboard.text_content("#memoryWatchChip") == (
-        "Memory ~0.2 / 1 GB · 1 process killed")
+    _fnAssertChipShows(pageDashboard, "Memory ~0.2 / 1 GB · 1 process killed")
     assert "memory-watch-chip-killed" in pageDashboard.get_attribute(
         "#memoryWatchChip", "class")
 
@@ -199,7 +233,9 @@ def testNearToastsOncePerEpisode(pageDashboard, serverHub):
         "#memoryWatchChip", "data-level") == "near"
 
 
+@pytest.mark.falsification
 def testAnUnknownChipIsGrayAndSaysWhy(pageDashboard, serverHub):
+    """Kills: treating only "near" as a warning, which hides "unknown"."""
     dictAnswer = _fdictAnswer()
     dictAnswer["dictCurrent"].update({
         "sState": "timeout", "sLevel": "unknown",
@@ -211,6 +247,7 @@ def testAnUnknownChipIsGrayAndSaysWhy(pageDashboard, serverHub):
     listRequests = _flistStubMemory(pageDashboard, dictHolder)
     _fnEnterTheBlankProject(pageDashboard, serverHub)
     _fnWaitForRequests(pageDashboard, listRequests, 1)
+    _fnAssertChipShows(pageDashboard, "Memory unknown")
     assert pageDashboard.get_attribute(
         "#memoryWatchChip", "data-level") == "unknown"
     assert pageDashboard.get_attribute("#memoryWatchChip", "title") == (
@@ -219,3 +256,91 @@ def testAnUnknownChipIsGrayAndSaysWhy(pageDashboard, serverHub):
         "() => getComputedStyle(document.getElementById("
         "'memoryWatchChip')).fontStyle")
     assert sColor == "italic"
+
+
+@pytest.mark.falsification
+def testAQuietMemoryStateShowsNoChip(pageDashboard, serverHub):
+    """Kills: showing the chip whenever the server sends chip text.
+
+    Measured, below the limit and with no kill held, the top row
+    carries no memory chip at all -- not an empty or transparent one.
+    """
+    dictHolder = {"dictAnswer": _fdictAnswer(sLevel="ok")}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    assert _fbChipHasNoBox(pageDashboard), (
+        "a quiet memory state still shows the chip: " + repr(
+            pageDashboard.text_content("#memoryWatchChip")))
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testTheChipComesAndGoesWithTheWarningWithoutAReload(
+    pageDashboard, serverHub,
+):
+    """Kills: a render that shows the chip but never hides it again.
+
+    Every step is the dashboard's own interval poll on one page load:
+    quiet, then near the limit, then quiet again.
+    """
+    dictHolder = {"dictAnswer": _fdictAnswer(sLevel="ok")}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    assert _fbChipHasNoBox(pageDashboard)
+    dictHolder["dictAnswer"] = _fdictAnswer(
+        sLevel="near", sNearSinceIso="2026-10-08T22:15:58+00:00")
+    _fnWaitForTheNextPoll(pageDashboard, listRequests)
+    _fnAssertChipShows(pageDashboard, "Memory ~0.9 / 1 GB")
+    dictHolder["dictAnswer"] = _fdictAnswer(sLevel="ok")
+    _fnWaitForTheNextPoll(pageDashboard, listRequests)
+    assert _fbChipHasNoBox(pageDashboard), (
+        "the chip stayed on screen after memory fell back below the limit")
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testNearKeepsTheChipAfterItsToastIsClosed(pageDashboard, serverHub):
+    """Kills: treating only "unknown" as a warning, which hides "near".
+
+    The near toast is told once per episode, so after it is closed the
+    chip is the only thing on screen still saying memory is high.
+    """
+    dictHolder = {"dictAnswer": _fdictAnswer(
+        sLevel="near", sNearSinceIso="2026-10-08T22:15:58+00:00")}
+    listRequests = _flistStubMemory(pageDashboard, dictHolder)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    assert _fiCountToasts(pageDashboard, "warning", S_NEAR_SENTENCE) == 1
+    pageDashboard.click("#toastContainer .toast.warning .toast-close")
+    _fnWaitForTheNextPoll(pageDashboard, listRequests)
+    assert _fiCountToasts(pageDashboard, "warning", S_NEAR_SENTENCE) == 0
+    _fnAssertChipShows(pageDashboard, "Memory ~0.9 / 1 GB")
+    assert pageDashboard.get_attribute(
+        "#memoryWatchChip", "data-level") == "near"
+
+
+@pytest.mark.falsification
+def testAnUnreachableMemoryWatchShowsTheUnknownChip(pageDashboard, serverHub):
+    """Kills: hiding the chip when the hub's answer does not arrive.
+
+    No answer is not a quiet answer: the dashboard cannot tell, so the
+    chip must say so rather than leave the top row reading as normal.
+    """
+    listRequests = []
+
+    def fnRefuse(routeIntercepted):
+        listRequests.append(routeIntercepted.request.url)
+        routeIntercepted.fulfill(
+            status=500, content_type="application/json",
+            body='{"detail": "memory watch unavailable"}')
+
+    pageDashboard.route(S_MEMORY_GLOB, fnRefuse)
+    _fnEnterTheBlankProject(pageDashboard, serverHub)
+    _fnWaitForRequests(pageDashboard, listRequests, 1)
+    _fnAssertChipShows(pageDashboard, "Memory unknown")
+    assert pageDashboard.get_attribute("#memoryWatchChip", "title") == (
+        "Memory could not be checked: this dashboard could not reach the "
+        "hub's memory watch.")
+    assert pageDashboard.listPageErrors == []
