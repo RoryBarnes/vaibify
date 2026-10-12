@@ -134,10 +134,18 @@ async def _fnWriteTestLog(
     connectionDocker, sContainerId, iStepNumber, listLogLines,
     sProjectRepoPath,
 ):
-    """Write test output to a log file in the project's logs directory."""
-    from .pipelineLogger import fnWriteLogToContainer
-    sLogsDir = workflowManager.fsLogsDirectoryFor(
-        sContainerId, sProjectRepoPath,
+    """Write test output to a log file in the project's logs directory.
+
+    The directory is created here, never assumed. ``.vaibify/logs`` is
+    gitignored, so a fresh clone has none and neither does the shadow
+    copy a Level 3 verification exports; the runner creates one only
+    under the workflow's ``sProjectRepoPath``, which on the dashboard's
+    shadow lane names the live repository rather than the copy these
+    tests ran in. Assumed, every test log there was lost.
+    """
+    from .pipelineLogger import _fsEnsureLogsDirectory, fnWriteLogToContainer
+    sLogsDir = await _fsEnsureLogsDirectory(
+        connectionDocker, sContainerId, sProjectRepoPath,
     )
     sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sFilename = f"test_Step{iStepNumber:02d}_{sTimestamp}.log"

@@ -33,6 +33,7 @@ already applied and returns ``(iExitCode, sOutput)``.
 """
 
 __all__ = [
+    "S_DAEMON_ARCHITECTURE_UNKNOWN_REASON",
     "S_RECORD_KIND_ATTESTATION",
     "S_RECORD_KIND_REPRODUCTION",
     "S_REPRODUCTION_RECORD_NOTE",
@@ -89,6 +90,16 @@ S_REPRODUCTION_RECORD_NOTE = (
 )
 
 _S_ATTESTATION_RELATIVE_PATH = ".vaibify/" + S_ATTESTATION_FILENAME
+
+# Written beside an empty daemon architecture, so the blank reads as a
+# question nobody could answer rather than as a value. The shadow lane
+# asks the daemon that ran the rerun; this covers a daemon that did not
+# answer and an outcome from a lane that did not ask.
+S_DAEMON_ARCHITECTURE_UNKNOWN_REASON = (
+    "the daemon's architecture was not obtained during this "
+    "verification (the daemon did not answer, or the lane did not ask), "
+    "so this record does not say which architecture ran the rerun"
+)
 
 
 S_RECORD_KIND_UNDETERMINED = "undetermined"
@@ -186,8 +197,9 @@ def fdictBuildReproductionRecord(
     The report schema, filled from what this lane knows: the source is
     the checkout itself (its basename only -- a record committed into
     a repository carries no host path), the acquisition facts come
-    from the outcome's provenance block, and the archive re-check is
-    the one the lane already computed.
+    from the outcome's provenance block, the daemon's architecture
+    from the answer the shadow lane got from the daemon that ran it,
+    and the archive re-check is the one the lane already computed.
     """
     dictProvenance = dictOutcome.get("dictReproductionProvenance") or {}
     dictContainer = (dictEnvironment or {}).get("dictContainer") or {}
@@ -210,10 +222,11 @@ def fdictBuildReproductionRecord(
         "bDepositOnRecord": bool(dictDeposit),
         "sDepositVersionDoi": str(dictDeposit.get("sVersionDoi") or ""),
     }
+    sDaemonArchitecture = str(dictOutcome.get("sDaemonArchitecture") or "")
     dictAcquired = {
         "sRequiredPlatform": sPlatform,
         "sObtainedPlatform": sPlatform,
-        "sDaemonArchitecture": "",
+        "sDaemonArchitecture": sDaemonArchitecture,
         "bEmulated": bool(dictProvenance.get("bEmulated")),
         "sObtainedFrom": str(dictProvenance.get("sObtainedFrom") or ""),
         "sImageReference": str(dictProvenance.get("sImageReference") or ""),
@@ -227,6 +240,10 @@ def fdictBuildReproductionRecord(
         dictSource, dictAcquired, dictOutcome, dictRecheck, fDurationSeconds,
     )
     dictRecord["sReproducedManifestPath"] = sReproducedManifestPath
+    if not sDaemonArchitecture:
+        dictRecord["dictPlatform"]["sDaemonArchitectureUnknownReason"] = (
+            S_DAEMON_ARCHITECTURE_UNKNOWN_REASON
+        )
     _fnBindEvidence(dictRecord, dictOutcome, dictBaseline or {})
     return dictRecord
 

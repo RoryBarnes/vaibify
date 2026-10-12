@@ -31450,4 +31450,57 @@ LIST_FALSIFICATIONS = [
             '                self.fdictInspectExec(sExecId).get("ExitCode") or 0),\n'
         ),
     ),
+    # --- 2026-10-12: a reader's Verify Level 3 lost its step test logs,
+    # recorded an empty daemon architecture, and logged its failed
+    # reproduction-record commit as an attestation ---
+    Falsification(
+        nodeid=(
+            'tests/testStepTestLogDirectory.py::'
+            'test_a_step_test_log_lands_in_a_clone_with_no_logs_directory'
+        ),
+        source='vaibify/gui/pipelineTestRunner.py',
+        old=(
+            '    sLogsDir = await _fsEnsureLogsDirectory(\n'
+            '        connectionDocker, sContainerId, sProjectRepoPath,\n'
+            '    )\n'
+        ),
+        new=(
+            '    sLogsDir = workflowManager.fsLogsDirectoryFor(\n'
+            '        sContainerId, sProjectRepoPath,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordPlatform.py::'
+            'test_the_record_names_the_architecture_the_daemon_reported'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='        "sDaemonArchitecture": sDaemonArchitecture,\n',
+        new='        "sDaemonArchitecture": "",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordPlatform.py::'
+            'test_an_unanswered_daemon_is_recorded_as_unknown_with_a_reason'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='    if not sDaemonArchitecture:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::'
+            'testAReadersFailedCommitIsLoggedAsAReproductionRecord'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    reproductionRecord.S_RECORD_KIND_REPRODUCTION:'
+            ' "reproduction record",\n'
+        ),
+        new=(
+            '    reproductionRecord.S_RECORD_KIND_REPRODUCTION:'
+            ' "L3 attestation",\n'
+        ),
+    ),
 ]

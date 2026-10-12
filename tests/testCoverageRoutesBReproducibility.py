@@ -389,6 +389,33 @@ def testAFailedCommitIsLoggedButNothingToCommitIsNot(caplog):
     assert "REPRODUCED.sha256" in connectionDocker.listCommands[1][1]
 
 
+@pytest.mark.falsification
+def testAReadersFailedCommitIsLoggedAsAReproductionRecord(caplog):
+    """A reader's verification writes a reproduction record, and the log says so.
+
+    Kills: the commit warning naming every record "the L3 attestation",
+    which told a reader whose identity was unset that an attestation --
+    the author's claim, which their lane never writes -- had failed.
+    """
+    connectionDocker = RecordingConnection(
+        [(0, ""), (128, "Author identity unknown")],
+    )
+    with caplog.at_level(logging.WARNING):
+        reproducibilityRoutes._fnCommitAttestation(
+            connectionDocker, S_CONTAINER_ID,
+            {"sProjectRepoPath": "/workspace/projectAlpha"},
+            listRelPaths=[".vaibify/reproductions/record.json"],
+            sRecordKind="reproduction",
+        )
+    listWarnings = [
+        recordLog.getMessage() for recordLog in caplog.records
+        if "Could not commit" in recordLog.getMessage()
+    ]
+    assert listWarnings == [
+        "Could not commit the reproduction record: Author identity unknown",
+    ]
+
+
 def testAnExecErrorDuringTheCommitIsLoggedNotRaised(caplog):
     connectionDocker = RecordingConnection([RuntimeError("exec stream closed")])
     with caplog.at_level(logging.WARNING):

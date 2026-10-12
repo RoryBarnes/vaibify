@@ -1250,6 +1250,18 @@ _DICT_RECORD_COMMIT_MESSAGES = {
         "Record a reproduction of the published result",
 }
 
+# What a log line calls each record: a reader's lane writes a
+# reproduction record, never the author's attestation.
+_DICT_RECORD_NOUNS = {
+    reproductionRecord.S_RECORD_KIND_ATTESTATION: "L3 attestation",
+    reproductionRecord.S_RECORD_KIND_REPRODUCTION: "reproduction record",
+}
+
+
+def _fsDescribeRecordKind(sRecordKind):
+    """Return the noun a log line uses for one kind of verification record."""
+    return _DICT_RECORD_NOUNS.get(sRecordKind, "verification record")
+
 
 def _fnCommitAttestation(
     connectionDocker, sContainerId, dictWorkflow, listRelPaths=None,
@@ -1287,7 +1299,8 @@ def _fnCommitAttestation(
         )
         if iAddCode != 0:
             logger.warning(
-                "Could not stage the L3 attestation: %s", sAddOutput,
+                "Could not stage the %s: %s",
+                _fsDescribeRecordKind(sRecordKind), sAddOutput,
             )
             return
         iCode, sOutput = containerGit.ftResultGitCommitInContainer(
@@ -1305,7 +1318,8 @@ def _fnCommitAttestation(
         # re-verified project, not a failure worth a log line.
         if iCode != 0 and "nothing to commit" not in (sOutput or ""):
             logger.warning(
-                "Could not commit the L3 attestation: %s", sOutput,
+                "Could not commit the %s: %s",
+                _fsDescribeRecordKind(sRecordKind), sOutput,
             )
     except Exception as errorCaught:
         # A carrier refusal means the durable admission was not open,
@@ -1314,7 +1328,8 @@ def _fnCommitAttestation(
         # failed commit.
         fnReRaiseControlPlaneRefusal(errorCaught)
         logger.warning(
-            "Could not commit the L3 attestation: %s", errorCaught,
+            "Could not commit the %s: %s",
+            _fsDescribeRecordKind(sRecordKind), errorCaught,
         )
 
 
@@ -1490,7 +1505,10 @@ def _fbPersistAttestation(
             dictWorkflow or {}, fdictBuildAttestationAt,
         )
     except OSError as errorCaught:
-        logger.error("Could not persist L3 attestation: %s", errorCaught)
+        logger.error(
+            "Could not persist the %s: %s",
+            _fsDescribeRecordKind(sRecordKind), errorCaught,
+        )
         return False
     dictResult["listRecordPathsWritten"] = listWritten
     dictResult["sReproducedManifestPath"] = (

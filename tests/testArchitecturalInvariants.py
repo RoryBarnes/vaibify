@@ -7574,7 +7574,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2344 -> 2350 (2026-09-30): the attestation carries the pinned-input
     # split and the pre-run deletions; the copied Dockerfile composes
     # overlays for the resolved container name.
-    "routes/reproducibilityRoutes.py": 2350,
+    # 2350 -> 2368 (2026-10-12): the commit and persist warnings name
+    # the record they failed on -- a reader's lane writes a
+    # reproduction record and was told an "L3 attestation" failed. Log
+    # wording for this module's own write; no new concern.
+    "routes/reproducibilityRoutes.py": 2368,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
