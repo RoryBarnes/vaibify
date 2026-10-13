@@ -812,21 +812,25 @@ def testTheRequiredCheckToolRefusesAnExcludeThatMatchesNoCell():
 
 
 @pytest.mark.falsification
-def testThePullRequestMacosLaneRunsTheTwoEdgePythonsOnTheOlderMacos():
-    """macOS 15 runs only the Pythons that bracket the supported range.
+def testThePullRequestMacosLaneRunsOnlyTheTwoEdgePythons():
+    """Both macOS versions run only the Pythons that bracket the range.
 
-    Eight macOS unit checks per pull request: macOS 26 with all six
-    Pythons, macOS 15 with 3.9 and 3.14. The tool and this suite expand
-    the matrix separately, so both are asserted.
+    Four macOS unit checks per pull request: macOS 15 and 26, each with
+    3.9 and 3.14. Every Python still runs on every pull request on
+    Linux, and the eight macOS cells left out run nightly. The tool and
+    this suite expand the matrix separately, so both are asserted.
 
-    Kills: restoring a middle Python to macOS 15 in the pull-request
-    lane, which returns the macOS queue to twelve unit jobs.
+    Kills: restoring a middle Python to either macOS in the
+    pull-request lane, which returns the macOS queue to eight or more
+    unit jobs (the last of which waited 114 minutes to start,
+    2026-10-13).
     """
     moduleTool = _fmoduleLoadRequiredCheckTool()
     setExpected = {
-        f"unit:macos-26:python-{sVersion}"
-        for sVersion in ("3.9", "3.10", "3.11", "3.12", "3.13", "3.14")
-    } | {"unit:macos-15:python-3.9", "unit:macos-15:python-3.14"}
+        f"unit:{sOperatingSystem}:python-{sVersion}"
+        for sOperatingSystem in ("macos-15", "macos-26")
+        for sVersion in ("3.9", "3.14")
+    }
 
     assert set(moduleTool.flistExpandJobNames("tests-macos.yml")) == setExpected
     assert set(_flistExpandJobNames("tests-macos.yml")) == setExpected

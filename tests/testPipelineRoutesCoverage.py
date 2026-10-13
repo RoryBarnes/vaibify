@@ -1867,6 +1867,37 @@ class TestPollLevelStatePayload:
         assert dictLive["dictWorkflowEnvelopeDetail"][
             "bRebuildAttestationRunning"] is True
 
+    @pytest.mark.falsification
+    @pytest.mark.asyncio
+    async def test_the_running_record_kind_reaches_the_poll(self):
+        """A reader's live run arrives as one writing a reproduction.
+
+        Threaded through the same three hops as the running flag, and
+        asserted with a value no default in the chain can produce, so a
+        dropped hop cannot pass as "not known yet".
+
+        Kills: a hop that drops the record kind on its way to the poll.
+        """
+        from vaibify.gui import verificationProgress
+
+        dictWorkflow = _fdictBuildLevelWorkflow([_fdictActivePollStep()])
+        dictCtx = _fdictBuildLevelPollContext()
+        verificationProgress.DICT_VERIFY_TASKS["cid1"] = {
+            "task": None, "dictStatus": {
+                "sPhase": "running", "sProjectRepoPath": "/workspace/proj",
+                "sRecordKindInFlight": "reproduction",
+            },
+        }
+        try:
+            with _fstackEnterPollLevelPatches([], [], []):
+                dictLive = await _fdictFetchOutputStatus(
+                    dictCtx, "cid1", dictWorkflow, {},
+                )
+        finally:
+            verificationProgress.DICT_VERIFY_TASKS.pop("cid1", None)
+        assert dictLive["dictWorkflowEnvelopeDetail"][
+            "sRunningRecordKind"] == "reproduction"
+
     @pytest.mark.asyncio
     async def test_response_carries_envelope_detail_keys(self):
         """The envelope-detail payload arrives with all its sections.
@@ -1919,6 +1950,9 @@ class TestPollLevelStatePayload:
             "dictDeterminism", "dictRemoteSyncs",
             "bAiDeclarationAttested", "bRebuildAttestationCurrent",
             "bRebuildAttestationRunning", "dictRebuildAttestation",
+            # Added 2026-10-13. Which record the live run writes, so
+            # only the row it can change pulses.
+            "sRunningRecordKind",
             # Added 2026-09-03. Per-remote publication state for the
             # attestation itself, tri-state, read by nothing that
             # gates: the PROOF tab encourages the GitHub copy and the

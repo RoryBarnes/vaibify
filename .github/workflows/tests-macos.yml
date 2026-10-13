@@ -33,14 +33,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # macOS 26 runs every supported Python; macOS 15 runs only the two
-      # that bracket the range. macOS runners are the scarcest in the
-      # fleet, and a breakage that spares both ends of the range yet
-      # hits a middle version on an older macOS is rare. The four cells
-      # left out here run every night in tests-macos-nightly.yml, so
-      # they are late rather than absent. Keep the two files' cells in
-      # step: testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut
-      # fails if they drift.
+      # Both macOS versions run only the two Pythons that bracket the
+      # range. macOS runners are the scarcest in the fleet -- five for
+      # the whole account, shared with every other macOS job, and on one
+      # pull request (2026-10-13) the last macOS unit job waited 114
+      # minutes to start -- while every Python already runs on every
+      # pull request on Linux. A breakage that spares both ends of the
+      # range yet hits a middle version only on macOS is rare. The eight
+      # cells left out here run every night in tests-macos-nightly.yml,
+      # so they are late rather than absent. The python-version list
+      # stays whole on purpose: it names the product the nightly lane
+      # must cover, and testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut
+      # fails if the two files drift.
       matrix:
         os: [macos-15, macos-26]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -49,6 +53,10 @@ jobs:
           - {os: macos-15, python-version: "3.11"}
           - {os: macos-15, python-version: "3.12"}
           - {os: macos-15, python-version: "3.13"}
+          - {os: macos-26, python-version: "3.10"}
+          - {os: macos-26, python-version: "3.11"}
+          - {os: macos-26, python-version: "3.12"}
+          - {os: macos-26, python-version: "3.13"}
 
     steps:
       - uses: actions/checkout@v5

@@ -5222,7 +5222,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4134 -> 4175 (2026-10-08): the poll hashes the files an AI
     # Declaration sign-off covers, latches a stale one, and ships the
     # verdict; poll wiring, so it stays beside the poll.
-    "routes/pipelineRoutes.py": 4175,
+    # 4175 -> 4188 (2026-10-13): the poll says WHICH record the live
+    # verification writes, threaded keyword-only beside the running
+    # flag, so a reader's run no longer pulses the author's
+    # attestation row; poll wiring again.
+    "routes/pipelineRoutes.py": 4188,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7616,7 +7620,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # -> 2384 the same day: the launch mints an attempt id and returns
     # it, so the tab that clicked reports an attempt that settled
     # before any poll saw it running, and never an earlier one's.
-    "routes/reproducibilityRoutes.py": 2384,
+    # -> 2388 (2026-10-13): the worker puts the record kind it settles
+    # before any step runs on the live status, for the same row.
+    "routes/reproducibilityRoutes.py": 2388,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
