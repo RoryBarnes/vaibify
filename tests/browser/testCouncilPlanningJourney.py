@@ -383,8 +383,9 @@ def _fnAcceptTheCandidatePlan(page, serverHub, sCampaignId):
     )
 
 
-def _fnWaitForState(page, serverHub, sCampaignId, sState):
-    for _ in range(50):
+def _fnWaitForState(page, serverHub, sCampaignId, sState,
+                    fTimeoutSeconds=10.0):
+    for _ in range(int(fTimeoutSeconds / 0.2)):
         dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
             _fdictStore(serverHub), sCampaignId)
         if dictRecord["sState"] == sState:

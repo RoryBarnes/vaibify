@@ -151,14 +151,6 @@ T_DEFERRABLE_FACILITIES = (
     ),
 )
 
-# A private exit code for "the test never ran". pytest has none: a
-# skipped test exits 0, which is indistinguishable from a passing one
-# and reads, in this harness, as a mutant that survived.
-I_EXIT_SKIPPED = 90
-
-# A private exit code for "the run was killed at its wall-clock limit".
-I_EXIT_TIMED_OUT = 91
-
 # One replayed entry may take this long before it is killed and named.
 # A mutant can make a test hang (a held lock, an event loop that never
 # tears down); without a limit that single entry consumes the whole CI
@@ -170,19 +162,6 @@ S_VERDICT_CALL_FAILED = "call-failed"
 S_VERDICT_ERRORED_OUTSIDE_CALL = "errored-outside-call"
 S_VERDICT_NO_FAILURE = "no-failure"
 S_VERDICT_UNREADABLE = "unreadable"
-
-
-def _fiRunTest(sNodeId, fTimeoutSeconds=None):
-    """Return the pytest exit code for running just this test node.
-
-    Exit 0 = passed; 1 = a test failed; any other nonzero is a
-    collection/internal error. Whether exit 1 is a KILL is decided
-    from the JUnit XML by :func:`_fsRunMutatedTestAndJudge`, not here.
-
-    A SKIPPED test also exits 0, which is why the runners below refuse
-    to read a skip as a pass -- see :func:`_fiRunTests`.
-    """
-    return _fiRunTests([sNodeId], fTimeoutSeconds)
 
 
 def _fdictBuildPytestEnvironment(sPycachePrefix):
@@ -253,24 +232,6 @@ def _fsKillProcessGroup(processPytest):
         return processPytest.communicate(timeout=30)[0] or ""
     except subprocess.TimeoutExpired:
         return ""
-
-
-def _fiRunTests(listNodeIds, fTimeoutSeconds=None):
-    """Return the pytest exit code for running these test nodes together.
-
-    A skip is reported as its own code, never as the 0 pytest exits
-    with. The batched precondition reads the JUnit report instead
-    (:func:`_fsetSelectPreconditionSuspects`), because it must say WHICH
-    tests did not pass.
-    """
-    iCode, sOutput, bTimedOut = _ftRunPytest(listNodeIds, fTimeoutSeconds)
-    if bTimedOut:
-        return I_EXIT_TIMED_OUT
-    if iCode == 0 and _fbOutputReportsASkip(sOutput):
-        # Belt and braces for every OTHER reason a test can skip: an
-        # unevaluated mutation must never be reported as a survivor.
-        return I_EXIT_SKIPPED
-    return iCode
 
 
 def _fsReadJunitVerdict(sJunitPath):
@@ -500,6 +461,30 @@ def _ftJunitCaseOfNodeId(sNodeId):
     return (".".join([sModule, *listParts[1:-1]]), listParts[-1])
 
 
+def _fsDescribeCleanRunFailure(sNodeId, fTimeoutSeconds):
+    """Return "" when the test passes on clean code, else what pytest said.
+
+    The verdict used to be the bare phrase, so a test that failed only
+    on a CI runner was named but never explained, and the next push was
+    a guess. The failure's own lines travel with it.
+    """
+    iCode, sOutput, bTimedOut = _ftRunPytest([sNodeId], fTimeoutSeconds)
+    if bTimedOut:
+        return f"timed out after {fTimeoutSeconds:g}s"
+    if iCode == 0 and not _fbOutputReportsASkip(sOutput):
+        return ""
+    return _fsSummarizePytestFailure(sOutput) or f"pytest exit {iCode}"
+
+
+def _fsSummarizePytestFailure(sOutput):
+    """Return pytest's own failure lines, short enough for one log line."""
+    listLines = [
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.startswith(("FAILED", "ERROR", "SKIPPED", "E "))
+    ]
+    return " | ".join(listLines[:8])[:800]
+
+
 def _fsReconfirmOne(
     entry, sOriginal, bPreconditionKnownGood=False,
     fTimeoutSeconds=F_DEFAULT_ENTRY_TIMEOUT_SECONDS,
@@ -520,10 +505,11 @@ def _fsReconfirmOne(
     sSyntaxProblem = _fsDescribeSyntaxProblem(sMutated, pathSource)
     if sSyntaxProblem:
         return f"ERROR: mutation does not parse, not a kill: {sSyntaxProblem}"
-    if not bPreconditionKnownGood and _fiRunTest(
-        entry.nodeid, fTimeoutSeconds,
-    ) != 0:
-        return "ERROR: test does not pass on clean code"
+    if not bPreconditionKnownGood:
+        sCleanFailure = _fsDescribeCleanRunFailure(
+            entry.nodeid, fTimeoutSeconds)
+        if sCleanFailure:
+            return f"ERROR: test does not pass on clean code: {sCleanFailure}"
     try:
         pathSource.write_text(sMutated, encoding="utf-8")
         return _fsRunMutatedTestAndJudge(entry.nodeid, fTimeoutSeconds)

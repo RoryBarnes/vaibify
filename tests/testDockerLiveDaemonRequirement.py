@@ -135,9 +135,11 @@ def test_the_reconfirmation_harness_never_reads_a_skip_as_a_survivor():
     assert not moduleTool._fbOutputReportsASkip(
         "4 passed in 1.0s (skipped nothing)"
     )
-    assert moduleTool.I_EXIT_SKIPPED not in (0, 1), (
-        "the skip code must be distinguishable from both a pass and an "
-        "assertion failure, or the harness cannot tell them apart"
+    moduleTool._ftRunPytest = lambda listArguments, fTimeout=None: (
+        0, "1 skipped in 0.10s", False)
+    assert moduleTool._fsDescribeCleanRunFailure("t.py::t", 1.0), (
+        "a skipped precondition run must not read as a pass, or the "
+        "mutation after it is judged against a test that never ran"
     )
 
 

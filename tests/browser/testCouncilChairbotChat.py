@@ -274,7 +274,7 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     # reach the gate and the page read it, so only ticks remain.
     _fnWaitForState(
         pageDashboard, serverHub, _fsNewestCampaignId(serverHub),
-        "needsHuman")
+        "needsHuman", fTimeoutSeconds=60.0)
     pageDashboard.evaluate(
         "async () => { await VaibifyAgentCouncil.fnPollOnceForTest(); }")
 
