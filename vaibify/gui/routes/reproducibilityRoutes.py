@@ -29,6 +29,7 @@ import asyncio
 import logging
 import posixpath
 import time
+import uuid
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -37,7 +38,7 @@ from ...config.mutationAdmission import fnReRaiseControlPlaneRefusal
 from ...reproducibility import gitEvidence, reproductionRecord
 from ...reproducibility.shadowRerun import S_ENUMERATE_PACKAGES_COMMAND
 from ...reproducibility.manifestWriter import (
-    S_REPRODUCED_MANIFEST_FILENAME,
+    S_REPRODUCED_MANIFEST_HISTORY_DIR,
     fdictCompareManifestEntries,
     flistParseManifestLines,
 )
@@ -647,6 +648,9 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
             sContainerId, fsRepoRootOf(filesRepo),
         ),
+        "dictLastSettled": verificationProgress.fdictReadLastSettled(
+            sContainerId, fsRepoRootOf(filesRepo),
+        ),
         "dictUnsettledTeardown": (
             verificationProgress.fdictReadUnsettledTeardown(sContainerId)
         ),
@@ -931,6 +935,11 @@ async def _fdictLaunchVerificationDurably(
     two reruns of the same repository would overwrite each other's
     outputs. The in-flight check stays because it names the specific
     thing running; this one is the authority.
+
+    ``sAttemptId`` rides the status into ``dictLastSettled`` and back
+    to the tab that clicked, which is how that tab reports a run that
+    settled before any poll saw it running -- without mistaking an
+    earlier attempt's record, still current on a stale poll, for it.
     """
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -941,6 +950,7 @@ async def _fdictLaunchVerificationDurably(
     )
     dictStatus = {
         "sPhase": "starting",
+        "sAttemptId": uuid.uuid4().hex,
         "fStartedAtMonotonic": time.monotonic(),
         "sManifestDigestAtAttestation": sManifestDigest,
         "sProjectRepoPath": fsRepoRootOf(filesRepo),
@@ -967,6 +977,7 @@ async def _fdictLaunchVerificationDurably(
     return {
         "bAccepted": True,
         "sPhase": "starting",
+        "sAttemptId": dictStatus["sAttemptId"],
         "sManifestDigestAtAttestation": sManifestDigest,
     }
 
@@ -1100,8 +1111,8 @@ async def _fnRunVerificationWorker(
     dictStatus["listCarriedPaths"] = list(
         dictResult.get("listCarriedPaths") or []
     )
-    # What the settled toast offers: the record it wrote, and whether
-    # a reproduced manifest now sits beside the pinned one to compare.
+    # What the settled report offers: the record it wrote, and THIS
+    # attempt's dated reproduced manifest, if it wrote one.
     dictStatus["sRecordKind"] = sRecordKind if bAttestationWritten else ""
     dictStatus["sReproducedManifestPath"] = (
         dictResult.get("sReproducedManifestPath") or ""
@@ -1246,9 +1257,19 @@ def _fsPhaseForOutcome(dictResult):
 _DICT_RECORD_COMMIT_MESSAGES = {
     reproductionRecord.S_RECORD_KIND_ATTESTATION:
         "Record the Level 3 rebuild attestation",
-    reproductionRecord.S_RECORD_KIND_REPRODUCTION:
-        "Record a reproduction of the published result",
 }
+
+# What a log line calls each record: a reader's lane writes a
+# reproduction record, never the author's attestation.
+_DICT_RECORD_NOUNS = {
+    reproductionRecord.S_RECORD_KIND_ATTESTATION: "L3 attestation",
+    reproductionRecord.S_RECORD_KIND_REPRODUCTION: "reproduction record",
+}
+
+
+def _fsDescribeRecordKind(sRecordKind):
+    """Return the noun a log line uses for one kind of verification record."""
+    return _DICT_RECORD_NOUNS.get(sRecordKind, "verification record")
 
 
 def _fnCommitAttestation(
@@ -1269,9 +1290,16 @@ def _fnCommitAttestation(
     unrelated staged work. A failure is logged and swallowed, because
     turning a git problem into a failed scientific claim is the error
     the no-verdict branch already exists to avoid.
+
+    A READER's reproduction record is never staged or committed (ruled
+    2026-10-12): it is the reader's own artefact, saved as plain files
+    in ``.vaibify/reproductions/`` of their clone, and no git operation
+    on somebody else's repository is made on their behalf.
     """
     from ...config.registryManager import fbIsHostProject
     from .. import containerGit
+    if sRecordKind == reproductionRecord.S_RECORD_KIND_REPRODUCTION:
+        return
     if fbIsHostProject(sContainerId):
         return
     sProjectRepo = (dictWorkflow or {}).get("sProjectRepoPath") or ""
@@ -1287,7 +1315,8 @@ def _fnCommitAttestation(
         )
         if iAddCode != 0:
             logger.warning(
-                "Could not stage the L3 attestation: %s", sAddOutput,
+                "Could not stage the %s: %s",
+                _fsDescribeRecordKind(sRecordKind), sAddOutput,
             )
             return
         iCode, sOutput = containerGit.ftResultGitCommitInContainer(
@@ -1305,7 +1334,8 @@ def _fnCommitAttestation(
         # re-verified project, not a failure worth a log line.
         if iCode != 0 and "nothing to commit" not in (sOutput or ""):
             logger.warning(
-                "Could not commit the L3 attestation: %s", sOutput,
+                "Could not commit the %s: %s",
+                _fsDescribeRecordKind(sRecordKind), sOutput,
             )
     except Exception as errorCaught:
         # A carrier refusal means the durable admission was not open,
@@ -1314,7 +1344,8 @@ def _fnCommitAttestation(
         # failed commit.
         fnReRaiseControlPlaneRefusal(errorCaught)
         logger.warning(
-            "Could not commit the L3 attestation: %s", errorCaught,
+            "Could not commit the %s: %s",
+            _fsDescribeRecordKind(sRecordKind), errorCaught,
         )
 
 
@@ -1451,8 +1482,9 @@ def _fbPersistAttestation(
     ``sRecordKind`` decides between the author's attestation and a
     reproduction record for a clone whose attestation is somebody
     else's. The paths written are left on the outcome as
-    ``listRecordPathsWritten`` for the commit that follows, and the
-    root manifest's path as ``sReproducedManifestPath`` for the toast.
+    ``listRecordPathsWritten`` for the commit that follows, and THIS
+    attempt's dated manifest as ``sReproducedManifestPath`` -- never
+    the root file, which on a reader's clone is the author's.
     """
     sStatus = S_STATUS_PASSED if dictResult["bPassed"] else S_STATUS_FAILED
 
@@ -1490,13 +1522,15 @@ def _fbPersistAttestation(
             dictWorkflow or {}, fdictBuildAttestationAt,
         )
     except OSError as errorCaught:
-        logger.error("Could not persist L3 attestation: %s", errorCaught)
+        logger.error(
+            "Could not persist the %s: %s",
+            _fsDescribeRecordKind(sRecordKind), errorCaught,
+        )
         return False
     dictResult["listRecordPathsWritten"] = listWritten
-    dictResult["sReproducedManifestPath"] = (
-        S_REPRODUCED_MANIFEST_FILENAME
-        if S_REPRODUCED_MANIFEST_FILENAME in listWritten else ""
-    )
+    dictResult["sReproducedManifestPath"] = next((
+        sPath for sPath in listWritten
+        if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR + "/")), "")
     return True
 
 

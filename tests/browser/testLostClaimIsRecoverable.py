@@ -25,6 +25,8 @@ window, so the test drives the real refusal on the real route without
 being a timing test.
 """
 
+import time
+
 import pytest
 
 from tests.browser.conftest import (
@@ -35,10 +37,13 @@ from tests.browser.conftest import (
 
 pytestmark = pytest.mark.browser
 
-
 @pytest.fixture(autouse=True)
 def fixtureDropClaimsBetweenJourneys(serverHub):
-    """Give every claim back after each journey."""
+    """Give every claim back after each journey.
+
+    The page's teardown, which runs first, has already waited for the
+    journey's work to drain (``fnWaitForTheHubToDrain``).
+    """
     yield
     from vaibify.config.containerLock import fnReleaseContainerLock
     dictContainerOwners = serverHub.app.state.dictContainerOwners
@@ -69,12 +74,67 @@ def _fnReachTheWorkflowPicker(page, serverHub):
     page.wait_for_selector(f'text={S_HOST_WORKFLOW_NAME}', timeout=20000)
 
 
+F_QUIET_HUB_TIMEOUT_SECONDS = 20.0
+
+
+def _fbProjectJournalIsBusy():
+    """Return True while a journaled operation runs on the ready project.
+
+    The same resolution the claim route consults before it refuses a
+    project as in use.
+    """
+    from vaibify.config import operationJournal
+    return operationJournal.fdictResolveContainerJournal(
+        S_HOST_PROJECT_READY, None, bPersistResolution=False,
+    )["sResolution"] == operationJournal.S_RESOLUTION_BUSY
+
+
+def _ftDropTheClaimWhenTheHubIsQuiet(serverHub):
+    """Pop the owner record only at a moment nothing is running.
+
+    Return ``(bDropped, recordOwner)``. Runs ON the hub's loop, so no
+    request can be admitted between the check and the pop.
+    """
+    from vaibify.gui import commitCarrier
+    appState = serverHub.app.state
+    if (
+        serverHub.fiCountInFlightRequests() > 0
+        or _fbProjectJournalIsBusy()
+        or commitCarrier.fbContainerHasLiveMutationWork(
+            appState, S_HOST_PROJECT_READY)
+    ):
+        return False, None
+    return True, appState.dictContainerOwners.pop(S_HOST_PROJECT_READY, None)
+
+
 def _fnTakeTheClaimAway(serverHub):
-    """Drop the owner record, exactly as the idle reaper drops one."""
+    """Drop the owner record, exactly as the idle reaper drops one.
+
+    The lapse modelled here is the one the recovery exists for: a page
+    the browser froze, whose claim then outlived its presence window.
+    Nothing that page started is still running when its claim goes.
+    Dropped at an arbitrary instant instead, the claim could go while
+    one of the page's own polls was mid-read; the recovery's claim was
+    then refused as in use by that read, and the journey failed. On an
+    idle machine the reads finished in milliseconds and the race was
+    rarely lost; under parallel workers it was lost often. So the drop
+    waits for a quiet hub -- no request in flight, no journaled
+    operation, no guarded work (the reaper's own veto) -- and checks
+    and drops in one tick of the hub's loop.
+    """
     from vaibify.config.containerLock import fnReleaseContainerLock
-    recordOwner = serverHub.app.state.dictContainerOwners.pop(
-        S_HOST_PROJECT_READY, None,
-    )
+    fDeadline = time.monotonic() + F_QUIET_HUB_TIMEOUT_SECONDS
+    while True:
+        bDropped, recordOwner = serverHub.fgenericCallOnTheHubLoop(
+            lambda: _ftDropTheClaimWhenTheHubIsQuiet(serverHub))
+        if bDropped:
+            break
+        if time.monotonic() > fDeadline:
+            pytest.fail(
+                f"the hub never fell quiet within "
+                f"{F_QUIET_HUB_TIMEOUT_SECONDS:g} s, so the claim on "
+                f"{S_HOST_PROJECT_READY} was never dropped")
+        time.sleep(0.02)
     if recordOwner is not None and getattr(
         recordOwner, "fileHandleLock", None,
     ) is not None:
@@ -194,3 +254,49 @@ def testALostClaimIsReclaimedWhenABlankProjectOpens(
         serverHub.app.state.dictContainerOwners
     ), "the Blank Project opened without re-claiming the project"
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+def testABusyProjectSaysAnOperationIsFinishingNotAnotherSession(
+    pageDashboard, serverHub,
+):
+    """A BUSY journal names its cause, not a session that does not exist.
+
+    The listing locks a project whose journal holds a live in-flight
+    operation -- usually this very hub's own, a request a closed tab
+    started. The tile said "In use by another vaibify session" and sent
+    the researcher to close a window or run ``vaibify sessions``, where
+    nothing would be found (measured, 2026-10-11). Driven with a real
+    live process recorded as a host exec, the shape that was measured.
+
+    Kills: rendering a BUSY journal with the cross-hub lock message.
+    """
+    import subprocess
+    from vaibify.config import operationJournal
+    processHolder = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    sOperationId = operationJournal.fsPrepareOperation(
+        S_HOST_PROJECT_READY, "host-exec", "exec")
+    try:
+        operationJournal.fnPromoteOperationToInFlight(
+            S_HOST_PROJECT_READY, sOperationId,
+            {"iHolderPid": processHolder.pid,
+             "iHolderProcessGroup": processHolder.pid},
+        )
+        sTile = f'.container-tile[data-name="{S_HOST_PROJECT_READY}"]'
+        pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+        pageDashboard.wait_for_selector(
+            f'{sTile}[data-locked="true"]', timeout=15000)
+        pageDashboard.click(f"{sTile} .container-tile-main")
+        pageDashboard.wait_for_function(
+            """() => document.getElementById('toastContainer')
+                .innerText.trim().length > 0""",
+            timeout=10000,
+        )
+        sToastText = pageDashboard.text_content("#toastContainer")
+        assert "still finishing" in sToastText, sToastText
+        assert "another vaibify session" not in sToastText, sToastText
+        assert "vaibify sessions" not in sToastText, sToastText
+        assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+    finally:
+        processHolder.kill()
+        processHolder.wait()
+        operationJournal.fnSettleOperation(S_HOST_PROJECT_READY, sOperationId)

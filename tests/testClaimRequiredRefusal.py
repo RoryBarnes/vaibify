@@ -23,7 +23,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from vaibify.config import containerLock
+from vaibify.config import containerLock, mutationAdmission
 from vaibify.gui import containerOwnership
 from vaibify.gui import pipelineServer
 from vaibify.gui import sessionLifecycle
@@ -225,3 +225,126 @@ def _fnOrphanPastWindow(appHub, recordOwner):
     asyncio.run(sessionLifecycle.fnOrphanOwnersPastReconnectWindow(
         appHub.state,
     ))
+
+
+# ---------------------------------------------------------------------
+# A claim lost WHILE a request is in flight.
+# ---------------------------------------------------------------------
+
+S_DISCOVERY_POLL_URL = (
+    f"/api/pipeline/{S_CONTAINER_ID}/workflow-discovery"
+)
+
+
+class MockDockerConnectionThatLosesTheClaimMidExec(MockDockerConnection):
+    """Release the claim between admission and the exec, then gate it.
+
+    The real ``DockerConnection`` primitives call
+    ``fnAssertContainerCommandAdmitted`` before every exec; this double
+    calls the SAME gate under the same rule, so the commit-time
+    revalidation the request's admission carries is the real one. The
+    release is the real release, made with the record's own lease and
+    session the way the release route makes it, so the owner map, the
+    session index and the flock all change exactly as they do live.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.appHub = None
+        self.bReleaseBeforeNextExec = False
+        self.errorRaiseAtNextExec = None
+
+    def ftResultExecuteCommand(self, sContainerId, sCommand):
+        if self.bReleaseBeforeNextExec:
+            self.bReleaseBeforeNextExec = False
+            self._fnReleaseTheClaim()
+        if self.errorRaiseAtNextExec is not None:
+            errorRaise, self.errorRaiseAtNextExec = (
+                self.errorRaiseAtNextExec, None,
+            )
+            raise errorRaise
+        mutationAdmission.fnAssertContainerCommandAdmitted(
+            sContainerId, "ftResultExecuteCommand",
+        )
+        return super().ftResultExecuteCommand(sContainerId, sCommand)
+
+    def _fnReleaseTheClaim(self):
+        appState = self.appHub.state
+        recordOwner = appState.dictContainerOwners[S_CONTAINER_NAME]
+        assert containerOwnership.fbReleaseOwnership(
+            appState.dictContainerOwners, S_CONTAINER_NAME,
+            recordOwner.sLeaseId, recordOwner.sBrowserSessionId,
+            dictSessionOwner=appState.dictSessionOwner,
+        )
+
+
+@pytest.fixture
+def tClientLosingTheClaim():
+    """Return ``(client, docker)`` claimed on a hub whose exec is gated."""
+    connectionDocker = MockDockerConnectionThatLosesTheClaimMidExec()
+    with patch.object(
+        pipelineServer, "_fconnectionCreateDocker",
+        lambda: connectionDocker,
+    ):
+        appHub = pipelineServer.fappCreateHubApplication(iExpectedPort=0)
+    connectionDocker.appHub = appHub
+    clientBrowser = TestClient(
+        appHub,
+        headers={"X-Session-Token": fsBootstrapCredential(appHub)},
+        raise_server_exceptions=False,
+    )
+    clientBrowser.headers["X-Vaibify-Lease"] = _fsClaimAndReturnLease(
+        clientBrowser,
+    )
+    return (clientBrowser, connectionDocker)
+
+
+@pytest.mark.falsification
+def test_a_poll_whose_claim_lapses_mid_exec_answers_claim_required(
+    tClientLosingTheClaim,
+):
+    """Losing a claim never surfaces a 500.
+
+    A dashboard poll was admitted while its session held the claim; the
+    claim was released before its exec reached the primitive, whose
+    commit-time revalidation then refused it. That refusal escaped the
+    route and became the last-resort 500, so the page that should have
+    re-claimed by itself showed a server failure instead. The poll must
+    answer what the same request answers once the claim is gone.
+
+    Kills: removing the lost-claim translation in
+    routeScope.ContainerAwareRoute, which lets the stale-admission
+    refusal reach the last-resort 500 handler.
+    """
+    clientBrowser, connectionDocker = tClientLosingTheClaim
+    responseHeld = clientBrowser.get(S_DISCOVERY_POLL_URL)
+    assert responseHeld.status_code == 200, responseHeld.text
+    connectionDocker.bReleaseBeforeNextExec = True
+    responseLost = clientBrowser.get(S_DISCOVERY_POLL_URL)
+    assert responseLost.status_code == 403, responseLost.text
+    dictDetail = responseLost.json()["detail"]
+    assert dictDetail["sRefusal"] == "claim-required", dictDetail
+
+
+@pytest.mark.falsification
+def test_a_refusal_while_the_claim_still_holds_stays_loud(
+    tClientLosingTheClaim,
+):
+    """A refusal that is NOT a lost claim is never dressed up as one.
+
+    A quarantined journal refuses the exec while the session still owns
+    the container; answering claim-required there would send the page
+    into a claim that cannot cure it, and hide the reconcile the
+    refusal's own sentence names.
+
+    Kills: answering every control-plane refusal from a container route
+    with the authority's refusal, whether or not the claim was lost.
+    """
+    clientBrowser, connectionDocker = tClientLosingTheClaim
+    sQuarantine = "a quarantined record awaits vaibify reconcile"
+    connectionDocker.errorRaiseAtNextExec = (
+        mutationAdmission.MutationNotAdmittedError(sQuarantine)
+    )
+    responseHttp = clientBrowser.get(S_DISCOVERY_POLL_URL)
+    assert responseHttp.status_code == 500, responseHttp.text
+    assert responseHttp.json()["detail"] == sQuarantine

@@ -19,8 +19,6 @@ No lane performs a true Finder drop.
 
 import os
 
-import pytest
-
 from tests.browser.conftest import (
     S_HOST_PROJECT_READY,
 )
@@ -28,6 +26,15 @@ from tests.browser.fakeDockerAdapter import (
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
     S_WORKSPACE_ROOT,
+)
+# The ONE claim-dropping fixture. A copy kept here was requested as an
+# ordinary argument after the page, so it tore down first: the claims
+# went while the page was still open, its recovery took the project
+# back, and the next journey's claim was refused as another session's.
+# The shared one is autouse, so it tears down after the page has closed
+# and drained.
+from tests.browser.testLostClaimIsRecoverable import (  # noqa: F401
+    fixtureDropClaimsBetweenJourneys,
 )
 
 S_FILES_LIST_SELECTOR = "#listFiles"
@@ -74,29 +81,6 @@ const fnDropOn = (sSelector, dt) => {
     el.dispatchEvent(event);
 };
 """
-
-
-@pytest.fixture
-def fixtureDropClaimsBetweenJourneys(serverHub):
-    """Give every claim back after each journey.
-
-    The hub is module-scoped and the page is not, so a journey that
-    claims a project would leave it owned by a lease nobody holds and the
-    next journey's claim would be refused by a session that no longer
-    exists.
-    """
-    yield
-    from vaibify.config.containerLock import fnReleaseContainerLock
-    dictContainerOwners = serverHub.app.state.dictContainerOwners
-    for _sName, recordOwner in list(dictContainerOwners.items()):
-        fileHandle = getattr(recordOwner, "fileHandleLock", None)
-        if fileHandle is not None:
-            try:
-                fnReleaseContainerLock(fileHandle)
-            except OSError:
-                pass
-    dictContainerOwners.clear()
-    serverHub.app.state.dictSessionOwner.clear()
 
 
 def fnOpenTheFilesTab(page):

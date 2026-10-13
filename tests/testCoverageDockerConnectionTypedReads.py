@@ -416,9 +416,12 @@ def testFileAndDirectoryProbesDistinguishTheTwoKinds(monkeypatch, tmp_path):
 
 
 def testFailedPathProbeRaisesRatherThanAnsweringAbsent(monkeypatch):
-    """A read that could not run is OSError, never False."""
+    """A read that could not run is OSError, never False.
+
+    A killed read is run once more, so both attempts are killed here.
+    """
     connection = fconnectionForContainer(
-        monkeypatch, CannedAnswerContainer([(137, "", "killed\n")]))
+        monkeypatch, CannedAnswerContainer([(137, "", "killed\n")] * 2))
     with pytest.raises(OSError, match="/workspace/stepAlpha.*killed"):
         connection.fbContainerPathIsFile(
             S_CONTAINER_ID, "/workspace/stepAlpha")
@@ -813,13 +816,18 @@ def testRepositoryWeightCountsContentAndPrunesTheGitDirectory(
     ]
 
 
-def testRepositoryWeightOfAFailedReadRaisesFileNotFound(monkeypatch):
-    """A weight probe that could not run names the repository."""
+def testRepositoryWeightOfAFailedReadRaisesNamingTheRepository(monkeypatch):
+    """A weight probe that could not run names the repository.
+
+    It is an ``OSError``, never ``FileNotFoundError``: the probe's
+    failure says nothing about whether the repository exists.
+    """
     connection = fconnectionForContainer(
         monkeypatch, CannedAnswerContainer([(1, "", "boom")]))
-    with pytest.raises(FileNotFoundError, match="/workspace/repoAlpha"):
+    with pytest.raises(OSError, match="/workspace/repoAlpha.*boom") as infoError:
         connection.fdictWeighRepository(
             S_CONTAINER_ID, "/workspace/repoAlpha")
+    assert not isinstance(infoError.value, FileNotFoundError)
 
 
 def testTypedReadAddressesTheContainerByIdNotName(monkeypatch):

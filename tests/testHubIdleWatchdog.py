@@ -20,6 +20,14 @@ from unittest.mock import MagicMock, patch
 from vaibify.gui import pipelineServer, serverLifespan
 from vaibify.gui.routes.sessionRoutes import S_SUPPRESS_BROWSER_ENV
 
+# How long a driven watchdog loop may take to reach its kill. Each tick
+# hands work to threads, so a loaded runner took over a second for two
+# ticks; and on Python 3.10 a timed-out ``wait_for`` whose task swallows
+# the cancellation RETURNS instead of raising, so the overrun read as a
+# loop that chose not to kill. Every test below ends on its kill, so the
+# bound costs nothing when the behavior is right.
+F_WATCHDOG_LOOP_DEADLINE_SECONDS = 15.0
+
 
 # ---------------------------------------------------------------
 # Fakes
@@ -275,7 +283,7 @@ def test_watchdog_fires_after_live_change_from_never_to_finite():
                 pipelineServer._fnIdleShutdownWatchdogLoop(
                     app, {"docker": None}, 0.01, math.inf,
                 ),
-                timeout=1.0,
+                timeout=F_WATCHDOG_LOOP_DEADLINE_SECONDS,
             )
             await taskFlip
 
@@ -369,7 +377,7 @@ def test_watchdog_self_sigterms_once_then_returns():
                 pipelineServer._fnIdleShutdownWatchdogLoop(
                     app, {"docker": None}, 0.01, 0.0,
                 ),
-                timeout=1.0,
+                timeout=F_WATCHDOG_LOOP_DEADLINE_SECONDS,
             )
 
     asyncio.run(fnDrive())
@@ -397,7 +405,7 @@ def test_watchdog_rechecks_when_run_starts_between_ticks():
                 pipelineServer._fnIdleShutdownWatchdogLoop(
                     app, {"docker": None}, 0.01, 0.0,
                 ),
-                timeout=1.0,
+                timeout=F_WATCHDOG_LOOP_DEADLINE_SECONDS,
             )
 
     asyncio.run(fnDrive())
@@ -465,7 +473,7 @@ def test_watchdog_prunes_dead_spawn_children_each_tick():
                 pipelineServer._fnIdleShutdownWatchdogLoop(
                     app, {"docker": None}, 0.01, 0.0,
                 ),
-                timeout=1.0,
+                timeout=F_WATCHDOG_LOOP_DEADLINE_SECONDS,
             )
 
     asyncio.run(fnDrive())

@@ -17,7 +17,8 @@ var VaibifyImageTrust = (function () {
     "use strict";
 
     var S_MODAL_ID = "modalImageTrust";
-    var S_CHOICE_NAME = "imageTrustChoice";
+    var S_ID_PREFIX = "imageTrust";
+    var S_CHOICE_NAME = S_ID_PREFIX + "Choice";
     var S_INSPECT_CHOICE = "inspect";
 
     function _fsEscape(sText) {
@@ -35,16 +36,17 @@ var VaibifyImageTrust = (function () {
             "<td>" + _fsEscape(sValue) + "</td></tr>";
     }
 
+    /* The rows after the digest are the server's words, because only the
+       server knows whether the image asked about is the obtained base
+       or the image vaibify stacked agents on it. */
     function _fsProvenanceMarkup(dictPrompt) {
-        var sVerified = dictPrompt.bDigestMatchesRecordedDeposit
-            ? "yes" : "no record to compare against";
+        var sServerRows = (dictPrompt.listProvenanceRows || []).map(
+            function (dictRow) {
+                return _fsProvenanceRow(dictRow.sLabel, dictRow.sValue);
+            }).join("");
         return "<table class=\"image-trust-provenance\">" +
             _fsProvenanceRow("Digest", dictPrompt.sImageDigest) +
-            _fsProvenanceRow("Obtained from",
-                dictPrompt.sObtainedFrom || dictPrompt.sVersionDoi ||
-                dictPrompt.sPinnedImageReference || "unknown") +
-            _fsProvenanceRow("Matches the deposit's recorded digest",
-                sVerified) +
+            sServerRows +
             _fsProvenanceRow("Size", _fsMegabytes(dictPrompt.iSizeBytes)) +
             _fsProvenanceRow("Declared USER",
                 dictPrompt.sDeclaredUser || "none declared") +
@@ -70,15 +72,15 @@ var VaibifyImageTrust = (function () {
             "restricted</a></p>";
     }
 
-    function _fsOptionMarkup(dictOption, iIndex, sDocumentationUrl) {
-        var sId = "imageTrustChoice" + iIndex;
+    function _fsOptionMarkup(dictOption, iIndex, sDocumentationUrl, sIdPrefix) {
+        var sId = sIdPrefix + "Choice" + iIndex;
         var sLink = dictOption.sChoice === "restricted"
             ? _fsDocumentationLinkMarkup(sDocumentationUrl) : "";
         return "<div class=\"image-trust-option\" data-choice=\"" +
             _fsEscape(dictOption.sChoice) + "\">" +
             "<label for=\"" + sId + "\">" +
             "<input type=\"radio\" id=\"" + sId + "\" name=\"" +
-            S_CHOICE_NAME + "\" value=\"" +
+            sIdPrefix + "Choice\" value=\"" +
             _fsEscape(dictOption.sChoice) + "\"> " +
             "<strong class=\"image-trust-label\">" +
             _fsEscape(dictOption.sLabel) + "</strong> " +
@@ -87,29 +89,44 @@ var VaibifyImageTrust = (function () {
             _fsDetailsMarkup(dictOption.listDetailLines, sLink) + "</div>";
     }
 
-    function _fsCredentialsMarkup(dictCredentials) {
+    function _fsCredentialsMarkup(dictCredentials, sIdPrefix) {
+        var sId = sIdPrefix + "Credentials";
         return "<div class=\"image-trust-credentials\">" +
-            "<label for=\"imageTrustCredentials\">" +
-            "<input type=\"checkbox\" id=\"imageTrustCredentials\"> " +
+            "<label for=\"" + sId + "\">" +
+            "<input type=\"checkbox\" id=\"" + sId + "\"> " +
             "<span class=\"image-trust-credentials-label\">" +
             _fsEscape(dictCredentials.sLabel) + "</span></label>" +
             _fsDetailsMarkup(dictCredentials.listDetailLines) + "</div>";
     }
 
-    function _fsModalMarkup(sName, dictPrompt, sNotice) {
-        var sOptions = (dictPrompt.listOptions || []).map(function (
-            dictOption, iIndex) {
+    /* The answers and the credentials box, for the modal and for any
+       page that asks the same question inline (the conversion wizard
+       asks it before the author's image is obtained). Radios are named
+       sIdPrefix + "Choice", the box is sIdPrefix + "Credentials".
+       ``listOffered`` limits which answers appear; the words are the
+       server's either way. */
+    function fsChoicesMarkup(dictChoices, sIdPrefix, listOffered) {
+        var listOptions = (dictChoices.listOptions || []).filter(
+            function (dictOption) {
+                return !listOffered ||
+                    listOffered.indexOf(dictOption.sChoice) !== -1;
+            });
+        return listOptions.map(function (dictOption, iIndex) {
             return _fsOptionMarkup(dictOption, iIndex,
-                dictPrompt.sRestrictedDocumentationUrl);
-        }).join("");
+                dictChoices.sRestrictedDocumentationUrl, sIdPrefix);
+        }).join("") +
+            _fsCredentialsMarkup(dictChoices.dictCredentials || {}, sIdPrefix);
+    }
+
+    function _fsModalMarkup(sName, dictPrompt, sNotice) {
         return "<div class=\"modal image-trust-modal\" role=\"dialog\" " +
             "aria-modal=\"true\" aria-labelledby=\"imageTrustTitle\">" +
             "<h2 id=\"imageTrustTitle\">How should '" + _fsEscape(sName) +
             "' run this image?</h2>" +
             (sNotice ? "<p class=\"image-trust-notice\">" +
                 _fsEscape(sNotice) + "</p>" : "") +
-            _fsProvenanceMarkup(dictPrompt) + sOptions +
-            _fsCredentialsMarkup(dictPrompt.dictCredentials || {}) +
+            _fsProvenanceMarkup(dictPrompt) +
+            fsChoicesMarkup(dictPrompt, S_ID_PREFIX) +
             "<div class=\"modal-actions\">" +
             "<button class=\"btn\" id=\"btnImageTrustCancel\">Cancel" +
             "</button><button class=\"btn btn-primary\" " +
@@ -192,6 +209,7 @@ var VaibifyImageTrust = (function () {
 
     return {
         fnPromptForImageTrust: fnPromptForImageTrust,
+        fsChoicesMarkup: fsChoicesMarkup,
         fnHide: fnHide,
         fsBadgeText: fsBadgeText,
     };

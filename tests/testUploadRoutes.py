@@ -122,7 +122,16 @@ def fixtureSpoolUnderATemporaryHome(tmp_path, monkeypatch):
 
 @pytest.fixture
 def tclientUploads():
-    return _tConnectGatedClient(DockerDoubleForUploads())
+    """The gated client, its record of streamed writes starting empty.
+
+    Connecting refreshes vaibify's own test-marker plugin through the
+    same streamed write (the first connect in a process, before the
+    refresh cache holds the repository), so what the connect wrote is
+    dropped here: every assertion below is about what an UPLOAD wrote.
+    """
+    client, connectionDocker = _tConnectGatedClient(DockerDoubleForUploads())
+    connectionDocker.listStreamedWrites.clear()
+    return client, connectionDocker
 
 
 def _fresponsePut(client, dictQuery, baBody=b"", dictHeaders=None):

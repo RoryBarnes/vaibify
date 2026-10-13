@@ -61,6 +61,7 @@ __all__ = [
     "T_WRITE_DENYLISTED_NAMES",
     "fsRenderConfinedTreeProgram",
     "fsRenderConfinedWriteProgram",
+    "fiSignalThatKilledProgram",
     "fnRaiseWhenTreeWriteFailed",
     "fnRaiseWhenWriteFailed",
 ]
@@ -70,6 +71,8 @@ I_EXISTS_EXIT_CODE = 4
 I_NOT_FOUND_EXIT_CODE = 5
 I_NO_SPACE_EXIT_CODE = 6
 I_FAILED_EXIT_CODE = 1
+I_SIGNAL_EXIT_CODE_BASE = 128
+I_HIGHEST_LINUX_SIGNAL = 64
 S_LANDED_LINE_PREFIX = "vaibify-landed="
 I_DEFAULT_FILE_MODE = 0o644
 
@@ -482,11 +485,19 @@ def fnRaiseWhenWriteFailed(tExecResult, sFilePath):
 
     A full disk raises ``OSError`` with ``errno.ENOSPC``, the same error
     the host leg raises natively, so a route tests one thing for both.
+    The reason is the program's last stderr line, else the last stdout
+    line, because the daemon writes an exec it could not start to
+    stdout. Every other failure names its exit code.
     """
     if tExecResult.iExitCode == 0:
         return
-    sReason = (tExecResult.sStderr or "").strip().splitlines()
-    sLastLine = sReason[-1] if sReason else "no error text"
+    sReason = (
+        (tExecResult.sStderr or "").strip().splitlines()
+        or (tExecResult.sStdout or "").strip().splitlines()
+    )
+    sLastLine = (
+        sReason[-1] if sReason else "the writing program gave no reason"
+    )
     if tExecResult.iExitCode == I_EXISTS_EXIT_CODE:
         raise ContainerWriteExistsError(
             f"Write to {sFilePath} refused: {sLastLine}"
@@ -504,7 +515,33 @@ def fnRaiseWhenWriteFailed(tExecResult, sFilePath):
             errno.ENOSPC,
             f"Cannot write {sFilePath} in the container: {sLastLine}",
         )
-    raise OSError(f"Cannot write {sFilePath} in the container: {sLastLine}")
+    iSignal = fiSignalThatKilledProgram(tExecResult)
+    if iSignal:
+        raise OSError(
+            f"Cannot write {sFilePath} in the container: the writing "
+            f"program was killed by signal {iSignal} (exit "
+            f"{tExecResult.iExitCode}) before it could report why. The "
+            f"write is atomic, so the file is either unchanged or "
+            f"complete, and retrying is safe."
+        )
+    raise OSError(
+        f"Cannot write {sFilePath} in the container: {sLastLine} "
+        f"(exit {tExecResult.iExitCode})"
+    )
+
+
+def fiSignalThatKilledProgram(tExecResult):
+    """Return the signal a confined program died of, or 0 if it exited.
+
+    Docker reports a process killed by signal N as exit 128 + N. The
+    confined programs only ever exit with small codes of their own, so
+    a code in the signal range is a death, never a refusal. An exit
+    status the daemon never reported (``None``) is not a death.
+    """
+    if tExecResult.iExitCode is None:
+        return 0
+    iSignal = tExecResult.iExitCode - I_SIGNAL_EXIT_CODE_BASE
+    return iSignal if 0 < iSignal <= I_HIGHEST_LINUX_SIGNAL else 0
 
 
 def fnRaiseWhenTreeWriteFailed(tExecResult, sDestination):

@@ -203,6 +203,20 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
+    ):
+        """The streamed funnel the real buffer write delegates to.
+
+        Gated and recorded as the same write primitive, because on the
+        real adapter ``fnWriteFileViaTar`` IS this funnel over a buffer.
+        """
+        return self.fnWriteFile(
+            sContainerId, sPath, fileSource.read(), iMode=iMode,
+        )
+
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None,
     ):
@@ -1516,12 +1530,27 @@ def tclientPublished():
         )
 
 
+def _fbIsTheWorkflowSaveWrite(dictReached):
+    """Return True for a write the workflow save makes.
+
+    Every test route first restores the git-ignored marker plugin,
+    inside the lock-held worker that runs the tests, so the request's
+    first write is that refresh, not the save.
+    """
+    from vaibify.gui.conftestManager import S_MARKER_PLUGIN_DIRECTORY
+    return (
+        dictReached["sPrimitive"] == S_PRIMITIVE_WRITE
+        and "/" + S_MARKER_PLUGIN_DIRECTORY + "/"
+        not in dictReached.get("sPath", "")
+    )
+
+
 def _fiIndexOfTheWorkflowSave(connectionDocker):
     """Return the ledger index of the workflow save's container write."""
     for iIndex, dictReached in enumerate(
         connectionDocker.listAdmittedPrimitives,
     ):
-        if dictReached["sPrimitive"] == S_PRIMITIVE_WRITE:
+        if _fbIsTheWorkflowSaveWrite(dictReached):
             return iIndex
     return len(connectionDocker.listAdmittedPrimitives)
 
@@ -1707,8 +1736,10 @@ def testTheTestResultSaveCommitsSynchronously(tclientPublished):
     """
     client, connectionDocker = tclientPublished
     client.post(f"/api/steps/{S_CONTAINER_ID}/0/run-tests")
-    _fnAssertWritesRanUnder(
-        connectionDocker, mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+    _fnAssertSelectedRanUnder(
+        connectionDocker, _fbIsTheWorkflowSaveWrite,
+        mutationAdmission.S_ADMISSION_MODE_SYNCHRONOUS,
+        "workflow save write",
     )
 
 

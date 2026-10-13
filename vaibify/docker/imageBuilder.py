@@ -15,6 +15,7 @@ from . import fnRunDockerCommand
 
 
 _I_BUILD_STDERR_TAIL_LINES = 50
+_F_BUILD_SILENCE_NOTICE_SECONDS = 600.0
 
 
 def fbBuildxAvailable():
@@ -90,6 +91,13 @@ _DICT_OVERLAY_DOCKERFILE_MAP = {
     "cline": "Dockerfile.cline",
     "openhands": "Dockerfile.openhands",
     "pi": "Dockerfile.pi",
+}
+
+# Overlays whose Intel build cannot run under qemu, so an Intel image
+# stacked on an ARM daemon installs their ARM build instead, which the
+# daemon's ARM kernel runs natively inside the Intel image.
+_DICT_ARM_ON_INTEL_OVERLAY_DOCKERFILE_MAP = {
+    "claude": "Dockerfile.claudeArmOnIntel",
 }
 
 # Every overlay is one of three kinds, and a project containerized from
@@ -291,7 +299,7 @@ def flistOverlaysForFeatures(dictFeatureFlags):
 
 def fsStackOverlaysOnObtainedBase(
     sProjectName, sBaseImageId, listOverlayChain, sDockerDir, sPlatform,
-    listProvenOverlays, bNoCache=False,
+    listProvenOverlays, bNoCache=False, sDaemonArchitecture="",
 ):
     """Build ``listOverlayChain`` on top of an OBTAINED base image.
 
@@ -315,7 +323,7 @@ def fsStackOverlaysOnObtainedBase(
     )
     if not listOverlayChain:
         return sBaseImageId
-    sPreviousReference = sBaseImageId
+    sPreviousReference = _fsTagObtainedBase(sProjectName, sBaseImageId)
     for iIndex, sOverlayName in enumerate(listOverlayChain):
         listLabelOverlays = flistCanonicalizeOverlaySet(
             list(listProvenOverlays) + list(listOverlayChain[:iIndex + 1]),
@@ -324,7 +332,9 @@ def fsStackOverlaysOnObtainedBase(
             sOverlayName) else sBaseImageId
         sNewTag = f"{sProjectName}:{sOverlayName}"
         saCommand = _flistOverlayCommand(
-            _fsResolveOverlayDockerfile(sOverlayName, sDockerDir),
+            _fsResolveStackedOverlayDockerfile(
+                sOverlayName, sDockerDir, sPlatform, sDaemonArchitecture,
+            ),
             sNewTag, sPreviousReference, sDockerDir,
         )
         if bNoCache:
@@ -342,6 +352,23 @@ def fsStackOverlaysOnObtainedBase(
         _fnRunDockerBuild(saCommand)
         sPreviousReference = sNewTag
     return sPreviousReference
+
+
+def _fsTagObtainedBase(sProjectName, sBaseImageId):
+    """Tag the obtained base so a ``FROM`` line can name it; return the tag.
+
+    BuildKit reads a bare image ID in ``FROM`` as a repository called
+    ``sha256`` on Docker Hub and fails with "pull access denied", so the
+    first stage builds from this tag instead. The tag is set from the
+    ID immediately before the build, the stage labels still record the
+    ID, and the agent-layer separation check afterwards proves the
+    built image's layers begin with the base's.
+    """
+    sBaseTag = f"{sProjectName}:pinned-base"
+    fnRunDockerCommand(
+        ["docker", "tag", sBaseImageId, sBaseTag], bCaptureOutput=True,
+    )
+    return sBaseTag
 
 
 def _fsComputeChainFingerprint(sDockerDir, listOverlays):
@@ -602,6 +629,22 @@ def _fsResolveOverlayDockerfile(sOverlayName, sDockerDir):
     return str(Path(sDockerDir) / sRelativePath)
 
 
+def _fsResolveStackedOverlayDockerfile(
+    sOverlayName, sDockerDir, sPlatform, sDaemonArchitecture,
+):
+    """Return the overlay Dockerfile for a stage stacked on an obtained base.
+
+    ``sDaemonArchitecture`` is the daemon's own, in Go's spelling; the
+    ARM build is chosen only when the daemon is known to be ARM.
+    """
+    if sPlatform == "linux/amd64" and sDaemonArchitecture == "arm64":
+        sRelativePath = _DICT_ARM_ON_INTEL_OVERLAY_DOCKERFILE_MAP.get(
+            sOverlayName)
+        if sRelativePath:
+            return str(Path(sDockerDir) / sRelativePath)
+    return _fsResolveOverlayDockerfile(sOverlayName, sDockerDir)
+
+
 def _flistOverlayCommand(sDockerfile, sNewTag, sFromImage, sDockerDir):
     """Assemble docker build command for an overlay."""
     return _flistBuildPrefix() + [
@@ -842,15 +885,54 @@ def _fsStreamAndCaptureStderr(procBuild):
     if fileOutput is None:
         return ""
     fnLineSink = getattr(_threadLocalBuildSink, "fnLineSink", None)
-    for sLine in fileOutput:
-        sys.stderr.write(sLine)
-        if _fbLineIsBuildKitPostMortem(sLine):
-            dequePostMortem.append(sLine)
-        else:
-            dequeOutput.append(sLine)
-        if fnLineSink is not None:
-            _fnOfferLineToSink(fnLineSink, sLine)
+    dictSilence = {"fLastLine": time.monotonic(), "bBuildDone": False}
+    threading.Thread(
+        target=_fnReportBuildSilence, args=(dictSilence, fnLineSink),
+        daemon=True,
+    ).start()
+    try:
+        for sLine in fileOutput:
+            dictSilence["fLastLine"] = time.monotonic()
+            sys.stderr.write(sLine)
+            if _fbLineIsBuildKitPostMortem(sLine):
+                dequePostMortem.append(sLine)
+            else:
+                dequeOutput.append(sLine)
+            if fnLineSink is not None:
+                _fnOfferLineToSink(fnLineSink, sLine)
+    finally:
+        dictSilence["bBuildDone"] = True
     return "".join(dequeOutput) + "".join(dequePostMortem)
+
+
+def _fnReportBuildSilence(dictSilence, fnLineSink):
+    """Say so whenever the build has printed nothing for a long while.
+
+    A stalled step prints nothing and never ends, while the progress
+    pane keeps showing whatever came last -- which once read "this is
+    slow" for ninety minutes over an installer that had stopped making
+    any system call. A long compile can be as quiet, so the notice
+    says both, and names the one stop that is verified to end the
+    build inside the daemon.
+    """
+    fSilence = _F_BUILD_SILENCE_NOTICE_SECONDS
+    while True:
+        time.sleep(fSilence / 10)
+        if dictSilence["bBuildDone"]:
+            return
+        if time.monotonic() - dictSilence["fLastLine"] < fSilence:
+            continue
+        dictSilence["fLastLine"] = time.monotonic()
+        sNotice = (
+            f"[vaib] The build has printed nothing for {fSilence / 60:g} "
+            "minutes. A long compile or download can be this quiet, but a "
+            "stalled step never finishes. If no new line appears, stop the "
+            "build with Ctrl-C in the terminal running the vaibify hub, "
+            "then start the hub again.\n"
+        )
+        sys.stderr.write(sNotice)
+        if fnLineSink is not None:
+            _fnOfferLineToSink(fnLineSink, sNotice)
 
 
 _RE_HTTP_CREDENTIALS = re.compile(r"(https?://)[^@/\s]+@")

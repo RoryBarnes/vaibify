@@ -173,7 +173,13 @@ def test_overleaf_badge_none_when_not_tracked(tmp_path):
     assert dictResult["sOverleaf"] == badgeState.S_BADGE_NONE
 
 
-def test_overleaf_badge_drifted_when_tracked_but_never_pushed(tmp_path):
+def test_overleaf_badge_unknown_when_tracked_but_never_pushed(tmp_path):
+    """Was DRIFTED, pinned when drifted painted orange.
+
+    Red now means "differs from the published copy", and a file never
+    pushed has been compared with nothing. Renamed, not deleted, as the
+    arXiv column's twin was on 2026-08-25.
+    """
     _fsWrite(str(tmp_path), "fig.pdf", "x")
     dictEntry = {
         "bOverleaf": True,
@@ -183,7 +189,27 @@ def test_overleaf_badge_drifted_when_tracked_but_never_pushed(tmp_path):
         "fig.pdf", _fdictGit(), dictEntry,
         str(tmp_path), {},
     )
-    assert dictResult["sOverleaf"] == badgeState.S_BADGE_DRIFTED
+    assert dictResult["sOverleaf"] == badgeState.S_BADGE_UNKNOWN
+
+
+def test_zenodo_badge_unknown_on_a_fresh_clone_that_never_pushed(tmp_path):
+    """The opt-in a migration seeds, with no push and no endpoint recorded.
+
+    A fresh clone of a published project carries exactly this entry
+    for every archived file, and painted each one red while its bytes
+    matched the committed manifest (researcher-reported, 2026-10-11).
+    """
+    _fsWrite(str(tmp_path), "fits.json", "x")
+    dictEntry = {
+        "bZenodo": True,
+        "sZenodoLastPushedDigest": "",
+        "sZenodoLastPushedEndpoint": "",
+    }
+    dictResult = badgeState.fdictBadgesForFile(
+        "fits.json", _fdictGit(), dictEntry,
+        str(tmp_path), {}, sZenodoService="sandbox",
+    )
+    assert dictResult["sZenodo"] == badgeState.S_BADGE_UNKNOWN
 
 
 # ----------------------------------------------------------------------

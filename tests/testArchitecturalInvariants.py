@@ -1324,7 +1324,12 @@ def testFnWriteFileDefaultsToContainerUserOwnership():
         "symlinks"
     )
     assert "confinedWrite.fsRenderConfinedWriteProgram" in sFunnelSource
-    assert "_ftRunProgramWithStdin" in sFunnelSource
+    assert "self._ftRunConfinedWriteProgram(" in sFunnelSource
+    sRunSource = inspect.getsource(
+        DockerConnection._ftRunConfinedWriteProgram
+    )
+    assert "_ftRunProgramWithStdin" in sRunSource
+    assert "sUser" not in sRunSource
     sTransportSource = inspect.getsource(
         DockerConnection._ftRunProgramWithStdin
     )
@@ -4348,7 +4353,20 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # split along is the template text against the deploy and refresh
     # logic, which change for different reasons; no force has made that
     # split necessary yet, so it is recorded here, not taken.
-    "conftestManager.py": 1221,
+    # 1235 (2026-10-11): the refresh's version probe learned to report a
+    # step with no tests/ directory, so a refresh stops creating one --
+    # the deploy-and-refresh half, the same job.
+    # 1235 -> 1458 (2026-10-12): the committed conftest became a fixed
+    # LOADER (its text is a constant here, ~60 lines, pinned by hash)
+    # and the generated plugin moved into the self-ignoring
+    # .vaibify/pytestPlugin/, so a vaibify release never again rewrites
+    # a file a published project committed. The deploy-and-refresh half
+    # grew by the plugin's paths, its confined write, and the shared
+    # probe-migrate-refresh core. Still one job -- composing and
+    # deploying the test-marker plugin. The seam recorded above is now
+    # three texts (loader, plugin template, transcriptions) against the
+    # deploy logic; still no force to split it.
+    "conftestManager.py": 1458,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -5291,7 +5309,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # category, looked up from a closed table so only one of three
     # words ever reaches the shell, and the run-all lane signals each
     # group it runs.
-    "routes/testRoutes.py": 1043,
+    # 1043 -> 1071 (2026-10-12): every direct test route refreshes the
+    # git-ignored marker plugin uncached, inside the worker that runs
+    # the tests, and leads its output with a refresh that failed --
+    # without it a removed plugin left the last pass as the newest
+    # marker over a failing run. Same responsibility, one more step.
+    # -> 1078 the same day: a refresh that cannot land REFUSES the run
+    # (a 409 carried out of the worker, so nothing quarantines), since
+    # a run nobody can record would show its failure once and the
+    # previous pass on every poll after it.
+    "routes/testRoutes.py": 1078,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -6598,7 +6625,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # an empty directory with the hardening list, so a repository in the
     # hub's working directory cannot configure the call that carries the
     # token.
-    "syncDispatcher.py": 2140,
+    # 2140 -> 2141 (2026-10-12): the poll's discovery script counts the
+    # conftest loader as an installed conftest.
+    "syncDispatcher.py": 2141,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6670,7 +6699,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # unterminated last line is split off. Both are the runner's own
     # command assembly and output handling.
     # 1863 -> 1865 (2026-10-04): the run log names the epoch that dated the run.
-    "pipelineRunner.py": 1865,
+    # 1865 -> 1873 (2026-10-12): the pre-run refresh targets the root the
+    # steps RUN under, so the Level 3 shadow's copy gets the marker plugin.
+    # -> 1874 the same day: re-exports
+    # pipelineTestRunner.fsDescribeUnrecordableTestRun, required by the
+    # orchestrator re-export invariant.
+    "pipelineRunner.py": 1874,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6725,7 +6759,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one.
     # +4 (2026-10-08): re-exports templateManager.fbIsVaibifyTemplateHash
     # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
-    "testGenerator.py": 1145,
+    # +6 (2026-10-12): re-exports the conftest loader text and the
+    # marker plugin's path and write helpers, same invariant.
+    "testGenerator.py": 1151,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
@@ -6968,7 +7004,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2476 -> 2481 (2026-10-10): the neverSleep save takes the
     # per-container mutation lock, so it and a concurrent claim cannot
     # both spawn a session lane.
-    "registryRoutes.py": 2481,
+    # 2481 -> 2487 (2026-10-11): the conversion carries the wizard's
+    # image-trust answer for the author's pin; the rule itself lives in
+    # imageTrust and pinnedEnvironmentConversion, the route only routes.
+    "registryRoutes.py": 2487,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7563,7 +7602,21 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2344 -> 2350 (2026-09-30): the attestation carries the pinned-input
     # split and the pre-run deletions; the copied Dockerfile composes
     # overlays for the resolved container name.
-    "routes/reproducibilityRoutes.py": 2350,
+    # 2350 -> 2368 (2026-10-12): the commit and persist warnings name
+    # the record they failed on -- a reader's lane writes a
+    # reproduction record and was told an "L3 attestation" failed. Log
+    # wording for this module's own write; no new concern.
+    # 2368 -> 2373 (2026-10-12): a reader's reproduction record is
+    # never staged or committed (ruled that day); the guard sits in
+    # the one function that commits a verification's files.
+    # -> 2376 the same day: the attestation payload carries how the
+    # last verification ENDED (dictLastSettled), the one read the
+    # dashboard makes after watching a run go quiet, and the toast
+    # names THIS attempt's dated manifest for author and reader alike.
+    # -> 2384 the same day: the launch mints an attempt id and returns
+    # it, so the tab that clicked reports an attempt that settled
+    # before any poll saw it running, and never an earlier one's.
+    "routes/reproducibilityRoutes.py": 2384,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
@@ -7680,7 +7733,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # container-read allowlist, with why it is a read.
     # 1158 -> 1163 (2026-10-09): the remnant panel's three routes join
     # the browser-hub control plane, with why they read host state.
-    "routeScope.py": 1163,
+    # 1163 -> 1181 (2026-10-11): a claim lost mid-request answers the
+    # authority's refusal instead of a 500; it re-asks the same
+    # authority this route class already runs, so it belongs here.
+    "routeScope.py": 1181,
 }
 
 

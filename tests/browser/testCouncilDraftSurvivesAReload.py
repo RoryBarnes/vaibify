@@ -88,29 +88,31 @@ def testAStoredDraftIsAdoptedWhenTheCampaignLoads(pageDashboard, serverHub):
     assert sCampaignId, "no campaign was active to key a draft against"
 
     # Plant a stored draft as a previous session would have left it,
-    # drop the in-memory copy, then re-adopt the campaign.
-    pageDashboard.evaluate(
+    # drop the in-memory copy, then re-adopt the campaign through the
+    # REAL adoption path, which is what a reload runs. All in ONE
+    # evaluate: a background council re-render harvests the (empty)
+    # answer box and persists it, so between separate evaluates it can
+    # overwrite the planted draft -- which reddened this test on a
+    # loaded CI runner. One script runs without interleaving.
+    dictDraft = pageDashboard.evaluate(
         """(sId) => {
             window.localStorage.setItem(
                 'vaibifyCouncilDraft:' + sId,
                 JSON.stringify({dictById: {councilAnswer: %r},
                                 listDecisionAnswers: []}));
             VaibifyAgentCouncil.fnResetDraftsForTest();
+            const sCleared = VaibifyAgentCouncil.fdictDraftFieldsForTest()
+                .dictById.councilAnswer || '';
+            VaibifyAgentCouncil.fnAdoptCampaignForTest(sId);
+            return {sCleared: sCleared,
+                    sAdopted: VaibifyAgentCouncil.fdictDraftFieldsForTest()
+                        .dictById.councilAnswer || ''};
         }""" % _S_TYPED, sCampaignId)
 
-    assert pageDashboard.evaluate(
-        "() => VaibifyAgentCouncil.fdictDraftFieldsForTest()"
-        ".dictById.councilAnswer || ''") == "", (
+    assert dictDraft["sCleared"] == "", (
         "the in-memory draft was not cleared, so the next assertion "
         "would pass without the storage path running at all")
-
-    # The REAL adoption path, which is what a reload runs.
-    pageDashboard.evaluate(
-        "(sId) => VaibifyAgentCouncil.fnAdoptCampaignForTest(sId)",
-        sCampaignId)
-    assert pageDashboard.evaluate(
-        "() => VaibifyAgentCouncil.fdictDraftFieldsForTest()"
-        ".dictById.councilAnswer || ''") == _S_TYPED
+    assert dictDraft["sAdopted"] == _S_TYPED
 
     assert pageDashboard.listPageErrors == []
     assert pageDashboard.listConsoleErrors == []

@@ -44,8 +44,17 @@ class _FakeDocker:
     def __init__(self):
         self.dictFiles = {}
         self.listWrites = []
+        self.listStreamWrites = []
         self.listCommands = []
         self.tExecuteResult = (0, "")
+
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource, **dictKeywords,
+    ):
+        """The confined single-file write the marker plugin goes through."""
+        baContent = fileSource.read()
+        self.listStreamWrites.append((sPath, baContent, dictKeywords))
+        self.dictFiles[sPath] = baContent
 
     def fbaFetchFile(self, sContainerId, sPath):
         if sPath in self.dictFiles:
@@ -84,6 +93,11 @@ class _FakeDocker:
                 continue
             sText = baContent.decode("utf-8", errors="replace")
             import re as _re
+            if _re.search(
+                r"^# vaibify-conftest-loader:\s*\S+\s*$", sText, _re.M,
+            ):
+                dictResult[sPath] = conftestManager.S_LOADER_INSTALLED
+                continue
             match = _re.search(
                 r"^# vaibify-conftest-version:\s*(\S+)\s*$",
                 sText, _re.M,
@@ -179,31 +193,62 @@ def test_ensure_current_rewrites_when_version_stale():
     conftestManager.fnEnsureConftestsCurrent(
         fakeDocker, _S_CONTAINER_ID, [sStepDir], _S_PROJECT_REPO,
     )
-    assert fakeDocker.listWrites, (
-        "stale conftest should have been rewritten"
-    )
-    _sWrittenPath, baWritten = fakeDocker.listWrites[-1]
-    sWritten = baWritten.decode("utf-8")
+    assert fakeDocker.listWrites == [(
+        sConftestPath,
+        conftestManager.S_CONFTEST_LOADER_SOURCE.encode("utf-8"),
+    )], "a stale conftest is migrated to the loader"
     sCurrentStamp = (
         conftestManager.S_CONFTEST_VERSION_PREFIX
         + conftestManager.S_CONFTEST_VERSION
     )
-    assert sCurrentStamp in sWritten
+    _sIgnorePath, sPluginPath = conftestManager.flistMarkerPluginPaths(
+        _S_PROJECT_REPO)
+    assert sCurrentStamp in fakeDocker.dictFiles[sPluginPath].decode("utf-8")
+
+
+def _fnSeedLoaderAndCurrentPlugin(fakeDocker, listStepDirs):
+    """Install the loader in each step and the plugin at the current stamp."""
+    for sStepDir in listStepDirs:
+        sPath = conftestManager.fsConftestPath(
+            _S_PROJECT_REPO + "/" + sStepDir,
+        )
+        fakeDocker.dictFiles[sPath] = (
+            conftestManager.S_CONFTEST_LOADER_SOURCE.encode("utf-8"))
+    for sPath in conftestManager.flistMarkerPluginPaths(_S_PROJECT_REPO):
+        fakeDocker.dictFiles[sPath] = (
+            conftestManager.fsBuildConftestSource(_S_PROJECT_REPO)
+            .encode("utf-8"))
 
 
 def test_ensure_current_skips_when_already_current():
-    """Up-to-date installed file is left untouched (no rewrite)."""
+    """An installed loader and a current plugin are left untouched."""
     fakeDocker = _FakeDocker()
-    sStepDir = "step01"
-    sConftestPath = conftestManager.fsConftestPath(
-        _S_PROJECT_REPO + "/" + sStepDir,
-    )
-    sCurrentSource = conftestManager.fsBuildConftestSource(_S_PROJECT_REPO)
-    fakeDocker.dictFiles[sConftestPath] = sCurrentSource.encode("utf-8")
+    _fnSeedLoaderAndCurrentPlugin(fakeDocker, ["step01"])
     conftestManager.fnEnsureConftestsCurrent(
-        fakeDocker, _S_CONTAINER_ID, [sStepDir], _S_PROJECT_REPO,
+        fakeDocker, _S_CONTAINER_ID, ["step01"], _S_PROJECT_REPO,
     )
     assert fakeDocker.listWrites == []
+    assert fakeDocker.listStreamWrites == []
+
+
+def test_a_whole_plugin_conftest_at_the_current_generation_is_migrated():
+    """Being at the current generation does not make a whole conftest current.
+
+    Only the loader is current: a whole-plugin file would be rewritten
+    again by the next generation, dirtying a published clone.
+    """
+    fakeDocker = _FakeDocker()
+    sConftestPath = conftestManager.fsConftestPath(
+        _S_PROJECT_REPO + "/step01",
+    )
+    fakeDocker.dictFiles[sConftestPath] = (
+        conftestManager.fsBuildConftestSource(_S_PROJECT_REPO)
+        .encode("utf-8"))
+    conftestManager.fnEnsureConftestsCurrent(
+        fakeDocker, _S_CONTAINER_ID, ["step01"], _S_PROJECT_REPO,
+    )
+    assert fakeDocker.dictFiles[sConftestPath] == (
+        conftestManager.S_CONFTEST_LOADER_SOURCE.encode("utf-8"))
 
 
 def test_ensure_current_writes_when_file_missing():
@@ -226,22 +271,23 @@ def test_ensure_current_short_circuits_on_empty_step_list():
     assert fakeDocker.listCommands == []
 
 
-def test_ensure_current_issues_at_most_two_execs_for_100_steps():
-    """Switch-time invariant: probe + write = 2 execs regardless of N.
+def test_ensure_current_issues_a_constant_number_of_execs_for_100_steps():
+    """Switch-time invariant: the exec count does not grow with N.
 
     Locks in the perf fix that replaced the per-step
     ``fsReadInstalledConftestVersion`` loop with one batched probe
-    and one batched write. If any future change re-introduces a
-    per-step exec, this test fails loud.
+    and one batched write. The marker plugin adds two confined
+    single-file writes per REPOSITORY, never per step. If any future
+    change re-introduces a per-step exec, this test fails loud.
     """
     fakeDocker = _FakeDocker()
     listStepDirs = [f"step{i:03d}" for i in range(100)]
     conftestManager.fnEnsureConftestsCurrent(
         fakeDocker, _S_CONTAINER_ID, listStepDirs, _S_PROJECT_REPO,
     )
-    assert len(fakeDocker.listCommands) <= 2, (
-        f"Expected at most two docker execs for 100 steps, "
-        f"got {len(fakeDocker.listCommands)}"
+    iExecs = len(fakeDocker.listCommands) + len(fakeDocker.listStreamWrites)
+    assert iExecs <= 4, (
+        f"Expected at most four docker execs for 100 steps, got {iExecs}"
     )
     assert len(fakeDocker.listWrites) == 100, (
         "All 100 stale conftests should be rewritten in the batch"
@@ -252,17 +298,13 @@ def test_ensure_current_only_probes_when_all_files_already_current():
     """No-write path: when every conftest is current, only the probe runs."""
     fakeDocker = _FakeDocker()
     listStepDirs = ["step01", "step02", "step03"]
-    sCurrentSource = conftestManager.fsBuildConftestSource(_S_PROJECT_REPO)
-    for sStepDir in listStepDirs:
-        sPath = conftestManager.fsConftestPath(
-            _S_PROJECT_REPO + "/" + sStepDir,
-        )
-        fakeDocker.dictFiles[sPath] = sCurrentSource.encode("utf-8")
+    _fnSeedLoaderAndCurrentPlugin(fakeDocker, listStepDirs)
     conftestManager.fnEnsureConftestsCurrent(
         fakeDocker, _S_CONTAINER_ID, listStepDirs, _S_PROJECT_REPO,
     )
     assert len(fakeDocker.listCommands) == 1
     assert fakeDocker.listWrites == []
+    assert fakeDocker.listStreamWrites == []
 
 
 def test_fdictReadInstalledConftestVersions_returns_per_path_versions():

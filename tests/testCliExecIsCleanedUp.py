@@ -112,13 +112,21 @@ def test_a_hangup_during_the_wait_ends_the_session_and_deletes_the_record():
     def fnHangupOurselves():
         os.kill(os.getpid(), signal.SIGHUP)
 
+    # The handlers found on entry, whatever they are: under nohup the
+    # inherited SIGHUP disposition is SIG_IGN, and that is what must
+    # come back.
+    dictHandlersBefore = {
+        iSignal: signal.getsignal(iSignal)
+        for iSignal in (signal.SIGHUP, signal.SIGTERM)
+    }
     cliShellContainment._fnAwaitCliExecThenEndItsSession(
         _ProcessChildFake(fnHangupOurselves), connectionDocker, S_NAME,
         S_CONTAINER_ID, I_SESSION, sPath)
     assert (I_SESSION, "TERM") in connectionDocker.listSignals
     assert _flistRecords() == [], "the record outlived a proven-empty session"
-    assert signal.getsignal(signal.SIGHUP) is signal.SIG_DFL or callable(
-        signal.getsignal(signal.SIGHUP))
+    assert {
+        iSignal: signal.getsignal(iSignal) for iSignal in dictHandlersBefore
+    } == dictHandlersBefore
 
 
 def test_a_normal_exit_ends_the_session_too():

@@ -115,7 +115,7 @@ def testTheReadinessAnswerCarriesTheAuthoritysSentence(
     monkeypatch.setattr(
         systemRoutes, "_flistDescribeUnresolvableSecrets", lambda *a: [])
     monkeypatch.setattr(
-        systemRoutes, "_flistDescribeConfigurationDrift", lambda *a: [])
+        systemRoutes, "_ftDescribeConfigurationDrift", lambda *a: ([], []))
     monkeypatch.setattr(
         systemRoutes, "_ftDescribeX11Findings", lambda *a: ([], []))
     monkeypatch.setattr(

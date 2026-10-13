@@ -116,18 +116,22 @@ def _fsGitBadge(sRepoRelPath, dictGitStatus):
 
 
 def _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked):
-    """Three-state icon for one remote: none / drifted / synced.
+    """Icon for one push-tracked remote: none / unknown / drifted / synced.
 
     ``bTracked`` reflects whether the user opted this file into the
     remote (today the ``b{Service}`` flag in ``dictSyncStatus``).
     Without opt-in the icon stays grey even if the file happens to
-    have been pushed previously; with opt-in but no matching digest
-    it paints orange (tracked but not yet in sync).
+    have been pushed previously. Opted in with no recorded push is
+    UNKNOWN: nothing has been compared, and red claims a difference.
+    It was DRIFTED back when drifted painted orange; once red came to
+    mean "differs from the published copy", every unpushed opt-in --
+    a fresh clone of a published project included -- read as a
+    divergence nobody had measured (researcher-reported, 2026-10-11).
     """
     if not bTracked:
         return S_BADGE_NONE
     if not sLastPushedDigest:
-        return S_BADGE_DRIFTED
+        return S_BADGE_UNKNOWN
     if not sCurrentSha:
         return S_BADGE_DRIFTED
     if sCurrentSha == sLastPushedDigest:
@@ -216,9 +220,13 @@ def _fsZenodoBadge(
     mismatched stored endpoint forces ``drifted`` regardless of SHA;
     the user must re-push to repopulate the field honestly. When
     empty, the endpoint check is skipped (legacy SHA-only behaviour).
+    A file never pushed at all has no endpoint to mismatch, so it is
+    UNKNOWN before the endpoint is consulted.
     """
     if not bTracked:
         return S_BADGE_NONE
+    if not sLastPushedDigest:
+        return S_BADGE_UNKNOWN
     if sCurrentEndpoint and sLastPushedEndpoint != sCurrentEndpoint:
         return S_BADGE_DRIFTED
     return _fsRemoteBadge(sCurrentSha, sLastPushedDigest, bTracked)

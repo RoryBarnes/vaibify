@@ -16,7 +16,7 @@ def fnCreateVolume(sVolumeName):
     if fbVolumeExists(sVolumeName):
         return
     saCommand = ["docker", "volume", "create", sVolumeName]
-    _fnRunDockerCommand(saCommand)
+    _fnRunDockerCommand(saCommand, bCaptureOutput=True)
 
 
 def fnDestroyVolume(sVolumeName):
@@ -28,7 +28,7 @@ def fnDestroyVolume(sVolumeName):
         Name of the Docker volume to remove.
     """
     saCommand = ["docker", "volume", "rm", sVolumeName]
-    _fnRunDockerCommand(saCommand)
+    _fnRunDockerCommand(saCommand, bCaptureOutput=True)
 
 
 def fbVolumeExists(sVolumeName):

@@ -74,6 +74,13 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnShowToast(
                 sExplain || ("Command failed (exit "
                 + dictEvent.iExitCode + ")"), "error");
+        } else if (dictEvent.sType === "preflightWarning") {
+            /* Low disk space, or a test-support file that could not be
+               refreshed: the run goes ahead, so the warning must not. */
+            fnAppendPipelineOutput("WARNING: " + dictEvent.sMessage);
+            VaibifyApp.fnShowToast(
+                "A warning was raised before the run. See the run log.",
+                "warning");
         } else if (dictEvent.sType === "preflightFailed") {
             var sErrors = dictEvent.listErrors.join("\n");
             VaibifyApp.fnShowErrorModal(

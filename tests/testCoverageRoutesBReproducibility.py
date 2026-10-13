@@ -389,6 +389,35 @@ def testAFailedCommitIsLoggedButNothingToCommitIsNot(caplog):
     assert "REPRODUCED.sha256" in connectionDocker.listCommands[1][1]
 
 
+@pytest.mark.falsification
+def testAReadersFailedSaveIsLoggedAsAReproductionRecord(
+    monkeypatch, caplog, tmp_path,
+):
+    """A reader's verification writes a reproduction record, and the log says so.
+
+    Kills: the persist warning naming every record "the L3 attestation",
+    which tells a reader that an attestation -- the author's claim,
+    which their lane never writes -- is what failed.
+    """
+    def flistRaiseDiskFull(*aArgs, **dictKwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        reproducibilityRoutes.reproductionRecord,
+        "flistWriteVerificationOutcome", flistRaiseDiskFull,
+    )
+    with caplog.at_level(logging.ERROR):
+        bWritten = reproducibilityRoutes._fbPersistAttestation(
+            str(tmp_path), "sha256:" + "0" * 64, {"bPassed": True}, 1.0,
+            sRecordKind="reproduction",
+        )
+    assert bWritten is False
+    assert [
+        recordLog.getMessage() for recordLog in caplog.records
+        if "Could not persist" in recordLog.getMessage()
+    ] == ["Could not persist the reproduction record: disk full"]
+
+
 def testAnExecErrorDuringTheCommitIsLoggedNotRaised(caplog):
     connectionDocker = RecordingConnection([RuntimeError("exec stream closed")])
     with caplog.at_level(logging.WARNING):

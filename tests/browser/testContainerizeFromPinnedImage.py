@@ -17,6 +17,8 @@ import pytest
 
 from tests.browser.conftest import S_HOST_PROJECT_READY
 from tests.browser.fakeDockerAdapter import S_CONTAINER_NAME
+from vaibify.config.imageTrust import fdictDescribeTrustChoices
+from vaibify.gui.pinnedEnvironmentConversion import T_WIZARD_TRUST_CHOICES
 
 
 pytestmark = pytest.mark.browser
@@ -53,6 +55,8 @@ def _fdictPinnedAnswer(bObtainable=True, bMatches=True):
             "jupyter", "rLanguage", "julia", "database", "dvc",
             "nestedSampling", "latex", "gpu",
         ],
+        "dictImageTrustChoices": fdictDescribeTrustChoices(),
+        "listWizardTrustChoices": list(T_WIZARD_TRUST_CHOICES),
     }
 
 
@@ -150,6 +154,12 @@ def _fsTitle(page):
     return page.text_content("#wizardStepTitle").strip()
 
 
+def _fnAnswerImageTrust(page, sChoice="as-built"):
+    """Answer the Environment page's question about the author's image."""
+    page.wait_for_selector(".wizard-image-trust", timeout=5000)
+    page.check(f'input[name="wizardImageTrustChoice"][value="{sChoice}"]')
+
+
 def _fnClickNextPastAnyAgentWarning(page):
     page.click("#btnWizardNext")
     page.wait_for_timeout(200)
@@ -206,6 +216,7 @@ def testChoosingThePinnedImageDropsTheBuildPagesAndPinsTheAuthorsAgents(
     ).is_checked(), "the author's pinned image was not pre-selected"
     pageDashboard.check('.wizard-environment-source[value="archive"]')
     pageDashboard.wait_for_timeout(200)
+    _fnAnswerImageTrust(pageDashboard)
     _fnNextTo(pageDashboard, "Features & Authentication")
     pageDashboard.wait_for_selector(
         '.wizard-feature-input[data-feature="claude"]', timeout=5000,
@@ -248,6 +259,8 @@ def testTheFivePagesAreNameEnvironmentFeaturesFilesSummary(
     _fnOpenConvertWizard(pageDashboard)
     listTitles = [_fsTitle(pageDashboard)]
     for sTitle in ("Environment", "Features & Authentication"):
+        if sTitle != "Environment":
+            _fnAnswerImageTrust(pageDashboard)
         _fnNextTo(pageDashboard, sTitle)
         listTitles.append(_fsTitle(pageDashboard))
     for _iIndex in range(2):
@@ -261,6 +274,43 @@ def testTheFivePagesAreNameEnvironmentFeaturesFilesSummary(
         "#btnWizardNext").strip() == "Convert and obtain"
 
 
+@pytest.mark.falsification
+def testThePinnedImageAsksHowItMayRunBeforeTheDownload(
+    pageDashboard, serverHub,
+):
+    """Kills: the Environment page letting a pinned choice past unanswered.
+
+    The question used to arrive as a modal after the image was
+    obtained. It now sits beside the choice, in the server's words,
+    offers no Inspect only (a conversion exists to make a container),
+    and goes away when the researcher builds instead.
+    """
+    _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
+    _fnWaitForPicker(pageDashboard, serverHub)
+    _fnOpenConvertWizard(pageDashboard)
+    _fnNextTo(pageDashboard, "Environment")
+    pageDashboard.wait_for_selector(".wizard-image-trust", timeout=5000)
+    listOffered = pageDashboard.eval_on_selector_all(
+        'input[name="wizardImageTrustChoice"]',
+        "listElements => listElements.map(el => el.value)",
+    )
+    assert listOffered == ["restricted", "as-built"]
+    assert not any(pageDashboard.is_checked(
+        f'input[name="wizardImageTrustChoice"][value="{sChoice}"]')
+        for sChoice in listOffered), "an answer was preselected"
+    assert "Run it as its author built it" in pageDashboard.text_content(
+        ".wizard-image-trust")
+    pageDashboard.click("#btnWizardNext")
+    pageDashboard.wait_for_timeout(300)
+    assert _fsTitle(pageDashboard) == "Environment", (
+        "the pinned image went ahead with no answer about how it may run"
+    )
+    pageDashboard.check('.wizard-environment-source[value="build"]')
+    pageDashboard.wait_for_timeout(200)
+    assert pageDashboard.query_selector(".wizard-image-trust") is None
+    assert pageDashboard.listPageErrors == []
+
+
 def testTheConversionSummaryHelpSaysConvertNotCreate(
     pageDashboard, serverHub,
 ):
@@ -270,6 +320,7 @@ def testTheConversionSummaryHelpSaysConvertNotCreate(
     _fnOpenConvertWizard(pageDashboard)
     _fnNextTo(pageDashboard, "Environment")
     pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
+    _fnAnswerImageTrust(pageDashboard)
     _fnNextTo(pageDashboard, "Features & Authentication")
     _fnClickNextPastAnyAgentWarning(pageDashboard)
     _fnClickNextPastAnyAgentWarning(pageDashboard)
@@ -295,6 +346,7 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)
     pageDashboard.check('.wizard-environment-source[value="archive"]')
     pageDashboard.wait_for_timeout(200)
+    _fnAnswerImageTrust(pageDashboard, "restricted")
     _fnNextTo(pageDashboard, "Features & Authentication")
     pageDashboard.check('.wizard-feature-input[data-feature="codex"]')
     _fnClickNextPastAnyAgentWarning(pageDashboard)
@@ -309,6 +361,7 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     assert "When you press Convert and obtain" in sSummary, sSummary
     assert "pinned image" in sSummary
     assert "Image comes from" in sSummary, sSummary
+    assert "Run it restricted" in sSummary, sSummary
     assert pageDashboard.text_content(
         "#btnWizardNext").strip() == "Convert and obtain"
     pageDashboard.click("#btnWizardNext")
@@ -323,6 +376,8 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     dictBody = listRequests[0][1]
     assert dictBody["sEnvironmentSource"] == "archive"
     assert dictBody["bAllowEmulation"] is False
+    assert dictBody["sImageTrustChoice"] == "restricted"
+    assert dictBody["bImageTrustWithCredentials"] is False
     assert "claude" in dictBody["listFeatures"]
     assert "codex" in dictBody["listFeatures"]
     assert "acquire" in listKinds
@@ -568,6 +623,7 @@ def testAnObtainableCloneHasThePinnedImagePreselected(pageDashboard, serverHub):
     assert elPinned is not None and elPinned.is_checked(), (
         "an obtainable pin was not pre-selected"
     )
+    _fnAnswerImageTrust(pageDashboard)
     _fnNextTo(pageDashboard, "Features & Authentication")
     pageDashboard.click("#btnWizardBack")
     pageDashboard.wait_for_selector(".wizard-environment-facts", timeout=5000)

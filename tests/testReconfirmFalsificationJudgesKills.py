@@ -163,13 +163,20 @@ def testAHungMutatedTestIsKilledNamedAndLeavesNoOrphan(
             "    time.sleep(600)\n"
         ),
     })
+    # The limit leaves room for pytest to start under a loaded suite:
+    # at 5 s a busy machine killed the mutant before it wrote the pid,
+    # and the orphan check had nothing to check.
     fStart = time.monotonic()
     sStatus = moduleToolInTemporaryTree._fsRunMutatedTestAndJudge(
-        "testGuard.py::testGuard", 5.0,
+        "testGuard.py::testGuard", 15.0,
     )
     assert time.monotonic() - fStart < 60, "the limit did not bite"
-    assert sStatus.startswith("ERROR: timed out after 5s"), sStatus
+    assert sStatus.startswith("ERROR: timed out after 15s"), sStatus
     assert "testGuard.py::testGuard" in sStatus, "the entry must be named"
+    assert pathlib.Path(sPidFile).exists(), (
+        "the mutant was killed before it started its child, so the "
+        "orphan check would prove nothing"
+    )
     iGrandchild = int(pathlib.Path(sPidFile).read_text())
     _fnAssertProcessGone(iGrandchild)
 
@@ -267,7 +274,7 @@ def testEachResultIsPrintedBeforeTheNextEntryIsJudged(
         for i in range(2)
     ]
     moduleToolInTemporaryTree._flistReconfirmEntries(
-        listEntries, {"s.py": "a"}, True, 1.0,
+        listEntries, {"s.py": "a"}, set(), 1.0,
     )
     sRest = capsys.readouterr().out
     assert "t.py::t0" in listSeenWhileJudging[1], listSeenWhileJudging
@@ -325,3 +332,199 @@ def testTheEntryTimeoutMustBePositive():
     assert result.returncode == 2
     assert "positive" in result.stderr
     assert shutil is not None
+
+
+def _flistBatchEntries(listNodeIds):
+    return [
+        Falsification(nodeid=sNodeId, source="s.py", old="a", new="b")
+        for sNodeId in listNodeIds
+    ]
+
+
+@pytest.mark.falsification
+def testOnlyTheTestTheBatchFailedReChecksItsPrecondition(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """One failure in the batch re-checks one test, not all of them.
+
+    Re-checking every entry after any batch failure doubled the
+    exclusive lane's run, which then hit its time limit with the
+    failing test never named. The failing test here sits in a class in
+    a subdirectory, so the JUnit report is mapped back to a node id
+    through both.
+
+    Kills: treating every entry as a suspect whenever the batch fails.
+    """
+    (tmp_path / "sub").mkdir()
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "sub/testBroken.py": (
+            "class TestGroup:\n"
+            "    def testTwo(self):\n"
+            "        assert 1 == 2\n"
+        ),
+    })
+    listNodeIds = [
+        "testSound.py::testOne", "sub/testBroken.py::TestGroup::testTwo"]
+
+    setSuspects = moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(listNodeIds))
+
+    assert setSuspects == {"sub/testBroken.py::TestGroup::testTwo"}
+
+
+def testACleanBatchLeavesNoSuspect(moduleToolInTemporaryTree, tmp_path):
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+    })
+    assert moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(["testSound.py::testOne"])) == set()
+
+
+def testATestTheBatchSkippedIsASuspect(moduleToolInTemporaryTree, tmp_path):
+    """A skip proves nothing passed, so it must be checked again alone."""
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "testSkips.py": (
+            "import pytest\n\n\n"
+            "def testTwo():\n    pytest.skip('no facility')\n"
+        ),
+    })
+    assert moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(["testSound.py::testOne", "testSkips.py::testTwo"])
+    ) == {"testSkips.py::testTwo"}
+
+
+@pytest.mark.falsification
+def testAReportRowNoEntryOwnsLeavesNothingTrusted(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """A failure the report cannot tie to an entry leaves nothing trusted.
+
+    One row fails by an entry's name; another is an error under a name
+    no entry has, as a fixture or plugin error can be. Returning only
+    the named failure would trust every entry the other row may have
+    broken.
+
+    Kills: skipping a report row that names no registered test.
+    """
+    pathReport = tmp_path / "junit.xml"
+    pathReport.write_text(
+        '<testsuites><testsuite>'
+        '<testcase classname="testSound" name="testOne">'
+        '<failure message="assert"/></testcase>'
+        '<testcase classname="" name="conftest"><error message="x"/>'
+        '</testcase>'
+        '<testcase classname="testOther" name="testTwo"/>'
+        '</testsuite></testsuites>', encoding="utf-8")
+
+    setUnpassed = moduleToolInTemporaryTree._fsetReadUnpassedNodeIds(
+        str(pathReport), ["testSound.py::testOne", "testOther.py::testTwo"])
+
+    assert setUnpassed == set()
+
+
+def testACollectionErrorInTheBatchSuspectsEveryEntry(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """A module that does not import stops the batch before anything runs."""
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "testUnimportable.py": (
+            "import moduleThatDoesNotExist\n\n\n"
+            "def testTwo():\n    assert True\n"
+        ),
+    })
+    listNodeIds = ["testSound.py::testOne", "testUnimportable.py::testTwo"]
+
+    setSuspects = moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(listNodeIds))
+
+    assert setSuspects == set(listNodeIds)
+
+
+@pytest.mark.falsification
+def testATrustedEntrySkipsItsOwnPreconditionAndASuspectDoesNot(
+    moduleToolInTemporaryTree, monkeypatch,
+):
+    """Kills: deciding the precondition for every entry at once."""
+    dictKnownGood = {}
+
+    def fsRecordThePrecondition(entry, sOriginal, **dictKeywords):
+        dictKnownGood[entry.nodeid] = dictKeywords["bPreconditionKnownGood"]
+        return "KILLED"
+
+    monkeypatch.setattr(
+        moduleToolInTemporaryTree, "_fsReconfirmOne", fsRecordThePrecondition)
+    moduleToolInTemporaryTree._flistReconfirmEntries(
+        _flistBatchEntries(["t.py::t0", "t.py::t1"]), {"s.py": "a"},
+        {"t.py::t1"}, 1.0,
+    )
+    assert dictKnownGood == {"t.py::t0": True, "t.py::t1": False}
+
+
+@pytest.mark.falsification
+def testEverySourceWriteIsStampedWithATimeNoCacheHasSeen(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """Kills: writing a mutated source with the clock's own mtime."""
+    pathSource = tmp_path / "guarded.py"
+    pathSource.write_text("x = 1\n", encoding="utf-8")
+    iBefore = int(pathSource.stat().st_mtime)
+    listStamps = []
+    for sText in ("x = 2\n", "x = 1\n", "x = 2\n"):
+        moduleToolInTemporaryTree._fnWriteSourceWithFreshStamp(
+            pathSource, sText)
+        listStamps.append(int(pathSource.stat().st_mtime))
+    assert len(set(listStamps)) == len(listStamps), listStamps
+    assert min(listStamps) >= moduleToolInTemporaryTree.I_FIRST_SOURCE_STAMP
+    assert moduleToolInTemporaryTree.I_FIRST_SOURCE_STAMP > iBefore
+    assert max(listStamps) < 2 ** 32, "both caches compare 32 bits"
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sTarget", ["guarded.py", "testGuard.py"])
+def testASharedCacheNeverServesAStampedWriteStaleBytecode(
+    moduleToolInTemporaryTree, tmp_path, sTarget,
+):
+    """One warm cache per run, and a mutation is still what runs.
+
+    ``guarded.py`` is compiled by Python's import system and
+    ``testGuard.py`` by pytest's assertion rewriter; both judge a
+    cached compilation by the source's mtime and size. The premise
+    step writes a same-size mutation WITHOUT a fresh stamp and shows
+    the shared cache serving the old compilation, which is both the
+    hazard and the proof that the cache really is shared. The harness's
+    own write must then be seen.
+
+    Kills: giving every pytest run a private cache again, which makes
+    the premise fail (the speed this test pins).
+    """
+    _fnWriteProject(tmp_path, {
+        "guarded.py": "def fiLimit():\n    return 1\n",
+        "testGuard.py": (
+            "import guarded\n\n\n"
+            "def testGuard():\n"
+            "    assert guarded.fiLimit() == 1\n"
+            "    assert 1 == 1\n"
+        ),
+    })
+    moduleTool = moduleToolInTemporaryTree
+    pathTarget = tmp_path / sTarget
+    sOriginal = pathTarget.read_text(encoding="utf-8")
+    sMutated = (sOriginal.replace("return 1", "return 2")
+                if sTarget == "guarded.py"
+                else sOriginal.replace("1 == 1", "1 == 2"))
+    assert len(sMutated) == len(sOriginal) and sMutated != sOriginal
+    with moduleTool._contextShareOneBytecodeCache():
+        moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sOriginal)
+        iStamp = int(pathTarget.stat().st_mtime)
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0
+        pathTarget.write_text(sMutated, encoding="utf-8")
+        os.utime(pathTarget, (iStamp, iStamp))
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0, (
+            "premise: an unstamped same-size rewrite in the same second "
+            "is served the cached compilation")
+        moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sMutated)
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 1, (
+            "a freshly stamped mutation ran stale bytecode")

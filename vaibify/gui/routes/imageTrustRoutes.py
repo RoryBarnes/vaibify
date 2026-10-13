@@ -75,8 +75,8 @@ def _fnRegisterRecordAnswer(app, dictCtx):
         _fnRequireRegisteredProject(sName)
         dictPrompt = await _fdictRequireCurrentPrompt(sName)
         _fnRequireAnswerableRequest(dictPrompt, request)
-        dictRecord = imageTrust.fdictBuildTrustRecord(
-            request.sImageDigest, request.sChoice, request.bWithCredentials)
+        dictRecord = imageTrust.fdictBuildTrustRecordForPrompt(
+            dictPrompt, request.sChoice, request.bWithCredentials)
         fnRecordImageTrust(sName, dictRecord)
         return {"bSuccess": True, "dictImageTrust": dictRecord}
 

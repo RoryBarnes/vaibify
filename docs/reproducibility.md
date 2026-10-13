@@ -235,6 +235,15 @@ the hashes the rerun observed are written to `REPRODUCED.sha256`, laid
 out exactly like `MANIFEST.sha256` so the two can be compared line by
 line. Commit both.
 
+If someone else committed the clone's attestation, as when you check an
+author's published project, the result is saved instead as a
+reproduction record in `.vaibify/reproductions/` in your clone, and the
+author's attestation is left alone. The hashes your rerun observed go
+to a dated file in `.vaibify/reproducedManifests/`, which the record
+names; the author's `REPRODUCED.sha256` is never written. Vaibify does
+not stage or commit any of these files. They are yours, so commit them
+only if you choose to.
+
 You do not have to take vaibify's word for any of this. Every check is
 a standard tool that anyone can run by hand: `sha256sum` for the files,
 `pip` for the packages, and `docker` for the image. Vaibify just runs
@@ -280,6 +289,13 @@ was built. Published results are unaffected, because they are tied to
 the archived image. New results come from a different environment,
 though, so regenerate the envelope and verify again before mixing them
 with older ones.
+
+A container running the author's pinned image never shows that banner.
+If its settings differ from the ones the pinned image was built from,
+leaving aside the coding agents vaibify added on top of it, it shows
+**This environment's settings differ from the author's pinned image**
+instead. The pinned image defines that environment, so do not rebuild
+to apply the settings: a rebuild replaces the author's environment.
 
 ### When a pinned toolchain version disappears
 

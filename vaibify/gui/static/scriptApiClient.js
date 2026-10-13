@@ -121,6 +121,7 @@ var VaibifyApi = (function () {
 
     var _fsRecoverLostClaim = null;
     var _dictRecoveryByName = {};
+    var _dictLastRecoveryByName = {};
     var _dictRefusedViewByName = {};
     var _dictConnectTailById = {};
     var _dictConnectCountById = {};
@@ -171,6 +172,7 @@ var VaibifyApi = (function () {
         return {
             sName: sName,
             iViewGeneration: VaibifyApp.fiGetViewGeneration(),
+            sLease: VaibifyApp.fsGetLeaseId(),
         };
     }
 
@@ -203,9 +205,13 @@ var VaibifyApi = (function () {
             iViewGeneration: dictIssued.iViewGeneration,
         };
         _dictRecoveryByName[sName] = dictRecord;
-        var fnForgetWhenSettled = function () {
+        var fnForgetWhenSettled = function (sOutcome) {
             if (_dictRecoveryByName[sName] === dictRecord) {
                 delete _dictRecoveryByName[sName];
+                _dictLastRecoveryByName[sName] = {
+                    sOutcome: sOutcome,
+                    iViewGeneration: dictIssued.iViewGeneration,
+                };
             }
         };
         promiseRecovery.then(fnForgetWhenSettled, fnForgetWhenSettled);
@@ -232,17 +238,58 @@ var VaibifyApi = (function () {
         }
     }
 
+    async function _fsOutcomeOfThisViewsRecovery(dictIssued) {
+        var dictInFlight = _dictRecoveryByName[dictIssued.sName];
+        if (dictInFlight &&
+                dictInFlight.iViewGeneration === dictIssued.iViewGeneration) {
+            return await dictInFlight.promise.catch(function () {
+                return S_CLAIM_RECOVERY_ABANDONED;
+            });
+        }
+        var dictLast = _dictLastRecoveryByName[dictIssued.sName];
+        if (dictLast &&
+                dictLast.iViewGeneration === dictIssued.iViewGeneration) {
+            return dictLast.sOutcome;
+        }
+        return "";
+    }
+
+    async function _fbFollowOwnRenewalOrThrow(errorRefused, dictIssued) {
+        /* Requests that meet a lapsed claim together are recovered by
+           ONE claim, and its new lease reaches only the requests sent
+           after it. A sibling sent before it with the retired lease
+           lands after the claim, where the hub no longer finds the
+           claim missing but held under another lease, and refuses it
+           without the claim-required code. That refusal is this page's
+           own renewal, not another session's hold: it follows the
+           recovery's outcome, retried under the new lease or already
+           reported by it. */
+        if (errorRefused.iStatus !== 403 || !dictIssued.sLease) return false;
+        var sOutcome = await _fsOutcomeOfThisViewsRecovery(dictIssued);
+        if (!sOutcome || VaibifyApp.fsGetLeaseId() === dictIssued.sLease) {
+            return false;
+        }
+        if (sOutcome !== S_CLAIM_RECOVERY_RECOVERED ||
+                !_fbViewIsUnchanged(dictIssued)) {
+            throw _fnMarkHandledByRecovery(errorRefused);
+        }
+        return true;
+    }
+
     async function _fvalueWithClaimRecovery(sUrl, fnAttempt) {
         var dictIssued = _fdictCaptureRequestContext(sUrl);
         try {
             return await fnAttempt();
         } catch (error) {
-            if (!dictIssued.sName || !_fsRecoverLostClaim ||
-                    !fbRefusalIsClaimRequired(error)) {
-                throw error;
+            if (!dictIssued.sName || !_fsRecoverLostClaim) throw error;
+            if (fbRefusalIsClaimRequired(error)) {
+                await _fnRecoverOrThrow(error, dictIssued, sUrl);
+                return await fnAttempt();
             }
-            await _fnRecoverOrThrow(error, dictIssued, sUrl);
-            return await fnAttempt();
+            if (await _fbFollowOwnRenewalOrThrow(error, dictIssued)) {
+                return await fnAttempt();
+            }
+            throw error;
         }
     }
 

@@ -12,7 +12,7 @@ in-memory registry entry on ``app.state`` for the live handles.
 
 The group is knowable because the OCI runtime starts a tty exec as a
 session leader (pid == pgid == sid, verified against a live daemon);
-the wrapper command re-reports those ids from ``/proc/self/stat``
+the wrapper command re-reports those ids from ``/proc/<its pid>/stat``
 into a marker file before ``exec``-ing the shell, and the start path
 fails closed — terminate what it can and refuse the terminal — when
 the report never arrives or the exec was not a session leader.
@@ -221,13 +221,13 @@ def fsMintGroupMarkerPath():
 def fsBuildGroupReportingCommand(sShellCommand, sMarkerPath):
     """Return the ``/bin/sh -c`` script that reports its group, then execs.
 
-    The script reads its own ``/proc/self/stat`` (fields after the
-    LAST ``)`` so a hostile comm cannot shift them), writes
-    ``pid pgid sid`` to the marker via write-then-rename so the host
-    never reads a partial line, and only then ``exec``s the terminal
-    shell — the shell keeps the reported pid, and a failure at any
-    step exits without ever starting a shell, which is what lets the
-    abort path settle an undiscovered dead exec honestly.
+    The script reads its stat by pid, never ``/proc/self/stat`` (which
+    qemu-user synthesizes with pgid and sid 0), parses the fields after
+    the LAST ``)`` so a hostile comm cannot shift them, writes the ids
+    to the marker via write-then-rename, and only then ``exec``s the
+    shell — which keeps the reported pid; a failure at any step exits
+    without ever starting a shell, which is what lets the abort path
+    settle an undiscovered dead exec honestly.
 
     A bare ``bash`` is first offered :data:`S_PROMPT_RESET_RCFILE`
     (:func:`_fsBuildRcfileLaunch`); if any step of that fails it falls
@@ -242,7 +242,7 @@ def fsBuildGroupReportingCommand(sShellCommand, sMarkerPath):
         )
     sQuotedMarker = shlex.quote(sMarkerPath)
     return (
-        "sStatContent=$(cat /proc/self/stat) && "
+        "sStatContent=$(cat /proc/$$/stat) && "
         'sStatTail="${sStatContent##*) }" && '
         "set -- $sStatTail && "
         f"printf '%s %s %s\\n' \"$$\" \"$3\" \"$4\" "

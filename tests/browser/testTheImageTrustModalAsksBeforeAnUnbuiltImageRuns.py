@@ -157,6 +157,42 @@ def testTheWordsOnScreenAreTheBackendsWords(pageDashboard, serverHub):
 
 
 @pytest.mark.falsification
+def testAStackedImagesProvenanceRowsAreTheServersRows(
+    pageDashboard, serverHub,
+):
+    """Kills: the modal deriving its own origin rows from the record,
+    which told the researcher the image vaibify stacked agents on was
+    itself obtained from the archive and matched the deposit's digest.
+
+    The base, the stack and the pin are distinct IDs; every row after the
+    digest must be the server's, in order.
+    """
+    sBaseImageId = "sha256:" + "b" * 64
+    dictPrompt = imageTrust.fdictBuildTrustPrompt(
+        {"dictImageSource": {"sSource": "archive",
+                             "listAuthorOverlays": []}},
+        {"sId": S_DIGEST, "dictLabels": {}, "iSizeBytes": 52428800,
+         "sUser": "root", "listEntrypoint": ["/start"]},
+        {"sObtainedFrom": "archive", "sBaseImageId": sBaseImageId,
+         "sRunningImageId": S_DIGEST, "listResolvedOverlays": ["claude"],
+         "sPinnedImageReference": "sha256:" + "1" * 64})
+    fnRefuseStartWithThePrompt(pageDashboard, dictPrompt, [])
+    fnLoadAndPressStart(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(S_MODAL, timeout=10000)
+    listRendered = pageDashboard.locator(S_MODAL).evaluate(
+        "el => Array.from(el.querySelectorAll("
+        "'.image-trust-provenance tr')).map(r => "
+        "[r.querySelector('th').textContent, "
+        "r.querySelector('td').textContent])")
+    listServerRows = [[dictRow["sLabel"], dictRow["sValue"]]
+                      for dictRow in dictPrompt["listProvenanceRows"]]
+    assert ["Base image", sBaseImageId] in listServerRows
+    assert listRendered[0] == ["Digest", S_DIGEST]
+    assert listRendered[1:1 + len(listServerRows)] == listServerRows
+    assert "Obtained from" not in [listRow[0] for listRow in listRendered]
+
+
+@pytest.mark.falsification
 def testAHostileImageDescriptionRendersAsText(pageDashboard, serverHub):
     """Kills: interpolating the image's declared user, entrypoint or
     digest into markup unescaped."""

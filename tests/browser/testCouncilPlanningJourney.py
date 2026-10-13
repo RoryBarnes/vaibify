@@ -213,6 +213,20 @@ def _fdictClaimAndActivate(page, serverHub):
     )
 
 
+def fnWaitForTheCouncilListing(page):
+    """Wait until the chooser has rendered the hub's council listing.
+
+    The chooser draws its first frame before the listing arrives, then
+    redraws from the answer. A test that reads a count or seeds its own
+    summaries before then is overwritten on a slow runner.
+    """
+    page.wait_for_function(
+        """() => {
+            const el = document.getElementById('btnCouncilOpenExisting');
+            return el !== null && !el.textContent.includes('(…)');
+        }""", timeout=15000)
+
+
 def _fnConveneThroughTheForm(page):
     page.click("#btnAgentCouncil")
     page.wait_for_selector("#btnCouncilPlanChange", timeout=5000)
@@ -369,8 +383,9 @@ def _fnAcceptTheCandidatePlan(page, serverHub, sCampaignId):
     )
 
 
-def _fnWaitForState(page, serverHub, sCampaignId, sState):
-    for _ in range(50):
+def _fnWaitForState(page, serverHub, sCampaignId, sState,
+                    fTimeoutSeconds=10.0):
+    for _ in range(int(fTimeoutSeconds / 0.2)):
         dictRecord = agentCouncilStore.fjsonGetCampaignRecord(
             _fdictStore(serverHub), sCampaignId)
         if dictRecord["sState"] == sState:

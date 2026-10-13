@@ -347,8 +347,16 @@ async def _ftProbeLevelThenRunUnderTheDrain(
     worker-thread boundary, so a hand-over arriving mid-run would
     otherwise see an idle container and commit while the former owner's
     pytest kept writing into the workspace.
+
+    The test-support files are refreshed UNCACHED first, as a pipeline
+    run does: the marker plugin is git-ignored, so a ``git clean``
+    removes it, and a run without it writes no marker -- the poll then
+    keeps showing the previous run's verdict, a pass over a failure. A
+    refresh that cannot land refuses the run, carried back as a value
+    so the container is not quarantined over a file it could not write.
     """
     from .. import commitCarrier
+    from ..pipelineRunner import _flistRefreshConftestsBeforeRun
     dictLaneTuple = fdictRequireLaneTupleForCommit(
         requestHttp, sContainerId, sTarget,
     )
@@ -360,13 +368,40 @@ async def _ftProbeLevelThenRunUnderTheDrain(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             bHostProject=fbIsHostProject(sContainerId),
         )
-        return (iLevelBefore, fnRunTheTests())
+
+        def ftRunUnlessUnrecordable():
+            _fnRefuseATestRunNoMarkerWouldRecord(
+                _flistRefreshConftestsBeforeRun(
+                    dictCtx["docker"], sContainerId, dictWorkflow,
+                ),
+            )
+            return (iLevelBefore, fnRunTheTests())
+        return fdictCarryARefusalBackInsteadOfRaising(ftRunUnlessUnrecordable)
 
     dictOutcome = await commitCarrier.fdictRunLockHeldMutation(
         requestHttp.app.state, dictLaneTuple["sContainerName"],
         sContainerId, dictLaneTuple, "helper", sTarget, ftProbeThenRun,
     )
-    return dictOutcome["result"]
+    dictCarried = dictOutcome["result"]
+    if dictCarried["errorRefused"] is not None:
+        raise dictCarried["errorRefused"]
+    return dictCarried["objResult"]
+
+
+def _fnRefuseATestRunNoMarkerWouldRecord(listRefreshFailures):
+    """Raise 409 when the test-support files could not be made current.
+
+    Their marker is how the dashboard learns a run's result, so a run
+    without them would answer in this response and leave the PREVIOUS
+    run's verdict on every later poll. Refusing before pytest starts
+    is the honest answer: nothing ran, and the reason names the files.
+    """
+    if not listRefreshFailures:
+        return
+    from ..pipelineTestRunner import fsDescribeUnrecordableTestRun
+    raise HTTPException(
+        409, fsDescribeUnrecordableTestRun(listRefreshFailures),
+    )
 
 
 async def _fnAutoArchiveUnderTheDrain(

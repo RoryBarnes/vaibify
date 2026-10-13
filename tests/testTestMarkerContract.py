@@ -304,6 +304,28 @@ def test_a_present_file_the_marker_never_collected_is_untested_and_unspoken():
     assert dictStates["quantitative"]["bHasMarkerInfo"] is True
 
 
+def test_a_file_no_run_recorded_is_named_beside_its_category():
+    """An obsolete copy left beside its renamed successor holds the tier.
+
+    The successor runs and passes; the copy, which nothing runs, keeps
+    the category untested forever. The category names it, so the page
+    can say why instead of a bare "untested" (researcher-reported,
+    2026-10-11). A category the marker is silent on names nothing.
+    """
+    sLeftOver = "test_qualitative.py"
+    dictMarker = _fdictMarkerAfter(
+        _fdictSession("r1", 1, {S_FILE_C: _fdictWholeFile(
+            S_FILE_C, {"test_c": "passed"})}))
+    dictStates = _fdictStates(
+        dictMarker, listPresentFiles=[S_FILE_A, S_FILE_B, S_FILE_C, sLeftOver])
+    assert _fsState(dictStates, "qualitative") == "untested"
+    assert dictStates["qualitative"]["listNeverRunFiles"] == [sLeftOver]
+    assert dictStates["integrity"]["listNeverRunFiles"] == []
+    dictWithout = _fdictStates(dictMarker)
+    assert _fsState(dictWithout, "qualitative") == "passed"
+    assert dictWithout["qualitative"]["listNeverRunFiles"] == []
+
+
 def test_the_counts_ride_beside_the_state():
     dictMarker = _fdictMarkerAfter(
         _fdictSession("r1", 1, {S_FILE_A: _fdictWholeFile(

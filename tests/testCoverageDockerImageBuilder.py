@@ -9,12 +9,14 @@ recipe fingerprint stamped on the chain is computed over real texts.
 """
 
 import io
+import os
 import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 from vaibify.cli.configLoader import fsDockerDir
+from vaibify.config.imageOrigins import S_PINNED_BASE_LABEL
 from vaibify.config.projectConfig import fconfigFromYamlDict
 from vaibify.docker import imageBuilder
 from vaibify.reproducibility.dockerfileComposer import (
@@ -135,17 +137,30 @@ def testAStackOnAnObtainedBaseWithNoChainBuildsNothing(monkeypatch):
     assert listBuilds == []
 
 
+@pytest.mark.falsification
 def testAStackChainsItsStagesAndOmitsAnAbsentPlatform(monkeypatch):
-    """Stage two builds FROM stage one; no --platform when none is pinned."""
+    """Stage two builds FROM stage one; no --platform when none is pinned.
+
+    Kills: the first stage building FROM the bare base ID, which
+    BuildKit reads as a Docker Hub repository and refuses.
+    """
     monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: True)
     listBuilds = flistRecordDockerBuilds(monkeypatch)
+    listCommands = []
+    monkeypatch.setattr(
+        imageBuilder, "fnRunDockerCommand",
+        lambda saCommand, **kwargs: listCommands.append(list(saCommand)),
+    )
     sBaseId = "sha256:" + "c" * 64
     sLast = imageBuilder.fsStackOverlaysOnObtainedBase(
         S_PROJECT_NAME, sBaseId, ["node", "gemini"], fsDockerDir(), "",
         ["node", "claude", "gemini"], bNoCache=True,
     )
     assert sLast == f"{S_PROJECT_NAME}:gemini"
-    assert f"BASE_IMAGE={sBaseId}" in listBuilds[0]
+    sBaseTag = f"{S_PROJECT_NAME}:pinned-base"
+    assert listCommands == [["docker", "tag", sBaseId, sBaseTag]]
+    assert f"BASE_IMAGE={sBaseTag}" in listBuilds[0]
+    assert fsLabelValue(listBuilds[0], S_PINNED_BASE_LABEL) == sBaseId
     assert f"BASE_IMAGE={S_PROJECT_NAME}:node" in listBuilds[1]
     for saBuild in listBuilds:
         assert "--platform" not in saBuild
@@ -154,6 +169,43 @@ def testAStackChainsItsStagesAndOmitsAnAbsentPlatform(monkeypatch):
         assert fsLabelValue(saBuild, S_OVERLAYS_IMAGE_LABEL) == (
             "node,claude,gemini"
         )
+
+
+def _flistStackedDockerfiles(monkeypatch, sPlatform, sDaemonArchitecture):
+    """Stack claude then codex; return the basename each stage built from."""
+    monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: True)
+    monkeypatch.setattr(
+        imageBuilder, "fnRunDockerCommand", lambda saCommand, **kwargs: None,
+    )
+    listBuilds = flistRecordDockerBuilds(monkeypatch)
+    imageBuilder.fsStackOverlaysOnObtainedBase(
+        S_PROJECT_NAME, "sha256:" + "e" * 64, ["claude", "codex"],
+        fsDockerDir(), sPlatform, [],
+        sDaemonArchitecture=sDaemonArchitecture,
+    )
+    return [
+        os.path.basename(saBuild[saBuild.index("-f") + 1])
+        for saBuild in listBuilds
+    ]
+
+
+@pytest.mark.falsification
+def testAnIntelImageOnAnArmDaemonGetsClaudesArmBuild(monkeypatch):
+    """Claude's Intel binary crashes under qemu; its ARM build runs natively.
+
+    Only claude is swapped: codex's Intel build runs under qemu.
+
+    Kills: choosing the ARM build without checking the daemon is ARM.
+    """
+    assert _flistStackedDockerfiles(monkeypatch, "linux/amd64", "arm64") == [
+        "Dockerfile.claudeArmOnIntel", "Dockerfile.codex",
+    ]
+    for sPlatform, sDaemonArchitecture in [
+        ("linux/amd64", "amd64"), ("linux/amd64", ""), ("linux/arm64", "arm64"),
+    ]:
+        assert _flistStackedDockerfiles(
+            monkeypatch, sPlatform, sDaemonArchitecture,
+        ) == ["Dockerfile.claude", "Dockerfile.codex"]
 
 
 def testASingleOverlayCarriesNoCacheBeforeItsLabels(monkeypatch):

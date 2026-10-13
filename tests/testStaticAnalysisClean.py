@@ -35,10 +35,13 @@ on unrelated commits is one people learn to regenerate without reading.
 """
 
 import functools
+import importlib.metadata
 import os
 import re
 import subprocess
 import sys
+
+from packaging.specifiers import SpecifierSet
 
 # Fails rather than skips when absent: a lane that reports success for
 # having run nothing is worse than no lane (see the `.[dev]` note in
@@ -100,9 +103,35 @@ def _fdictScanWithPyflakes():
     return dictFound
 
 
+def _fsReadPinnedPylintRange():
+    """Return the pylint version range that pyproject.toml's dev extra pins."""
+    with open("pyproject.toml", encoding="utf-8") as fileHandle:
+        matchPin = re.search(r'"pylint([<>=!~][^"]*)"', fileHandle.read())
+    assert matchPin, "pyproject.toml no longer pins pylint in its dev extra"
+    return matchPin.group(1)
+
+
+def _fnRequirePinnedPylint():
+    """Fail with the remedy when the installed pylint is outside the pin.
+
+    An older pylint reports findings the pinned one does not (2.9.6
+    called ``signal.Signals`` and ``hashlib``'s ``usedforsecurity``
+    missing), and those would read as defects in vaibify's source.
+    """
+    sPinnedRange = _fsReadPinnedPylintRange()
+    sInstalled = importlib.metadata.version("pylint")
+    assert SpecifierSet(sPinnedRange).contains(sInstalled), (
+        f"pylint {sInstalled} is installed, but pyproject.toml pins "
+        f"pylint{sPinnedRange}, and an out-of-range pylint reports "
+        f"findings the pinned one does not. Install the pinned one: "
+        f"{sys.executable} -m pip install 'pylint{sPinnedRange}'"
+    )
+
+
 @functools.lru_cache(maxsize=None)
 def _fdictScanWithPylint():
     """Return {file: {"symbol: message": count}} for pylint's error checks."""
+    _fnRequirePinnedPylint()
     iJobs = max(1, (os.cpu_count() or 2) - 1)
     processScan = subprocess.run(
         [sys.executable, "-m", "pylint", "--errors-only", "--score=n",

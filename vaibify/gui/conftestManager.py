@@ -1,14 +1,28 @@
-"""Manage conftest.py marker plugin and tests directory in containers."""
+"""Manage the conftest loader, the marker plugin it loads, and tests/ dirs.
+
+Each step's committed ``tests/conftest.py`` is a fixed LOADER whose bytes
+never change across vaibify versions, so a published project commits it
+once and no later release dirties it. The marker plugin itself -- the
+generated source that writes the dashboard's test marker after every
+pytest session -- lives in ``<repo>/.vaibify/pytestPlugin/``, a directory
+whose own ``.gitignore`` ignores everything in it, itself included. Git
+never sees it, so vaibify rewrites it whenever the plugin's generation
+moves. An older whole-plugin conftest of any generation is migrated to
+the loader once; a loader is current forever.
+"""
 
 __all__ = [
     "S_CONFTEST_VERSION",
+    "S_CONFTEST_LOADER_SOURCE",
     "fsConftestPath",
     "fsConftestContent",
     "fsBuildConftestSource",
     "fsReadInstalledConftestVersion",
     "fdictReadInstalledConftestVersions",
+    "flistMarkerPluginPaths",
     "fnWriteConftestMarker",
     "fbWriteConftestMarkersBatch",
+    "fbWriteMarkerPlugin",
     "fnEnsureTestsDirectory",
     "fnEnsureConftestsCurrent",
     "flistRefreshConftestsForRun",
@@ -16,11 +30,14 @@ __all__ = [
 ]
 
 import inspect
+import io
 import json
 import logging
 import posixpath
 import re
 from collections import OrderedDict
+
+from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
 
 from . import pipelineUtils
 from . import testMarkerContract
@@ -44,9 +61,96 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # stale copies without parsing the source.
 S_CONFTEST_VERSION = "9"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
+S_NO_TESTS_DIRECTORY = "no-tests-directory"
 _REGEX_CONFTEST_VERSION = re.compile(
     r"^# vaibify-conftest-version:\s*(\S+)\s*$", re.MULTILINE,
 )
+
+# What the batched probe reports for a conftest carrying the loader
+# stamp, whatever loader number it names. Any loader is current: a
+# loader is committed by the project's author, and rewriting one would
+# dirty every clone of their published repository.
+S_LOADER_INSTALLED = "loader"
+
+# The plugin's home inside the project repository. The directory holds
+# its own ``.gitignore`` matching everything, so neither file is ever
+# tracked, untracked-and-listed, or committed, and no file the author
+# committed is edited to achieve that.
+S_MARKER_PLUGIN_DIRECTORY = posixpath.join(".vaibify", "pytestPlugin")
+S_MARKER_PLUGIN_FILE_NAME = "markerPlugin.py"
+_S_MARKER_PLUGIN_IGNORE_BODY = (
+    "# Vaibify writes its pytest marker plugin here and rewrites it\n"
+    "# freely. This file ignores the whole directory, itself included,\n"
+    "# so nothing here is ever committed or listed by git status.\n"
+    "*\n"
+)
+
+# The committed conftest. Its bytes are a promise to every project that
+# committed them: change one and every published clone shows a modified
+# file. It is deliberately NOT built from the constants above -- a
+# rename there must never reach this text -- and its hash is pinned by
+# ``tests/testConftestLoaderKeepsCommittedFilesStable.py``.
+S_CONFTEST_LOADER_SOURCE = '''\
+# vaibify-conftest-loader: 1
+"""Load vaibify's test-result marker plugin, when it is present.
+
+Vaibify keeps this file identical in every version, so it is committed
+once and never rewritten. The plugin it loads lives in
+.vaibify/pytestPlugin/, a directory git ignores, which vaibify rewrites
+as the plugin changes. After each pytest session the plugin writes the
+JSON marker the vaibify dashboard reads. Without vaibify the plugin is
+absent, this file does nothing, and the tests pass or fail on their own
+merits. Do not edit or delete this file.
+"""
+
+from pathlib import Path as _Path
+
+
+def _fpathLocateMarkerPlugin():
+    """Return the plugin inside this repository, or None.
+
+    The repository is the nearest ancestor holding .vaibify. A plugin
+    that resolves outside it, through a symlink, is never loaded.
+    """
+    pathTests = _Path(__file__).resolve().parent
+    for pathAncestor in pathTests.parents:
+        if not (pathAncestor / ".vaibify").is_dir():
+            continue
+        pathPlugin = (
+            pathAncestor / ".vaibify" / "pytestPlugin" / "markerPlugin.py")
+        if not pathPlugin.is_file():
+            return None
+        try:
+            pathPlugin.resolve().relative_to(pathAncestor)
+        except ValueError:
+            return None
+        return pathPlugin
+    return None
+
+
+def _fnLoadMarkerPlugin():
+    """Run the plugin as if it were this file, and expose its pytest hooks."""
+    pathPlugin = _fpathLocateMarkerPlugin()
+    if pathPlugin is None:
+        return
+    dictNamespace = {"__file__": __file__, "__name__": __name__}
+    try:
+        sSource = pathPlugin.read_text(encoding="utf-8")
+        exec(compile(sSource, str(pathPlugin), "exec"), dictNamespace)
+    except Exception as error:
+        import warnings
+        warnings.warn(
+            "vaibify: the test-result marker plugin did not load ("
+            + repr(error) + "); the tests still run, but this session "
+            "writes no marker.")
+        return
+    for sName, fnHook in dictNamespace.items():
+        if sName.startswith("pytest_"):
+            globals()[sName] = fnHook
+
+
+_fnLoadMarkerPlugin()
+'''
 
 
 # Switch-time de-dup: connect runs ``_fnRefreshConftestsAndMigrateMarkers``
@@ -238,7 +342,8 @@ def fsReadInstalledConftestVersion(
         baContent = connectionDocker.fbaFetchFile(
             sContainerId, sConftestPath,
         )
-    except Exception:
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
         return ""
     sSource = baContent.decode("utf-8", errors="replace")
     matchVersion = _REGEX_CONFTEST_VERSION.search(sSource)
@@ -256,15 +361,96 @@ def _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath):
     return posixpath.join(sProjectRepoPath, sStepDirectory)
 
 
+def flistMarkerPluginPaths(sProjectRepoPath):
+    """Return ``[ignore file, plugin]`` paths for a repo, or [] without one.
+
+    The ignore file comes first because it is written first: the plugin
+    must never exist, even for an instant, in a directory git can see.
+    """
+    if not sProjectRepoPath:
+        return []
+    sDirectory = posixpath.join(sProjectRepoPath, S_MARKER_PLUGIN_DIRECTORY)
+    return [
+        posixpath.join(sDirectory, ".gitignore"),
+        posixpath.join(sDirectory, S_MARKER_PLUGIN_FILE_NAME),
+    ]
+
+
+def _fsMarkerPluginIgnoreContent():
+    """Return the plugin directory's ``.gitignore``, stamped like the plugin.
+
+    The stamp lets the one batched probe judge both files the same way.
+    """
+    return _fsVersionStampLine() + _S_MARKER_PLUGIN_IGNORE_BODY
+
+
+def fbWriteMarkerPlugin(connectionDocker, sContainerId, sProjectRepoPath):
+    """Write the self-ignoring plugin directory; True iff both files landed.
+
+    Both writes go through the confined single-file funnel, which walks
+    the path without following a symlink and refuses one, so a
+    ``.vaibify`` or ``pytestPlugin`` linked out of the repository is
+    never written through. A failure is logged and answered False rather
+    than raised -- bookkeeping must never stop a connect, a poll or a
+    run -- except a control-plane refusal, which is not an I/O outcome.
+    """
+    listPaths = flistMarkerPluginPaths(sProjectRepoPath)
+    listContents = [
+        _fsMarkerPluginIgnoreContent(),
+        fsBuildConftestSource(sProjectRepoPath),
+    ]
+    try:
+        for sPath, sContent in zip(listPaths, listContents):
+            _fnWriteTextConfined(
+                connectionDocker, sContainerId, sPath, sContent,
+                sAuthorizedRoot=sProjectRepoPath, bCreateParents=True,
+            )
+    except Exception as error:
+        fnReRaiseControlPlaneRefusal(error)
+        logger.error(
+            "Could not write the test-marker plugin under %s: %s",
+            sProjectRepoPath, error,
+        )
+        return False
+    return bool(listPaths)
+
+
 def fnWriteConftestMarker(
     connectionDocker, sContainerId, sStepDirectory, sProjectRepoPath,
 ):
-    """Write the conftest.py marker plugin into a step's tests dir."""
+    """Install the conftest loader in a step's tests dir, and its plugin.
+
+    A loader already there is left untouched; anything else is replaced.
+    """
     sAbsStepDir = _fsAbsoluteStepDir(sStepDirectory, sProjectRepoPath)
     sPath = fsConftestPath(sAbsStepDir)
-    sSource = fsBuildConftestSource(sProjectRepoPath)
-    connectionDocker.fnWriteFile(
-        sContainerId, sPath, sSource.encode("utf-8"),
+    dictInstalled = fdictReadInstalledConftestVersions(
+        connectionDocker, sContainerId, [sPath],
+    )
+    if dictInstalled.get(sPath) != S_LOADER_INSTALLED:
+        _fnWriteTextConfined(
+            connectionDocker, sContainerId, sPath, S_CONFTEST_LOADER_SOURCE,
+        )
+    if sProjectRepoPath:
+        fbWriteMarkerPlugin(connectionDocker, sContainerId, sProjectRepoPath)
+
+
+def _fnWriteTextConfined(
+    connectionDocker, sContainerId, sPath, sContent,
+    sAuthorizedRoot=None, bCreateParents=False,
+):
+    """Write one text file through the confined single-file funnel.
+
+    The funnel walks the path without following a symlink, refuses one,
+    and lands the bytes by rename, as the container user. The one write
+    site for both the loader and the plugin, so neither can drift onto
+    an unconfined path.
+    """
+    baContent = sContent.encode("utf-8")
+    connectionDocker.fnWriteFileFromStream(
+        sContainerId, sPath, io.BytesIO(baContent),
+        iExpectedBytes=len(baContent), sAuthorizedRoot=sAuthorizedRoot,
+        bCreateParents=bCreateParents,
     )
 
 
@@ -287,9 +473,12 @@ def fdictReadInstalledConftestVersions(
     """Probe ``# vaibify-conftest-version:`` stamps in one docker exec.
 
     Returns ``{sPath: sVersion}`` for every conftest that was readable
-    and carried the sentinel. Paths that are missing, unreadable, or
-    lack the sentinel are omitted — the refresh helper treats absence
-    the same as "needs rewriting". One batched probe keeps switch-time
+    and carried the sentinel, ``S_LOADER_INSTALLED`` for one carrying
+    the loader stamp, and ``S_NO_TESTS_DIRECTORY`` for a path whose
+    parent directory does not exist. Paths that are missing,
+    unreadable, or lack the sentinel are omitted — the refresh helper
+    treats absence the same as "needs rewriting". One batched probe
+    keeps switch-time
     flat at N=100 steps; the single-file
     ``fsReadInstalledConftestVersion`` stays available for callers
     (and tests) that probe one path at a time.
@@ -310,14 +499,22 @@ def _fsBuildVersionsProbeCommand(listConftestPaths):
     from .pipelineRunner import fsShellQuote
     sPathsJson = json.dumps(list(listConftestPaths))
     sScript = (
-        "import json, re, sys\n"
+        "import json, os, re, sys\n"
         "rx = re.compile("
         "r'^# vaibify-conftest-version:\\s*(\\S+)\\s*$', re.M)\n"
+        "rxLoader = re.compile("
+        "r'^# vaibify-conftest-loader:\\s*\\S+\\s*$', re.M)\n"
         "out = {}\n"
         "for p in json.loads(sys.stdin.read()):\n"
+        "    if not os.path.isdir(os.path.dirname(p)):\n"
+        f"        out[p] = {S_NO_TESTS_DIRECTORY!r}\n"
+        "        continue\n"
         "    try:\n"
         "        with open(p, 'r', encoding='utf-8') as f: s = f.read()\n"
         "    except OSError:\n"
+        "        continue\n"
+        "    if rxLoader.search(s):\n"
+        f"        out[p] = {S_LOADER_INSTALLED!r}\n"
         "        continue\n"
         "    m = rx.search(s)\n"
         "    if m:\n"
@@ -390,35 +587,23 @@ def _fsBuildConftestBatchWriteCommand(listConftestPaths, sContent):
 def fnEnsureConftestsCurrent(
     connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
 ):
-    """Refresh stale or missing conftest.py copies in each step's tests/.
+    """Migrate old conftests to the loader and refresh a stale plugin.
 
-    Batches both the version probe and the rewrite into one
-    ``docker exec`` each, so switch-time stays flat at ~100 steps.
-    Idempotent at any N: current files are left untouched. Empty
-    input short-circuits before any container work. A successful
-    sweep is cached in ``_SET_REFRESHED_KEYS`` so the connect-time
-    and first-poll callers no longer pay the cost twice.
+    Batches the probe and the loader rewrite into one ``docker exec``
+    each, so switch-time stays flat at ~100 steps. Idempotent at any N:
+    a loader is never touched, and a current plugin is not rewritten.
+    Empty input short-circuits before any container work. A successful
+    sweep is cached in ``_SET_REFRESHED_KEYS`` so the connect-time and
+    first-poll callers no longer pay the cost twice.
     """
     if not listStepDirs:
         return
     tKey = (sContainerId, sProjectRepoPath, S_CONFTEST_VERSION)
     if tKey in _SET_REFRESHED_KEYS:
         return
-    listConftestPaths = _flistConftestPathsForSteps(
-        listStepDirs, sProjectRepoPath,
+    _listStale, bWritten, _dictInstalled = _ftRefreshLoadersAndPlugin(
+        connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
     )
-    dictInstalled = fdictReadInstalledConftestVersions(
-        connectionDocker, sContainerId, listConftestPaths,
-    )
-    listStale = _flistStalePaths(listConftestPaths, dictInstalled)
-    if not listStale:
-        _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
-        return
-    bWritten = fbWriteConftestMarkersBatch(
-        connectionDocker, sContainerId, listStale,
-        fsBuildConftestSource(sProjectRepoPath),
-    )
-    _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
     if bWritten:
         _fnRememberRefreshKey(_SET_REFRESHED_KEYS, tKey)
 
@@ -431,15 +616,15 @@ def flistRefreshConftestsForRun(
     Deliberately does NOT consult ``_SET_REFRESHED_KEYS``.  That cache
     is keyed by ``(container, repo, version)`` and lives for the hub's
     whole process, so once a sweep has run, anything that rewrites the
-    files underneath it -- a ``git pull``, a checkout, a branch switch
-    -- is never noticed again, and reopening the project re-probes
-    nothing.  That is not hypothetical: a researcher pulled a repo
-    carrying committed generation-5 conftests, every one of which
-    stamps a container path, and every test tier of every step then
-    reported ``exit 1`` while pytest printed ``1 passed`` directly
-    above it (2026-09-04).  A run is the moment the file's CONTENT
-    starts to matter, and one batched version probe is negligible
-    beside the run it precedes.
+    files underneath it -- a ``git pull``, a checkout, a branch switch,
+    a ``git clean`` that removes the ignored plugin -- is never noticed
+    again, and reopening the project re-probes nothing.  That is not
+    hypothetical: a researcher pulled a repo carrying committed
+    generation-5 conftests, every one of which stamps a container path,
+    and every test tier of every step then reported ``exit 1`` while
+    pytest printed ``1 passed`` directly above it (2026-09-04).  A run
+    is the moment the files' CONTENT starts to matter, and one batched
+    version probe is negligible beside the run it precedes.
 
     Returns researcher-facing warnings rather than raising: a
     bookkeeping file that cannot be rewritten must not block a
@@ -448,20 +633,9 @@ def flistRefreshConftestsForRun(
     """
     if not listStepDirs or not sProjectRepoPath:
         return []
-    listConftestPaths = _flistConftestPathsForSteps(
-        listStepDirs, sProjectRepoPath,
+    listStale, bWritten, dictInstalled = _ftRefreshLoadersAndPlugin(
+        connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
     )
-    dictInstalled = fdictReadInstalledConftestVersions(
-        connectionDocker, sContainerId, listConftestPaths,
-    )
-    listStale = _flistStalePaths(listConftestPaths, dictInstalled)
-    if not listStale:
-        return []
-    bWritten = fbWriteConftestMarkersBatch(
-        connectionDocker, sContainerId, listStale,
-        fsBuildConftestSource(sProjectRepoPath),
-    )
-    _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
     if bWritten:
         _fnRememberRefreshKey(
             _SET_REFRESHED_KEYS,
@@ -469,6 +643,54 @@ def flistRefreshConftestsForRun(
         )
         return []
     return [_fsDescribeRefreshFailure(listStale, dictInstalled)]
+
+
+def _ftRefreshLoadersAndPlugin(
+    connectionDocker, sContainerId, listStepDirs, sProjectRepoPath,
+):
+    """Probe once; write the loader where stale and the plugin if stale.
+
+    Returns ``(listStale, bWritten, dictInstalled)``: every path found
+    stale (conftests, then plugin files), whether every write landed,
+    and the probe's answers. The plugin is wanted only when some step
+    has a tests directory, so a project with no tests gains nothing.
+    """
+    listConftestPaths = _flistConftestPathsForSteps(
+        listStepDirs, sProjectRepoPath,
+    )
+    listPluginPaths = flistMarkerPluginPaths(sProjectRepoPath)
+    dictInstalled = fdictReadInstalledConftestVersions(
+        connectionDocker, sContainerId, listConftestPaths + listPluginPaths,
+    )
+    listStale = _flistStalePaths(listConftestPaths, dictInstalled)
+    listStalePlugin = _flistStalePluginPaths(
+        listConftestPaths, listPluginPaths, dictInstalled,
+    )
+    bWritten = fbWriteConftestMarkersBatch(
+        connectionDocker, sContainerId, listStale, S_CONFTEST_LOADER_SOURCE,
+    )
+    if listStalePlugin:
+        bWritten = fbWriteMarkerPlugin(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        ) and bWritten
+    listStale = listStale + listStalePlugin
+    if listStale:
+        _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled)
+    return listStale, bWritten, dictInstalled
+
+
+def _flistStalePluginPaths(listConftestPaths, listPluginPaths, dictInstalled):
+    """Return the plugin files not at the current generation, when wanted."""
+    bAnyTestsDirectory = any(
+        dictInstalled.get(sPath) != S_NO_TESTS_DIRECTORY
+        for sPath in listConftestPaths
+    )
+    if not bAnyTestsDirectory:
+        return []
+    return [
+        sPath for sPath in listPluginPaths
+        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
+    ]
 
 
 def _fsDescribeRefreshFailure(listStale, dictInstalled):
@@ -489,7 +711,9 @@ def _fsDescribeRefreshFailure(listStale, dictInstalled):
         "the tests finish. Installed generations: "
         + ", ".join(
             sorted({
-                dictInstalled.get(sPath) or "absent"
+                "absent" if dictInstalled.get(sPath) in (
+                    None, "", S_NO_TESTS_DIRECTORY,
+                ) else dictInstalled[sPath]
                 for sPath in listStale
             })
         )
@@ -530,10 +754,23 @@ def _flistPathsWithinRoot(listPaths, sRoot):
 
 
 def _flistStalePaths(listConftestPaths, dictInstalled):
-    """Return paths whose installed version does not match the current stamp."""
+    """Return the conftests that are not yet the loader.
+
+    A loader is current forever, whatever generation the plugin is at:
+    it is the file a published project commits, and rewriting it would
+    show every reader's clone as modified. A whole-plugin conftest of
+    ANY generation -- the current one included -- is migrated to the
+    loader once. A step with no ``tests/`` directory is not stale:
+    creating one put an untracked conftest into a fresh clone's AI
+    declaration, a modified tree to a reproduction (researcher-reported,
+    2026-10-11). The test generator installs it when it makes the
+    directory.
+    """
     return [
         sPath for sPath in listConftestPaths
-        if dictInstalled.get(sPath) != S_CONFTEST_VERSION
+        if dictInstalled.get(sPath) not in (
+            S_LOADER_INSTALLED, S_NO_TESTS_DIRECTORY,
+        )
     ]
 
 
@@ -547,8 +784,8 @@ def _fnLogBatchRefreshOutcome(listStale, bWritten, dictInstalled):
     for sPath in listStale:
         sInstalled = dictInstalled.get(sPath, "")
         logger.info(
-            "Refreshed conftest.py at %s (installed=%r -> %r)",
-            sPath, sInstalled or "absent", S_CONFTEST_VERSION,
+            "Refreshed vaibify test support file %s (installed=%r)",
+            sPath, sInstalled or "absent",
         )
 
 

@@ -1012,10 +1012,8 @@ def _fdictProbeTerminalGroupEmptiness(dictRecord, connectionDocker):
     """Settle a dead-exec terminal only on a proven-empty process group."""
     iHolderProcessGroup = dictRecord.get("iHolderProcessGroup")
     if not fbIsUsablePid(iHolderProcessGroup):
-        return _fdictProbeOutcome(
-            False, False, False,
-            "terminal record never learned its process group; group "
-            "emptiness is unprovable and reconciliation is required",
+        return _fdictProbeUndiscoveredTerminalContainer(
+            dictRecord, connectionDocker,
         )
     if not hasattr(connectionDocker, "fdictProbeProcessGroupMembers"):
         return _fdictProbeOutcome(
@@ -1048,6 +1046,48 @@ def _fdictProbeTerminalGroupEmptiness(dictRecord, connectionDocker):
         "terminal exec in its recorded group; a detached descendant "
         "requires reconciliation or a container restart",
     )
+
+
+def _fdictProbeUndiscoveredTerminalContainer(dictRecord, connectionDocker):
+    """Settle a group-less terminal only when its container holds nothing.
+
+    With no recorded group there is nothing to prove empty inside a
+    running container, but no process survives a removed or stopped
+    one, so the daemon's answer about the CONTAINER settles it — the
+    clause :func:`_fdictProbeTerminalOperation` promises. Without it a
+    researcher who stopped such a container could never clear the
+    quarantine: Reconcile refused, and stop-and-certify had nothing left
+    to stop. A paused container still holds its processes and reports
+    ``Running`` true, so only ``Running is False`` counts as stopped.
+    """
+    sRefusal = (
+        "terminal record never learned its process group; group "
+        "emptiness is unprovable while its container runs, so the "
+        "container must be stopped to settle it"
+    )
+    if not hasattr(connectionDocker, "fdictReadContainerState"):
+        return _fdictProbeOutcome(False, False, False, sRefusal)
+    try:
+        dictState = connectionDocker.fdictReadContainerState(
+            dictRecord["sDockerContainerId"],
+        )
+    except Exception as error:
+        return _fdictProbeOutcome(
+            False, False, True, f"container state could not be read: {error}",
+        )
+    if dictState is None:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container no longer exists, and no process "
+            "survives it",
+        )
+    if dictState.get("Running") is False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "
+            "a stop",
+        )
+    return _fdictProbeOutcome(False, False, False, sRefusal)
 
 
 def _fdictProbeStartOperation(dictRecord, connectionDocker):

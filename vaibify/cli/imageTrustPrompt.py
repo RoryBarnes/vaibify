@@ -34,7 +34,7 @@ def fnConfirmImageTrustOrExit(config, sChoice, bWithCredentials):
     if dictPrompt is None or dictPrompt["bBuiltByVaibify"]:
         return
     if sChoice is None:
-        if _fbAnswerMatchesImage(dictPrompt):
+        if dictPrompt["bAnswerCoversImage"]:
             return
         sChoice, bWithCredentials = _ftAskOrExit(dictPrompt)
     _fnRecordAnswer(config.sProjectName, dictPrompt, sChoice, bWithCredentials)
@@ -46,16 +46,10 @@ def fnConfirmImageTrustOrExit(config, sChoice, bWithCredentials):
         sys.exit(0)
 
 
-def _fbAnswerMatchesImage(dictPrompt):
-    """True when an answer is recorded for exactly this image digest."""
-    dictAnswer = dictPrompt["dictCurrentAnswer"]
-    return dictAnswer.get("sImageDigest") == dictPrompt["sImageDigest"]
-
-
 def _fnRecordAnswer(sProjectName, dictPrompt, sChoice, bWithCredentials):
-    """Store the answer for the prompt's digest in the host registry."""
-    fnRecordImageTrust(sProjectName, imageTrust.fdictBuildTrustRecord(
-        dictPrompt["sImageDigest"], sChoice, bWithCredentials))
+    """Store the answer for the prompt's image in the host registry."""
+    fnRecordImageTrust(sProjectName, imageTrust.fdictBuildTrustRecordForPrompt(
+        dictPrompt, sChoice, bWithCredentials))
 
 
 def _ftAskOrExit(dictPrompt):
@@ -93,8 +87,10 @@ def _fnPrintPrompt(dictPrompt):
         f"  Size:       {dictPrompt['iSizeBytes']} bytes\n"
         f"  User:       {dictPrompt['sDeclaredUser'] or '(not declared)'}\n"
         f"  Entrypoint: "
-        f"{' '.join(dictPrompt['listDeclaredEntrypoint']) or '(none)'}\n"
-        f"  Obtained from: {dictPrompt['sObtainedFrom'] or '(unknown)'}\n")
+        f"{' '.join(dictPrompt['listDeclaredEntrypoint']) or '(none)'}")
+    for dictRow in dictPrompt["listProvenanceRows"]:
+        click.echo(f"  {dictRow['sLabel']}: {dictRow['sValue']}")
+    click.echo("")
     for iIndex, dictOption in enumerate(dictPrompt["listOptions"], start=1):
         click.echo(f"{iIndex}. {dictOption['sLabel']} -- {dictOption['sSummary']}")
         for sLine in dictOption["listDetailLines"]:

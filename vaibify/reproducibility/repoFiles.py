@@ -738,16 +738,27 @@ class ContainerRepoFiles:
         return _fdictParseEmbeddedScriptOutput(sStdout)
 
     def ftRunCommand(self, saCommand, fTimeoutSeconds):
-        """Run a command inside the container with a timeout guard.
+        """Run a command where the project lives, with a timeout guard.
 
-        Returns ``(iExitCode, sStdout, sStderr)``. The container's
-        ``timeout`` utility bounds the run so a stdin-waiting binary
-        cannot hang the exec forever.
+        Returns ``(iExitCode, sStdout, sStderr)``. The bound stops a
+        stdin-waiting binary from hanging the exec forever. Inside a
+        container the GNU ``timeout`` utility applies it. A host project
+        is served by the host leg, which applies the bound itself (exit
+        124, process group ended): macOS ships no ``timeout``, and the
+        prefix there made every command exit 127, so every git question
+        a host project asked answered "could not say".
         """
+        from vaibify.config.registryManager import fbIsHostProject
         sJoined = " ".join(fsShellQuotePosix(s) for s in saCommand)
-        sCommand = f"timeout {int(max(fTimeoutSeconds, 1))} {sJoined}"
+        iTimeoutSeconds = int(max(fTimeoutSeconds, 1))
+        if fbIsHostProject(self.sContainerId):
+            sCommand = sJoined
+            dictBound = {"fTimeoutSeconds": iTimeoutSeconds}
+        else:
+            sCommand = f"timeout {iTimeoutSeconds} {sJoined}"
+            dictBound = {}
         tExecResult = self.connectionDocker.ftRunInContainerStreamed(
-            self.sContainerId, sCommand,
+            self.sContainerId, sCommand, **dictBound,
         )
         return (
             tExecResult.iExitCode, tExecResult.sStdout, tExecResult.sStderr,

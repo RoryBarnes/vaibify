@@ -1,6 +1,7 @@
 """Tests for vaibify.gui.templateManager template hashing utilities."""
 
 import json
+import re
 import subprocess
 import sys
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,8 @@ from vaibify.gui.templateManager import (
     _fsComputeTemplateHash,
     _fsEmbedTemplateHash,
     fsBuildIntegrityTestCode,
+    fsBuildQualitativeTestCode,
+    fsBuildQuantitativeTestCode,
     fsIntegrityTemplateHash,
     fsQualitativeTemplateHash,
     fsQuantitativeTemplateHash,
@@ -188,10 +191,62 @@ def test_different_templates_produce_different_hashes():
 
 
 DICT_PINNED_TEMPLATE_HASHES = {
-    "quantitative": "9789c5dcc0c51c66",
-    "integrity": "cca0bc4f1dc66b27",
-    "qualitative": "3272131cc093bbb1",
+    "quantitative": "a1eeee271d0ca0d3",
+    "integrity": "a77c119b8c787faf",
+    "qualitative": "15914651d5c3886f",
 }
+
+DICT_TEMPLATE_BUILDERS = {
+    "quantitative": fsBuildQuantitativeTestCode,
+    "integrity": fsBuildIntegrityTestCode,
+    "qualitative": fsBuildQualitativeTestCode,
+}
+
+
+def _fsReadStampedHash(sFileText):
+    """Return the hash stamped into a generated test file's text."""
+    return re.search(
+        r"^# vaibify-template-hash: ([0-9a-f]+)", sFileText, re.MULTILINE,
+    ).group(1)
+
+
+def testGeneratedFileCarriesTheCurrentTemplateHash():
+    """The stamp written into a file is the hash the dashboard expects.
+
+    The two once differed: the current hash was computed over the
+    file WITH its stamp line, so every generated file read as custom.
+    """
+    from vaibify.gui.routes.pipelineRoutes import _fdictExpectedTemplateHashes
+    dictExpected = _fdictExpectedTemplateHashes()
+    for sCategory, fnBuild in DICT_TEMPLATE_BUILDERS.items():
+        assert _fsReadStampedHash(fnBuild()) == (
+            dictExpected[f"test_{sCategory}.py"]
+        )
+
+
+def testFreshlyGeneratedFilesAreNotCustom():
+    from vaibify.gui.routes.pipelineRoutes import (
+        _fdictExpectedTemplateHashes, _flistFindCustomTestFiles,
+    )
+    dictStamps = {
+        f"test_{sCategory}_fitModel.py": _fsReadStampedHash(fnBuild())
+        for sCategory, fnBuild in DICT_TEMPLATE_BUILDERS.items()
+    }
+    assert _flistFindCustomTestFiles(
+        dictStamps, _fdictExpectedTemplateHashes(),
+    ) == []
+
+
+def testFreshlyGeneratedFileIsSafeToOverwrite():
+    for fnBuild in DICT_TEMPLATE_BUILDERS.values():
+        sTemplate = fnBuild()
+        with patch(
+            "vaibify.gui.llmInvoker.fsReadFileFromContainer",
+            return_value=sTemplate,
+        ):
+            assert _fbFileMatchesTemplate(
+                MagicMock(), "cid", "/ws/test.py", sTemplate,
+            )
 
 
 def testTemplateHashesArePinned():

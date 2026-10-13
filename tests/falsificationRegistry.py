@@ -4245,6 +4245,159 @@ LIST_FALSIFICATIONS = [
     if False:''',
     ),
 
+    # A terminal record with no learned group settles only on the
+    # daemon's word that its container is removed or stopped; a paused
+    # container keeps every process and must stay quarantined.
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalSettlesOnceItsContainerIsGone',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState is None:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container no longer exists, and no process "''',
+        new='''    if False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container no longer exists, and no process "''',
+    ),
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalSettlesOnceItsContainerIsStopped',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState.get("Running") is False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+        new='''    if False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+    ),
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalInARunningOrPausedContainerStaysQuarantined',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState.get("Running") is False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+        new='''    if dictState.get("Running") is False or dictState.get("Paused"):
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+    ),
+
+    # Under qemu-user a process's own /proc/self/stat is synthesized
+    # with pgid and sid 0, so the wrapper must read its stat by pid.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_wrapper_reads_the_shells_stat_by_pid_not_through_self',
+        source='vaibify/gui/terminalContainment.py',
+        old='''        "sStatContent=$(cat /proc/$$/stat) && "''',
+        new='''        "sStatContent=$(cat /proc/self/stat) && "''',
+    ),
+
+    # Every test entry point restores the git-ignored marker plugin
+    # before it runs, or a failure leaves the last pass as the newest
+    # marker and the poll shows the failed step as passed.
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testAFailureAfterTheIgnoredPluginWasRemovedIsNotShownAsAPass',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='''            _fnRefuseATestRunNoMarkerWouldRecord(
+                _flistRefreshConftestsBeforeRun(
+                    dictCtx["docker"], sContainerId, dictWorkflow,
+                ),
+            )''',
+        new='''            _fnRefuseATestRunNoMarkerWouldRecord([])''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testRunAllTestsRefreshesTheTestSupportFilesBeforeRunning',
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='''    listRefreshFailures = await asyncio.to_thread(
+        _flistRefreshConftestsBeforeRun,
+        connectionDocker, sContainerId, dictWorkflow,
+    )''',
+        new='''    listRefreshFailures = []''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testRunAllTestsRefusesWhenTheRefreshCannotLand',
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='''    if listRefreshFailures:
+        sRefusal = fsDescribeUnrecordableTestRun(listRefreshFailures)''',
+        new='''    if False:
+        sRefusal = fsDescribeUnrecordableTestRun(listRefreshFailures)''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testATestRunWhosePluginCannotBeRestoredIsRefusedNotRun',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='''    if not listRefreshFailures:
+        return
+    from ..pipelineTestRunner import fsDescribeUnrecordableTestRun''',
+        new='''    if True:
+        return
+    from ..pipelineTestRunner import fsDescribeUnrecordableTestRun''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testARefusedTestRunIsNotAFailure.py::test_a_refused_save_and_run_shows_the_reason_and_records_nothing',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''                if (response.ok) return dictBody;''',
+        new='''                return dictBody;''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAPreRunWarningReachesTheScreen.py::test_a_pre_run_warning_is_written_to_the_run_output_and_announced',
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='''        } else if (dictEvent.sType === "preflightWarning") {''',
+        new='''        } else if (dictEvent.sType === "preflightWarningDropped") {''',
+    ),
+
+    # A Level 3 attempt that settles before any poll saw it running is
+    # still reported -- by its attempt id, never by whichever record
+    # happens to be current.
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_a_verification_that_settles_before_any_poll_is_still_reported',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (!bWasRunning && !_dictWorkflowState.sAwaitedVerificationAttempt) {''',
+        new='''        if (!bWasRunning) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_an_earlier_attempts_record_is_never_reported_as_this_one',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (bOnlyTheAwaitedAttempt && (!sAttemptId || sAttemptId !==
+                _dictWorkflowState.sAwaitedVerificationAttempt)) {''',
+        new='''        if (false) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_an_older_result_read_never_repaints_over_a_newer_result',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (iRead < _dictWorkflowState.iVerificationResultPainted) {''',
+        new='''        if (false) {''',
+    ),
+
+    # A viewer paints an asynchronous answer only while that display's
+    # claim on the viewport is still the latest one.
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_an_earlier_manifest_never_replaces_the_no_manifest_statement',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''            .then(function (sText) {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;''',
+        new='''            .then(function (sText) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_a_late_pdf_page_never_replaces_the_no_manifest_statement',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''                   late would otherwise start under the newer claim. */
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;''',
+        new='''                   late would otherwise start under the newer claim. */''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_a_late_missing_file_never_replaces_a_newer_file',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''            .catch(function () {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;
+                elViewport.innerHTML =
+                    '<span class="placeholder output-missing-message">' +''',
+        new='''            .catch(function () {
+                elViewport.innerHTML =
+                    '<span class="placeholder output-missing-message">' +''',
+    ),
+
     # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
     # The terminal exec id must be durable BEFORE exec_start (the
     # create -> journal -> start split applied to terminals); the
@@ -11333,10 +11486,10 @@ LIST_FALSIFICATIONS = [
         # Environment hub again -- the three-click toast dance of the
         # 2026-08-20 live report restored, and every poller with it.
         old=(
-            '            await _fnRecoverOrThrow(error, dictIssued, sUrl);\n'
-            '            return await fnAttempt();\n'
+            '                await _fnRecoverOrThrow(error, dictIssued, sUrl);\n'
+            '                return await fnAttempt();\n'
         ),
-        new='            throw error;\n',
+        new='                throw error;\n',
     ),
     Falsification(
         nodeid=(
@@ -19226,7 +19379,7 @@ LIST_FALSIFICATIONS = [
         old=(
             '    sReproducedPath = fsWriteReproducedManifest(\n'
             '        filesRepo, dictOutcome.get("listFileOutcomes") or [],\n'
-            '        sTimestampUtc, sStatus,\n'
+            '        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,\n'
             '    )\n'
         ),
         new='    sReproducedPath = "REPRODUCED.sha256"\n',
@@ -22148,7 +22301,7 @@ LIST_FALSIFICATIONS = [
         ),
         # the disk branch is gone; the banner's own words are the sentence
         source='vaibify/docker/dockerErrorDiagnosis.py',
-        old='    if "no space left on device" in sLower:\n        # Judged before every other cause',
+        old='    if fbErrorIsDiskFull(sLower):\n        # Judged before every other cause',
         new='    if False:\n        # Judged before every other cause',
     ),
     Falsification(
@@ -24660,7 +24813,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testConfinedRead.py::testAnExecTheDaemonNeverSettlesIsAnErrorNotASuccess',
         source='vaibify/docker/dockerConnection.py',
-        old='        raise OSError(\n            "The container did not report how the read ended, so the "\n            "bytes received cannot be trusted as complete"\n        )\n',
+        old='        raise OSError(\n            "The container did not report how the program ended, so "\n            "its result cannot be trusted as complete"\n        )\n',
         new='        return 0\n',
     ),
     Falsification(
@@ -25338,8 +25491,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testANewDigestAsksAgain',
         source='vaibify/config/imageTrust.py',
-        old='    if dictRecord.get("sImageDigest") != dictImage["sId"]:',
-        new='    if not dictRecord:',
+        old='    if dictRecord.get("sImageDigest") == sImageId:',
+        new='    if dictRecord:',
     ),
     Falsification(
         nodeid='tests/testImageTrustGuardsTheLaunch.py::testRestrictedDropsRootCapabilitiesAndTheImageEntrypoint',
@@ -25455,15 +25608,19 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightWarningsAreCollectedOffTheEventLoop',
         source='vaibify/gui/pipelineRunner.py',
+        # RE-ANCHORED 2026-10-12: the collector gained the run's repo
+        # root as its fourth argument; same mutant (collect on the loop).
         old=(
             '    listPreflightWarnings = await asyncio.to_thread(\n'
             '        _flistCollectPreflightWarnings,\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '        dictVariables.get("sRepoRoot", ""),\n'
             '    )\n'
         ),
         new=(
             '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '        dictVariables.get("sRepoRoot", ""),\n'
             '    )\n'
         ),
     ),
@@ -26126,8 +26283,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRefusedArchiveConversionChangesNothing.py::testARefusedArchiveConversionKeepsTheSessionAndScaffoldsNothing',
         source='vaibify/gui/registryRoutes.py',
-        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
-        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
+        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
+        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n",
     ),
     # --- Nothing to reconcile is a success on the live-hub lane too ---
     Falsification(
@@ -27967,8 +28124,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/buildRoutes.py',
         # the acquisition message is cut the way the build one is
-        old='            f"{error}"\n',
-        new='            f"{str(error)[:240]}"\n',
+        old='    return f"{sFailed}: {error}"\n',
+        new='    return f"{sFailed}: {str(error)[:240]}"\n',
     ),
     Falsification(
         nodeid=(
@@ -28586,16 +28743,82 @@ LIST_FALSIFICATIONS = [
             'test_the_label_never_shows_for_ones_own_manifest'
         ),
         # The label shows for a manifest that is the viewer's own.
+        # Retargeted 2026-10-12: an own manifest is now routed to the
+        # author's evidence (the attestation) before the reader's
+        # records are read, so dropping that routing is what lets a
+        # reader's record speak for the author.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if sOwnership != gitEvidence.S_MANIFEST_OWNERSHIP_FOREIGN:\n        return _fdictLabel(\n            S_STATE_ABSENT, "the manifest is this project\'s own",\n        )\n',
-        new='',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+    ),
+    # --- 2026-10-12: the author sees "Reproduced" for their own
+    # CURRENT Level 3 attestation ---
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_an_authors_current_attestation_shows_the_label'
+        ),
+        # The snapshot asks whose manifest it is only when a reader's record exists.
+        source='vaibify/docker/dockerConnection.py',
+        old='    if dictOut["dictReproductionRecords"] or os.path.isfile(\n            os.path.join(sRoot, ".vaibify", "l3_attestation.json")):\n',
+        new='    if dictOut["dictReproductionRecords"]:\n',
     ),
     Falsification(
         nodeid=(
-            'tests/browser/testTheProjectHeadingReadsReproduced.py::'
-            'test_the_heading_reads_reproduced_only_for_a_shown_label'
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_stale_authors_attestation_hides_the_label'
         ),
-        # The heading draws the label whatever the server's verdict says.
+        # A passed attestation is read as current whatever the manifest now says.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        new='    if (l3Attestation.fdictReadAttestation(filesPoll) or {}).get("sStatus") != "passed":\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_later_failed_authors_attestation_hides_the_label'
+        ),
+        # Any attestation on file shows the label, failed or not.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        new='    if l3Attestation.fdictReadAttestation(filesPoll) is None:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_later_no_verdict_keeps_the_authors_label_and_is_named'
+        ),
+        # The author's label never names a later attempt that reached no verdict.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
+        new='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_a_no_verdict_in_the_attestations_own_second_is_still_later'
+        ),
+        # The attempt and the evidence are ordered as strings, not instants.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='        return _fdatetimeParseUtc(sLaterIso) > _fdatetimeParseUtc(sEarlierIso)\n',
+        new='        return sLaterIso > sEarlierIso\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_the_authors_attestation_in_a_readers_clone_is_not_the_readers_label'
+        ),
+        # A reader's clone is judged by the author's attestation it carries.
+        source='vaibify/reproducibility/reproductionLabel.py',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_the_badge_reads_reproduced_only_for_a_shown_label'
+        ),
+        # The badge draws the label whatever the server's verdict says.
         source='vaibify/gui/static/scriptWorkflowRequirements.js',
         old='        return Boolean(dictLabel) && dictLabel.bShow === true;\n',
         new='        return Boolean(dictLabel);\n',
@@ -30803,6 +31026,98 @@ LIST_FALSIFICATIONS = [
         old='        var sEpisode = (_dictState.sContainerName || "") + "|" +\n            dictCurrent.sNearSinceIso;\n',
         new='        var sEpisode = (_dictState.sContainerName || "") + "|near";\n',
     ),
+    # --- 2026-10-12: the memory chip appears only while it warns ---
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAQuietMemoryStateShowsNoChip',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n',
+        new='        if (!(dictMemory.dictCurrent || {}).sChipText) {\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testTheChipComesAndGoesWithTheWarningWithoutAReload',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n            _fnHideChip();\n            return;\n',
+        new='        if (!_fbChipHasSomethingToSay(dictMemory)) {\n            return;\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testNearKeepsTheChipAfterItsToastIsClosed',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel === "unknown";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAnUnknownChipIsGrayAndSaysWhy',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel === "near";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testADismissedBannerStaysDismissedAndTheChipKeepsTheCount',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        if ((dictMemory.iKillCount || 0) > 0) return true;\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAnUnreachableMemoryWatchShowsTheUnknownChip',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elChip.textContent = "Memory unknown";\n        elChip.title = S_POLL_FAILED_TITLE;\n        elChip.setAttribute("data-level", "unknown");\n        elChip.style.display = "";\n',
+        new='        _fnHideChip();\n',
+    ),
+    # --- 2026-10-12: an opening reads pending, bounded, never unknown ---
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAnOpeningAwaitingItsFirstMeasurementIsPendingNotUnknown',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if dictCurrent.get("bAwaitingFirstSample"):\n        return S_LEVEL_PENDING, _fsPendingSentence()\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFirstMeasurementOverdueReadsCouldNotMeasure',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    return fWaited <= F_MEMORY_STALE_AFTER_SECONDS\n',
+        new='    return True\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testEveryPollLeavesTheOpeningStampWhereItWas',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='        if not dictRecord.get("sWatchedSinceIso"):\n            dictRecord["sWatchedSinceIso"] = datetimeNow.isoformat()\n',
+        new='        dictRecord["sWatchedSinceIso"] = datetimeNow.isoformat()\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAFailedFirstMeasurementIsUnknownNotPending',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    bAwaitingFirstSample = not dictCurrent and _fbFirstSampleStillDue(\n',
+        new='    bAwaitingFirstSample = _fbFirstSampleStillDue(\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testAReopeningIsCheckedAfreshAndKeepsItsHistory',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='                dictRecord["sWatchedSinceIso"] = ""\n                dictRecord["dictCurrent"] = None\n',
+        new='                pass\n',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryWatch.py::testTheSamplerForgetsTheOpeningOfAReleasedContainer',
+        source='vaibify/gui/containerMemorySampler.py',
+        old='    containerMemoryWatch.fnForgetOpeningsOfUnownedNames(\n        dictStore, setSampledNames)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/testContainerMemoryRoute.py::testAContainerJustOpenedReadsPendingNeitherOkNorUnknown',
+        source='vaibify/gui/containerMemoryWatch.py',
+        old='    if sName and not bHostProject:\n        fnNoteWatchBegan(dictStore, sName, datetimeNow)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAJustOpenedContainerReadsCheckingMemoryThenNothing',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        return dictCurrent.sLevel !== S_LEVEL_OK;\n',
+        new='        return dictCurrent.sLevel !== S_LEVEL_OK &&\n            dictCurrent.sLevel !== "pending";\n',
+    ),
+    Falsification(
+        nodeid='tests/browser/testTheMemoryWatchTellsAKillOnce.py::testAPendingThatOutlastsItsWindowReadsMemoryUnknown',
+        source='vaibify/gui/static/scriptMemoryWatch.js',
+        old='        elChip.textContent = dictCurrent.sChipText;\n',
+        new='        elChip.textContent = dictCurrent.sState === "noSampleYet" ?\n            "Checking Memory" : dictCurrent.sChipText;\n',
+    ),
     # --- 2026-10-08: limits are planned against the running container ---
     Falsification(
         nodeid='tests/testResourceLimits.py::testIntroducingAMemoryLimitWaitsForTheNextStart',
@@ -30937,5 +31252,1046 @@ LIST_FALSIFICATIONS = [
         source='vaibify/containerImage/entrypoint.sh',
         old='## Resources\n\nThis container may have a memory limit: `/sys/fs/cgroup/memory.max` holds it (`max` means none), and `memory.current` and `memory.stat` beside it show what is in use. At the limit the kernel kills a process, often the agent itself, so check the headroom before fanning out subagents or starting long background jobs. Background jobs outlive the agent that started them: stop them when you are done. `/tmp` does not survive a container restart and `/workspace` does, so keep anything you need in `/workspace`.\n\n',
         new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerImageBuilder.py::'
+            'testAStackChainsItsStagesAndOmitsAnAbsentPlatform'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the first stage builds FROM the bare ID, which BuildKit pulls
+        old='    sPreviousReference = _fsTagObtainedBase(sProjectName, sBaseImageId)\n',
+        new='    sPreviousReference = sBaseImageId\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_a_failed_stacking_stage_shows_what_docker_said'
+        ),
+        source='vaibify/gui/buildRoutes.py',
+        # the toast names the command and drops Docker's reason
+        old='    if sDecisive:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerImageBuilder.py::'
+            'testAnIntelImageOnAnArmDaemonGetsClaudesArmBuild'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the ARM build is chosen without knowing the daemon is ARM
+        old='    if sPlatform == "linux/amd64" and sDaemonArchitecture == "arm64":\n',
+        new='    if sPlatform == "linux/amd64":\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageDockerPinnedImage.py::'
+            'testAnArmDaemonStacksClaudesArmBuildOnTheIntelImage'
+        ),
+        source='vaibify/docker/pinnedImageAcquisition.py',
+        # the acquisition stacks without asking the daemon its architecture
+        old=(
+            '            sDaemonArchitecture=disposableContainer.fsReadDaemonArchitecture(\n'
+            '                dockerDisposable),\n'
+        ),
+        new='            sDaemonArchitecture="",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBuildSilenceIsReported.py::'
+            'test_a_quiet_build_is_reported_between_its_lines'
+        ),
+        source='vaibify/docker/imageBuilder.py',
+        # the watcher treats every wait as if a line had just arrived
+        old='        if time.monotonic() - dictSilence["fLastLine"] < fSilence:\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForThePinCoversTheImageStackedOnIt'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # an answer naming the pin answers for no image at all
+        old='    return sImageId in (\n',
+        new='    return False and sImageId in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForThePinDoesNotCoverAnImageTheOriginDoesNotName'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # once the pins agree, any image under the tag is covered
+        old='    return sImageId in (\n',
+        new='    return True or sImageId in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAnAnswerForAnotherPinCoversNothing'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the answer's pin is never compared with the origin's
+        old='    if not sPinned or sPinned != dictOrigin.get("sPinnedImageReference"):\n',
+        new='    if not sPinned:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testAModalAnswerForAnObtainedImageAlsoNamesItsPin'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the modal's answer stays tied to the stacked digest alone
+        old='        if dictPrompt.get("bDigestMatchesRecordedDeposit") else ""\n',
+        new='        if False else ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testTheLaunchGuardReadsTheHostHeldOriginRecord'
+        ),
+        source='vaibify/docker/containerManager.py',
+        # the guard never hands the origin record to the rule
+        old='        fdictReadOriginRecord(sProjectName),\n',
+        new='        None,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustAnsweredForThePin.py::'
+            'testTheWizardsAnswerIsRecordedForThePin'
+        ),
+        source='vaibify/gui/registryRoutes.py',
+        # the conversion drops the answer the wizard sent
+        old='                sName, request.sProjectName, dictImageSource, dictTrustRecord,\n',
+        new='                sName, request.sProjectName, dictImageSource, None,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testContainerizeFromPinnedImage.py::'
+            'testThePinnedImageAsksHowItMayRunBeforeTheDownload'
+        ),
+        source='vaibify/gui/static/scriptWorkflowManager.js',
+        # the Environment page lets a pinned choice past unanswered
+        old='                _fbUsingPinnedImage() && !_dictWizardData.sImageTrustChoice) {\n',
+        new='                false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDepositIsNotDownloadedTwice.py::'
+            'testASecondAcquisitionOfAHeldDepositDownloadsNothing'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # every retry downloads the deposit the daemon already holds
+        old='    if dictPreviousLoad is not None:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDepositIsNotDownloadedTwice.py::'
+            'testADaemonThatNoLongerHoldsTheImageDownloadsAgain'
+        ),
+        source='vaibify/reproducibility/imageAcquisition.py',
+        # the host's note is trusted without asking the daemon
+        old='    if not dictHeld or dictHeld.get("sId") != sLoadedId:\n',
+        new='    if False:\n',
+    ),
+    # A claim lost mid-request answers the authority's refusal, never a
+    # 500; a refusal while the claim still holds is never dressed as one.
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_a_poll_whose_claim_lapses_mid_exec_answers_claim_required'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # the stale-admission refusal reaches the last-resort 500
+        old=(
+            '                if not iCodeNow:\n'
+            '                    raise\n'
+            '                return _fresponseRefused(iCodeNow)\n'
+        ),
+        new='                raise\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testClaimRequiredRefusal.py::'
+            'test_a_refusal_while_the_claim_still_holds_stays_loud'
+        ),
+        source='vaibify/gui/routeScope.py',
+        # every refusal is answered as a lost claim, held or not
+        old=(
+            '                iCodeNow = _fiAuthorizeForScope(\n'
+            '                    request, request.app.state, dictScope,\n'
+            '                )\n'
+        ),
+        new='                iCodeNow = I_REJECT_CLAIM_REQUIRED\n',
+    ),
+    # --- 2026-10-11: every image-trust provenance row describes the
+    # image it names; a stack on an obtained base is not the base ---
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testAStackedImageNeverClaimsTheBasesProvenanceAsItsOwn'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the stacked image is described with the base's origin facts
+        old='    if sBaseImageId and sImageId == sBaseImageId:\n',
+        new=(
+            '    if sBaseImageId and sImageId in (\n'
+            '            sBaseImageId, dictOrigin.get("sRunningImageId")):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testTheAddedRowNamesOnlyWhatVaibifyStacked'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # the author's own overlays are listed as vaibify's additions
+        old='        if sOverlay not in listAuthorOverlays\n',
+        new='        if True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testAnImageTheRecordDoesNotNameHasNoRecordedOrigin'
+        ),
+        source='vaibify/config/imageTrust.py',
+        # any image is described as the stack once a record exists
+        old='    if sBaseImageId and sImageId == dictOrigin.get("sRunningImageId"):\n',
+        new='    if sBaseImageId:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testImageTrustProvenanceRows.py::'
+            'testTheCommandLinePrintsTheServersRows'
+        ),
+        source='vaibify/cli/imageTrustPrompt.py',
+        # the command line drops the server's provenance rows
+        old='    for dictRow in dictPrompt["listProvenanceRows"]:\n',
+        new='    for dictRow in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::'
+            'testAStackedImagesProvenanceRowsAreTheServersRows'
+        ),
+        source='vaibify/gui/static/scriptImageTrust.js',
+        # the modal renders no server rows after the digest
+        old='        var sServerRows = (dictPrompt.listProvenanceRows || []).map(\n',
+        new='        var sServerRows = [].map(\n',
+    ),
+    # --- 2026-10-11: a full daemon disk is named before an obtain, and after one fails ---
+    Falsification(
+        nodeid=(
+            'tests/testDockerErrorDiagnosis.py::'
+            'test_a_pull_that_ran_out_of_disk_is_named_a_full_disk_not_an_unbuilt_image'
+        ),
+        # a pull that could not write is called an image nobody built
+        source='vaibify/docker/dockerErrorDiagnosis.py',
+        old='    if fbErrorIsDiskFull(sLower):\n        # First: a pull',
+        new='    if False:\n        # First: a pull',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedImageAcquisition.py::'
+            'test_an_acquisition_that_filled_the_daemon_disk_names_the_remedy'
+        ),
+        # the chain's refusal is reported untranslated, with no remedy
+        source='vaibify/gui/buildRoutes.py',
+        old='    if fbErrorIsDiskFull(f"{error}\\n{sStderrTail}"):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBBuild.py::'
+            'testAcquireIsRefusedBeforeAnythingIsObtainedWhenTheDaemonDiskIsFull'
+        ),
+        # the acquire route never asks the disk
+        source='vaibify/gui/buildRoutes.py',
+        old='        await asyncio.to_thread(_fnRefuseAcquisitionWhenDaemonDiskIsFull)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBBuild.py::'
+            'testTheDiskGuardRaisesTheRefusalItMeasured'
+        ),
+        # the guard asks the disk and ignores a failed answer
+        source='vaibify/gui/buildRoutes.py',
+        old=(
+            '    _fnRefuseOnFailedPreflight(\n'
+            '        fpreflightDaemonFreeDisk(), S_REFUSAL_DAEMON_DISK_FULL, iStatus=507,\n'
+            '    )\n'
+        ),
+        new='    fpreflightDaemonFreeDisk()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testDaemonDiskPreflight.py::'
+            'test_a_probe_the_daemon_refuses_for_want_of_space_is_a_full_disk'
+        ),
+        # a probe refused for want of space is skipped as one with no df
+        source='vaibify/cli/daemonDiskPreflight.py',
+        old='            if fbErrorIsDiskFull(processDf.stderr):\n                return 0\n',
+        new='',
+    ),
+    # --- 2026-10-12: a container running the author's pinned image is
+    # never told to rebuild, and the agents vaibify stacked on it are
+    # not a difference in its environment ---
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testAPinnedImageIsNeverToldToRebuild'
+        ),
+        # every container is routed through the rebuild sentences
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        if not fbProjectImageIsObtained(dictProject):\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testTheAgentsVaibifyStackedAreNotADifference'
+        ),
+        # the reader's own agent switches are compared with the stamp
+        source='vaibify/config/configurationFingerprint.py',
+        old='    for sField in flistAgentFeatureFields():\n',
+        new='    for sField in []:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testWithoutTheAuthorsCommittedFileNothingIsDetermined'
+        ),
+        # an unreadable author's file falls back to the reader's switches
+        source='vaibify/config/configurationFingerprint.py',
+        old=(
+            '        return fdictCompareConfigurationAgainstImage('
+            'sStampedFingerprint, None)\n'
+        ),
+        new=(
+            '        return fdictCompareConfigurationAgainstImage('
+            'sStampedFingerprint, config)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPinnedEnvironmentDrift.py::'
+            'testABuiltImageStillNamesTheRebuild'
+        ),
+        # the drift banner is silenced for every container
+        source='vaibify/gui/routes/systemRoutes.py',
+        old='        listBuiltDrift\n        + listX11ContainerLines\n',
+        new='        []\n        + listX11ContainerLines\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testThePinnedEnvironmentNoteIsTheServers.py::'
+            'testThePinnedNoteShowsTheServersSentencesUnderItsOwnHeading'
+        ),
+        # the pinned sentences are dropped instead of rendered
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old=(
+            '            (dictReadiness && '
+            'dictReadiness.listPinnedEnvironmentDrift) || []\n'
+        ),
+        new='            []\n',
+    ),
+    # --- 2026-10-12: a confined write killed by a signal (an emulated
+    # interpreter's SIGSEGV) names the signal and exit code, and a
+    # replacing write is sent once more ---
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testASignalDeathNamesTheSignalAndTheExitCode'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old=(
+            '    iSignal = fiSignalThatKilledProgram(tExecResult)\n'
+            '    if iSignal:\n'
+        ),
+        new=(
+            '    iSignal = fiSignalThatKilledProgram(tExecResult)\n'
+            '    if False:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAStartFailureNamesTheDaemonsOwnWords'
+        ),
+        # the daemon's start-failure sentence arrives on stdout
+        source='vaibify/docker/confinedWrite.py',
+        old='        or (tExecResult.sStdout or "").strip().splitlines()\n',
+        new='        or []\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAnUnexplainedFailureNamesItsExitCode'
+        ),
+        # the generic failure drops its exit code again
+        source='vaibify/docker/confinedWrite.py',
+        old=(
+            '        f"Cannot write {sFilePath} in the container: {sLastLine} "\n'
+            '        f"(exit {tExecResult.iExitCode})"\n'
+        ),
+        new='        f"Cannot write {sFilePath} in the container: {sLastLine}"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testOnlyTheSignalRangeCountsAsADeath'
+        ),
+        source='vaibify/docker/confinedWrite.py',
+        old='    return iSignal if 0 < iSignal <= I_HIGHEST_LINUX_SIGNAL else 0\n',
+        new='    return iSignal if 0 < iSignal else 0\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testAWriterKilledByASignalIsSentOnceMoreAndLands'
+        ),
+        # the first attempt's result is returned without a rerun
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        if not (bRewindable and iSignal):\n'
+            '            return tExecResult\n'
+        ),
+        new='        return tExecResult\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testTheRerunSendsTheSourceFromWhereTheFirstAttemptStarted'
+        ),
+        # the rerun sends the rest of an already-drained source
+        source='vaibify/docker/dockerConnection.py',
+        old='        fileSource.seek(iStartOffset)\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConfinedWriteSignalDeath.py::'
+            'testANoReplaceWriteIsNeverSentTwice'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        bRewindable = bRetryAllowed and callable(fbSeekable) '
+            'and fbSeekable()\n'
+        ),
+        new='        bRewindable = callable(fbSeekable) and fbSeekable()\n',
+    ),
+    # --- 2026-10-12: a typed read that failed is never reported as a
+    # path that is not there; a killed read is read once more; an exec
+    # whose exit status has not settled is awaited, never read as 0 ---
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testTheFileReadProgramAnswersAbsenceWithItsOwnStatus'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='    "    sys.exit(" + str(_I_TYPED_READ_NOT_FOUND_EXIT_CODE) + ")\\n"\n',
+        new='    "    raise\\n"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testACrashedFileReadIsNeverReportedAsMissing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if iExitCode == _I_TYPED_READ_NOT_FOUND_EXIT_CODE:\n'
+            '        raise FileNotFoundError(sFailure)\n'
+        ),
+        new=(
+            '    if iExitCode != 0:\n'
+            '        raise FileNotFoundError(sFailure)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAnUnreportedExitIsNeverMissing'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '    if iExitCode is None:\n'
+            '        raise OSError(\n'
+            '            f"{sFailure}: the container did not report how the read "\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        raise OSError(\n'
+            '            f"{sFailure}: the container did not report how the read "\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAReadKilledByASignalIsReadOnceMore'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            for _ in range(_I_TYPED_READ_ATTEMPTS):\n',
+        new='            for _ in range(1):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testACrashedStateReadRefusesTheMergeAndWritesNothing'
+        ),
+        # fbaFetchFile maps every failed read to absence again
+        source='vaibify/docker/dockerConnection.py',
+        old=(
+            '        _fnRaiseWhenTypedReadFailed(\n'
+            '            tExecResult, f"Cannot read file from container: {sFilePath}",\n'
+            '        )\n'
+        ),
+        new=(
+            '        if tExecResult.iExitCode != 0:\n'
+            '            raise FileNotFoundError(sFilePath)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testTypedReadFailureIsNeverAbsence.py::'
+            'testAWriteRefusedBeforeTheDaemonSettledIsStillARefusal'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        old='            iExitCode=self._fiAwaitExecExitCode(sExecId),\n',
+        new=(
+            '            iExitCode=int(\n'
+            '                self.fdictInspectExec(sExecId).get("ExitCode") or 0),\n'
+        ),
+    ),
+    # --- 2026-10-12: a reader's Verify Level 3 lost its step test logs,
+    # recorded an empty daemon architecture, and logged its failed
+    # reproduction-record commit as an attestation ---
+    Falsification(
+        nodeid=(
+            'tests/testStepTestLogDirectory.py::'
+            'test_a_step_test_log_lands_in_a_clone_with_no_logs_directory'
+        ),
+        source='vaibify/gui/pipelineTestRunner.py',
+        old=(
+            '    sLogsDir = await _fsEnsureLogsDirectory(\n'
+            '        connectionDocker, sContainerId, sProjectRepoPath,\n'
+            '    )\n'
+        ),
+        new=(
+            '    sLogsDir = workflowManager.fsLogsDirectoryFor(\n'
+            '        sContainerId, sProjectRepoPath,\n'
+            '    )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordPlatform.py::'
+            'test_the_record_names_the_architecture_the_daemon_reported'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='        "sDaemonArchitecture": sDaemonArchitecture,\n',
+        new='        "sDaemonArchitecture": "",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRecordPlatform.py::'
+            'test_an_unanswered_daemon_is_recorded_as_unknown_with_a_reason'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='    if not sDaemonArchitecture:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageRoutesBReproducibility.py::'
+            'testAReadersFailedSaveIsLoggedAsAReproductionRecord'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    reproductionRecord.S_RECORD_KIND_REPRODUCTION:'
+            ' "reproduction record",\n'
+        ),
+        new=(
+            '    reproductionRecord.S_RECORD_KIND_REPRODUCTION:'
+            ' "L3 attestation",\n'
+        ),
+    ),
+    # --- 2026-10-12 ruling: a reader's reproduction record is saved in
+    # the clone and never staged or committed ---
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_record_is_saved_untracked_and_still_labelled'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '    if sRecordKind == reproductionRecord.S_RECORD_KIND_REPRODUCTION:\n'
+            '        return\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return\n'
+        ),
+    ),
+    # --- 2026-10-12 ruling: a reader's verification never writes the
+    # root REPRODUCED.sha256, the author's committed file ---
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_pass_leaves_the_authors_root_manifest_untouched'
+        ),
+        source='vaibify/reproducibility/reproductionRecord.py',
+        old='        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,\n',
+        new='        sTimestampUtc, sStatus, bWriteRootCopy=True,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_divergence_lands_only_in_the_dated_copy'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        old=(
+            '    if not bWriteRootCopy:\n'
+            '        return sHistoryPath\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return sHistoryPath\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_a_readers_settled_card_names_the_dated_copy'
+        ),
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        if sPath.startswith('
+            'S_REPRODUCED_MANIFEST_HISTORY_DIR + "/")), "")\n'
+        ),
+        new='        if sPath == "REPRODUCED.sha256"), "")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReaderRecordIsNeverCommitted.py::'
+            'test_the_authors_attestation_is_still_committed'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        old=(
+            '    filesRepo.fnWriteTextAtomic('
+            'S_REPRODUCED_MANIFEST_FILENAME, sText)\n'
+        ),
+        new='    pass\n',
+    ),
+    # --- 2026-10-12: Run-menu checks acknowledge the click; a Level 3
+    # verification is followed on the Project block until it ends ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunMenuCheckSaysItIsWorking.py::'
+            'test_the_manifest_check_says_it_started_until_it_answers'
+        ),
+        # The start notice is never dismissed, so it outlives the answer.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            } finally {\n'
+            '                fnDismissStartNotice();\n'
+            '            }\n'
+        ),
+        new=(
+            '            } finally {\n'
+            '            }\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testARunMenuCheckSaysItIsWorking.py::'
+            'test_the_level3_opener_says_it_is_checking_until_it_can_ask'
+        ),
+        # The readiness pre-flight is announced with an empty notice, i.e. not at all.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            "Checking whether this project is ready for Level 3 " +\n'
+            '            "verification\\u2026");\n'
+        ),
+        new='            "");\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_a_later_inconclusive_attempt_puts_a_warning_beside_the_badge'
+        ),
+        # The inconclusive-attempt glyph is never drawn beside a kept badge.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictLabel.sLatestAttemptVerdict !== "no-verdict") return "";\n',
+        new='        return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_the_badge_sits_in_the_top_bar_right_of_the_last_check'
+        ),
+        # The badge's slot moves before the Level 3 check, between the checks.
+        source='vaibify/gui/static/index.html',
+        old=(
+            '                <span class="vaibify-checkmark" data-proof-level="3"\n'
+            '                      title="PROOF L3: Reproducible"><img\n'
+            '                      src="/static/favicon.png" alt="L3"></span>\n'
+            '                <!-- Right of the right-most PROOF check: "Reproducing"\n'
+            '                     while a Level 3 verification runs, "Reproduced"\n'
+            '                     when the server\'s label says so, and the warning\n'
+            '                     glyph for a later attempt with no verdict. Filled\n'
+            '                     from the poll on every render. -->\n'
+            '                <span id="projectReproductionBadge"\n'
+            '                      class="toolbar-reproduction-badge"></span>\n'
+        ),
+        new=(
+            '                <span id="projectReproductionBadge"\n'
+            '                      class="toolbar-reproduction-badge"></span>\n'
+            '                <span class="vaibify-checkmark" data-proof-level="3"\n'
+            '                      title="PROOF L3: Reproducible"><img\n'
+            '                      src="/static/favicon.png" alt="L3"></span>\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheReproductionBadgeFollowsTheServer.py::'
+            'test_an_authors_current_attestation_reads_reproduced_in_the_top_bar'
+        ),
+        # The top bar's badge is never rendered.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnRenderToolbarReproductionBadge(dictContext);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_choosing_verify_shows_a_pulsing_reproducing_badge_until_it_ends'
+        ),
+        # The running badge loses its pulse.
+        source='vaibify/gui/static/styleMain.css',
+        old=(
+            '    background: var(--color-orange);\n'
+            '    animation: pulse 1.4s ease-in-out infinite;\n'
+        ),
+        new='    background: var(--color-orange);\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_live_verification_is_shown_again_after_a_reload'
+        ),
+        # The running badge is never rendered from the poll's flag.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old=(
+            '        if (dictDetail.bRebuildAttestationRunning === true) {\n'
+            '            return \'<span class="project-reproduction-badge \' +\n'
+        ),
+        new=(
+            '        if (false) {\n'
+            '            return \'<span class="project-reproduction-badge \' +\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_diverged_run_is_told_with_its_reasons_and_both_manifests_open'
+        ),
+        # A verification that did not pass ends without any failure report.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictSettled.sPhase !== "passed") {\n'
+            '            VaibifyDiagnosis.fnReportFailure(\n'
+            '                _fsDescribeUnreproducedVerification(dictSettled));\n'
+            '        }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_an_attempt_with_no_verdict_says_it_wrote_no_reproduced_manifest'
+        ),
+        # The page guesses the root REPRODUCED.sha256 when the attempt wrote none.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        var sAttemptManifestPath = '
+            'dictSettled.sReproducedManifestPath || "";\n'
+        ),
+        new='        var sAttemptManifestPath = "REPRODUCED.sha256";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAVerificationIsFollowedOnTheProjectBlock.py::'
+            'test_a_reproduced_run_turns_the_badge_and_opens_both_manifests'
+        ),
+        # The manifests are not opened when the verification ends.
+        source='vaibify/gui/static/scriptApplication.js',
+        old='        _fnDisplaySettledManifests(dictPayload || {}, dictSettled);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_finished_verification_still_says_how_it_ended'
+        ),
+        # The eviction callback keeps no record of how the run ended.
+        source='vaibify/gui/verificationProgress.py',
+        old='        _fnRecordSettled(sContainerId, dictStatus)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_task_that_ended_unsettled_is_recorded_as_stopped'
+        ),
+        # A task that ended mid-run is remembered in its live phase.
+        source='vaibify/gui/verificationProgress.py',
+        old='        dictSettled["sPhase"] = S_PHASE_STOPPED\n',
+        new='        dictSettled["sPhase"] = dictSettled["sPhase"]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_the_outcome_names_this_attempts_dated_manifest'
+        ),
+        # The outcome names the root REPRODUCED.sha256 again.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        if sPath.startswith(S_REPRODUCED_MANIFEST_HISTORY_DIR '
+            '+ "/")), "")\n'
+        ),
+        new=(
+            '        if sPath.endswith("REPRODUCED.sha256")), "")\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserLaneParallelSafety.py::'
+            'testAHubPortStaysHeldUntilItsServerServesIt'
+        ),
+        # The lane learns a free port and releases it before uvicorn
+        # binds it, so a sibling worker's hub can take the same port.
+        source='tests/browser/conftest.py',
+        old=(
+            '    socketListening = socket.socket()\n'
+            '    socketListening.bind(("127.0.0.1", 0))\n'
+            '    return socketListening\n'
+        ),
+        new=(
+            '    with socket.socket() as socketProbe:\n'
+            '        socketProbe.bind(("127.0.0.1", 0))\n'
+            '    return socket.socket()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testBrowserLaneParallelSafety.py::'
+            'testSameNamedTestsInTwoModulesKeepSeparateArtifacts'
+        ),
+        # Artifacts keyed by test name alone collide across modules.
+        source='tests/browser/conftest.py',
+        old='        / f"{nodeTest.path.stem}.{nodeTest.name}"\n',
+        new='        / nodeTest.name\n',
+    ),
+    # --- 2026-10-12: a step's committed conftest is a fixed loader;
+    # only the git-ignored plugin follows the generation ---
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_a_migrated_clone_stays_clean_through_connect_poll_and_run'
+        ),
+        # A committed loader counted as stale is rewritten by every refresh.
+        source='vaibify/gui/conftestManager.py',
+        old='            S_LOADER_INSTALLED, S_NO_TESTS_DIRECTORY,\n',
+        new='            S_CONFTEST_VERSION, S_NO_TESTS_DIRECTORY,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_an_unmigrated_published_project_is_migrated_exactly_once'
+        ),
+        # Migrating to the whole plugin leaves a file the next bump rewrites.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        connectionDocker, sContainerId, listStale, '
+            'S_CONFTEST_LOADER_SOURCE,\n'
+        ),
+        new=(
+            '        connectionDocker, sContainerId, listStale,\n'
+            '        fsBuildConftestSource(sProjectRepoPath),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_plugin_directory_is_invisible_to_git'
+        ),
+        # Without the match-everything rule the plugin shows as untracked.
+        source='vaibify/gui/conftestManager.py',
+        old='    "*\\n"\n)\n',
+        new=')\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_loader_and_plugin_write_the_markers_'
+            'the_whole_conftest_did'
+        ),
+        # Exposing only the session hooks loses the per-test outcomes.
+        source='vaibify/gui/conftestManager.py',
+        old='        if sName.startswith("pytest_"):\n',
+        new='        if sName.startswith("pytest_session"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_without_the_plugin_tests_run_on_their_own_merits_silently'
+        ),
+        # Without the absent-plugin check a stranger's every session warns.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        if not pathPlugin.is_file():\n'
+            '            return None\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_loader_refuses_a_plugin_reached_through_a_symlink_out'
+        ),
+        # Without the containment check a linked plugin directory runs.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        try:\n'
+            '            pathPlugin.resolve().relative_to(pathAncestor)\n'
+            '        except ValueError:\n'
+            '            return None\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_a_run_writes_the_plugin_where_its_steps_execute'
+        ),
+        # Dropping the run root refreshes the live repo, not the shadow.
+        source='vaibify/gui/pipelineRunner.py',
+        old='        dictVariables.get("sRepoRoot", ""),\n',
+        new='        "",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_test_generator_installs_the_loader_and_its_plugin'
+        ),
+        # A new step committing the whole plugin is rewritten by a bump.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '            connectionDocker, sContainerId, sPath, '
+            'S_CONFTEST_LOADER_SOURCE,\n'
+        ),
+        new=(
+            '            connectionDocker, sContainerId, sPath,\n'
+            '            fsBuildConftestSource(sProjectRepoPath),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_marker_poll_counts_a_loader_as_an_installed_conftest'
+        ),
+        # Without the loader clause every migrated step reads as bare.
+        source='vaibify/gui/syncDispatcher.py',
+        old='"# vaibify-conftest-loader:" not in sConftestSource',
+        new='True',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilBlockedButtonExplainsItself.py::'
+            'testABlankProjectCanActuallyConveneNotMerelyExplainItself'
+        ),
+        # With no answer, the toggle flips the class on every render.
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '            bRunning: bRunning,\n'
+            '            bBlocked: false,\n'
+        ),
+        new='            bRunning: bRunning,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testOnlyTheTestTheBatchFailedReChecksItsPrecondition'
+        ),
+        # Any batch failure re-checks every entry and times the lane out.
+        source='tools/reconfirmFalsification.py',
+        old='    return setSuspects\n',
+        new='    return set(listNodeIds)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testAReportRowNoEntryOwnsLeavesNothingTrusted'
+        ),
+        # An unplaceable failure is skipped, trusting what it hid.
+        source='tools/reconfirmFalsification.py',
+        old=(
+            '        if tCase not in dictNodeIdByCase:\n'
+            '            return set()\n'
+        ),
+        new=(
+            '        if tCase not in dictNodeIdByCase:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testATrustedEntrySkipsItsOwnPreconditionAndASuspectDoesNot'
+        ),
+        # One verdict for every entry instead of one per entry.
+        source='tools/reconfirmFalsification.py',
+        old='                entry.nodeid not in setPreconditionSuspects),\n',
+        new='                not setPreconditionSuspects),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_request_sent_under_the_retired_lease_follows_the_recovery'
+        ),
+        # A refusal of the page's own retired lease is shown as final.
+        source='vaibify/gui/static/scriptApiClient.js',
+        old=(
+            '            if (await _fbFollowOwnRenewalOrThrow(error, '
+            'dictIssued)) {\n'
+            '                return await fnAttempt();\n'
+            '            }\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testEverySourceWriteIsStampedWithATimeNoCacheHasSeen'
+        ),
+        # A mutated source keeps the clock's mtime, so a same-second,
+        # same-size write can be served the previous compilation.
+        source='tools/reconfirmFalsification.py',
+        old='    os.utime(pathSource, (iStamp, iStamp))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testASharedCacheNeverServesAStampedWriteStaleBytecode'
+        ),
+        # Every pytest run recompiles everything again: a third of an
+        # entry's time, on every lane.
+        source='tools/reconfirmFalsification.py',
+        old='    sPycachePrefix = sSharedPrefix or tempfile.mkdtemp()\n',
+        new='    sPycachePrefix = tempfile.mkdtemp()\n',
     ),
 ]

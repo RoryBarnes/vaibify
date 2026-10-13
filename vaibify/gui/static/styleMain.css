@@ -572,9 +572,12 @@ html, body {
     white-space: nowrap;
 }
 
-/* The memory watch chip. Neutral when the server says "ok", amber at
-   "near", gray and italic when it could not tell, and red-edged while
-   the hub holds a kill for this container. */
+/* The memory watch chip, shown only while it warns or is checking:
+   amber at "near", gray and italic when the server could not tell,
+   neutral and pulsing while the first measurement since opening is
+   pending, and red-edged while the hub holds a kill for this container
+   (neutral fill if the level is "ok"). Absent while memory is measured
+   and below the limit. */
 .memory-watch-chip {
     background: rgba(128, 128, 160, 0.10);
     border: 1px solid var(--border-color);
@@ -596,6 +599,18 @@ html, body {
 .memory-watch-chip[data-level="unknown"] {
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* "Checking Memory": the server has not measured the container since
+   it was opened. Neutral, and pulsed like the dashboard's other
+   in-flight checks (the run lights' @keyframes pulse) -- never the
+   gray italic above, which says "could not tell". */
+.memory-watch-chip[data-level="pending"] {
+    animation: pulse 1.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .memory-watch-chip[data-level="pending"] { animation: none; }
 }
 
 .memory-watch-chip.memory-watch-chip-killed {
@@ -694,6 +709,20 @@ html, body {
 .container-tile--locked {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* A deletion in flight: the tile itself says "Deleting…", so it can
+   take no clicks without leaving the researcher unanswered. */
+.container-tile--deleting {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.container-tile-progress {
+    margin-left: 8px;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+    font-style: italic;
 }
 
 /* The click must still land: fnHandleContainerClick answers a locked
@@ -4021,6 +4050,12 @@ body.proof-level-3 .toolbar-label {
     font-size: 11px;
 }
 
+.sub-test-note {
+    padding: 0 0 2px 16px;
+    color: var(--color-orange);
+    font-size: 11px;
+}
+
 .falsification-block {
     margin-top: 6px;
     padding-top: 4px;
@@ -7334,6 +7369,43 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     margin-left: auto;
 }
 
+/* The top bar's slot, right of the right-most PROOF check beside the
+   project name. Collapses to nothing when the server says nothing. */
+.toolbar-reproduction-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.toolbar-reproduction-badge:empty {
+    display: none;
+}
+
+/* In that slot: "Reproducing" while the server reports a Level 3
+   verification live, "Reproduced" when the server's label says the
+   project reproduced. The pulse is the run lights' own
+   @keyframes pulse, and it exists only while the server says live. */
+.project-reproduction-badge {
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: help;
+    color: var(--bg-primary, #fff);
+}
+
+.project-reproduction-badge-running {
+    background: var(--color-orange);
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+.project-reproduction-badge-reproduced {
+    background: var(--highlight-color);
+}
+
 .project-block-body {
     border-bottom: 1px solid var(--border-color);
 }
@@ -7636,6 +7708,14 @@ body.proof-level-3 .vaibify-checkmark[data-proof-level="3"] {
     font-size: 12px;
     opacity: 0.8;
     margin: 2px 0 6px 24px;
+}
+
+.wizard-image-trust {
+    margin: 8px 0 12px 24px;
+}
+
+.wizard-image-trust .wizard-environment-note {
+    margin-left: 0;
 }
 
 .wizard-environment-facts {

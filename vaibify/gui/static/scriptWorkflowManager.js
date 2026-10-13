@@ -1331,6 +1331,11 @@ var VaibifyWorkflowManager = (function () {
            either way, is never overridden by a later re-render. */
         dictData.bEnvironmentSourceChosen = false;
         dictData.bAllowEmulation = false;
+        /* How the author's image may run, asked beside the choice to
+           obtain it so nobody meets the question after the download.
+           Empty until a radio is clicked; never preselected. */
+        dictData.sImageTrustChoice = "";
+        dictData.bImageTrustWithCredentials = false;
         /* The Environment page's answer, fetched once per wizard and
            never sent: it describes the clone, the request describes the
            choice. */
@@ -1647,6 +1652,8 @@ var VaibifyWorkflowManager = (function () {
                 'for another processor architecture; running it here ' +
                 'is slow, and a reproduction is recorded as emulated' +
                 '</span></label>' : "") +
+            (bObtainable && bPinnedChosen
+                ? _fsRenderImageTrustQuestion(dictPinned) : "") +
             '<label class="wizard-toggle-row wizard-environment-option">' +
             '<input type="radio" name="wizardEnvironmentSource" ' +
             'class="wizard-environment-source" value="build"' +
@@ -1656,6 +1663,48 @@ var VaibifyWorkflowManager = (function () {
             'different image digest, so the result will not carry the ' +
             'author’s digest and cannot reproduce their bytes ' +
             'exactly.</div></div>';
+    }
+
+    var _S_WIZARD_TRUST_PREFIX = "wizardImageTrust";
+
+    function _fsRenderImageTrustQuestion(dictPinned) {
+        /* The start would ask this of any image vaibify did not build;
+           asked here, it is answered for the author's pin, so the
+           agents stacked on it later do not ask again. */
+        return '<div class="wizard-image-trust">' +
+            '<label>How the author’s image may run on this machine' +
+            '</label><div class="wizard-environment-note">Choosing the ' +
+            'pinned image decides which bytes run; this decides what ' +
+            'their own startup code may do here. It is asked once, for ' +
+            'this pinned image.</div>' +
+            VaibifyImageTrust.fsChoicesMarkup(
+                dictPinned.dictImageTrustChoices || {},
+                _S_WIZARD_TRUST_PREFIX,
+                dictPinned.listWizardTrustChoices || []) +
+            '</div>';
+    }
+
+    function _fnBindImageTrustQuestion(elContent) {
+        elContent.querySelectorAll(
+            'input[name="' + _S_WIZARD_TRUST_PREFIX + 'Choice"]'
+        ).forEach(function (elRadio) {
+            elRadio.checked =
+                elRadio.value === _dictWizardData.sImageTrustChoice;
+            elRadio.addEventListener("change", function () {
+                if (elRadio.checked) {
+                    _dictWizardData.sImageTrustChoice = elRadio.value;
+                }
+            });
+        });
+        var elCredentials = elContent.querySelector(
+            "#" + _S_WIZARD_TRUST_PREFIX + "Credentials");
+        if (!elCredentials) return;
+        elCredentials.checked =
+            _dictWizardData.bImageTrustWithCredentials === true;
+        elCredentials.addEventListener("change", function () {
+            _dictWizardData.bImageTrustWithCredentials =
+                elCredentials.checked;
+        });
     }
 
     function _fsRenderEnvironmentRefusal(dictPinned) {
@@ -1686,6 +1735,7 @@ var VaibifyWorkflowManager = (function () {
                 _dictWizardData.bAllowEmulation = elEmulation.checked;
             });
         }
+        _fnBindImageTrustQuestion(elContent);
     }
 
     function _fnChooseEnvironmentSource(sSource) {
@@ -2725,7 +2775,22 @@ var VaibifyWorkflowManager = (function () {
             (dictPinned.sRequiredPlatform
                 ? " for " + dictPinned.sRequiredPlatform : "") +
             (_dictWizardData.bAllowEmulation ? " (emulation allowed)" : "")
-        ) + _fsSummaryRow("Image comes from", _fsPinnedImageSources(dictPinned));
+        ) + _fsSummaryRow("Image comes from", _fsPinnedImageSources(dictPinned)) +
+            _fsSummaryRow("Image runs", _fsSummaryImageTrust(dictPinned));
+    }
+
+    function _fsSummaryImageTrust(dictPinned) {
+        /* The answer in the server's own label for it, never a
+           paraphrase, plus whether credentials go in. */
+        var listOptions = (dictPinned.dictImageTrustChoices || {})
+            .listOptions || [];
+        var dictChosen = listOptions.filter(function (dictOption) {
+            return dictOption.sChoice === _dictWizardData.sImageTrustChoice;
+        })[0];
+        return (dictChosen ? dictChosen.sLabel : "not chosen") +
+            (_dictWizardData.bImageTrustWithCredentials
+                ? "; your stored credentials are available inside"
+                : "; your stored credentials are not available inside");
     }
 
     function _fsPinnedImageSources(dictPinned) {
@@ -2948,6 +3013,13 @@ var VaibifyWorkflowManager = (function () {
                 return false;
             }
         }
+        if (iPage === _DICT_WIZARD_PAGE.ENVIRONMENT &&
+                _fbUsingPinnedImage() && !_dictWizardData.sImageTrustChoice) {
+            VaibifyApp.fnShowToast(
+                "Choose how the author’s image may run on this machine.",
+                "warning");
+            return false;
+        }
         if (iPage === _DICT_WIZARD_PAGE.REPOSITORIES && _fbIsToolkit() &&
             _dictWizardData.listRepositories.length === 0) {
             VaibifyApp.fnShowToast(
@@ -3121,6 +3193,10 @@ var VaibifyWorkflowManager = (function () {
             ? _S_ENVIRONMENT_SOURCE_ARCHIVE : _S_ENVIRONMENT_SOURCE_BUILD;
         dictBody.bAllowEmulation = _fbUsingPinnedImage() &&
             _dictWizardData.bAllowEmulation === true;
+        dictBody.sImageTrustChoice = _fbUsingPinnedImage()
+            ? _dictWizardData.sImageTrustChoice : "";
+        dictBody.bImageTrustWithCredentials = _fbUsingPinnedImage() &&
+            _dictWizardData.bImageTrustWithCredentials === true;
         return dictBody;
     }
 

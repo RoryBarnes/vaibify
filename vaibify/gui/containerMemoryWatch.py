@@ -35,6 +35,16 @@ Detection is best-effort, and every sentence is worded to match:
 Staleness is judged when the record is READ, never on a timer: a
 sampler that has stopped cannot clear its own flag.
 
+A container just opened has not been measured, and that is not a
+failure: until its first measurement since opening, the answer is
+PENDING ("Checking Memory"), never unknown. The opening is stamped on
+the first read for an owned name; once the name is no longer owned the
+sampler forgets the opening -- its stamp and its latest measurement,
+never its incidents or kill baseline -- so a reopening starts afresh.
+A pending window that outlasts ``F_MEMORY_STALE_AFTER_SECONDS`` reads
+unknown, so a sampler that never runs cannot leave a container
+"checking" for ever.
+
 OOM incidents are logged WITHOUT the ``sContainerId`` extra. That extra
 routes a record into the host-incident ring, whose latest entry the
 stale-heartbeat reconcile copies into a run's failure cause with no time
@@ -66,6 +76,7 @@ __all__ = [
     "S_LEVEL_OK",
     "S_LEVEL_NEAR",
     "S_LEVEL_UNKNOWN",
+    "S_LEVEL_PENDING",
     "S_LEVEL_NOT_APPLICABLE",
     "S_INCIDENT_OOM_KILL",
     "S_INCIDENT_BEFORE_OBSERVATION",
@@ -75,6 +86,8 @@ __all__ = [
     "fdictCreateMemoryStore",
     "fnRecordMeasurement",
     "fnRecordFailure",
+    "fnNoteWatchBegan",
+    "fnForgetOpeningsOfUnownedNames",
     "fnRecordExitedOomKill",
     "fdictDescribeMemory",
     "fdictDescribeMemoryForContainerId",
@@ -107,6 +120,10 @@ S_STATE_NO_SAMPLE_YET = "noSampleYet"
 S_LEVEL_OK = "ok"
 S_LEVEL_NEAR = "near"
 S_LEVEL_UNKNOWN = "unknown"
+# Opened, and its first measurement since then not yet due: "Checking
+# Memory", never a warning. Bounded by F_MEMORY_STALE_AFTER_SECONDS, the
+# tolerance a measurement already has, after which it reads unknown.
+S_LEVEL_PENDING = "pending"
 S_LEVEL_NOT_APPLICABLE = "notApplicable"
 
 S_INCIDENT_OOM_KILL = "oomKill"
@@ -149,7 +166,7 @@ def _fdictRecordFor(dictStore, sName, sContainerId):
     """
     dictRecord = dictStore.setdefault(sName, {
         "sContainerId": "", "dictCurrent": None, "dictBaseline": None,
-        "listIncidents": [],
+        "listIncidents": [], "sWatchedSinceIso": "",
     })
     if sContainerId and dictRecord["sContainerId"] != sContainerId:
         dictRecord["sContainerId"] = sContainerId
@@ -277,6 +294,37 @@ def fnRecordFailure(dictStore, sName, sContainerId, sState, sReason, datetimeNow
         dictRecord["dictCurrent"] = dictCurrent
 
 
+def fnNoteWatchBegan(dictStore, sName, datetimeNow):
+    """Stamp when the dashboard began watching a name, unless it already has.
+
+    The stamp is the start of the window in which "no measurement since
+    then" reads pending rather than unknown. It is taken on the first
+    READ, not by the sampler, so a sampler that never runs still lets
+    the window close. It is taken once per opening: a stamp moved by
+    every poll would hold the chip at "Checking Memory" for ever.
+    """
+    with _lockMemoryStore:
+        dictRecord = _fdictRecordFor(dictStore, sName, "")
+        if not dictRecord.get("sWatchedSinceIso"):
+            dictRecord["sWatchedSinceIso"] = datetimeNow.isoformat()
+
+
+def fnForgetOpeningsOfUnownedNames(dictStore, setOwnedNames):
+    """Forget the opening of every name no longer owned; keep its history.
+
+    The stamp and the latest measurement go, so a container reopened
+    later is checked afresh rather than shown a measurement from its
+    previous opening or judged by an old stamp as long overdue. The
+    incidents and the kill baseline stay: clearing the baseline would
+    report the old kills again as new ones.
+    """
+    with _lockMemoryStore:
+        for sName, dictRecord in dictStore.items():
+            if sName not in setOwnedNames:
+                dictRecord["sWatchedSinceIso"] = ""
+                dictRecord["dictCurrent"] = None
+
+
 def _fdictBuildMeasuredCurrent(
     sContainerId, dictParsed, dictState, datetimeNow, dictPrevious,
 ):
@@ -321,7 +369,9 @@ def fdictDescribeMemory(dictStore, sName, datetimeNow, bHostProject=False):
         dictRecord = dictStore.get(sName) or {}
         dictCurrent = dict(dictRecord.get("dictCurrent") or {})
         listIncidents = [dict(d) for d in dictRecord.get("listIncidents", [])]
-    dictCurrent = _fdictDescribeCurrent(dictCurrent, datetimeNow)
+        sWatchedSinceIso = dictRecord.get("sWatchedSinceIso", "")
+    dictCurrent = _fdictDescribeCurrent(
+        dictCurrent, datetimeNow, sWatchedSinceIso)
     for dictIncident in listIncidents:
         dictIncident["sSentence"] = fsDescribeMemoryIncident(
             dictIncident, datetimeNow)
@@ -346,8 +396,10 @@ def _fdictDescribeHostProject(sName):
     }
 
 
-def _fdictDescribeCurrent(dictCurrent, datetimeNow):
+def _fdictDescribeCurrent(dictCurrent, datetimeNow, sWatchedSinceIso=""):
     """Attach the level, the sentence and the sample age to a measurement."""
+    bAwaitingFirstSample = not dictCurrent and _fbFirstSampleStillDue(
+        sWatchedSinceIso, datetimeNow)
     if not dictCurrent:
         dictCurrent = cgroupMemory.fdictParseCgroupMemory("")
         dictCurrent.update({
@@ -356,6 +408,7 @@ def _fdictDescribeCurrent(dictCurrent, datetimeNow):
         })
     fAge = _ffAgeSeconds(dictCurrent.get("sSampledIso"), datetimeNow)
     dictCurrent["fSampleAgeSeconds"] = fAge
+    dictCurrent["bAwaitingFirstSample"] = bAwaitingFirstSample
     sLevel, sSentence = _ftLevelAndSentence(dictCurrent, fAge)
     dictCurrent["sLevel"] = sLevel
     dictCurrent["sSentence"] = sSentence
@@ -364,6 +417,8 @@ def _fdictDescribeCurrent(dictCurrent, datetimeNow):
 
 def _ftLevelAndSentence(dictCurrent, fAge):
     """Return ``(sLevel, sSentence)`` for a current measurement."""
+    if dictCurrent.get("bAwaitingFirstSample"):
+        return S_LEVEL_PENDING, _fsPendingSentence()
     sState = dictCurrent["sState"]
     if sState != S_STATE_MEASURED:
         return S_LEVEL_UNKNOWN, _fsUnknownSentence(
@@ -383,6 +438,28 @@ def _ftLevelAndSentence(dictCurrent, fAge):
     return S_LEVEL_OK, _fsInUseSentence(dictCurrent)
 
 
+def _fbFirstSampleStillDue(sWatchedSinceIso, datetimeNow):
+    """True while an opening's first measurement is not yet overdue.
+
+    Judged when the record is READ: once the window has closed with no
+    measurement, the answer is unknown -- tried and failed, as far as
+    anyone watching can tell -- never pending for ever. No stamp means
+    no opening the sampler is measuring, which is unknown too.
+    """
+    datetimeSince = _fdatetimeParseIso(sWatchedSinceIso)
+    if datetimeSince is None:
+        return False
+    fWaited = (datetimeNow - datetimeSince).total_seconds()
+    return fWaited <= F_MEMORY_STALE_AFTER_SECONDS
+
+
+def _fsPendingSentence():
+    return (
+        "Checking memory: this container has not been measured since it "
+        "was opened. The hub measures each open container every "
+        f"{int(F_MEMORY_SAMPLE_INTERVAL_SECONDS)} seconds.")
+
+
 def _fsReasonForState(sState, sReason):
     """Return the clause naming why a measurement is unknown."""
     dictReasons = {
@@ -392,8 +469,8 @@ def _fsReasonForState(sState, sReason):
         S_STATE_NOT_RUNNING: "the container is not running",
         S_STATE_GONE: "Docker no longer has this container",
         S_STATE_NO_SAMPLE_YET: (
-            "it has not been measured yet; the first measurement is "
-            f"taken within {int(F_MEMORY_SAMPLE_INTERVAL_SECONDS)} seconds"),
+            "no measurement has arrived, though one is due within "
+            f"{int(F_MEMORY_STALE_AFTER_SECONDS)} seconds of opening it"),
     }
     return dictReasons.get(sState) or sReason or "the reason is unknown"
 
@@ -436,6 +513,8 @@ def _fsChipText(dictCurrent, iKillCount):
         return ""
     if sLevel == S_LEVEL_UNKNOWN:
         return "Memory unknown" + sKills
+    if sLevel == S_LEVEL_PENDING:
+        return "Checking Memory" + sKills
     iWorkingSet = dictCurrent.get("iWorkingSetBytes")
     if dictCurrent.get("sLimitKind") == cgroupMemory.S_LIMIT_UNLIMITED:
         sUse = "" if iWorkingSet is None else (
@@ -459,9 +538,12 @@ def fdictDescribeMemoryForContainerId(appState, sContainerId, datetimeNow):
     sName = fsOwnerNameForContainerId(
         getattr(appState, "dictContainerOwners", {}) or {}, sContainerId)
     sKey = sName or sContainerId
+    dictStore = getattr(appState, "dictContainerMemory", {})
+    bHostProject = fbIsHostProject(sKey)
+    if sName and not bHostProject:
+        fnNoteWatchBegan(dictStore, sName, datetimeNow)
     return fdictDescribeMemory(
-        getattr(appState, "dictContainerMemory", {}), sKey, datetimeNow,
-        bHostProject=fbIsHostProject(sKey))
+        dictStore, sKey, datetimeNow, bHostProject=bHostProject)
 
 
 def fsDescribeKillCount(iKillCount):

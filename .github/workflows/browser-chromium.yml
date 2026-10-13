@@ -174,7 +174,8 @@ jobs:
           # false green the docker-smoke guard used to ship.
           VAIBIFY_REQUIRE_BROWSER: '1'
         run: |
-          python -m pytest tests/browser -m browser --tb=short -v
+          python -m pytest tests/browser -m browser --tb=short -v \
+            -n 4 --dist loadfile
 
       # Trace, video, screenshot and console log are written by the
       # pageDashboard fixture itself, not by pytest-playwright's

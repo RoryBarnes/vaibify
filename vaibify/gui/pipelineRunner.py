@@ -114,6 +114,7 @@ from .pipelineTestRunner import (  # noqa: F401
     _fnWriteTestLog,
     _flistResolveTestCommands,
     fiRunAllTests,
+    fsDescribeUnrecordableTestRun,
 )
 
 from .interactiveSteps import (  # noqa: F401
@@ -201,13 +202,14 @@ def _flistValidateStepsBlocking(
 
 
 def _flistCollectPreflightWarnings(
-    connectionDocker, sContainerId, dictWorkflow,
+    connectionDocker, sContainerId, dictWorkflow, sRunRepoRoot="",
 ):
     """Return soft preflight warnings — never blocks the run.
 
     Low disk space surfaces here so the run still starts. The runner
     emits each warning as a ``preflightWarning`` status event before
     executing steps. A negative probe (df unavailable) returns ``[]``.
+    ``sRunRepoRoot`` is the root the run's steps resolve against.
     """
     from . import diskSpace
     listWarnings = []
@@ -219,16 +221,16 @@ def _flistCollectPreflightWarnings(
         listWarnings.append(dictWarning["sMessage"])
     listWarnings.extend(
         _flistRefreshConftestsBeforeRun(
-            connectionDocker, sContainerId, dictWorkflow,
+            connectionDocker, sContainerId, dictWorkflow, sRunRepoRoot,
         )
     )
     return listWarnings
 
 
 def _flistRefreshConftestsBeforeRun(
-    connectionDocker, sContainerId, dictWorkflow,
+    connectionDocker, sContainerId, dictWorkflow, sRunRepoRoot="",
 ):
-    """Bring each step's conftest current, returning warnings on failure.
+    """Bring each step's conftest and the marker plugin current, or warn.
 
     The connect-time sweep caches its result for the hub's whole
     process, so it cannot see a conftest that a ``git pull`` or a
@@ -237,9 +239,15 @@ def _flistRefreshConftestsBeforeRun(
     Any failure becomes a warning: a bookkeeping file must never
     block a scientific run, and this path already runs inside a
     warnings collector that cannot raise.
+
+    The refresh targets the root the steps RUN under when the caller
+    knows it. On the Level 3 shadow lane the workflow's
+    ``sProjectRepoPath`` still names the live repository while every
+    step runs in the shadow's copy, and the git-ignored plugin must be
+    where those tests run.
     """
     from . import conftestManager
-    sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
+    sProjectRepoPath = sRunRepoRoot or dictWorkflow.get("sProjectRepoPath", "")
     listStepDirs = [
         dictStep.get("sDirectory", "")
         for dictStep in dictWorkflow.get("listSteps", [])
@@ -1742,6 +1750,7 @@ async def _fiRunWithLogging(
     listPreflightWarnings = await asyncio.to_thread(
         _flistCollectPreflightWarnings,
         connectionDocker, sContainerId, dictWorkflow,
+        dictVariables.get("sRepoRoot", ""),
     )
     for sWarning in listPreflightWarnings:
         await fnStatusCallback({

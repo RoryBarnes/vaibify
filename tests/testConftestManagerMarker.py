@@ -458,25 +458,29 @@ from unittest.mock import MagicMock
 
 def test_fnWriteConftestMarker_writes_to_absolute_repo_path():
     mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "{}")
     conftestManager.fnWriteConftestMarker(
         mockConn, "cid",
         sStepDirectory="BayesianPosteriors",
         sProjectRepoPath="/workspace/proj",
     )
-    sWrittenPath = mockConn.fnWriteFile.call_args[0][1]
-    assert sWrittenPath == (
+    tArguments = mockConn.fnWriteFileFromStream.call_args_list[0][0]
+    assert tArguments[1] == (
         "/workspace/proj/BayesianPosteriors/tests/conftest.py"
     )
+    assert tArguments[2].getvalue() == (
+        conftestManager.S_CONFTEST_LOADER_SOURCE.encode("utf-8"))
 
 
 def test_fnWriteConftestMarker_keeps_absolute_step_dir_unchanged():
     mockConn = MagicMock()
+    mockConn.ftResultExecuteCommand.return_value = (0, "{}")
     conftestManager.fnWriteConftestMarker(
         mockConn, "cid",
         sStepDirectory="/legacy/abs/step",
         sProjectRepoPath="/workspace/proj",
     )
-    sWrittenPath = mockConn.fnWriteFile.call_args[0][1]
+    sWrittenPath = mockConn.fnWriteFileFromStream.call_args_list[0][0][1]
     assert sWrittenPath == "/legacy/abs/step/tests/conftest.py"
 
 

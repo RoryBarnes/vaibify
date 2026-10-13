@@ -33,6 +33,7 @@ already applied and returns ``(iExitCode, sOutput)``.
 """
 
 __all__ = [
+    "S_DAEMON_ARCHITECTURE_UNKNOWN_REASON",
     "S_RECORD_KIND_ATTESTATION",
     "S_RECORD_KIND_REPRODUCTION",
     "S_REPRODUCTION_RECORD_NOTE",
@@ -90,6 +91,16 @@ S_REPRODUCTION_RECORD_NOTE = (
 
 _S_ATTESTATION_RELATIVE_PATH = ".vaibify/" + S_ATTESTATION_FILENAME
 
+# Written beside an empty daemon architecture, so the blank reads as a
+# question nobody could answer rather than as a value. The shadow lane
+# asks the daemon that ran the rerun; this covers a daemon that did not
+# answer and an outcome from a lane that did not ask.
+S_DAEMON_ARCHITECTURE_UNKNOWN_REASON = (
+    "the daemon's architecture was not obtained during this "
+    "verification (the daemon did not answer, or the lane did not ask), "
+    "so this record does not say which architecture ran the rerun"
+)
+
 
 S_RECORD_KIND_UNDETERMINED = "undetermined"
 
@@ -127,10 +138,12 @@ def flistWriteVerificationOutcome(
 ):
     """Write a verification's files in the only safe order; return their paths.
 
-    The reproduced manifest lands first -- its timestamped copy, then
-    the root ``REPRODUCED.sha256`` -- and only THEN the record that
-    names it, so a record can never point at a manifest that was not
-    written. Which record is decided by ``sRecordKind``: the author's
+    The reproduced manifest lands first -- its timestamped copy, then,
+    for the author's attestation only, the root ``REPRODUCED.sha256``
+    -- and only THEN the record that names it, so a record can never
+    point at a manifest that was not written. A reader's reproduction
+    record names its timestamped copy, and the root file, which in
+    their clone is the author's committed one, is never written. Which record is decided by ``sRecordKind``: the author's
     attestation, built by the lane through ``fdictBuildAttestationAt(
     sTimestampUtc, sReproducedManifestPath)``, or a reproduction record
     in the report schema for a clone whose attestation is somebody
@@ -149,21 +162,21 @@ def flistWriteVerificationOutcome(
     dictBaseline = dictOutcome.get("dictBaselineEvidence")
     sStatus = S_STATUS_PASSED if dictOutcome.get("bPassed") else S_STATUS_FAILED
     sTimestampUtc = fsCurrentTimestampUtc()
+    bReaderRecord = sRecordKind == S_RECORD_KIND_REPRODUCTION
     sReproducedPath = fsWriteReproducedManifest(
         filesRepo, dictOutcome.get("listFileOutcomes") or [],
-        sTimestampUtc, sStatus,
+        sTimestampUtc, sStatus, bWriteRootCopy=not bReaderRecord,
     )
     listPaths = []
     if sReproducedPath:
         listPaths.append(fsReproducedManifestHistoryPath(sTimestampUtc, sStatus))
-        listPaths.append(sReproducedPath)
-    if sRecordKind == S_RECORD_KIND_REPRODUCTION:
+        if not bReaderRecord:
+            listPaths.append(sReproducedPath)
+    if bReaderRecord:
         dictRecord = fdictBuildReproductionRecord(
             dictOutcome, fdictReadEnvironmentJson(filesRepo) or {},
             dictWorkflow, fsRepoRootOf(filesRepo), fDurationSeconds,
-            fsReproducedManifestHistoryPath(sTimestampUtc, sStatus)
-            if sReproducedPath else None,
-            dictBaseline,
+            sReproducedPath or None, dictBaseline,
         )
         listPaths.append(
             fsWriteReproductionRecord(filesRepo, dictRecord, sTimestampUtc),
@@ -186,8 +199,9 @@ def fdictBuildReproductionRecord(
     The report schema, filled from what this lane knows: the source is
     the checkout itself (its basename only -- a record committed into
     a repository carries no host path), the acquisition facts come
-    from the outcome's provenance block, and the archive re-check is
-    the one the lane already computed.
+    from the outcome's provenance block, the daemon's architecture
+    from the answer the shadow lane got from the daemon that ran it,
+    and the archive re-check is the one the lane already computed.
     """
     dictProvenance = dictOutcome.get("dictReproductionProvenance") or {}
     dictContainer = (dictEnvironment or {}).get("dictContainer") or {}
@@ -210,10 +224,11 @@ def fdictBuildReproductionRecord(
         "bDepositOnRecord": bool(dictDeposit),
         "sDepositVersionDoi": str(dictDeposit.get("sVersionDoi") or ""),
     }
+    sDaemonArchitecture = str(dictOutcome.get("sDaemonArchitecture") or "")
     dictAcquired = {
         "sRequiredPlatform": sPlatform,
         "sObtainedPlatform": sPlatform,
-        "sDaemonArchitecture": "",
+        "sDaemonArchitecture": sDaemonArchitecture,
         "bEmulated": bool(dictProvenance.get("bEmulated")),
         "sObtainedFrom": str(dictProvenance.get("sObtainedFrom") or ""),
         "sImageReference": str(dictProvenance.get("sImageReference") or ""),
@@ -227,6 +242,10 @@ def fdictBuildReproductionRecord(
         dictSource, dictAcquired, dictOutcome, dictRecheck, fDurationSeconds,
     )
     dictRecord["sReproducedManifestPath"] = sReproducedManifestPath
+    if not sDaemonArchitecture:
+        dictRecord["dictPlatform"]["sDaemonArchitectureUnknownReason"] = (
+            S_DAEMON_ARCHITECTURE_UNKNOWN_REASON
+        )
     _fnBindEvidence(dictRecord, dictOutcome, dictBaseline or {})
     return dictRecord
 

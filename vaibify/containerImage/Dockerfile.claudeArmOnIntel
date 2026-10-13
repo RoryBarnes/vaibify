@@ -1,0 +1,75 @@
+# Vaibify — Claude Code overlay for an Intel image on an ARM daemon
+#
+# Used in place of Dockerfile.claude when an obtained linux/amd64 image
+# is stacked on an arm64 Docker daemon (Apple Silicon), where the image
+# runs under emulation. Claude Code's Intel binary does not run under
+# qemu: its runtime crashes or spins forever. The daemon's kernel is
+# ARM, though, so Claude Code's ARM (musl) build runs natively inside
+# the Intel image once its loader -- musl's C library, one file -- sits
+# beside it. Everything Claude Code starts (bash, python, the author's
+# scripts) is the image's own and still runs emulated.
+#
+# The binary and its loader live in CLAUDE_ARM_DIRECTORY, outside every
+# directory the environment's loader and shells search, and the
+# binary's interpreter is rewritten to point there. The download is
+# checked against the release manifest's SHA-256, as the official
+# installer checks it. Auto-update is off: an update would install a
+# binary whose interpreter is the standard path, where no loader is.
+#
+# Requires BuildKit, which provides BUILDPLATFORM.
+
+ARG BASE_IMAGE=vaibify:latest
+ARG CLAUDE_ARM_DIRECTORY=/opt/vaibify/claudeArmNative
+
+FROM --platform=$BUILDPLATFORM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS claude-arm-native
+ARG CLAUDE_ARM_DIRECTORY
+RUN apk add --no-cache curl jq patchelf
+RUN set -eu; \
+    sReleases=https://downloads.claude.ai/claude-code-releases; \
+    fnFetch() { curl -fsSL --retry 3 --retry-connrefused --retry-delay 5 \
+        --connect-timeout 30 "$@"; }; \
+    fnRefuse() { \
+        echo "" >&2; \
+        printf '%s\n' "vaibify build (claude overlay, ARM on Intel): $1" >&2; \
+        printf '%s\n' "  - curl's own message, if any, is directly above this banner." >&2; \
+        printf '%s\n' "  - The release files live at downloads.claude.ai." >&2; \
+        printf '%s\n' "  - Or re-obtain the pinned image without Claude Code." >&2; \
+        echo "" >&2; \
+        exit 1; \
+    }; \
+    sVersion=$(fnFetch "$sReleases/latest") \
+        || fnRefuse "cannot read the latest Claude Code version."; \
+    case "$sVersion" in \
+        [0-9]*.[0-9]*.[0-9]*) ;; \
+        *) fnRefuse "downloads.claude.ai answered something that is not a version." ;; \
+    esac; \
+    fnFetch -o /tmp/manifest.json "$sReleases/$sVersion/manifest.json" \
+        || fnRefuse "cannot download the Claude Code $sVersion manifest."; \
+    sChecksum=$(jq -r '.platforms["linux-arm64-musl"].checksum // empty' /tmp/manifest.json); \
+    printf '%s' "$sChecksum" | grep -Eq '^[a-f0-9]{64}$' \
+        || fnRefuse "the $sVersion manifest names no linux-arm64-musl build."; \
+    mkdir -p /out; \
+    fnFetch -o /out/claude "$sReleases/$sVersion/linux-arm64-musl/claude" \
+        || fnRefuse "cannot download the Claude Code $sVersion ARM build."; \
+    printf '%s  %s\n' "$sChecksum" /out/claude | sha256sum -c - >/dev/null \
+        || fnRefuse "the downloaded ARM build does not match its published checksum."; \
+    cp /lib/ld-musl-aarch64.so.1 /out/ld-musl-aarch64.so.1; \
+    patchelf --set-interpreter "$CLAUDE_ARM_DIRECTORY/ld-musl-aarch64.so.1" /out/claude; \
+    chmod 755 /out/claude /out/ld-musl-aarch64.so.1
+
+FROM ${BASE_IMAGE}
+ARG CLAUDE_ARM_DIRECTORY
+COPY --from=claude-arm-native /out/ ${CLAUDE_ARM_DIRECTORY}/
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+USER ${CONTAINER_USER}
+
+# The launcher sits where the native installer puts its own, so every
+# shell finds `claude` the same way on either path.
+RUN mkdir -p "/home/${CONTAINER_USER}/.local/bin" \
+    && printf '#!/bin/sh\nexport DISABLE_AUTOUPDATER=1\nexec %s/claude "$@"\n' \
+        "${CLAUDE_ARM_DIRECTORY}" > "/home/${CONTAINER_USER}/.local/bin/claude" \
+    && chmod 755 "/home/${CONTAINER_USER}/.local/bin/claude"
+
+ENV PATH="/home/${CONTAINER_USER}/.local/bin:${PATH}"

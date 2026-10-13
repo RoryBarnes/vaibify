@@ -43,6 +43,7 @@ from .testCouncilPlanningJourney import (  # noqa: F401 — fixtures
     _fnConveneThroughTheForm,
     _fnScriptedProviderSeam,
     _fnIsolateCouncilStore,
+    _fnWaitForState,
     _fsNewestCampaignId,
 )
 
@@ -267,6 +268,15 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     """
     _fdictClaimAndActivate(pageDashboard, serverHub)
     _fnConveneThroughTheForm(pageDashboard)
+    # The council keeps moving until its first human gate, and each move
+    # redraws the panel for a real reason. On a slow runner one landed
+    # inside the wait below and read as an idle tick. Let the council
+    # reach the gate and the page read it, so only ticks remain.
+    _fnWaitForState(
+        pageDashboard, serverHub, _fsNewestCampaignId(serverHub),
+        "needsHuman", fTimeoutSeconds=60.0)
+    pageDashboard.evaluate(
+        "async () => { await VaibifyAgentCouncil.fnPollOnceForTest(); }")
 
     pageDashboard.click('.council-tab[data-tab="chat"]')
     pageDashboard.wait_for_selector("#btnCouncilChatOpen", timeout=16000)

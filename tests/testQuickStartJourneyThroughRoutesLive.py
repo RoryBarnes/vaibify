@@ -315,18 +315,24 @@ def hubClient(dictPublished, tmp_path, monkeypatch):
         (containerLock, "_S_LOCK_DIRECTORY", os.path.join(sHome, "locks")),
     ):
         monkeypatch.setattr(objModule, sName, objValue)
-    from tests.browser.conftest import _fiFreePort, _fnWaitUntilServing
+    from tests.browser.conftest import (
+        _fnWaitUntilServing, fsocketBindLoopbackPort,
+    )
     import threading
     import uvicorn
     import requests
-    iPort = _fiFreePort()
+    socketListening = fsocketBindLoopbackPort()
+    iPort = socketListening.getsockname()[1]
     appHub = pipelineServer.fappCreateHubApplication(iExpectedPort=iPort)
     appHub.state.dictCouncilCampaignStore = (
         agentCouncilStore.fdictCreateCampaignStore(
             sDurableStoreRoot=os.path.join(sHome, "agentCouncils")))
     server = uvicorn.Server(uvicorn.Config(
         appHub, host="127.0.0.1", port=iPort, log_level="warning"))
-    threadServer = threading.Thread(target=server.run, daemon=True)
+    threadServer = threading.Thread(
+        target=server.run, kwargs={"sockets": [socketListening]},
+        daemon=True,
+    )
     threadServer.start()
     _fnWaitUntilServing(iPort)
     sBaseUrl = f"http://127.0.0.1:{iPort}"
@@ -351,6 +357,7 @@ def hubClient(dictPublished, tmp_path, monkeypatch):
     yield HubClient(), appHub, sHome
     server.should_exit = True
     threadServer.join(timeout=15)
+    socketListening.close()
     try:
         dictPublished["dockerClient"].containers.get(S_PROJECT_NAME).remove(
             force=True)
@@ -379,7 +386,16 @@ def _fnStartTheContainer(client):
     dictPrompt = client.get(
         f"/api/registry/{S_PROJECT_NAME}/image-trust").json()
     assert dictPrompt["bBuiltByVaibify"] is False
-    assert dictPrompt["sObtainedFrom"] == "archive"
+    # The server authors the provenance as rows, each true of the image
+    # it names: "Obtained from" for the obtained base itself, "Base
+    # obtained from" when vaibify stacked agents on it.
+    dictRows = {
+        dictRow["sLabel"]: dictRow["sValue"]
+        for dictRow in dictPrompt["listProvenanceRows"]
+    }
+    assert "archive" in (
+        dictRows.get("Obtained from"), dictRows.get("Base obtained from"),
+    ), dictRows
     responseAnswer = client.post(
         f"/api/registry/{S_PROJECT_NAME}/image-trust", json={
             "sImageDigest": dictPrompt["sImageDigest"],

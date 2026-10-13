@@ -19,6 +19,15 @@ answer is stored in the host-held registry; a different digest is a new
 question. The modal is a convenience and the launch path is the guard:
 :func:`fdictResolveLaunchPosture` raises for an unanswered digest, so no
 caller can skip the question by skipping the modal.
+
+An answer may instead name the author's PINNED image, because what the
+researcher decides to trust is the author's code, and the agents
+vaibify stacks on it are vaibify's own build. The conversion wizard
+asks that way, before the image is obtained; the modal records the pin
+too whenever it is answering for an obtained image. Such an answer
+covers the obtained base and the image stacked on it -- the IDs the
+host-held origin record binds to that pin, never a label the image
+carries about itself -- so adding agents later does not ask again.
 """
 
 __all__ = [
@@ -32,8 +41,10 @@ __all__ = [
     "S_TRUST_RESTRICTED",
     "TUPLE_TRUST_CHOICES",
     "fbImageWasBuiltByVaibify",
+    "fbTrustRecordCoversImage",
     "fdictBuildTrustPrompt",
     "fdictBuildTrustRecord",
+    "fdictBuildTrustRecordForPrompt",
     "fdictDescribeTrustChoices",
     "fdictResolveLaunchPosture",
     "fnRequireValidTrustChoice",
@@ -43,6 +54,7 @@ import copy
 from datetime import datetime, timezone
 
 from vaibify.config.registryManager import (
+    S_IMAGE_SOURCE_KEY,
     S_IMAGE_TRUST_KEY,
     fbProjectImageIsObtained,
 )
@@ -217,14 +229,21 @@ def fbImageWasBuiltByVaibify(dictProject, dictImage):
     return bool((dictImage.get("dictLabels") or {}).get(S_RECIPE_IMAGE_LABEL))
 
 
-def fdictBuildTrustRecord(sImageDigest, sChoice, bWithCredentials):
-    """Return the record stored for one answered digest.
+def fdictBuildTrustRecord(
+    sImageDigest, sChoice, bWithCredentials, sPinnedImageReference="",
+):
+    """Return the record stored for one answer.
 
-    Inspect only never carries credentials, whatever the caller passed.
+    ``sImageDigest`` names the exact image answered for;
+    ``sPinnedImageReference`` names the author's pinned image instead
+    (or as well), which :func:`fbTrustRecordCoversImage` extends to the
+    images obtained and stacked for that pin. Inspect only never
+    carries credentials, whatever the caller passed.
     """
     fnRequireValidTrustChoice(sChoice)
     return {
         "sImageDigest": str(sImageDigest),
+        "sPinnedImageReference": str(sPinnedImageReference),
         "sChoice": sChoice,
         "bWithCredentials": bool(bWithCredentials)
         and sChoice != S_TRUST_INSPECT,
@@ -232,11 +251,55 @@ def fdictBuildTrustRecord(sImageDigest, sChoice, bWithCredentials):
     }
 
 
-def fdictResolveLaunchPosture(dictProject, dictImage, sProjectName):
+def fdictBuildTrustRecordForPrompt(dictPrompt, sChoice, bWithCredentials):
+    """Return the record for an answer given to a shown prompt.
+
+    When the prompt's image is the one the live origin record binds to
+    the author's pin, the answer names that pin as well, so a later
+    restack of agents on the same author's image is already answered.
+    """
+    sPinned = (
+        dictPrompt.get("sPinnedImageReference") or ""
+        if dictPrompt.get("bDigestMatchesRecordedDeposit") else ""
+    )
+    return fdictBuildTrustRecord(
+        dictPrompt["sImageDigest"], sChoice, bWithCredentials, sPinned,
+    )
+
+
+def fbTrustRecordCoversImage(dictRecord, dictImage, dictOriginRecord):
+    """True when the recorded answer was given for this exact image.
+
+    Either the image's own digest was answered, or the author's pinned
+    image was and this image is the base the host-held origin record
+    says was obtained for that pin, or the image vaibify stacked its
+    agent overlays on it. ``dictOriginRecord`` is that record (or
+    ``None``); nothing the image says about itself is read.
+    """
+    dictRecord = dictRecord or {}
+    sImageId = str((dictImage or {}).get("sId") or "")
+    if not sImageId:
+        return False
+    if dictRecord.get("sImageDigest") == sImageId:
+        return True
+    sPinned = str(dictRecord.get("sPinnedImageReference") or "")
+    dictOrigin = dictOriginRecord or {}
+    if not sPinned or sPinned != dictOrigin.get("sPinnedImageReference"):
+        return False
+    return sImageId in (
+        dictOrigin.get("sBaseImageId"), dictOrigin.get("sRunningImageId"),
+    )
+
+
+def fdictResolveLaunchPosture(
+    dictProject, dictImage, sProjectName, dictOriginRecord=None,
+):
     """Return how a persistent container may be launched, or raise.
 
     ``dictImage`` is the daemon's description of the image the launch
-    would use (``None`` when it could not be described). Returns
+    would use (``None`` when it could not be described), and
+    ``dictOriginRecord`` the project's host-held origin record, which an
+    answer naming the author's pin is checked against. Returns
     ``{"sMode", "bWithCredentials", "sImageDigest"}`` where ``sMode`` is
     ``built``, ``restricted`` or ``as-built``.
     """
@@ -248,7 +311,7 @@ def fdictResolveLaunchPosture(dictProject, dictImage, sProjectName):
             "sImageDigest": dictImage["sId"],
         }
     dictRecord = (dictProject or {}).get(S_IMAGE_TRUST_KEY) or {}
-    if dictRecord.get("sImageDigest") != dictImage["sId"]:
+    if not fbTrustRecordCoversImage(dictRecord, dictImage, dictOriginRecord):
         raise ImageTrustRequiredError(sProjectName, dictImage["sId"])
     if dictRecord.get("sChoice") == S_TRUST_INSPECT:
         raise ImageTrustInspectOnlyError(sProjectName)
@@ -260,12 +323,76 @@ def fdictResolveLaunchPosture(dictProject, dictImage, sProjectName):
     }
 
 
+def _fdictProvenanceRow(sLabel, sValue):
+    """Return one labelled provenance fact, as the modal and the CLI show it."""
+    return {"sLabel": sLabel, "sValue": str(sValue)}
+
+
+def _fsDescribeAddedOverlays(dictProject, dictOrigin):
+    """Return the overlays vaibify stacked on the obtained base, as words.
+
+    The origin record lists every overlay the running image holds; the
+    registry's ``listAuthorOverlays`` is the set the author's image was
+    proven to hold before anything was stacked, so the difference is
+    vaibify's addition. Without that set, which ones were added is not
+    known, and the words say so rather than naming them all.
+    """
+    dictSource = (dictProject or {}).get(S_IMAGE_SOURCE_KEY) or {}
+    listAuthorOverlays = dictSource.get("listAuthorOverlays")
+    if not isinstance(listAuthorOverlays, list):
+        return "agent overlays (which ones is not recorded)"
+    listAdded = [
+        sOverlay for sOverlay in dictOrigin.get("listResolvedOverlays") or []
+        if sOverlay not in listAuthorOverlays
+    ]
+    return ", ".join(listAdded) or "none recorded"
+
+
+def _flistDescribeProvenanceRows(dictProject, dictImage, dictOrigin):
+    """Return the provenance rows, each true of the image it names.
+
+    The obtained-from and deposit-digest facts belong to the BASE the
+    origin record says was obtained. When the image asked about is that
+    base, they describe it directly; when it is the image vaibify
+    stacked agents on, the rows say so and attribute those facts to the
+    base by name, never to the stack. An image the record does not name
+    has no recorded origin.
+    """
+    sImageId = str(dictImage.get("sId") or "")
+    sBaseImageId = str(dictOrigin.get("sBaseImageId") or "")
+    sObtainedFrom = str(
+        dictOrigin.get("sObtainedFrom") or dictOrigin.get("sVersionDoi")
+        or dictOrigin.get("sPinnedImageReference") or "unknown")
+    if sBaseImageId and sImageId == sBaseImageId:
+        return [
+            _fdictProvenanceRow("Obtained from", sObtainedFrom),
+            _fdictProvenanceRow("Matches the deposit's recorded digest", "yes"),
+        ]
+    if sBaseImageId and sImageId == dictOrigin.get("sRunningImageId"):
+        return [
+            _fdictProvenanceRow("Built by", "vaibify, on the base image below"),
+            _fdictProvenanceRow("Added by vaibify",
+                                _fsDescribeAddedOverlays(dictProject, dictOrigin)),
+            _fdictProvenanceRow("Base image", sBaseImageId),
+            _fdictProvenanceRow("Base obtained from", sObtainedFrom),
+            _fdictProvenanceRow(
+                "Base matches the deposit's recorded digest", "yes"),
+        ]
+    return [
+        _fdictProvenanceRow("Obtained from", "unknown"),
+        _fdictProvenanceRow("Matches the deposit's recorded digest",
+                            "no record to compare against"),
+    ]
+
+
 def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
     """Return what the modal and the command line show before asking.
 
     Provenance is facts the daemon and the origin record state, never
     claims the image makes about itself. ``dictOriginRecord`` is the
-    live origin record (or ``None``).
+    live origin record (or ``None``). ``listProvenanceRows`` is the
+    server's wording for every row after the digest; the modal and the
+    command line render it and derive nothing of their own.
     """
     dictOrigin = dictOriginRecord or {}
     return {
@@ -274,8 +401,8 @@ def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
         "iSizeBytes": int(dictImage.get("iSizeBytes") or 0),
         "sDeclaredUser": str(dictImage.get("sUser") or ""),
         "listDeclaredEntrypoint": list(dictImage.get("listEntrypoint") or []),
-        "sObtainedFrom": str(dictOrigin.get("sObtainedFrom") or ""),
-        "sVersionDoi": str(dictOrigin.get("sVersionDoi") or ""),
+        "listProvenanceRows": _flistDescribeProvenanceRows(
+            dictProject, dictImage, dictOrigin),
         "sPinnedImageReference": str(
             dictOrigin.get("sPinnedImageReference") or ""),
         "bDigestMatchesRecordedDeposit": bool(
@@ -287,5 +414,9 @@ def fdictBuildTrustPrompt(dictProject, dictImage, dictOriginRecord):
         ),
         "dictCurrentAnswer": dict(
             (dictProject or {}).get(S_IMAGE_TRUST_KEY) or {}),
+        "bAnswerCoversImage": fbTrustRecordCoversImage(
+            (dictProject or {}).get(S_IMAGE_TRUST_KEY), dictImage,
+            dictOriginRecord,
+        ),
         **fdictDescribeTrustChoices(),
     }

@@ -198,7 +198,10 @@ async def fnSampleOwnedContainers(app, dictCtx, dictReadsInFlight):
     dictStore = app.state.dictContainerMemory
     bReachable = fbDockerReachable(connectionDocker)
     listSampled = _flistSampledContainers(app)
-    _fnForgetFinishedReads(dictReadsInFlight, {t[0] for t in listSampled})
+    setSampledNames = {t[0] for t in listSampled}
+    _fnForgetFinishedReads(dictReadsInFlight, setSampledNames)
+    containerMemoryWatch.fnForgetOpeningsOfUnownedNames(
+        dictStore, setSampledNames)
     for sName, sContainerId in listSampled:
         if not bReachable:
             _fnRecordUnknown(

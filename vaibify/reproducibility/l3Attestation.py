@@ -416,25 +416,31 @@ def fdictBuildAttestation(
 
 def fsWriteReproducedManifest(
     filesRepo, listFileOutcomes, sTimestampUtc, sStatus,
+    bWriteRootCopy=True,
 ):
-    """Write the reproduced manifest; return its repo-relative path or "".
+    """Write the reproduced manifest; return the path its record names, or "".
 
     The timestamped copy under the history directory lands FIRST, then
     the latest as ``REPRODUCED.sha256`` at the repository root, both
-    through the adapter's atomic write; the record that names the root
-    path is built by the caller only after this returns, so a record
-    can never point at a manifest that was not written. Empty when
-    there is nothing to render -- a rerun that compared nothing writes
-    no manifest, and the record says ``None`` rather than naming a
-    file of zero lines.
+    through the adapter's atomic write; the record that names the
+    returned path is built by the caller only after this returns, so a
+    record can never point at a manifest that was not written. Empty
+    when there is nothing to render -- a rerun that compared nothing
+    writes no manifest, and the record says ``None`` rather than naming
+    a file of zero lines.
+
+    ``bWriteRootCopy`` False writes the timestamped copy alone and
+    returns ITS path: a reader's verification never touches the root
+    file, which in their clone is the author's committed one.
     """
     if not listFileOutcomes:
         return ""
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     sText = fsRenderReproducedManifest(listFileOutcomes)
-    filesRepo.fnWriteTextAtomic(
-        fsReproducedManifestHistoryPath(sTimestampUtc, sStatus), sText,
-    )
+    sHistoryPath = fsReproducedManifestHistoryPath(sTimestampUtc, sStatus)
+    filesRepo.fnWriteTextAtomic(sHistoryPath, sText)
+    if not bWriteRootCopy:
+        return sHistoryPath
     filesRepo.fnWriteTextAtomic(S_REPRODUCED_MANIFEST_FILENAME, sText)
     return S_REPRODUCED_MANIFEST_FILENAME
 

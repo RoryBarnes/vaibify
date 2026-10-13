@@ -421,9 +421,12 @@
             <span id="activeContainerName" class="toolbar-value"></span>
             <!-- The memory watch: the hub's estimate of memory in use
                  against the container's limit, and its kill count.
-                 Rendered from the server's answer; gray means the
-                 server could not tell. A click opens Settings on the
-                 memory limit. -->
+                 Rendered from the server's answer, and only while it
+                 warns -- near the limit, a kill, or unknown (gray means
+                 the server could not tell) -- or reads "Checking
+                 Memory" before the first measurement since opening.
+                 Absent while memory is measured and below the limit. A click opens Settings
+                 on the memory limit. -->
             <span id="memoryWatchChip" class="memory-watch-chip"
                   role="button" tabindex="0" style="display: none;"
                   ></span>
@@ -440,6 +443,13 @@
                 <span class="vaibify-checkmark" data-proof-level="3"
                       title="PROOF L3: Reproducible"><img
                       src="/static/favicon.png" alt="L3"></span>
+                <!-- Right of the right-most PROOF check: "Reproducing"
+                     while a Level 3 verification runs, "Reproduced"
+                     when the server's label says so, and the warning
+                     glyph for a later attempt with no verdict. Filled
+                     from the poll on every render. -->
+                <span id="projectReproductionBadge"
+                      class="toolbar-reproduction-badge"></span>
                 <div id="workflowDropdown" class="workflow-dropdown"></div>
             </div>
             <!-- A run in ANOTHER project of this container. The open
@@ -610,6 +620,12 @@
              headed "from the most recent container start", and this is
              about a file the researcher changed since. -->
         <div id="configurationDriftBanner"
+             class="build-warnings-banner configuration-drift-banner"
+             style="display: none;"></div>
+        <!-- The same comparison for a container running the author's
+             pinned image. Its own banner: that image is not out of
+             date, and a rebuild would replace it. -->
+        <div id="pinnedEnvironmentDriftBanner"
              class="build-warnings-banner configuration-drift-banner"
              style="display: none;"></div>
         <div id="buildWarningsBanner" class="build-warnings-banner"

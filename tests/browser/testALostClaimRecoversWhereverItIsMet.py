@@ -39,6 +39,7 @@ from tests.browser.conftest import (
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
     fnOpenTheSeededHostWorkflow,
+    fnWaitForTheHubToDrain,
 )
 from tests.browser.fakeDockerAdapter import (
     S_CONTAINER_ID,
@@ -163,13 +164,20 @@ def _fdictAwaitProbe(pageDashboard, sKey):
         "(sKey) => window.__dictProbes[sKey]", sKey)
 
 
-def _fnStopTheDashboardPollers(pageDashboard):
-    """Stop every poller so the one request a test sends is the only one."""
+def _fnStopTheDashboardPollers(pageDashboard, serverHub):
+    """Stop every poller so the one request a test sends is the only one.
+
+    Stopping a poller stops its NEXT request, not one already on the
+    wire, and opening a project sends reads of its own. Any of them
+    meeting the lost claim first would be the one that recovers it, so
+    they are let finish.
+    """
     pageDashboard.evaluate("""() => {
         Object.keys(VaibifyPolling).forEach(function (sName) {
             if (sName.startsWith('fnStop')) VaibifyPolling[sName]();
         });
     }""")
+    fnWaitForTheHubToDrain(serverHub)
 
 
 def _fnClickEnvironments(pageDashboard):
@@ -369,6 +377,50 @@ def test_four_pollers_refused_at_once_claim_exactly_once(
     pageDashboard.unroute_all(behavior="ignoreErrors")
     assert len(_flistClaimPosts(listRequests)) == 1, _flistClaimPosts(
         listRequests)
+
+
+@pytest.mark.falsification
+def test_a_request_sent_under_the_retired_lease_follows_the_recovery(
+    pageDashboard, serverHub,
+):
+    """A sibling of the recovering request is retried, not shown as refused.
+
+    Two requests meet the lapsed claim; the first one's recovery claims
+    the project again. The second was sent under the retired lease and
+    lands after that claim, where the hub does not find the claim
+    missing but held under a new lease, and refuses it without the
+    claim-required code. The page itself renewed that lease, so the
+    request is retried under it.
+
+    Kills: treating every refusal without the claim-required code as
+    final, which put "You do not hold this container's lease" in front
+    of a researcher whose own page held the claim.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
+    listRequests = _flistRecordRequests(pageDashboard)
+    listHeld = []
+    _fnHoldRequests(
+        pageDashboard, "**/api/pipeline/**", listHeld,
+        lambda request: "probe=retired" in request.url and not listHeld)
+    _fnTakeTheClaimAway(serverHub)
+    _fnProbeWithoutWaiting(
+        pageDashboard,
+        f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=retired",
+        "retired")
+    _fnAwaitHeld(pageDashboard, listHeld)
+    _fnProbeWithoutWaiting(
+        pageDashboard,
+        f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=recovering",
+        "recovering")
+    assert _fdictAwaitProbe(pageDashboard, "recovering")["bOk"] is True
+    listHeld[0].continue_()
+    dictRetired = _fdictAwaitProbe(pageDashboard, "retired")
+    pageDashboard.unroute_all(behavior="ignoreErrors")
+    assert dictRetired["bOk"] is True, dictRetired
+    assert len(_flistClaimPosts(listRequests)) == 1, _flistClaimPosts(
+        listRequests)
+    assert "do not hold" not in _fsToastText(pageDashboard).lower()
 
 
 @pytest.mark.falsification
@@ -738,7 +790,7 @@ def test_a_recovery_claim_that_lands_after_leaving_is_given_back(
     Kills: leaving the claim in place once it has landed after leaving.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     listHeld = []
     _fnHoldRequests(
         pageDashboard, "**/api/registry/*/claim", listHeld,
@@ -786,7 +838,7 @@ def test_a_blank_dashboard_is_reconnected_so_the_agent_gets_the_new_token(
     pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
     assert pageDashboard.evaluate(
         "() => VaibifyApp.fsGetWorkflowPath()") is None
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     dictOwners = serverHub.app.state.dictContainerOwners
     recordOriginal = dictOwners[S_CONTAINER_NAME]
     assert recordOriginal.sAgentToken.encode() in (
@@ -814,7 +866,7 @@ def test_a_reconnect_that_failed_is_not_a_recovery(pageDashboard, serverHub):
     Kills: counting a failed reconnect as a recovered claim.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     pageDashboard.route("**/api/connect/**", lambda routeConnect: (
         routeConnect.fulfill(
             status=502, content_type="application/json",

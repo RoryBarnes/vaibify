@@ -3773,23 +3773,61 @@ var VaibifyWorkflowRequirements = (function () {
     function _fsReproducedHoverText(dictLabel) {
         /* The server decided; this only phrases it. The date is the
            day of the record, and an emulated success still reads
-           "(reproduced)" with the emulation named here. */
+           "Reproduced" with the emulation named here. */
         var sDay = String(dictLabel.sRecordedIso || "").slice(0, 10);
-        var sText = "Reproduced on " + sDay +
+        return "Reproduced on " + sDay +
             (dictLabel.sPlatform ? " (" + dictLabel.sPlatform + ")" : "") +
             (dictLabel.bEmulated ? " under emulation" : "") + ".";
-        if (dictLabel.sLatestAttemptVerdict === "no-verdict") {
-            sText += " The latest attempt, on " +
-                String(dictLabel.sLatestAttemptIso || "").slice(0, 10) +
-                ", reached no verdict: " + (dictLabel.sReason || "") + ".";
+    }
+
+    function _fsRenderInconclusiveAttemptGlyph(dictLabel) {
+        /* A later attempt that reached no verdict does not take an
+           earlier success away (the server's rule), but it is not
+           nothing either: the dashboard's own warning glyph sits
+           beside the kept badge and carries the attempt's date and
+           the server's reason. A later attempt WITH a verdict clears
+           it, because the server then reports no such attempt. */
+        if (dictLabel.sLatestAttemptVerdict !== "no-verdict") return "";
+        var sText = "The latest attempt, on " +
+            String(dictLabel.sLatestAttemptIso || "").slice(0, 10) +
+            ", reached no verdict: " + (dictLabel.sReason || "") + ".";
+        return '<span class="step-regression-cell ' +
+            'regression-warning-orange project-reproduction-warning" ' +
+            'title="' + fnEscapeHtml(sText) + '">\u26a0</span>';
+    }
+
+    function fsRenderReproductionBadge(dictContext) {
+        /* One badge, in the TOP BAR right of the project name's
+           right-most PROOF check, for the two things a verification
+           can say about the project: it is being re-run NOW (the
+           poll's running flag -- the server's recorded phase, never a
+           client timer, so it survives a reload), or the project has
+           BEEN reproduced (the server's label decision: the author's
+           current Level 3 attestation, or a reader's own
+           reproduction). A failed attempt shows neither; its toast
+           says why. Nothing while the Project block still awaits its
+           first answer, exactly as when the badge lived there. */
+        if (dictContext.bProjectBlockAwaitsFirstAnswer === true) return "";
+        var dictDetail = dictContext.dictWorkflowEnvelopeDetail || {};
+        if (dictDetail.bRebuildAttestationRunning === true) {
+            return '<span class="project-reproduction-badge ' +
+                'project-reproduction-badge-running" role="status" ' +
+                'title="A Level 3 verification is re-running this ' +
+                'project in a throwaway copy.">Reproducing</span>';
         }
-        return sText;
+        if (!_fbReproducedLabelShows(dictContext)) return "";
+        var dictLabel = dictContext.dictReproductionLabel;
+        return '<span class="project-reproduction-badge ' +
+            'project-reproduction-badge-reproduced" title="' +
+            fnEscapeHtml(_fsReproducedHoverText(dictLabel)) +
+            '">Reproduced</span>' +
+            _fsRenderInconclusiveAttemptGlyph(dictLabel);
     }
 
     function _fbReproducedLabelShows(dictContext) {
         /* The server decided; absent, diverged, stale and unreadable
-           all draw nothing. This is a reader's achievement, never a
-           state to be inferred from silence. */
+           all draw nothing. A reproduction is evidence, never a state
+           to be inferred from silence. */
         var dictLabel = dictContext.dictReproductionLabel;
         return Boolean(dictLabel) && dictLabel.bShow === true;
     }
@@ -3862,17 +3900,12 @@ var VaibifyWorkflowRequirements = (function () {
            that have none. */
         _dictBlockedRowReasons = _fdictHomeBlockedRows(
             dictDetail.dictBlockedRows || {});
-        var bReproduced = _fbReproducedLabelShows(dictContext);
         var sHtml = '<div class="project-block-header">' +
             '<span class="project-block-title" ' +
-            'title="' + (bReproduced
-                ? fnEscapeHtml(_fsReproducedHoverText(
-                    dictContext.dictReproductionLabel))
-                : 'Requirements that apply to the project as a ' +
-                  'whole rather than to any single step. Click the ' +
-                  'banner to collapse or expand.') + '">' +
+            'title="Requirements that apply to the project as a ' +
+            'whole rather than to any single step. Click the ' +
+            'banner to collapse or expand.">' +
             _fsExpandTriangle(bOpen) + 'Project' +
-            (bReproduced ? ' (reproduced)' : '') +
             '</span>' +
             VaibifyStepRenderer.fsBuildLevelStrip(dictContext, -1) +
             '</div>';
@@ -3900,6 +3933,9 @@ var VaibifyWorkflowRequirements = (function () {
 
     return {
         fsRenderProjectBlock: fsRenderProjectBlock,
+        // The top bar's reproduction badge; scriptApplication places
+        // it beside the project name's PROOF checks.
+        fsRenderReproductionBadge: fsRenderReproductionBadge,
         // The reconcile handler hands Zenodo's answer back here; the
         // poll must not carry it, because the poll asking Zenodo on
         // every tick is exactly what the row's explicit "Ask Zenodo"

@@ -80,6 +80,8 @@ registry completeness, saying so, because a subset cannot.
 """
 
 import argparse
+import contextlib
+import itertools
 import os
 import pathlib
 import re
@@ -151,14 +153,6 @@ T_DEFERRABLE_FACILITIES = (
     ),
 )
 
-# A private exit code for "the test never ran". pytest has none: a
-# skipped test exits 0, which is indistinguishable from a passing one
-# and reads, in this harness, as a mutant that survived.
-I_EXIT_SKIPPED = 90
-
-# A private exit code for "the run was killed at its wall-clock limit".
-I_EXIT_TIMED_OUT = 91
-
 # One replayed entry may take this long before it is killed and named.
 # A mutant can make a test hang (a held lock, an event loop that never
 # tears down); without a limit that single entry consumes the whole CI
@@ -172,31 +166,56 @@ S_VERDICT_NO_FAILURE = "no-failure"
 S_VERDICT_UNREADABLE = "unreadable"
 
 
-def _fiRunTest(sNodeId, fTimeoutSeconds=None):
-    """Return the pytest exit code for running just this test node.
+# The first modification time a source write is stamped with. Python
+# and pytest both judge a cached compilation by the source's mtime in
+# whole seconds plus its size, so a same-size mutation written within
+# the same second as the previous version was served the PREVIOUS
+# bytecode: the test passed against code it never ran, and a genuine
+# kill read SURVIVED (macOS/py3.14, 2026-07-03). Every write the harness
+# makes is therefore stamped with a time no earlier write in this run
+# used, counting up from 2**31: past every real file time until 2038,
+# and inside the 32 bits both caches compare. A cached compilation can
+# then never be mistaken for another version of its source.
+I_FIRST_SOURCE_STAMP = 2 ** 31
+_iterSourceStamps = itertools.count(I_FIRST_SOURCE_STAMP)
 
-    Exit 0 = passed; 1 = a test failed; any other nonzero is a
-    collection/internal error. Whether exit 1 is a KILL is decided
-    from the JUnit XML by :func:`_fsRunMutatedTestAndJudge`, not here.
+# The one bytecode cache a harness run shares across its pytest runs,
+# or "" outside one. Each run used to get an empty cache instead, which
+# closed the stale-bytecode hole by recompiling vaibify and every
+# dependency for every entry: a third of a browser entry's time.
+_dictSharedBytecodeCache = {"sPrefix": ""}
 
-    A SKIPPED test also exits 0, which is why the runners below refuse
-    to read a skip as a pass -- see :func:`_fiRunTests`.
+
+def _fnWriteSourceWithFreshStamp(pathSource, sText):
+    """Write a source and give it a modification time no cache has seen."""
+    pathSource.write_text(sText, encoding="utf-8")
+    iStamp = next(_iterSourceStamps)
+    os.utime(pathSource, (iStamp, iStamp))
+
+
+@contextlib.contextmanager
+def _contextShareOneBytecodeCache():
+    """Let every pytest run inside this block share one warm cache.
+
+    Safe only because every source write is freshly stamped
+    (:func:`_fnWriteSourceWithFreshStamp`); the stamp, not an empty
+    cache, is what keeps a mutation from running stale bytecode.
     """
-    return _fiRunTests([sNodeId], fTimeoutSeconds)
+    sPrefix = tempfile.mkdtemp()
+    _dictSharedBytecodeCache["sPrefix"] = sPrefix
+    try:
+        yield sPrefix
+    finally:
+        _dictSharedBytecodeCache["sPrefix"] = ""
+        _fnDiscardPycachePrefix(sPrefix, ["<the whole harness run>"])
 
 
 def _fdictBuildPytestEnvironment(sPycachePrefix):
     """Return the environment every replayed pytest run is given.
 
-    Each invocation gets a FRESH bytecode cache (PYTHONPYCACHEPREFIX):
-    Python validates cached .pyc files by source mtime in integer
-    seconds plus file size, so a mutation that preserves the file size
-    and lands within the same clock second as the previous write is
-    served the PREVIOUS bytecode -- the test passes against code it
-    never ran, and a genuine kill reports SURVIVED. Observed on the
-    fastest CI runner (macOS/py3.14, 2026-07-03) for exactly the
-    same-size mutations; a cold cache per run removes the timing from
-    the equation.
+    The bytecode cache (PYTHONPYCACHEPREFIX) is the run's shared one
+    when there is one, and private to this pytest run otherwise; why it
+    may be shared at all is told at :data:`I_FIRST_SOURCE_STAMP`.
     """
     dictEnvironment = dict(os.environ)
     # An editable install resolves ``vaibify`` to the real checkout, so
@@ -224,7 +243,8 @@ def _ftRunPytest(listArguments, fTimeoutSeconds=None):
     browser child would otherwise outlive a kill of pytest alone and
     keep the pipe open, so the wait would never return.
     """
-    sPycachePrefix = tempfile.mkdtemp()
+    sSharedPrefix = _dictSharedBytecodeCache["sPrefix"]
+    sPycachePrefix = sSharedPrefix or tempfile.mkdtemp()
     processPytest = subprocess.Popen(
         [sys.executable, "-m", "pytest", *listArguments, "-q",
          "-p", "no:cacheprovider", "-rs"],
@@ -239,7 +259,8 @@ def _ftRunPytest(listArguments, fTimeoutSeconds=None):
         bTimedOut = True
         sOutput = _fsKillProcessGroup(processPytest)
     finally:
-        _fnDiscardPycachePrefix(sPycachePrefix, listArguments)
+        if not sSharedPrefix:
+            _fnDiscardPycachePrefix(sPycachePrefix, listArguments)
     return processPytest.returncode, sOutput, bTimedOut
 
 
@@ -253,22 +274,6 @@ def _fsKillProcessGroup(processPytest):
         return processPytest.communicate(timeout=30)[0] or ""
     except subprocess.TimeoutExpired:
         return ""
-
-
-def _fiRunTests(listNodeIds, fTimeoutSeconds=None):
-    """Return the pytest exit code for running these test nodes together.
-
-    The list form exists so the shared precondition can be answered in
-    one interpreter start instead of one per entry.
-    """
-    iCode, sOutput, bTimedOut = _ftRunPytest(listNodeIds, fTimeoutSeconds)
-    if bTimedOut:
-        return I_EXIT_TIMED_OUT
-    if iCode == 0 and _fbOutputReportsASkip(sOutput):
-        # Belt and braces for every OTHER reason a test can skip: an
-        # unevaluated mutation must never be reported as a survivor.
-        return I_EXIT_SKIPPED
-    return iCode
 
 
 def _fsReadJunitVerdict(sJunitPath):
@@ -432,20 +437,94 @@ def _fsDescribeSyntaxProblem(sMutated, pathSource):
     return ""
 
 
-def _fbAllPreconditionsPassInOneRun(listEntries):
-    """Return True when every registered test passes on clean code.
+def _fsetSelectPreconditionSuspects(listEntries):
+    """Return the node ids whose clean-code pass the batch did not show.
 
     The precondition -- "this test passes before the mutation" -- is
     identical for every entry and costs a full interpreter start plus a
     vaibify import each time it is checked separately. Asking it once
     for all node ids halves the process count for the whole run, which
     is the difference between finishing inside CI's ceiling and timing
-    out. When the batch passes, per-entry precondition runs are skipped;
-    when it fails, the caller falls back to checking each entry alone so
-    the offender is still named precisely.
+    out. Only the tests the batch did not pass are checked again alone,
+    so one flake costs one rerun. Re-checking EVERY entry after any
+    failure doubled the run and timed it out with the offender unnamed.
+    When the batch failed and its report cannot say which test did,
+    every entry is a suspect.
     """
     listNodeIds = sorted({entry.nodeid for entry in listEntries})
-    return _fiRunTests(listNodeIds) == 0
+    with tempfile.TemporaryDirectory() as sJunitDirectory:
+        sJunitPath = os.path.join(sJunitDirectory, "junit.xml")
+        iCode, sOutput, bTimedOut = _ftRunPytest(
+            [*listNodeIds, f"--junitxml={sJunitPath}"])
+        if iCode == 0 and not bTimedOut and not _fbOutputReportsASkip(
+                sOutput):
+            return set()
+        setSuspects = _fsetReadUnpassedNodeIds(sJunitPath, listNodeIds)
+    if not setSuspects:
+        print("batched precondition run failed and its report names no "
+              "registered test; every entry re-checks its own precondition")
+        return set(listNodeIds)
+    print(f"batched precondition run did not pass {len(setSuspects)} "
+          "test(s); each re-checks its own precondition:")
+    for sNodeId in sorted(setSuspects):
+        print(f"  {sNodeId}", flush=True)
+    return setSuspects
+
+
+def _fsetReadUnpassedNodeIds(sJunitPath, listNodeIds):
+    """Return the node ids the JUnit report shows failing, erring or skipped.
+
+    Empty when the report is unreadable or names a test that is not one
+    of ``listNodeIds`` -- a collection error, say -- because then the
+    report cannot say which entries are sound.
+    """
+    dictNodeIdByCase = {
+        _ftJunitCaseOfNodeId(sNodeId): sNodeId for sNodeId in listNodeIds}
+    try:
+        elementRoot = ElementTree.parse(sJunitPath).getroot()
+    except (OSError, ElementTree.ParseError):
+        return set()
+    setUnpassed = set()
+    for elementCase in elementRoot.iter("testcase"):
+        if not any(elementChild.tag in ("failure", "error", "skipped")
+                   for elementChild in elementCase):
+            continue
+        tCase = (elementCase.get("classname", ""), elementCase.get("name", ""))
+        if tCase not in dictNodeIdByCase:
+            return set()
+        setUnpassed.add(dictNodeIdByCase[tCase])
+    return setUnpassed
+
+
+def _ftJunitCaseOfNodeId(sNodeId):
+    """Return the ``(classname, name)`` pytest's JUnit report gives a node."""
+    listParts = sNodeId.split("::")
+    sModule = listParts[0][:-len(".py")].replace("/", ".")
+    return (".".join([sModule, *listParts[1:-1]]), listParts[-1])
+
+
+def _fsDescribeCleanRunFailure(sNodeId, fTimeoutSeconds):
+    """Return "" when the test passes on clean code, else what pytest said.
+
+    The verdict used to be the bare phrase, so a test that failed only
+    on a CI runner was named but never explained, and the next push was
+    a guess. The failure's own lines travel with it.
+    """
+    iCode, sOutput, bTimedOut = _ftRunPytest([sNodeId], fTimeoutSeconds)
+    if bTimedOut:
+        return f"timed out after {fTimeoutSeconds:g}s"
+    if iCode == 0 and not _fbOutputReportsASkip(sOutput):
+        return ""
+    return _fsSummarizePytestFailure(sOutput) or f"pytest exit {iCode}"
+
+
+def _fsSummarizePytestFailure(sOutput):
+    """Return pytest's own failure lines, short enough for one log line."""
+    listLines = [
+        sLine.strip() for sLine in (sOutput or "").splitlines()
+        if sLine.startswith(("FAILED", "ERROR", "SKIPPED", "E "))
+    ]
+    return " | ".join(listLines[:8])[:800]
 
 
 def _fsReconfirmOne(
@@ -468,15 +547,16 @@ def _fsReconfirmOne(
     sSyntaxProblem = _fsDescribeSyntaxProblem(sMutated, pathSource)
     if sSyntaxProblem:
         return f"ERROR: mutation does not parse, not a kill: {sSyntaxProblem}"
-    if not bPreconditionKnownGood and _fiRunTest(
-        entry.nodeid, fTimeoutSeconds,
-    ) != 0:
-        return "ERROR: test does not pass on clean code"
+    if not bPreconditionKnownGood:
+        sCleanFailure = _fsDescribeCleanRunFailure(
+            entry.nodeid, fTimeoutSeconds)
+        if sCleanFailure:
+            return f"ERROR: test does not pass on clean code: {sCleanFailure}"
     try:
-        pathSource.write_text(sMutated, encoding="utf-8")
+        _fnWriteSourceWithFreshStamp(pathSource, sMutated)
         return _fsRunMutatedTestAndJudge(entry.nodeid, fTimeoutSeconds)
     finally:
-        pathSource.write_text(sOriginal, encoding="utf-8")
+        _fnWriteSourceWithFreshStamp(pathSource, sOriginal)
 
 
 def _flistMarkedTestsWithoutEntry():
@@ -514,7 +594,7 @@ def _fnRestoreOriginals(dictOriginal):
     listFailed = []
     for sSource, sBytes in dictOriginal.items():
         try:
-            (PATH_TREE / sSource).write_text(sBytes, encoding="utf-8")
+            _fnWriteSourceWithFreshStamp(PATH_TREE / sSource, sBytes)
         except OSError:
             listFailed.append(sSource)
     if listFailed:
@@ -816,7 +896,7 @@ def _tSelectShard(listEvaluable, listDeferred, tShard):
 
 
 def _flistReconfirmEntries(
-    listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
+    listEvaluable, dictOriginal, setPreconditionSuspects, fTimeoutSeconds,
 ):
     """Judge each entry and print its line the moment it is known.
 
@@ -829,7 +909,8 @@ def _flistReconfirmEntries(
         print(f"... {entry.nodeid}", flush=True)
         sStatus = _fsReconfirmOne(
             entry, dictOriginal[entry.source],
-            bPreconditionKnownGood=bBatchClean,
+            bPreconditionKnownGood=(
+                entry.nodeid not in setPreconditionSuspects),
             fTimeoutSeconds=fTimeoutSeconds,
         )
         listResults.append((entry.nodeid, sStatus))
@@ -872,18 +953,16 @@ def fnReconfirmAll(
         print(f"No registry entry matches {list(listOnly)}")
         sys.exit(2)
     dictOriginal = _fdictCaptureOriginals()
-    bBatchClean = _fbAllPreconditionsPassInOneRun(listEvaluable)
-    if not bBatchClean:
-        print(
-            "batched precondition run failed; falling back to a "
-            "per-entry check so the offender is named",
-        )
-    try:
-        listResults = _flistReconfirmEntries(
-            listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
-        )
-    finally:
-        _fnRestoreOriginals(dictOriginal)
+    with _contextShareOneBytecodeCache():
+        setPreconditionSuspects = _fsetSelectPreconditionSuspects(
+            listEvaluable)
+        try:
+            listResults = _flistReconfirmEntries(
+                listEvaluable, dictOriginal, setPreconditionSuspects,
+                fTimeoutSeconds,
+            )
+        finally:
+            _fnRestoreOriginals(dictOriginal)
     for entry, sPhrase in listDeferred:
         print(f"{'NOT EVALUATED: needs a ' + sPhrase:48}  "
               f"{entry.nodeid}")

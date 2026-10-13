@@ -288,7 +288,7 @@ def testTheWorkflowAndTheSummaryAgreeOnEveryLeg():
 # ── The classification, which is a grep unless something enforces it ──
 
 _T_MACHINE_RESOURCE_IDIOMS = (
-    "uvicorn.Server", "_fiFreePort", "AF_UNIX",
+    "uvicorn.Server", "_fiFreePort", "fsocketBindLoopbackPort", "AF_UNIX",
 )
 
 

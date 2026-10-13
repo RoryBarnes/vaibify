@@ -450,13 +450,17 @@ def fdictResolveLaunchPosture(sProjectName, sImageReference=""):
     launch would run NOW (the tag may have moved) and raises
     :mod:`vaibify.config.imageTrust`'s errors for an unanswered digest,
     an inspect-only answer, or an image the daemon could not describe.
+    The host-held origin record is passed so an answer given for the
+    author's pin covers the image obtained and stacked for it.
     """
     from vaibify.config import imageTrust
+    from vaibify.config.imageOrigins import fdictReadOriginRecord
     from vaibify.config.registryManager import fdictGetProject
     sReference = sImageReference or f"{sProjectName}:latest"
     return imageTrust.fdictResolveLaunchPosture(
         fdictGetProject(sProjectName),
         fdictInspectImageTag(sReference), sProjectName,
+        fdictReadOriginRecord(sProjectName),
     )
 
 

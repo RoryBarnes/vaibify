@@ -413,9 +413,17 @@ def _fdictDriveShadowLifecycle(
 
     ``sPlatform`` is requested of the create when the seed pins one
     (the reproduction lane).
+
+    The daemon that runs the shadow is asked its own architecture and
+    the answer rides on the outcome as ``sDaemonArchitecture`` (empty
+    when it could not be asked), because only this function holds that
+    daemon: the Verify Level 3 lane acquires no image and so never
+    asked it anywhere else.
     """
     dockerDisposable = (
         disposableContainer.fdockerCreateDisposableClient())
+    sDaemonArchitecture = daemonCapacity.fsReadDaemonArchitecture(
+        dockerDisposable)
     dictGateway = disposableContainer.fdictCreateDisposableGateway(
         dockerDisposable, sResourceName)
     with _fcontextHoldShadowLaneLock(sResourceName):
@@ -456,6 +464,7 @@ def _fdictDriveShadowLifecycle(
                     dictTeardown["sOutcome"], dictTeardown["sReason"],
                 )
     _fnExplainAMissingCommandAsAnImageGap(dictOutcome)
+    dictOutcome["sDaemonArchitecture"] = str(sDaemonArchitecture or "")
     dictOutcome["bShadowContainerUsed"] = True
     dictOutcome["sShadowTeardown"] = dictTeardown["sOutcome"]
     if dictTeardown["sOutcome"] != (

@@ -493,3 +493,166 @@ def test_cached_keys_past_the_exec_budget_are_dropped_not_refused(tmp_path):
     assert connection.iSnapshotReads == 1
     assert not [s for s in connection.listLastArgs if s.startswith("x:")]
     assert filesPoll.fdictAllHashEntries()["MANIFEST.sha256"]["sSha256"]
+
+
+# --- The AUTHOR's label: their own CURRENT Level 3 attestation ---
+#
+# The author's repository is built by the same fixture, with the
+# repository's identity the one that committed the manifest, so git
+# answers "own". The attestation is written by the real writer with the
+# manifest digest the real gate computes, and its provenance by the
+# real builder the shadow lane uses.
+
+S_AUTHOR_EMAIL = "author@example.invalid"
+S_ATTESTED_AT = "2026-10-12T10:00:00Z"
+
+
+def fsBuildAuthorProject(pathParent):
+    """Build a published project whose manifest is the viewer's own."""
+    sRepo = str(pathParent / "author")
+    fsBuildPublishedProject(sRepo)
+    fsRunGit(["config", "user.email", S_AUTHOR_EMAIL], sRepo)
+    return sRepo
+
+
+def fnWriteAuthorAttestation(
+    sRepo, sStatus="passed", sAttestedAtUtc=S_ATTESTED_AT,
+    sPlatform="linux/arm64", bEmulated=True,
+):
+    """Write an attestation over the manifest as it is on disk now."""
+    from vaibify.reproducibility import l3Attestation, shadowRerun
+    dictProvenance = shadowRerun.fdictBuildReproductionProvenance(
+        {"iSourceDateEpoch": 1760000000, "sRerunStartedIso": sAttestedAtUtc},
+        "sha256:" + "c" * 64, "sha256:" + "c" * 64, "local",
+        sPlatform, bEmulated,
+    )
+    l3Attestation.fnWriteAttestation(sRepo, l3Attestation.fdictBuildAttestation(
+        sStatus, l3Attestation.fsCurrentManifestDigest(sRepo),
+        "sha256:" + "c" * 64, 1.0, 1, 1,
+        dictReproductionProvenance=dictProvenance,
+        sAttestedAtUtc=sAttestedAtUtc,
+    ))
+
+
+def fdictPollAuthorLabel(sRepo, dictLastNoVerdict=None):
+    """Return the label the real poll snapshot gives for ``sRepo``."""
+    dictLabel, _connection, _ctx = _fdictPollLabel(
+        sRepo, dictLastNoVerdict=dictLastNoVerdict)
+    return dictLabel
+
+
+def _fbGateSaysCurrent(sRepo):
+    from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
+    return fbL3AttestationCurrent(sRepo)
+
+
+@pytest.mark.falsification
+def test_an_authors_current_attestation_shows_the_label(tmp_path):
+    """Kills: never showing the label for the author's own attestation.
+
+    The hover facts are the attestation's own: its timestamp, and the
+    platform and emulation its provenance block records.
+    """
+    sRepo = fsBuildAuthorProject(tmp_path)
+    assert fdictPollAuthorLabel(sRepo)["bShow"] is False
+    fnWriteAuthorAttestation(sRepo)
+    assert _fbGateSaysCurrent(sRepo) is True
+    dictLabel = fdictPollAuthorLabel(sRepo)
+    assert dictLabel["bShow"] is True, dictLabel
+    assert dictLabel["sState"] == "reproduced"
+    assert dictLabel["sRecordedIso"] == S_ATTESTED_AT
+    assert dictLabel["sPlatform"] == "linux/arm64"
+    assert dictLabel["bEmulated"] is True
+    assert dictLabel["sLatestAttemptVerdict"] == ""
+
+
+@pytest.mark.falsification
+def test_a_stale_authors_attestation_hides_the_label(tmp_path):
+    """Kills: reading a passed attestation as current without the manifest.
+
+    The manifest changes after the attestation, so the gate's own
+    predicate says stale; the label must agree with it.
+    """
+    sRepo = fsBuildAuthorProject(tmp_path)
+    fnWriteAuthorAttestation(sRepo)
+    assert fdictPollAuthorLabel(sRepo)["bShow"] is True
+    with open(os.path.join(sRepo, "MANIFEST.sha256"), "a") as fileOut:
+        fileOut.write("# edited after the attestation\n")
+    assert _fbGateSaysCurrent(sRepo) is False
+    dictLabel = fdictPollAuthorLabel(sRepo)
+    assert dictLabel["bShow"] is False, dictLabel
+    assert dictLabel["sState"] == "evidence-changed"
+
+
+@pytest.mark.falsification
+def test_a_later_failed_authors_attestation_hides_the_label(tmp_path):
+    """Kills: showing the label for any attestation on file, failed or not."""
+    sRepo = fsBuildAuthorProject(tmp_path)
+    fnWriteAuthorAttestation(sRepo)
+    assert fdictPollAuthorLabel(sRepo)["bShow"] is True
+    fnWriteAuthorAttestation(
+        sRepo, sStatus="failed", sAttestedAtUtc="2026-10-13T10:00:00Z")
+    dictLabel = fdictPollAuthorLabel(sRepo)
+    assert dictLabel["bShow"] is False, dictLabel
+    assert dictLabel["sState"] == "diverged"
+
+
+@pytest.mark.falsification
+def test_a_later_no_verdict_keeps_the_authors_label_and_is_named(tmp_path):
+    """Kills: dropping the later no-verdict attempt from the author's label.
+
+    An attempt BEFORE the attestation is not named; one after it is,
+    with its date and the server's first reason.
+    """
+    sRepo = fsBuildAuthorProject(tmp_path)
+    fnWriteAuthorAttestation(sRepo)
+    dictEarlier = fdictPollAuthorLabel(sRepo, dictLastNoVerdict={
+        "listReasons": ["the daemon was unreachable"],
+        "sRecordedIso": "2026-10-11T09:00:00+00:00",
+    })
+    assert dictEarlier["bShow"] is True
+    assert dictEarlier["sLatestAttemptVerdict"] == ""
+    dictLater = fdictPollAuthorLabel(sRepo, dictLastNoVerdict={
+        "listReasons": ["the daemon was unreachable"],
+        "sRecordedIso": "2026-10-13T09:00:00+00:00",
+    })
+    assert dictLater["bShow"] is True, dictLater
+    assert dictLater["sLatestAttemptVerdict"] == "no-verdict"
+    assert dictLater["sLatestAttemptIso"] == "2026-10-13T09:00:00+00:00"
+    assert dictLater["sReason"] == "the daemon was unreachable"
+    assert dictLater["sRecordedIso"] == S_ATTESTED_AT
+
+
+@pytest.mark.falsification
+def test_a_no_verdict_in_the_attestations_own_second_is_still_later(tmp_path):
+    """Kills: ordering the two timestamps as strings.
+
+    The attestation is stamped ``...:00Z`` and the no-verdict record
+    ``...:00.5+00:00``; as strings ``"Z" > "."`` puts the attempt first.
+    """
+    sRepo = fsBuildAuthorProject(tmp_path)
+    fnWriteAuthorAttestation(sRepo)
+    dictLabel = fdictPollAuthorLabel(sRepo, dictLastNoVerdict={
+        "listReasons": ["the shadow could not start"],
+        "sRecordedIso": "2026-10-12T10:00:00.500000+00:00",
+    })
+    assert dictLabel["sLatestAttemptVerdict"] == "no-verdict", dictLabel
+
+
+@pytest.mark.falsification
+def test_the_authors_attestation_in_a_readers_clone_is_not_the_readers_label(
+    tmp_path,
+):
+    """Kills: routing a reader's clone through the author's evidence.
+
+    The author's passing attestation travels with the clone and is
+    current there; the reader has reproduced nothing, so no label.
+    """
+    sRepo = fsBuildAuthorProject(tmp_path)
+    fnWriteAuthorAttestation(sRepo)
+    fnCommitEverything(sRepo, "Attest Level 3")
+    fsRunGit(["config", "user.email", S_READER_EMAIL], sRepo)
+    assert _fbGateSaysCurrent(sRepo) is True
+    dictLabel = fdictPollAuthorLabel(sRepo)
+    assert dictLabel["bShow"] is False, dictLabel
+    assert dictLabel["sState"] == "absent"

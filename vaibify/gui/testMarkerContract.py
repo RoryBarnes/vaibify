@@ -397,7 +397,7 @@ def _fdictStateOfCategory(sCategory, listFiles, dictContext):
     dictResult = {
         "sState": "untested", "iTotalTests": 0, "iCurrentTests": 0,
         "iFailedTests": 0, "bHasMarkerInfo": False, "bLegacy": False,
-        "sNotCurrentBecause": "",
+        "sNotCurrentBecause": "", "listNeverRunFiles": [],
     }
     if dictLegacy is not None:
         dictResult.update({
@@ -407,7 +407,16 @@ def _fdictStateOfCategory(sCategory, listFiles, dictContext):
             "bHasMarkerInfo": True, "bLegacy": True,
             "sNotCurrentBecause": dictLegacy["sReason"]})
         return dictResult
-    return _fdictFoldFileStates(dictResult, listStates)
+    _fdictFoldFileStates(dictResult, listStates)
+    # A file the marker has never heard of, in a category it speaks
+    # for, holds the category at untested for good when nothing runs
+    # it -- an obsolete copy left beside its renamed successor did --
+    # so the category names it rather than saying a bare "untested".
+    if dictResult["bHasMarkerInfo"]:
+        dictResult["listNeverRunFiles"] = [
+            sFile for sFile, dictState in zip(listFiles, listStates)
+            if not dictState["bKnown"]]
+    return dictResult
 
 
 _T_REASON_SEVERITY = (
@@ -463,7 +472,9 @@ def fdictCategoryStatesFromMarker(
     run is not older than the test file it lives in. ``bHasMarkerInfo``
     says whether the marker speaks for the category at all; a category it
     never mentions is left to its other writers. The vocabulary stays
-    ``passed`` / ``failed`` / ``untested``; counts ride beside it.
+    ``passed`` / ``failed`` / ``untested``; counts ride beside it, and
+    ``listNeverRunFiles`` names the present files the marker has never
+    recorded in a category it otherwise speaks for.
     """
     dictNormalized = fdictNormalizeMarker(dictMarker)
     if dictNormalized is None:

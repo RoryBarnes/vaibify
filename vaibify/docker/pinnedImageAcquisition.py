@@ -232,6 +232,12 @@ def _fsDescribeAcquisitionEvent(dictEvent):
             f"downloading the archived image: {iBytes / 1e6:.0f} MB of "
             f"{iTotal / 1e6:.0f} MB{sPercent}"
         )
+    if sPhase == "reused":
+        return (
+            "the archived image was downloaded, checked against its hash "
+            f"and loaded here on {str(dictEvent.get('sLoadedIso'))[:10]}, "
+            "and Docker still holds it, so it is not downloaded again"
+        )
     if sPhase == "pulling":
         return f"pulling {dictEvent.get('sImageReference')} for {dictEvent.get('sPlatform')}"
     if sPhase == "acquired":
@@ -408,6 +414,8 @@ def _fsStackAndResolve(
         sLastReference = imageBuilder.fsStackOverlaysOnObtainedBase(
             dictProject["sName"], sBaseImageId, listChain, sStagedDir,
             sPlatform, list(listProven),
+            sDaemonArchitecture=disposableContainer.fsReadDaemonArchitecture(
+                dockerDisposable),
         )
     finally:
         fnDiscardBuildContext(sStagedDir)

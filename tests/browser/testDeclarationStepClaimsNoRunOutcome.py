@@ -43,6 +43,7 @@ import pytest
 
 from tests.browser.conftest import (
     fnOpenTheSeededHostWorkflow,
+    fnWaitForTheHubToDrain,
     S_HOST_DECLARATION_STEP_NAME,
     S_HOST_STEP_NAME,
 )
@@ -96,7 +97,11 @@ def test_the_declaration_step_reports_no_run_outcome(
     )
 
     # 4. The expanded body makes no run claim either, so the fix is
-    #    not merely relocating "failed" out of the collapsed row.
+    #    not merely relocating "failed" out of the collapsed row. The
+    #    opening reads re-render the step list as they land, and a row
+    #    replaced between press and release receives no click: settle
+    #    them first.
+    fnWaitForTheHubToDrain(serverHub)
     pageDashboard.click(S_DECLARATION_ROW)
     sDeclarationBody = (
         f'.step-wrapper:has-text("{S_HOST_DECLARATION_STEP_NAME}")'

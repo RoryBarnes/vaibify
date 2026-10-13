@@ -63,6 +63,16 @@ class LocalProjectConnection(LocalSnapshotConnection):
             ["bash", "-c", sCommand], capture_output=True, text=True)
         return (processRun.returncode, processRun.stdout)
 
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource, bCreateParents=False,
+        **dictKeywords,
+    ):
+        """Land a file the poll's refresh writes (the marker plugin)."""
+        if bCreateParents:
+            os.makedirs(os.path.dirname(sPath), exist_ok=True)
+        with open(sPath, "wb") as fileOut:
+            fileOut.write(fileSource.read())
+
     def ftRunInContainerStreamed(self, sContainerId, sCommand, **dictKw):
         processRun = subprocess.run(
             ["bash", "-c", sCommand], capture_output=True, text=True)
@@ -266,8 +276,9 @@ def test_the_poll_wire_carries_states_and_a_run_summary_never_the_test_lists(
 
     A marker now holds a node id per test, which is the reason it can
     outgrow the batched read. The wire carries only what the page
-    applies: each category's derived state with its counts, the newest
-    run's identity, and whether that run still stands. The per-run
+    applies: each category's derived state with its counts and the
+    names of any test file no run has recorded (file names, never node
+    ids), the newest run's identity, and whether that run still stands. The per-run
     verdicts the file half computes ride a private key that is popped
     before the answer leaves.
 
@@ -286,6 +297,8 @@ def test_the_poll_wire_carries_states_and_a_run_summary_never_the_test_lists(
     for dictState in dictEntry["dictCategoryStates"].values():
         assert set(dictState) == {
             "sState", "iTotalTests", "iCurrentTests", "iFailedTests",
-            "bHasMarkerInfo", "bLegacy", "sNotCurrentBecause"}
+            "bHasMarkerInfo", "bLegacy", "sNotCurrentBecause",
+            "listNeverRunFiles"}
         assert dictState["sState"] in ("failed", "passed", "untested")
+        assert dictState["listNeverRunFiles"] == []
     assert "dictTestFiles" not in json.dumps(dictAnswer)

@@ -2,8 +2,10 @@
 
 __all__ = [
     "fiRunAllTests",
+    "fsDescribeUnrecordableTestRun",
 ]
 
+import asyncio
 import posixpath
 from datetime import datetime, timezone
 
@@ -134,10 +136,18 @@ async def _fnWriteTestLog(
     connectionDocker, sContainerId, iStepNumber, listLogLines,
     sProjectRepoPath,
 ):
-    """Write test output to a log file in the project's logs directory."""
-    from .pipelineLogger import fnWriteLogToContainer
-    sLogsDir = workflowManager.fsLogsDirectoryFor(
-        sContainerId, sProjectRepoPath,
+    """Write test output to a log file in the project's logs directory.
+
+    The directory is created here, never assumed. ``.vaibify/logs`` is
+    gitignored, so a fresh clone has none and neither does the shadow
+    copy a Level 3 verification exports; the runner creates one only
+    under the workflow's ``sProjectRepoPath``, which on the dashboard's
+    shadow lane names the live repository rather than the copy these
+    tests ran in. Assumed, every test log there was lost.
+    """
+    from .pipelineLogger import _fsEnsureLogsDirectory, fnWriteLogToContainer
+    sLogsDir = await _fsEnsureLogsDirectory(
+        connectionDocker, sContainerId, sProjectRepoPath,
     )
     sTimestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     sFilename = f"test_Step{iStepNumber:02d}_{sTimestamp}.log"
@@ -151,14 +161,31 @@ async def fiRunAllTests(
     connectionDocker, sContainerId, dictWorkflow,
     sWorkdir, fnStatusCallback,
 ):
-    """Run unit tests for all enabled steps."""
+    """Run unit tests for all enabled steps.
+
+    The test-support files are refreshed uncached first, as a pipeline
+    run does, because a missing marker plugin leaves the poll showing
+    the previous run's verdict. One that cannot be refreshed refuses
+    the run before any test starts.
+    """
     await fnStatusCallback(
         {"sType": "started", "sCommand": "runAllTests"}
     )
     dictVars = _fdictBuildWorkflowVars(dictWorkflow)
     from .pipelineRunner import (
         _fnAnnounceDeterminismEpochSource, _fnInjectDeterminismEnvPrefix,
+        _flistRefreshConftestsBeforeRun,
     )
+    listRefreshFailures = await asyncio.to_thread(
+        _flistRefreshConftestsBeforeRun,
+        connectionDocker, sContainerId, dictWorkflow,
+    )
+    if listRefreshFailures:
+        sRefusal = fsDescribeUnrecordableTestRun(listRefreshFailures)
+        await fnStatusCallback(
+            {"sType": "preflightFailed", "listErrors": [sRefusal]})
+        await _fnEmitCompletion(fnStatusCallback, 1)
+        return 1
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVars,
     )
@@ -169,6 +196,22 @@ async def fiRunAllTests(
     )
     await _fnEmitCompletion(fnStatusCallback, iFinalExitCode)
     return iFinalExitCode
+
+
+def fsDescribeUnrecordableTestRun(listRefreshFailures):
+    """Return why a test run was refused, naming the files to fix.
+
+    The marker those files write is how the dashboard learns a run's
+    result; without it a run answers once and every later poll keeps
+    the PREVIOUS run's verdict, a pass shown over a failure.
+    """
+    return (
+        " ".join(listRefreshFailures)
+        + " The tests were not run: their result could not have been "
+        "recorded, and the dashboard would have kept showing the "
+        "previous run's. Make those files writable, then run the "
+        "tests again."
+    )
 
 
 async def _fiRunTestsForAllSteps(

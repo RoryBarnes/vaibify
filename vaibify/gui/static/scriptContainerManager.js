@@ -17,6 +17,9 @@ var VaibifyContainerManager = (function () {
        #listContainers must reset this to null, or its message would
        survive the next identical poll. */
     var _sLastRenderedContainerListHtml = null;
+    /* Names whose deletion this tab requested and has not heard back
+       about; every render reads it, so mutate it, never reassign it. */
+    var _setNamesBeingDeleted = new Set();
 
     async function fnLoadContainers() {
         try {
@@ -221,7 +224,9 @@ var VaibifyContainerManager = (function () {
     }
 
     function fsRenderContainerTile(dictContainer) {
-        var sStatusClass = _fsStatusDotClass(dictContainer.sStatus);
+        var bDeleting = _setNamesBeingDeleted.has(dictContainer.sName);
+        var sStatusClass = bDeleting
+            ? "status-pending" : _fsStatusDotClass(dictContainer.sStatus);
         var bHost = _fbHostProject(dictContainer);
         var bIsProject = _fbIsProject(dictContainer);
         /* A host project has no container, so the registry sends no
@@ -240,9 +245,10 @@ var VaibifyContainerManager = (function () {
            attention state and a clickable chip instead. */
         var bUnavailable = !bQuarantined && _fbContainerUnavailable(
             dictContainer);
-        var sStateClass = bQuarantined
-            ? " container-tile--quarantined"
-            : (bUnavailable ? " container-tile--locked" : "");
+        var sStateClass = bDeleting ? " container-tile--deleting" : (
+            bQuarantined
+                ? " container-tile--quarantined"
+                : (bUnavailable ? " container-tile--locked" : ""));
         var sLockedMessage = _fsUnavailableMessage(dictContainer);
         var sLockedTitle = bUnavailable
             ? ' title="' + sLockedMessage + '"' : "";
@@ -273,6 +279,9 @@ var VaibifyContainerManager = (function () {
             '<span class="status-dot ' + sStatusClass + '"></span>' +
             '<span class="container-tile-name">' +
             VaibifyUtilities.fnEscapeHtml(dictContainer.sName) + "</span>" +
+            (bDeleting
+                ? '<span class="container-tile-progress">Deleting…</span>'
+                : "") +
             _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
             _fsRenderImageTrustChip(dictContainer, bHost) +
@@ -530,9 +539,19 @@ var VaibifyContainerManager = (function () {
             || dictContainer.bOwnedByOtherSession === true;
     }
 
+    /* The listing locks a tile whose operation journal is BUSY: an
+       operation is still running, often this very hub's own (a request
+       a closed tab started). That is not "another vaibify session", and
+       telling the researcher to close one sends them looking for a
+       window that does not exist. */
+    var _S_BUSY_MESSAGE = "An operation on it is still finishing.";
+
     function _fsUnavailableMessage(dictContainer) {
         if (dictContainer.bOwnedByOtherSession === true) {
             return "In use in another browser session.";
+        }
+        if (dictContainer.sJournalState === "BUSY") {
+            return _S_BUSY_MESSAGE;
         }
         if (dictContainer.bLocked === true) {
             return _fsLockedMessage(dictContainer.iLockedByPort);
@@ -540,9 +559,13 @@ var VaibifyContainerManager = (function () {
         return "";
     }
 
-    function _fsUnavailableRemedy(sLockedMessage) {
+    function _fsUnavailableRemedy(sLockedMessage, bBusy) {
         /* The obstacle alone ("in use in another ...") left the
            researcher at the same tile with nothing to try. */
+        if (bBusy === true || sLockedMessage === _S_BUSY_MESSAGE) {
+            return "Wait a few seconds for it to finish, then select " +
+                "it again.";
+        }
         if (sLockedMessage.indexOf("browser session") >= 0) {
             return "Close it in that tab, or use \u29C9 New vaibify " +
                 "window to work on a different environment here.";
@@ -1110,7 +1133,7 @@ var VaibifyContainerManager = (function () {
                 : _fsLockedMessage(0));
         VaibifyApp.fnShowToast(
             "Container '" + sName + "': " + sReason + " " +
-            _fsUnavailableRemedy(sReason), "warning");
+            _fsUnavailableRemedy(sReason, dictDetail.bBusy), "warning");
     }
 
     async function fdictReleaseClaimOutcome(sName) {
@@ -2385,7 +2408,7 @@ var VaibifyContainerManager = (function () {
                         + encodeURIComponent(sName)
                     );
                     VaibifyApp.fnShowToast(
-                        "Container removed", "success");
+                        "Environment removed", "success");
                 } catch (error) {
                     VaibifyApp.fnShowToast(
                         VaibifyUtilities.fsSanitizeErrorForUser(
@@ -2453,6 +2476,12 @@ var VaibifyContainerManager = (function () {
     }
 
     async function _fnRequestEnvironmentDeletion(sName) {
+        /* The server answers only once every container, volume and
+           image is gone -- tens of seconds -- so the tile says
+           "Deleting…" until then. A toast alone vanished after four
+           seconds and left a tile that looked untouched. */
+        _setNamesBeingDeleted.add(sName);
+        fnLoadContainers();
         VaibifyApp.fnShowToast("Deleting '" + sName + "'…", "info");
         try {
             await VaibifyApi.fdictPost(
@@ -2484,6 +2513,7 @@ var VaibifyContainerManager = (function () {
                and "the container is gone but the image is not". */
             VaibifyDiagnosis.fnReportFailureFromError(error);
         }
+        _setNamesBeingDeleted.delete(sName);
         fnLoadContainers();
     }
 
@@ -2542,6 +2572,9 @@ var VaibifyContainerManager = (function () {
         );
         _fnRenderConfigurationDriftBanner(
             (dictReadiness && dictReadiness.listConfigurationDrift) || []
+        );
+        _fnRenderPinnedEnvironmentDriftBanner(
+            (dictReadiness && dictReadiness.listPinnedEnvironmentDrift) || []
         );
         _fnRenderResourceLimitDriftBanner(
             (dictReadiness && dictReadiness.listResourceLimitDrift) || []
@@ -2618,6 +2651,19 @@ var VaibifyContainerManager = (function () {
                 elBanner.innerHTML = "";
             });
         }
+    }
+
+    function _fnRenderPinnedEnvironmentDriftBanner(listSentences) {
+        /* The server's sentences for a container running the author's
+           pinned image whose settings differ from the ones that image
+           was built from, never a comparison of its own. Its own
+           banner: the image is not out of date, and the rebuild the
+           drift banner offers would replace the author's environment. */
+        _fnRenderSentenceBanner(
+            "pinnedEnvironmentDriftBanner",
+            "btnDismissPinnedEnvironmentDrift",
+            "This environment's settings differ from the author's " +
+            "pinned image", listSentences);
     }
 
     function _fnRenderResourceLimitDriftBanner(listSentences) {

@@ -1,6 +1,7 @@
 """Generate pytest unit tests for workflow steps via LLM."""
 
 __all__ = [
+    "S_CONFTEST_LOADER_SOURCE",
     "S_CONFTEST_VERSION",
     "T_GENERATED_TEST_CATEGORIES",
     "fbContainerHasClaude",
@@ -17,6 +18,8 @@ __all__ = [
     "fnMigrateFlatMarkers",
     "fnWriteConftestMarker",
     "fbWriteConftestMarkersBatch",
+    "fbWriteMarkerPlugin",
+    "flistMarkerPluginPaths",
     "fsBuildIntegrityTestCode",
     "fsBuildPrompt",
     "fsBuildQualitativeTestCode",
@@ -108,6 +111,7 @@ from .dataPreview import (  # noqa: F401
 
 from .conftestManager import (  # noqa: F401
     S_CONFTEST_VERSION,
+    S_CONFTEST_LOADER_SOURCE,
     fsConftestPath,
     fsConftestContent,
     fsBuildConftestSource,
@@ -115,6 +119,8 @@ from .conftestManager import (  # noqa: F401
     fdictReadInstalledConftestVersions,
     fnWriteConftestMarker,
     fbWriteConftestMarkersBatch,
+    fbWriteMarkerPlugin,
+    flistMarkerPluginPaths,
     _CONFTEST_MARKER_TEMPLATE,
     fnEnsureTestsDirectory,
     fnEnsureConftestsCurrent,

@@ -245,12 +245,20 @@ def testAnAcquisitionWithNoImageIdIsRefused(tmp_path, monkeypatch):
 
 
 def flistRecordDockerBuilds(monkeypatch):
-    """Capture every ``docker build`` argv instead of running it."""
+    """Capture every ``docker build`` argv instead of running it.
+
+    The ``docker tag`` that names the obtained base for the first
+    stage's ``FROM`` is recorded in the same list, ahead of the builds.
+    """
     listBuilds = []
     monkeypatch.setattr(imageBuilder, "fbBuildxAvailable", lambda: True)
     monkeypatch.setattr(
         imageBuilder, "_fnRunDockerBuild",
         lambda saCommand: listBuilds.append(list(saCommand)),
+    )
+    monkeypatch.setattr(
+        imageBuilder, "fnRunDockerCommand",
+        lambda saCommand, **kwargs: listBuilds.append(list(saCommand)),
     )
     return listBuilds
 
@@ -285,10 +293,12 @@ def testAStackedOverlayIsBuiltOnTheBaseIdForThePinnedPlatform(
     dictRecord = fdictAcquireForProject(
         dictProject, False, dockerDisposable=storeFake,
     )
-    assert len(listBuilds) == 1
-    saBuild = listBuilds[0]
+    sBaseTag = f"{S_PROJECT_NAME}:pinned-base"
+    assert len(listBuilds) == 2
+    assert listBuilds[0] == ["docker", "tag", S_BASE_ID, sBaseTag]
+    saBuild = listBuilds[1]
     assert saBuild[:3] == ["docker", "buildx", "build"]
-    assert f"BASE_IMAGE={S_BASE_ID}" in saBuild
+    assert f"BASE_IMAGE={sBaseTag}" in saBuild
     assert saBuild[saBuild.index("-t") + 1] == f"{S_PROJECT_NAME}:claude"
     assert saBuild[saBuild.index("--platform") + 1] == "linux/amd64"
     assert f"{S_PINNED_BASE_LABEL}={S_BASE_ID}" in saBuild
@@ -303,6 +313,36 @@ def testAStackedOverlayIsBuiltOnTheBaseIdForThePinnedPlatform(
     assert dictRecord["listResolvedOverlays"] == ["claude"]
     with open(dictProject["sConfigPath"]) as fileHandle:
         assert "claude: true" in fileHandle.read()
+
+
+@pytest.mark.falsification
+def testAnArmDaemonStacksClaudesArmBuildOnTheIntelImage(tmp_path, monkeypatch):
+    """The daemon's own architecture reaches the overlay choice.
+
+    Kills: stacking without asking the daemon its architecture.
+    """
+    dictProject = fdictRegisterObtainedProject(tmp_path, ["claude"])
+    fnStubAcquisitionChain(monkeypatch)
+    fnStubBuildContextPreparation(monkeypatch)
+    listBuilds = flistRecordDockerBuilds(monkeypatch)
+    storeFake = _FakeImageStore({S_OVERLAYS_IMAGE_LABEL: ""})
+    storeFake.version = lambda: {"Arch": "arm64"}
+    storeFake.dictHeld[f"{S_PROJECT_NAME}:claude"] = _FakeImage(
+        S_DERIVED_ID, {S_PINNED_BASE_LABEL: S_BASE_ID},
+    )
+    storeFake.dictHeld[S_DERIVED_ID] = storeFake.dictHeld[
+        f"{S_PROJECT_NAME}:claude"
+    ]
+    monkeypatch.setattr(
+        agentLayerSeparation, "fdictCheckAgentLayerSeparation",
+        lambda sBaseImageId, sStackedImageId: {"listViolations": []},
+    )
+    fdictAcquireForProject(dictProject, False, dockerDisposable=storeFake)
+    saBuild = listBuilds[-1]
+    assert saBuild[saBuild.index("--platform") + 1] == "linux/amd64"
+    assert saBuild[saBuild.index("-f") + 1].endswith(
+        "Dockerfile.claudeArmOnIntel",
+    )
 
 
 def testAStackedImageTheDaemonCannotInspectIsNeverTagged(

@@ -76,6 +76,14 @@ const VaibifyApp = (function () {
                earlier one had: the rows still on screen are from that
                earlier poll and must say so. */
             bEnvelopeDetailStale: false,
+            /* The Level 3 attempt this tab launched and has not yet
+               reported, and the last one it reported (never twice). */
+            sAwaitedVerificationAttempt: "",
+            sReportedVerificationAttempt: "",
+            /* Result reads in order of issue, and the newest that has
+               painted: an older read answering later never repaints. */
+            iVerificationResultReads: 0,
+            iVerificationResultPainted: 0,
             dictRemoteChecks: {},
             /* The Project block renders a lock verdict that costs a
                container exec, and the poll is forbidden to make one.
@@ -2262,6 +2270,8 @@ const VaibifyApp = (function () {
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
+            flistNeverRunTestFiles:
+                VaibifyTestManager.flistNeverRunTestFiles,
             setStepsWithData: VaibifyTestManager.fsetGetStepsWithData(),
             setGeneratingInFlight: VaibifyTestManager.fsetGetGeneratingInFlight(),
             dictPlotStandardExists: _dictWorkflowState.dictPlotStandardExists,
@@ -2524,6 +2534,7 @@ const VaibifyApp = (function () {
         if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) {
             elList.innerHTML = "";
             _fnInvalidateAllRenderCaches();
+            _fnRenderToolbarReproductionBadge(null);
             return;
         }
         var listSteps = _dictWorkflowState.dictWorkflow.listSteps;
@@ -2538,6 +2549,7 @@ const VaibifyApp = (function () {
                 elList, listSteps, dictVars, dictContext);
         }
         _fnRenderProjectBlock(dictContext);
+        _fnRenderToolbarReproductionBadge(dictContext);
         _fnApplyStepsCollapsedClass();
         fnApplyTimestampVisibility();
         fnBindStepEvents();
@@ -2638,6 +2650,26 @@ const VaibifyApp = (function () {
         if (fbProjectFormFieldFocused()) return;
         elBlock.innerHTML = sHtml;
         _sLastProjectBlockHtml = sHtml;
+    }
+
+    var _sLastToolbarReproductionHtml = null;
+
+    function _fnRenderToolbarReproductionBadge(dictContext) {
+        /* The badge sits in the top bar, immediately right of the
+           right-most PROOF check beside the project name -- the
+           researcher's placement: the checks there ARE the project's
+           level, and "Reproduced" is a statement about the same
+           project. Rebuilt from the poll's server state on every
+           render, so it survives a reload; written only on change. */
+        var elSlot = document.getElementById("projectReproductionBadge");
+        if (!elSlot) return;
+        var sHtml = dictContext
+            ? VaibifyWorkflowRequirements.fsRenderReproductionBadge(
+                dictContext)
+            : "";
+        if (sHtml === _sLastToolbarReproductionHtml) return;
+        elSlot.innerHTML = sHtml;
+        _sLastToolbarReproductionHtml = sHtml;
     }
 
     function _fnApplyStepsCollapsedClass() {
@@ -4221,6 +4253,7 @@ const VaibifyApp = (function () {
         },
         "verify-manifest": {
             sPath: "/manifest/verify",
+            sStartNotice: "Checking files against the manifest…",
             fdictAfterResponse: function (dictResult) {
                 var iTotal = (dictResult || {}).iTotal || 0;
                 var listBad = (dictResult || {}).listMismatches || [];
@@ -4289,10 +4322,14 @@ const VaibifyApp = (function () {
         "verify-l3": {
             sPath: "/level3/verify",
             fnConfirm: fnConfirmLevel3Verification,
-            sToast: "Level 3 verification started. The workflow is " +
-                "re-run in a throwaway copy of this project; the " +
-                "result appears in the Attestation row when it " +
-                "completes.",
+            sStartNotice: "Starting Level 3 verification…",
+            fdictAfterResponse: function (dictResult) {
+                fnAwaitVerificationAttempt(dictResult);
+                return {sMessage: "Level 3 verification started. The " +
+                    "workflow is re-run in a throwaway copy of this " +
+                    "project; the result appears in the Attestation " +
+                    "row when it completes.", sType: "info"};
+            },
         },
         "declare-determinism": {
             sPath: "/determinism/declare",
@@ -4818,20 +4855,18 @@ const VaibifyApp = (function () {
         var fnReleaseButton = _ffnHoldButtonBusy(
             elButton, dictAction.sBusyLabel || "",
         );
-        if (dictAction.sStartNotice) {
-            fnShowToast(dictAction.sStartNotice, "info");
-        }
+        /* Held for exactly as long as the request: a timed toast
+           outlived a fast answer -- still claiming the work beside
+           its outcome -- and vanished in the middle of a slow one. */
+        var fnDismissStartNotice = _ffnShowHeldNotice(
+            dictAction.sStartNotice || "");
         try {
             var dictResult;
-            if (dictAction.sMethod === "DELETE") {
-                dictResult = await VaibifyApi.fnDelete(sUrl);
-            } else if (dictAction.sMethod === "GET") {
-                // Read-only actions (the determinism scan) ask a
-                // question rather than changing anything; posting to
-                // a GET route answers 405.
-                dictResult = await VaibifyApi.fdictGet(sUrl);
-            } else {
-                dictResult = await VaibifyApi.fdictPost(sUrl, oBody);
+            try {
+                dictResult = await _fdictRequestProjectAction(
+                    dictAction, sUrl, oBody);
+            } finally {
+                fnDismissStartNotice();
             }
             if (dictAction.fdictAfterResponse) {
                 var dictOutcome = dictAction.fdictAfterResponse(
@@ -4876,6 +4911,19 @@ const VaibifyApp = (function () {
         // connect payload — calling it bare threw and silently
         // skipped this refresh.)
         VaibifyPolling.fnStartFilePolling(sContainerId);
+    }
+
+    async function _fdictRequestProjectAction(dictAction, sUrl, oBody) {
+        if (dictAction.sMethod === "DELETE") {
+            return await VaibifyApi.fnDelete(sUrl);
+        }
+        if (dictAction.sMethod === "GET") {
+            // Read-only actions (the determinism scan) ask a question
+            // rather than changing anything; posting to a GET route
+            // answers 405.
+            return await VaibifyApi.fdictGet(sUrl);
+        }
+        return await VaibifyApi.fdictPost(sUrl, oBody);
     }
 
     function _fsDistillZenodoReason(sReason) {
@@ -6040,15 +6088,20 @@ const VaibifyApp = (function () {
                 "warning");
             return;
         }
-        var dictLineMarks = VaibifyFileOutcomes.fdictLineMarksFromOutcomes(
-            dictRecord.listFileOutcomes || []);
         var elFilesTab = document.querySelector(
             '.left-tab[data-panel="files"]');
         if (elFilesTab) elFilesTab.click();
+        _fnDisplayManifestComparison(
+            dictRecord, dictRecord.sReproducedManifestPath);
+    }
+
+    function _fnDisplayManifestComparison(dictRecord, sReproducedPath) {
+        var dictLineMarks = VaibifyFileOutcomes.fdictLineMarksFromOutcomes(
+            dictRecord.listFileOutcomes || []);
         VaibifyFigureViewer.fnDisplayRecordInViewer(
             "A", "MANIFEST.sha256", dictLineMarks);
         VaibifyFigureViewer.fnDisplayRecordInViewer(
-            "B", dictRecord.sReproducedManifestPath, dictLineMarks);
+            "B", sReproducedPath, dictLineMarks);
     }
 
     async function fnConfirmLevel3Verification(fnOnConfirm, elButton) {
@@ -6061,7 +6114,18 @@ const VaibifyApp = (function () {
         // released before either modal opens, because from there the
         // researcher is looking at a dialog and the button behind it
         // is no longer the thing they are waiting on.
-        var fnRelease = _ffnHoldButtonBusy(elButton, "Checking\u2026");
+        //
+        // The notice is for the Run menu, which has no button to hold:
+        // its entry closed on the click and the round trip was seconds
+        // of silence a new researcher reads as nothing happening.
+        var fnReleaseButton = _ffnHoldButtonBusy(elButton, "Checking\u2026");
+        var fnDismissReadinessNotice = _ffnShowHeldNotice(
+            "Checking whether this project is ready for Level 3 " +
+            "verification\u2026");
+        var fnRelease = function () {
+            fnReleaseButton();
+            fnDismissReadinessNotice();
+        };
         var dictReady;
         try {
             dictReady = await _fdictFetchL3Readiness();
@@ -7026,6 +7090,8 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictWorkflowLevelHighWater,
             _dictWorkflowState.dictWorkflowEnvelopeDetail,
             _dictWorkflowState.bEnvelopeDetailStale,
+            // The top bar's Reproduced badge and its glyph.
+            _dictWorkflowState.dictReproductionLabel,
         ]);
     }
 
@@ -7084,6 +7150,9 @@ const VaibifyApp = (function () {
             _fnRecheckRemotesWhenAttestationSettles(
                 bAttestationWasRunning,
                 dictStatus.dictWorkflowEnvelopeDetail);
+            _fnReportVerificationWhenSettled(
+                bAttestationWasRunning,
+                dictStatus.dictWorkflowEnvelopeDetail);
         } else if (_dictWorkflowState.dictWorkflowEnvelopeDetail) {
             /* Keeping the earlier rows is right; keeping them
                UNMARKED is a claim that nothing changed. */
@@ -7117,6 +7186,147 @@ const VaibifyApp = (function () {
         }
         VaibifySyncManager.fnRefreshConfiguredRemotes(
             _dictSessionState.sContainerId);
+    }
+
+    function _fnReportVerificationWhenSettled(
+        bWasRunning, dictEnvelopeDetail
+    ) {
+        /* Only a run THIS tab watched end, or one it launched, as for
+           the remote re-check above: a reload finds the run already
+           settled and reports nothing again. A launched run can settle
+           before any poll sees it running -- an early refusal takes
+           a second -- so its attempt id is awaited as well. */
+        if (dictEnvelopeDetail.bRebuildAttestationRunning !== false) {
+            return;
+        }
+        if (!bWasRunning && !_dictWorkflowState.sAwaitedVerificationAttempt) {
+            return;
+        }
+        _fnReportSettledVerification(
+            _dictSessionState.sContainerId,
+            _dictWorkflowState.sWorkflowPath, !bWasRunning);
+    }
+
+    function fnAwaitVerificationAttempt(dictAccepted) {
+        _dictWorkflowState.sAwaitedVerificationAttempt =
+            (dictAccepted || {}).sAttemptId || "";
+    }
+
+    async function _fnReportSettledVerification(
+        sContainerId, sWorkflowPath, bOnlyTheAwaitedAttempt
+    ) {
+        /* A verification that ran for hours used to end in silence:
+           its badge stopped pulsing and nothing said how it ended
+           (researcher-reported). The SERVER's record of how it ended
+           (dictLastSettled) is read once, here; a failure is told in
+           the server's own reasons, and both manifests are opened
+           whatever the outcome, so the result is on screen. */
+        var iRead = ++_dictWorkflowState.iVerificationResultReads;
+        var dictPayload;
+        try {
+            dictPayload = await VaibifyApi.fdictGet(
+                "/api/workflow/" + encodeURIComponent(sContainerId) +
+                "/level3/attestation");
+        } catch (error) {
+            _dictWorkflowState.sAwaitedVerificationAttempt = "";
+            VaibifyDiagnosis.fnReportFailure(
+                "Level 3 verification ended, but its result could not " +
+                "be read: " + VaibifyDiagnosis.fsExplainError(error));
+            return;
+        }
+        if (sContainerId !== _dictSessionState.sContainerId ||
+                sWorkflowPath !== _dictWorkflowState.sWorkflowPath) {
+            return;
+        }
+        /* Ordered by what PAINTED, not by what was asked: a newer read
+           that found only a stale record painted nothing, and must not
+           silence an older read carrying a real result. */
+        if (iRead < _dictWorkflowState.iVerificationResultPainted) {
+            return;
+        }
+        var dictSettled = (dictPayload || {}).dictLastSettled || {};
+        var sAttemptId = dictSettled.sAttemptId || "";
+        /* A poll sent before the click can answer after it, with the
+           PREVIOUS attempt's record still current: that is not this
+           run's result, so keep waiting for the awaited id. */
+        if (bOnlyTheAwaitedAttempt && (!sAttemptId || sAttemptId !==
+                _dictWorkflowState.sAwaitedVerificationAttempt)) {
+            return;
+        }
+        if (sAttemptId && sAttemptId ===
+                _dictWorkflowState.sReportedVerificationAttempt) {
+            return;
+        }
+        _dictWorkflowState.sReportedVerificationAttempt = sAttemptId;
+        _dictWorkflowState.iVerificationResultPainted = iRead;
+        if (sAttemptId ===
+                _dictWorkflowState.sAwaitedVerificationAttempt) {
+            _dictWorkflowState.sAwaitedVerificationAttempt = "";
+        }
+        if (dictSettled.sPhase !== "passed") {
+            VaibifyDiagnosis.fnReportFailure(
+                _fsDescribeUnreproducedVerification(dictSettled));
+        }
+        _fnDisplaySettledManifests(dictPayload || {}, dictSettled);
+    }
+
+    function _fsDescribeUnreproducedVerification(dictSettled) {
+        /* The reasons are the server's; this only names the outcome. */
+        var listReasons = dictSettled.listReasons || [];
+        var sReasons = listReasons.length === 0 ? "" : ": " +
+            listReasons.slice(0, 3).join("; ") +
+            (listReasons.length > 3 ?
+                " and " + (listReasons.length - 3) + " more" : "");
+        if (dictSettled.sPhase === "failed") {
+            return "Level 3 verification failed: the outputs did not " +
+                "reproduce" + sReasons + ".";
+        }
+        if (dictSettled.sPhase === "no-verdict") {
+            return "Level 3 verification failed without reaching a " +
+                "verdict" + sReasons + ".";
+        }
+        if (dictSettled.sPhase === "stopped") {
+            return "Level 3 verification stopped without reporting a " +
+                "result.";
+        }
+        return "Level 3 verification is no longer running, and the " +
+            "hub has no record of how it ended.";
+    }
+
+    function _fnDisplaySettledManifests(dictPayload, dictSettled) {
+        /* The attempt's OWN reproduced manifest -- the dated file the
+           server says this attempt wrote, whose name carries its date
+           in the viewer's file list -- or a plain statement that it
+           wrote none. Never the root REPRODUCED.sha256 (on a reader's
+           clone, the author's) and never an earlier attempt's file
+           left in the viewer, which would read as this result. */
+        var sAttemptManifestPath = dictSettled.sReproducedManifestPath || "";
+        if (sAttemptManifestPath) {
+            _fnDisplayManifestComparison(
+                _fdictRecordWithReproducedManifest(
+                    dictPayload, dictSettled.sRecordKind || "") || {},
+                sAttemptManifestPath);
+            return;
+        }
+        VaibifyFigureViewer.fnDisplayRecordInViewer(
+            "A", "MANIFEST.sha256", null);
+        VaibifyFigureViewer.fnShowPlaceholderInViewer("B",
+            '<span class="placeholder">' + fnEscapeHtml(
+                "This attempt produced no reproduced manifest: " +
+                _fsNoReproducedManifestReason(dictSettled) + ".") +
+            '</span>', "no reproduced manifest");
+    }
+
+    function _fsNoReproducedManifestReason(dictSettled) {
+        var listReasons = dictSettled.listReasons || [];
+        if (listReasons.length > 0) return String(listReasons[0]);
+        if (dictSettled.sPhase === "stopped") {
+            return "the verification stopped without reporting a result";
+        }
+        if (!dictSettled.sPhase) {
+            return "the hub has no record of this attempt";
+        }
+        return "the hub recorded no reason";
     }
 
     function _fdictBlockersByStepIndex(listBlockers) {
@@ -7471,6 +7681,23 @@ const VaibifyApp = (function () {
         document.getElementById("toastContainer").appendChild(el);
     }
 
+    function _ffnShowHeldNotice(sMessage) {
+        /* A notice for work in flight. It has no timer and no close
+           button because only the end of the work may take it down;
+           the caller runs the returned dismissal on every path out. */
+        var elContainer = document.getElementById("toastContainer");
+        if (!sMessage || !elContainer) return function () {};
+        var elNotice = document.createElement("div");
+        elNotice.className = "toast info toast-progress";
+        elNotice.setAttribute("role", "status");
+        elNotice.innerHTML =
+            '<span class="toast-spinner" aria-hidden="true"></span>' +
+            '<span class="toast-progress-text">' +
+            fnEscapeHtml(sMessage) + '</span>';
+        elContainer.appendChild(elNotice);
+        return function () { elNotice.remove(); };
+    }
+
     function _fbSelectionEndsInside(el) {
         var selection = window.getSelection ? window.getSelection() : null;
         return Boolean(selection && String(selection).length > 0 &&
@@ -7545,6 +7772,7 @@ const VaibifyApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fnShowConfirmModal: fnShowConfirmModal,
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
+        fnAwaitVerificationAttempt: fnAwaitVerificationAttempt,
         fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
         fdictDescribePromoteOutcome: fdictDescribePromoteOutcome,

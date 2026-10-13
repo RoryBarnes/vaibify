@@ -404,8 +404,14 @@ def _flistDescribeUnresolvableSecrets(connectionDocker, sContainerId):
         return []
 
 
-def _flistDescribeConfigurationDrift(connectionDocker, sContainerId):
-    """Return the lines saying vaibify.yml moved after the image was built.
+def _ftDescribeConfigurationDrift(connectionDocker, sContainerId):
+    """Return ``(built-image lines, pinned-image lines)`` about vaibify.yml.
+
+    A BUILT image is compared with the file as it is now, and its
+    remedy is a rebuild. An image OBTAINED from the author's pin is the
+    author's environment: it is compared with the agents vaibify
+    stacked on it set aside, and its lines never name a rebuild, which
+    would replace the very bytes a reproduction rests on.
 
     Every failure mode here answers with NO lines. An unreadable
     config, an unregistered container, a daemon that will not answer,
@@ -413,30 +419,40 @@ def _flistDescribeConfigurationDrift(connectionDocker, sContainerId):
     determined", and a dashboard that warned from any of them would be
     telling a researcher to spend an hour rebuilding on no evidence.
     """
-    from vaibify.config.configurationFingerprint import (
-        fdictCompareConfigurationAgainstImage,
-        flistDescribeConfigurationDrift,
+    from vaibify.config import configurationFingerprint
+    from vaibify.config.registryManager import (
+        fbProjectImageIsObtained, fdictGetProject,
     )
-    from vaibify.config.registryManager import fdictGetProject
     from vaibify.reproducibility.environmentSnapshot import (
         fsReadContainerConfigurationLabel,
+    )
+    from ..pinnedEnvironmentConversion import (
+        fconfigReadAuthorConfigurationOrNone,
     )
     from ..pipelineServer import fsContainerNameForId
     try:
         sName = fsContainerNameForId(connectionDocker, sContainerId)
         dictProject = fdictGetProject(sName) if sName else None
         if not dictProject:
-            return []
+            return [], []
         from vaibify.cli.configLoader import fconfigLoadFromPath
         configProject = fconfigLoadFromPath(dictProject["sConfigPath"])
-        return flistDescribeConfigurationDrift(
-            fdictCompareConfigurationAgainstImage(
-                fsReadContainerConfigurationLabel(sContainerId),
-                configProject,
+        sStamped = fsReadContainerConfigurationLabel(sContainerId)
+        if not fbProjectImageIsObtained(dictProject):
+            return configurationFingerprint.flistDescribeConfigurationDrift(
+                configurationFingerprint.fdictCompareConfigurationAgainstImage(
+                    sStamped, configProject,
+                ),
+            ), []
+        return [], configurationFingerprint.flistDescribePinnedEnvironmentDrift(
+            configurationFingerprint
+            .fdictCompareConfigurationAgainstObtainedImage(
+                sStamped, configProject,
+                fconfigReadAuthorConfigurationOrNone(dictProject),
             ),
         )
     except Exception:
-        return []
+        return [], []
 
 
 def _ftDescribeX11Findings(connectionDocker, sContainerId):
@@ -544,10 +560,15 @@ def _fdictReadinessWithSecretWarnings(connectionDocker, sContainerId):
     listX11ContainerLines, listX11HostLines = _ftDescribeX11Findings(
         connectionDocker, sContainerId,
     )
+    listBuiltDrift, listPinnedDrift = _ftDescribeConfigurationDrift(
+        connectionDocker, sContainerId,
+    )
     dictReadiness["listConfigurationDrift"] = (
-        _flistDescribeConfigurationDrift(connectionDocker, sContainerId)
+        listBuiltDrift
         + listX11ContainerLines
     )
+    # Its own key: the pinned image is never called out of date.
+    dictReadiness["listPinnedEnvironmentDrift"] = listPinnedDrift
     dictReadiness["listResourceLimitDrift"] = (
         _flistDescribeResourceLimitDrift(connectionDocker, sContainerId)
     )

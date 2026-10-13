@@ -13,7 +13,10 @@ import json
 
 import pytest
 
-from tests.browser.conftest import fnOpenTheSeededHostWorkflow
+from tests.browser.conftest import (
+    fnLoadThePickerUntilItsButtonsListen,
+    fnOpenTheSeededHostWorkflow,
+)
 
 pytestmark = pytest.mark.browser
 
@@ -90,8 +93,7 @@ def testTheReproduceCardShowsTheServersSentenceAndOffersTheDiagnosis(
     Kills: both card stages writing the raw message as text again,
     with no diagnosis to click.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
-    pageDashboard.wait_for_selector("#btnAddContainer", timeout=15000)
+    fnLoadThePickerUntilItsButtonsListen(pageDashboard, serverHub)
     _fnInterceptTheDoctor(pageDashboard)
     pageDashboard.route(
         "**/api/reproductions/stage",

@@ -91,13 +91,21 @@ def testTheRouteAnswersFromTheNameKeyedRecordForTheIdInTheUrl(clientAndApp):
     assert dictBody["dictCurrent"]["fSampleAgeSeconds"] is not None
 
 
-def testAContainerNotYetSampledReadsUnknownNotOk(clientAndApp):
+@pytest.mark.falsification
+def testAContainerJustOpenedReadsPendingNeitherOkNorUnknown(clientAndApp):
+    """Kills: answering an owned container without stamping its opening.
+
+    Before its first measurement an opened container is neither fine
+    (nothing was measured) nor a failure (nothing has failed yet): the
+    route says pending, and the chip says "Checking Memory".
+    """
     client, _app = clientAndApp
     _fnClaim(client)
     dictCurrent = client.get(
         f"/api/monitor/{S_CONTAINER_ID}/memory").json()["dictCurrent"]
     assert dictCurrent["sState"] == containerMemoryWatch.S_STATE_NO_SAMPLE_YET
-    assert dictCurrent["sLevel"] == containerMemoryWatch.S_LEVEL_UNKNOWN
+    assert dictCurrent["sLevel"] == containerMemoryWatch.S_LEVEL_PENDING
+    assert dictCurrent["sChipText"] == "Checking Memory"
 
 
 def testIncidentsArriveWithTheirSentences(clientAndApp):
