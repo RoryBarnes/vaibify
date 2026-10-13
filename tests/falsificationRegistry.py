@@ -4245,6 +4245,46 @@ LIST_FALSIFICATIONS = [
     if False:''',
     ),
 
+    # A terminal record with no learned group settles only on the
+    # daemon's word that its container is removed or stopped; a paused
+    # container keeps every process and must stay quarantined.
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalSettlesOnceItsContainerIsGone',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState is None:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container no longer exists, and no process "''',
+        new='''    if False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container no longer exists, and no process "''',
+    ),
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalSettlesOnceItsContainerIsStopped',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState.get("Running") is False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+        new='''    if False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+    ),
+    Falsification(
+        nodeid='tests/testUndiscoveredTerminalRecordSettles.py::testAGroupLessTerminalInARunningOrPausedContainerStaysQuarantined',
+        source='vaibify/config/operationJournal.py',
+        old='''    if dictState.get("Running") is False:
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+        new='''    if dictState.get("Running") is False or dictState.get("Paused"):
+        return _fdictProbeOutcome(
+            False, True, False,
+            "the recorded container is stopped, and no process survives "''',
+    ),
+
     # Under qemu-user a process's own /proc/self/stat is synthesized
     # with pgid and sid 0, so the wrapper must read its stat by pid.
     Falsification(

@@ -216,6 +216,9 @@ class ProbeConnectionRecorder:
     def fdictInspectContainerIfPresent(self, sContainerId):
         return self.fnAnswer("dictContainer")
 
+    def fdictReadContainerState(self, sContainerId):
+        return self.fnAnswer("dictContainerState")
+
     def ftResultExecuteCommand(self, sContainerId, sCommand):
         return self.fnAnswer("tExec")
 
@@ -281,7 +284,8 @@ def fdictTerminalRecord(**dictFields):
          ProbeConnectionRecorder(dictExec={"Running": True}),
          "busy", "still running"),
         (fdictTerminalRecord(),
-         ProbeConnectionRecorder(dictExec={"Running": False}),
+         ProbeConnectionRecorder(dictExec={"Running": False},
+                                 dictContainerState={"Running": True}),
          "quarantinePermanent", "never learned its process group"),
         (fdictTerminalRecord(iHolderProcessGroup=77),
          ProbeConnectionRecorder(dictExec={"Running": False},
