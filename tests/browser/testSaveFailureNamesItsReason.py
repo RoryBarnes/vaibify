@@ -19,6 +19,9 @@ worse.
 
 import pytest
 
+from tests.browser.conftest import (
+    fnOpenTheDashboardUntilItHoldsACredential,
+)
 from tests.browser.fakeDockerAdapter import S_CONTAINER_ID, S_CONTAINER_NAME
 
 
@@ -44,7 +47,7 @@ def fixtureDropClaimsBetweenJourneys(serverHub):
 
 def _fsToastAfterAFailedStepEdit(page, serverHub, iStatus, sDetail):
     """Drive a real step edit whose PUT is answered with a failure."""
-    page.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(page, serverHub)
     page.route(
         "**/api/steps/**",
         lambda route: route.fulfill(
