@@ -461,3 +461,70 @@ def testATrustedEntrySkipsItsOwnPreconditionAndASuspectDoesNot(
         {"t.py::t1"}, 1.0,
     )
     assert dictKnownGood == {"t.py::t0": True, "t.py::t1": False}
+
+
+@pytest.mark.falsification
+def testEverySourceWriteIsStampedWithATimeNoCacheHasSeen(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """Kills: writing a mutated source with the clock's own mtime."""
+    pathSource = tmp_path / "guarded.py"
+    pathSource.write_text("x = 1\n", encoding="utf-8")
+    iBefore = int(pathSource.stat().st_mtime)
+    listStamps = []
+    for sText in ("x = 2\n", "x = 1\n", "x = 2\n"):
+        moduleToolInTemporaryTree._fnWriteSourceWithFreshStamp(
+            pathSource, sText)
+        listStamps.append(int(pathSource.stat().st_mtime))
+    assert len(set(listStamps)) == len(listStamps), listStamps
+    assert min(listStamps) >= moduleToolInTemporaryTree.I_FIRST_SOURCE_STAMP
+    assert moduleToolInTemporaryTree.I_FIRST_SOURCE_STAMP > iBefore
+    assert max(listStamps) < 2 ** 32, "both caches compare 32 bits"
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sTarget", ["guarded.py", "testGuard.py"])
+def testASharedCacheNeverServesAStampedWriteStaleBytecode(
+    moduleToolInTemporaryTree, tmp_path, sTarget,
+):
+    """One warm cache per run, and a mutation is still what runs.
+
+    ``guarded.py`` is compiled by Python's import system and
+    ``testGuard.py`` by pytest's assertion rewriter; both judge a
+    cached compilation by the source's mtime and size. The premise
+    step writes a same-size mutation WITHOUT a fresh stamp and shows
+    the shared cache serving the old compilation, which is both the
+    hazard and the proof that the cache really is shared. The harness's
+    own write must then be seen.
+
+    Kills: giving every pytest run a private cache again, which makes
+    the premise fail (the speed this test pins).
+    """
+    _fnWriteProject(tmp_path, {
+        "guarded.py": "def fiLimit():\n    return 1\n",
+        "testGuard.py": (
+            "import guarded\n\n\n"
+            "def testGuard():\n"
+            "    assert guarded.fiLimit() == 1\n"
+            "    assert 1 == 1\n"
+        ),
+    })
+    moduleTool = moduleToolInTemporaryTree
+    pathTarget = tmp_path / sTarget
+    sOriginal = pathTarget.read_text(encoding="utf-8")
+    sMutated = (sOriginal.replace("return 1", "return 2")
+                if sTarget == "guarded.py"
+                else sOriginal.replace("1 == 1", "1 == 2"))
+    assert len(sMutated) == len(sOriginal) and sMutated != sOriginal
+    with moduleTool._contextShareOneBytecodeCache():
+        moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sOriginal)
+        iStamp = int(pathTarget.stat().st_mtime)
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0
+        pathTarget.write_text(sMutated, encoding="utf-8")
+        os.utime(pathTarget, (iStamp, iStamp))
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 0, (
+            "premise: an unstamped same-size rewrite in the same second "
+            "is served the cached compilation")
+        moduleTool._fnWriteSourceWithFreshStamp(pathTarget, sMutated)
+        assert moduleTool._ftRunPytest(["testGuard.py"])[0] == 1, (
+            "a freshly stamped mutation ran stale bytecode")

@@ -80,6 +80,8 @@ registry completeness, saying so, because a subset cannot.
 """
 
 import argparse
+import contextlib
+import itertools
 import os
 import pathlib
 import re
@@ -164,18 +166,56 @@ S_VERDICT_NO_FAILURE = "no-failure"
 S_VERDICT_UNREADABLE = "unreadable"
 
 
+# The first modification time a source write is stamped with. Python
+# and pytest both judge a cached compilation by the source's mtime in
+# whole seconds plus its size, so a same-size mutation written within
+# the same second as the previous version was served the PREVIOUS
+# bytecode: the test passed against code it never ran, and a genuine
+# kill read SURVIVED (macOS/py3.14, 2026-07-03). Every write the harness
+# makes is therefore stamped with a time no earlier write in this run
+# used, counting up from 2**31: past every real file time until 2038,
+# and inside the 32 bits both caches compare. A cached compilation can
+# then never be mistaken for another version of its source.
+I_FIRST_SOURCE_STAMP = 2 ** 31
+_iterSourceStamps = itertools.count(I_FIRST_SOURCE_STAMP)
+
+# The one bytecode cache a harness run shares across its pytest runs,
+# or "" outside one. Each run used to get an empty cache instead, which
+# closed the stale-bytecode hole by recompiling vaibify and every
+# dependency for every entry: a third of a browser entry's time.
+_dictSharedBytecodeCache = {"sPrefix": ""}
+
+
+def _fnWriteSourceWithFreshStamp(pathSource, sText):
+    """Write a source and give it a modification time no cache has seen."""
+    pathSource.write_text(sText, encoding="utf-8")
+    iStamp = next(_iterSourceStamps)
+    os.utime(pathSource, (iStamp, iStamp))
+
+
+@contextlib.contextmanager
+def _contextShareOneBytecodeCache():
+    """Let every pytest run inside this block share one warm cache.
+
+    Safe only because every source write is freshly stamped
+    (:func:`_fnWriteSourceWithFreshStamp`); the stamp, not an empty
+    cache, is what keeps a mutation from running stale bytecode.
+    """
+    sPrefix = tempfile.mkdtemp()
+    _dictSharedBytecodeCache["sPrefix"] = sPrefix
+    try:
+        yield sPrefix
+    finally:
+        _dictSharedBytecodeCache["sPrefix"] = ""
+        _fnDiscardPycachePrefix(sPrefix, ["<the whole harness run>"])
+
+
 def _fdictBuildPytestEnvironment(sPycachePrefix):
     """Return the environment every replayed pytest run is given.
 
-    Each invocation gets a FRESH bytecode cache (PYTHONPYCACHEPREFIX):
-    Python validates cached .pyc files by source mtime in integer
-    seconds plus file size, so a mutation that preserves the file size
-    and lands within the same clock second as the previous write is
-    served the PREVIOUS bytecode -- the test passes against code it
-    never ran, and a genuine kill reports SURVIVED. Observed on the
-    fastest CI runner (macOS/py3.14, 2026-07-03) for exactly the
-    same-size mutations; a cold cache per run removes the timing from
-    the equation.
+    The bytecode cache (PYTHONPYCACHEPREFIX) is the run's shared one
+    when there is one, and private to this pytest run otherwise; why it
+    may be shared at all is told at :data:`I_FIRST_SOURCE_STAMP`.
     """
     dictEnvironment = dict(os.environ)
     # An editable install resolves ``vaibify`` to the real checkout, so
@@ -203,7 +243,8 @@ def _ftRunPytest(listArguments, fTimeoutSeconds=None):
     browser child would otherwise outlive a kill of pytest alone and
     keep the pipe open, so the wait would never return.
     """
-    sPycachePrefix = tempfile.mkdtemp()
+    sSharedPrefix = _dictSharedBytecodeCache["sPrefix"]
+    sPycachePrefix = sSharedPrefix or tempfile.mkdtemp()
     processPytest = subprocess.Popen(
         [sys.executable, "-m", "pytest", *listArguments, "-q",
          "-p", "no:cacheprovider", "-rs"],
@@ -218,7 +259,8 @@ def _ftRunPytest(listArguments, fTimeoutSeconds=None):
         bTimedOut = True
         sOutput = _fsKillProcessGroup(processPytest)
     finally:
-        _fnDiscardPycachePrefix(sPycachePrefix, listArguments)
+        if not sSharedPrefix:
+            _fnDiscardPycachePrefix(sPycachePrefix, listArguments)
     return processPytest.returncode, sOutput, bTimedOut
 
 
@@ -511,10 +553,10 @@ def _fsReconfirmOne(
         if sCleanFailure:
             return f"ERROR: test does not pass on clean code: {sCleanFailure}"
     try:
-        pathSource.write_text(sMutated, encoding="utf-8")
+        _fnWriteSourceWithFreshStamp(pathSource, sMutated)
         return _fsRunMutatedTestAndJudge(entry.nodeid, fTimeoutSeconds)
     finally:
-        pathSource.write_text(sOriginal, encoding="utf-8")
+        _fnWriteSourceWithFreshStamp(pathSource, sOriginal)
 
 
 def _flistMarkedTestsWithoutEntry():
@@ -552,7 +594,7 @@ def _fnRestoreOriginals(dictOriginal):
     listFailed = []
     for sSource, sBytes in dictOriginal.items():
         try:
-            (PATH_TREE / sSource).write_text(sBytes, encoding="utf-8")
+            _fnWriteSourceWithFreshStamp(PATH_TREE / sSource, sBytes)
         except OSError:
             listFailed.append(sSource)
     if listFailed:
@@ -911,14 +953,16 @@ def fnReconfirmAll(
         print(f"No registry entry matches {list(listOnly)}")
         sys.exit(2)
     dictOriginal = _fdictCaptureOriginals()
-    setPreconditionSuspects = _fsetSelectPreconditionSuspects(listEvaluable)
-    try:
-        listResults = _flistReconfirmEntries(
-            listEvaluable, dictOriginal, setPreconditionSuspects,
-            fTimeoutSeconds,
-        )
-    finally:
-        _fnRestoreOriginals(dictOriginal)
+    with _contextShareOneBytecodeCache():
+        setPreconditionSuspects = _fsetSelectPreconditionSuspects(
+            listEvaluable)
+        try:
+            listResults = _flistReconfirmEntries(
+                listEvaluable, dictOriginal, setPreconditionSuspects,
+                fTimeoutSeconds,
+            )
+        finally:
+            _fnRestoreOriginals(dictOriginal)
     for entry, sPhrase in listDeferred:
         print(f"{'NOT EVALUATED: needs a ' + sPhrase:48}  "
               f"{entry.nodeid}")

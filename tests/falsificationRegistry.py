@@ -32272,4 +32272,26 @@ LIST_FALSIFICATIONS = [
         ),
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testEverySourceWriteIsStampedWithATimeNoCacheHasSeen'
+        ),
+        # A mutated source keeps the clock's mtime, so a same-second,
+        # same-size write can be served the previous compilation.
+        source='tools/reconfirmFalsification.py',
+        old='    os.utime(pathSource, (iStamp, iStamp))\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testASharedCacheNeverServesAStampedWriteStaleBytecode'
+        ),
+        # Every pytest run recompiles everything again: a third of an
+        # entry's time, on every lane.
+        source='tools/reconfirmFalsification.py',
+        old='    sPycachePrefix = sSharedPrefix or tempfile.mkdtemp()\n',
+        new='    sPycachePrefix = tempfile.mkdtemp()\n',
+    ),
 ]
