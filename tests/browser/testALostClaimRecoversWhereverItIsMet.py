@@ -39,6 +39,7 @@ from tests.browser.conftest import (
     S_HOST_STEP_NAME,
     S_HOST_WORKFLOW_NAME,
     fnOpenTheSeededHostWorkflow,
+    fnWaitForTheHubToDrain,
 )
 from tests.browser.fakeDockerAdapter import (
     S_CONTAINER_ID,
@@ -163,13 +164,20 @@ def _fdictAwaitProbe(pageDashboard, sKey):
         "(sKey) => window.__dictProbes[sKey]", sKey)
 
 
-def _fnStopTheDashboardPollers(pageDashboard):
-    """Stop every poller so the one request a test sends is the only one."""
+def _fnStopTheDashboardPollers(pageDashboard, serverHub):
+    """Stop every poller so the one request a test sends is the only one.
+
+    Stopping a poller stops its NEXT request, not one already on the
+    wire, and opening a project sends reads of its own. Any of them
+    meeting the lost claim first would be the one that recovers it, so
+    they are let finish.
+    """
     pageDashboard.evaluate("""() => {
         Object.keys(VaibifyPolling).forEach(function (sName) {
             if (sName.startsWith('fnStop')) VaibifyPolling[sName]();
         });
     }""")
+    fnWaitForTheHubToDrain(serverHub)
 
 
 def _fnClickEnvironments(pageDashboard):
@@ -738,7 +746,7 @@ def test_a_recovery_claim_that_lands_after_leaving_is_given_back(
     Kills: leaving the claim in place once it has landed after leaving.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     listHeld = []
     _fnHoldRequests(
         pageDashboard, "**/api/registry/*/claim", listHeld,
@@ -786,7 +794,7 @@ def test_a_blank_dashboard_is_reconnected_so_the_agent_gets_the_new_token(
     pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
     assert pageDashboard.evaluate(
         "() => VaibifyApp.fsGetWorkflowPath()") is None
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     dictOwners = serverHub.app.state.dictContainerOwners
     recordOriginal = dictOwners[S_CONTAINER_NAME]
     assert recordOriginal.sAgentToken.encode() in (
@@ -814,7 +822,7 @@ def test_a_reconnect_that_failed_is_not_a_recovery(pageDashboard, serverHub):
     Kills: counting a failed reconnect as a recovered claim.
     """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
-    _fnStopTheDashboardPollers(pageDashboard)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
     pageDashboard.route("**/api/connect/**", lambda routeConnect: (
         routeConnect.fulfill(
             status=502, content_type="application/json",

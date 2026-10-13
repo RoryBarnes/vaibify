@@ -274,7 +274,7 @@ def testEachResultIsPrintedBeforeTheNextEntryIsJudged(
         for i in range(2)
     ]
     moduleToolInTemporaryTree._flistReconfirmEntries(
-        listEntries, {"s.py": "a"}, True, 1.0,
+        listEntries, {"s.py": "a"}, set(), 1.0,
     )
     sRest = capsys.readouterr().out
     assert "t.py::t0" in listSeenWhileJudging[1], listSeenWhileJudging
@@ -332,3 +332,132 @@ def testTheEntryTimeoutMustBePositive():
     assert result.returncode == 2
     assert "positive" in result.stderr
     assert shutil is not None
+
+
+def _flistBatchEntries(listNodeIds):
+    return [
+        Falsification(nodeid=sNodeId, source="s.py", old="a", new="b")
+        for sNodeId in listNodeIds
+    ]
+
+
+@pytest.mark.falsification
+def testOnlyTheTestTheBatchFailedReChecksItsPrecondition(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """One failure in the batch re-checks one test, not all of them.
+
+    Re-checking every entry after any batch failure doubled the
+    exclusive lane's run, which then hit its time limit with the
+    failing test never named. The failing test here sits in a class in
+    a subdirectory, so the JUnit report is mapped back to a node id
+    through both.
+
+    Kills: treating every entry as a suspect whenever the batch fails.
+    """
+    (tmp_path / "sub").mkdir()
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "sub/testBroken.py": (
+            "class TestGroup:\n"
+            "    def testTwo(self):\n"
+            "        assert 1 == 2\n"
+        ),
+    })
+    listNodeIds = [
+        "testSound.py::testOne", "sub/testBroken.py::TestGroup::testTwo"]
+
+    setSuspects = moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(listNodeIds))
+
+    assert setSuspects == {"sub/testBroken.py::TestGroup::testTwo"}
+
+
+def testACleanBatchLeavesNoSuspect(moduleToolInTemporaryTree, tmp_path):
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+    })
+    assert moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(["testSound.py::testOne"])) == set()
+
+
+def testATestTheBatchSkippedIsASuspect(moduleToolInTemporaryTree, tmp_path):
+    """A skip proves nothing passed, so it must be checked again alone."""
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "testSkips.py": (
+            "import pytest\n\n\n"
+            "def testTwo():\n    pytest.skip('no facility')\n"
+        ),
+    })
+    assert moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(["testSound.py::testOne", "testSkips.py::testTwo"])
+    ) == {"testSkips.py::testTwo"}
+
+
+@pytest.mark.falsification
+def testAReportRowNoEntryOwnsLeavesNothingTrusted(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """A failure the report cannot tie to an entry leaves nothing trusted.
+
+    One row fails by an entry's name; another is an error under a name
+    no entry has, as a fixture or plugin error can be. Returning only
+    the named failure would trust every entry the other row may have
+    broken.
+
+    Kills: skipping a report row that names no registered test.
+    """
+    pathReport = tmp_path / "junit.xml"
+    pathReport.write_text(
+        '<testsuites><testsuite>'
+        '<testcase classname="testSound" name="testOne">'
+        '<failure message="assert"/></testcase>'
+        '<testcase classname="" name="conftest"><error message="x"/>'
+        '</testcase>'
+        '<testcase classname="testOther" name="testTwo"/>'
+        '</testsuite></testsuites>', encoding="utf-8")
+
+    setUnpassed = moduleToolInTemporaryTree._fsetReadUnpassedNodeIds(
+        str(pathReport), ["testSound.py::testOne", "testOther.py::testTwo"])
+
+    assert setUnpassed == set()
+
+
+def testACollectionErrorInTheBatchSuspectsEveryEntry(
+    moduleToolInTemporaryTree, tmp_path,
+):
+    """A module that does not import stops the batch before anything runs."""
+    _fnWriteProject(tmp_path, {
+        "testSound.py": "def testOne():\n    assert True\n",
+        "testUnimportable.py": (
+            "import moduleThatDoesNotExist\n\n\n"
+            "def testTwo():\n    assert True\n"
+        ),
+    })
+    listNodeIds = ["testSound.py::testOne", "testUnimportable.py::testTwo"]
+
+    setSuspects = moduleToolInTemporaryTree._fsetSelectPreconditionSuspects(
+        _flistBatchEntries(listNodeIds))
+
+    assert setSuspects == set(listNodeIds)
+
+
+@pytest.mark.falsification
+def testATrustedEntrySkipsItsOwnPreconditionAndASuspectDoesNot(
+    moduleToolInTemporaryTree, monkeypatch,
+):
+    """Kills: deciding the precondition for every entry at once."""
+    dictKnownGood = {}
+
+    def fsRecordThePrecondition(entry, sOriginal, **dictKeywords):
+        dictKnownGood[entry.nodeid] = dictKeywords["bPreconditionKnownGood"]
+        return "KILLED"
+
+    monkeypatch.setattr(
+        moduleToolInTemporaryTree, "_fsReconfirmOne", fsRecordThePrecondition)
+    moduleToolInTemporaryTree._flistReconfirmEntries(
+        _flistBatchEntries(["t.py::t0", "t.py::t1"]), {"s.py": "a"},
+        {"t.py::t1"}, 1.0,
+    )
+    assert dictKnownGood == {"t.py::t0": True, "t.py::t1": False}

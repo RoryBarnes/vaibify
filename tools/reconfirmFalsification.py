@@ -258,8 +258,10 @@ def _fsKillProcessGroup(processPytest):
 def _fiRunTests(listNodeIds, fTimeoutSeconds=None):
     """Return the pytest exit code for running these test nodes together.
 
-    The list form exists so the shared precondition can be answered in
-    one interpreter start instead of one per entry.
+    A skip is reported as its own code, never as the 0 pytest exits
+    with. The batched precondition reads the JUnit report instead
+    (:func:`_fsetSelectPreconditionSuspects`), because it must say WHICH
+    tests did not pass.
     """
     iCode, sOutput, bTimedOut = _ftRunPytest(listNodeIds, fTimeoutSeconds)
     if bTimedOut:
@@ -432,20 +434,70 @@ def _fsDescribeSyntaxProblem(sMutated, pathSource):
     return ""
 
 
-def _fbAllPreconditionsPassInOneRun(listEntries):
-    """Return True when every registered test passes on clean code.
+def _fsetSelectPreconditionSuspects(listEntries):
+    """Return the node ids whose clean-code pass the batch did not show.
 
     The precondition -- "this test passes before the mutation" -- is
     identical for every entry and costs a full interpreter start plus a
     vaibify import each time it is checked separately. Asking it once
     for all node ids halves the process count for the whole run, which
     is the difference between finishing inside CI's ceiling and timing
-    out. When the batch passes, per-entry precondition runs are skipped;
-    when it fails, the caller falls back to checking each entry alone so
-    the offender is still named precisely.
+    out. Only the tests the batch did not pass are checked again alone,
+    so one flake costs one rerun. Re-checking EVERY entry after any
+    failure doubled the run and timed it out with the offender unnamed.
+    When the batch failed and its report cannot say which test did,
+    every entry is a suspect.
     """
     listNodeIds = sorted({entry.nodeid for entry in listEntries})
-    return _fiRunTests(listNodeIds) == 0
+    with tempfile.TemporaryDirectory() as sJunitDirectory:
+        sJunitPath = os.path.join(sJunitDirectory, "junit.xml")
+        iCode, sOutput, bTimedOut = _ftRunPytest(
+            [*listNodeIds, f"--junitxml={sJunitPath}"])
+        if iCode == 0 and not bTimedOut and not _fbOutputReportsASkip(
+                sOutput):
+            return set()
+        setSuspects = _fsetReadUnpassedNodeIds(sJunitPath, listNodeIds)
+    if not setSuspects:
+        print("batched precondition run failed and its report names no "
+              "registered test; every entry re-checks its own precondition")
+        return set(listNodeIds)
+    print(f"batched precondition run did not pass {len(setSuspects)} "
+          "test(s); each re-checks its own precondition:")
+    for sNodeId in sorted(setSuspects):
+        print(f"  {sNodeId}", flush=True)
+    return setSuspects
+
+
+def _fsetReadUnpassedNodeIds(sJunitPath, listNodeIds):
+    """Return the node ids the JUnit report shows failing, erring or skipped.
+
+    Empty when the report is unreadable or names a test that is not one
+    of ``listNodeIds`` -- a collection error, say -- because then the
+    report cannot say which entries are sound.
+    """
+    dictNodeIdByCase = {
+        _ftJunitCaseOfNodeId(sNodeId): sNodeId for sNodeId in listNodeIds}
+    try:
+        elementRoot = ElementTree.parse(sJunitPath).getroot()
+    except (OSError, ElementTree.ParseError):
+        return set()
+    setUnpassed = set()
+    for elementCase in elementRoot.iter("testcase"):
+        if not any(elementChild.tag in ("failure", "error", "skipped")
+                   for elementChild in elementCase):
+            continue
+        tCase = (elementCase.get("classname", ""), elementCase.get("name", ""))
+        if tCase not in dictNodeIdByCase:
+            return set()
+        setUnpassed.add(dictNodeIdByCase[tCase])
+    return setUnpassed
+
+
+def _ftJunitCaseOfNodeId(sNodeId):
+    """Return the ``(classname, name)`` pytest's JUnit report gives a node."""
+    listParts = sNodeId.split("::")
+    sModule = listParts[0][:-len(".py")].replace("/", ".")
+    return (".".join([sModule, *listParts[1:-1]]), listParts[-1])
 
 
 def _fsReconfirmOne(
@@ -816,7 +868,7 @@ def _tSelectShard(listEvaluable, listDeferred, tShard):
 
 
 def _flistReconfirmEntries(
-    listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
+    listEvaluable, dictOriginal, setPreconditionSuspects, fTimeoutSeconds,
 ):
     """Judge each entry and print its line the moment it is known.
 
@@ -829,7 +881,8 @@ def _flistReconfirmEntries(
         print(f"... {entry.nodeid}", flush=True)
         sStatus = _fsReconfirmOne(
             entry, dictOriginal[entry.source],
-            bPreconditionKnownGood=bBatchClean,
+            bPreconditionKnownGood=(
+                entry.nodeid not in setPreconditionSuspects),
             fTimeoutSeconds=fTimeoutSeconds,
         )
         listResults.append((entry.nodeid, sStatus))
@@ -872,15 +925,11 @@ def fnReconfirmAll(
         print(f"No registry entry matches {list(listOnly)}")
         sys.exit(2)
     dictOriginal = _fdictCaptureOriginals()
-    bBatchClean = _fbAllPreconditionsPassInOneRun(listEvaluable)
-    if not bBatchClean:
-        print(
-            "batched precondition run failed; falling back to a "
-            "per-entry check so the offender is named",
-        )
+    setPreconditionSuspects = _fsetSelectPreconditionSuspects(listEvaluable)
     try:
         listResults = _flistReconfirmEntries(
-            listEvaluable, dictOriginal, bBatchClean, fTimeoutSeconds,
+            listEvaluable, dictOriginal, setPreconditionSuspects,
+            fTimeoutSeconds,
         )
     finally:
         _fnRestoreOriginals(dictOriginal)

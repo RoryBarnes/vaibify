@@ -262,6 +262,33 @@ def _fdictReadRecords(pathRepo):
     ]
 
 
+def _fnStampEachAttemptInItsOwnSecond(monkeypatch):
+    """Give each attempt a record timestamp later than the last one's.
+
+    A record's filename carries its timestamp to the second, so two
+    attempts finishing within one second are named alike. This test is
+    about what the first attempt leaves behind, not about that, and a
+    fast runner finished both inside one second.
+    """
+    from datetime import datetime, timedelta
+
+    listIssued = []
+    fsRealTimestamp = reproductionRecord.fsCurrentTimestampUtc
+
+    def fsLaterThanTheLastAttempt():
+        sFormat = "%Y-%m-%dT%H:%M:%SZ"
+        datetimeNext = datetime.strptime(fsRealTimestamp(), sFormat)
+        if listIssued:
+            datetimeNext = max(
+                datetimeNext, listIssued[-1] + timedelta(seconds=1))
+        listIssued.append(datetimeNext)
+        return datetimeNext.strftime(sFormat)
+
+    monkeypatch.setattr(
+        reproductionRecord, "fsCurrentTimestampUtc",
+        fsLaterThanTheLastAttempt)
+
+
 def test_a_second_verification_by_the_reader_is_neither_refused_nor_degraded(
     tmp_path, monkeypatch,
 ):
@@ -276,6 +303,7 @@ def test_a_second_verification_by_the_reader_is_neither_refused_nor_degraded(
     the first attempt's files as differing -- recorded, never refused.
     """
     monkeypatch.setenv("HOME", str(tmp_path / "isolatedHome"))
+    _fnStampEachAttemptInItsOwnSecond(monkeypatch)
     pathRepo = _fnSeedEnvelope(
         tmp_path / "containerVolume" / "workspace" / "ProjectRepo")
     fnWriteJson(

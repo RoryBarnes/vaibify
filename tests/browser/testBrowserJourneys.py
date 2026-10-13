@@ -163,6 +163,10 @@ def testSeededProjectReachesTheBrowser(pageDashboard, serverHub):
     is both the faithful path and the working one.
     """
     pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    # An idle network is not a redeemed capability: the tile renders
+    # only from an authenticated registry read, so it is the signal.
+    pageDashboard.wait_for_selector(
+        f'.container-tile[data-name="{S_CONTAINER_NAME}"]', timeout=15000)
     dictPayload = pageDashboard.evaluate(
         """async (sBaseUrl) => {
             const response = await fetch(sBaseUrl + '/api/registry');

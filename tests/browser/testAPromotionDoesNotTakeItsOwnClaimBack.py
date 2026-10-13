@@ -63,6 +63,12 @@ def test_a_poll_refused_while_a_promotion_is_answered_does_not_take_the_claim_ba
     routePromote, responseHub = listHeld[0]
     routePromote.fulfill(response=responseHub)
     pageDashboard.wait_for_selector("#mainLayout.active", timeout=20000)
+    # The layout was already active on the sandbox, so it says nothing
+    # about the claim under the new name; wait for the hub to hold it.
+    for _ in range(200):
+        if S_NEW_PROJECT_NAME in serverHub.app.state.dictContainerOwners:
+            break
+        pageDashboard.wait_for_timeout(100)
     pageDashboard.unroute_all(behavior="ignoreErrors")
     assert S_HOST_PROJECT_READY not in serverHub.app.state.dictContainerOwners
     assert S_NEW_PROJECT_NAME in serverHub.app.state.dictContainerOwners

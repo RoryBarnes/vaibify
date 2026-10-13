@@ -32221,4 +32221,40 @@ LIST_FALSIFICATIONS = [
         ),
         new='            bRunning: bRunning,\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testOnlyTheTestTheBatchFailedReChecksItsPrecondition'
+        ),
+        # Any batch failure re-checks every entry and times the lane out.
+        source='tools/reconfirmFalsification.py',
+        old='    return setSuspects\n',
+        new='    return set(listNodeIds)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testAReportRowNoEntryOwnsLeavesNothingTrusted'
+        ),
+        # An unplaceable failure is skipped, trusting what it hid.
+        source='tools/reconfirmFalsification.py',
+        old=(
+            '        if tCase not in dictNodeIdByCase:\n'
+            '            return set()\n'
+        ),
+        new=(
+            '        if tCase not in dictNodeIdByCase:\n'
+            '            continue\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReconfirmFalsificationJudgesKills.py::'
+            'testATrustedEntrySkipsItsOwnPreconditionAndASuspectDoesNot'
+        ),
+        # One verdict for every entry instead of one per entry.
+        source='tools/reconfirmFalsification.py',
+        old='                entry.nodeid not in setPreconditionSuspects),\n',
+        new='                not setPreconditionSuspects),\n',
+    ),
 ]

@@ -416,7 +416,7 @@ def testDeferredEntriesAreNamedAndLeftOutOfTheDenominator(monkeypatch, capsys):
     )
     monkeypatch.setattr(moduleTool, "_fnRestoreOriginals", lambda dictAny: None)
     monkeypatch.setattr(
-        moduleTool, "_fbAllPreconditionsPassInOneRun", lambda listAny: True,
+        moduleTool, "_fsetSelectPreconditionSuspects", lambda listAny: set(),
     )
     monkeypatch.setattr(
         moduleTool, "_fsReconfirmOne", lambda *args, **kwargs: "KILLED",
