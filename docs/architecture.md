@@ -407,13 +407,36 @@ including the output hashes each run was obtained against — live
 inside the repository at
 `<sProjectRepoPath>/.vaibify/test_markers/<workflowSlug>/<step>.json`
 where the file name is derived from the step's (repo-relative)
-`sDirectory`. Marker *writes* (by the conftest plugin deployed into
-each step's `tests/` directory) and *reads* (by `fileStatusManager`,
+`sDirectory`. Marker *writes* (by vaibify's marker plugin, which each
+step's `tests/conftest.py` loads) and *reads* (by `fileStatusManager`,
 `gitRoutes`, `syncDispatcher`) both resolve the directory through
 `dictWorkflow["sProjectRepoPath"]` — no module hardcodes
 `/workspace/.vaibify/test_markers`. Together with committing the
 markers alongside the project, this makes test-verification state
 survive a clone of the repository.
+
+The conftest a step commits is a fixed loader, and the plugin it loads
+is not committed at all. A published project commits its conftests, so
+a conftest that carried the whole plugin -- stamped with the plugin's
+generation -- was rewritten by every vaibify release that moved the
+generation, and a reader's clone showed modified tracked files the
+moment it connected. So `tests/conftest.py` is now a small loader
+(`conftestManager.S_CONFTEST_LOADER_SOURCE`, stamped
+`# vaibify-conftest-loader: 1`) whose bytes never change and which
+the refresh treats as current forever. The plugin lives at
+`<sProjectRepoPath>/.vaibify/pytestPlugin/markerPlugin.py`, beside a
+`.gitignore` containing `*` that ignores the whole directory, itself
+included, so git never lists either file and no file the author
+committed is edited to hide them. The connect, poll and pre-run
+refreshes (and the test generator) write the plugin through the
+confined single-file write whenever its generation is stale, and
+migrate any older whole-plugin conftest to the loader exactly once --
+for a published project that is the author's one final commit. The
+loader executes the plugin as though it were the conftest itself (its
+`__file__`), so markers are written exactly as before; it refuses a
+plugin that resolves outside the repository; and with no plugin
+present -- a stranger running `pytest` without vaibify -- it does
+nothing, and the tests pass or fail on their own merits.
 
 A marker records tests, not just sessions. `dictRuns` holds one entry
 per run that still stands behind a result (when it ran, its exit
@@ -1772,8 +1795,9 @@ following files control test generation:
 - `testParser.py` — Python syntax validation, import repair, code
   extraction. Zero intra-package imports.
 - `dataPreview.py` — file preview generation (numpy, HDF5, text).
-- `conftestManager.py` — pytest `conftest.py` plugin template and
-  marker writing.
+- `conftestManager.py` — the fixed `conftest.py` loader, the marker
+  plugin template it loads from `.vaibify/pytestPlugin/`, and the
+  refresh that deploys both.
 - `llmInvoker.py` — Claude API calls, prompt building, `CLAUDE.md`
   management.
 - `templateManager.py` — template hashing, test code builders,

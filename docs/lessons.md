@@ -648,3 +648,18 @@ correct approach.
   starts needs a recorded owner, an exit that fires when that owner is
   provably gone, and a reaper whose own outcome is recorded, because a
   cleanup nobody watches is a cleanup that has already stopped.
+- **A file vaibify generates and the author commits must never change
+  shape again.** Each step's committed conftest carried the whole marker
+  plugin, stamped with its generation, so every release that moved the
+  generation rewrote it: a reader connected to a clone of a published
+  project and immediately had modified tracked files, which the
+  reproduction baseline then counted against the project. The refresh
+  was doing its job -- the content it replaced really was stale -- and
+  that is the trap: a committed file whose content follows vaibify's
+  version is a file vaibify will dirty. The fix splits what changes
+  from what is committed: a fixed loader is committed once, and the
+  plugin it loads lives in a directory that ignores itself
+  (`tests/testConftestLoaderKeepsCommittedFilesStable.py`). The general
+  form: before writing a file into a researcher's repository, ask
+  whether it will be committed, and if so, whether any later vaibify
+  could want different bytes there.

@@ -203,6 +203,20 @@ class DockerDoubleThatCallsTheRealGates(MockDockerDraft):
             iMode=iMode, iUid=iUid, iGid=iGid,
         )
 
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource,
+        iExpectedBytes=None, bReplaceAllowed=True, iMode=None,
+        sAuthorizedRoot=None, tForbiddenNames=(), bCreateParents=False,
+    ):
+        """The streamed funnel the real buffer write delegates to.
+
+        Gated and recorded as the same write primitive, because on the
+        real adapter ``fnWriteFileViaTar`` IS this funnel over a buffer.
+        """
+        return self.fnWriteFile(
+            sContainerId, sPath, fileSource.read(), iMode=iMode,
+        )
+
     def ftResultExecuteCommand(
         self, sContainerId, sCommand, sWorkdir=None,
     ):

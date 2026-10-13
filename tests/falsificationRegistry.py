@@ -25455,15 +25455,19 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerOffLoop.py::testPreflightWarningsAreCollectedOffTheEventLoop',
         source='vaibify/gui/pipelineRunner.py',
+        # RE-ANCHORED 2026-10-12: the collector gained the run's repo
+        # root as its fourth argument; same mutant (collect on the loop).
         old=(
             '    listPreflightWarnings = await asyncio.to_thread(\n'
             '        _flistCollectPreflightWarnings,\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '        dictVariables.get("sRepoRoot", ""),\n'
             '    )\n'
         ),
         new=(
             '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
+            '        dictVariables.get("sRepoRoot", ""),\n'
             '    )\n'
         ),
     ),
@@ -31937,5 +31941,118 @@ LIST_FALSIFICATIONS = [
         source='tests/browser/conftest.py',
         old='        / f"{nodeTest.path.stem}.{nodeTest.name}"\n',
         new='        / nodeTest.name\n',
+    ),
+    # --- 2026-10-12: a step's committed conftest is a fixed loader;
+    # only the git-ignored plugin follows the generation ---
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_a_migrated_clone_stays_clean_through_connect_poll_and_run'
+        ),
+        # A committed loader counted as stale is rewritten by every refresh.
+        source='vaibify/gui/conftestManager.py',
+        old='            S_LOADER_INSTALLED, S_NO_TESTS_DIRECTORY,\n',
+        new='            S_CONFTEST_VERSION, S_NO_TESTS_DIRECTORY,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_an_unmigrated_published_project_is_migrated_exactly_once'
+        ),
+        # Migrating to the whole plugin leaves a file the next bump rewrites.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        connectionDocker, sContainerId, listStale, '
+            'S_CONFTEST_LOADER_SOURCE,\n'
+        ),
+        new=(
+            '        connectionDocker, sContainerId, listStale,\n'
+            '        fsBuildConftestSource(sProjectRepoPath),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_plugin_directory_is_invisible_to_git'
+        ),
+        # Without the match-everything rule the plugin shows as untracked.
+        source='vaibify/gui/conftestManager.py',
+        old='    "*\\n"\n)\n',
+        new=')\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_loader_and_plugin_write_the_markers_'
+            'the_whole_conftest_did'
+        ),
+        # Exposing only the session hooks loses the per-test outcomes.
+        source='vaibify/gui/conftestManager.py',
+        old='        if sName.startswith("pytest_"):\n',
+        new='        if sName.startswith("pytest_session"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_without_the_plugin_tests_run_on_their_own_merits_silently'
+        ),
+        # Without the absent-plugin check a stranger's every session warns.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        if not pathPlugin.is_file():\n'
+            '            return None\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_loader_refuses_a_plugin_reached_through_a_symlink_out'
+        ),
+        # Without the containment check a linked plugin directory runs.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '        try:\n'
+            '            pathPlugin.resolve().relative_to(pathAncestor)\n'
+            '        except ValueError:\n'
+            '            return None\n'
+        ),
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_a_run_writes_the_plugin_where_its_steps_execute'
+        ),
+        # Dropping the run root refreshes the live repo, not the shadow.
+        source='vaibify/gui/pipelineRunner.py',
+        old='        dictVariables.get("sRepoRoot", ""),\n',
+        new='        "",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_test_generator_installs_the_loader_and_its_plugin'
+        ),
+        # A new step committing the whole plugin is rewritten by a bump.
+        source='vaibify/gui/conftestManager.py',
+        old=(
+            '            connectionDocker, sContainerId, sPath, '
+            'S_CONFTEST_LOADER_SOURCE,\n'
+        ),
+        new=(
+            '            connectionDocker, sContainerId, sPath,\n'
+            '            fsBuildConftestSource(sProjectRepoPath),\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConftestLoaderKeepsCommittedFilesStable.py::'
+            'test_the_marker_poll_counts_a_loader_as_an_installed_conftest'
+        ),
+        # Without the loader clause every migrated step reads as bare.
+        source='vaibify/gui/syncDispatcher.py',
+        old='"# vaibify-conftest-loader:" not in sConftestSource',
+        new='True',
     ),
 ]

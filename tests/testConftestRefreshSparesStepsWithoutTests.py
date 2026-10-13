@@ -32,6 +32,14 @@ class ShellConnection:
         )
         return processResult.returncode, processResult.stdout
 
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource, **dictKeywords,
+    ):
+        """Land the marker plugin's files, making their directory."""
+        os.makedirs(os.path.dirname(sPath), exist_ok=True)
+        with open(sPath, "wb") as fileOut:
+            fileOut.write(fileSource.read())
+
 
 @pytest.fixture(autouse=True)
 def fixtureClearRefreshCaches():

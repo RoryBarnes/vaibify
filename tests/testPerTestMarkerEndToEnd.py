@@ -63,6 +63,16 @@ class LocalProjectConnection(LocalSnapshotConnection):
             ["bash", "-c", sCommand], capture_output=True, text=True)
         return (processRun.returncode, processRun.stdout)
 
+    def fnWriteFileFromStream(
+        self, sContainerId, sPath, fileSource, bCreateParents=False,
+        **dictKeywords,
+    ):
+        """Land a file the poll's refresh writes (the marker plugin)."""
+        if bCreateParents:
+            os.makedirs(os.path.dirname(sPath), exist_ok=True)
+        with open(sPath, "wb") as fileOut:
+            fileOut.write(fileSource.read())
+
     def ftRunInContainerStreamed(self, sContainerId, sCommand, **dictKw):
         processRun = subprocess.run(
             ["bash", "-c", sCommand], capture_output=True, text=True)
