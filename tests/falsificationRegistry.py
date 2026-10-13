@@ -32333,4 +32333,16 @@ LIST_FALSIFICATIONS = [
         old='        dictStatus["sRecordKindInFlight"] = sRecordKind\n',
         new='',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testATimeoutCannotBeChangedBeforeItsValueArrives'
+        ),
+        # The select takes a change before its value or handler exists.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            "            dictSetting.sElementId + '\" disabled>' + sOptions +\n"
+        ),
+        new="            dictSetting.sElementId + '\">' + sOptions +\n",
+    ),
 ]

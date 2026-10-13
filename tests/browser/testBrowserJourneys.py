@@ -48,10 +48,15 @@ def _fsPageCredential(page):
     its capability and stashes the credential in ``sessionStorage``; reading
     it back is how a journey obtains the genuine credential the retired
     ``/api/session-token`` oracle used to hand out.
+
+    It WAITS for the credential: an idle network is not a redeemed
+    capability, and a slow runner read the storage before the page had
+    written it.
     """
-    return page.evaluate(
-        """() => window.sessionStorage.getItem('vaibifySessionCredential')"""
-    )
+    sScript = (
+        "() => window.sessionStorage.getItem('vaibifySessionCredential')")
+    page.wait_for_function(sScript, timeout=15000)
+    return page.evaluate(sScript)
 
 
 # ---------------------------------------------------------------------

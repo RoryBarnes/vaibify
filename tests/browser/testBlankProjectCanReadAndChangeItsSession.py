@@ -23,6 +23,7 @@ pytestmark = pytest.mark.browser
 S_BANNER_SANDBOX = "bannerLegibilitySandbox"
 S_SETTINGS_SANDBOX = "hostSettingsSandbox"
 S_RENEWAL_SANDBOX = "sessionRenewalSandbox"
+S_LOADING_SANDBOX = "settingsLoadingSandbox"
 
 
 def _fnSeedBlankSandbox(serverHub, sSandboxName):
@@ -161,8 +162,11 @@ def testTheSessionLifetimeIsReachableFromABlankProject(
         "#hostSettingsPanel #gsSessionCap", timeout=10000,
     )
     assert pageDashboard.is_visible("#hostSettingsPanel #gsSessionCap")
+    # Enabled means the server's value has arrived and the change
+    # handler is listening; a value alone proved nothing, because the
+    # select's first option is a value too.
     pageDashboard.wait_for_function(
-        "() => document.getElementById('gsSessionCap').value !== ''",
+        "() => !document.getElementById('gsSessionCap').disabled",
         timeout=10000,
     )
     listOptions = pageDashboard.evaluate(
@@ -213,4 +217,48 @@ def testTheGearCarriesARenewalAWarningCanBeDismissedPastOf(
     pageDashboard.wait_for_selector(".toast.success", timeout=10000)
     assert "Session renewed" in pageDashboard.locator(
         ".toast.success").first.inner_text()
+    assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
+
+
+@pytest.mark.falsification
+def testATimeoutCannotBeChangedBeforeItsValueArrives(
+    pageDashboard, serverHub,
+):
+    """The session cap takes no input until the server says what it is.
+
+    Before then the select shows its first option, which says nothing
+    about the setting, and a change made in that instant was dropped
+    (no handler was listening yet) and then overwritten by the late
+    answer. Found on a slow CI runner, where the test's own selection
+    landed in that instant.
+
+    Kills: a timeout select that is live before its value has arrived.
+    """
+    _fnSeedBlankSandbox(serverHub, S_LOADING_SANDBOX)
+    _fnEnterTheBlankProject(pageDashboard, serverHub, S_LOADING_SANDBOX)
+    listHeld = []
+    pageDashboard.route(
+        "**/api/preferences/session-cap",
+        lambda routeCap: (
+            listHeld.append(routeCap)
+            if routeCap.request.method == "GET" and not listHeld
+            else routeCap.continue_()))
+    pageDashboard.click("#btnHostSettings")
+    pageDashboard.wait_for_selector(
+        "#hostSettingsPanel #gsSessionCap", timeout=10000)
+    for _ in range(100):
+        if listHeld:
+            break
+        pageDashboard.wait_for_timeout(100)
+    assert listHeld, "the panel never asked for the session cap"
+    assert pageDashboard.is_disabled("#gsSessionCap"), (
+        "the session cap could be changed before the server had said "
+        "what it is")
+    listHeld[0].continue_()
+    pageDashboard.wait_for_function(
+        "() => !document.getElementById('gsSessionCap').disabled",
+        timeout=10000)
+    pageDashboard.select_option("#gsSessionCap", "86400")
+    pageDashboard.wait_for_selector(".toast.success", timeout=10000)
+    pageDashboard.unroute_all(behavior="ignoreErrors")
     assert pageDashboard.listPageErrors == [], pageDashboard.listPageErrors
