@@ -4245,6 +4245,15 @@ LIST_FALSIFICATIONS = [
     if False:''',
     ),
 
+    # Under qemu-user a process's own /proc/self/stat is synthesized
+    # with pgid and sid 0, so the wrapper must read its stat by pid.
+    Falsification(
+        nodeid='tests/testTerminalContainment.py::test_wrapper_reads_the_shells_stat_by_pid_not_through_self',
+        source='vaibify/gui/terminalContainment.py',
+        old='''        "sStatContent=$(cat /proc/$$/stat) && "''',
+        new='''        "sStatContent=$(cat /proc/self/stat) && "''',
+    ),
+
     # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
     # The terminal exec id must be durable BEFORE exec_start (the
     # create -> journal -> start split applied to terminals); the

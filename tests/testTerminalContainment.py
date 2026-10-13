@@ -137,10 +137,27 @@ def _fdictJournalOperations():
 
 def test_wrapper_reports_group_then_execs_the_shell():
     sCommand = fsBuildGroupReportingCommand("/bin/bash", "/tmp/.m1")
-    assert "/proc/self/stat" in sCommand
+    assert "/proc/$$/stat" in sCommand
     assert sCommand.endswith("exec /bin/bash")
     assert "> /tmp/.m1.partial" in sCommand
     assert "mv /tmp/.m1.partial /tmp/.m1" in sCommand
+
+
+@pytest.mark.falsification
+def test_wrapper_reads_the_shells_stat_by_pid_not_through_self():
+    """Kills: reading ``/proc/self/stat`` in the group-reporting wrapper.
+
+    qemu-user answers a process's reads of its OWN stat file with a
+    synthesized line whose pgid and sid are 0, so under emulation (an
+    amd64 image on an Apple Silicon daemon) the marker read ``8 0 0``
+    and every terminal was refused as not a session leader. Read by
+    pid, the kernel's line comes back: measured ``8 8 8`` on a real
+    emulated image. Native Linux cannot tell the two spellings apart,
+    which is why this asserts the spelling.
+    """
+    sCommand = fsBuildGroupReportingCommand("/bin/bash", "/tmp/.m1")
+    assert "cat /proc/$$/stat" in sCommand
+    assert "/proc/self/" not in sCommand
 
 
 def test_wrapper_refuses_shell_metacharacters():
