@@ -76,6 +76,13 @@ def _fsInstalledVersion(fakeDocker):
     )
 
 
+def _fbInstalledIsLoader(fakeDocker):
+    """Return True iff the fake's conftest is now the fixed loader."""
+    return fakeDocker.dictFiles.get(_S_CONFTEST_PATH) == (
+        conftestManager.S_CONFTEST_LOADER_SOURCE.encode("utf-8")
+    )
+
+
 def _fnWriteProbeSuite(pathTests, sStampedRepo):
     """Write a generated conftest and one passing test into pathTests."""
     pathTests.mkdir(parents=True)
@@ -170,9 +177,7 @@ def test_the_connect_sweep_cache_hides_a_conftest_replaced_afterwards():
         fakeDocker, _S_CONTAINER_ID,
         [_S_STEP_DIRECTORY], _S_PROJECT_REPO,
     )
-    assert _fsInstalledVersion(fakeDocker) == (
-        conftestManager.S_CONFTEST_VERSION
-    )
+    assert _fbInstalledIsLoader(fakeDocker)
     _fnInstallConftestAtVersion(fakeDocker, _S_STALE_VERSION)
     conftestManager.fnEnsureConftestsCurrent(
         fakeDocker, _S_CONTAINER_ID,
@@ -205,9 +210,7 @@ def test_the_run_refresh_replaces_a_conftest_the_cache_calls_current():
         [_S_STEP_DIRECTORY], _S_PROJECT_REPO,
     )
     assert listWarnings == []
-    assert _fsInstalledVersion(fakeDocker) == (
-        conftestManager.S_CONFTEST_VERSION
-    )
+    assert _fbInstalledIsLoader(fakeDocker)
 
 
 def test_a_refresh_that_cannot_write_warns_instead_of_staying_silent():
@@ -240,9 +243,7 @@ def test_the_run_preflight_refreshes_the_conftests():
         fakeDocker, _S_CONTAINER_ID, _fdictBuildWorkflow(),
     )
     assert listWarnings == []
-    assert _fsInstalledVersion(fakeDocker) == (
-        conftestManager.S_CONFTEST_VERSION
-    )
+    assert _fbInstalledIsLoader(fakeDocker)
 
 
 def test_the_run_preflight_reports_a_refresh_it_could_not_perform():

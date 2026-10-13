@@ -220,12 +220,13 @@ Include initial and final state values where available.
 
 ## Test Result Tracking
 
-Every `tests/` directory must contain the vaibify `conftest.py` marker
-plugin. This plugin writes a JSON result marker after each pytest run so
-the dashboard can detect test outcomes automatically. If creating a new
-`tests/` directory, copy the marker plugin:
-`cp /usr/share/vaibify/conftest_marker.py tests/conftest.py`
-Do NOT modify or delete conftest.py \u2014 vaibify owns this file.
+Every `tests/` directory holds vaibify's `conftest.py`, a small fixed
+loader for vaibify's marker plugin, which writes a JSON result marker
+after each pytest run so the dashboard can detect test outcomes
+automatically. Vaibify writes the loader itself when it creates a
+`tests/` directory, and keeps the plugin in `.vaibify/pytestPlugin/`,
+which git ignores. Do NOT create, modify or delete conftest.py or
+anything in `.vaibify/pytestPlugin/` \u2014 vaibify owns them.
 
 ## Test Infrastructure Contract (DO NOT VIOLATE)
 
@@ -257,7 +258,7 @@ git commit -m "Extend test infrastructure for [format/edge case]"
 
 
 _CLAUDE_MD_MARKER = "# Vaibify Test Generation Instructions"
-_CLAUDE_MD_VERSION = "v12"
+_CLAUDE_MD_VERSION = "v13"
 _CLAUDE_MD_VERSION_TAG = (
     f"<!-- vaibify-test-instructions-{_CLAUDE_MD_VERSION} -->")
 

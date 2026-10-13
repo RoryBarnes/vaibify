@@ -164,7 +164,10 @@ PATH_REPOSITORY = pathlib.Path(__file__).resolve().parent.parent
 # batched typed read, and the per-marker read it replaced is gone.
 # 276 -> 275 (2026-10-06): the download route moved to downloadRoutes and
 # its one unclassified stream row became two classified confined reads.
-I_UNCLASSIFIED_ROW_BUDGET = 272
+# 272 -> 271 (2026-10-12): the test generator's unclassified conftest
+# write and the new marker-plugin writes share one classified confined
+# write site, _fnWriteTextConfined.
+I_UNCLASSIFIED_ROW_BUDGET = 271
 
 
 # Mutation-capable rows that are NOT inside the two gateway modules: the

@@ -108,11 +108,20 @@ def test_a_digest_taken_within_a_second_of_the_write_is_used_not_cached(
 ):
     """The window protects the cache, never the answer.
 
+    The write's mtime is set a minute ahead, so the digest is taken
+    inside the window however long the snapshot program takes to
+    start. Left at the real write time, a loaded machine (a parallel
+    suite beside a browser lane) started the program more than a
+    second later, the digest was legitimately settled, and the test
+    failed while the rule was intact.
+
     Kills: dropping the racy condition from the cache update, which
     would remember a digest taken in the same tick as the last write.
     """
     sRoot = str(tmp_path)
-    _fnWrite(sRoot, b"fresh bytes")
+    sPath = _fnWrite(sRoot, b"fresh bytes")
+    iAheadNs = time.time_ns() + 60_000_000_000
+    os.utime(sPath, ns=(iAheadNs, iAheadNs))
     dictShaCache = {}
     dictEntry = _fdictPollOnce(
         LocalSnapshotConnection(), sRoot, dictShaCache)

@@ -4356,7 +4356,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1235 (2026-10-11): the refresh's version probe learned to report a
     # step with no tests/ directory, so a refresh stops creating one --
     # the deploy-and-refresh half, the same job.
-    "conftestManager.py": 1235,
+    # 1235 -> 1458 (2026-10-12): the committed conftest became a fixed
+    # LOADER (its text is a constant here, ~60 lines, pinned by hash)
+    # and the generated plugin moved into the self-ignoring
+    # .vaibify/pytestPlugin/, so a vaibify release never again rewrites
+    # a file a published project committed. The deploy-and-refresh half
+    # grew by the plugin's paths, its confined write, and the shared
+    # probe-migrate-refresh core. Still one job -- composing and
+    # deploying the test-marker plugin. The seam recorded above is now
+    # three texts (loader, plugin template, transcriptions) against the
+    # deploy logic; still no force to split it.
+    "conftestManager.py": 1458,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -6606,7 +6616,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # an empty directory with the hardening list, so a repository in the
     # hub's working directory cannot configure the call that carries the
     # token.
-    "syncDispatcher.py": 2140,
+    # 2140 -> 2141 (2026-10-12): the poll's discovery script counts the
+    # conftest loader as an installed conftest.
+    "syncDispatcher.py": 2141,
     # +9 (2026-07-14): the run loop resolves each step's wall-clock
     # budget and threads it onto the stepStarted event so the state
     # writer can stamp it beside the step start time. Cohesive with the
@@ -6678,7 +6690,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # unterminated last line is split off. Both are the runner's own
     # command assembly and output handling.
     # 1863 -> 1865 (2026-10-04): the run log names the epoch that dated the run.
-    "pipelineRunner.py": 1865,
+    # 1865 -> 1873 (2026-10-12): the pre-run refresh targets the root the
+    # steps RUN under, so the Level 3 shadow's copy gets the marker plugin.
+    "pipelineRunner.py": 1873,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -6733,7 +6747,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # one.
     # +4 (2026-10-08): re-exports templateManager.fbIsVaibifyTemplateHash
     # and SET_PRIOR_TEMPLATE_HASHES, required by the same invariant.
-    "testGenerator.py": 1145,
+    # +6 (2026-10-12): re-exports the conftest loader text and the
+    # marker plugin's path and write helpers, same invariant.
+    "testGenerator.py": 1151,
     # +20 (2026-07-18): flistQueryHostDirectory gains bIncludeFiles
     # (+ _fdictBuildHostFileEntry) so import pickers can list host
     # files, not just directories (concurrent project-context lane).
