@@ -386,7 +386,16 @@ def _fnStartTheContainer(client):
     dictPrompt = client.get(
         f"/api/registry/{S_PROJECT_NAME}/image-trust").json()
     assert dictPrompt["bBuiltByVaibify"] is False
-    assert dictPrompt["sObtainedFrom"] == "archive"
+    # The server authors the provenance as rows, each true of the image
+    # it names: "Obtained from" for the obtained base itself, "Base
+    # obtained from" when vaibify stacked agents on it.
+    dictRows = {
+        dictRow["sLabel"]: dictRow["sValue"]
+        for dictRow in dictPrompt["listProvenanceRows"]
+    }
+    assert "archive" in (
+        dictRows.get("Obtained from"), dictRows.get("Base obtained from"),
+    ), dictRows
     responseAnswer = client.post(
         f"/api/registry/{S_PROJECT_NAME}/image-trust", json={
             "sImageDigest": dictPrompt["sImageDigest"],
