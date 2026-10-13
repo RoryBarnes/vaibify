@@ -163,13 +163,20 @@ def testAHungMutatedTestIsKilledNamedAndLeavesNoOrphan(
             "    time.sleep(600)\n"
         ),
     })
+    # The limit leaves room for pytest to start under a loaded suite:
+    # at 5 s a busy machine killed the mutant before it wrote the pid,
+    # and the orphan check had nothing to check.
     fStart = time.monotonic()
     sStatus = moduleToolInTemporaryTree._fsRunMutatedTestAndJudge(
-        "testGuard.py::testGuard", 5.0,
+        "testGuard.py::testGuard", 15.0,
     )
     assert time.monotonic() - fStart < 60, "the limit did not bite"
-    assert sStatus.startswith("ERROR: timed out after 5s"), sStatus
+    assert sStatus.startswith("ERROR: timed out after 15s"), sStatus
     assert "testGuard.py::testGuard" in sStatus, "the entry must be named"
+    assert pathlib.Path(sPidFile).exists(), (
+        "the mutant was killed before it started its child, so the "
+        "orphan check would prove nothing"
+    )
     iGrandchild = int(pathlib.Path(sPidFile).read_text())
     _fnAssertProcessGone(iGrandchild)
 
