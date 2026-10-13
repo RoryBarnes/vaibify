@@ -14,6 +14,7 @@ import tempfile
 
 import pytest
 
+from tests.browser.conftest import fnWaitForTheHubToDrain
 from .testBrowserJourneys import _fnReleaseBrowserLaneOwnership
 from .testCouncilPlanningJourney import (  # noqa: F401 — fixture wiring
     _fdictClaimAndActivate,
@@ -95,6 +96,13 @@ def testTheMissingFilesPageFromTheServer(pageDashboard, serverHub,
     """B3 paging: a group expands to real pages, then 'Show more'."""
     _fnOpenTheGate(monkeypatch)
     _fdictClaimAndActivate(pageDashboard, serverHub)
+    # Activation fires a capabilities read the helper does not await,
+    # and every read records a newer observation of the project. A page
+    # asks for the observation the modal holds, so the modal must hold
+    # the one the server recorded last: settle, then read once more.
+    fnWaitForTheHubToDrain(serverHub)
+    pageDashboard.evaluate(
+        "async () => { await VaibifyAgentCouncil.fnRefreshCapabilities(); }")
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilScopeContinue", timeout=8000)
     pageDashboard.click(".council-missing-files > summary")
@@ -103,7 +111,11 @@ def testTheMissingFilesPageFromTheServer(pageDashboard, serverHub,
     pageDashboard.wait_for_selector(
         ".council-omission-group[data-directory='output'] li", timeout=8000)
     sSelector = ".council-omission-group[data-directory='output'] li"
-    assert pageDashboard.locator(sSelector).count() == 200
+    # The page lands in ONE insert, so a single row is not a partial
+    # page: it is the row a failed fetch writes. Name it, so a failure
+    # says why instead of only how many.
+    assert pageDashboard.locator(sSelector).count() == 200, (
+        pageDashboard.locator(sSelector).first.inner_text())
     pageDashboard.click(".council-omission-more")
     pageDashboard.wait_for_function(
         f"() => document.querySelectorAll(\"{sSelector}\").length === 400",

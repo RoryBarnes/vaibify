@@ -268,6 +268,7 @@ var VaibifyAgentCouncil = (function () {
                 : "Convene an Agent Council to plan a change.",
             bAttention: bAttention,
             bRunning: bRunning,
+            bBlocked: false,
         };
     }
 

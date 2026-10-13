@@ -209,6 +209,7 @@ def testNoWorkflowOpenAlsoExplainsItselfRatherThanDyingSilently(
         f"the click produced an empty toast: {sToast!r}")
 
 
+@pytest.mark.falsification
 def testABlankProjectCanActuallyConveneNotMerelyExplainItself(
     pageDashboard, serverHub, monkeypatch,
 ):
@@ -232,20 +233,30 @@ def testABlankProjectCanActuallyConveneNotMerelyExplainItself(
             "bEnabled": True, "sReason": "", "dictRecord": {}})
 
     _fdictActivateCouncilToolbar(pageDashboard, serverHub)
-    sState = pageDashboard.evaluate(
-        """() => {
-            const el = document.getElementById('btnAgentCouncil');
-            return JSON.stringify({
-                bDisabled: el.disabled,
-                bBlocked: el.classList.contains('council-blocked'),
-                sTitle: el.title});
+    # Two more renders, read after each: a render that left the blocked
+    # class to a toggle with no answer FLIPPED it, so one read passed or
+    # failed by how many renders a slow runner happened to fit in.
+    listStates = pageDashboard.evaluate(
+        """async () => {
+            const listRead = [];
+            for (let iRender = 0; iRender < 2; iRender++) {
+                await VaibifyAgentCouncil.fnRefreshCapabilities();
+                const el = document.getElementById('btnAgentCouncil');
+                listRead.push(JSON.stringify({
+                    bDisabled: el.disabled,
+                    bBlocked: el.classList.contains('council-blocked'),
+                    sTitle: el.title}));
+            }
+            return listRead;
         }"""
     )
 
-    assert '"bDisabled":false' in sState, sState
-    assert '"bBlocked":false' in sState, (
-        f"a Blank Project that can convene still looks blocked: {sState}")
-    assert "convene" in sState.lower()
+    for sState in listStates:
+        assert '"bDisabled":false' in sState, sState
+        assert '"bBlocked":false' in sState, (
+            f"a Blank Project that can convene still looks blocked: "
+            f"{sState}")
+        assert "convene" in sState.lower()
 
 
 def testCancellingAComposedCouncilAsksBeforeDiscardingIt(

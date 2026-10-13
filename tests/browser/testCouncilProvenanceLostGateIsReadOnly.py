@@ -22,6 +22,7 @@ from .testBrowserJourneys import _fnReleaseBrowserLaneOwnership
 from .testCouncilPlanningJourney import (  # noqa: F401 — fixture wiring
     _fdictClaimAndActivate,
     _fnScriptedProviderSeam,
+    fnWaitForTheCouncilListing,
 )
 from .testCouncilRetryOffer import _fdictBuildInterruptedRetryableCampaign
 
@@ -93,6 +94,7 @@ def testAProvenanceLostGateRendersReadOnlyAndUncounted(
     _fdictClaimAndActivate(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    fnWaitForTheCouncilListing(pageDashboard)
     # Continue still excludes it, and still says so with a count — that
     # is the half of this guarantee about what must NOT be offered.
     sContinueLabel = pageDashboard.inner_text("#btnCouncilOpenExisting")

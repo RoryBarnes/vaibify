@@ -23,6 +23,7 @@ from .testCouncilPlanningJourney import (  # noqa: F401 — fixture wiring
     _fdictClaimAndActivate,
     _fnIsolateCouncilStore,
     _fnScriptedProviderSeam,
+    fnWaitForTheCouncilListing,
 )
 
 pytestmark = pytest.mark.browser
@@ -55,6 +56,7 @@ def _fnOpenChooser(page, serverHub):
     _fdictClaimAndActivate(page, serverHub)
     page.click("#btnAgentCouncil")
     page.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    fnWaitForTheCouncilListing(page)
     page.evaluate("() => {" + _S_SEED_SUMMARIES +
                   "VaibifyAgentCouncil.fnRenderChooserForTest(); }")
 
@@ -91,6 +93,7 @@ def testPlanAChangeDoesNotWaitForTheCouncilListing(pageDashboard,
     _fdictClaimAndActivate(pageDashboard, serverHub)
     pageDashboard.click("#btnAgentCouncil")
     pageDashboard.wait_for_selector("#btnCouncilPlanChange", timeout=8000)
+    fnWaitForTheCouncilListing(pageDashboard)
     pageDashboard.evaluate(
         "() => VaibifyAgentCouncil.fnRenderChooserForTest(true)")
 

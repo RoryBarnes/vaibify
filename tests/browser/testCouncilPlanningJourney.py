@@ -213,6 +213,20 @@ def _fdictClaimAndActivate(page, serverHub):
     )
 
 
+def fnWaitForTheCouncilListing(page):
+    """Wait until the chooser has rendered the hub's council listing.
+
+    The chooser draws its first frame before the listing arrives, then
+    redraws from the answer. A test that reads a count or seeds its own
+    summaries before then is overwritten on a slow runner.
+    """
+    page.wait_for_function(
+        """() => {
+            const el = document.getElementById('btnCouncilOpenExisting');
+            return el !== null && !el.textContent.includes('(…)');
+        }""", timeout=15000)
+
+
 def _fnConveneThroughTheForm(page):
     page.click("#btnAgentCouncil")
     page.wait_for_selector("#btnCouncilPlanChange", timeout=5000)

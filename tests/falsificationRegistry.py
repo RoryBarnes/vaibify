@@ -32208,4 +32208,17 @@ LIST_FALSIFICATIONS = [
         old='"# vaibify-conftest-loader:" not in sConftestSource',
         new='True',
     ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCouncilBlockedButtonExplainsItself.py::'
+            'testABlankProjectCanActuallyConveneNotMerelyExplainItself'
+        ),
+        # With no answer, the toggle flips the class on every render.
+        source='vaibify/gui/static/scriptAgentCouncil.js',
+        old=(
+            '            bRunning: bRunning,\n'
+            '            bBlocked: false,\n'
+        ),
+        new='            bRunning: bRunning,\n',
+    ),
 ]
