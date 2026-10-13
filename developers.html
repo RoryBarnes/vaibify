@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev471 documentation</title>
+  <title>Contributor’s Guide &mdash; Vaibify 0.0.14.dev524 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38557d44"></script>
+      <script src="_static/documentation_options.js?v=3d083eb6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -228,9 +228,33 @@ progressively more reality, and each proves something the others do not.</p>
 </table>
 <p>Run the browser lane locally when you want the fast signal:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.[browser]'</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium
-python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser
+<span class="nv">VAIBIFY_REQUIRE_BROWSER</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser<span class="w"> </span>-n<span class="w"> </span><span class="m">6</span><span class="w"> </span>--dist<span class="w"> </span>loadfile
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">-n</span> <span class="pre">6</span> <span class="pre">--dist</span> <span class="pre">loadfile</span></code> splits the lane across six worker processes and
+keeps every test of one file on one worker, which the lane requires:
+each file starts its own hub (module-scoped fixtures) and its tests
+build on that hub’s state. On a 10-core Mac the full lane took about
+10 minutes this way, against about 45 minutes serially. Pick a worker
+count below your core count; each worker runs a hub and a browser.
+<code class="docutils literal notranslate"><span class="pre">VAIBIFY_REQUIRE_BROWSER=1</span></code> turns a missing Playwright into a failure
+instead of a quiet skip.</p>
+<p>The serial command is still the reference, and the one to fall back on
+when diagnosing:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">VAIBIFY_REQUIRE_BROWSER</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/browser<span class="w"> </span>-m<span class="w"> </span>browser
+</pre></div>
+</div>
+<p><strong>A failure that appears only in parallel is a bug in the lane, not
+noise.</strong> Rerun the failing file alone (<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pytest</span> <span class="pre">tests/browser/&lt;file&gt;.py</span> <span class="pre">-m</span> <span class="pre">browser</span></code>); if it passes there, look for what
+two workers share — a fixed path under <code class="docutils literal notranslate"><span class="pre">.browserLaneTmp/</span></code> or
+<code class="docutils literal notranslate"><span class="pre">test-results/</span></code>, a port learned and released before it is bound, a
+file under <code class="docutils literal notranslate"><span class="pre">~/.vaibify</span></code> the hub writes outside the lane’s redirects, or
+a wait that assumed an idle machine. Fix it at that cause. Do not skip
+or deselect the test, loosen its assertion, or drop to serial to make it
+pass; if a test genuinely cannot share the machine, give it an explicit,
+documented mechanism (an <code class="docutils literal notranslate"><span class="pre">xdist_group</span></code> or a file lock) and say why.
+<code class="docutils literal notranslate"><span class="pre">tests/testBrowserLaneParallelSafety.py</span></code> pins the two collisions found so
+far: held ports and per-module artifact directories.</p>
 <p><strong>What the browser lane does not cover.</strong> It drives a fail-closed fake
 Docker adapter, so it says nothing about container launch, file
 ownership on write, the real transport, terminal content, figure

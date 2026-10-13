@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev471 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.0.14.dev524 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38557d44"></script>
+      <script src="_static/documentation_options.js?v=3d083eb6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -484,13 +484,35 @@ including the output hashes each run was obtained against — live
 inside the repository at
 <code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/test_markers/&lt;workflowSlug&gt;/&lt;step&gt;.json</span></code>
 where the file name is derived from the step’s (repo-relative)
-<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker <em>writes</em> (by the conftest plugin deployed into
-each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory) and <em>reads</em> (by <code class="docutils literal notranslate"><span class="pre">fileStatusManager</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sDirectory</span></code>. Marker <em>writes</em> (by vaibify’s marker plugin, which each
+step’s <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> loads) and <em>reads</em> (by <code class="docutils literal notranslate"><span class="pre">fileStatusManager</span></code>,
 <code class="docutils literal notranslate"><span class="pre">gitRoutes</span></code>, <code class="docutils literal notranslate"><span class="pre">syncDispatcher</span></code>) both resolve the directory through
 <code class="docutils literal notranslate"><span class="pre">dictWorkflow[&quot;sProjectRepoPath&quot;]</span></code> — no module hardcodes
 <code class="docutils literal notranslate"><span class="pre">/workspace/.vaibify/test_markers</span></code>. Together with committing the
 markers alongside the project, this makes test-verification state
 survive a clone of the repository.</p>
+<p>The conftest a step commits is a fixed loader, and the plugin it loads
+is not committed at all. A published project commits its conftests, so
+a conftest that carried the whole plugin – stamped with the plugin’s
+generation – was rewritten by every vaibify release that moved the
+generation, and a reader’s clone showed modified tracked files the
+moment it connected. So <code class="docutils literal notranslate"><span class="pre">tests/conftest.py</span></code> is now a small loader
+(<code class="docutils literal notranslate"><span class="pre">conftestManager.S_CONFTEST_LOADER_SOURCE</span></code>, stamped
+<code class="docutils literal notranslate"><span class="pre">#</span> <span class="pre">vaibify-conftest-loader:</span> <span class="pre">1</span></code>) whose bytes never change and which
+the refresh treats as current forever. The plugin lives at
+<code class="docutils literal notranslate"><span class="pre">&lt;sProjectRepoPath&gt;/.vaibify/pytestPlugin/markerPlugin.py</span></code>, beside a
+<code class="docutils literal notranslate"><span class="pre">.gitignore</span></code> containing <code class="docutils literal notranslate"><span class="pre">*</span></code> that ignores the whole directory, itself
+included, so git never lists either file and no file the author
+committed is edited to hide them. The connect, poll and pre-run
+refreshes (and the test generator) write the plugin through the
+confined single-file write whenever its generation is stale, and
+migrate any older whole-plugin conftest to the loader exactly once –
+for a published project that is the author’s one final commit. The
+loader executes the plugin as though it were the conftest itself (its
+<code class="docutils literal notranslate"><span class="pre">__file__</span></code>), so markers are written exactly as before; it refuses a
+plugin that resolves outside the repository; and with no plugin
+present – a stranger running <code class="docutils literal notranslate"><span class="pre">pytest</span></code> without vaibify – it does
+nothing, and the tests pass or fail on their own merits.</p>
 <p>A marker records tests, not just sessions. <code class="docutils literal notranslate"><span class="pre">dictRuns</span></code> holds one entry
 per run that still stands behind a result (when it ran, its exit
 status, and the hashes of the step’s output and input files at that
@@ -1830,8 +1852,9 @@ all symbols from the five modules below.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">testParser.py</span></code> — Python syntax validation, import repair, code
 extraction. Zero intra-package imports.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">dataPreview.py</span></code> — file preview generation (numpy, HDF5, text).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">conftestManager.py</span></code> — pytest <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> plugin template and
-marker writing.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conftestManager.py</span></code> — the fixed <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> loader, the marker
+plugin template it loads from <code class="docutils literal notranslate"><span class="pre">.vaibify/pytestPlugin/</span></code>, and the
+refresh that deploys both.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">llmInvoker.py</span></code> — Claude API calls, prompt building, <code class="docutils literal notranslate"><span class="pre">CLAUDE.md</span></code>
 management.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">templateManager.py</span></code> — template hashing, test code builders,
@@ -2881,7 +2904,17 @@ verdict so the confirm dialog names the record BEFORE the copy. The
 reproduction record is the reproduction REPORT’s schema under
 <code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code>, read on the attestation GET only — never on
 the file-status poll, whose snapshot adapter cannot enumerate a
-directory. The Level 3 cell keeps reading the author’s attestation.</p>
+directory. The Level 3 cell keeps reading the author’s attestation.
+No git operation is ever made on a reproduction record (ruled
+2026-10-12): the dashboard lane stages and commits the author’s
+attestation, but a reader’s record and reproduced manifest stay
+untracked files in their clone, because a commit in somebody else’s
+repository on the reader’s behalf needs an identity the reader never
+gave, and the record is the reader’s to publish or not. For the same
+reason a reader’s verification writes only the dated copy under
+<code class="docutils literal notranslate"><span class="pre">.vaibify/reproducedManifests/</span></code>, which their record names, and never
+the root <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code>: in their clone that is the author’s
+committed file, and a diverged attempt used to overwrite it.</p>
 <p>The question is three-state, and the third state refuses
 (2026-09-12). A review found that a committer git could not read was
 answered “not foreign”: a missing executable or a transient exec

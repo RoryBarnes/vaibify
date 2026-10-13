@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reproducibility &mdash; Vaibify 0.0.14.dev471 documentation</title>
+  <title>Reproducibility &mdash; Vaibify 0.0.14.dev524 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38557d44"></script>
+      <script src="_static/documentation_options.js?v=3d083eb6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -347,6 +347,14 @@ is gone. The result is written to <code class="docutils literal notranslate"><sp
 the hashes the rerun observed are written to <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code>, laid
 out exactly like <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> so the two can be compared line by
 line. Commit both.</p>
+<p>If someone else committed the clone’s attestation, as when you check an
+author’s published project, the result is saved instead as a
+reproduction record in <code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code> in your clone, and the
+author’s attestation is left alone. The hashes your rerun observed go
+to a dated file in <code class="docutils literal notranslate"><span class="pre">.vaibify/reproducedManifests/</span></code>, which the record
+names; the author’s <code class="docutils literal notranslate"><span class="pre">REPRODUCED.sha256</span></code> is never written. Vaibify does
+not stage or commit any of these files. They are yours, so commit them
+only if you choose to.</p>
 <p>You do not have to take vaibify’s word for any of this. Every check is
 a standard tool that anyone can run by hand: <code class="docutils literal notranslate"><span class="pre">sha256sum</span></code> for the files,
 <code class="docutils literal notranslate"><span class="pre">pip</span></code> for the packages, and <code class="docutils literal notranslate"><span class="pre">docker</span></code> for the image. Vaibify just runs
@@ -389,6 +397,12 @@ was built. Published results are unaffected, because they are tied to
 the archived image. New results come from a different environment,
 though, so regenerate the envelope and verify again before mixing them
 with older ones.</p>
+<p>A container running the author’s pinned image never shows that banner.
+If its settings differ from the ones the pinned image was built from,
+leaving aside the coding agents vaibify added on top of it, it shows
+<strong>This environment’s settings differ from the author’s pinned image</strong>
+instead. The pinned image defines that environment, so do not rebuild
+to apply the settings: a rebuild replaces the author’s environment.</p>
 <section id="when-a-pinned-toolchain-version-disappears">
 <h3>When a pinned toolchain version disappears<a class="headerlink" href="#when-a-pinned-toolchain-version-disappears" title="Link to this heading"></a></h3>
 <p>If a build stops with “the pinned compiler toolchain is no longer

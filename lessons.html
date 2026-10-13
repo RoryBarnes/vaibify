@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev471 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.0.14.dev524 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=38557d44"></script>
+      <script src="_static/documentation_options.js?v=3d083eb6"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -756,6 +756,21 @@ fresh empty registry per test. The general form: anything vaibify
 starts needs a recorded owner, an exit that fires when that owner is
 provably gone, and a reaper whose own outcome is recorded, because a
 cleanup nobody watches is a cleanup that has already stopped.</p></li>
+<li><p><strong>A file vaibify generates and the author commits must never change
+shape again.</strong> Each step’s committed conftest carried the whole marker
+plugin, stamped with its generation, so every release that moved the
+generation rewrote it: a reader connected to a clone of a published
+project and immediately had modified tracked files, which the
+reproduction baseline then counted against the project. The refresh
+was doing its job – the content it replaced really was stale – and
+that is the trap: a committed file whose content follows vaibify’s
+version is a file vaibify will dirty. The fix splits what changes
+from what is committed: a fixed loader is committed once, and the
+plugin it loads lives in a directory that ignores itself
+(<code class="docutils literal notranslate"><span class="pre">tests/testConftestLoaderKeepsCommittedFilesStable.py</span></code>). The general
+form: before writing a file into a researcher’s repository, ask
+whether it will be committed, and if so, whether any later vaibify
+could want different bytes there.</p></li>
 </ul>
 </section>
 
