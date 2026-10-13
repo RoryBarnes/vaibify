@@ -1328,11 +1328,11 @@ var VaibifyProofTab = (function () {
         if (_bVerifyInFlight) return;
         _bVerifyInFlight = true;
         try {
-            await VaibifyApi.fdictPost(
+            VaibifyApp.fnAwaitVerificationAttempt(await VaibifyApi.fdictPost(
                 "/api/workflow/" + _sContainerId +
                 "/level3/verify",
                 {}
-            );
+            ));
             VaibifyApp.fnShowToast(
                 "Level 3 verification started. The workflow is " +
                 "re-running in a throwaway copy of this project; " +

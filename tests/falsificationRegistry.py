@@ -4294,6 +4294,110 @@ LIST_FALSIFICATIONS = [
         new='''        "sStatContent=$(cat /proc/self/stat) && "''',
     ),
 
+    # Every test entry point restores the git-ignored marker plugin
+    # before it runs, or a failure leaves the last pass as the newest
+    # marker and the poll shows the failed step as passed.
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testAFailureAfterTheIgnoredPluginWasRemovedIsNotShownAsAPass',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='''            _fnRefuseATestRunNoMarkerWouldRecord(
+                _flistRefreshConftestsBeforeRun(
+                    dictCtx["docker"], sContainerId, dictWorkflow,
+                ),
+            )''',
+        new='''            _fnRefuseATestRunNoMarkerWouldRecord([])''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testRunAllTestsRefreshesTheTestSupportFilesBeforeRunning',
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='''    listRefreshFailures = await asyncio.to_thread(
+        _flistRefreshConftestsBeforeRun,
+        connectionDocker, sContainerId, dictWorkflow,
+    )''',
+        new='''    listRefreshFailures = []''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testRunAllTestsRefusesWhenTheRefreshCannotLand',
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='''    if listRefreshFailures:
+        sRefusal = fsDescribeUnrecordableTestRun(listRefreshFailures)''',
+        new='''    if False:
+        sRefusal = fsDescribeUnrecordableTestRun(listRefreshFailures)''',
+    ),
+    Falsification(
+        nodeid='tests/testDirectTestRunsRestoreTheMarkerPlugin.py::testATestRunWhosePluginCannotBeRestoredIsRefusedNotRun',
+        source='vaibify/gui/routes/testRoutes.py',
+        old='''    if not listRefreshFailures:
+        return
+    from ..pipelineTestRunner import fsDescribeUnrecordableTestRun''',
+        new='''    if True:
+        return
+    from ..pipelineTestRunner import fsDescribeUnrecordableTestRun''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testARefusedTestRunIsNotAFailure.py::test_a_refused_save_and_run_shows_the_reason_and_records_nothing',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''                if (response.ok) return dictBody;''',
+        new='''                return dictBody;''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAPreRunWarningReachesTheScreen.py::test_a_pre_run_warning_is_written_to_the_run_output_and_announced',
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='''        } else if (dictEvent.sType === "preflightWarning") {''',
+        new='''        } else if (dictEvent.sType === "preflightWarningDropped") {''',
+    ),
+
+    # A Level 3 attempt that settles before any poll saw it running is
+    # still reported -- by its attempt id, never by whichever record
+    # happens to be current.
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_a_verification_that_settles_before_any_poll_is_still_reported',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (!bWasRunning && !_dictWorkflowState.sAwaitedVerificationAttempt) {''',
+        new='''        if (!bWasRunning) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_an_earlier_attempts_record_is_never_reported_as_this_one',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (bOnlyTheAwaitedAttempt && (!sAttemptId || sAttemptId !==
+                _dictWorkflowState.sAwaitedVerificationAttempt)) {''',
+        new='''        if (false) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testAQuickVerificationIsStillReported.py::test_an_older_result_read_never_repaints_over_a_newer_result',
+        source='vaibify/gui/static/scriptApplication.js',
+        old='''        if (iRead < _dictWorkflowState.iVerificationResultPainted) {''',
+        new='''        if (false) {''',
+    ),
+
+    # A viewer paints an asynchronous answer only while that display's
+    # claim on the viewport is still the latest one.
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_an_earlier_manifest_never_replaces_the_no_manifest_statement',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''            .then(function (sText) {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;''',
+        new='''            .then(function (sText) {''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_a_late_pdf_page_never_replaces_the_no_manifest_statement',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''                   late would otherwise start under the newer claim. */
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;''',
+        new='''                   late would otherwise start under the newer claim. */''',
+    ),
+    Falsification(
+        nodeid='tests/browser/testALateAnswerNeverRepaintsAViewer.py::test_a_late_missing_file_never_replaces_a_newer_file',
+        source='vaibify/gui/static/scriptFigureViewer.js',
+        old='''            .catch(function () {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;
+                elViewport.innerHTML =
+                    '<span class="placeholder output-missing-message">' +''',
+        new='''            .catch(function () {
+                elViewport.innerHTML =
+                    '<span class="placeholder output-missing-message">' +''',
+    ),
+
     # --- Slice 3d: terminal-exec containment (design v13 §6.1/§7/§10). ---
     # The terminal exec id must be durable BEFORE exec_start (the
     # create -> journal -> start split applied to terminals); the

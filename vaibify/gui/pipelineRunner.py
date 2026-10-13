@@ -114,6 +114,7 @@ from .pipelineTestRunner import (  # noqa: F401
     _fnWriteTestLog,
     _flistResolveTestCommands,
     fiRunAllTests,
+    fsDescribeUnrecordableTestRun,
 )
 
 from .interactiveSteps import (  # noqa: F401

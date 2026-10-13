@@ -76,6 +76,14 @@ const VaibifyApp = (function () {
                earlier one had: the rows still on screen are from that
                earlier poll and must say so. */
             bEnvelopeDetailStale: false,
+            /* The Level 3 attempt this tab launched and has not yet
+               reported, and the last one it reported (never twice). */
+            sAwaitedVerificationAttempt: "",
+            sReportedVerificationAttempt: "",
+            /* Result reads in order of issue, and the newest that has
+               painted: an older read answering later never repaints. */
+            iVerificationResultReads: 0,
+            iVerificationResultPainted: 0,
             dictRemoteChecks: {},
             /* The Project block renders a lock verdict that costs a
                container exec, and the poll is forbidden to make one.
@@ -4315,10 +4323,13 @@ const VaibifyApp = (function () {
             sPath: "/level3/verify",
             fnConfirm: fnConfirmLevel3Verification,
             sStartNotice: "Starting Level 3 verification…",
-            sToast: "Level 3 verification started. The workflow is " +
-                "re-run in a throwaway copy of this project; the " +
-                "result appears in the Attestation row when it " +
-                "completes.",
+            fdictAfterResponse: function (dictResult) {
+                fnAwaitVerificationAttempt(dictResult);
+                return {sMessage: "Level 3 verification started. The " +
+                    "workflow is re-run in a throwaway copy of this " +
+                    "project; the result appears in the Attestation " +
+                    "row when it completes.", sType: "info"};
+            },
         },
         "declare-determinism": {
             sPath: "/determinism/declare",
@@ -7180,31 +7191,44 @@ const VaibifyApp = (function () {
     function _fnReportVerificationWhenSettled(
         bWasRunning, dictEnvelopeDetail
     ) {
-        /* Only a run THIS tab watched end, as for the remote re-check
-           above: a reload finds the run already settled and reports
-           nothing again. */
-        if (!bWasRunning ||
-                dictEnvelopeDetail.bRebuildAttestationRunning !== false) {
+        /* Only a run THIS tab watched end, or one it launched, as for
+           the remote re-check above: a reload finds the run already
+           settled and reports nothing again. A launched run can settle
+           before any poll sees it running -- an early refusal takes
+           a second -- so its attempt id is awaited as well. */
+        if (dictEnvelopeDetail.bRebuildAttestationRunning !== false) {
+            return;
+        }
+        if (!bWasRunning && !_dictWorkflowState.sAwaitedVerificationAttempt) {
             return;
         }
         _fnReportSettledVerification(
             _dictSessionState.sContainerId,
-            _dictWorkflowState.sWorkflowPath);
+            _dictWorkflowState.sWorkflowPath, !bWasRunning);
     }
 
-    async function _fnReportSettledVerification(sContainerId, sWorkflowPath) {
+    function fnAwaitVerificationAttempt(dictAccepted) {
+        _dictWorkflowState.sAwaitedVerificationAttempt =
+            (dictAccepted || {}).sAttemptId || "";
+    }
+
+    async function _fnReportSettledVerification(
+        sContainerId, sWorkflowPath, bOnlyTheAwaitedAttempt
+    ) {
         /* A verification that ran for hours used to end in silence:
            its badge stopped pulsing and nothing said how it ended
            (researcher-reported). The SERVER's record of how it ended
            (dictLastSettled) is read once, here; a failure is told in
            the server's own reasons, and both manifests are opened
            whatever the outcome, so the result is on screen. */
+        var iRead = ++_dictWorkflowState.iVerificationResultReads;
         var dictPayload;
         try {
             dictPayload = await VaibifyApi.fdictGet(
                 "/api/workflow/" + encodeURIComponent(sContainerId) +
                 "/level3/attestation");
         } catch (error) {
+            _dictWorkflowState.sAwaitedVerificationAttempt = "";
             VaibifyDiagnosis.fnReportFailure(
                 "Level 3 verification ended, but its result could not " +
                 "be read: " + VaibifyDiagnosis.fsExplainError(error));
@@ -7214,7 +7238,31 @@ const VaibifyApp = (function () {
                 sWorkflowPath !== _dictWorkflowState.sWorkflowPath) {
             return;
         }
+        /* Ordered by what PAINTED, not by what was asked: a newer read
+           that found only a stale record painted nothing, and must not
+           silence an older read carrying a real result. */
+        if (iRead < _dictWorkflowState.iVerificationResultPainted) {
+            return;
+        }
         var dictSettled = (dictPayload || {}).dictLastSettled || {};
+        var sAttemptId = dictSettled.sAttemptId || "";
+        /* A poll sent before the click can answer after it, with the
+           PREVIOUS attempt's record still current: that is not this
+           run's result, so keep waiting for the awaited id. */
+        if (bOnlyTheAwaitedAttempt && (!sAttemptId || sAttemptId !==
+                _dictWorkflowState.sAwaitedVerificationAttempt)) {
+            return;
+        }
+        if (sAttemptId && sAttemptId ===
+                _dictWorkflowState.sReportedVerificationAttempt) {
+            return;
+        }
+        _dictWorkflowState.sReportedVerificationAttempt = sAttemptId;
+        _dictWorkflowState.iVerificationResultPainted = iRead;
+        if (sAttemptId ===
+                _dictWorkflowState.sAwaitedVerificationAttempt) {
+            _dictWorkflowState.sAwaitedVerificationAttempt = "";
+        }
         if (dictSettled.sPhase !== "passed") {
             VaibifyDiagnosis.fnReportFailure(
                 _fsDescribeUnreproducedVerification(dictSettled));
@@ -7724,6 +7772,7 @@ const VaibifyApp = (function () {
         fdictBuildClientVariables: fdictBuildClientVariables,
         fnShowConfirmModal: fnShowConfirmModal,
         fnConfirmLevel3Verification: fnConfirmLevel3Verification,
+        fnAwaitVerificationAttempt: fnAwaitVerificationAttempt,
         fnCompareManifests: fnCompareManifests,
         fnShowL3AttestationModal: fnShowL3AttestationModal,
         fdictDescribePromoteOutcome: fdictDescribePromoteOutcome,

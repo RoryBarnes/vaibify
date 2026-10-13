@@ -545,8 +545,15 @@ def testSaveAndRunTestRefusesPathsOutsideTheRepo(clientBrowser):
     assert responseHttp.status_code == 403
 
 
-def testSaveAndRunTestStillWritesALegitimatePath(clientBrowser):
+def testSaveAndRunTestStillWritesALegitimatePath(clientBrowser, monkeypatch):
     """The ordinary case keeps working after the guards were added."""
+    from vaibify.gui import pipelineRunner
+    # The double cannot perform the support-file refresh's batched
+    # write; the refresh is tested in its own module.
+    monkeypatch.setattr(
+        pipelineRunner, "_flistRefreshConftestsBeforeRun",
+        lambda *tArguments, **dictKeywords: [],
+    )
     _fnConnectAsOwner(clientBrowser)
     responseHttp = _fresponseSaveAndRunTest(
         clientBrowser, "stepA/tests/test_quantitative.py")

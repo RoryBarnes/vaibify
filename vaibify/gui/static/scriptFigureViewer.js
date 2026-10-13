@@ -206,6 +206,7 @@ const VaibifyFigureViewer = (function () {
         var dictOther = _fdictViewerByLetter(
             sPreferredLetter === "A" ? "B" : "A");
         if (!fbViewerHasOpenEditor(dictPreferred)) {
+            fiClaimViewport(fnGetViewport(dictPreferred));
             fnOnReady(dictPreferred);
             return;
         }
@@ -214,6 +215,7 @@ const VaibifyFigureViewer = (function () {
                 "Open editor in viewer " + dictPreferred.sId +
                 " protected — opened in viewer " + dictOther.sId,
                 "info");
+            fiClaimViewport(fnGetViewport(dictOther));
             fnOnReady(dictOther);
             return;
         }
@@ -221,6 +223,20 @@ const VaibifyFigureViewer = (function () {
             _fdictResolveTargetViewer(
                 sPreferredLetter, sIncomingPath, fnOnReady);
         });
+    }
+
+    function fiClaimViewport(elViewport) {
+        /* Every display claims its viewport, and an asynchronous answer
+           paints only while its claim is still the latest: a slow fetch
+           for an earlier display must never repaint over whatever
+           replaced it -- an earlier attempt's manifest landing on "this
+           attempt produced no reproduced manifest" is a false result. */
+        elViewport._iDisplayClaim = (elViewport._iDisplayClaim || 0) + 1;
+        return elViewport._iDisplayClaim;
+    }
+
+    function fbViewportStillClaimed(elViewport, iClaim) {
+        return elViewport._iDisplayClaim === iClaim;
     }
 
     function _fsDirtyFileLabel(dictViewer) {
@@ -454,6 +470,7 @@ const VaibifyFigureViewer = (function () {
             sUrl += "?sWorkdir=" + encodeURIComponent(sWorkdir);
         }
         var elViewport = fnGetViewport(dictViewer);
+        fiClaimViewport(elViewport);
         var iDot = sPath.lastIndexOf(".");
         var sExtension = iDot >= 0 ?
             sPath.substring(iDot).toLowerCase() : "";
@@ -477,13 +494,16 @@ const VaibifyFigureViewer = (function () {
         fnDestroyActivePdf(elViewport);
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML = "";
+        var iClaim = elViewport._iDisplayClaim;
         fetch(sUrl).then(function (response) {
             if (!response.ok) throw new Error("Not found");
             return response.blob();
         }).then(function (blob) {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             var sBlobUrl = URL.createObjectURL(blob);
             fnDisplayImageBlob(sBlobUrl, sUrl, elViewport);
         }).catch(function () {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             elViewport.innerHTML = S_OUTPUT_MISSING;
         });
     }
@@ -493,11 +513,14 @@ const VaibifyFigureViewer = (function () {
         elImg.src = sBlobUrl;
         elImg.alt = "Figure";
         var dScale = 1.0;
+        var iClaim = elViewport._iDisplayClaim;
         elImg.onload = function () {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             fnRenderImageWithZoom(elImg, sUrl, elViewport, dScale);
         };
         elImg.onerror = function () {
             URL.revokeObjectURL(sBlobUrl);
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             elViewport.innerHTML = S_OUTPUT_MISSING;
         };
         elViewport._activeImage = elImg;
@@ -547,7 +570,9 @@ const VaibifyFigureViewer = (function () {
     function fnRenderPdf(sUrl, elViewport) {
         elViewport.innerHTML =
             '<span class="placeholder">Loading PDF...</span>';
+        var iClaim = elViewport._iDisplayClaim;
         fetch(sUrl, { method: "HEAD" }).then(function (r) {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             if (!r.ok) {
                 elViewport.innerHTML =
                     '<span class="placeholder output-missing-message">' +
@@ -557,6 +582,7 @@ const VaibifyFigureViewer = (function () {
             }
             fnRenderPdfDocument(sUrl, elViewport);
         }).catch(function () {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             elViewport.innerHTML =
                 S_OUTPUT_MISSING;
         });
@@ -661,14 +687,24 @@ const VaibifyFigureViewer = (function () {
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc =
             "/static/vendor/pdf.worker.min.js";
+        var iClaim = elViewport._iDisplayClaim;
         pdfjsLib.getDocument({
             url: sUrl, isEvalSupported: false,
         }).promise.then(function (pdfDoc) {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) {
+                pdfDoc.destroy();
+                return;
+            }
             elViewport._activePdfDocument = pdfDoc;
             pdfDoc.getPage(1).then(function (page) {
+                /* Checked here, not only at render: the render takes
+                   its claim when it STARTS, so a page that arrives
+                   late would otherwise start under the newer claim. */
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;
                 fnRenderPdfPage(page, elViewport, 1.0);
             });
         }).catch(function () {
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             elViewport.innerHTML =
                 S_OUTPUT_MISSING;
         });
@@ -710,8 +746,10 @@ const VaibifyFigureViewer = (function () {
             viewport: viewport,
         });
         elViewport._activePdfRenderTask = renderTask;
+        var iClaim = elViewport._iDisplayClaim;
         renderTask.promise.then(function () {
             elViewport._activePdfRenderTask = null;
+            if (!fbViewportStillClaimed(elViewport, iClaim)) return;
             fnSwapPdfContent(page, elViewport, elCanvas, dDisplayScale);
         }).catch(function (reason) {
             if (reason && reason.name === "RenderCancelled") return;
@@ -739,18 +777,21 @@ const VaibifyFigureViewer = (function () {
         fnCancelPendingImage(elViewport);
         elViewport.innerHTML =
             '<span class="placeholder">Loading...</span>';
+        var iClaim = elViewport._iDisplayClaim;
         fetch(sUrl)
             .then(function (r) {
                 if (!r.ok) throw new Error("Not found");
                 return r.text();
             })
             .then(function (sText) {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;
                 fnRenderTextWithToolbar(sText, sUrl, elViewport, {
                     bReadOnly: fbIsRecordFile(_fsFilePathFromUrl(sUrl)),
                     dictLineMarks: dictLineMarks || null,
                 });
             })
             .catch(function () {
+                if (!fbViewportStillClaimed(elViewport, iClaim)) return;
                 elViewport.innerHTML =
                     '<span class="placeholder output-missing-message">' +
                     'Output not available. Run the step to generate.' +
@@ -1701,7 +1742,19 @@ const VaibifyFigureViewer = (function () {
                 sContent: sContent, sFilePath: sPath,
             }),
         })
-        .then(function (response) { return response.json(); })
+        .then(function (response) {
+            /* A refusal is not a test failure: rendering it as "Some
+               tests failed" recorded a verdict for tests that never
+               ran, and hid the server's reason. */
+            return response.json().then(function (dictBody) {
+                if (response.ok) return dictBody;
+                var dictRefusal = dictBody || {};
+                throw new Error(typeof dictRefusal.detail === "string" ?
+                    dictRefusal.detail :
+                    ((dictRefusal.detail || {}).sMessage ||
+                        "the hub answered " + response.status));
+            });
+        })
         .then(function (dictResult) {
             _fnRenderTestAcceptResult(
                 dictResult, iStep, elProgressViewport);

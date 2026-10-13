@@ -1338,6 +1338,12 @@ class TestRunTestsNeverReportsUnexecutedAsPassed:
             return_value=[],
         ), patch(
             "vaibify.gui.routes.testRoutes.fbMaybeAutoArchive",
+        ), patch(
+            # The double answers every exec with the step's result, so
+            # the support-file refresh would read as unwritable; it is
+            # covered by testDirectTestRunsRestoreTheMarkerPlugin.py.
+            "vaibify.gui.pipelineRunner._flistRefreshConftestsBeforeRun",
+            return_value=[],
         ):
             return await fnHandler("cid-1", 0, MagicMock())
 

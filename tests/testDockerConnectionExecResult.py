@@ -273,6 +273,11 @@ async def test_save_and_run_test_route_exposes_stderr_separately():
     ), patch(
         "vaibify.gui.routes.testRoutes._fnRecordTestResult",
     ), patch(
+        # Every exec answers exit 1 here, which the support-file refresh
+        # would read as unwritable; the refresh has its own tests.
+        "vaibify.gui.pipelineRunner._flistRefreshConftestsBeforeRun",
+        return_value=[],
+    ), patch(
         "vaibify.gui.routes.testRoutes._fnRegisterTestCommand",
     ), patch(
         "vaibify.gui.commitCarrier.fdictRunLockHeldMutation",

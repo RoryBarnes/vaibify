@@ -29,6 +29,7 @@ import asyncio
 import logging
 import posixpath
 import time
+import uuid
 
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
@@ -934,6 +935,11 @@ async def _fdictLaunchVerificationDurably(
     two reruns of the same repository would overwrite each other's
     outputs. The in-flight check stays because it names the specific
     thing running; this one is the authority.
+
+    ``sAttemptId`` rides the status into ``dictLastSettled`` and back
+    to the tab that clicked, which is how that tab reports a run that
+    settled before any poll saw it running -- without mistaking an
+    earlier attempt's record, still current on a stale poll, for it.
     """
     from .. import commitCarrier
     dictLaneTuple = fdictRequireLaneTupleForCommit(
@@ -944,6 +950,7 @@ async def _fdictLaunchVerificationDurably(
     )
     dictStatus = {
         "sPhase": "starting",
+        "sAttemptId": uuid.uuid4().hex,
         "fStartedAtMonotonic": time.monotonic(),
         "sManifestDigestAtAttestation": sManifestDigest,
         "sProjectRepoPath": fsRepoRootOf(filesRepo),
@@ -970,6 +977,7 @@ async def _fdictLaunchVerificationDurably(
     return {
         "bAccepted": True,
         "sPhase": "starting",
+        "sAttemptId": dictStatus["sAttemptId"],
         "sManifestDigestAtAttestation": sManifestDigest,
     }
 

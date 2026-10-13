@@ -5309,7 +5309,16 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # category, looked up from a closed table so only one of three
     # words ever reaches the shell, and the run-all lane signals each
     # group it runs.
-    "routes/testRoutes.py": 1043,
+    # 1043 -> 1071 (2026-10-12): every direct test route refreshes the
+    # git-ignored marker plugin uncached, inside the worker that runs
+    # the tests, and leads its output with a refresh that failed --
+    # without it a removed plugin left the last pass as the newest
+    # marker over a failing run. Same responsibility, one more step.
+    # -> 1078 the same day: a refresh that cannot land REFUSES the run
+    # (a 409 carried out of the worker, so nothing quarantines), since
+    # a run nobody can record would show its failure once and the
+    # previous pass on every poll after it.
+    "routes/testRoutes.py": 1078,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -6692,7 +6701,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1863 -> 1865 (2026-10-04): the run log names the epoch that dated the run.
     # 1865 -> 1873 (2026-10-12): the pre-run refresh targets the root the
     # steps RUN under, so the Level 3 shadow's copy gets the marker plugin.
-    "pipelineRunner.py": 1873,
+    # -> 1874 the same day: re-exports
+    # pipelineTestRunner.fsDescribeUnrecordableTestRun, required by the
+    # orchestrator re-export invariant.
+    "pipelineRunner.py": 1874,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7601,7 +7613,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # last verification ENDED (dictLastSettled), the one read the
     # dashboard makes after watching a run go quiet, and the toast
     # names THIS attempt's dated manifest for author and reader alike.
-    "routes/reproducibilityRoutes.py": 2376,
+    # -> 2384 the same day: the launch mints an attempt id and returns
+    # it, so the tab that clicked reports an attempt that settled
+    # before any poll saw it running, and never an earlier one's.
+    "routes/reproducibilityRoutes.py": 2384,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,
