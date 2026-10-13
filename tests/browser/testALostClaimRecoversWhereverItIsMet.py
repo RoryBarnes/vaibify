@@ -380,6 +380,50 @@ def test_four_pollers_refused_at_once_claim_exactly_once(
 
 
 @pytest.mark.falsification
+def test_a_request_sent_under_the_retired_lease_follows_the_recovery(
+    pageDashboard, serverHub,
+):
+    """A sibling of the recovering request is retried, not shown as refused.
+
+    Two requests meet the lapsed claim; the first one's recovery claims
+    the project again. The second was sent under the retired lease and
+    lands after that claim, where the hub does not find the claim
+    missing but held under a new lease, and refuses it without the
+    claim-required code. The page itself renewed that lease, so the
+    request is retried under it.
+
+    Kills: treating every refusal without the claim-required code as
+    final, which put "You do not hold this container's lease" in front
+    of a researcher whose own page held the claim.
+    """
+    fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
+    _fnStopTheDashboardPollers(pageDashboard, serverHub)
+    listRequests = _flistRecordRequests(pageDashboard)
+    listHeld = []
+    _fnHoldRequests(
+        pageDashboard, "**/api/pipeline/**", listHeld,
+        lambda request: "probe=retired" in request.url and not listHeld)
+    _fnTakeTheClaimAway(serverHub)
+    _fnProbeWithoutWaiting(
+        pageDashboard,
+        f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=retired",
+        "retired")
+    _fnAwaitHeld(pageDashboard, listHeld)
+    _fnProbeWithoutWaiting(
+        pageDashboard,
+        f"/api/pipeline/{S_HOST_PROJECT_READY}/state?probe=recovering",
+        "recovering")
+    assert _fdictAwaitProbe(pageDashboard, "recovering")["bOk"] is True
+    listHeld[0].continue_()
+    dictRetired = _fdictAwaitProbe(pageDashboard, "retired")
+    pageDashboard.unroute_all(behavior="ignoreErrors")
+    assert dictRetired["bOk"] is True, dictRetired
+    assert len(_flistClaimPosts(listRequests)) == 1, _flistClaimPosts(
+        listRequests)
+    assert "do not hold" not in _fsToastText(pageDashboard).lower()
+
+
+@pytest.mark.falsification
 def test_an_answer_that_arrives_after_a_switch_is_dropped_not_recovered(
     pageDashboard, serverHub,
 ):

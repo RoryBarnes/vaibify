@@ -11486,10 +11486,10 @@ LIST_FALSIFICATIONS = [
         # Environment hub again -- the three-click toast dance of the
         # 2026-08-20 live report restored, and every poller with it.
         old=(
-            '            await _fnRecoverOrThrow(error, dictIssued, sUrl);\n'
-            '            return await fnAttempt();\n'
+            '                await _fnRecoverOrThrow(error, dictIssued, sUrl);\n'
+            '                return await fnAttempt();\n'
         ),
-        new='            throw error;\n',
+        new='                throw error;\n',
     ),
     Falsification(
         nodeid=(
@@ -32256,5 +32256,20 @@ LIST_FALSIFICATIONS = [
         source='tools/reconfirmFalsification.py',
         old='                entry.nodeid not in setPreconditionSuspects),\n',
         new='                not setPreconditionSuspects),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testALostClaimRecoversWhereverItIsMet.py::'
+            'test_a_request_sent_under_the_retired_lease_follows_the_recovery'
+        ),
+        # A refusal of the page's own retired lease is shown as final.
+        source='vaibify/gui/static/scriptApiClient.js',
+        old=(
+            '            if (await _fbFollowOwnRenewalOrThrow(error, '
+            'dictIssued)) {\n'
+            '                return await fnAttempt();\n'
+            '            }\n'
+        ),
+        new='',
     ),
 ]
