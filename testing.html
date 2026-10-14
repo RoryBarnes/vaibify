@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing Model &mdash; Vaibify 0.0.14.dev524 documentation</title>
+  <title>Testing Model &mdash; Vaibify 0.0.14.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3d083eb6"></script>
+      <script src="_static/documentation_options.js?v=e2ea171e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -913,11 +913,11 @@ every pull request (and can be started by hand):</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tests-macos.yml</span></code></p></td>
 <td><p>the same unit suite</p></td>
-<td><p>macOS 26 × Python 3.9–3.14, and macOS 15 × Python 3.9 and 3.14</p></td>
+<td><p>macOS 15 and 26 × Python 3.9 and 3.14</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">falsification.yml</span></code></p></td>
 <td><p>the architectural invariants, the falsification tests, and the re-kill harness, with a summary job over the union</p></td>
-<td><p>Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, the exclusive class in its own Linux job</p></td>
+<td><p>Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, and the exclusive class split four ways in Linux jobs of its own</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">security.yml</span></code></p></td>
 <td><p>the security-boundary suite, in its own named lane so a green architectural badge can never hide a red security one</p></td>
@@ -1002,8 +1002,8 @@ report on a pull request.</p>
 <td><p>manual (<code class="docutils literal notranslate"><span class="pre">workflow_dispatch</span></code>)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tests-macos-nightly.yml</span></code></p></td>
-<td><p>the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 on Python 3.10–3.13) still run within a day</p></td>
-<td><p>macOS 15 and 26 × Python 3.9–3.14; nightly and manual</p></td>
+<td><p>the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 and 26 on Python 3.10–3.13) still run within a day of a merge</p></td>
+<td><p>macOS 15 and 26 × Python 3.9–3.14; nightly when <code class="docutils literal notranslate"><span class="pre">main</span></code> has changed since the last passing night, and manual</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">containerAcceptance.yml</span></code></p></td>
 <td><p>the modeled container commands and core container behavior, against a real container; and, as a separate job, the Prompt Record reading transcripts the real Codex and Gemini CLIs wrote (<code class="docutils literal notranslate"><span class="pre">agent_cli_live</span></code>)</p></td>

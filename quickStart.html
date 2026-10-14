@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.0.14.dev524 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.0.14.dev528 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=3d083eb6"></script>
+      <script src="_static/documentation_options.js?v=e2ea171e"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -126,11 +126,11 @@ list.</p>
 <p>Return to the terminal and run</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git
 <span class="nb">cd</span><span class="w"> </span>aigreenhouse
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt<span class="w">                   </span><span class="c1"># Initializes `vaibify`</span>
 </pre></div>
 </div>
-<p>This repository contains the data to generate two figures from the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> paper (Barnes 2026) a real, finished analysis: estimates for how long it will be before the waste heat from AI
-data centers becomes large enough fo Earth to begin losing water permanently to space. The Project consists of two
+<p>This repository contains the data to generate two figures from the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> paper (Barnes 2026): estimates for how long it will be before the waste heat from AI
+data centers becomes large enough for Earth to begin losing water permanently to space. The Project consists of two
 computational steps, a figure from each, three tiers of tests, and a
 declaration of which AI models helped write it. It is published at PROOF
 Level 3, which means its author committed a manifest of every artifact’s
@@ -138,50 +138,46 @@ SHA-256 hash along with the pinned environment that produced them.</p>
 </section>
 <section id="view-the-example-project-in-vaibify">
 <h2>3. View the example project in vaibify<a class="headerlink" href="#view-the-example-project-in-vaibify" title="Link to this heading"></a></h2>
-<p>Back in the hub, click the <strong>+</strong> next to <em>Environments</em> to add this project to the list of environments that <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can access. The wizard asks
-two things: where the project runs — choose <strong>This machine</strong> rather than
-<em>Container</em> — and whether the project already exists — choose <strong>Add
-Existing</strong> and point it at your clone. Now you will return to the Environment Hub and see a registered environment: <code class="docutils literal notranslate"><span class="pre">aigreenhouse</span></code>. Select it.</p>
+<p>Back in the hub, click the <strong>+</strong> symbol below the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> motto “Vibe boldly. Verify everything.” This launches a wizard to add a project to the list of environments that <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can access. The wizard prompts you to choose the type of environment, a <em>container</em>, <em>this machine</em>, or <em>a reproduction</em>. Choose <strong>This machine</strong> and then on the next screen choose <strong>Add
+Existing</strong>. Navigate the directory tree to your aigreenhouse clone (it will have a blue checkmark next to it) and select it. You will then return to the Environments Hub and see a registered environment: <code class="docutils literal notranslate"><span class="pre">aigreenhouse</span></code>. Select it and you will see a window that warns you that you are working in an uncontained environment. Press “I understand, continue”.</p>
 <p>You will now move to the <strong>Projects Hub</strong>. An environment is a <em>place</em> projects run, and it can hold more than one, so
 this hub offers you one or more Projects to work on. You will see two options: A <strong>Blank Project</strong> is an empty
 workspace (a “sandbox”) in which you can experiment in the environment. All environments include a “Blank Project”. The second option is <strong>AI Greenhouse</strong>, the project you are reproducing in this guide. Select it.</p>
-<p>You are now in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. The top right consists of two “viewing windows” that displays images and ASCII text files for you to examine and compare. The bottom left is one large reproduction of a terminal. You can create multiple tabs and multiple terminals. This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.</p>
-<p>Although the published result is at PROOF Level 3, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you’re at Level 0, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally and verified the results pass the unit tests, which check that the output files match the author’s results to some tolerance that they deemed accepatable for scientific reproduction, which is in general a lower bar than byte-reproducibility. Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
+<p>You are now in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. The top right consists of two “viewing windows” that displays images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.</p>
+<p>Although the published result is at PROOF Level 3, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally and verified the results pass the unit tests, which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction. Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
 </section>
 <section id="check-the-archive-before-touching-it">
 <h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
 <p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository and reports that all
 of them match.</p>
-<p>This result has to hold for a freshly cloned Level 3 project because nothing has changed. You have
+<p>This result must hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
 author committed. Note that this check is <em>not</em> a statement about the
-accuracy of the science; it is a check on the archive’s integrity, and nothing more.</p>
+accuracy of the science; it is a check on the archive’s integrity and nothing more.</p>
 </section>
 <section id="recreate-the-data">
 <h2>5. Recreate the data<a class="headerlink" href="#recreate-the-data" title="Link to this heading"></a></h2>
 <p>Next we will rerun the results locally and see if they pass the unit tests. First, we need to get rid of the old outputs and start clean.
 From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong>, and confirm. Every automatic step’s data files and figures are deleted and every
-verification mark resets to untested. You will be prompted about the AI Declaration because it is interactive. Select <strong>Skip</strong> for this step because that is the author’s statement and should not be deleted or modified until you make changes that you plan on publishing..</p>
+verification mark resets to untested.</p>
 <p>Now we’re ready to rerun the pipeline. From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>. Each step runs its data commands, then its plots, and
-pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You’ll also see the terminal output of the command in the top left viewing window.</p>
-<p>Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here about input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange. Click on the plot file and you will see the figure appear in the top right viewing window and resize if necessary. Compare it to Figure 2 in Barnes (2026). It looks the same, but yet is orange. That’s because you have not yet verified the results.</p>
-<p>So let’s run them: From the Run
-menu’s select <strong>Run All Unit Tests</strong> and you will see messages in the top right that state that they pass. Now look at the Step A01 block under verification and you can see that the Unit Tests marker has changed to “Pass”. If you expand the Unit Tests, you can see the three types of unit tests - Qualitative, Quantitative, and Integrity - all pass, too.</p>
-<p>Note, however, that the research field still says “Untested”. You have not declared the results to meet your own standard of scientific rigor. When you’re using <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> for your own research, you’ll want to be very careful about passing the researcher test because that means you are declaring the results to be accurate. While the process can of course be undone, waiting until you are sure is the best approach with <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>. But for this example, go ahead and click the researcher marker for Step A01 to “Passed”. After a couple seconds or so, the left-most orange marker in the banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1. Then do the same for Step A02. This time, when the dashboard detects the change, not only will the main orange marker flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of “AI Greenhouse” along the top bar. The number of checks next to the project name indicated the current PROOF Level of the project, Level 1 in this case.</p>
+pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You’ll also see the terminal output of the command in the left viewing window. You will be prompted about the AI Declaration because it is interactive. Select <strong>Skip</strong> for this step because that is the author’s statement and should not be deleted or modified until you make changes that you plan on publishing.</p>
+<p>Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here about input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange, meaning they have not reached PROOF Level 1. Click on the plot file and you will see the figure appear in the top right viewing window. Compare it to Figure 2 in Barnes (2026), resizing if necessary. It looks the same, but yet the file is colored orange, indicating something is wrong. The issue is that the results have not yet been verified.</p>
+<p>So let’s do that: From the Run
+menu, select <strong>Run All Unit Tests</strong> and you will see a log in the left viewing window that states that they pass. You will also see notifications in the top right that say they passed. Now look at the Step A01 block under verification and you can see that the Unit Tests marker has changed to “Passed”. If you expand the Unit Tests, you can see the three types of unit tests - Qualitative, Quantitative, and Integrity - all pass, too.</p>
+<p>Note, however, that the research field still says “Untested”. You have not declared that the results meet your own standard of scientific rigor. When you’re using <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> for your own research, you’ll want to be very careful about marking a step as “Passed” because that means you are declaring the results to be accurate. While the process can of course be undone, waiting until you are sure is the best approach because it affects later steps. But for this example, go ahead and click the researcher marker for Step A01 to “Passed”. After a few seconds, the left-most orange marker in the banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1 (the delay is due to the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s polling). Then do the same for Step A02. This time, when the dashboard detects the change, not only will the main orange marker flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of “AI Greenhouse” along the top bar. The number of checks next to the project name indicates the current PROOF Level of the project, Level 1 in this case.</p>
 <section id="doing-the-same-thing-with-an-agent">
 <h3>Doing the same thing with an agent<a class="headerlink" href="#doing-the-same-thing-with-an-agent" title="Link to this heading"></a></h3>
-<p>Using the dashboard to click through tasks is sooo 2025. Now we generally asks AI agents to perform tasks like “Run all steps and their unit tests.” <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> includes an <a class="reference internal" href="forAgents.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tighly monitored to only direct the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine.</p>
+<p>Using the dashboard to click through tasks is soooo 2025. Now we ask AI agents to perform tasks like “Run all steps and their unit tests.” <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> includes an <a class="reference internal" href="forAgents.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container, the commands are tightly monitored to only direct <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine. For this guide, you shouldn’t type anything to an agent, just know that you can use either the dashboard or a command-line agent to perform <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> tasks.</p>
 </section>
 </section>
 <section id="check-the-bytes-again">
 <h2>6. Check the bytes again<a class="headerlink" href="#check-the-bytes-again" title="Link to this heading"></a></h2>
 <p>So are the new files identical to the author’s manifest? From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong> again.</p>
-<p>They will fail. (Unless you are running on an Ubuntu v24.04 machine shortly after September 2026).</p>
-<p>Not all of it, but the numbers you just regenerated are not identical
-to the numbers the author published, and neither are the figures. Here’s why not:</p>
+<p>Three of 27 files will fail. Here’s why some are no longer byte-identical:</p>
 <ul class="simple">
 <li><p><strong>The fitted values differ in their last digits.</strong> A least-squares fit
-is a sequence of floating-point operations, and different environment’s
+is a sequence of floating-point operations, and different environments’
 build orders and vectorization schemes are different. The science is identical
 to twelve significant figures, which is close enough for most scientific reproducibility expectations. The bytes, however, are not identical.</p></li>
 <li><p><strong>The figures differ significantly.</strong> Matplotlib stamps its own version into
@@ -189,9 +185,9 @@ every PNG it writes, so a different matplotlib version guarantees
 different bytes before you even reach font rendering, which also
 differs by platform.</p></li>
 </ul>
-<p>Your run passed every <em>scientific test</em> the project defines, but did
-not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the standard rules that govern computing standards (the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires reruning the work in the exact same environment that the author used, which is the topic of the next section.</p>
-<p>This next section is technically optional, but discouraged. While the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> dashboard offers a complete view of your computer and the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> Projects, you computer is not secure and the results cannot be fully reproduced. We bring this up because the next step can take an hour or more for Mac and some Linux users who need to install Docker.</p>
+<p>Your run passed every <em>scientific test</em> (the unit tests) the project defines, but did
+not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the standard rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the exact same environment that the author used, which is the topic of the next section.</p>
+<p>This next section is technically optional, but discouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> does behave the same in both containerized and uncontainerized environments, the agents in the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> terminals have access to all of your computer and byte-reproducibility cannot be guaranteed without a static environment. But you can at this point just use it on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1!</p>
 </section>
 <section id="containerize-the-same-project">
 <h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
@@ -202,14 +198,15 @@ tab you are clicking from, <code class="docutils literal notranslate"><span clas
 another browser or on another machine refuses the conversion instead,
 because the conversion renames the key that the project’s lock,
 lease, and journal all hang from.</p></li>
-<li><p><strong>Install Docker or Colima if you don’t have them yet.</strong> This step requires Docker containers, which are run as <code class="docutils literal notranslate"><span class="pre">colima</span></code> on macOS. See the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a> to install. <em>Note that this process can require over 60 minutes.</em></p></li>
+<li><p><strong>Docker or Colima must be installed.</strong> This step requires Docker containers, which are run as <code class="docutils literal notranslate"><span class="pre">colima</span></code> on macOS. See the <a class="reference internal" href="install.html#docker-on-macos"><span class="std std-ref">install guide</span></a> to install. <em>Note that this process can require over 60 minutes.</em></p></li>
 <li><p><strong>A failed build is left unfinished.</strong> If the process fails for any reason,
-a registered, but unusuable, container remains partially built. Fix the cause
-and build again (try working with an AI agent or pressing <strong>Run a diagnosis</strong> in the build-failure window); you have not lost the host project’s work, because there was never a copy to lose.</p></li>
+a registered, but unusable, container remains partially built. Fix the cause
+and build again (try working with an AI agent or pressing <strong>Run a diagnosis</strong> in the build-failure window); you have not lost the host project’s work, because there was never a copy to lose. Look for an orange warning glyph above the list of Environments.</p></li>
 </ul>
-<p>Once you’re ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments to return to the original landing page. Open the kebab menu (<strong>⋮</strong>) on this environment’s tile, and choose <strong>Containerize Environment</strong>.</p>
+<p>Once you’re ready, then from the dashboard, press the Admin pulldown menu in the top right corner and select Environments to return to the original landing page. Open the kebab menu (<strong>⋮</strong>) on the aigreenhouse environment’s tile, and choose <strong>Containerize Environment</strong>. This launches a wizard that steps you through the process.</p>
 <p>The wizard first reads the project’s record of its environment,
-<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>, and finds the exact image the author
+<code class="docutils literal notranslate"><span class="pre">.vaibify/environment.json</span></code>, and prompts you with a default Project name. Click “Next”.</p>
+<p><code class="docutils literal notranslate"><span class="pre">vaibify</span></code> finds the exact image the author
 used. Because this project pins one, the second page already has
 <strong>Use the author’s pinned image</strong> selected, and the wizard skips the
 pages that would describe a new image (Python, repositories,
@@ -226,19 +223,19 @@ this walkthrough.</p>
 <tbody>
 <tr class="row-even"><td><p>1</p></td>
 <td><p><strong>Name</strong></p></td>
-<td><p>Set the <strong>Container name</strong> to <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code>. Typing “AI Greenhouse” in the Project name box fills it in for you; the project itself keeps the name it already has.</p></td>
+<td><p>Set the <strong>Project’s Name</strong> to “AI Greenhouse” and note that the container’s changes to include a dash. Container names cannot have spaces or uppercase letters. Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>2</p></td>
 <td><p><strong>Environment</strong></p></td>
-<td><p>Leave <strong>Use the author’s pinned image</strong> selected. The table beneath it names the image, the kind of processor it was built for (<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>), and the archived copy on Zenodo. If your computer has a different processor, such as any Apple-silicon Mac, tick <strong>Allow emulation</strong>: the image still runs, more slowly, and the result is recorded as emulated. Don’t choose <em>Build from the Dockerfile</em>. A new build is a different image and cannot reproduce the author’s bytes.</p></td>
+<td><p>Leave <strong>Use the author’s pinned image</strong> selected. The table beneath it names the image, the kind of processor it was built for (<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>), and the archived copy on Zenodo. If your computer has a different processor (“this daemon”), such as <code class="docutils literal notranslate"><span class="pre">arm64</span></code>, check the <strong>Allow emulation</strong> box. Below that, under “How the author’s image may run on this machine”, choose <em>Run it as its author built it</em>, so the environment starts exactly as the author’s did. Leave the credentials box unchecked.  Click “Next”.</p></td>
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p><strong>Features</strong></p></td>
-<td><p>LaTeX and the other base features are grayed out because the author’s image fixes them. The author’s image has no coding agent. Ticking one adds it on top of the image, which takes a few extra minutes and is not part of the reproduction. For this walkthrough you can leave them all unticked and choose <strong>Continue without one</strong> when asked. Under <em>Resource limits</em>, <strong>1</strong> CPU and <strong>1</strong> GB are enough.</p></td>
+<td><p>LaTeX and the other base features are grayed out because the author’s image fixes them. The author’s image has no coding agent. Select one of the available agentic models. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, <strong>-1</strong> CPU makes all but 1 core available to the container (you can still use them outside the container); and <strong>5</strong> GB. (You can adjust these later.) Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
-<td><p><strong>Copy into the container</strong></p></td>
-<td><p>Leave everything ticked. You will also see <strong>Start from the committed files</strong>, because the outputs you made in section 5 differ from the author’s. Leave it <strong>unticked</strong>: the container should start with your own computer’s outputs, so you can watch them get replaced.</p></td>
+<td><p><strong>Files to Copy</strong></p></td>
+<td><p>Leave everything ticked. You will also see <strong>Start from the committed files</strong>, because the outputs you made in section 5 differ from the author’s. Leave it <strong>unticked</strong>: the container should start with your own computer’s outputs, so you can watch them get replaced. Click “Next”.</p></td>
 </tr>
 <tr class="row-even"><td><p>5</p></td>
 <td><p><strong>Summary</strong></p></td>
@@ -246,17 +243,12 @@ this walkthrough.</p>
 </tr>
 </tbody>
 </table>
-<p>Nothing is built. <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> downloads the author’s image (it tries a
-registry first, then the author’s archive on Zenodo, then a copy
-already on your computer), checks it against the hash the project
-records, and copies your files into a new container. Most of the
-wait is the download.</p>
-<p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
-just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthemore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
-<p>When the conversion finishes, open the project again. It will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
+<p>When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
 whether a rebuild from that image reproduces the outputs.</p>
+<p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
+just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
 <section id="confirm-the-reproduction">
 <h3>Confirm the reproduction<a class="headerlink" href="#confirm-the-reproduction" title="Link to this heading"></a></h3>
 <p>The container now holds the files your own computer made in
@@ -281,14 +273,11 @@ Reproducibility</strong>. It makes a throwaway copy of the container from
 the author’s image, reruns every step there with no network, compares
 every file, and then deletes the copy. It leaves your files alone, and
 it only starts once your files match the manifest, which is why it
-comes after step 3. When it finishes, the heading of the left column
-reads <strong>Project (reproduced)</strong>. The result is saved in
-<code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code> and committed to your clone.</p>
+comes after step 3. While running, you will see an orange <strong>Reproducing</strong> badge pulse. When it finishes, a <strong>Reproduced</strong> badge will appear along the top of the window and both the original MANIFEST.sha256 file and the just-reproduced version will appear in the viewing windows. (In cases where reproduction is unsuccessful, the badge does not persist and you instead see an error message.) The result is saved in <code class="docutils literal notranslate"><span class="pre">.vaibify/reproductions/</span></code> in your aigreenhouse clone.</p>
 <p>Your copy stays at Level 1. Levels 2 and 3 record the <em>author’s</em>
 publication (their GitHub push, their Zenodo deposit, their AI
 declaration), so they are the author’s to earn. Bringing a project to
-Level 3 is the author’s job; confirming it is yours, and
-“(reproduced)” is that confirmation.</p>
+Level 3 is the author’s job; confirming it is yours, and the Reproduced badge is that confirmation.</p>
 <p>Anyone can run the same check starting from nothing but the project’s
 URL: in the hub, press <strong>+</strong> and choose <strong>Reproduce a published
 project</strong>. A reader without <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> can run <code class="docutils literal notranslate"><span class="pre">./reproduce.sh</span></code> inside
@@ -320,6 +309,7 @@ than no diagnostic.</p>
 apply the fix itself, that command is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code>. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.</p>
+<p><strong>Emulation can occassionally crash.</strong> About 0.2% of emulation runs fail. If you see a “killed by signal 11” message while running with an emulator, just run again and it will very likely work.</p>
 <section id="outputs-that-were-re-run-outside-the-container">
 <h3>Outputs that were re-run outside the container<a class="headerlink" href="#outputs-that-were-re-run-outside-the-container" title="Link to this heading"></a></h3>
 <p>If you run a step’s script yourself — in a terminal, in your editor, on
@@ -349,12 +339,6 @@ write code anywhere.</p></li>
 platform-specific troubleshooting, the configuration reference, and
 the command line that makes everything above scriptable.</p></li>
 </ul>
-<p>A note on what you will see in <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">status</span></code> afterwards: opening a
-project can refresh the small <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> that vaibify installs in
-each step’s <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory, because it records where the project
-repository sits on the machine reading it. That file is vaibify’s test
-harness, not part of the analysis, and it is not pinned in the
-manifest.</p>
 </section>
 </section>
 
