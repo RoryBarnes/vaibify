@@ -141,7 +141,7 @@ def fdictFetchSnapshotVersions(sDate, listPackageNames, sArchitecture):
     """
     setWanted = set(listPackageNames)
     dictVersions = {}
-    iIndicesRead = 0
+    listUnreadIndices = []
     for sSuite in T_SNAPSHOT_SUITES:
         for sComponent in T_SNAPSHOT_COMPONENTS:
             sUrl = (
@@ -150,9 +150,9 @@ def fdictFetchSnapshotVersions(sDate, listPackageNames, sArchitecture):
             )
             try:
                 baRaw = urllib.request.urlopen(sUrl, timeout=120).read()
-            except (urllib.error.URLError, OSError):
+            except (urllib.error.URLError, OSError) as errorFetch:
+                listUnreadIndices.append(f"{sUrl} ({errorFetch})")
                 continue
-            iIndicesRead += 1
             sText = gzip.decompress(baRaw).decode("utf-8", "replace")
             for sStanza in sText.split("\n\n"):
                 matchName = REGEX_PACKAGE_STANZA_NAME.search(sStanza)
@@ -163,12 +163,19 @@ def fdictFetchSnapshotVersions(sDate, listPackageNames, sArchitecture):
                     dictVersions.setdefault(
                         matchName.group(1), set(),
                     ).add(matchVersion.group(1))
-    if not iIndicesRead:
+    if listUnreadIndices:
+        # Every index is consulted, so one that could not be read leaves
+        # every pin it carries looking absent. A server error on one
+        # component once printed ten compiler pins as "do NOT resolve
+        # (snapshot has: [])" against an unchanged Dockerfile; an answer
+        # nobody obtained is reported as unobtained, never as a rotation.
         raise RuntimeError(
-            f"no {sArchitecture} package index could be read for snapshot "
-            f"{sDate}. Either the date has no snapshot or "
-            "snapshot.ubuntu.com is unreachable -- this is NOT evidence "
-            "that the pins are bad.",
+            f"{len(listUnreadIndices)} {sArchitecture} package "
+            f"{'index' if len(listUnreadIndices) == 1 else 'indices'} "
+            f"could not be read for snapshot {sDate}, so the pins were "
+            "NOT checked. Either the date has no snapshot or "
+            "snapshot.ubuntu.com is failing -- this is not evidence that "
+            "the pins are bad:\n  " + "\n  ".join(listUnreadIndices),
         )
     return dictVersions
 

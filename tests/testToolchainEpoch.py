@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from tools.checkToolchainEpoch import (
+    fdictFetchSnapshotVersions,
     fdictReadToolchainPins,
     fdictReadToolchainPinsByArchitecture,
     flistFindUnresolvablePins,
@@ -46,6 +47,8 @@ __all__ = [
     "testTheSnapshotUrlIsTheUbuntuSnapshotService",
     "testAResolvablePinSetReportsNothingUnresolvable",
     "testAnAbsentVersionIsReportedWithWhatTheArchiveHas",
+    "testAnUnreadableIndexIsReportedAsUncheckedNeverAsAnAbsentPin",
+    "testEveryReadableIndexYieldsItsVersions",
     "testAProposalListsEveryCandidateRatherThanChoosing",
     "testTheToolchainBlockActuallyUsesTheSnapshotDate",
     "testTheLiveArchiveComparisonIsNotOnThePullRequestPath",
@@ -172,6 +175,55 @@ def testAnAbsentVersionIsReportedWithWhatTheArchiveHas():
         {"libc6": {"2.39-0ubuntu8.9"}},
     )
     assert listFound == [("libc6", "2.39-0ubuntu8.8", ["2.39-0ubuntu8.9"])]
+
+
+def _ffnOpenIndicesWithOneFailing(sFailingFragment, sStanzaText):
+    """A stand-in for urlopen: every index answers the stanza text,
+    except the one whose URL carries the fragment, which fails the way
+    an archive server failing does."""
+    import gzip
+    import io
+    import urllib.error
+
+    def fileOpen(sUrl, **kwargs):
+        if sFailingFragment in sUrl:
+            raise urllib.error.HTTPError(
+                sUrl, 503, "Service Unavailable", {}, None)
+        return io.BytesIO(gzip.compress(sStanzaText.encode("utf-8")))
+    return fileOpen
+
+
+def testAnUnreadableIndexIsReportedAsUncheckedNeverAsAnAbsentPin(
+    monkeypatch,
+):
+    """One component's index failing to download left every pin it
+    carries looking absent, and the lane printed ten compiler pins as
+    rotated against an unchanged Dockerfile. An index nobody read is
+    an answer nobody obtained."""
+    import urllib.request
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        _ffnOpenIndicesWithOneFailing(
+            "/noble/main/", "Package: libc6\nVersion: 2.39-0ubuntu8.8\n"),
+    )
+    with pytest.raises(RuntimeError) as errorRaised:
+        fdictFetchSnapshotVersions("20260918", ["libc6"], "amd64")
+    sMessage = str(errorRaised.value)
+    assert "NOT checked" in sMessage
+    assert "/noble/main/binary-amd64/Packages.gz" in sMessage
+    assert "503" in sMessage
+
+
+def testEveryReadableIndexYieldsItsVersions(monkeypatch):
+    import urllib.request
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        _ffnOpenIndicesWithOneFailing(
+            "/no-such-index/", "Package: libc6\nVersion: 2.39-0ubuntu8.8\n"),
+    )
+    assert fdictFetchSnapshotVersions("20260918", ["libc6"], "amd64") == {
+        "libc6": {"2.39-0ubuntu8.8"},
+    }
 
 
 def testAProposalListsEveryCandidateRatherThanChoosing():
