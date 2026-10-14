@@ -724,10 +724,15 @@ def _fnRegisterRemoveProject(app, dictCtx):
         from vaibify.config.registryManager import (
             fnRemoveProject,
         )
+        from . import conversionLifecycle
         try:
             fnRemoveProject(sName)
         except KeyError as error:
             raise HTTPException(404, str(error))
+        # Removing the project is giving up on containerizing it: the
+        # pending record and its partial download go with the entry, the
+        # one automatic deletion an interrupted download has.
+        await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sName)
         return {"bSuccess": True}
 
 

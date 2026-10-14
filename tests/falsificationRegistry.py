@@ -33048,6 +33048,54 @@ LIST_FALSIFICATIONS = [
         old='        if (dictJob.sPhase === "waiting-download") {\n',
         new='        if (false) {\n',
     ),
+    # --- 2026-10-14: interrupted downloads are listed by what the lock
+    # proves, deleted only by the researcher, and resumable from the panel ---
+    Falsification(
+        nodeid=(
+            'tests/testRemnantScanner.py::'
+            'test_an_interrupted_download_is_listed_with_its_owner_and_a_held_one_is_not_actionable'
+        ),
+        source='vaibify/gui/remnantScanner.py',
+        # a held partial is offered for deletion like a free one
+        old=(
+            '    if sState == "live":\n'
+            '        return _fdictItem(\n'
+            '            S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_UNKNOWN, dictIdentity,\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        return _fdictItem(\n'
+            '            S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_UNKNOWN, dictIdentity,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRemnantRoutes.py::'
+            'test_a_free_partial_is_deleted_and_a_held_one_is_refused_by_name'
+        ),
+        source='vaibify/gui/routes/remnantRoutes.py',
+        # the held-lock refusal is swallowed and reported as a deletion
+        old=(
+            '    except downloadPartial.PartialHeldElsewhereError:\n'
+            '        raise HTTPException(409, (\n'
+        ),
+        new=(
+            '    except downloadPartial.PartialHeldElsewhereError:\n'
+            '        pass\n'
+            '    if False:\n'
+            '        raise HTTPException(409, (\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testRemnantsGlyphAndPanel.py::'
+            'testAnInterruptedDownloadOffersResumeIntoTheContainerizingWindow'
+        ),
+        source='vaibify/gui/static/scriptRemnants.js',
+        # the Resume button is never rendered
+        old='        if (!dictResume || !dictResume.sHostName) return "";\n',
+        new='        if (dictResume) return "";\n',
+    ),
     # --- 2026-10-14: Clean Outputs has one authority on the cleared
     # block -- the route's answer -- on both sides of the wire ---
     Falsification(

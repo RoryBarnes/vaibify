@@ -321,3 +321,112 @@ def test_the_pass_ends_with_the_scan():
     remnantReapers.fnRegisterPostPassScan(app, fnScan)
     asyncio.run(remnantReapers.fnRunReaperPass(app, {}))
     assert listCalls == ["scanned"]
+
+
+# ---------------------------------------------------------------------
+# Interrupted downloads: listed by what the lock proves, never deleted
+# on vaibify's own initiative (2026-10-14)
+# ---------------------------------------------------------------------
+
+
+def _fdictOpenAPartial(sTarballSha, dictPurpose, iBytes=0):
+    from vaibify.reproducibility import downloadPartial
+    dictAcquisition = downloadPartial.fdictOpenAcquisition({
+        "sTarballName": "image.tar.zst", "sTarballSha256": sTarballSha,
+        "iTarballBytes": 733_000_000,
+    }, dictPurpose)
+    if iBytes:
+        with open(dictAcquisition["sPartPath"], "wb") as filePart:
+            filePart.write(b"x" * iBytes)
+        downloadPartial.fnRecordSidecar(dictAcquisition, {
+            "iDurableBytes": iBytes, "iHighWaterBytes": iBytes,
+            "sLastByteIso": "2026-01-01T00:00:00+00:00",
+        })
+    return dictAcquisition
+
+
+@pytest.mark.falsification
+def test_an_interrupted_download_is_listed_with_its_owner_and_a_held_one_is_not_actionable():
+    """Kills: offering Delete on a partial whose lock a live download holds."""
+    from vaibify.config import pendingConversions
+    from vaibify.reproducibility import downloadPartial
+    dictFree = _fdictOpenAPartial(
+        "sha256:" + "a" * 64, {"sKind": "containerize", "sHostName": "demoHost"}, 507_000_000,
+    )
+    downloadPartial.fnReleaseAcquisition(dictFree)
+    pendingConversions.fnWriteConversionRecord({
+        "sSchemaVersion": pendingConversions.S_SCHEMA_VERSION,
+        "sHostName": "demoHost", "sNewName": "demo", "sState": "waiting",
+        "sAcquisitionId": dictFree["sAcquisitionId"],
+    })
+    dictHeld = _fdictOpenAPartial(
+        "sha256:" + "b" * 64, {"sKind": "reproduction"}, 1_000_000,
+    )
+    try:
+        listItems = remnantScanner.flistClassifyInterruptedDownloads()
+    finally:
+        downloadPartial.fnDiscardAcquisition(dictHeld)
+    dictById = {dictItem["dictIdentity"]["sAcquisitionId"]: dictItem for dictItem in listItems}
+    dictInterrupted = dictById[dictFree["sAcquisitionId"]]
+    assert dictInterrupted["sCategory"] == remnantScanner.S_CATEGORY_INTERRUPTED_DOWNLOAD
+    assert dictInterrupted["sTier"] == remnantScanner.S_TIER_PROVEN
+    assert dictInterrupted["sAction"] == remnantScanner.S_ACTION_DELETE_PARTIAL
+    assert dictInterrupted["bConfirmRequired"] is True
+    assert "containerizing 'demoHost'" in dictInterrupted["sEvidence"]
+    assert "507 MB of 733 MB" in dictInterrupted["sEvidence"]
+    assert "2026-01-01" in dictInterrupted["sEvidence"]
+    assert dictInterrupted["dictResume"] == {"sHostName": "demoHost"}
+    dictLive = dictById[dictHeld["sAcquisitionId"]]
+    assert dictLive["sAction"] == remnantScanner.S_ACTION_NONE
+    assert dictLive["sTier"] == remnantScanner.S_TIER_UNKNOWN
+    assert "another vaibify window or terminal" in dictLive["sEvidence"]
+    assert "dictResume" not in dictLive
+
+
+def test_this_hubs_own_live_download_is_not_a_leftover(monkeypatch):
+    from vaibify.config import pendingConversions
+    from vaibify.gui import conversionLifecycle
+    from vaibify.reproducibility import downloadPartial
+    dictHeld = _fdictOpenAPartial(
+        "sha256:" + "c" * 64, {"sKind": "containerize", "sHostName": "liveHost"}, 10,
+    )
+    pendingConversions.fnWriteConversionRecord({
+        "sSchemaVersion": pendingConversions.S_SCHEMA_VERSION,
+        "sHostName": "liveHost", "sNewName": "live", "sState": "obtaining",
+        "sAcquisitionId": dictHeld["sAcquisitionId"],
+    })
+    monkeypatch.setattr(
+        conversionLifecycle, "fbConversionIsLive", lambda sHostName: sHostName == "liveHost",
+    )
+    try:
+        listItems = remnantScanner.flistClassifyInterruptedDownloads()
+    finally:
+        downloadPartial.fnDiscardAcquisition(dictHeld)
+    assert [dictItem for dictItem in listItems
+            if dictItem["dictIdentity"]["sAcquisitionId"] == dictHeld["sAcquisitionId"]] == []
+
+
+def test_legacy_scratch_and_an_unreadable_sidecar_are_listed_for_explicit_delete_only():
+    from vaibify.reproducibility import downloadPartial
+    sRoot = downloadPartial.fsResolveDownloadRoot()
+    sLegacy = os.path.join(sRoot, "tmpOld123")
+    os.makedirs(sLegacy)
+    with open(os.path.join(sLegacy, "image.tar.zst"), "wb") as fileLegacy:
+        fileLegacy.write(b"y" * 2_000_000)
+    dictBroken = _fdictOpenAPartial("sha256:" + "d" * 64, {"sKind": "reproduction"}, 5)
+    downloadPartial.fnReleaseAcquisition(dictBroken)
+    os.remove(dictBroken["sSidecarPath"])
+    dictById = {
+        dictItem["dictIdentity"]["sAcquisitionId"]: dictItem
+        for dictItem in remnantScanner.flistClassifyInterruptedDownloads()
+    }
+    dictLegacy = dictById["tmpOld123"]
+    assert dictLegacy["sTier"] == remnantScanner.S_TIER_POSSIBLY
+    assert dictLegacy["sAction"] == remnantScanner.S_ACTION_DELETE_PARTIAL
+    assert dictLegacy["bConfirmRequired"] is True
+    assert "older vaibify" in dictLegacy["sEvidence"]
+    assert "Delete only if no vaibify is running" in dictLegacy["sRemedy"]
+    dictUnusable = dictById[dictBroken["sAcquisitionId"]]
+    assert dictUnusable["sTier"] == remnantScanner.S_TIER_PROVEN
+    assert "could not be resumed" in dictUnusable["sEvidence"]
+    assert dictUnusable["sAction"] == remnantScanner.S_ACTION_DELETE_PARTIAL

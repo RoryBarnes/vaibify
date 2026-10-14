@@ -4273,6 +4273,14 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 801 (2026-10-14): the interrupted-download classifier joins
+    # the remnant scanner. The module's stated purpose is one classifier
+    # per kind of leftover, each worded with its evidence and tier, and
+    # a partial download on the host is a fourth kind, not a second
+    # responsibility. The seam a split would cut -- "classifiers that
+    # read the daemon" from "classifiers that read the host" -- already
+    # runs through the keep-alive classifier, which is host-side too.
+    "remnantScanner.py": 801,
     # NEW at 852 (2026-09-21): a fourth background loop — the
     # ten-minute reclaim of disposable containers a crashed process
     # stranded. It belongs with the other three: this module's stated
@@ -7030,7 +7038,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # to conversionLifecycle, which owns the record, the worker and the
     # commit, and the way back lives in routes/conversionRoutes. What
     # stays here is the branch and the one helper that shapes its answer.
-    "registryRoutes.py": 2528,
+    # 2528 -> 2533 (2026-10-14): removing a project cancels its pending
+    # containerization, the one automatic deletion a partial has.
+    "registryRoutes.py": 2533,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

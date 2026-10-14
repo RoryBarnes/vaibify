@@ -39,12 +39,14 @@ from . import sleepPrevention, terminalContainment
 logger = logging.getLogger("vaibify")
 
 __all__ = [
+    "S_ACTION_DELETE_PARTIAL",
     "S_ACTION_KILL",
     "S_ACTION_NONE",
     "S_ACTION_REMOVE",
     "S_ACTION_STOP",
     "S_ACTION_TERMINATE",
     "S_CATEGORY_CONTAINER_WITHOUT_INIT",
+    "S_CATEGORY_INTERRUPTED_DOWNLOAD",
     "S_CATEGORY_QUARANTINED_RECORD",
     "S_CATEGORY_UNOWNED_SESSION_LANE",
     "S_CATEGORY_UNREGISTERED_KEEP_ALIVE",
@@ -62,6 +64,7 @@ __all__ = [
     "fdictSummarizeForPoll",
     "flistClassifyContainerProcesses",
     "flistClassifyHostKeepAlives",
+    "flistClassifyInterruptedDownloads",
     "flistClassifyStoppedContainers",
     "fnRunRemnantScan",
     "fsItemId",
@@ -77,8 +80,10 @@ S_ACTION_TERMINATE = "terminate"
 S_ACTION_KILL = "kill"
 S_ACTION_STOP = "stop"
 S_ACTION_REMOVE = "remove"
+S_ACTION_DELETE_PARTIAL = "deletePartial"
 S_ACTION_NONE = "none"
 
+S_CATEGORY_INTERRUPTED_DOWNLOAD = "interruptedDownload"
 S_CATEGORY_UNTRACKED_SESSION = "untrackedSession"
 S_CATEGORY_QUARANTINED_RECORD = "quarantinedRecord"
 S_CATEGORY_UNREGISTERED_KEEP_ALIVE = "unregisteredKeepAlive"
@@ -179,7 +184,18 @@ async def fnRunRemnantScan(app, dictCtx):
 
 
 async def _flistScanEverything(app, dictCtx):
-    """Run every classifier; the host ones in a thread, the Docker ones bounded."""
+    """Run every classifier; the host ones in a thread, the Docker ones bounded.
+
+    The interrupted downloads need no daemon, so they are listed whatever
+    the daemon's answer was.
+    """
+    listItems = await _flistScanDaemonAndHost(app, dictCtx)
+    listItems.extend(await asyncio.to_thread(flistClassifyInterruptedDownloads))
+    return listItems
+
+
+async def _flistScanDaemonAndHost(app, dictCtx):
+    """The classifiers that read the daemon, and the host ones beside them."""
     connectionDocker = dictCtx.get("docker") if dictCtx else None
     dictReadsInFlight = _fdictReadsInFlight(app.state)
     if not fbDockerReachable(connectionDocker):
@@ -649,6 +665,107 @@ def flistClassifyStoppedContainers(listAll, setRegisteredNames):
             sContainerName=dictContainer["sName"],
         ))
     return listItems
+
+
+# ---------------------------------------------------------------------
+# Interrupted downloads of the author's environment.
+# ---------------------------------------------------------------------
+
+def flistClassifyInterruptedDownloads():
+    """List every partial download on this host, by what its lock proves.
+
+    An interrupted partial is a resumable asset, never garbage: nothing
+    here deletes one, and the Delete offered is the researcher's. A
+    partial whose lock is HELD belongs to a live download -- this hub's,
+    another hub's, or a terminal's -- and is never actionable; this
+    hub's own live downloads are not leftovers at all and are skipped.
+    A directory with no readable sidecar cannot be resumed and is
+    offered for deletion only; a v0.1.0 ``tmp*`` directory carries no
+    lock, so its ownership cannot be proven and it is only ever listed.
+    """
+    from vaibify.config import pendingConversions
+    from vaibify.reproducibility import downloadPartial
+    from . import conversionLifecycle
+    dictOwnerByAcquisition = {
+        str(dictRecord.get("sAcquisitionId") or ""): dictRecord
+        for dictRecord in pendingConversions.flistReadConversionRecords()
+    }
+    listItems = []
+    for dictPartial in downloadPartial.flistDescribePartials():
+        dictOwner = dictOwnerByAcquisition.get(dictPartial["sAcquisitionId"])
+        if dictPartial["sState"] == "live" and dictOwner is not None and (
+            conversionLifecycle.fbConversionIsLive(dictOwner["sHostName"])
+        ):
+            continue
+        listItems.append(_fdictPartialItem(dictPartial, dictOwner))
+    return listItems
+
+
+def _fdictPartialItem(dictPartial, dictOwner):
+    """One partial as a leftover item, worded by its state."""
+    sState = dictPartial["sState"]
+    dictSidecar = dictPartial.get("dictSidecar") or {}
+    dictIdentity = {"sAcquisitionId": dictPartial["sAcquisitionId"]}
+    sBytes = _fsPartialBytes(dictPartial["iBytesOnDisk"], dictSidecar)
+    if sState == "live":
+        return _fdictItem(
+            S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_UNKNOWN, dictIdentity,
+            f"A download of an author's environment ({sBytes}) is held by "
+            "a live download in another vaibify window or terminal.",
+            "Nothing to do: it is still downloading, or being loaded.",
+            S_ACTION_NONE,
+        )
+    if sState == "legacy":
+        return _fdictItem(
+            S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_POSSIBLY, dictIdentity,
+            f"Scratch directory '{dictPartial['sAcquisitionId']}' ({sBytes}) "
+            "was left by an older vaibify; it cannot be resumed and may "
+            "still be in use by an older vaibify.",
+            "Delete only if no vaibify is running.", S_ACTION_DELETE_PARTIAL,
+            bConfirmRequired=True,
+        )
+    if sState == "unusable":
+        return _fdictItem(
+            S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_PROVEN, dictIdentity,
+            f"A download of an author's environment ({sBytes}) could not be "
+            "resumed: its record is missing or unreadable.",
+            "Delete it; the next download starts from zero.",
+            S_ACTION_DELETE_PARTIAL,
+        )
+    return _fdictInterruptedItem(dictPartial, dictSidecar, dictOwner, sBytes)
+
+
+def _fdictInterruptedItem(dictPartial, dictSidecar, dictOwner, sBytes):
+    """A resumable partial: what it was for, how far it got, when it stopped."""
+    dictPurpose = dictSidecar.get("dictPurpose") or {}
+    sHostName = str((dictOwner or {}).get("sHostName") or dictPurpose.get("sHostName") or "")
+    sFor = (
+        f"containerizing '{sHostName}'" if dictPurpose.get("sKind") == "containerize"
+        and sHostName else "reproducing a published project"
+        if dictPurpose.get("sKind") == "reproduction" else "an earlier download"
+    )
+    sStopped = str(dictSidecar.get("sLastByteIso") or dictSidecar.get("sStartedIso") or "")
+    sResume = (
+        "Resume it from the project's tile, or " if dictOwner is not None
+        else "Reproducing the same project again resumes it, or "
+    )
+    dictItem = _fdictItem(
+        S_CATEGORY_INTERRUPTED_DOWNLOAD, S_TIER_PROVEN,
+        {"sAcquisitionId": dictPartial["sAcquisitionId"]},
+        f"A download of the author's environment for {sFor} was interrupted "
+        f"at {sBytes}" + (f"; the last byte arrived {sStopped}" if sStopped else "") + ".",
+        sResume + "Delete to throw the bytes away.", S_ACTION_DELETE_PARTIAL,
+        bConfirmRequired=True,
+    )
+    if dictOwner is not None:
+        dictItem["dictResume"] = {"sHostName": sHostName}
+    return dictItem
+
+
+def _fsPartialBytes(iBytesOnDisk, dictSidecar):
+    iExpected = int(dictSidecar.get("iExpectedBytes") or 0)
+    sOnDisk = f"{iBytesOnDisk / 1e6:.0f} MB"
+    return f"{sOnDisk} of {iExpected / 1e6:.0f} MB" if iExpected else sOnDisk
 
 
 # ---------------------------------------------------------------------

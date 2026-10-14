@@ -174,6 +174,12 @@ def fnAnnotateListingWithPendingConversions(listContainers):
         }
 
 
+def fbConversionIsLive(sHostName):
+    """True while THIS hub is obtaining or committing the named host project."""
+    with _LOCK_LIVE:
+        return sHostName in _DICT_LIVE
+
+
 def fbHubHoldsLiveConversion():
     """True while any conversion is obtaining or committing in this hub.
 

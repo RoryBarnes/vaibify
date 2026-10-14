@@ -9,6 +9,7 @@ refused without a signal; and each action reaches exactly its named
 authority.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -228,3 +229,69 @@ def test_the_already_gone_guard_refuses_rather_than_returns(tHub, monkeypatch):
                         lambda *tArgs: listCalls.append(tArgs) or {"bProvenEmpty": True, "sDetail": ""})
     clientBrowser.post("/api/system/remnants/remove", json={"listItemIds": ["s1"]})
     assert listCalls == []
+
+
+# ---------------------------------------------------------------------
+# Interrupted downloads: the researcher's Delete, and only when free
+# ---------------------------------------------------------------------
+
+
+def _fdictPartialItem(sAcquisitionId):
+    return {"sItemId": "d1", "sCategory": remnantScanner.S_CATEGORY_INTERRUPTED_DOWNLOAD,
+            "sTier": "proven", "sContainerName": "", "sEvidence": "e", "sRemedy": "r",
+            "sAction": remnantScanner.S_ACTION_DELETE_PARTIAL, "bConfirmRequired": True,
+            "dictIdentity": {"sAcquisitionId": sAcquisitionId}}
+
+
+def _fdictOpenPartial(sSha):
+    from vaibify.reproducibility import downloadPartial
+    return downloadPartial.fdictOpenAcquisition({
+        "sTarballName": "image.tar", "sTarballSha256": sSha, "iTarballBytes": 10,
+    }, {"sKind": "reproduction"})
+
+
+@pytest.mark.falsification
+def test_a_free_partial_is_deleted_and_a_held_one_is_refused_by_name(tHub):
+    """Kills: deleting a partial whose lock a live download holds."""
+    from vaibify.reproducibility import downloadPartial
+    app, clientBrowser, _connection = tHub
+    app.state.eventReaperRescan = _RescanEventStub()
+    dictFree = _fdictOpenPartial("sha256:" + "e" * 64)
+    downloadPartial.fnReleaseAcquisition(dictFree)
+    dictHeld = _fdictOpenPartial("sha256:" + "f" * 64)
+    try:
+        dictScan = remnantScanner.fdictScanState(app.state)
+        dictItemHeld = _fdictPartialItem(dictHeld["sAcquisitionId"])
+        dictItemHeld["sItemId"] = "d2"
+        dictScan["listItems"] = [_fdictPartialItem(dictFree["sAcquisitionId"]), dictItemHeld]
+        listOutcomes = clientBrowser.post(
+            "/api/system/remnants/remove", json={"listItemIds": ["d1", "d2"]},
+        ).json()["listOutcomes"]
+    finally:
+        downloadPartial.fnDiscardAcquisition(dictHeld)
+    assert listOutcomes[0]["bRemoved"] is True
+    assert "was deleted" in listOutcomes[0]["sOutcome"]
+    assert not os.path.isdir(dictFree["sDirectory"])
+    assert listOutcomes[1]["bRemoved"] is False
+    assert "another vaibify window or terminal" in listOutcomes[1]["sOutcome"]
+
+
+def test_removing_a_project_gives_up_its_pending_containerization(tHub, monkeypatch, tmp_path):
+    from vaibify.config import registryManager
+    from vaibify.gui import conversionLifecycle
+    app, clientBrowser, _connection = tHub
+    sProject = os.path.join(str(tmp_path), "hostProject")
+    os.makedirs(sProject)
+    with open(os.path.join(sProject, "vaibify.yml"), "w", encoding="utf-8") as fileConfig:
+        fileConfig.write("projectName: removedHost\n")
+    registryManager.fnAddProject(sProject, sMode="host")
+    listCancelled = []
+    monkeypatch.setattr(
+        conversionLifecycle, "fnCancelConversion",
+        lambda sHostName: listCancelled.append(sHostName),
+    )
+    response = clientBrowser.delete("/api/registry/removedHost")
+    assert response.status_code == 200, response.text
+    assert listCancelled == ["removedHost"]
+    assert clientBrowser.delete("/api/registry/removedHost").status_code == 404
+    assert listCancelled == ["removedHost"], "a project that was not removed is not cancelled"

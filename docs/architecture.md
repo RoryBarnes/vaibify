@@ -3187,6 +3187,61 @@ crash injected after each write, lock-holding child processes and the
 name race; `tests/browser/testTheContainerizingWindowFollowsTheHub.py`
 drives the window.
 
+### A stopped download is a decision, and an interrupted one is an asset
+
+Three surfaces answer the same three questions about a download that
+is not progressing -- what happened, what is held, what next -- from
+the same records, and none of them deletes bytes on its own.
+
+**Check connection reports observations, never verdicts.**
+`reproducibility/connectionCheck.py` runs three probes over the
+download's own transport: connect to the recorded service and request
+the file from the current offset, read at most 1 MiB for at most 15 s,
+and reach the DOI resolver. The whole check is bounded by 45 s through
+the download's own Cancel path -- a timer requests cancel at the
+deadline, which shuts the live socket -- so a hanging connection or a
+stalled read returns at once rather than at the socket timeout. The cap
+is on the bytes READ, so a server that ignores `Range` cannot stream
+the file into a check. The report says what was reached and how fast,
+then what might explain it ("Slow starts like this often mean Zenodo is
+busy"), and never a diagnosis the probes cannot establish. The GET
+(`routes/connectionCheckRoutes.py`) names the download by its directory
+id and reads the sidecar vaibify wrote; no URL comes from the caller.
+
+**A reproduction whose download stops waits with its snapshot.** The
+reproduction job used to fail on any acquisition refusal and release
+its clone, so "try again" meant staging again. It now enters
+`waiting-download` (`gui/reproductionProgress.py`) for a retryable
+failure: the snapshot and its lock are kept, the job keeps counting
+against the staging limits and the staged retention, and the card shows
+the shared failure record. Retry is a claim of its own
+(`fbClaimJobForRetry`), distinct from the one-time run claim, so a
+retry can only re-enter the download and never start a second
+scientific rerun. Close is the researcher giving up and deletes the
+snapshot AND the partial; the sweep that expires a waiting job deletes
+only the snapshot. A final refusal (the deposit is gone) still fails the
+job, and an unexpected exception is reported by its type in a plain
+sentence, never with its text, because that text can carry a host path.
+
+**Interrupted downloads are listed under the leftovers glyph, by what
+the lock proves.** `remnantScanner.flistClassifyInterruptedDownloads`
+reads every directory under the image archive: a free lock with a
+readable sidecar is an interrupted download (proven, with what it was
+for, how far it got, when the last byte arrived, a Resume into the
+owning project's window, and a confirmed Delete); a held lock is a live
+download in another hub or terminal (unknown, no action); a directory
+with no readable sidecar cannot be resumed (Delete only); and a v0.1.0
+`tmp*` scratch directory carries no lock, so it is listed with the
+warning that an older vaibify may still be using it and deleted only on
+an explicit Delete. This hub's own live downloads are not leftovers.
+The removal route re-checks the lock by taking it, so a download that
+started since the scan is reported as live rather than deleted out from
+under it. The one automatic deletion is a project removed from the
+registry, which cancels its pending containerization and the partial
+with it. `tests/testConnectionCheck.py`, `tests/testReproductionRoutes.py`,
+`tests/testRemnantScanner.py` and `tests/testRemnantRoutes.py` are the
+kill-confirmed guards.
+
 ### One image, N papers
 
 One image record per image digest; one science record per publication;
