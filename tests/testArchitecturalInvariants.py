@@ -7040,7 +7040,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # stays here is the branch and the one helper that shapes its answer.
     # 2528 -> 2533 (2026-10-14): removing a project cancels its pending
     # containerization, the one automatic deletion a partial has.
-    "registryRoutes.py": 2533,
+    # 2533 -> 2544 (2026-10-14): that cancel runs BEFORE the entry goes,
+    # so a commit in flight refuses the removal by name (409) instead of
+    # losing its journal under a vanished entry.
+    "registryRoutes.py": 2544,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one

@@ -776,3 +776,199 @@ def test_cancelling_the_chain_stops_it_and_leaves_nothing_on_disk(
     assert listOutcome[0].dictFailure["sFailureClass"] == resumableDownload.S_FAILURE_CANCELLED
     assert downloadPartial.flistDescribePartials() == []
     assert not storeLocal.listLoaded
+
+
+# ---------------------------------------------------------------------
+# Findings of the 2026-10-14 adversarial review of the transport.
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.falsification
+def test_a_drop_before_the_headers_keeps_the_partial_and_retries(serverFault):
+    """A resumed request the server drops before answering is a transient
+    failure like a drop mid-body, never an escape that deletes the bytes.
+
+    Kills: re-raising header-stage socket errors raw, so the retry loop
+    never sees them and the acquisition is thrown away.
+    """
+    serverFault.dictBehavior["listDropAfterBytes"] = [64 * I_KIBIBYTE]
+    serverFault.dictBehavior["listDropBeforeHeaders"] = [False, True]
+    dictAcquisition = fdictOpenFor()
+    assert fsDownload(serverFault, dictAcquisition) == S_SHA
+    assert flistRangeStarts(serverFault) == [0, 64 * I_KIBIBYTE, 64 * I_KIBIBYTE]
+    assert dictAcquisition["dictSidecar"]["iHighWaterBytes"] == len(BA_FILE)
+
+
+class _LockThatPausesCallersOnTheirFirstRelease:
+    """The pool lock, with a barrier on each caller's FIRST release.
+
+    Under the fix a caller's first release follows its reservation, so
+    the barrier changes nothing; under a check-then-claim pool the first
+    release follows the CHECK, and every caller paused there proceeds to
+    claim a slot the others have also been promised.
+    """
+
+    def __init__(self, setCallerIdents, barrierCallers):
+        self._lockReal = threading.Lock()
+        self._setCallerIdents = setCallerIdents
+        self._barrierCallers = barrierCallers
+        self._setReleasedOnce = set()
+        self._lockBookkeeping = threading.Lock()
+
+    def __enter__(self):
+        self._lockReal.acquire()
+        return self
+
+    def __exit__(self, *aExceptionParts):
+        self._lockReal.release()
+        iIdent = threading.get_ident()
+        with self._lockBookkeeping:
+            bFirst = iIdent in self._setCallerIdents and iIdent not in self._setReleasedOnce
+            self._setReleasedOnce.add(iIdent)
+        if bFirst:
+            self._barrierCallers.wait(timeout=5.0)
+        return False
+
+
+@pytest.mark.falsification
+def test_eight_simultaneous_callers_never_hold_more_than_four_workers(
+    serverFault, eventHangingConnect, monkeypatch,
+):
+    """Kills: checking the pool in one critical section and claiming the
+    slot in a later one, through which every concurrent caller passes.
+    """
+    I_CALLERS = 8
+    setCallerIdents = set()
+    barrierCallers = threading.Barrier(I_CALLERS)
+    monkeypatch.setattr(
+        rangedHttpTransport, "_lockPool",
+        _LockThatPausesCallersOnTheirFirstRelease(setCallerIdents, barrierCallers),
+    )
+    listControls = [resumableDownload.fdictCreateDownloadControl() for _ in range(I_CALLERS)]
+    listErrors = []
+
+    def fnConnect(dictControl):
+        setCallerIdents.add(threading.get_ident())
+        try:
+            rangedHttpTransport._fsocketConnect(serverFault.sFileUrl, dictControl, 1.0).close()
+        except Exception as error:  # noqa: BLE001 -- the test reads it
+            listErrors.append(error)
+
+    listThreads = [
+        threading.Thread(target=fnConnect, args=(dictControl,), daemon=True)
+        for dictControl in listControls
+    ]
+    for threadCaller in listThreads:
+        threadCaller.start()
+    fnWaitUntil(lambda: sum(
+        "still hanging" in dictControl["dictLive"].get("sAttemptState", "")
+        for dictControl in listControls
+    ) == I_CALLERS - 4, 5.0)
+    iMostSeen = rangedHttpTransport.fiCountLiveConnectWorkers()
+    for dictControl in listControls:
+        resumableDownload.fnRequestCancel(dictControl)
+    for threadCaller in listThreads:
+        threadCaller.join(timeout=5.0)
+    assert iMostSeen == 4
+    assert all(isinstance(error, rangedHttpTransport.CancelledDuringTransport) for error in listErrors)
+
+
+def _ftListenOnLoopbackForOneConnection():
+    """A plain listener that records the first bytes one client sends."""
+    import socket as moduleSocket
+    socketListener = moduleSocket.socket()
+    socketListener.bind(("127.0.0.1", 0))
+    socketListener.listen(1)
+    listReceived = []
+
+    def fnAccept():
+        try:
+            socketClient, _tPeer = socketListener.accept()
+        except OSError:
+            return
+        socketClient.settimeout(2.0)
+        try:
+            listReceived.append(socketClient.recv(4096))
+        except OSError:
+            listReceived.append(b"")
+        socketClient.close()
+
+    threadListener = threading.Thread(target=fnAccept, daemon=True)
+    threadListener.start()
+    return socketListener, listReceived, threadListener
+
+
+@pytest.mark.falsification
+def test_an_https_proxy_hears_tls_before_any_credential(monkeypatch):
+    """Kills: a plain socket to an https:// proxy, which carried the
+    CONNECT and its Proxy-Authorization in clear before any handshake.
+    """
+    socketListener, listReceived, threadListener = _ftListenOnLoopbackForOneConnection()
+    iPort = socketListener.getsockname()[1]
+    monkeypatch.setattr(
+        rangedHttpTransport, "getproxies",
+        lambda: {"http": f"https://reviewer:not-a-real-secret@127.0.0.1:{iPort}"},
+    )
+    monkeypatch.setattr(rangedHttpTransport, "proxy_bypass", lambda sHost: False)
+    try:
+        with pytest.raises(Exception):
+            rangedHttpTransport._fsocketOpenToUrl("http://127.0.0.1:1/file")
+        threadListener.join(timeout=5.0)
+    finally:
+        socketListener.close()
+    assert listReceived, "the proxy was never contacted"
+    baFirst = listReceived[0]
+    assert baFirst[:1] == b"\x16", "the first byte is not a TLS handshake record"
+    assert b"CONNECT" not in baFirst
+    assert b"Proxy-Authorization" not in baFirst
+    assert b"not-a-real-secret" not in baFirst
+
+
+def test_a_proxy_scheme_the_tunnel_cannot_honour_is_refused_before_connecting(monkeypatch):
+    socketListener, listReceived, threadListener = _ftListenOnLoopbackForOneConnection()
+    iPort = socketListener.getsockname()[1]
+    monkeypatch.setattr(
+        rangedHttpTransport, "getproxies",
+        lambda: {"http": f"socks5://reviewer:not-a-real-secret@127.0.0.1:{iPort}"},
+    )
+    monkeypatch.setattr(rangedHttpTransport, "proxy_bypass", lambda sHost: False)
+    try:
+        with pytest.raises(rangedHttpTransport.TransportFailure) as errorRaised:
+            rangedHttpTransport._fsocketOpenToUrl("http://127.0.0.1:1/file")
+    finally:
+        socketListener.close()
+        threadListener.join(timeout=2.0)
+    assert not errorRaised.value.bTransient
+    assert "socks5" in str(errorRaised.value)
+    assert "not-a-real-secret" not in str(errorRaised.value)
+    assert listReceived == [], "the proxy was contacted despite the refusal"
+
+
+@pytest.mark.falsification
+@pytest.mark.parametrize("sName", [
+    downloadPartial.S_LOCK_NAME, downloadPartial.S_SIDECAR_NAME,
+    "archive" + downloadPartial.S_PART_SUFFIX, ".hidden", "nested/file.tar",
+])
+def test_a_record_naming_an_acquisition_file_is_refused_before_any_directory_exists(sName):
+    """A deposit record that names its archive after the lock or the
+    sidecar would replace that file under the owner once verified.
+
+    Kills: storing the download under the record's name unchecked.
+    """
+    sRoot = downloadPartial.fsResolveDownloadRoot()
+    listBefore = sorted(os.listdir(sRoot))
+    with pytest.raises(ValueError) as errorRaised:
+        fdictOpenFor(fdictRecord(sTarballName=sName))
+    assert "cannot be stored" in str(errorRaised.value) or "not a name" in str(errorRaised.value)
+    assert sorted(os.listdir(sRoot)) == listBefore
+
+
+def test_an_absent_or_ordinary_archive_name_is_stored_as_before():
+    assert downloadPartial.fsValidatedTarballName("") == "image.tar"
+    assert downloadPartial.fsValidatedTarballName(None) == "image.tar"
+    assert downloadPartial.fsValidatedTarballName("environment-image.tar.zst") == (
+        "environment-image.tar.zst"
+    )
+    dictAcquisition = fdictOpenFor()
+    assert os.path.basename(downloadPartial.fsCompletePath(dictAcquisition)) == S_TARBALL_NAME
+    downloadPartial.fnDiscardAcquisition(dictAcquisition)

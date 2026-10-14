@@ -131,10 +131,10 @@ def fdictOpenRangedGet(
             httpresponseAnswer = _fhttpresponseSendAndReadHeaders(
                 socketLive, sUrl, iStartByte,
             )
-        except BaseException:
+        except BaseException as error:
             _fnCloseSocketQuietly(socketLive)
             _fnRegisterLiveSocket(dictControl, None)
-            raise
+            _fnRaiseAsTransportOutcome(error, dictControl, sUrl)
         if not _fbAnswersWithRedirect(httpresponseAnswer):
             return {
                 "httpresponseAnswer": httpresponseAnswer,
@@ -154,6 +154,25 @@ def fdictOpenRangedGet(
         f"more than {_I_MAX_REDIRECT_HOPS} redirects", S_FAILURE_REFUSED_HOST,
         False,
     )
+
+
+def _fnRaiseAsTransportOutcome(error, dictControl, sUrl):
+    """Re-raise a failure between the connect and the headers as the transport's own.
+
+    The request and the status line cross the socket exactly as the
+    body does, so a drop there is the same transient failure as a drop
+    mid-body. Left raw, a ``RemoteDisconnected`` on the second request
+    of a resume escaped the retry loop and the partial was deleted.
+    """
+    if dictControl["eventCancel"].is_set():
+        raise CancelledDuringTransport() from error
+    if isinstance(error, (OSError, http.client.HTTPException)):
+        raise TransportFailure(
+            f"the connection to {urlsplit(sUrl).hostname} dropped before it "
+            f"answered ({type(error).__name__}: {error})",
+            S_FAILURE_COULD_NOT_CONNECT, True,
+        ) from error
+    raise error
 
 
 def _fnRefuseOutsideAllowlist(sUrl, listAllowedOrigins):
@@ -262,21 +281,22 @@ def _fsocketConnect(sUrl, dictControl, fReadTimeoutSeconds):
     An attempt abandoned here leaves its worker to finish on its own
     (bounded by the pool), and the worker closes the socket it made.
     """
-    global _iLiveConnectWorkers
     # "errorConnect" is set by the worker alone, so a read of it is a
     # ``get``: present only when an attempt actually failed.
     dictAttempt = {
         "iToken": _fiNextToken(dictControl), "socketConnected": None,
         "bAbandoned": False, "bDone": False,
     }
-    _fnWaitForAFreeWorker(dictControl)
+    _fnReserveAConnectWorker(dictControl)
     threadConnect = threading.Thread(
         target=_fnConnectInWorker, args=(dictAttempt, sUrl, dictControl),
         name="vaibify-connect", daemon=True,
     )
-    with _lockPool:
-        _iLiveConnectWorkers += 1
-    threadConnect.start()
+    try:
+        threadConnect.start()
+    except BaseException:
+        _fnReleaseAConnectWorker()
+        raise
     fDeadline = time.monotonic() + _F_CONNECT_TIMEOUT_SECONDS + 1.0
     while not dictAttempt["bDone"]:
         if dictControl["eventCancel"].wait(_F_WORKER_POLL_SECONDS):
@@ -314,14 +334,21 @@ def _fnAbandonAttempt(dictAttempt):
     _fnCloseSocketQuietly(socketLate)
 
 
-def _fnWaitForAFreeWorker(dictControl):
-    """Wait, cancellably, until fewer than the maximum workers are alive."""
+def _fnReserveAConnectWorker(dictControl):
+    """Take one worker slot, waiting cancellably while every slot is alive.
+
+    The check and the claim share ONE hold of the pool lock. Checked in
+    one critical section and counted in a later one, eight callers
+    released through the gap together all passed, and the pool held
+    eight workers against its declared four.
+    """
+    global _iLiveConnectWorkers
     bSaid = False
     while True:
         with _lockPool:
-            bFree = _iLiveConnectWorkers < _I_MAX_CONNECT_WORKERS
-        if bFree:
-            return
+            if _iLiveConnectWorkers < _I_MAX_CONNECT_WORKERS:
+                _iLiveConnectWorkers += 1
+                return
         if not bSaid:
             bSaid = True
             with dictControl["lockLive"]:
@@ -331,6 +358,13 @@ def _fnWaitForAFreeWorker(dictControl):
                 )
         if dictControl["eventCancel"].wait(_F_WORKER_POLL_SECONDS):
             raise CancelledDuringTransport()
+
+
+def _fnReleaseAConnectWorker():
+    """Give back a slot reserved for a worker that never started."""
+    global _iLiveConnectWorkers
+    with _lockPool:
+        _iLiveConnectWorkers -= 1
 
 
 def _fnConnectInWorker(dictAttempt, sUrl, dictControl):
@@ -344,6 +378,8 @@ def _fnConnectInWorker(dictAttempt, sUrl, dictControl):
     socketConnected, errorConnect = None, None
     try:
         socketConnected = _fsocketOpenToUrl(sUrl)
+    except TransportFailure as error:
+        errorConnect = error
     except ssl.SSLError as error:
         errorConnect = TransportFailure(
             f"the secure connection could not be established: {error}",
@@ -400,15 +436,27 @@ def _fdictProxyFor(sScheme, sHost):
     if not sProxyUrl:
         return None
     tProxy = urlsplit(sProxyUrl if "://" in sProxyUrl else "http://" + sProxyUrl)
+    sProxyScheme = tProxy.scheme.lower()
+    if sProxyScheme not in ("http", "https"):
+        # Refused BEFORE anything is sent: a scheme the tunnel cannot
+        # honour must not fall back to a plain socket carrying the
+        # proxy's credentials.
+        raise TransportFailure(
+            f"the configured {sScheme} proxy uses '{sProxyScheme}://', which "
+            "vaibify cannot tunnel through; use an http:// or https:// proxy",
+            S_FAILURE_COULD_NOT_CONNECT, False,
+        )
     sAuthorization = ""
     if tProxy.username:
         sCredentials = f"{tProxy.username}:{tProxy.password or ''}"
         sAuthorization = "Basic " + base64.b64encode(
             sCredentials.encode("utf-8"),
         ).decode("ascii")
+    bProxyTls = sProxyScheme == "https"
     return {
-        "sHost": tProxy.hostname or "", "iPort": tProxy.port or 3128,
-        "sAuthorization": sAuthorization,
+        "sHost": tProxy.hostname or "",
+        "iPort": tProxy.port or (443 if bProxyTls else 3128),
+        "bTls": bProxyTls, "sAuthorization": sAuthorization,
     }
 
 
@@ -419,6 +467,13 @@ def _fsocketOpenTunnel(dictProxy, sHost, iPort):
         timeout=_F_CONNECT_TIMEOUT_SECONDS,
     )
     try:
+        if dictProxy["bTls"]:
+            # An https:// proxy is spoken to inside TLS from the first
+            # byte: the CONNECT and the Proxy-Authorization it carries
+            # ride in the handshake's channel, never in clear.
+            socketProxy = ssl.create_default_context(
+                cafile=certifi.where(),
+            ).wrap_socket(socketProxy, server_hostname=dictProxy["sHost"])
         sRequest = f"CONNECT {sHost}:{iPort} HTTP/1.1\r\nHost: {sHost}:{iPort}\r\n"
         if dictProxy["sAuthorization"]:
             sRequest += f"Proxy-Authorization: {dictProxy['sAuthorization']}\r\n"

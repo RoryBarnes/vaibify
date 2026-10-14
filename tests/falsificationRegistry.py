@@ -32559,10 +32559,15 @@ LIST_FALSIFICATIONS = [
         # a worker is started without waiting for a free slot
         source='vaibify/reproducibility/rangedHttpTransport.py',
         old=(
-            '    _fnWaitForAFreeWorker(dictControl)\n'
+            '    _fnReserveAConnectWorker(dictControl)\n'
             '    threadConnect = threading.Thread(\n'
         ),
-        new='    threadConnect = threading.Thread(\n',
+        new=(
+            '    global _iLiveConnectWorkers\n'
+            '    with _lockPool:\n'
+            '        _iLiveConnectWorkers += 1\n'
+            '    threadConnect = threading.Thread(\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testResumableDownload.py::test_the_sidecar_is_written_durably',
@@ -33179,6 +33184,100 @@ LIST_FALSIFICATIONS = [
             'function (sAxis) {\n'
             '                dictStep.dictVerification[sAxis] = "untested";\n'
             '            });\n'
+        ),
+    ),
+    # --- 2026-10-14 adversarial review of the download transport and lifecycle ---
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_drop_before_the_headers_keeps_the_partial_and_retries'
+        ),
+        # header-stage socket errors escape raw instead of becoming transient
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old=(
+            '            _fnRegisterLiveSocket(dictControl, None)\n'
+            '            _fnRaiseAsTransportOutcome(error, dictControl, sUrl)\n'
+        ),
+        new=(
+            '            _fnRegisterLiveSocket(dictControl, None)\n'
+            '            raise\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_eight_simultaneous_callers_never_hold_more_than_four_workers'
+        ),
+        # the pool is checked in one critical section and claimed in another
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old=(
+            '        with _lockPool:\n'
+            '            if _iLiveConnectWorkers < _I_MAX_CONNECT_WORKERS:\n'
+            '                _iLiveConnectWorkers += 1\n'
+            '                return\n'
+        ),
+        new=(
+            '        with _lockPool:\n'
+            '            bFree = _iLiveConnectWorkers < _I_MAX_CONNECT_WORKERS\n'
+            '        if bFree:\n'
+            '            with _lockPool:\n'
+            '                _iLiveConnectWorkers += 1\n'
+            '            return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_an_https_proxy_hears_tls_before_any_credential'
+        ),
+        # an https:// proxy is spoken to over a plain socket
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old='        if dictProxy["bTls"]:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_record_naming_an_acquisition_file_is_refused_before_any_directory_exists'
+        ),
+        # the lock and the sidecar are not reserved names
+        source='vaibify/reproducibility/downloadPartial.py',
+        old='        or sBasename in (S_LOCK_NAME, S_SIDECAR_NAME)\n',
+        new='        or False\n',
+    ),
+    Falsification(
+        nodeid='tests/testDurableFile.py::testAShortWriteIsContinuedUntilEveryByteIsDown',
+        # one os.write is trusted to have written everything
+        source='vaibify/config/durableFile.py',
+        old='    while iOffset < len(baContent):\n',
+        new='    if iOffset < len(baContent):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_cancel_cannot_slip_under_a_commit_that_holds_the_source_lock'
+        ),
+        # Cancel runs without the commit's source lock
+        source='vaibify/gui/conversionLifecycle.py',
+        old='    fileSource = pendingConversions.ffileTakeSourceLock(sHostName)\n    try:\n        dictRecord = pendingConversions.fdictReadConversionRecord(sHostName)\n        if dictRecord is None:\n            return\n        if dictRecord.get("dictJournal"):\n',
+        new='    fileSource = None\n    try:\n        dictRecord = pendingConversions.fdictReadConversionRecord(sHostName)\n        if dictRecord is None:\n            return\n        if dictRecord.get("dictJournal"):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_cancel_refuses_a_journalled_record_and_leaves_its_journal'
+        ),
+        # a journalled record is cancelled like any other
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '        if dictRecord.get("dictJournal"):\n'
+            '            raise ConversionRefusedError(\n'
+            '                f"\'{sHostName}\' is being finished; wait for Finish to complete "\n'
+        ),
+        new=(
+            '        if False:\n'
+            '            raise ConversionRefusedError(\n'
+            '                f"\'{sHostName}\' is being finished; wait for Finish to complete "\n'
         ),
     ),
 ]

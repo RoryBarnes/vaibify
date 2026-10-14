@@ -373,6 +373,13 @@ def _fsArchiveServes(
             f"no directory could be made for the download: {error}",
         )
         return ""
+    except ValueError as error:
+        # The record's file name cannot be stored under: the archive
+        # link is refused by name, and no directory was made.
+        _fnRecordAttempt(
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
+        )
+        return ""
     dictOutcome = {"bKeepPartial": False}
     try:
         sLoadedId = _fsDownloadAndLoad(

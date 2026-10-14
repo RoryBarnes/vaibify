@@ -61,11 +61,13 @@ __all__ = [
     "fnTruncatePart",
     "fsCompletePath",
     "fsResolveDownloadRoot",
+    "fsValidatedTarballName",
 ]
 
 import fcntl
 import json
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -117,6 +119,9 @@ def fdictOpenAcquisition(dictRecord, dictPurpose=None):
     :func:`fnDiscardAcquisition` (delete) or
     :func:`fnReleaseAcquisition` (keep for a later resume).
     """
+    # Validated before any directory exists, so a refused name leaves
+    # nothing behind.
+    sStoredName = fsValidatedTarballName(dictRecord.get("sTarballName"))
     sRoot = fsResolveDownloadRoot()
     dictAdopted = _fdictAdoptInterruptedPartial(
         sRoot, _fsTarballSha256Of(dictRecord),
@@ -131,9 +136,7 @@ def fdictOpenAcquisition(dictRecord, dictPurpose=None):
         dictAcquisition["sAcquisitionId"], dictRecord, dictPurpose,
     )
     dictAcquisition["sPartPath"] = os.path.join(
-        sDirectory,
-        os.path.basename(str(dictRecord.get("sTarballName") or "image.tar"))
-        + S_PART_SUFFIX,
+        sDirectory, sStoredName + S_PART_SUFFIX,
     )
     fnRecordSidecar(dictAcquisition, {})
     return dictAcquisition
@@ -167,6 +170,37 @@ def _fdictNewSidecar(sAcquisitionId, dictRecord, dictPurpose):
         "sLastFailure": "",
         "dictPurpose": dict(dictPurpose or {}),
     }
+
+
+_REGEX_STORABLE_TARBALL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
+
+
+def fsValidatedTarballName(sName):
+    """Return the name the download is stored under, or raise ``ValueError``.
+
+    A deposit record names its file, and that name becomes a path in
+    the acquisition directory beside the lock and the sidecar. A record
+    naming its archive ``lock`` passed its hash check and replaced the
+    lock file, another process then took the replacement, and the
+    owner's directory could be deleted under it. The name must be a
+    plain basename, must not be one of the acquisition's own files, and
+    must not end in the part suffix; an absent name stores as
+    ``image.tar`` as it always did.
+    """
+    sBasename = str(sName or "")
+    if not sBasename:
+        return "image.tar"
+    if (
+        os.path.basename(sBasename) != sBasename
+        or not _REGEX_STORABLE_TARBALL_NAME.match(sBasename)
+        or sBasename in (S_LOCK_NAME, S_SIDECAR_NAME)
+        or sBasename.endswith(S_PART_SUFFIX)
+    ):
+        raise ValueError(
+            f"the deposit names its archive {sBasename!r}, which is not a name "
+            "a download can be stored under; the record must be corrected"
+        )
+    return sBasename
 
 
 def _ffileTakeLock(sDirectory):
@@ -212,14 +246,19 @@ def _fdictTryAdopt(sDirectory, sTarballSha256):
     if dictSidecar is None or dictSidecar.get("sTarballSha256") != sTarballSha256:
         fileLock.close()
         return None
+    try:
+        sStoredName = fsValidatedTarballName(dictSidecar.get("sTarballName"))
+    except ValueError:
+        # A sidecar edited by hand to name one of the acquisition's own
+        # files is not adopted; a fresh directory is made instead.
+        fileLock.close()
+        return None
     dictAcquisition = _fdictDescribeDirectory(sDirectory)
     dictAcquisition["fileLock"] = fileLock
     dictAcquisition["bAdopted"] = True
     dictAcquisition["dictSidecar"] = dictSidecar
     dictAcquisition["sPartPath"] = os.path.join(
-        sDirectory,
-        os.path.basename(dictSidecar.get("sTarballName") or "image.tar")
-        + S_PART_SUFFIX,
+        sDirectory, sStoredName + S_PART_SUFFIX,
     )
     if not fbIsComplete(dictAcquisition):
         fnTruncatePart(dictAcquisition, int(dictSidecar.get("iDurableBytes") or 0))

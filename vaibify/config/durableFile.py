@@ -51,19 +51,39 @@ def fnSyncDirectory(sDirectory):
 
     A directory that cannot be synced still holds the file: the rename
     happened, and refusing the write for the sake of the sync would
-    throw away a record that is complete.
+    throw away a record that is complete. What is lost is the
+    power-loss guarantee for that one rename, so the failure is logged
+    at WARNING with the directory named, never at a level nobody reads.
     """
     try:
         iDescriptor = os.open(sDirectory, os.O_RDONLY)
     except OSError as error:
-        logger.debug("Could not open %s to fsync: %s", sDirectory, error)
+        logger.warning(
+            "Could not open %s to fsync it, so its latest rename is not "
+            "guaranteed to survive a power loss: %s", sDirectory, error,
+        )
         return
     try:
         os.fsync(iDescriptor)
     except OSError as error:
-        logger.debug("Could not fsync %s: %s", sDirectory, error)
+        logger.warning(
+            "Could not fsync %s, so its latest rename is not guaranteed to "
+            "survive a power loss: %s", sDirectory, error,
+        )
     finally:
         os.close(iDescriptor)
+
+
+def _fnWriteEveryByte(iDescriptor, baContent):
+    """Write until every byte is down: one ``os.write`` may stop short."""
+    iOffset = 0
+    while iOffset < len(baContent):
+        iWritten = os.write(iDescriptor, baContent[iOffset:])
+        if iWritten <= 0:
+            raise OSError(
+                f"the write stopped after {iOffset} of {len(baContent)} bytes"
+            )
+        iOffset += iWritten
 
 
 def fnWriteFileDurably(sPath, baContent, iMode=0o600):
@@ -80,7 +100,7 @@ def fnWriteFileDurably(sPath, baContent, iMode=0o600):
     )
     bClosed = False
     try:
-        os.write(iDescriptor, baContent)
+        _fnWriteEveryByte(iDescriptor, baContent)
         fnSyncDescriptor(iDescriptor)
         os.close(iDescriptor)
         bClosed = True

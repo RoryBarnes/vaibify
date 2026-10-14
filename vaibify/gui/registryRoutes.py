@@ -722,17 +722,28 @@ def _fnRegisterRemoveProject(app, dictCtx):
     @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
     async def fdictRemoveProject(sName: str):
         from vaibify.config.registryManager import (
-            fnRemoveProject,
+            fdictGetProject, fnRemoveProject,
         )
+        from vaibify.config import pendingConversions
         from . import conversionLifecycle
+        if fdictGetProject(sName) is None:
+            raise HTTPException(404, f"no project named '{sName}' is registered")
+        # Removing the project is giving up on containerizing it: the
+        # pending record and its partial download go with the entry, the
+        # one automatic deletion an interrupted download has. They go
+        # FIRST, so a commit in flight refuses the removal by name
+        # instead of losing its journal under a vanished entry.
+        try:
+            await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sName)
+        except (
+            conversionLifecycle.ConversionRefusedError,
+            pendingConversions.ConversionLockHeldError,
+        ) as error:
+            raise HTTPException(409, detail={"sMessage": str(error)}) from None
         try:
             fnRemoveProject(sName)
         except KeyError as error:
             raise HTTPException(404, str(error))
-        # Removing the project is giving up on containerizing it: the
-        # pending record and its partial download go with the entry, the
-        # one automatic deletion an interrupted download has.
-        await asyncio.to_thread(conversionLifecycle.fnCancelConversion, sName)
         return {"bSuccess": True}
 
 

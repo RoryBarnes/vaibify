@@ -634,3 +634,81 @@ def test_an_entry_whose_image_exists_is_not_stranded(fixtureIsolateRegistryAndHo
     )
     with pytest.raises(hostModeReturn.HostModeReturnRefusedError, match="An image exists"):
         hostModeReturn.fdictJudgeReturnToHostMode(registryManager.fdictGetProject(S_NEW_NAME), object())
+
+
+# ---------------------------------------------------------------------
+# Findings of the 2026-10-14 adversarial review of the lifecycle.
+# ---------------------------------------------------------------------
+
+
+def _fnPauseTheCommitBeforeItsFirstWrite(monkeypatch):
+    """Hold a commit after its rechecks, lock held, nothing journalled yet."""
+    eventInside, eventFinish = threading.Event(), threading.Event()
+    fnOriginalRefuse = conversionLifecycle._fnRefuseIfBusy
+
+    def fnRefuseThenPause(sHostName):
+        fnOriginalRefuse(sHostName)
+        eventInside.set()
+        assert eventFinish.wait(timeout=10.0)
+
+    monkeypatch.setattr(conversionLifecycle, "_fnRefuseIfBusy", fnRefuseThenPause)
+    return eventInside, eventFinish
+
+
+@pytest.mark.falsification
+def test_cancel_cannot_slip_under_a_commit_that_holds_the_source_lock(
+    fixtureConversionWorld, monkeypatch,
+):
+    """Kills: cancelling without the commit's source lock, so the record
+    is removed while the commit is between its rechecks and its writes.
+    """
+    dictWorld = fixtureConversionWorld
+    _fnStageWithoutCommitting(dictWorld, monkeypatch)
+    conversionLifecycle.fnInstallHubContext(_fappFake(), {"docker": None})
+    eventInside, eventFinish = _fnPauseTheCommitBeforeItsFirstWrite(monkeypatch)
+    listErrors = []
+
+    def fnCommit():
+        try:
+            conversionLifecycle.fnCommitConversion(S_HOST_NAME)
+        except Exception as error:  # noqa: BLE001 -- the test reads it
+            listErrors.append(error)
+
+    threadCommit = threading.Thread(target=fnCommit, daemon=True)
+    threadCommit.start()
+    assert eventInside.wait(timeout=10.0)
+    try:
+        with pytest.raises(pendingConversions.ConversionLockHeldError):
+            conversionLifecycle.fnCancelConversion(S_HOST_NAME)
+        assert _fdictView() is not None, "the record was removed under the commit"
+    finally:
+        eventFinish.set()
+        threadCommit.join(timeout=10.0)
+    assert listErrors == []
+    assert registryManager.fdictGetProject(S_NEW_NAME)["sMode"] == "container"
+    assert _fdictView() is None
+
+
+@pytest.mark.falsification
+def test_cancel_refuses_a_journalled_record_and_leaves_its_journal(
+    fixtureConversionWorld, monkeypatch,
+):
+    """A record carrying a journal is a commit awaiting recovery; Cancel
+    must not delete the one thing recovery reads.
+
+    Kills: removing a journalled record on Cancel.
+    """
+    dictWorld = fixtureConversionWorld
+    _fnStageWithoutCommitting(dictWorld, monkeypatch)
+    dictRecord = pendingConversions.fdictReadConversionRecord(S_HOST_NAME)
+    pendingConversions.fnWriteConversionRecord({
+        **dictRecord,
+        "sState": pendingConversions.S_STATE_COMMITTING,
+        "dictJournal": {"sTransactionId": "review-probe", "sConfigBase64": "",
+                        "sRunningImageId": ""},
+    })
+    with pytest.raises(conversionLifecycle.ConversionRefusedError) as errorRaised:
+        conversionLifecycle.fnCancelConversion(S_HOST_NAME)
+    assert "being finished" in str(errorRaised.value)
+    dictAfter = pendingConversions.fdictReadConversionRecord(S_HOST_NAME)
+    assert dictAfter is not None and dictAfter["dictJournal"]["sTransactionId"] == "review-probe"

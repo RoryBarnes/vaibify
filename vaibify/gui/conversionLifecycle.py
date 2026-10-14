@@ -233,14 +233,27 @@ def fnCancelConversion(sHostName):
     if dictLive is not None:
         resumableDownload.fnRequestCancel(dictLive["dictControl"])
         dictLive["threadWorker"].join(_F_WORKER_JOIN_SECONDS)
-    dictRecord = pendingConversions.fdictReadConversionRecord(sHostName)
-    if dictRecord is None:
-        return
-    sAcquisitionId = str(dictRecord.get("sAcquisitionId") or "")
-    if sAcquisitionId:
-        downloadPartial.fnDeletePartial(sAcquisitionId)
-    _fnDropStagingTagQuietly(dictRecord)
-    pendingConversions.fnRemoveConversionRecord(sHostName)
+    # Under the source lock the commit takes, so a Cancel cannot land
+    # between a commit's writes; a journalled record is a commit in
+    # flight or one awaiting recovery, and removing its journal would
+    # let the writes finish with nothing left to roll back or forward.
+    fileSource = pendingConversions.ffileTakeSourceLock(sHostName)
+    try:
+        dictRecord = pendingConversions.fdictReadConversionRecord(sHostName)
+        if dictRecord is None:
+            return
+        if dictRecord.get("dictJournal"):
+            raise ConversionRefusedError(
+                f"'{sHostName}' is being finished; wait for Finish to complete "
+                "(or for the hub to recover it) before cancelling."
+            )
+        sAcquisitionId = str(dictRecord.get("sAcquisitionId") or "")
+        if sAcquisitionId:
+            downloadPartial.fnDeletePartial(sAcquisitionId)
+        _fnDropStagingTagQuietly(dictRecord)
+        pendingConversions.fnRemoveConversionRecord(sHostName)
+    finally:
+        pendingConversions.fnReleaseLock(fileSource)
 
 
 def _fdictRequireRecord(sHostName):

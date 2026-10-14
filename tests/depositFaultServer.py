@@ -16,6 +16,8 @@ server:
 
 * drop the connection after N body bytes (``listDropAfterBytes``, one
   entry consumed per request; ``None`` means serve the whole part);
+* drop the connection after reading a request and BEFORE any header
+  is sent (``listDropBeforeHeaders``, one flag consumed per request);
 * stall after N body bytes until ``eventRelease`` is set
   (``tStallAfterBytes``);
 * ignore ``Range`` and answer 200 (``bIgnoreRange``);
@@ -92,6 +94,13 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
                 dictBehavior["listDropAfterBytes"].pop(0)
                 if dictBehavior["listDropAfterBytes"] else None
             )
+            bDropBeforeHeaders = bool(
+                dictBehavior["listDropBeforeHeaders"].pop(0)
+                if dictBehavior["listDropBeforeHeaders"] else False
+            )
+        if bDropBeforeHeaders:
+            self._fnDropTheConnection()
+            return None
         if tCanned is not None:
             iStatus, dictHeaders, baBody = tCanned
             return self._fnAnswerBytes(iStatus, baBody, dictHeaders)
@@ -191,6 +200,9 @@ class FaultInjectingDepositServer:
             # (iPieceBytes, fSecondsBetweenPieces): serve the body a few
             # bytes at a time until eventRelease is set.
             "tTrickle": None,
+            # One flag consumed per request: True drops the connection
+            # after the request is read and before any header is sent.
+            "listDropBeforeHeaders": [],
             "bIgnoreRange": False, "iShortPartBytes": 0,
             "listCannedAnswers": [], "iAdvertisedTotal": None,
             "sContentType": "application/octet-stream", "sContentEncoding": "",
