@@ -319,7 +319,9 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def fnKeepPendingConversionsFromObtainingForReal(monkeypatch, tmp_path_factory):
+def fnKeepPendingConversionsFromObtainingForReal(
+    monkeypatch, fnIsolateVaibifyStateDirectories,
+):
     """A route test that starts a containerization must not reach Docker.
 
     The convert route hands the wizard's answers to the lifecycle, which
@@ -329,13 +331,18 @@ def fnKeepPendingConversionsFromObtainingForReal(monkeypatch, tmp_path_factory):
     do nothing, so the record is written and the view reads
     "interrupted"; a test OF the worker restores
     ``conversionLifecycle.fnStartConversionWorker`` on the seam. The
-    record directory is redirected beside the other state directories.
+    record directory lives under the isolated home, created on first
+    use, rather than in a second temporary directory per test: every
+    ``tmp_path_factory.mktemp`` lists the whole numbered basetemp to
+    pick its suffix, so one extra call per test grows the serial unit
+    lane by minutes and pushed it past its CI timeout.
     """
     from vaibify.config import pendingConversions
     from vaibify.gui import conversionLifecycle
+    sHome = fnIsolateVaibifyStateDirectories
     monkeypatch.setattr(
         pendingConversions, "_S_CONVERSIONS_DIRECTORY",
-        str(tmp_path_factory.mktemp("pendingConversions")),
+        os.path.join(sHome, "pendingConversions"),
     )
     monkeypatch.setattr(
         conversionLifecycle, "_fnStartWorker", lambda sHostName: None,
