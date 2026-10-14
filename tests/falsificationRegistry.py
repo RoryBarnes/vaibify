@@ -33302,4 +33302,22 @@ LIST_FALSIFICATIONS = [
         old='        if (!_bPointerIsDown) {\n',
         new='        if (true) {\n',
     ),
+    Falsification(
+        nodeid=(
+            'tests/testARunKeepsThePassingTestsItRecordedLive.py::'
+            'test_a_run_keeps_the_passing_tests_it_recorded'
+        ),
+        # the acknowledgement replaces the poll's mtime baseline with the
+        # step's outputs, so every declared input reads as modified next poll
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        _fnMergeIntoModTimeBaseline(\n'
+            '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
+        ),
+        new=(
+            '        from ..fileStatusManager import _fnUpdateModTimeBaseline\n'
+            '        _fnUpdateModTimeBaseline(\n'
+            '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
+        ),
+    ),
 ]
