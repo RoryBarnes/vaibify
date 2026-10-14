@@ -138,6 +138,12 @@ _DICT_PHASE_BY_LANE_EVENT = {
 _DICT_PHASE_BY_ACQUISITION_EVENT = {
     "pulling": S_PHASE_PULLING,
     "downloading": S_PHASE_DOWNLOADING,
+    # A resumed, retrying or restarted download is still the download
+    # phase; the sentence it carries is reported beside the bytes.
+    "resuming": S_PHASE_DOWNLOADING,
+    "downloadRetrying": S_PHASE_DOWNLOADING,
+    "downloadRestarting": S_PHASE_DOWNLOADING,
+    "downloadSlow": S_PHASE_DOWNLOADING,
     "loading": S_PHASE_LOADING,
 }
 

@@ -31,20 +31,27 @@ THE ORDER IS THE CONTRACT
    platform, labelling the result as derived from the base. Then read
    the stacked layers back and refuse if they reach the author's
    environment (``agentLayerSeparation``).
-5. Tag the result as ``<projectName>:latest``, by ID.
+5. Tag the result as ``<projectName>:<tag>``, by ID.
 6. Describe before enabling: the agent install keys go into
    ``vaibify.yml`` and the resolved chain into the registry entry.
 7. Commit: the origin record, the launch guard's admission.
 
-A failure at any step leaves a registered-but-unbuilt project, exactly
-as a failed build does; the tile still reads as obtained, so the next
-click retries. Nothing about a failure is persisted beyond the
-progress record.
+Steps 1-5 are :func:`fdictObtainAndStage`, which writes NOTHING to the
+registry or to ``vaibify.yml``: a pending containerization runs them
+against a staging tag and commits in a transaction of its own
+(``gui/conversionLifecycle``), so a failure leaves the host project
+exactly as it was. :func:`fdictAcquireForProject` is the whole lane for
+a project that is already a container (a re-obtain, a switch to the
+pinned image): there a failure leaves a registered-but-unbuilt
+project, and the tile still reads as obtained, so the next click
+retries.
 """
 
 __all__ = [
     "PinnedImageAcquisitionRefusedError",
+    "S_LATEST_TAG",
     "fdictAcquireForProject",
+    "fdictObtainAndStage",
     "flistProveOverlayBaseline",
     "flistResolveDifferentialChain",
 ]
@@ -59,6 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 S_ACTION_REOBTAIN_WITHOUT_ADDITIONS = "reobtain-without-additions"
+S_LATEST_TAG = "latest"
 
 
 class PinnedImageAcquisitionRefusedError(Exception):
@@ -68,12 +76,16 @@ class PinnedImageAcquisitionRefusedError(Exception):
     by an ``except OSError`` is how a control decision downgrades into
     an I/O hiccup. ``sAction`` names the one recovery the refusal
     offers, when there is one, so the dashboard can offer it rather
-    than leave the sentence as a dead end.
+    than leave the sentence as a dead end. ``dictFailure`` and
+    ``listAttempts`` are the chain's own, carried up so the window can
+    say what is held on disk and what else was tried.
     """
 
-    def __init__(self, sMessage, sAction=""):
+    def __init__(self, sMessage, sAction="", dictFailure=None, listAttempts=None):
         super().__init__(sMessage)
         self.sAction = sAction
+        self.dictFailure = dict(dictFailure or {})
+        self.listAttempts = list(listAttempts or [])
 
 
 def _fnDiscardLine(sLine):
@@ -83,7 +95,7 @@ def _fnDiscardLine(sLine):
 
 def fdictAcquireForProject(
     dictProject, bAllowEmulation, fnReportLine=None, dockerDisposable=None,
-    sDockerDir=None, bWithoutAdditions=False,
+    sDockerDir=None, bWithoutAdditions=False, dictDownloadControl=None,
 ):
     """Run the whole lane for one registered project; return its record.
 
@@ -94,6 +106,8 @@ def fdictAcquireForProject(
     ``bWithoutAdditions`` is the recovery an unproven baseline names:
     the agents the wizard added are dropped from the entry FIRST, so
     the retry asks for nothing that has to be stacked.
+    ``dictDownloadControl`` lets the caller cancel and watch the
+    deposit download (``resumableDownload.fdictCreateDownloadControl``).
     """
     from vaibify.config.registryManager import (
         S_IMAGE_SOURCE_ARCHIVE,
@@ -118,12 +132,40 @@ def fdictAcquireForProject(
     bEmulationConsented = bool(bAllowEmulation) and bool(
         dictSource.get("bAllowEmulation"),
     )
-    dictPinned = _fdictRecheckTheClone(dictProject, dictSource, fnReport)
     if dockerDisposable is None:
         dockerDisposable = disposableContainer.fdockerCreateDisposableClient()
+    dictStaged = fdictObtainAndStage(
+        dictProject, dictSource, bEmulationConsented, fnReport,
+        dockerDisposable, sDockerDir, S_LATEST_TAG, dictDownloadControl,
+    )
+    _fnDescribeBeforeEnabling(
+        dictProject, dictStaged["listProven"], dictStaged["listChain"], fnReport,
+    )
+    return _fdictCommitOriginRecord(
+        dictProject, dictSource, dictStaged["dictPinned"],
+        dictStaged["dictAcquired"], dictStaged["sBaseImageId"],
+        dictStaged["sRunningImageId"], dictStaged["listResolvedOverlays"],
+        fnReport,
+    )
+
+
+def fdictObtainAndStage(
+    dictProject, dictSource, bEmulationConsented, fnReport, dockerDisposable,
+    sDockerDir, sTag, dictDownloadControl=None,
+):
+    """Steps 1-5: recheck, obtain, prove, stack, tag as ``<name>:<sTag>``.
+
+    Writes nothing to the registry and nothing to ``vaibify.yml``; the
+    only mutation is the tag, which host mode never reads. Returns the
+    facts the commit needs::
+
+        {"sBaseImageId", "sRunningImageId", "listProven", "listChain",
+         "listResolvedOverlays", "dictAcquired", "dictPinned"}
+    """
+    dictPinned = _fdictRecheckTheClone(dictProject, dictSource, fnReport)
     dictAcquired = _fdictObtain(
         dictProject, dictPinned, bEmulationConsented, fnReport,
-        dockerDisposable,
+        dockerDisposable, dictDownloadControl,
     )
     sBaseImageId = dictAcquired["sImageId"]
     dictBase = disposableContainer.fdictInspectImage(dockerDisposable, sBaseImageId)
@@ -149,17 +191,21 @@ def fdictAcquireForProject(
     _fnRefuseAgentsThatReachTheEnvironment(
         sBaseImageId, sRunningImageId, fnReport,
     )
-    fnReport(f"Tagging {sRunningImageId[:19]}... as {dictProject['sName']}:latest")
+    fnReport(f"Tagging {sRunningImageId[:19]}... as {dictProject['sName']}:{sTag}")
     disposableContainer.fnTagImage(
-        dockerDisposable, sRunningImageId, dictProject["sName"], "latest",
+        dockerDisposable, sRunningImageId, dictProject["sName"], sTag,
     )
-    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)
-    return _fdictCommitOriginRecord(
-        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,
-        sRunningImageId,
-        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),
-        fnReport,
-    )
+    return {
+        "sBaseImageId": sBaseImageId,
+        "sRunningImageId": sRunningImageId,
+        "listProven": listProven,
+        "listChain": listChain,
+        "listResolvedOverlays": imageBuilder.flistCanonicalizeOverlaySet(
+            listProven + listChain,
+        ),
+        "dictAcquired": dictAcquired,
+        "dictPinned": dictPinned,
+    }
 
 
 def _fdictRecheckTheClone(dictProject, dictSource, fnReport):
@@ -188,6 +234,7 @@ def _fdictRecheckTheClone(dictProject, dictSource, fnReport):
 
 def _fdictObtain(
     dictProject, dictPinned, bEmulationConsented, fnReport, dockerDisposable,
+    dictDownloadControl=None,
 ):
     """Step 2: walk the published chain, reporting every link."""
     from vaibify.reproducibility.environmentSnapshot import (
@@ -201,15 +248,20 @@ def _fdictObtain(
     dictEnvironment = fdictReadEnvironmentJson(
         HostRepoFiles(dictProject["sDirectory"]),
     ) or {}
+    dictKeywords = (
+        {"dictDownloadControl": dictDownloadControl}
+        if dictDownloadControl is not None else {}
+    )
     try:
         dictAcquired = fdictAcquirePinnedImage(
             dictEnvironment, dictPinned["sRequiredPlatform"],
             lambda dictEvent: fnReport(_fsDescribeAcquisitionEvent(dictEvent)),
-            bEmulationConsented, dockerDisposable,
+            bEmulationConsented, dockerDisposable, **dictKeywords,
         )
     except ImageAcquisitionRefusedError as error:
         raise PinnedImageAcquisitionRefusedError(
-            f"the pinned image could not be obtained: {error}"
+            f"the pinned image could not be obtained: {error}",
+            dictFailure=error.dictFailure, listAttempts=error.listAttempts,
         ) from error
     if not dictAcquired.get("sImageId"):
         raise PinnedImageAcquisitionRefusedError(
@@ -225,12 +277,15 @@ def _fsDescribeAcquisitionEvent(dictEvent):
     if sPhase == "attempt":
         return _fsDescribeAttempt(dictEvent)
     if sPhase == "downloading":
-        iBytes = int(dictEvent.get("iBytes") or 0)
-        iTotal = int(dictEvent.get("iTotalBytes") or 0)
-        sPercent = f" ({100 * iBytes // iTotal}%)" if iTotal else ""
+        return _fsDescribeDownloading(dictEvent)
+    if sPhase in ("downloadRetrying", "downloadRestarting", "downloadSlow"):
+        return str(dictEvent.get("sSentence") or sPhase)
+    if sPhase == "resuming":
         return (
-            f"downloading the archived image: {iBytes / 1e6:.0f} MB of "
-            f"{iTotal / 1e6:.0f} MB{sPercent}"
+            "resuming a download interrupted earlier: "
+            f"{int(dictEvent.get('iBytes') or 0) / 1e6:.0f} MB of "
+            f"{int(dictEvent.get('iTotalBytes') or 0) / 1e6:.0f} MB are "
+            "already here"
         )
     if sPhase == "reused":
         return (
@@ -247,6 +302,25 @@ def _fsDescribeAcquisitionEvent(dictEvent):
             + (" (emulated)" if dictEvent.get("bEmulated") else "")
         )
     return sPhase
+
+
+def _fsDescribeDownloading(dictEvent):
+    """One progress line: bytes, the share done, the rate and the time left."""
+    iBytes = int(dictEvent.get("iBytes") or 0)
+    iTotal = int(dictEvent.get("iTotalBytes") or 0)
+    sLine = (
+        f"downloading the archived image: {iBytes / 1e6:.0f} MB of "
+        f"{iTotal / 1e6:.0f} MB"
+    )
+    if iTotal:
+        sLine += f" ({100 * iBytes // iTotal}%)"
+    fRate = float(dictEvent.get("fBytesPerSecond") or 0.0)
+    if fRate > 0:
+        sLine += f", {fRate / 1e6:.1f} MB/s"
+    fRemaining = dictEvent.get("fSecondsRemaining")
+    if fRemaining:
+        sLine += f", about {max(1, int(float(fRemaining) // 60))} min left"
+    return sLine
 
 
 def _fsDescribeAttempt(dictEvent):
@@ -267,6 +341,11 @@ def _fsDescribeAttempt(dictEvent):
     sLink = str(dictEvent.get("sLink") or "")
     sDetail = str(dictEvent.get("sDetail") or "")
     sSaid = f" (Docker said: {sDetail})" if sDetail else ""
+    if sLink == S_LINK_REGISTRY and _fbReadsAsNotFound(sDetail):
+        # A registry that simply does not have the image is the chain
+        # working; its 404 stays in the hub log and the whole-chain
+        # refusal, never on the progress line (2026-10-13).
+        sSaid = ""
     if dictEvent.get("bSucceeded"):
         return f"{sLink}: served"
     dictNotAvailable = {
@@ -282,6 +361,18 @@ def _fsDescribeAttempt(dictEvent):
         S_LINK_LOCAL: "no copy of the image is on this machine either",
     }
     return dictNotAvailable.get(sLink, f"{sLink}: not available") + sSaid
+
+
+_T_NOT_FOUND_WORDS = (
+    "404", "not found", "manifest unknown", "pull access denied",
+    "repository does not exist", "no such image",
+)
+
+
+def _fbReadsAsNotFound(sDetail):
+    """True when a registry's words say only that it does not have the image."""
+    sLower = sDetail.lower()
+    return any(sWords in sLower for sWords in _T_NOT_FOUND_WORDS)
 
 
 def flistProveOverlayBaseline(

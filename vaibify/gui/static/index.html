@@ -294,6 +294,19 @@
     </div>
 </div>
 
+<!-- Acquisition window: a containerization watched and decided from here.
+     Rendered entirely by scriptAcquisitionWindow.js from the hub's record;
+     it stays until dismissed, never a toast. -->
+<div class="modal-overlay" id="modalAcquisition" style="display: none;">
+    <div class="modal">
+        <h2 class="acquisition-title" style="color: var(--color-pale-blue);"></h2>
+        <div class="acquisition-body"></div>
+        <div class="acquisition-buttons" style="text-align: right;
+                    margin-top: 12px; display: flex; gap: 8px;
+                    justify-content: flex-end;"></div>
+    </div>
+</div>
+
 <!-- Build Failure Overlay -->
 <div class="modal-overlay" id="modalBuildFailure" style="display: none;">
     <div class="modal">
@@ -1440,6 +1453,7 @@
 <script src="/static/scriptDirectoryBrowser.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptFilePull.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptReproducePublished.js?v=__CACHE_VERSION__"></script>
+<script src="/static/scriptAcquisitionWindow.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptContainerManager.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptRemnants.js?v=__CACHE_VERSION__"></script>
 <script src="/static/scriptDependencyScanner.js?v=__CACHE_VERSION__"></script>

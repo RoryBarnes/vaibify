@@ -503,6 +503,13 @@ def _fbHubShouldSelfExit(app, dictCtx, fTimeout):
     from . import reproductionProgress
     if reproductionProgress.fbHubHoldsLiveReproduction():
         return False
+    # A LIVE containerization vetoes on the same terms (no socket, no
+    # owned container, a download that must outlive the browser); one
+    # waiting for a decision does not, since an idle exit only leaves
+    # it interrupted and resumable.
+    from . import conversionLifecycle
+    if conversionLifecycle.fbHubHoldsLiveConversion():
+        return False
     if _fbAnyHeldContainerBusy(app, dictCtx):
         return False
     fLast = getattr(

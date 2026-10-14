@@ -289,6 +289,17 @@ DICT_CONTROL_PLANE_SCOPES = {
     ("POST", "/api/reproductions/stage"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/reproductions/{sJobId}/run"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/reproductions/{sJobId}/discard"): S_SCOPE_BROWSER_HUB,
+    # A pending containerization has no container yet either: the hub
+    # downloads the author's image into host state and switches the
+    # registry entry in its own transaction. Try again, Finish, and Stay
+    # in host mode are pre-container hub operations on the terms of
+    # convert, and each handler refuses the agent lane. The way back to
+    # host mode for an entry 0.1.0 stranded is the same kind of
+    # operation: it rewrites the registry and may restore vaibify.yml.
+    ("POST", "/api/conversions/{sHostName}/retry"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/conversions/{sHostName}/commit"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/conversions/{sHostName}/cancel"): S_SCOPE_BROWSER_HUB,
+    ("POST", "/api/registry/{sName}/return-to-host-mode"): S_SCOPE_BROWSER_HUB,
     ("POST", "/api/session/spawn"): S_SCOPE_BROWSER_HUB,
     # Renewing the presenting session's own absolute cap. Browser-hub
     # scoped and not container-scoped on purpose: a session sitting on

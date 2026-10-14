@@ -1152,6 +1152,14 @@ def _fnPrintAcquisitionEvent(dictEvent):
         iTotal = int(dictEvent.get("iTotalBytes") or 0)
         if iBytes == 0 or iBytes >= iTotal:
             click.echo(f"  downloading the deposit: {iBytes}/{iTotal} bytes")
+    elif sPhase in ("downloadRetrying", "downloadRestarting", "downloadSlow"):
+        click.echo(f"  {dictEvent.get('sSentence') or sPhase}")
+    elif sPhase == "resuming":
+        click.echo(
+            "  resuming a download interrupted earlier: "
+            f"{int(dictEvent.get('iBytes') or 0)}/"
+            f"{int(dictEvent.get('iTotalBytes') or 0)} bytes already here"
+        )
 
 
 def _fnReproduceStagedSnapshot(sToken, dictAcquired):

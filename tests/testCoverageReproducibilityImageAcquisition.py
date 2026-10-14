@@ -3,10 +3,11 @@
 Two boundaries are replaced. The Docker SDK client is a small fake
 store answering ``images.pull``/``load``/``get`` and ``version`` in the
 SDK's own shapes, handed to the chain as ``dockerDisposable``, so the
-real ``disposableContainer`` functions run over it. Zenodo and the DOI
-resolver are a recording transport installed as ``zenodoClient.requests``,
-so the real allowlisted fetch, the size ceiling and the hash comparison
-all run over served bytes.
+real ``disposableContainer`` functions run over it. The record API and
+the DOI resolver are a recording transport installed as
+``zenodoClient.requests``; the FILE is served by a real loopback server
+(``depositFaultServer``), because the resumable download owns its own
+sockets and a fake response has none.
 
 The pinned reference and the loaded image ID are deliberately distinct
 strings, so a chain that ran the wrong one could not pass.
@@ -19,9 +20,11 @@ import types
 import pytest
 import requests
 
+from tests.depositFaultServer import FaultInjectingDepositServer
 from vaibify.docker import disposableContainer
 from vaibify.reproducibility import (
-    imageAcquisition, imageArchive, imageDeposit,
+    downloadPartial, imageAcquisition, imageArchive, imageDeposit,
+    resumableDownload,
 )
 from vaibify.reproducibility import zenodoClient
 from vaibify.reproducibility.imageAcquisition import (
@@ -37,7 +40,6 @@ S_LOCAL_ONLY_ID = "sha256:" + "c" * 64
 S_LOADED_ID = "sha256:" + "e" * 64
 S_DOI = "10.5281/zenodo.5150"
 S_TARBALL_NAME = "environment-image.tar.gz"
-S_RECORD_PAGE_URL = "https://zenodo.org/records/5150"
 BA_TARBALL = gzip.compress(
     b"image stream for the acquisition fixture", mtime=0,
 )
@@ -143,14 +145,38 @@ class TransportDouble:
 
 @pytest.fixture
 def transportDouble(monkeypatch, tmp_path):
-    """Install the transport; keep scratch under a private HOME."""
+    """Install the record transport and a loopback file server.
+
+    The Zenodo service table is pointed at the file server, so the
+    chain's allowlist admits it and the record page the DOI resolves
+    to is one of its URLs.
+    """
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     doubleTransport = TransportDouble()
     monkeypatch.setattr(zenodoClient, "requests", types.SimpleNamespace(
         get=doubleTransport.fresponseGet,
         RequestException=requests.RequestException,
     ))
-    return doubleTransport
+    with FaultInjectingDepositServer(BA_TARBALL) as serverFiles:
+        monkeypatch.setattr(zenodoClient, "_SERVICES", {
+            "zenodo": serverFiles.sBase, "sandbox": serverFiles.sBase,
+        })
+        doubleTransport.serverFiles = serverFiles
+        doubleTransport.sBase = serverFiles.sBase
+        doubleTransport.sRecordPageUrl = serverFiles.sBase + "/records/5150"
+        yield doubleTransport
+
+
+@pytest.fixture
+def fnShortenRetryWaits(monkeypatch):
+    """Make the download's backoff waits milliseconds, not minutes."""
+    monkeypatch.setattr(resumableDownload, "_F_BACKOFF_BASE_SECONDS", 0.001)
+    monkeypatch.setattr(resumableDownload, "_F_BACKOFF_CAP_SECONDS", 0.002)
+
+
+def fdictOpenAcquisitionFor(dictRecord):
+    """Open the acquisition directory a download of ``dictRecord`` uses."""
+    return downloadPartial.fdictOpenAcquisition(dictRecord, {"sKind": "test"})
 
 
 def fdictRecord(**dictOverrides):
@@ -178,12 +204,10 @@ def fdictEnvironment(sPinned=S_PINNED_REFERENCE, dictRecord=None):
 def fnServeViaDoiResolver(transportDouble, baServed):
     """Make the record API 404 so the DOI is followed by hand to the file."""
     transportDouble.dictAnswers["https://doi.org/" + S_DOI] = _FakeResponse(
-        302, dictHeaders={"Location": S_RECORD_PAGE_URL},
+        302, dictHeaders={"Location": transportDouble.sRecordPageUrl},
     )
-    transportDouble.dictAnswers[S_RECORD_PAGE_URL] = _FakeResponse(200)
-    transportDouble.dictAnswers[
-        S_RECORD_PAGE_URL + "/files/" + S_TARBALL_NAME + "?download=1"
-    ] = _FakeResponse(200, baContent=baServed)
+    transportDouble.dictAnswers[transportDouble.sRecordPageUrl] = _FakeResponse(200)
+    transportDouble.serverFiles.fnServeBytes(baServed)
 
 
 # ── platform helpers ─────────────────────────────────────────────
@@ -335,51 +359,55 @@ def testAFailedArchiveFollowedByALocalCopyReadsAsLocalNeverArchive(
 # ── downloading the deposit ──────────────────────────────────────
 
 
-def testANonZenodoDoiIsRefusedBeforeAnyFetch(transportDouble, tmp_path):
+def testANonZenodoDoiIsRefusedBeforeAnyFetch(transportDouble):
     """A DOI with no Zenodo record id is never followed."""
+    dictRecord = fdictRecord(sVersionDoi="10.1234/journal.5150")
     with pytest.raises(ImageAcquisitionRefusedError, match="not a Zenodo DOI"):
         imageAcquisition.fsDownloadVerifiedTarball(
-            fdictRecord(sVersionDoi="10.1234/journal.5150"), str(tmp_path),
+            dictRecord, fdictOpenAcquisitionFor(dictRecord),
             lambda dictEvent: None,
         )
     assert transportDouble.listUrls == []
+    assert transportDouble.serverFiles.listFileRequests == []
 
 
-def testTheDoiFollowFallbackDownloadsAndVerifiesTheTarball(
-    transportDouble, tmp_path,
-):
+def testTheDoiFollowFallbackDownloadsAndVerifiesTheTarball(transportDouble):
     """When the record API cannot answer, the DOI is followed by hand."""
     fnServeViaDoiResolver(transportDouble, BA_TARBALL)
     listEvents = []
     sPath = imageAcquisition.fsDownloadVerifiedTarball(
-        fdictRecord(), str(tmp_path), listEvents.append,
+        fdictRecord(), fdictOpenAcquisitionFor(fdictRecord()), listEvents.append,
     )
     assert open(sPath, "rb").read() == BA_TARBALL
     assert transportDouble.listUrls[0] == (
-        "https://zenodo.org/api/records/5150"
+        transportDouble.sBase + "/api/records/5150"
     )
     assert "https://doi.org/" + S_DOI in transportDouble.listUrls
-    assert listEvents[-1] == {
-        "sPhase": "downloading", "iBytes": len(BA_TARBALL),
-        "iTotalBytes": len(BA_TARBALL),
-    }
+    assert listEvents[-1]["sPhase"] == "downloading"
+    assert listEvents[-1]["iBytes"] == len(BA_TARBALL)
+    assert listEvents[-1]["iTotalBytes"] == len(BA_TARBALL)
 
 
-def testTheDoiFollowFallbackStillRefusesAWrongHash(
-    transportDouble, tmp_path,
-):
-    """The same path serving one different byte is deleted, not loaded."""
+def testTheDoiFollowFallbackStillRefusesAWrongHash(transportDouble):
+    """The same path serving one different byte is emptied, not loaded.
+
+    One automatic restart from zero is allowed (a resumed file can carry
+    a torn byte); a second mismatch refuses and leaves no byte behind.
+    """
     fnServeViaDoiResolver(
         transportDouble, BA_TARBALL[:-1] + bytes([BA_TARBALL[-1] ^ 0xFF]),
     )
-    with pytest.raises(ImageAcquisitionRefusedError, match="did not match"):
+    dictAcquisition = fdictOpenAcquisitionFor(fdictRecord())
+    with pytest.raises(ImageAcquisitionRefusedError, match="did not match") as infoError:
         imageAcquisition.fsDownloadVerifiedTarball(
-            fdictRecord(), str(tmp_path), lambda dictEvent: None,
+            fdictRecord(), dictAcquisition, lambda dictEvent: None,
         )
-    assert list(tmp_path.iterdir()) == []
+    assert downloadPartial.fiBytesOnDisk(dictAcquisition) == 0
+    assert infoError.value.dictFailure["bPartialKept"] is False
+    assert len(transportDouble.serverFiles.listFileRequests) == 2
 
 
-def testAnUnresolvableDoiIsRefusedByName(transportDouble, tmp_path):
+def testAnUnresolvableDoiIsRefusedByName(transportDouble):
     """A network failure at the resolver names the DOI it could not follow."""
     transportDouble.dictAnswers["https://doi.org/" + S_DOI] = (
         requests.ConnectionError("name resolution failed")
@@ -389,38 +417,48 @@ def testAnUnresolvableDoiIsRefusedByName(transportDouble, tmp_path):
         match=r"the DOI 10\.5281/zenodo\.5150 could not be resolved",
     ):
         imageAcquisition.fsDownloadVerifiedTarball(
-            fdictRecord(), str(tmp_path), lambda dictEvent: None,
+            fdictRecord(), fdictOpenAcquisitionFor(fdictRecord()),
+            lambda dictEvent: None,
         )
 
 
-def testADownloadThatDropsIsARefusalNotAPartialFile(
-    transportDouble, tmp_path,
+@pytest.mark.falsification
+def testADownloadThatKeepsDroppingSpendsTheBudgetAndKeepsThePartial(
+    transportDouble, fnShortenRetryWaits,
 ):
-    """A transport error mid-fetch refuses the link."""
+    """A connection that drops before the first byte, every time, stops after six tries.
+
+    Kills: letting the downloader's refusal escape untranslated, so the
+    chain never hears it as its own refusal.
+    """
     fnServeViaDoiResolver(transportDouble, BA_TARBALL)
-    transportDouble.dictAnswers[
-        S_RECORD_PAGE_URL + "/files/" + S_TARBALL_NAME + "?download=1"
-    ] = requests.ConnectionError("connection reset")
+    transportDouble.serverFiles.dictBehavior["listDropAfterBytes"] = [0] * 12
+    dictAcquisition = fdictOpenAcquisitionFor(fdictRecord())
     with pytest.raises(
-        ImageAcquisitionRefusedError,
-        match="archived image could not be fetched",
-    ):
+        ImageAcquisitionRefusedError, match="stopped after 6 attempts",
+    ) as infoError:
         imageAcquisition.fsDownloadVerifiedTarball(
-            fdictRecord(), str(tmp_path), lambda dictEvent: None,
+            fdictRecord(), dictAcquisition, lambda dictEvent: None,
         )
+    assert infoError.value.dictFailure["bPartialKept"] is True
+    assert infoError.value.dictFailure["sFailureClass"] == (
+        resumableDownload.S_FAILURE_BUDGET_EXHAUSTED
+    )
+    assert len(transportDouble.serverFiles.listFileRequests) == 6
 
 
-def testADownloadGrowingPastTheRecordedSizeIsStopped(
-    transportDouble, tmp_path,
-):
-    """A server sending more than 1.25x the recorded size is cut off."""
+def testAServerOfferingADifferentFileIsRefusedBeforeAByteIsKept(transportDouble):
+    """A whole-file answer whose length is not the recorded one is not the deposit."""
     fnServeViaDoiResolver(transportDouble, BA_TARBALL * 2)
+    dictAcquisition = fdictOpenAcquisitionFor(fdictRecord())
     with pytest.raises(
-        ImageAcquisitionRefusedError, match="grew past the size",
-    ):
+        ImageAcquisitionRefusedError, match="not the one this project recorded",
+    ) as infoError:
         imageAcquisition.fsDownloadVerifiedTarball(
-            fdictRecord(), str(tmp_path), lambda dictEvent: None,
+            fdictRecord(), dictAcquisition, lambda dictEvent: None,
         )
+    assert downloadPartial.fiBytesOnDisk(dictAcquisition) == 0
+    assert infoError.value.dictFailure["bPartialKept"] is False
 
 
 def testAFileUrlCannotComeFromANonZenodoDoi():

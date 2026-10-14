@@ -179,13 +179,20 @@ def fdictConvertBody(**dictExtra):
 def testTheWizardsAnswerIsRecordedForThePin(
     tupleHostClient, fixturePinnedClone,
 ):
-    """Kills: the conversion dropping the answer the wizard sent."""
+    """The answer rides the pending record; the registry is not touched yet.
+
+    Kills: the conversion dropping the answer the wizard sent.
+    """
+    from vaibify.config import pendingConversions
     clientHub, _app, _sDirectory = tupleHostClient
     responseHttp = clientHub.post(fsConvertUrl(S_HOST_NAME), json=fdictConvertBody(
         sImageTrustChoice="restricted", bImageTrustWithCredentials=True,
     ))
     assert responseHttp.status_code == 200, responseHttp.text
-    dictRecord = registryManager.fdictGetProject(S_NEW_NAME)["dictImageTrust"]
+    assert responseHttp.json()["bConversionPending"] is True
+    assert registryManager.fbIsHostProject(S_HOST_NAME)
+    assert registryManager.fdictGetProject(S_NEW_NAME) is None
+    dictRecord = pendingConversions.fdictReadConversionRecord(S_HOST_NAME)["dictImageTrust"]
     assert dictRecord["sPinnedImageReference"] == S_PIN
     assert dictRecord["sImageDigest"] == ""
     assert dictRecord["sChoice"] == "restricted"
@@ -195,11 +202,12 @@ def testTheWizardsAnswerIsRecordedForThePin(
 def testAConversionWithNoAnswerLeavesTheQuestionToTheStart(
     tupleHostClient, fixturePinnedClone,
 ):
+    from vaibify.config import pendingConversions
     clientHub, _app, _sDirectory = tupleHostClient
     responseHttp = clientHub.post(
         fsConvertUrl(S_HOST_NAME), json=fdictConvertBody())
     assert responseHttp.status_code == 200, responseHttp.text
-    assert "dictImageTrust" not in registryManager.fdictGetProject(S_NEW_NAME)
+    assert pendingConversions.fdictReadConversionRecord(S_HOST_NAME)["dictImageTrust"] is None
 
 
 def testInspectOnlyIsRefusedBeforeAnythingIsConverted(

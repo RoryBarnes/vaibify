@@ -14120,10 +14120,10 @@ LIST_FALSIFICATIONS = [
         # Project hub shows the Docker-safe identifier they never
         # chose.
         old=(
-            '            request.sWorkflowName or request.sProjectName,\n'
+            '        sWorkflowName = request.sWorkflowName or request.sProjectName\n'
         ),
         new=(
-            '            request.sProjectName,\n'
+            '        sWorkflowName = request.sProjectName\n'
         ),
     ),
     Falsification(
@@ -18109,8 +18109,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_the_registry_serves_first_and_the_deposit_is_never_fetched',
         source='vaibify/reproducibility/imageAcquisition.py',
-        old='    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n',
-        new='    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n',
+        old='    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n        dictDownloadControl,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n',
+        new='    sLoadedId = _fsArchiveServes(\n        dockerDisposable, dictEnvironment, listAttempts, fnStatus,\n        dictDownloadControl,\n    )\n    if sLoadedId:\n        return sLoadedId, S_OBTAINED_ARCHIVE\n    if _fbRegistryServes(\n        dockerDisposable, sPinnedReference, sRequiredPlatform, listAttempts,\n        fnStatus,\n    ):\n        return sPinnedReference, S_OBTAINED_REGISTRY\n',
     ),
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_the_pull_requests_the_required_platform',
@@ -18127,8 +18127,9 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_a_tampered_deposit_never_reaches_the_daemon',
         source='vaibify/reproducibility/imageAcquisition.py',
-        old='    if sActualSha != sExpectedSha:\n        os.remove(sTarballPath)\n',
-        new='    if False:\n        os.remove(sTarballPath)\n',
+        # the hash check is skipped: whatever downloaded is handed to the daemon
+        old='        if sActualSha == sExpectedSha:\n            return downloadPartial.fsCompletePath(dictAcquisition)\n',
+        new='        if True:\n            return downloadPartial.fsCompletePath(dictAcquisition)\n',
     ),
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_an_obtained_platform_that_differs_refuses_whatever_the_flag_says',
@@ -18145,8 +18146,9 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testImageAcquisition.py::test_both_lanes_walk_the_same_chain',
         source='vaibify/reproducibility/imageAcquisition.py',
-        old='    sActualSha = _fsStreamDownload(\n        sFileUrl, sTarballPath, iExpectedBytes, fnStatus,\n    )\n    if sActualSha != sExpectedSha:\n        os.remove(sTarballPath)\n        raise ImageAcquisitionRefusedError(\n            "the deposit did not match its hash: the envelope records "\n            f"{sExpectedSha[:19]}... and the download hashed to "\n            f"{sActualSha[:19]}...; nothing was loaded"\n        )\n    return sTarballPath\n',
-        new='    _fsStreamDownload(\n        sFileUrl, sTarballPath, iExpectedBytes, fnStatus,\n    )\n    return sTarballPath\n',
+        # the Python lane loads a tampered deposit the script lane refuses
+        old='            if sActualSha == sExpectedSha:\n                downloadPartial.fnMarkComplete(dictAcquisition)\n        if sActualSha == sExpectedSha:\n',
+        new='            if sActualSha == sExpectedSha:\n                downloadPartial.fnMarkComplete(dictAcquisition)\n        if sActualSha != sExpectedSha:\n',
     ),
     Falsification(
         nodeid='tests/testReproduceFromSnapshot.py::test_the_comparison_is_rooted_on_the_shadow_never_on_the_staged_clone',
@@ -19278,18 +19280,19 @@ LIST_FALSIFICATIONS = [
             'tests/testImageAcquisition.py::'
             'test_a_file_link_that_leaves_zenodo_is_refused'
         ),
-        source='vaibify/reproducibility/imageAcquisition.py',
-        # the record's file link is downloaded with a bare requests.get
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        # the ranged transport admits any host with a name
         old=(
-            '        with zenodoClient.fresponseGetWithinAllowlist(\n'
-            '            sFileUrl, zenodoClient.flistAllowedZenodoOrigins(),\n'
-            '            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,\n'
-            '        ) as responseFile:\n'
+            '    sOrigin = fsOriginOfUrl(sUrl)\n'
+            '    if sOrigin and sOrigin in listAllowedOrigins:\n'
+            '        return\n'
+            '    raise TransportFailure(\n'
         ),
         new=(
-            '        with requests.get(\n'
-            '            sFileUrl, stream=True, timeout=_T_HTTP_TIMEOUT_SECONDS,\n'
-            '        ) as responseFile:\n'
+            '    sOrigin = fsOriginOfUrl(sUrl)\n'
+            '    if sOrigin:\n'
+            '        return\n'
+            '    raise TransportFailure(\n'
         ),
     ),
     Falsification(
@@ -19508,22 +19511,26 @@ LIST_FALSIFICATIONS = [
         source='vaibify/docker/pinnedImageAcquisition.py',
         # the record lands before the config and registry describe the image
         old=(
-            '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
+            '    _fnDescribeBeforeEnabling(\n'
+            '        dictProject, dictStaged["listProven"], dictStaged["listChain"], fnReport,\n'
+            '    )\n'
             '    return _fdictCommitOriginRecord(\n'
-            '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
-            '        sRunningImageId,\n'
-            '        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),\n'
+            '        dictProject, dictSource, dictStaged["dictPinned"],\n'
+            '        dictStaged["dictAcquired"], dictStaged["sBaseImageId"],\n'
+            '        dictStaged["sRunningImageId"], dictStaged["listResolvedOverlays"],\n'
             '        fnReport,\n'
             '    )\n'
         ),
         new=(
             '    dictRecord = _fdictCommitOriginRecord(\n'
-            '        dictProject, dictSource, dictPinned, dictAcquired, sBaseImageId,\n'
-            '        sRunningImageId,\n'
-            '        imageBuilder.flistCanonicalizeOverlaySet(listProven + listChain),\n'
+            '        dictProject, dictSource, dictStaged["dictPinned"],\n'
+            '        dictStaged["dictAcquired"], dictStaged["sBaseImageId"],\n'
+            '        dictStaged["sRunningImageId"], dictStaged["listResolvedOverlays"],\n'
             '        fnReport,\n'
             '    )\n'
-            '    _fnDescribeBeforeEnabling(dictProject, listProven, listChain, fnReport)\n'
+            '    _fnDescribeBeforeEnabling(\n'
+            '        dictProject, dictStaged["listProven"], dictStaged["listChain"], fnReport,\n'
+            '    )\n'
             '    return dictRecord\n'
         ),
     ),
@@ -20140,7 +20147,7 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
         # the pinned-image twin keeps the defect the build arm shed
-        old='            } else if (error.sKind === "network") {\n                bObtainedAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_OBTAIN_LOST_THE_REQUEST);\n',
+        old='            } else if (error.sKind === "network") {\n                bObtainedAndRunning = await _fnWatchRunningBuild(\n                    sName, _S_OBTAIN_LOST_THE_REQUEST, true);\n',
         new='',
     ),
     Falsification(
@@ -26291,8 +26298,12 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testRefusedArchiveConversionChangesNothing.py::testARefusedArchiveConversionKeepsTheSessionAndScaffoldsNothing',
         source='vaibify/gui/registryRoutes.py',
-        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n",
-        new="        # Every validator runs BEFORE the caller's own session is\n        # released: a refused name must never cost the researcher the\n        # project view they are converting from.\n        await _fnReleaseCallerOwnedSession(\n            app, sName, requestHttp,\n        )\n        await _fnRefuseBusyProject(app, sName, dictCtx)\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n        dictTrustRecord = (\n            pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(\n                dictImageSource, request))\n",
+        # RE-ANCHORED 2026-10-14: the archive path no longer releases a
+        # session (it converts nothing), so the mutant scaffolds the
+        # workflow BEFORE the clone is validated, which a refused
+        # conversion must never do.
+        old="        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
+        new="        _fnScaffoldWorkflowIfAbsent(\n            dictProject[\"sDirectory\"],\n            request.sWorkflowName or request.sProjectName,\n        )\n        dictImageSource = (\n            pinnedEnvironmentConversion.fdictBuildArchiveImageSource(\n                dictProject, request,\n            )\n            if request.sEnvironmentSource\n            == pinnedEnvironmentConversion.S_ENVIRONMENT_SOURCE_ARCHIVE\n            else None\n        )\n",
     ),
     # --- Nothing to reconcile is a success on the live-hub lane too ---
     Falsification(
@@ -28056,12 +28067,11 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/registryRoutes.py',
         # RE-ANCHORED 2026-09-27: the choice rides the conversion into
         # the registry and the first start copies it; the mutant drops
-        # it there, where the seed now reads it.
-        old=(
-            '                    "bRestoreCommittedFiles": bool(\n'
-            '                        request.bRestoreCommittedFiles),\n'
-        ),
-        new='                    "bRestoreCommittedFiles": False,\n',
+        # it there, where the seed now reads it. RE-ANCHORED 2026-10-14:
+        # the seed is shaped once, for both the build path and the
+        # pending-conversion record.
+        old='        "bRestoreCommittedFiles": bool(request.bRestoreCommittedFiles),\n',
+        new='        "bRestoreCommittedFiles": False,\n',
     ),
     Falsification(
         nodeid=(
@@ -31370,9 +31380,10 @@ LIST_FALSIFICATIONS = [
             'testTheWizardsAnswerIsRecordedForThePin'
         ),
         source='vaibify/gui/registryRoutes.py',
-        # the conversion drops the answer the wizard sent
-        old='                sName, request.sProjectName, dictImageSource, dictTrustRecord,\n',
-        new='                sName, request.sProjectName, dictImageSource, None,\n',
+        # the conversion drops the answer the wizard sent (it now rides
+        # the pending record into the commit, 2026-10-14)
+        old='            _fdictRequestAsDict(request), dictImageSource, dictTrustRecord,\n',
+        new='            _fdictRequestAsDict(request), dictImageSource, None,\n',
     ),
     Falsification(
         nodeid=(
@@ -32427,5 +32438,502 @@ LIST_FALSIFICATIONS = [
             '"passed" ||\n'
         ),
         new='            var bResearcherVerified = true ||\n',
+    ),
+    # --- 2026-10-14: the resumable, retrying, cancellable deposit download ---
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_drop_mid_body_resumes_from_the_bytes_on_disk'
+        ),
+        # every request asks for the file from byte 0
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old='    return f"bytes={int(iStartByte)}-"\n',
+        new='    return "bytes=0-"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_shorter_206_is_accepted_and_the_next_range_follows_it'
+        ),
+        # a 206 whose part stops short of the file's end is refused
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if iStart != dictRun["iOnDisk"] or iEnd < iStart or '
+            'iEnd > iTotal - 1:\n'
+        ),
+        new=(
+            '    if iStart != dictRun["iOnDisk"] or iEnd < iStart or '
+            'iEnd != iTotal - 1:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_attempts_that_bring_no_new_byte_spend_the_budget'
+        ),
+        # any attempt resets the budget, whether or not it got further
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if dictRun["iOnDisk"] > dictRun["iHighWater"]:\n'
+            '        dictRun["iHighWater"] = dictRun["iOnDisk"]\n'
+            '        dictRun["iWithoutAdvance"] = 0\n'
+        ),
+        new=(
+            '    if dictRun["iOnDisk"] >= 0:\n'
+            '        dictRun["iHighWater"] = dictRun["iOnDisk"]\n'
+            '        dictRun["iWithoutAdvance"] = 0\n'
+        ),
+    ),
+    Falsification(
+        nodeid='tests/testResumableDownload.py::test_retry_after_is_honored',
+        # the Retry-After a 429 carries is ignored
+        source='vaibify/reproducibility/resumableDownload.py',
+        old='    fWait = error.fRetryAfterSeconds or random.uniform(\n',
+        new='    fWait = random.uniform(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_cancel_wakes_a_read_blocked_on_a_stalled_socket'
+        ),
+        # Cancel sets the flag and leaves the blocked read to its timeout
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    dictControl["eventCancel"].set()\n'
+            '    rangedHttpTransport.fnShutdownLiveSocket(dictControl)\n'
+        ),
+        new='    dictControl["eventCancel"].set()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::test_cancel_cuts_a_retry_wait_short'
+        ),
+        # the backoff is slept out instead of waited on the cancel flag
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if dictControl["eventCancel"].wait(fWait):\n'
+            '        raise DownloadCancelledError('
+            '_fdictDetail(dictAcquisition, dictControl, ""))\n'
+        ),
+        new=(
+            '    time.sleep(fWait)\n'
+            '    if dictControl["eventCancel"].is_set():\n'
+            '        raise DownloadCancelledError('
+            '_fdictDetail(dictAcquisition, dictControl, ""))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_cancel_during_a_hanging_connection_returns_at_once'
+        ),
+        # a cancel during the connect phase waits for the worker anyway
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old=(
+            '        if dictControl["eventCancel"].wait(_F_WORKER_POLL_SECONDS):\n'
+            '            _fnAbandonAttempt(dictAttempt)\n'
+            '            raise CancelledDuringTransport()\n'
+        ),
+        new=(
+            '        if dictControl["eventCancel"].wait(_F_WORKER_POLL_SECONDS)'
+            ' and dictAttempt["bDone"]:\n'
+            '            _fnAbandonAttempt(dictAttempt)\n'
+            '            raise CancelledDuringTransport()\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_hanging_connection_meets_its_deadline'
+        ),
+        # no deadline on the connect phase
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old='        if time.monotonic() >= fDeadline:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_connect_workers_are_bounded_however_often_the_user_retries'
+        ),
+        # a worker is started without waiting for a free slot
+        source='vaibify/reproducibility/rangedHttpTransport.py',
+        old=(
+            '    _fnWaitForAFreeWorker(dictControl)\n'
+            '    threadConnect = threading.Thread(\n'
+        ),
+        new='    threadConnect = threading.Thread(\n',
+    ),
+    Falsification(
+        nodeid='tests/testResumableDownload.py::test_the_sidecar_is_written_durably',
+        # the sidecar is written with a plain open, not the durable writer
+        source='vaibify/reproducibility/downloadPartial.py',
+        old=(
+            '    fnWriteFileDurably(\n'
+            '        dictAcquisition["sSidecarPath"],\n'
+            '        json.dumps(\n'
+            '            dictAcquisition["dictSidecar"], indent=2, sort_keys=True,\n'
+            '        ).encode("utf-8"),\n'
+            '    )\n'
+        ),
+        new=(
+            '    with open(dictAcquisition["sSidecarPath"], "wb") as fileSidecar:\n'
+            '        fileSidecar.write(json.dumps(\n'
+            '            dictAcquisition["dictSidecar"], indent=2, sort_keys=True,\n'
+            '        ).encode("utf-8"))\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_torn_tail_is_cut_back_to_the_checkpoint_on_adoption'
+        ),
+        # an adopted partial is not truncated to its durable count
+        source='vaibify/reproducibility/downloadPartial.py',
+        old=(
+            '    if not fbIsComplete(dictAcquisition):\n'
+            '        fnTruncatePart(dictAcquisition, '
+            'int(dictSidecar.get("iDurableBytes") or 0))\n'
+            '    return dictAcquisition\n'
+        ),
+        new='    return dictAcquisition\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_download_killed_mid_stream_is_interrupted_not_lost_and_is_adopted'
+        ),
+        # an interrupted partial is never adopted; every download starts at 0
+        source='vaibify/reproducibility/downloadPartial.py',
+        old=(
+            '    dictAdopted = _fdictAdoptInterruptedPartial(\n'
+            '        sRoot, _fsTarballSha256Of(dictRecord),\n'
+            '    )\n'
+            '    if dictAdopted is not None:\n'
+            '        return dictAdopted\n'
+        ),
+        new=(
+            '    dictAdopted = None\n'
+            '    if dictAdopted is not None:\n'
+            '        return dictAdopted\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_no_stored_credential_reaches_the_record_or_the_file'
+        ),
+        # the record fetch lets requests consult ~/.netrc
+        source='vaibify/reproducibility/zenodoClient.py',
+        old=(
+            '            params=dictParams, allow_redirects=False,\n'
+            '            auth=_NoStoredCredentials(),\n'
+            '        )\n'
+        ),
+        new=(
+            '            params=dictParams, allow_redirects=False,\n'
+            '        )\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_daemon_that_cannot_load_keeps_the_verified_file_for_the_retry'
+        ),
+        # a verified tarball the daemon would not load is thrown away
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '    dictOutcome["bKeepPartial"] = True\n'
+            '    try:\n'
+            '        sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)\n'
+        ),
+        new=(
+            '    dictOutcome["bKeepPartial"] = False\n'
+            '    try:\n'
+            '        sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_spent_budget_keeps_the_partial_and_the_next_acquisition_adopts_it'
+        ),
+        # every failed acquisition deletes its partial
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '        if dictOutcome["bKeepPartial"]:\n'
+            '            downloadPartial.fnReleaseAcquisition(dictAcquisition)\n'
+            '        else:\n'
+            '            downloadPartial.fnDiscardAcquisition(dictAcquisition)\n'
+        ),
+        new='        downloadPartial.fnDiscardAcquisition(dictAcquisition)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_cancelling_the_chain_stops_it_and_leaves_nothing_on_disk'
+        ),
+        # a cancelled download keeps its partial as if it were interrupted
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '        dictOutcome["bKeepPartial"] = '
+            'bool(error.dictFailure.get("bPartialKept"))\n'
+            '        raise\n'
+        ),
+        new=(
+            '        dictOutcome["bKeepPartial"] = True\n'
+            '        raise\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_web_page_where_the_file_should_be_is_named_as_such'
+        ),
+        # a web page where the file should be is read as the file
+        source='vaibify/reproducibility/resumableDownload.py',
+        old='    if iStatus in (200, 206, 403) and "text/html" in sType:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_compressed_transfer_is_refused_before_a_byte_is_kept'
+        ),
+        # a compressed transfer is accepted as the file's own bytes
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if sEncoding in ("", "identity"):\n'
+            '        return\n'
+            '    raise DownloadRefusedError(\n'
+            '        "The server compressed the transfer'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+            '    raise DownloadRefusedError(\n'
+            '        "The server compressed the transfer'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_disk_without_room_for_the_rest_refuses_and_keeps_the_partial'
+        ),
+        # the free-space check never refuses
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if iFree >= iNeeded:\n'
+            '        return\n'
+            '    raise DownloadRefusedError(\n'
+            '        "There is not enough free space'
+        ),
+        new=(
+            '    if True:\n'
+            '        return\n'
+            '    raise DownloadRefusedError(\n'
+            '        "There is not enough free space'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testResumableDownload.py::'
+            'test_a_short_file_is_incomplete_never_corrupt'
+        ),
+        # the exact-size check trusts the run's own count
+        source='vaibify/reproducibility/resumableDownload.py',
+        old=(
+            '    if iOnDisk == iExpectedBytes and '
+            'dictRun["iOnDisk"] == iExpectedBytes:\n'
+            '        return\n'
+        ),
+        new=(
+            '    if dictRun["iOnDisk"] == iExpectedBytes:\n'
+            '        return\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testCoverageReproducibilityImageAcquisition.py::'
+            'testADownloadThatKeepsDroppingSpendsTheBudgetAndKeepsThePartial'
+        ),
+        # the downloader's refusal escapes untranslated
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '    except resumableDownload.DownloadRefusedError as error:\n'
+            '        raise ImageAcquisitionRefusedError(\n'
+            '            str(error),\n'
+        ),
+        new=(
+            '    except resumableDownload.DownloadCancelledError as error:\n'
+            '        raise ImageAcquisitionRefusedError(\n'
+            '            str(error),\n'
+        ),
+    ),
+    # --- 2026-10-14: a containerization converts nothing until the image
+    # is in hand; the commit is one journalled transaction ---
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_a_conversion_converts_nothing_while_the_download_runs_'
+            'and_cancel_leaves_no_trace'
+        ),
+        # the registry entry is switched the moment the conversion begins
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    pendingConversions.fnWriteConversionRecord(dictRecord)\n'
+            '    return fdictStartConversion(dictRecord)\n'
+        ),
+        new=(
+            '    pendingConversions.fnWriteConversionRecord(dictRecord)\n'
+            '    registryManager.fnConvertProjectToContainer(sHostName, sNewName)\n'
+            '    return fdictStartConversion(dictRecord)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_a_spent_download_waits_and_try_again_resumes_into_a_commit'
+        ),
+        # a staged image is never committed
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    _fnTryCommitQuietly(sHostName)\n'
+            '\n'
+            '\n'
+            'def _fdictProjectLike(dictRecord):\n'
+        ),
+        new=(
+            '\n'
+            '\n'
+            'def _fdictProjectLike(dictRecord):\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_an_open_project_refuses_the_commit_and_finish_commits_once_closed'
+        ),
+        # the switch runs under a project a browser session still holds
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    if app is not None and getattr(app.state, "dictContainerOwners", {})'
+            '.get(sHostName):\n'
+        ),
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_a_commit_cut_short_rolls_back_before_the_switch_and_forward_after'
+        ),
+        # a rollback leaves the rewritten vaibify.yml in place
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    fnWriteFileDurably(\n'
+            '        dictRecord["sConfigPath"], base64.b64decode(dictJournal["sConfigBase64"]),\n'
+            '        iMode=0o644,\n'
+            '    )\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_recovery_leaves_a_commit_another_process_holds_alone'
+        ),
+        # recovery proceeds without taking the commit locks first
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    fileSource = pendingConversions.ffileTakeSourceLock(dictRecord["sHostName"])\n'
+            '    fileDestination = None\n'
+            '    try:\n'
+            '        fileDestination = pendingConversions.ffileTakeDestinationLock('
+            'dictRecord["sNewName"])\n'
+            '        dictFresh ='
+        ),
+        new=(
+            '    fileSource = None\n'
+            '    fileDestination = None\n'
+            '    try:\n'
+            '        dictFresh ='
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_two_host_projects_cannot_both_take_one_container_name'
+        ),
+        # the commit never rechecks that the destination name is still free
+        source='vaibify/gui/conversionLifecycle.py',
+        old='    if registryManager.fdictGetProject(sNewName) is not None or any(\n',
+        new='    if any(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_only_the_conversions_edits_restore_the_committed_config_silently'
+        ),
+        # a runtime-key difference reads as the researcher's own edit
+        source='vaibify/gui/hostModeReturn.py',
+        old='            if sKey not in T_RUNTIME_YAML_KEYS and sKey != "features"\n',
+        new='            if sKey != "features"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_an_entry_whose_image_exists_is_not_stranded'
+        ),
+        # an entry whose image the daemon holds is returned to host mode
+        source='vaibify/gui/hostModeReturn.py',
+        old=(
+            '    if disposableContainer.fdictInspectImage(\n'
+            '        disposableContainer.fdockerCreateDisposableClient(), '
+            'f"{sName}:latest",\n'
+            '    ) is not None:\n'
+        ),
+        new='    if False:\n',
+    ),
+    # --- 2026-10-14: the containerizing window is the hub's record,
+    # rendered; the tile carries the state, Cancel warns first, and a
+    # stopped download is a window with the decisions, never a toast ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testTheTileCarriesTheHubsStateAndReopensTheWindowAfterAReload'
+        ),
+        source='vaibify/gui/static/scriptContainerManager.js',
+        # the tile shows nothing of a conversion the hub reports
+        old='        if (!bHost || !dictPending) return "";\n',
+        new='        if (!bHost || dictPending) return "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testCancelWarnsWithTheMegabytesItDeletesBeforeAnythingIsSent'
+        ),
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        # Cancel posts at once, with no warning naming the deleted bytes
+        old=(
+            '            [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {\n'
+            '                _fnWarnThenCancel(dictView);\n'
+        ),
+        new=(
+            '            [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {\n'
+            '                _fnPost(dictView.sHostName, "/cancel", "cancelled");\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testAStoppedDownloadIsAWindowThatStaysWithTheDecisions'
+        ),
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        # the hub's sentence is dropped from the window
+        old=(
+            '            dictFailure.sSentence || "The download stopped.", '
+            '"acquisition-sentence"));\n'
+        ),
+        new='            "The download stopped.", "acquisition-sentence"));\n',
     ),
 ]

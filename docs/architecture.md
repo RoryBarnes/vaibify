@@ -3032,6 +3032,161 @@ The wizard's Environment page now pre-selects the pinned image when
 the envelope says it can be obtained, and an explicit choice either
 way is never overridden by a re-render.
 
+### The deposit download resumes, retries, and can be canceled
+
+The archived image is the one artifact in the chain that is large
+(hundreds of megabytes to gigabytes) and comes from a service vaibify
+does not control. Until 2026-10-13 it was fetched in one request with a
+60-second read timeout and no retry; a connection that dropped at 507
+of 733 MB deleted the bytes, the next click started from zero, and the
+researcher saw a toast quoting a Python exception. Three modules under
+`vaibify/reproducibility/` now own that download, split along the
+seams that change for different reasons:
+
+- `downloadPartial` owns the bytes ON DISK. Every acquisition has a
+  directory of its own under `~/.vaibify/imageArchive/` holding the
+  `.part` file, a `download.json` SIDECAR (which deposit, how many
+  bytes are DURABLE, the high-water mark, when the last byte landed,
+  what the download was for) and a `lock` the owning process holds
+  with `flock` for the acquisition's life. **The lock is what tells a
+  download somebody gave up on from one that was interrupted.** Cancel
+  and Stay in host mode delete the directory while the lock is held;
+  a crash, a power cut or a killed hub release the lock without
+  deleting anything, so a partial whose lock is FREE was interrupted
+  and is offered for resume, and one whose lock is HELD is a live
+  download no other process touches. A new acquisition of the same
+  tarball (matched by the sidecar's sha256) ADOPTS an interrupted
+  partial: it takes the lock, truncates the part to the sidecar's
+  durable count, and continues. A verified file is renamed to its final
+  name and kept until the daemon has loaded it, so a daemon that was
+  down costs a retry and never a second download.
+- `rangedHttpTransport` owns the SOCKET. `requests` decodes any
+  `Content-Encoding` the server chooses (so byte offsets would stop
+  meaning bytes of the file), bounds each socket wait but never a DNS
+  lookup, and buries the socket a blocked read waits on four private
+  attributes deep. The transport sends `Range: bytes=<onDisk>-` and
+  `Accept-Encoding: identity`, reads the body raw in 64 KiB blocks,
+  checks every hop's origin against the Zenodo allowlist BEFORE
+  connecting (the same discipline as the record fetch), and resolves
+  and connects on a bounded pool of at most four worker threads
+  carrying attempt tokens, so a lookup the operating system will not
+  interrupt is abandoned rather than waited for and a late socket is
+  closed on arrival. Cancel shuts the live socket down from the
+  canceling thread, which is what wakes a read blocked on a stalled
+  connection.
+- `resumableDownload` owns the POLICY. A `206` is checked field by
+  field (start equals the bytes on disk, total equals the envelope's
+  size, body as long as the part named) and a shorter part than asked
+  for is accepted; a `200` to a ranged request restarts from zero and
+  says so; a differing total means the deposit changed and nothing can
+  be resumed. Transient failures (a drop, a stall, an incomplete body,
+  429 and the 5xx gateway answers) are retried with exponential backoff
+  and full jitter, honoring `Retry-After`; **progress means the bytes on
+  disk passed their previous high-water mark**, so a server that drops
+  after the same prefix every time spends the budget of six attempts
+  instead of resetting it, and the download then stops with the partial
+  KEPT for the researcher's decision. Other 4xx answers, a web page
+  where the file should be, a compressed transfer and a TLS failure are
+  never retried. Progress is COMPUTED WHEN READ from the counters the
+  worker stamps, so a poll during a stall reads "no data for 45 s"
+  without the worker having to wake. Every 32 MiB the part is synced
+  and the sidecar rewritten through `config/durableFile`, which syncs
+  the bytes (with `F_FULLFSYNC` on macOS), renames, and syncs the
+  directory; the registry writer uses the same helper.
+
+The chain's final sha256 check against the envelope is unchanged and
+remains the only authority on the bytes, so resume can cost time, never
+correctness; a resumed file that hashes wrong is thrown away and
+downloaded once more from zero. `zenodoClient` passes an explicit no-op
+auth on every request so `requests` never consults `~/.netrc`, whose
+entry for `zenodo.org` would otherwise be sent on every public read and
+would REPLACE the Bearer token on every upload. Every refusal the chain
+raises carries `dictFailure` — the failure class, whether the partial
+was kept, the byte counts — for the dashboard to offer the right next
+step. `tests/testResumableDownload.py` drives all of it against a real
+misbehaving loopback server (`tests/depositFaultServer.py`), including a
+child process killed with SIGKILL mid-stream whose partial is then
+adopted.
+
+### Convert and obtain converts nothing until the image is in hand
+
+Until 2026-10-13 "Convert and obtain" converted first: the registry
+entry became a container, the clone's `vaibify.yml` gained the runtime
+fields, the wizard's answers were written into the entry, and only then
+did the browser start the download. A download that failed left a
+project that was a container in name and nothing else -- it could not
+start, could not be built, and nothing turned it back. The ruling is
+that a host project is not converted until the image is in hand, and
+three modules carry it:
+
+- `config/pendingConversions` is the durable RECORD
+  (`~/.vaibify/pendingConversions/<hostName>.json`, written through
+  `durableFile`): the wizard's answers, the image source the clone's
+  envelope implied, the trust answer, the seed paths, and where the
+  acquisition has got to. While the record exists the registry entry
+  and the clone's files are untouched and the host project stays
+  usable; its tile carries the hub's state as a chip.
+- `gui/conversionLifecycle` OWNS the containerization. The acquisition
+  runs on a thread the hub owns -- never a browser tab, so closing the
+  tab or the browser is not a signal and a reopened tab re-attaches
+  from the tile -- and the record moves through `obtaining`, `waiting`
+  (the download stopped and wants a decision: Try again resumes the
+  partial with a fresh budget, Stay in host mode deletes it), `ready`
+  (the image is staged under `<newName>:vaibify-staging`), and the
+  derived `interrupted` (the record says obtaining or committing but no
+  worker in this hub holds it: the hub died, and the partial's free lock
+  lets Resume adopt it). A LIVE containerization vetoes the idle
+  self-exit beside the council's and the reproduction's vetoes; a
+  waiting one does not. `pinnedImageAcquisition.fdictObtainAndStage`
+  is the lane's steps 1-5 with every write to the registry and to
+  `vaibify.yml` removed: a pending containerization runs them against
+  the staging tag, and the re-obtain of an existing container runs them
+  against `:latest` and commits as before.
+- The COMMIT is one transaction with one switch point. Two `flock`s are
+  taken in a fixed order -- the source project, then the destination
+  name -- so two commits cannot deadlock and two host projects cannot
+  race for one container name (with the same pinned image they would
+  share an image ID, so "untag only what points at our image" could not
+  tell them apart). Every recheck runs before the first write, because
+  the host project stayed editable during the download: still the same
+  host entry, the name still free, the envelope still pinning the same
+  image, `vaibify.yml` still parsing, the staging tag still resolving to
+  the staged image, and nobody holding the project (an open project
+  answers "Image ready. Close the project to finish containerizing",
+  with Finish). A JOURNAL -- a random transaction id, the image ids, the
+  `vaibify.yml` bytes as found at commit time -- is recorded durably
+  before the first write. Then, in order and each durable before the
+  next: tag `<newName>:latest` by image id (inert: host mode never reads
+  it); rewrite `vaibify.yml`; write the origin record carrying the
+  transaction id (inert until the entry is a container); ONE atomic
+  registry write that sets mode, name, image source, trust and seed
+  together (`fnConvertProjectToContainer` gained the seed for exactly
+  this); drop the staging tag and the record. Recovery at hub start
+  takes the commit locks non-blocking -- a held lock is a commit in
+  progress, possibly in another hub, and is left alone -- and then
+  rolls an entry still in host mode BACK, removing only this
+  transaction's artifacts (the config bytes, an origin record bearing
+  its id, a `:latest` tag no registry entry holds that points at its
+  image), or an entry already converted FORWARD. Because the switch is
+  one write, those are the only two states.
+
+The routes (`routes/conversionRoutes`) are a browser's window onto the
+record: read, retry, commit, cancel, and the way back
+(`/api/registry/{sName}/return-to-host-mode`) for an entry 0.1.0
+stranded, which restores `vaibify.yml` from git HEAD when the
+conversion's edits are its only changes and otherwise returns both
+files for the researcher to decide (`gui/hostModeReturn`). All are
+researcher-only. The failure every lane shows comes from one table
+(`gui/acquisitionFailure`): a sentence, what is held on disk and what
+each button does to it, whether trying again can help, and the
+technical text collapsed; the registry's expected miss on an archived
+image is stated last, without Docker's words. The frontend's
+`scriptAcquisitionWindow.js` renders exactly that record on every poll.
+`tests/testConversionLifecycle.py` drives the worker, the commit, a
+crash injected after each write, lock-holding child processes and the
+name race; `tests/browser/testTheContainerizingWindowFollowsTheHub.py`
+drives the window.
+
 ### One image, N papers
 
 One image record per image digest; one science record per publication;

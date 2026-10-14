@@ -1221,6 +1221,19 @@ LIST_AGENT_ACTIONS = [
 
 
 SET_INTENTIONALLY_EXCLUDED_PATHS = frozenset({
+    # A pending containerization is the researcher's decision at every
+    # step: try again after a failed download, finish the switch once
+    # the project is closed, or give up and delete the partial. The
+    # routes write host state under ~/.vaibify and the clone's own
+    # vaibify.yml, which the in-container agent has no standing in, and
+    # each handler rejects the agent token lane by name as well.
+    ("POST", "/api/conversions/{sHostName}/retry"),
+    ("POST", "/api/conversions/{sHostName}/commit"),
+    ("POST", "/api/conversions/{sHostName}/cancel"),
+    # Returning a stuck container entry to host mode rewrites the
+    # registry and may restore vaibify.yml from git: researcher-only
+    # for the same reasons.
+    ("POST", "/api/registry/{sName}/return-to-host-mode"),
     # Agent Council actions are HUMAN-ONLY (design section 10.2):
     # starting paid provider work, answering a council's question,
     # stopping a running council, accepting a plan and deleting a

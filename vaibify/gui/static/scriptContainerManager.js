@@ -283,6 +283,7 @@ var VaibifyContainerManager = (function () {
                 ? '<span class="container-tile-progress">Deleting…</span>'
                 : "") +
             _fsRenderContainmentChip(dictContainer, bHost) +
+            _fsRenderContainerizingChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
             _fsRenderImageTrustChip(dictContainer, bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
@@ -373,6 +374,39 @@ var VaibifyContainerManager = (function () {
                 "another container.", "success");
         }
         await fnLoadContainers();
+    }
+
+    var _DICT_CONTAINERIZING_LABELS = {
+        "obtaining": "Containerizing…",
+        "committing": "Containerizing…",
+        "waiting": "Download stopped: your decision",
+        "ready": "Image ready: close the project to finish",
+        "interrupted": "Containerizing was interrupted",
+    };
+
+    function _fsRenderContainerizingChip(dictContainer, bHost) {
+        /* A host project the hub is containerizing stays a host project
+           until the image is in hand, so the tile stays usable and the
+           chip says where the hub has got to. The chip opens the
+           window the decisions are taken from; its words come from the
+           hub's state on every poll, never from this tab's memory. */
+        var dictPending = dictContainer.dictPendingConversion;
+        if (!bHost || !dictPending) return "";
+        var sState = dictPending.sState || "obtaining";
+        var sLabel = _DICT_CONTAINERIZING_LABELS[sState] || "Containerizing…";
+        if (sState === "obtaining" && dictPending.iTotalBytes > 0) {
+            sLabel = "Containerizing… " +
+                Math.round(dictPending.iBytes / 1e6) + " of " +
+                Math.round(dictPending.iTotalBytes / 1e6) + " MB";
+        }
+        return (
+            '<button type="button" class="containment-chip ' +
+            'containment-chip--containerizing" data-pending-conversion-state="' +
+            VaibifyUtilities.fnEscapeHtml(sState) + '" data-containerizing-name="' +
+            VaibifyUtilities.fnEscapeHtml(dictContainer.sName) +
+            '" title="Open the containerizing window">' +
+            VaibifyUtilities.fnEscapeHtml(sLabel) + "</button>"
+        );
     }
 
     function _fsRenderContainmentChip(dictContainer, bHost) {
@@ -812,6 +846,15 @@ var VaibifyContainerManager = (function () {
                 event.stopPropagation();
                 _fnCloseAllActionsMenus();
                 _fnShowQuarantineExplanation(sName);
+            });
+        }
+        var elContainerizing = elTile.querySelector(
+            ".containment-chip--containerizing");
+        if (elContainerizing) {
+            elContainerizing.addEventListener("click", function (event) {
+                event.stopPropagation();
+                _fnCloseAllActionsMenus();
+                VaibifyAcquisitionWindow.fnWatch(sName);
             });
         }
         elActions.addEventListener("click", function (event) {
@@ -1640,6 +1683,7 @@ var VaibifyContainerManager = (function () {
         var elOverlay = document.getElementById("modalBuildProgress");
         var bObtainedAndRunning = false;
         _fnResetBuildProgressTail();
+        _fnWordTheProgressModalForObtaining(true);
         elOverlay.style.display = "flex";
         _fnStartBuildProgressPoll(sName);
         try {
@@ -1656,21 +1700,57 @@ var VaibifyContainerManager = (function () {
             var sAction = (error.dictDetail && error.dictDetail.sAction) || "";
             if (error.iStatus === 409 && !sAction) {
                 bObtainedAndRunning = await _fnWatchRunningBuild(
-                    sName, _S_OBTAIN_ALREADY_RUNNING);
+                    sName, _S_OBTAIN_ALREADY_RUNNING, true);
             } else if (error.sKind === "network") {
                 bObtainedAndRunning = await _fnWatchRunningBuild(
-                    sName, _S_OBTAIN_LOST_THE_REQUEST);
+                    sName, _S_OBTAIN_LOST_THE_REQUEST, true);
             } else if (sAction === "reobtain-without-additions") {
                 _fnOfferReobtainWithoutAdditions(sName, bAllowEmulation, error);
             } else {
-                _fnReportBuildFailure(error);
+                _fnReportAcquisitionFailure(error, sName);
             }
         } finally {
             _fnStopBuildProgressPoll();
             elOverlay.style.display = "none";
+            _fnWordTheProgressModalForObtaining(false);
             fnLoadContainers();
         }
         return bObtainedAndRunning;
+    }
+
+    var _S_PROGRESS_TITLE_BUILDING = "Building Container";
+    var _S_PROGRESS_TITLE_OBTAINING = "Obtaining the author’s environment";
+    var _S_PROGRESS_MESSAGE_OBTAINING =
+        "Downloading the author’s image, then adding the agents you " +
+        "chose. Live output appears below.";
+    var _sProgressMessageBuilding = null;
+
+    function _fnWordTheProgressModalForObtaining(bObtaining) {
+        /* The modal was built for docker build; an acquisition shares
+           its record and its tail but is not a build, and said so only
+           in the heading (2026-10-13). The building words are kept and
+           restored, so the build path reads as it always did. */
+        var elModal = document.getElementById("modalBuildProgress");
+        var elTitle = elModal ? elModal.querySelector("h2") : null;
+        var elMessage = document.getElementById("buildProgressMessage");
+        if (!elTitle || !elMessage) return;
+        if (_sProgressMessageBuilding === null) {
+            _sProgressMessageBuilding = elMessage.textContent;
+        }
+        elTitle.textContent = bObtaining
+            ? _S_PROGRESS_TITLE_OBTAINING : _S_PROGRESS_TITLE_BUILDING;
+        elMessage.textContent = bObtaining
+            ? _S_PROGRESS_MESSAGE_OBTAINING : _sProgressMessageBuilding;
+    }
+
+    function _fnReportAcquisitionFailure(error, sName) {
+        /* A failed acquisition is a window that stays until dismissed,
+           never a toast: the sentence the server wrote, the lines
+           Docker said when there are any, and the diagnosis. */
+        var sTail = (error.dictDetail && error.dictDetail.sStderrTail) || "";
+        _fnShowBuildFailureModal(
+            VaibifyDiagnosis.fsExplainError(error), sTail,
+            "Obtaining the author’s environment for '" + sName + "' failed");
     }
 
     function _fnOfferReobtainWithoutAdditions(sName, bAllowEmulation, error) {
@@ -1816,11 +1896,13 @@ var VaibifyContainerManager = (function () {
         }
     }
 
-    async function _fnWatchRunningBuild(sName, sReason) {
+    async function _fnWatchRunningBuild(sName, sReason, bObtaining) {
         // The job is running and this tab is no longer the request
         // that owns it. Either way it outlives that request, so watch
         // it to completion instead of reporting a failure that did
-        // not happen. The caller names which way it arrived.
+        // not happen. The caller names which way it arrived, and
+        // whether it is an acquisition, so the failure says "obtaining"
+        // rather than "build" for a job that built nothing.
         VaibifyApp.fnShowToast(sReason, "info");
         var dictProgress;
         while (true) {
@@ -1839,14 +1921,20 @@ var VaibifyContainerManager = (function () {
             });
         }
         if (dictProgress.sOutcome === "succeeded") {
-            VaibifyApp.fnShowToast("Build complete", "success");
+            VaibifyApp.fnShowToast(
+                bObtaining ? "Obtained the author’s pinned image"
+                    : "Build complete", "success");
             await fnStartContainer(sName);
             return true;
         }
         _fnShowBuildFailureModal(
-            "The build of '" + sName + "' failed.",
+            bObtaining
+                ? "Obtaining the author’s environment for '" + sName +
+                  "' failed."
+                : "The build of '" + sName + "' failed.",
             (dictProgress.saTailLines || []).join("\n")
-            || "The hub kept no output of it.");
+            || "The hub kept no output of it.",
+            bObtaining ? "Obtaining failed" : null);
         return false;
     }
 
@@ -1860,11 +1948,13 @@ var VaibifyContainerManager = (function () {
         _fnShowBuildFailureModal(error.message, sTail);
     }
 
-    function _fnShowBuildFailureModal(sMessage, sTail) {
+    function _fnShowBuildFailureModal(sMessage, sTail, sHeading) {
         var elModal = document.getElementById("modalBuildFailure");
         var elMessage = document.getElementById("buildFailureMessage");
         var elTail = document.getElementById("buildFailureTail");
         var elClose = document.getElementById("buttonBuildFailureClose");
+        var elHeading = elModal.querySelector("h2");
+        if (elHeading) elHeading.textContent = sHeading || "Build Failed";
         elMessage.textContent =
             VaibifyUtilities.fsSanitizeErrorForUser(sMessage);
         elTail.textContent = sTail;

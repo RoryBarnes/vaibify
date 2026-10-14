@@ -280,6 +280,8 @@ def _fnRegisterGetRegistry(app, dictCtx):
             listContainers, app.state.dictContainerOwners, sLeaseId,
         )
         _fnAnnotatePinnedImageObtainable(listContainers)
+        from . import conversionLifecycle
+        conversionLifecycle.fnAnnotateListingWithPendingConversions(listContainers)
         from .remnantScanner import fdictSummarizeForPoll
         return {
             "listContainers": listContainers,
@@ -1808,13 +1810,6 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         dictTrustRecord = (
             pinnedEnvironmentConversion.fdictBuildPinnedImageTrustRecord(
                 dictImageSource, request))
-        # Every validator runs BEFORE the caller's own session is
-        # released: a refused name must never cost the researcher the
-        # project view they are converting from.
-        await _fnReleaseCallerOwnedSession(
-            app, sName, requestHttp,
-        )
-        await _fnRefuseBusyProject(app, sName, dictCtx)
         # A container IS a Project, so containerizing has to bring one
         # into being exactly as promotion does -- otherwise the
         # researcher waits out an image build and arrives at a Project
@@ -1822,39 +1817,85 @@ def _fnRegisterConvertToContainer(app, dictCtx):
         # It is written on the HOST, before the build, so the workspace
         # seed carries it into the container with the rest of the
         # project's own files.
-        _fnScaffoldWorkflowIfAbsent(
-            dictProject["sDirectory"],
-            request.sWorkflowName or request.sProjectName,
+        sWorkflowName = request.sWorkflowName or request.sProjectName
+        if dictImageSource is not None:
+            return _fdictBeginObtaining(
+                dictProject, sName, sWorkflowName, request, dictImageSource,
+                dictTrustRecord,
+            )
+        # Every validator runs BEFORE the caller's own session is
+        # released: a refused name must never cost the researcher the
+        # project view they are converting from.
+        await _fnReleaseCallerOwnedSession(
+            app, sName, requestHttp,
         )
+        await _fnRefuseBusyProject(app, sName, dictCtx)
+        _fnScaffoldWorkflowIfAbsent(dictProject["sDirectory"], sWorkflowName)
         # Config file FIRST, registry entry SECOND. If the registry write
         # then fails, the config names a container but the entry is still
         # host, so re-running is safe; the reverse order would drift
         # sName from the config's projectName.
-        if dictImageSource is not None:
-            pinnedEnvironmentConversion.fnRewriteConfigForObtainedImage(
-                dictProject["sConfigPath"], request,
-            )
-        else:
-            _fnRewriteConfigForConversion(
-                dictProject["sConfigPath"], request,
-            )
+        _fnRewriteConfigForConversion(
+            dictProject["sConfigPath"], request,
+        )
         try:
             registryManager.fnConvertProjectToContainer(
-                sName, request.sProjectName, dictImageSource, dictTrustRecord,
+                sName, request.sProjectName, None, None,
+                _fdictPendingSeedOf(request),
             )
-            if request.saSeedPaths:
-                registryManager.fnSetPendingSeed(request.sProjectName, {
-                    "saRelativePaths": list(request.saSeedPaths),
-                    "bRestoreCommittedFiles": bool(
-                        request.bRestoreCommittedFiles),
-                })
         except KeyError as error:
             raise HTTPException(404, str(error))
         except ValueError as error:
             raise HTTPException(409, str(error))
-        return _fdictConversionResult(
-            request.sProjectName, dictImageSource is not None,
+        return _fdictConversionResult(request.sProjectName, False)
+
+
+def _fdictPendingSeedOf(request):
+    """The files the first start copies in, or ``None`` when none were chosen."""
+    if not request.saSeedPaths:
+        return None
+    return {
+        "saRelativePaths": list(request.saSeedPaths),
+        "bRestoreCommittedFiles": bool(request.bRestoreCommittedFiles),
+    }
+
+
+def _fdictBeginObtaining(
+    dictProject, sHostName, sWorkflowName, request, dictImageSource,
+    dictTrustRecord,
+):
+    """Record the wizard's answers and start the hub-owned acquisition.
+
+    Obtaining converts NOTHING yet (ruled 2026-10-13): the answers go
+    into a durable record, the hub downloads the author's image, and
+    the switch happens in one transaction once the image is in hand.
+    The host project stays open and usable meanwhile, so the caller's
+    session is not released. The answer carries ``bConversionPending``
+    and the path the page polls; its entry is still the HOST entry.
+    """
+    from . import conversionLifecycle
+    _fnScaffoldWorkflowIfAbsent(dictProject["sDirectory"], sWorkflowName)
+    try:
+        dictView = conversionLifecycle.fdictBeginPendingConversion(
+            dictProject, sHostName, request.sProjectName,
+            _fdictRequestAsDict(request), dictImageSource, dictTrustRecord,
+            _fdictPendingSeedOf(request),
         )
+    except conversionLifecycle.ConversionRefusedError as error:
+        raise HTTPException(409, detail={"sMessage": str(error)}) from None
+    return dict(
+        dictProject, bBuildRequired=False, bAcquireRequired=False,
+        bConversionPending=True, sHostName=sHostName,
+        sNewName=request.sProjectName,
+        sConversionPath=f"/api/conversions/{sHostName}",
+        dictConversion=dictView,
+    )
+
+
+def _fdictRequestAsDict(request):
+    """The request's fields as a plain dict, whichever pydantic this is."""
+    fdictDump = getattr(request, "model_dump", None)
+    return dict(fdictDump() if fdictDump is not None else request.dict())
 
 
 def _fnRegisterPinnedEnvironment(app, dictCtx):

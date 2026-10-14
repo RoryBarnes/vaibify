@@ -766,6 +766,72 @@ html, body {
     text-decoration: underline;
 }
 
+/* A host project the hub is containerizing: the chip opens the window
+   the download is watched and decided from. Blue while the hub works,
+   orange while it waits for the researcher. */
+.containment-chip--containerizing {
+    background: var(--color-pale-blue);
+    border: 1px solid var(--color-pale-blue);
+    color: #fff;
+    font-family: inherit;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.containment-chip--containerizing[data-pending-conversion-state="waiting"],
+.containment-chip--containerizing[data-pending-conversion-state="interrupted"],
+.containment-chip--containerizing[data-pending-conversion-state="ready"] {
+    background: var(--color-orange, #d08a2a);
+    border-color: var(--color-orange, #d08a2a);
+}
+
+.containment-chip--containerizing:hover,
+.containment-chip--containerizing:focus-visible {
+    filter: brightness(1.1);
+    text-decoration: underline;
+}
+
+.acquisition-progress {
+    font-size: 15px;
+    text-align: center;
+    margin: 8px 0;
+}
+
+.acquisition-sentence {
+    font-size: 14px;
+    margin: 8px 0;
+}
+
+.acquisition-held,
+.acquisition-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 6px 0;
+}
+
+.acquisition-details {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.acquisition-details pre,
+.acquisition-tail {
+    max-height: 240px;
+    overflow: auto;
+    padding: 10px;
+    font-size: 11px;
+    background: var(--bg-elevated, #1a1a1a);
+    color: var(--text-primary, #e0e0e0);
+    border: 1px solid var(--border-default, #333);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 8px;
+}
+
 .quarantine-records {
     margin: 8px 0;
     padding-left: 20px;

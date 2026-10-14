@@ -188,7 +188,7 @@ def testEveryChainLinkIsReportedAndTheBaseIsTaggedById(
     for sExpected in (
         "no registry has this image -- normal for an image that was "
         "archived rather than published -- so vaibify tries the next "
-        "source (Docker said: manifest unknown)",
+        "source",
         f"{S_LINK_ARCHIVE}: served",
         "downloading the archived image: 0 MB of 0 MB (50%)",
         "pulling registry.example/x for linux/amd64",

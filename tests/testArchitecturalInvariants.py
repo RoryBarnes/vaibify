@@ -4285,7 +4285,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the conversation this entry is deferring, not avoiding.
     # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
     # worker threads, and the reaper reads the probe's snapshot.
-    "serverLifespan.py": 885,
+    # 885 -> 892 (2026-10-14): a live containerization vetoes the idle
+    # self-exit beside the council's and the reproduction's vetoes, for
+    # the same reason as both.
+    "serverLifespan.py": 892,
     # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
     # dead hub's terminal records from the journal and ends them, and
     # the record-free group terminate-and-prove the CLI-shell lane
@@ -7018,7 +7021,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2481 -> 2487 (2026-10-11): the conversion carries the wizard's
     # image-trust answer for the author's pin; the rule itself lives in
     # imageTrust and pinnedEnvironmentConversion, the route only routes.
-    "registryRoutes.py": 2487,
+    # 2487 -> 2528 (2026-10-14): "Convert and obtain" converts nothing
+    # until the image is in hand; the route hands the wizard's answers
+    # to conversionLifecycle, which owns the record, the worker and the
+    # commit, and the way back lives in routes/conversionRoutes. What
+    # stays here is the branch and the one helper that shapes its answer.
+    "registryRoutes.py": 2528,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7223,7 +7231,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and attach action; the catalog is one cohesive list of entries.
     # 1499 -> 1506 (2026-10-08): the remnant panel's two writes join the
     # intentional exclusions, with why an agent must never make them.
-    "actionCatalog.py": 1506,
+    # 1506 -> 1519 (2026-10-08): the pending containerization's three
+    # decisions and the way back to host mode join the intentional
+    # exclusions, with why an agent must never make them.
+    "actionCatalog.py": 1519,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7749,7 +7760,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1163 -> 1181 (2026-10-11): a claim lost mid-request answers the
     # authority's refusal instead of a 500; it re-asks the same
     # authority this route class already runs, so it belongs here.
-    "routeScope.py": 1181,
+    # 1181 -> 1192 (2026-10-14): the pending containerization's three
+    # decision routes and the way back to host mode join the
+    # browser-hub control plane, with why they are pre-container hub
+    # operations. Four rows in a map of rows.
+    "routeScope.py": 1192,
 }
 
 

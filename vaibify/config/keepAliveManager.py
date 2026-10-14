@@ -45,30 +45,38 @@ _F_EXIT_CONFIRM_SECONDS = 2.0
 _F_EXIT_POLL_SECONDS = 0.05
 
 
-def fnStartKeepAlive(sContainerName):
+def fnStartKeepAlive(sContainerName, bExitWithThisProcess=False):
     """Spawn a caffeinate process tied to the given container.
 
     Parameters
     ----------
     sContainerName : str
         The Docker container name used to locate the PID file.
+    bExitWithThisProcess : bool
+        Tie the keep-alive to THIS process (``caffeinate -w``), for work
+        that cannot outlive it: a download the hub performs in its own
+        thread dies with the hub, and a keep-alive that outlived it
+        would hold the laptop awake for nothing.
     """
     if not fbPlatformSupportsKeepAlive():
         return
     fnStopKeepAlive(sContainerName)
     pidFileRegistry.fnEnsureDirectory(_S_PID_DIRECTORY)
-    iPid = _fiSpawnCaffeinate()
+    iPid = (
+        _fiSpawnCaffeinate(["-w", str(os.getpid())])
+        if bExitWithThisProcess else _fiSpawnCaffeinate()
+    )
     if iPid:
         sStartedIso = fsNowClaimIso()
         _fnWritePidFile(sContainerName, iPid, sStartedIso)
         _fnRecordSpawnInLedger(sContainerName, iPid, sStartedIso)
 
 
-def _fiSpawnCaffeinate():
+def _fiSpawnCaffeinate(listExtraArguments=()):
     """Launch 'caffeinate -s' in the background and return its pid."""
     try:
         processResult = subprocess.Popen(
-            ["caffeinate", "-s"],
+            ["caffeinate", "-s", *listExtraArguments],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,

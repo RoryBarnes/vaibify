@@ -1369,9 +1369,12 @@ def test_a_registry_miss_reads_as_the_chain_working_not_a_failure():
     """An archived-only image is never on a registry; that is not an error.
 
     The first line of every such download used to read "registry pull:
-    failed" above a download that then succeeded. Docker's own words
-    stay, in brackets, for anyone diagnosing a registry that should
-    have answered.
+    failed" above a download that then succeeded, and then "normal"
+    followed by Docker's 404, which read as an error all the same
+    (2026-10-13). A registry that merely does not have the image shows
+    no Docker words on the progress line; any OTHER registry answer
+    keeps them, for anyone diagnosing a registry that should have
+    answered.
     """
     from vaibify.docker.pinnedImageAcquisition import (
         _fsDescribeAcquisitionEvent,
@@ -1383,7 +1386,12 @@ def test_a_registry_miss_reads_as_the_chain_working_not_a_failure():
     })
     assert "failed" not in sLine
     assert "no registry has this image" in sLine
-    assert "Docker said: ImageNotFound: 404" in sLine
+    assert "Docker said" not in sLine
+    sRefused = _fsDescribeAcquisitionEvent({
+        "sPhase": "attempt", "sLink": S_LINK_REGISTRY,
+        "bSucceeded": False, "sDetail": "TLS handshake timeout",
+    })
+    assert "Docker said: TLS handshake timeout" in sRefused
     sProgress = _fsDescribeAcquisitionEvent({
         "sPhase": "downloading", "iBytes": 475505283,
         "iTotalBytes": 951010566,

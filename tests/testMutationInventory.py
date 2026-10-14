@@ -749,7 +749,14 @@ DICT_UNRESOLVED_BUDGET = {
     # container the suite created but no longer tracks can be told from a
     # researcher's by the label only a test writes. A read, inside the
     # gateway, through the same root as flistGetRunningContainers.
-    "untraceable-docker-sdk-root": 55,
+    # 56 since fnRemoveImageTag (2026-10-14): the inverse of fnTagImage,
+    # through the same root and in the same SDK authority. A pending
+    # containerization stages its image under a tag of its own and the
+    # commit drops that tag once ``<project>:latest`` points at the
+    # image; a commit rolled back after a crash drops the tag it had
+    # just written. Without it the two names would stay forever, and a
+    # rollback would leave an artifact it claims to have removed.
+    "untraceable-docker-sdk-root": 56,
 }
 
 
