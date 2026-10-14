@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture &mdash; Vaibify 0.0.14.dev528 documentation</title>
+  <title>Architecture &mdash; Vaibify 0.1.1.dev12 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e2ea171e"></script>
+      <script src="_static/documentation_options.js?v=ba7bc1a4"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -3073,6 +3073,213 @@ route’s 409 and the pre-flight modal name the switch instead, once.
 The wizard’s Environment page now pre-selects the pinned image when
 the envelope says it can be obtained, and an explicit choice either
 way is never overridden by a re-render.</p>
+</section>
+<section id="the-deposit-download-resumes-retries-and-can-be-canceled">
+<h3>The deposit download resumes, retries, and can be canceled<a class="headerlink" href="#the-deposit-download-resumes-retries-and-can-be-canceled" title="Link to this heading"></a></h3>
+<p>The archived image is the one artifact in the chain that is large
+(hundreds of megabytes to gigabytes) and comes from a service vaibify
+does not control. Until 2026-10-13 it was fetched in one request with a
+60-second read timeout and no retry; a connection that dropped at 507
+of 733 MB deleted the bytes, the next click started from zero, and the
+researcher saw a toast quoting a Python exception. Three modules under
+<code class="docutils literal notranslate"><span class="pre">vaibify/reproducibility/</span></code> now own that download, split along the
+seams that change for different reasons:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">downloadPartial</span></code> owns the bytes ON DISK. Every acquisition has a
+directory of its own under <code class="docutils literal notranslate"><span class="pre">~/.vaibify/imageArchive/</span></code> holding the
+<code class="docutils literal notranslate"><span class="pre">.part</span></code> file, a <code class="docutils literal notranslate"><span class="pre">download.json</span></code> SIDECAR (which deposit, how many
+bytes are DURABLE, the high-water mark, when the last byte landed,
+what the download was for) and a <code class="docutils literal notranslate"><span class="pre">lock</span></code> the owning process holds
+with <code class="docutils literal notranslate"><span class="pre">flock</span></code> for the acquisition’s life. <strong>The lock is what tells a
+download somebody gave up on from one that was interrupted.</strong> Cancel
+and Stay in host mode delete the directory while the lock is held;
+a crash, a power cut or a killed hub release the lock without
+deleting anything, so a partial whose lock is FREE was interrupted
+and is offered for resume, and one whose lock is HELD is a live
+download no other process touches. A new acquisition of the same
+tarball (matched by the sidecar’s sha256) ADOPTS an interrupted
+partial: it takes the lock, truncates the part to the sidecar’s
+durable count, and continues. A verified file is renamed to its final
+name and kept until the daemon has loaded it, so a daemon that was
+down costs a retry and never a second download.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rangedHttpTransport</span></code> owns the SOCKET. <code class="docutils literal notranslate"><span class="pre">requests</span></code> decodes any
+<code class="docutils literal notranslate"><span class="pre">Content-Encoding</span></code> the server chooses (so byte offsets would stop
+meaning bytes of the file), bounds each socket wait but never a DNS
+lookup, and buries the socket a blocked read waits on four private
+attributes deep. The transport sends <code class="docutils literal notranslate"><span class="pre">Range:</span> <span class="pre">bytes=&lt;onDisk&gt;-</span></code> and
+<code class="docutils literal notranslate"><span class="pre">Accept-Encoding:</span> <span class="pre">identity</span></code>, reads the body raw in 64 KiB blocks,
+checks every hop’s origin against the Zenodo allowlist BEFORE
+connecting (the same discipline as the record fetch), and resolves
+and connects on a bounded pool of at most four worker threads
+carrying attempt tokens, so a lookup the operating system will not
+interrupt is abandoned rather than waited for and a late socket is
+closed on arrival. Cancel shuts the live socket down from the
+canceling thread, which is what wakes a read blocked on a stalled
+connection.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">resumableDownload</span></code> owns the POLICY. A <code class="docutils literal notranslate"><span class="pre">206</span></code> is checked field by
+field (start equals the bytes on disk, total equals the envelope’s
+size, body as long as the part named) and a shorter part than asked
+for is accepted; a <code class="docutils literal notranslate"><span class="pre">200</span></code> to a ranged request restarts from zero and
+says so; a differing total means the deposit changed and nothing can
+be resumed. Transient failures (a drop, a stall, an incomplete body,
+429 and the 5xx gateway answers) are retried with exponential backoff
+and full jitter, honoring <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code>; <strong>progress means the bytes on
+disk passed their previous high-water mark</strong>, so a server that drops
+after the same prefix every time spends the budget of six attempts
+instead of resetting it, and the download then stops with the partial
+KEPT for the researcher’s decision. Other 4xx answers, a web page
+where the file should be, a compressed transfer and a TLS failure are
+never retried. Progress is COMPUTED WHEN READ from the counters the
+worker stamps, so a poll during a stall reads “no data for 45 s”
+without the worker having to wake. Every 32 MiB the part is synced
+and the sidecar rewritten through <code class="docutils literal notranslate"><span class="pre">config/durableFile</span></code>, which syncs
+the bytes (with <code class="docutils literal notranslate"><span class="pre">F_FULLFSYNC</span></code> on macOS), renames, and syncs the
+directory; the registry writer uses the same helper.</p></li>
+</ul>
+<p>The chain’s final sha256 check against the envelope is unchanged and
+remains the only authority on the bytes, so resume can cost time, never
+correctness; a resumed file that hashes wrong is thrown away and
+downloaded once more from zero. <code class="docutils literal notranslate"><span class="pre">zenodoClient</span></code> passes an explicit no-op
+auth on every request so <code class="docutils literal notranslate"><span class="pre">requests</span></code> never consults <code class="docutils literal notranslate"><span class="pre">~/.netrc</span></code>, whose
+entry for <code class="docutils literal notranslate"><span class="pre">zenodo.org</span></code> would otherwise be sent on every public read and
+would REPLACE the Bearer token on every upload. Every refusal the chain
+raises carries <code class="docutils literal notranslate"><span class="pre">dictFailure</span></code> — the failure class, whether the partial
+was kept, the byte counts — for the dashboard to offer the right next
+step. <code class="docutils literal notranslate"><span class="pre">tests/testResumableDownload.py</span></code> drives all of it against a real
+misbehaving loopback server (<code class="docutils literal notranslate"><span class="pre">tests/depositFaultServer.py</span></code>), including a
+child process killed with SIGKILL mid-stream whose partial is then
+adopted.</p>
+</section>
+<section id="convert-and-obtain-converts-nothing-until-the-image-is-in-hand">
+<h3>Convert and obtain converts nothing until the image is in hand<a class="headerlink" href="#convert-and-obtain-converts-nothing-until-the-image-is-in-hand" title="Link to this heading"></a></h3>
+<p>Until 2026-10-13 “Convert and obtain” converted first: the registry
+entry became a container, the clone’s <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> gained the runtime
+fields, the wizard’s answers were written into the entry, and only then
+did the browser start the download. A download that failed left a
+project that was a container in name and nothing else – it could not
+start, could not be built, and nothing turned it back. The ruling is
+that a host project is not converted until the image is in hand, and
+three modules carry it:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">config/pendingConversions</span></code> is the durable RECORD
+(<code class="docutils literal notranslate"><span class="pre">~/.vaibify/pendingConversions/&lt;hostName&gt;.json</span></code>, written through
+<code class="docutils literal notranslate"><span class="pre">durableFile</span></code>): the wizard’s answers, the image source the clone’s
+envelope implied, the trust answer, the seed paths, and where the
+acquisition has got to. While the record exists the registry entry
+and the clone’s files are untouched and the host project stays
+usable; its tile carries the hub’s state as a chip.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">gui/conversionLifecycle</span></code> OWNS the containerization. The acquisition
+runs on a thread the hub owns – never a browser tab, so closing the
+tab or the browser is not a signal and a reopened tab re-attaches
+from the tile – and the record moves through <code class="docutils literal notranslate"><span class="pre">obtaining</span></code>, <code class="docutils literal notranslate"><span class="pre">waiting</span></code>
+(the download stopped and wants a decision: Try again resumes the
+partial with a fresh budget, Stay in host mode deletes it), <code class="docutils literal notranslate"><span class="pre">ready</span></code>
+(the image is staged under <code class="docutils literal notranslate"><span class="pre">&lt;newName&gt;:vaibify-staging</span></code>), and the
+derived <code class="docutils literal notranslate"><span class="pre">interrupted</span></code> (the record says obtaining or committing but no
+worker in this hub holds it: the hub died, and the partial’s free lock
+lets Resume adopt it). A LIVE containerization vetoes the idle
+self-exit beside the council’s and the reproduction’s vetoes; a
+waiting one does not. <code class="docutils literal notranslate"><span class="pre">pinnedImageAcquisition.fdictObtainAndStage</span></code>
+is the lane’s steps 1-5 with every write to the registry and to
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> removed: a pending containerization runs them against
+the staging tag, and the re-obtain of an existing container runs them
+against <code class="docutils literal notranslate"><span class="pre">:latest</span></code> and commits as before.</p></li>
+<li><p>The COMMIT is one transaction with one switch point. Two <code class="docutils literal notranslate"><span class="pre">flock</span></code>s are
+taken in a fixed order – the source project, then the destination
+name – so two commits cannot deadlock and two host projects cannot
+race for one container name (with the same pinned image they would
+share an image ID, so “untag only what points at our image” could not
+tell them apart). Every recheck runs before the first write, because
+the host project stayed editable during the download: still the same
+host entry, the name still free, the envelope still pinning the same
+image, <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> still parsing, the staging tag still resolving to
+the staged image, and nobody holding the project (an open project
+answers “Image ready. Close the project to finish containerizing”,
+with Finish). A JOURNAL – a random transaction id, the image ids, the
+<code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> bytes as found at commit time – is recorded durably
+before the first write. Then, in order and each durable before the
+next: tag <code class="docutils literal notranslate"><span class="pre">&lt;newName&gt;:latest</span></code> by image id (inert: host mode never reads
+it); rewrite <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code>; write the origin record carrying the
+transaction id (inert until the entry is a container); ONE atomic
+registry write that sets mode, name, image source, trust and seed
+together (<code class="docutils literal notranslate"><span class="pre">fnConvertProjectToContainer</span></code> gained the seed for exactly
+this); drop the staging tag and the record. Recovery at hub start
+takes the commit locks non-blocking – a held lock is a commit in
+progress, possibly in another hub, and is left alone – and then
+rolls an entry still in host mode BACK, removing only this
+transaction’s artifacts (the config bytes, an origin record bearing
+its id, a <code class="docutils literal notranslate"><span class="pre">:latest</span></code> tag no registry entry holds that points at its
+image), or an entry already converted FORWARD. Because the switch is
+one write, those are the only two states.</p></li>
+</ul>
+<p>The routes (<code class="docutils literal notranslate"><span class="pre">routes/conversionRoutes</span></code>) are a browser’s window onto the
+record: read, retry, commit, cancel, and the way back
+(<code class="docutils literal notranslate"><span class="pre">/api/registry/{sName}/return-to-host-mode</span></code>) for an entry 0.1.0
+stranded, which restores <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> from git HEAD when the
+conversion’s edits are its only changes and otherwise returns both
+files for the researcher to decide (<code class="docutils literal notranslate"><span class="pre">gui/hostModeReturn</span></code>). All are
+researcher-only. The failure every lane shows comes from one table
+(<code class="docutils literal notranslate"><span class="pre">gui/acquisitionFailure</span></code>): a sentence, what is held on disk and what
+each button does to it, whether trying again can help, and the
+technical text collapsed; the registry’s expected miss on an archived
+image is stated last, without Docker’s words. The frontend’s
+<code class="docutils literal notranslate"><span class="pre">scriptAcquisitionWindow.js</span></code> renders exactly that record on every poll.
+<code class="docutils literal notranslate"><span class="pre">tests/testConversionLifecycle.py</span></code> drives the worker, the commit, a
+crash injected after each write, lock-holding child processes and the
+name race; <code class="docutils literal notranslate"><span class="pre">tests/browser/testTheContainerizingWindowFollowsTheHub.py</span></code>
+drives the window.</p>
+</section>
+<section id="a-stopped-download-is-a-decision-and-an-interrupted-one-is-an-asset">
+<h3>A stopped download is a decision, and an interrupted one is an asset<a class="headerlink" href="#a-stopped-download-is-a-decision-and-an-interrupted-one-is-an-asset" title="Link to this heading"></a></h3>
+<p>Three surfaces answer the same three questions about a download that
+is not progressing – what happened, what is held, what next – from
+the same records, and none of them deletes bytes on its own.</p>
+<p><strong>Check connection reports observations, never verdicts.</strong>
+<code class="docutils literal notranslate"><span class="pre">reproducibility/connectionCheck.py</span></code> runs three probes over the
+download’s own transport: connect to the recorded service and request
+the file from the current offset, read at most 1 MiB for at most 15 s,
+and reach the DOI resolver. The whole check is bounded by 45 s through
+the download’s own Cancel path – a timer requests cancel at the
+deadline, which shuts the live socket – so a hanging connection or a
+stalled read returns at once rather than at the socket timeout. The cap
+is on the bytes READ, so a server that ignores <code class="docutils literal notranslate"><span class="pre">Range</span></code> cannot stream
+the file into a check. The report says what was reached and how fast,
+then what might explain it (“Slow starts like this often mean Zenodo is
+busy”), and never a diagnosis the probes cannot establish. The GET
+(<code class="docutils literal notranslate"><span class="pre">routes/connectionCheckRoutes.py</span></code>) names the download by its directory
+id and reads the sidecar vaibify wrote; no URL comes from the caller.</p>
+<p><strong>A reproduction whose download stops waits with its snapshot.</strong> The
+reproduction job used to fail on any acquisition refusal and release
+its clone, so “try again” meant staging again. It now enters
+<code class="docutils literal notranslate"><span class="pre">waiting-download</span></code> (<code class="docutils literal notranslate"><span class="pre">gui/reproductionProgress.py</span></code>) for a retryable
+failure: the snapshot and its lock are kept, the job keeps counting
+against the staging limits and the staged retention, and the card shows
+the shared failure record. Retry is a claim of its own
+(<code class="docutils literal notranslate"><span class="pre">fbClaimJobForRetry</span></code>), distinct from the one-time run claim, so a
+retry can only re-enter the download and never start a second
+scientific rerun. Close is the researcher giving up and deletes the
+snapshot AND the partial; the sweep that expires a waiting job deletes
+only the snapshot. A final refusal (the deposit is gone) still fails the
+job, and an unexpected exception is reported by its type in a plain
+sentence, never with its text, because that text can carry a host path.</p>
+<p><strong>Interrupted downloads are listed under the leftovers glyph, by what
+the lock proves.</strong> <code class="docutils literal notranslate"><span class="pre">remnantScanner.flistClassifyInterruptedDownloads</span></code>
+reads every directory under the image archive: a free lock with a
+readable sidecar is an interrupted download (proven, with what it was
+for, how far it got, when the last byte arrived, a Resume into the
+owning project’s window, and a confirmed Delete); a held lock is a live
+download in another hub or terminal (unknown, no action); a directory
+with no readable sidecar cannot be resumed (Delete only); and a v0.1.0
+<code class="docutils literal notranslate"><span class="pre">tmp*</span></code> scratch directory carries no lock, so it is listed with the
+warning that an older vaibify may still be using it and deleted only on
+an explicit Delete. This hub’s own live downloads are not leftovers.
+The removal route re-checks the lock by taking it, so a download that
+started since the scan is reported as live rather than deleted out from
+under it. The one automatic deletion is a project removed from the
+registry, which cancels its pending containerization and the partial
+with it. <code class="docutils literal notranslate"><span class="pre">tests/testConnectionCheck.py</span></code>, <code class="docutils literal notranslate"><span class="pre">tests/testReproductionRoutes.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tests/testRemnantScanner.py</span></code> and <code class="docutils literal notranslate"><span class="pre">tests/testRemnantRoutes.py</span></code> are the
+kill-confirmed guards.</p>
 </section>
 <section id="one-image-n-papers">
 <h3>One image, N papers<a class="headerlink" href="#one-image-n-papers" title="Link to this heading"></a></h3>
