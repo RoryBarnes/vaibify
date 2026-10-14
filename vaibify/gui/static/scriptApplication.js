@@ -2397,7 +2397,11 @@ const VaibifyApp = (function () {
         _bRenderScheduled = true;
         requestAnimationFrame(function () {
             _bRenderScheduled = false;
-            _fnRenderStepListImmediate();
+            /* Held while a pointer is down: a rebuild between mousedown
+               and mouseup replaces the element being clicked and the
+               click is lost (see VaibifyUtilities). */
+            VaibifyUtilities.fnRenderWhenNoPointerIsDown(
+                _fnRenderStepListImmediate);
         });
     }
 

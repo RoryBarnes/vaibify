@@ -2396,6 +2396,15 @@ var VaibifyAgentCouncil = (function () {
     }
 
     function _fnRenderWorkspace() {
+        /* Held while a pointer is down: a poll answer rebuilding the
+           panel between mousedown and mouseup replaced the Ask button
+           under the researcher and the click was lost (see
+           VaibifyUtilities). Renders from a click handler run at once,
+           because by then the pointer is up. */
+        VaibifyUtilities.fnRenderWhenNoPointerIsDown(_fnRenderWorkspaceNow);
+    }
+
+    function _fnRenderWorkspaceNow() {
         var elBody = document.getElementById("agentCouncilWorkspaceBody");
         if (!elBody) return;
         var dictCampaign = _dictState.dictCampaign;
