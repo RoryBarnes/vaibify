@@ -64,6 +64,7 @@ __all__ = [
     "S_FAILURE_WRITE_FAILED",
     "fdictCreateDownloadControl",
     "fdictReadDownloadProgress",
+    "ffRetryAfterSeconds",
     "fnRequestCancel",
     "fsDescribeBytes",
     "fsDownloadIntoAcquisition",
@@ -421,7 +422,7 @@ def _fiJudgeTheAnswer(dictAnswer, dictRun, iExpectedBytes, dictAcquisition, dict
     if iStatus in _T_TRANSIENT_STATUSES:
         raise _TransientFailure(
             f"Zenodo answered {iStatus} {dictAnswer['httpresponseAnswer'].reason}",
-            _ffRetryAfterSeconds(dictHeaders.get("retry-after")),
+            ffRetryAfterSeconds(dictHeaders.get("retry-after")),
         )
     if iStatus in _T_PERMANENT_STATUSES:
         raise DownloadRefusedError(
@@ -532,7 +533,7 @@ def _fiHeaderInteger(sValue):
         return None
 
 
-def _ffRetryAfterSeconds(sValue):
+def ffRetryAfterSeconds(sValue):
     """Seconds a ``Retry-After`` asks for, 0 when absent or unreadable."""
     if not sValue:
         return 0.0

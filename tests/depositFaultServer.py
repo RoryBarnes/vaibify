@@ -140,6 +140,7 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
     def _fnWriteBodyOrDrop(self, baPart, iDropAfter):
         serverFault = self.server
         tStall = serverFault.dictBehavior["tStallAfterBytes"]
+        tTrickle = serverFault.dictBehavior["tTrickle"]
         iWritten = 0
         while iWritten < len(baPart):
             iPiece = min(I_WRITE_PIECE_BYTES, len(baPart) - iWritten)
@@ -147,6 +148,8 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
                 iPiece = min(iPiece, max(0, iDropAfter - iWritten))
             if tStall is not None and iWritten < tStall[0]:
                 iPiece = min(iPiece, tStall[0] - iWritten)
+            if tTrickle is not None:
+                iPiece = min(iPiece, tTrickle[0])
             if iPiece:
                 self.wfile.write(baPart[iWritten:iWritten + iPiece])
                 self.wfile.flush()
@@ -159,6 +162,8 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
                     self._fnDropTheConnection()
                     return
                 tStall = None
+            if tTrickle is not None and serverFault.eventRelease.wait(tTrickle[1]):
+                tTrickle = None
         serverFault.iBytesServed += len(baPart)
 
     def _fnDropTheConnection(self):
@@ -183,6 +188,9 @@ class FaultInjectingDepositServer:
         self._server.iBytesServed = 0
         self._server.dictBehavior = {
             "listDropAfterBytes": [], "tStallAfterBytes": None,
+            # (iPieceBytes, fSecondsBetweenPieces): serve the body a few
+            # bytes at a time until eventRelease is set.
+            "tTrickle": None,
             "bIgnoreRange": False, "iShortPartBytes": 0,
             "listCannedAnswers": [], "iAdvertisedTotal": None,
             "sContentType": "application/octet-stream", "sContentEncoding": "",

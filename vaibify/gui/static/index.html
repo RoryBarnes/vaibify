@@ -112,9 +112,30 @@
         <div id="reproduceStageProgress" style="display: none;">
             <p class="reproduce-progress-phase pulsing"
                id="reproduceProgressPhase"></p>
+            <p class="reproduce-progress-note muted-text"
+               id="reproduceProgressNote"></p>
             <ul class="reproduce-attempts" id="reproduceProgressAttempts"></ul>
             <div class="modal-actions">
                 <button class="btn" id="btnReproduceHideProgress">Hide</button>
+            </div>
+        </div>
+        <!-- The download stopped and the hub waits for a decision: the
+             snapshot and the bytes downloaded are kept until Retry or
+             Close. Every sentence is the hub's. -->
+        <div id="reproduceStageDecision" style="display: none;">
+            <p class="acquisition-sentence" id="reproduceDecisionSentence"></p>
+            <p class="acquisition-held" id="reproduceDecisionHeld"></p>
+            <p class="acquisition-note" id="reproduceDecisionAlsoChecked"></p>
+            <details class="acquisition-details">
+                <summary>Technical details</summary>
+                <pre id="reproduceDecisionDetail"></pre>
+            </details>
+            <p class="acquisition-check" id="reproduceDecisionReport"
+               style="display: none;"></p>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="btnReproduceRetry">Retry</button>
+                <button class="btn" id="btnReproduceCheckConnection">Check connection</button>
+                <button class="btn" id="btnReproduceGiveUp">Close</button>
             </div>
         </div>
         <div id="reproduceStageResult" style="display: none;">

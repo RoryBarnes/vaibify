@@ -1212,6 +1212,12 @@ LIST_AGENT_ACTIONS = [
      "sDescription": "Obtain the pinned image and re-run a staged "
                      "snapshot in a shadow container, writing the "
                      "reproducer's own report. Human-only."},
+    {"sName": "retry-reproduction", "sCategory": "reproduction",
+     "sMethod": "POST", "sPath": "/api/reproductions/{sJobId}/retry",
+     "bAgentSafe": False,
+     "sDescription": "Re-enter the image download of a reproduction "
+                     "that stopped and is waiting for a decision; the "
+                     "bytes already downloaded are kept. Human-only."},
     {"sName": "discard-reproduction", "sCategory": "reproduction",
      "sMethod": "POST", "sPath": "/api/reproductions/{sJobId}/discard",
      "bAgentSafe": False,

@@ -811,6 +811,14 @@ html, body {
     margin: 6px 0;
 }
 
+.acquisition-check {
+    font-size: 13px;
+    margin: 10px 0 4px;
+    padding: 8px 10px;
+    border-left: 3px solid var(--accent, #4a90d9);
+    background: var(--bg-elevated, #1a1a1a);
+}
+
 .acquisition-details {
     margin-top: 10px;
     font-size: 12px;

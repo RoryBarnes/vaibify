@@ -6,6 +6,7 @@ claimed for its run exactly once, and the view a client receives never
 carries the staging token or the release handle.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -137,6 +138,84 @@ def test_failing_records_the_reason_and_releases():
     assert dictView["sPhase"] == reproductionProgress.S_PHASE_FAILED
     assert dictView["sFailure"] == "Refused: no link served"
     assert listReleases == ["released"]
+
+
+@pytest.mark.falsification
+def test_the_retry_claim_is_taken_only_from_the_waiting_state():
+    """Kills: a retry claim that re-enters the acquisition of a running job."""
+    dictJob = _fdictCreate()
+    sJobId = dictJob["sJobId"]
+    assert not reproductionProgress.fbClaimJobForRetry(sJobId), "staged: nothing to retry"
+    assert reproductionProgress.fbClaimJobForRun(sJobId, False)
+    assert not reproductionProgress.fbClaimJobForRetry(sJobId), "running: never"
+    reproductionProgress.fnHoldJobForDecision(sJobId, {
+        "sSentence": "The download stopped.", "sAcquisitionId": "acquisition-x",
+    })
+    dictView = reproductionProgress.fdictReadJobView(sJobId)
+    assert dictView["sPhase"] == reproductionProgress.S_PHASE_WAITING_DOWNLOAD
+    assert dictView["sAcquisitionId"] == "acquisition-x"
+    assert not reproductionProgress.fbJobIsLive(sJobId)
+    assert reproductionProgress.fbClaimJobForRetry(sJobId)
+    assert not reproductionProgress.fbClaimJobForRetry(sJobId), "claimed once per wait"
+    dictView = reproductionProgress.fdictReadJobView(sJobId)
+    assert dictView["sPhase"] == reproductionProgress.S_PHASE_PULLING
+    assert dictView["dictFailure"] is None
+    assert dictView["bConsumed"] is True
+
+
+@pytest.mark.falsification
+def test_the_sweep_keeps_the_partial_of_an_expired_waiting_job(tmp_path, monkeypatch):
+    """Kills: an expiry that deletes an interrupted download on its own."""
+    from vaibify.reproducibility import downloadPartial
+    monkeypatch.setattr(downloadPartial, "_S_DOWNLOAD_ROOT", str(tmp_path))
+    dictAcquisition = downloadPartial.fdictOpenAcquisition({
+        "sTarballName": "image.tar", "sTarballSha256": "sha256:" + "d" * 64,
+        "iTarballBytes": 10,
+    })
+    downloadPartial.fnReleaseAcquisition(dictAcquisition)
+    listReleases = []
+    dictJob = _fdictCreate(listReleases)
+    reproductionProgress.fbClaimJobForRun(dictJob["sJobId"], False)
+    reproductionProgress.fnHoldJobForDecision(dictJob["sJobId"], {
+        "sSentence": "stopped", "sAcquisitionId": dictAcquisition["sAcquisitionId"],
+    })
+    assert reproductionProgress.flistSweepExpiredJobs(fStagedMaxAgeSeconds=-1) == [
+        dictJob["sJobId"],
+    ]
+    assert listReleases == ["released"]
+    assert os.path.isdir(dictAcquisition["sDirectory"]), "the bytes outlive the job"
+    dictAgain = _fdictCreate()
+    reproductionProgress.fnHoldJobForDecision(dictAgain["sJobId"], {
+        "sSentence": "stopped", "sAcquisitionId": dictAcquisition["sAcquisitionId"],
+    })
+    reproductionProgress.fnDiscardJob(dictAgain["sJobId"], bDeletePartial=True)
+    assert not os.path.isdir(dictAcquisition["sDirectory"])
+
+
+def test_download_events_keep_a_sticky_resume_note_and_a_transient_one():
+    dictJob = _fdictCreate()
+    sJobId = dictJob["sJobId"]
+    reproductionProgress.fnRecordAcquisitionEvent(
+        sJobId, {"sPhase": "resuming", "iBytes": 507_000_000, "iTotalBytes": 733_000_000},
+    )
+    reproductionProgress.fnRecordAcquisitionEvent(
+        sJobId, {"sPhase": "downloading", "iBytes": 507_000_000, "iTotalBytes": 733_000_000},
+    )
+    dictView = reproductionProgress.fdictReadJobView(sJobId)
+    assert dictView["sResumeNote"] == (
+        "Resuming a download interrupted earlier (507 of 733 MB)."
+    )
+    assert dictView["sDownloadNote"] == ""
+    reproductionProgress.fnRecordAcquisitionEvent(
+        sJobId, {"sPhase": "downloadRetrying", "sSentence": "Retrying in 5 s."},
+    )
+    assert reproductionProgress.fdictReadJobView(sJobId)["sDownloadNote"] == "Retrying in 5 s."
+    reproductionProgress.fnRecordAcquisitionEvent(
+        sJobId, {"sPhase": "downloading", "iBytes": 600_000_000, "iTotalBytes": 733_000_000},
+    )
+    dictView = reproductionProgress.fdictReadJobView(sJobId)
+    assert dictView["sDownloadNote"] == ""
+    assert dictView["sResumeNote"].startswith("Resuming")
 
 
 def test_the_sweep_forgets_only_old_settled_jobs():

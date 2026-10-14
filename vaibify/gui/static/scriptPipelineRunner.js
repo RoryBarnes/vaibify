@@ -1194,8 +1194,9 @@ var VaibifyPipelineRunner = (function () {
 
     async function _fnExecuteCleanOutputs() {
         var sContainerId = VaibifyApp.fsGetContainerId();
+        var dictCleaned;
         try {
-            await VaibifyApi.fdictPostRaw(
+            dictCleaned = await VaibifyApi.fdictPostRaw(
                 "/api/pipeline/" + sContainerId + "/clean"
             );
         } catch (error) {
@@ -1211,16 +1212,18 @@ var VaibifyPipelineRunner = (function () {
            that stopped here would leave green badges over deleted
            files -- the dashboard stating the opposite of the truth.
 
-           Mirrored locally rather than refetched. fnRefreshWorkflow
-           would be the obvious call and is the wrong one here: it also
-           fetches the project's git remote and raises its own "Project
-           refreshed" toast, so deleting a file would reach across the
-           network for a reason a researcher cannot connect to the
-           click. The mirror only ever moves a badge from verified
-           toward untested -- never the direction that would claim
-           something unproven -- and it runs after the route has
-           already confirmed the reset. */
-        _fnMirrorTheClearedVerification();
+           Applied from the route's answer rather than refetched.
+           fnRefreshWorkflow would be the obvious call and is the wrong
+           one here: it also fetches the project's git remote and
+           raises its own "Project refreshed" toast, so deleting a file
+           would reach across the network for a reason a researcher
+           cannot connect to the click. And not mirrored by a rule of
+           this module's own: the old mirror set every key of the
+           block to "untested", which turned listModifiedFiles (a list)
+           into a string and broke the next render, while the route had
+           written a fresh block without that key. The route is the one
+           authority on what it wrote; this applies exactly that. */
+        _fnApplyTheClearedVerification(dictCleaned);
         VaibifyApp.fnClearFileExistenceCache();
         VaibifyApp.fnRenderStepList();
         VaibifyPolling.fnStartFilePolling(sContainerId);
@@ -1229,27 +1232,20 @@ var VaibifyPipelineRunner = (function () {
             "success");
     }
 
-    function _fnMirrorTheClearedVerification() {
-        /* Clear each automatic step's verification marks and run
-           stats, matching what the route just wrote.
-
-           Every key present is set to "untested" rather than a
-           hard-coded list of the five axis names: a list here would be
-           a second statement of what a verification block CONTAINS,
-           and it would fall out of date silently the day an axis is
-           added. Which steps are exempt is not restated either --
-           fbStepIsInteractive is the shared mirror of the backend
-           predicate the route itself skips on. */
+    function _fnApplyTheClearedVerification(dictCleaned) {
+        /* Replace each cleared step's verification block and run stats
+           with the ones the route wrote. Which steps were cleared, and
+           what a cleared block contains, are both the route's answer:
+           nothing here restates the axis names or the interactive-step
+           exemption. */
         var dictWorkflow = VaibifyApp.fdictGetWorkflow();
         var listSteps = (dictWorkflow || {}).listSteps || [];
-        listSteps.forEach(function (dictStep) {
-            if (fbStepIsInteractive(dictStep)) return;
-            var dictVerify = dictStep.dictVerification || {};
-            Object.keys(dictVerify).forEach(function (sAxis) {
-                dictVerify[sAxis] = "untested";
-            });
-            dictStep.dictVerification = dictVerify;
-            dictStep.dictRunStats = {};
+        var listCleared = (dictCleaned || {}).listClearedSteps || [];
+        listCleared.forEach(function (dictCleared) {
+            var dictStep = listSteps[dictCleared.iStepIndex];
+            if (!dictStep) return;
+            dictStep.dictVerification = dictCleared.dictVerification || {};
+            dictStep.dictRunStats = dictCleared.dictRunStats || {};
         });
     }
 

@@ -27,13 +27,14 @@ var VaibifyReproducePublished = (function () {
     var _bRunStarted = false;
     var _bStaging = false;
     var _bClosedWhileStaging = false;
+    var _dictWaitingJob = null;
 
     function _felById(sId) {
         return document.getElementById(sId);
     }
 
     function _fnShowStage(sStage) {
-        ["Source", "Confirm", "Progress", "Result"].forEach(function (sName) {
+        ["Source", "Confirm", "Progress", "Decision", "Result"].forEach(function (sName) {
             var el = _felById("reproduceStage" + sName);
             if (el) el.style.display = sName === sStage ? "" : "none";
         });
@@ -276,9 +277,101 @@ var VaibifyReproducePublished = (function () {
         // settled job never pulses, and a hub that lost the job does
         // not leave the card polling forever.
         _fnDisarmPoll();
+        if (dictJob.sPhase === "waiting-download") {
+            /* The download stopped and the hub keeps the snapshot and
+               the bytes for a decision. Not a result: nothing was run. */
+            _fnRenderDecision(dictJob);
+            _fnShowStage("Decision");
+            _felById("modalReproducePublished").style.display = "flex";
+            return;
+        }
         _fnRenderResult(dictJob);
         _fnShowStage("Result");
         _felById("modalReproducePublished").style.display = "flex";
+    }
+
+    /* ---------------- stage 3b: the decision ---------------- */
+
+    function _fnRenderDecision(dictJob) {
+        var dictFailure = dictJob.dictFailure || {};
+        _felById("reproduceDecisionSentence").textContent =
+            dictFailure.sSentence || "The download stopped.";
+        _felById("reproduceDecisionHeld").textContent = dictFailure.sHeld || "";
+        _felById("reproduceDecisionAlsoChecked").textContent =
+            dictFailure.sAlsoChecked || "";
+        _felById("reproduceDecisionDetail").textContent =
+            dictFailure.sTechnicalDetail || "";
+        var elReport = _felById("reproduceDecisionReport");
+        elReport.style.display = "none";
+        elReport.textContent = "";
+        delete elReport.dataset.connectionChecked;
+        _felById("btnReproduceCheckConnection").style.display =
+            dictJob.sAcquisitionId ? "" : "none";
+        _dictWaitingJob = dictJob;
+    }
+
+    async function _fnRetry() {
+        if (!_sJobId) return;
+        try {
+            await VaibifyApi.fdictPost(
+                "/api/reproductions/" + encodeURIComponent(_sJobId) + "/retry", {});
+        } catch (error) {
+            VaibifyDiagnosis.fnRenderFailureInline(
+                _felById("reproduceDecisionSentence"), "", error);
+            return;
+        }
+        _fnShowStage("Progress");
+        _fnRenderProgress({sPhase: "pulling", bLive: true});
+        _fnArmPoll();
+    }
+
+    async function _fnCheckConnection() {
+        var dictJob = _dictWaitingJob || {};
+        var elReport = _felById("reproduceDecisionReport");
+        if (!dictJob.sAcquisitionId) return;
+        elReport.style.display = "";
+        elReport.textContent = "Checking the connection to the archive " +
+            "(this takes up to 45 s)…";
+        var dictCheck;
+        try {
+            dictCheck = await VaibifyApi.fdictGet(
+                "/api/connection-check/" + encodeURIComponent(dictJob.sAcquisitionId));
+        } catch (error) {
+            elReport.textContent = "The check could not run: " +
+                VaibifyDiagnosis.fsExplainError(error);
+            return;
+        }
+        elReport.textContent = (dictCheck.listObservations || [])
+            .concat(dictCheck.listExplanations || []).join(" ");
+        elReport.dataset.connectionChecked = "true";
+    }
+
+    function _fnGiveUp() {
+        /* Close here IS giving up: the snapshot and the bytes downloaded
+           so far are deleted. The warning names the bytes, as the
+           containerizing window's does. */
+        var dictFailure = (_dictWaitingJob || {}).dictFailure || {};
+        var iBytes = dictFailure.bPartialKept ? (dictFailure.iBytesOnDisk || 0) : 0;
+        VaibifyModals.fnShowConfirmModal(
+            "Give up this reproduction?",
+            "The staged copy of the project is deleted." + (iBytes
+                ? " The " + Math.round(iBytes / 1e6) +
+                    " MB downloaded so far are deleted too."
+                : ""),
+            function () {
+                var sJobId = _sJobId;
+                _sJobId = "";
+                _bRunStarted = false;
+                _felById("modalReproducePublished").style.display = "none";
+                if (sJobId) {
+                    VaibifyApi.fdictPost(
+                        "/api/reproductions/" + encodeURIComponent(sJobId)
+                        + "/discard", {}).catch(function () {});
+                }
+            },
+            {sConfirmLabel: iBytes ? "Give up and delete" : "Give up",
+             sCancelLabel: "Keep"}
+        );
     }
 
     function _fsFormatBytes(iBytes) {
@@ -318,6 +411,12 @@ var VaibifyReproducePublished = (function () {
     function _fnRenderProgress(dictJob) {
         _felById("reproduceProgressPhase").textContent =
             _fsDescribePhase(dictJob);
+        /* The hub's two notes beside the bytes: a sticky one saying the
+           download resumed an interrupted one, a transient one saying
+           it is retrying, restarting or slow. Both are the hub's words. */
+        _felById("reproduceProgressNote").textContent =
+            [dictJob.sResumeNote || "", dictJob.sDownloadNote || ""]
+                .filter(Boolean).join(" ");
         var listAttempts = dictJob.listAttempts || [];
         _felById("reproduceProgressAttempts").innerHTML =
             listAttempts.map(function (dictAttempt) {
@@ -475,6 +574,10 @@ var VaibifyReproducePublished = (function () {
     function fnBind() {
         _felById("btnReproduceStage").addEventListener("click", _fnStage);
         _felById("btnReproduceRun").addEventListener("click", _fnRun);
+        _felById("btnReproduceRetry").addEventListener("click", _fnRetry);
+        _felById("btnReproduceCheckConnection").addEventListener(
+            "click", _fnCheckConnection);
+        _felById("btnReproduceGiveUp").addEventListener("click", _fnGiveUp);
         _felById("reproduceResultBody").addEventListener(
             "click", _fnOpenReportFromClick);
         ["btnReproduceCancelSource", "btnReproduceCancelConfirm",

@@ -18227,8 +18227,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testReproductionRoutes.py::test_no_response_names_a_path_on_this_host',
         source='vaibify/gui/reproductionProgress.py',
-        old='    "sFailure", "bConsumed", "bAllowEmulation",\n)',
-        new='    "sFailure", "bConsumed", "bAllowEmulation", "sToken",\n)',
+        old='    "sAcquisitionId", "sResumeNote", "sDownloadNote",\n)',
+        new='    "sAcquisitionId", "sResumeNote", "sDownloadNote", "sToken",\n)',
     ),
     Falsification(
         nodeid='tests/browser/testReproducePublishedCard.py::test_no_run_request_leaves_before_the_researcher_confirms',
@@ -18239,8 +18239,8 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/browser/testReproducePublishedCard.py::test_the_poll_stops_when_the_job_settles_and_the_result_is_shown',
         source='vaibify/gui/static/scriptReproducePublished.js',
-        old='        _fnDisarmPoll();\n        _fnRenderResult(dictJob);\n',
-        new='        _fnRenderResult(dictJob);\n',
+        old='        _fnDisarmPoll();\n        if (dictJob.sPhase === "waiting-download") {\n',
+        new='        if (dictJob.sPhase === "waiting-download") {\n',
     ),
     # --- 2026-09-07: review round 3 -- the redaction boundary, what an
     # abandoned job costs, and the bounds on what the hub materialises ---
@@ -18277,7 +18277,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testReproductionProgress.py::test_a_staged_job_nobody_ran_expires_and_its_clone_is_discarded',
         source='vaibify/gui/reproductionProgress.py',
-        old='    if dictJob["sPhase"] == S_PHASE_STAGED:\n        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds\n',
+        old='    if dictJob["sPhase"] in (S_PHASE_STAGED, S_PHASE_WAITING_DOWNLOAD):\n        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds\n',
         new='    if False:\n        return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds\n',
     ),
     Falsification(
@@ -18295,7 +18295,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testReproductionRoutes.py::test_dismissing_a_staged_job_deletes_its_clone',
         source='vaibify/gui/routes/reproductionRoutes.py',
-        old='        reproductionProgress.fnDiscardJob(sJobId)\n        return {"bDiscarded": True}\n',
+        old='        reproductionProgress.fnDiscardJob(sJobId, bDeletePartial=True)\n        return {"bDiscarded": True}\n',
         new='        reproductionProgress.fnForgetJob(sJobId)\n        return {"bDiscarded": True}\n',
     ),
     Falsification(
@@ -32915,12 +32915,14 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptAcquisitionWindow.js',
         # Cancel posts at once, with no warning naming the deleted bytes
         old=(
-            '            [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {\n'
-            '                _fnWarnThenCancel(dictView);\n'
+            '        var listButtons = [{sLabel: "Cancel", sAction: "cancel", '
+            'fnOnClick: function () {\n'
+            '            _fnWarnThenCancel(dictView);\n'
         ),
         new=(
-            '            [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {\n'
-            '                _fnPost(dictView.sHostName, "/cancel", "cancelled");\n'
+            '        var listButtons = [{sLabel: "Cancel", sAction: "cancel", '
+            'fnOnClick: function () {\n'
+            '            _fnPost(dictView.sHostName, "/cancel", "cancelled");\n'
         ),
     ),
     Falsification(
@@ -32935,5 +32937,145 @@ LIST_FALSIFICATIONS = [
             '"acquisition-sentence"));\n'
         ),
         new='            "The download stopped.", "acquisition-sentence"));\n',
+    ),
+    # --- 2026-10-14: Check connection is bounded on bytes read and on
+    # the clock, and its sentences reach the window ---
+    Falsification(
+        nodeid=(
+            'tests/testConnectionCheck.py::'
+            'test_a_server_that_ignores_range_cannot_make_the_check_read_past_its_cap'
+        ),
+        source='vaibify/reproducibility/connectionCheck.py',
+        # the cap is dropped from both guards: the loop reads whatever
+        # the server streams until the probe window ends
+        old=(
+            '    while iBytesRead < I_PROBE_BYTES_CAP and time.monotonic() < fProbeEnds:\n'
+            '        if dictControl["eventCancel"].is_set():\n'
+            '            dictMeasured["sServiceOutcome"] = S_OUTCOME_OUT_OF_TIME\n'
+            '            break\n'
+            '        try:\n'
+            '            baBlock = httpresponseAnswer.read1(\n'
+            '                min(_I_READ_BLOCK_BYTES, I_PROBE_BYTES_CAP - iBytesRead),\n'
+            '            )\n'
+        ),
+        new=(
+            '    while time.monotonic() < fProbeEnds:\n'
+            '        if dictControl["eventCancel"].is_set():\n'
+            '            dictMeasured["sServiceOutcome"] = S_OUTCOME_OUT_OF_TIME\n'
+            '            break\n'
+            '        try:\n'
+            '            baBlock = httpresponseAnswer.read1(_I_READ_BLOCK_BYTES)\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConnectionCheck.py::'
+            'test_a_stalling_server_cannot_hold_the_check_past_its_budget'
+        ),
+        source='vaibify/reproducibility/connectionCheck.py',
+        # the deadline timer is never armed
+        old='    threadDeadline.start()\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testCheckConnectionShowsTheHubsObservationsInTheWindow'
+        ),
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        # the explanations are dropped from the report
+        old=(
+            '        elReport.textContent = (dictCheck.listObservations || [])\n'
+            '            .concat(dictCheck.listExplanations || []).join(" ");\n'
+        ),
+        new=(
+            '        elReport.textContent = (dictCheck.listObservations || [])\n'
+            '            .join(" ");\n'
+        ),
+    ),
+    # --- 2026-10-14: a reproduction whose download stopped WAITS with
+    # its snapshot; Retry is its own claim; only Close deletes the bytes ---
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRoutes.py::'
+            'test_an_acquisition_refusal_holds_the_job_with_its_snapshot_for_a_decision'
+        ),
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        # the snapshot is discarded although the job waits for a retry
+        old='        bKeepSnapshot = _fbHoldForDecisionOrFail(sJobId, error)\n',
+        new='        _fbHoldForDecisionOrFail(sJobId, error)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionProgress.py::'
+            'test_the_retry_claim_is_taken_only_from_the_waiting_state'
+        ),
+        source='vaibify/gui/reproductionProgress.py',
+        # the retry claim re-enters the acquisition from any phase
+        old=(
+            '        if dictJob is None or dictJob["sPhase"] != '
+            'S_PHASE_WAITING_DOWNLOAD:\n'
+        ),
+        new='        if dictJob is None:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionRoutes.py::'
+            'test_giving_up_a_waiting_job_deletes_its_snapshot_and_partial'
+        ),
+        source='vaibify/gui/routes/reproductionRoutes.py',
+        # giving up leaves the stopped download's bytes behind
+        old='        reproductionProgress.fnDiscardJob(sJobId, bDeletePartial=True)\n',
+        new='        reproductionProgress.fnDiscardJob(sJobId)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproductionProgress.py::'
+            'test_the_sweep_keeps_the_partial_of_an_expired_waiting_job'
+        ),
+        source='vaibify/gui/reproductionProgress.py',
+        # every discard deletes the partial, the sweep's included
+        old='    sAcquisitionId = _fsAcquisitionIdOf(sJobId) if bDeletePartial else ""\n',
+        new='    sAcquisitionId = _fsAcquisitionIdOf(sJobId)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testReproducePublishedCard.py::'
+            'test_a_stopped_download_waits_for_a_decision_and_retry_reenters_it'
+        ),
+        source='vaibify/gui/static/scriptReproducePublished.js',
+        # a waiting job is rendered as a result
+        old='        if (dictJob.sPhase === "waiting-download") {\n',
+        new='        if (false) {\n',
+    ),
+    # --- 2026-10-14: Clean Outputs has one authority on the cleared
+    # block -- the route's answer -- on both sides of the wire ---
+    Falsification(
+        nodeid=(
+            'tests/testCoverageBoost.py::'
+            'test_clean_outputs_answers_with_the_blocks_it_wrote'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # the answer describes blocks other than the ones saved
+        old='            "dictVerification": dict(dictStep["dictVerification"]),\n',
+        new='            "dictVerification": {},\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testCleanOutputsAppliesWhatTheRouteWrote.py::'
+            'testCleanOutputsAppliesTheBlocksTheRouteWrote'
+        ),
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        # the old mirror: every key of the old block set to "untested"
+        old=(
+            '            dictStep.dictVerification = '
+            'dictCleared.dictVerification || {};\n'
+        ),
+        new=(
+            '            Object.keys(dictStep.dictVerification || {}).forEach('
+            'function (sAxis) {\n'
+            '                dictStep.dictVerification[sAxis] = "untested";\n'
+            '            });\n'
+        ),
     ),
 ]

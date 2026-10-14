@@ -5231,7 +5231,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # attestation row; poll wiring again.
     # +3 (2026-10-13): the poll's hash drift passes through the
     # missing-file filter, and acknowledge-step merges its baseline.
-    "routes/pipelineRoutes.py": 4191,
+    # 4191 -> 4215 (2026-10-14): the clean route answers with the
+    # verification blocks it wrote, so the client applies them instead
+    # of mirroring the reset by a rule of its own (tracker row 59). The
+    # describer sits beside the builder whose writes it reports.
+    "routes/pipelineRoutes.py": 4215,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7234,7 +7238,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1506 -> 1519 (2026-10-08): the pending containerization's three
     # decisions and the way back to host mode join the intentional
     # exclusions, with why an agent must never make them.
-    "actionCatalog.py": 1519,
+    # 1519 -> 1525 (2026-10-14): the reproduction retry's catalog entry,
+    # human-only like its run and discard siblings.
+    "actionCatalog.py": 1525,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7764,7 +7770,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # decision routes and the way back to host mode join the
     # browser-hub control plane, with why they are pre-container hub
     # operations. Four rows in a map of rows.
-    "routeScope.py": 1192,
+    # +1 (2026-10-14): the reproduction retry's scope row, beside its
+    # run and discard siblings.
+    "routeScope.py": 1193,
 }
 
 

@@ -482,6 +482,32 @@ def test_clean_outputs_resets_verification(clientHttp):
         assert dictVerify.get("sUnitTest", "untested") == "untested"
 
 
+@pytest.mark.falsification
+def test_clean_outputs_answers_with_the_blocks_it_wrote(clientHttp):
+    """Kills: an answer carrying blocks other than the ones the clean saved.
+
+    The client applies these blocks instead of mirroring the reset by a
+    rule of its own, so the answer must be exactly what the saved
+    workflow now holds: the fresh five-axis block, with no stray key
+    such as ``listModifiedFiles``, and empty run stats.
+    """
+    _fnConnectToContainer(clientHttp)
+    responseHttp = clientHttp.post(
+        f"/api/pipeline/{S_CONTAINER_ID}/clean"
+    )
+    assert responseHttp.status_code == 200
+    listCleared = responseHttp.json()["listClearedSteps"]
+    assert listCleared, "the clean reported no cleared step"
+    for dictCleared in listCleared:
+        dictStep = clientHttp.get(
+            f"/api/steps/{S_CONTAINER_ID}/{dictCleared['iStepIndex']}"
+        ).json()
+        assert dictCleared["dictVerification"] == dictStep["dictVerification"]
+        assert "listModifiedFiles" not in dictCleared["dictVerification"]
+        assert dictCleared["dictRunStats"] == {}
+        assert dictStep.get("dictRunStats", {}) == {}
+
+
 # =======================================================================
 # pipelineServer: figure check endpoint (lines 1055-1075)
 # =======================================================================

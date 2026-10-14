@@ -148,12 +148,70 @@ var VaibifyAcquisitionWindow = (function () {
             elBody.appendChild(elTail);
             elTail.scrollTop = elTail.scrollHeight;
         }
+        var listButtons = [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {
+            _fnWarnThenCancel(dictView);
+        }}];
+        if (bDownloading && dictDownload.bSlow) {
+            listButtons.push(_fdictCheckConnectionButton(dictView));
+        }
+        listButtons.push({sLabel: "Hide", sAction: "hide", fnOnClick: fnClose});
         _fnRender(
             bDownloading ? _S_TITLE_DOWNLOADING : _S_TITLE_PREPARING, elBody,
-            [{sLabel: "Cancel", sAction: "cancel", fnOnClick: function () {
-                _fnWarnThenCancel(dictView);
-            }}, {sLabel: "Hide", sAction: "hide", fnOnClick: fnClose}]
+            listButtons
         );
+    }
+
+    /* ---- Check connection: the hub's probes, reported as observed ---- */
+
+    function _fsAcquisitionIdOf(dictView) {
+        var dictDownload = dictView.dictDownload || {};
+        var dictFailure = dictView.dictFailure || {};
+        return dictDownload.sAcquisitionId || dictFailure.sAcquisitionId || "";
+    }
+
+    function _fdictCheckConnectionButton(dictView) {
+        return {sLabel: "Check connection", sAction: "check-connection",
+            fnOnClick: function () { _fnCheckConnection(dictView); }};
+    }
+
+    function _felCheckReport(dictView) {
+        /* One paragraph the report lands in, created on the first check
+           and reused after, so a second click replaces the sentences
+           rather than stacking them. Survives the next poll's re-render
+           only while the hub's state does, which is what a reader
+           watching a live download expects. */
+        var elModal = _felModal();
+        var elReport = elModal.querySelector(".acquisition-check");
+        if (!elReport) {
+            elReport = document.createElement("p");
+            elReport.className = "acquisition-check";
+            elModal.querySelector(".acquisition-body").appendChild(elReport);
+        }
+        return elReport;
+    }
+
+    async function _fnCheckConnection(dictView) {
+        var sAcquisitionId = _fsAcquisitionIdOf(dictView);
+        var elReport = _felCheckReport(dictView);
+        if (!sAcquisitionId) {
+            elReport.textContent = "The download has not started yet, so " +
+                "there is no connection to check.";
+            return;
+        }
+        elReport.textContent = "Checking the connection to the archive " +
+            "(this takes up to 45 s)…";
+        var dictCheck;
+        try {
+            dictCheck = await VaibifyApi.fdictGet(
+                "/api/connection-check/" + encodeURIComponent(sAcquisitionId));
+        } catch (error) {
+            elReport.textContent = "The check could not run: " +
+                VaibifyDiagnosis.fsExplainError(error);
+            return;
+        }
+        elReport.textContent = (dictCheck.listObservations || [])
+            .concat(dictCheck.listExplanations || []).join(" ");
+        elReport.dataset.connectionChecked = "true";
     }
 
     function _fnWarnThenCancel(dictView) {
@@ -183,6 +241,9 @@ var VaibifyAcquisitionWindow = (function () {
                 fnOnClick: function () {
                     VaibifyDiagnosis.fnShowDoctorReport(dictFailure.sSentence);
                 }});
+        }
+        if (_fsAcquisitionIdOf(dictView)) {
+            listButtons.push(_fdictCheckConnectionButton(dictView));
         }
         listButtons.push({sLabel: "Stay in host mode", sAction: "give-up",
             fnOnClick: function () { _fnWarnThenGiveUp(dictView); }});

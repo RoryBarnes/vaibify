@@ -332,6 +332,27 @@ def _flistBuildCleanCommands(dictWorkflow):
     return listCleanCommands
 
 
+def _flistDescribeClearedSteps(dictWorkflow):
+    """Return the blocks the clean wrote, one entry per cleared step.
+
+    The client applies these rather than mirroring the reset itself.
+    Its mirror set every key of the old block to "untested", which
+    turned ``listModifiedFiles`` (a list) into a string and broke the
+    next render, while the route had written a fresh five-axis block
+    and dropped every other key -- two authorities on one block,
+    disagreeing on every non-axis key (tracker row 59, 2026-10-13).
+    """
+    return [
+        {
+            "iStepIndex": iStepIndex,
+            "dictVerification": dict(dictStep["dictVerification"]),
+            "dictRunStats": dict(dictStep["dictRunStats"]),
+        }
+        for iStepIndex, dictStep in enumerate(dictWorkflow.get("listSteps", []))
+        if not fbStepIsInteractive(dictStep)
+    ]
+
+
 def _fsRunProcessSweep(connectionDocker, sContainerId, sCommand):
     """Run one process-table command for Stop; return its output.
 
@@ -856,7 +877,10 @@ def _fnRegisterPipelineClean(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the cleaned outputs",
         )
-        return {"bSuccess": True}
+        return {
+            "bSuccess": True,
+            "listClearedSteps": _flistDescribeClearedSteps(dictWorkflow),
+        }
 
 
 async def _fdictDeleteOutputsUnderTheDrain(

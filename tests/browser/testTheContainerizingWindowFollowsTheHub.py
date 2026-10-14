@@ -191,6 +191,76 @@ def testAStoppedDownloadIsAWindowThatStaysWithTheDecisions(
     assert pageDashboard.listPageErrors == []
 
 
+@pytest.mark.falsification
+def testCheckConnectionShowsTheHubsObservationsInTheWindow(pageDashboard, serverHub):
+    """Kills: the check's sentences shown nowhere, or the button missing where the rate is low."""
+    dictFailure = {
+        "sFailureClass": "budget-exhausted",
+        "sSentence": "The download stopped after 6 attempts in a row.",
+        "sHeld": "", "bPartialKept": True, "iBytesOnDisk": 507000000,
+        "iExpectedBytes": 733000000, "bRetryable": True, "bDiagnosable": False,
+        "sAlsoChecked": "", "sTechnicalDetail": "", "sAcquisitionId": "acquisition-abc",
+    }
+    _fnListTheHostTileAsContainerizing(pageDashboard, "waiting")
+    _flistAnswerTheConversion(
+        pageDashboard, fdictConversionView("waiting", False, dictFailure),
+    )
+    listChecks = []
+
+    def fnAnswerTheCheck(route):
+        listChecks.append(route.request.url.rsplit("/", 1)[-1])
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({
+                "sServiceHost": "zenodo.org",
+                "listObservations": [
+                    "Reached zenodo.org.",
+                    "It took 22 s to start sending and then sent at 0.4 MB/s.",
+                    "Reached doi.org.",
+                ],
+                "listExplanations": ["Slow starts like this often mean Zenodo is busy."],
+                "dictMeasured": {},
+            }),
+        )
+    pageDashboard.route("**/api/connection-check/**", fnAnswerTheCheck)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
+    pageDashboard.click(_fsChipSelector())
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition [data-acquisition-action="check-connection"]', timeout=5000,
+    )
+    pageDashboard.click('#modalAcquisition [data-acquisition-action="check-connection"]')
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition .acquisition-check[data-connection-checked]', timeout=5000,
+    )
+    sReport = pageDashboard.text_content("#modalAcquisition .acquisition-check")
+    assert "Reached zenodo.org." in sReport
+    assert "Zenodo is busy" in sReport
+    assert listChecks == ["acquisition-abc"]
+    assert pageDashboard.is_visible("#modalAcquisition")
+    assert pageDashboard.listPageErrors == []
+
+
+def testASlowLiveDownloadOffersTheCheckAndAHealthyOneDoesNot(pageDashboard, serverHub):
+    dictView = fdictConversionView()
+    dictView["dictDownload"]["bSlow"] = False
+    _fnListTheHostTileAsContainerizing(pageDashboard, "obtaining")
+    _flistAnswerTheConversion(pageDashboard, dictView)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
+    pageDashboard.click(_fsChipSelector())
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition [data-acquisition-action="cancel"]', timeout=5000,
+    )
+    assert pageDashboard.query_selector(
+        '#modalAcquisition [data-acquisition-action="check-connection"]') is None
+    dictView["dictDownload"]["bSlow"] = True
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition [data-acquisition-action="check-connection"]', timeout=5000,
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def testAnInterruptedContainerizationOffersResumeAndDiscard(pageDashboard, serverHub):
     _fnListTheHostTileAsContainerizing(pageDashboard, "interrupted")
     listPosts = _flistAnswerTheConversion(

@@ -308,6 +308,75 @@ def test_a_job_this_hub_no_longer_holds_stops_the_poll(
     )
 
 
+@pytest.mark.falsification
+def test_a_stopped_download_waits_for_a_decision_and_retry_reenters_it(
+    pageDashboard, serverHub,
+):
+    """A stopped download is a decision, not a result.
+
+    Kills: rendering the waiting job as a failed result, with no Retry.
+    """
+    _fnOpenTheCard(pageDashboard, serverHub)
+    dictSeen = _fdictInterceptTheJob(pageDashboard)
+    dictSeen["listRetryPosts"] = []
+    dictFailure = {
+        "sFailureClass": "budget-exhausted",
+        "sSentence": "The download stopped after 6 attempts in a row that got "
+                     "no further than 507 MB of 733 MB.",
+        "sHeld": "507 MB of 733 MB downloaded so far are kept; Try again "
+                 "continues from there, and giving up deletes them.",
+        "bPartialKept": True, "iBytesOnDisk": 507000000,
+        "iExpectedBytes": 733000000, "bRetryable": True, "bDiagnosable": False,
+        "sAlsoChecked": "", "sTechnicalDetail": "ConnectionResetError",
+    }
+
+    def fnAnswerPoll(route):
+        dictSeen["iPolls"] += 1
+        bWaiting = not dictSeen["listRetryPosts"]
+        dictView = _fdictJobView(not bWaiting, "waiting-download" if bWaiting else "running")
+        dictView["dictFailure"] = dictFailure if bWaiting else None
+        dictView["sAcquisitionId"] = "acquisition-abc"
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(dictView))
+
+    def fnAnswerRetry(route):
+        dictSeen["listRetryPosts"].append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"bAccepted": True, "sPhase": "pulling"}))
+
+    pageDashboard.route(f"**/api/reproductions/{S_JOB_ID}", fnAnswerPoll)
+    pageDashboard.route(f"**/api/reproductions/{S_JOB_ID}/retry", fnAnswerRetry)
+    pageDashboard.click("#btnChoiceKindReproduce")
+    pageDashboard.fill("#reproduceSourceInput", "https://host.example/p.git")
+    pageDashboard.click("#btnReproduceStage")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageConfirm", state="visible", timeout=5000,
+    )
+    pageDashboard.click("#btnReproduceRun")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageDecision", state="visible", timeout=15000,
+    )
+    assert pageDashboard.is_hidden("#reproduceStageResult")
+    assert dictFailure["sSentence"] in pageDashboard.text_content(
+        "#reproduceDecisionSentence")
+    assert "Try again continues" in pageDashboard.text_content("#reproduceDecisionHeld")
+    assert "ConnectionResetError" not in pageDashboard.text_content(
+        "#reproduceDecisionSentence")
+    iPollsWhileWaiting = dictSeen["iPolls"]
+    pageDashboard.wait_for_timeout(2600)
+    assert dictSeen["iPolls"] == iPollsWhileWaiting, "a waiting job is not polled"
+    assert dictSeen["listDiscardPosts"] == []
+    pageDashboard.click("#btnReproduceRetry")
+    pageDashboard.wait_for_selector(
+        "#reproduceStageProgress", state="visible", timeout=5000,
+    )
+    assert len(dictSeen["listRetryPosts"]) == 1
+    assert dictSeen["listRunPosts"] == [{"bAllowEmulation": False}], (
+        "a retry never sends a second run request"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
 def test_the_result_names_every_file_and_links_its_report(
     pageDashboard, serverHub,
 ):
