@@ -375,7 +375,7 @@ class TestAcknowledgeStepRoute:
             return_value={"/workspace/out.dat": 1234.0},
         ), patch(
             "vaibify.gui.routes.pipelineRoutes"
-            "._fnUpdateModTimeBaseline",
+            "._fnMergeIntoModTimeBaseline",
         ):
             from vaibify.gui.routes.pipelineRoutes import (
                 _fnRegisterAcknowledgeStep,

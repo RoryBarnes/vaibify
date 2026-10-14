@@ -127,7 +127,11 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnSetStepTaint(
                 iPassIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             VaibifyApp.fnClearOutputModified(iPassIdx);
-            fnResetUserVerification(iPassIdx);
+            /* Running a step's tests leaves its outputs as they were,
+               so the researcher's sign-off stands (2026-10-13 ruling). */
+            if (!dictEvent.bFromTestRun) {
+                fnResetUserVerification(iPassIdx);
+            }
             fnAcknowledgeStepCompletion(iPassIdx);
             VaibifyApp.fnInvalidateStepFileCache(iPassIdx);
             VaibifyApp.fnRenderStepList();
@@ -143,7 +147,9 @@ var VaibifyPipelineRunner = (function () {
                     ? "stopped" : "fail");
             VaibifyApp.fnSetStepTaint(
                 iFailIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
-            fnResetUserVerification(iFailIdx);
+            if (!dictEvent.bFromTestRun) {
+                fnResetUserVerification(iFailIdx);
+            }
             VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {

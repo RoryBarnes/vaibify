@@ -69,12 +69,13 @@ from ..fileStatusManager import (
     _flistCollectOutputPaths,
     _fdictDetectAndInvalidate,
     _fnClearStepModificationState,
-    _fnUpdateModTimeBaseline,
+    _fnMergeIntoModTimeBaseline,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fdictHandleCollectMarkerPathsByStep,
+    fdictHashDriftToInvalidate,
     fdictMarkerVerdictsByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
@@ -1019,7 +1020,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictModTimes = await _fdictRebaselineModTimesUnderTheDrain(
             dictCtx, sContainerId, listPaths, requestHttp,
         )
-        _fnUpdateModTimeBaseline(
+        _fnMergeIntoModTimeBaseline(
             dictCtx, sContainerId, dictModTimes, dictWorkflow)
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
@@ -1398,7 +1399,9 @@ async def _fdictFetchOutputStatus(
     )
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-        _fdictPathsByStepForVerdict(dictMarkerVerdicts, "listDrifted"),
+        fdictHashDriftToInvalidate(
+            dictWorkflow, dictMarkerVerdicts, filesPoll,
+        ),
         bPipelineRunning=bPipelineRunning,
     )
     if _fbReconcileUserVerificationByHash(

@@ -207,6 +207,28 @@ def _fdictBaselineForWorkflow(dictCtx, sContainerId, dictWorkflow):
     return dictCtx.get("dictPreviousModTimes", {}).get(sContainerId, {})
 
 
+def _fnMergeIntoModTimeBaseline(
+    dictCtx, sContainerId, dictModTimes, dictWorkflow,
+):
+    """Overlay freshly measured mtimes on this workflow's poll baseline.
+
+    A partial measurement (an acknowledged step's outputs) must not
+    REPLACE the baseline: the poll's baseline also holds inputs,
+    scripts and markers, and a path missing from it reads as changed,
+    so every declared input of the project was reported modified on
+    the next poll. With no baseline for this workflow nothing is
+    written; the next poll measures everything and compares nothing.
+    """
+    dictBaseline = _fdictBaselineForWorkflow(
+        dictCtx, sContainerId, dictWorkflow,
+    )
+    if not dictBaseline:
+        return
+    dictMerged = dict(dictBaseline)
+    dictMerged.update(dictModTimes)
+    _fnUpdateModTimeBaseline(dictCtx, sContainerId, dictMerged, dictWorkflow)
+
+
 def _fdictBuildFileStatusVars(dictWorkflow):
     """Build variable dict for file path resolution."""
     return {
@@ -1377,6 +1399,50 @@ def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
         ):
             dictResult[iIndex] = dictVerdicts
     return dictResult
+
+
+def fdictHashDriftToInvalidate(dictWorkflow, dictMarkerVerdicts, filesPoll):
+    """Return ``{iStepIndex: [paths]}`` of marker drift that invalidates.
+
+    A file the container reports missing invalidates only a step that
+    claims results: a sign-off (current or stale) or a passing test.
+    A step with neither -- every step after Clean Outputs -- claims
+    nothing about its outputs, so their absence is the expected state,
+    not a modification; reporting it marked each cleaned step "changed
+    after you verified" on every poll (researcher-reported,
+    2026-10-13). Dropping it cannot lift a step to Level 1, which
+    requires the sign-off. A digest that DIFFERS always invalidates.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    listSteps = dictWorkflow.get("listSteps", [])
+    dictResult = {}
+    for iIndex, dictVerdicts in dictMarkerVerdicts.items():
+        listDrifted = dictVerdicts["listDrifted"]
+        if 0 <= iIndex < len(listSteps) and not _fbStepClaimsResults(
+            listSteps[iIndex],
+        ):
+            listDrifted = [
+                sPath for sPath in listDrifted
+                if not (dictHashEntries.get(sPath) or {}).get("bMissing")
+            ]
+        if listDrifted:
+            dictResult[iIndex] = listDrifted
+    return dictResult
+
+
+def _fbStepClaimsResults(dictStep):
+    """Return True if the step holds a sign-off or a passing test."""
+    dictVerification = dictStep.get("dictVerification") or {}
+    if dictVerification.get("sUser") in ("passed", "stale"):
+        return True
+    listTestKeys = ["sUnitTest"] + [
+        sVerifKey for _sCatKey, sVerifKey in _LIST_CATEGORY_KEYS
+    ]
+    return any(
+        dictVerification.get(sKey) in _SET_PASSED_TEST_STATES
+        for sKey in listTestKeys
+    )
 
 
 def _fdictVerdictsForOneMarker(dictMarker, dictHashEntries):

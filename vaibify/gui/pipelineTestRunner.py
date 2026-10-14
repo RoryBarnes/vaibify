@@ -269,5 +269,7 @@ async def _fiRunStepTests(
         sStepDirectory, dictVars, fnStatusCallback,
         iStepNumber,
     )
-    await _fnEmitStepResult(fnStatusCallback, iStepNumber, iExitCode)
+    await _fnEmitStepResult(
+        fnStatusCallback, iStepNumber, iExitCode, bFromTestRun=True,
+    )
     return iExitCode

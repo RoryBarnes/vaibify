@@ -5226,7 +5226,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # verification writes, threaded keyword-only beside the running
     # flag, so a reader's run no longer pulses the author's
     # attestation row; poll wiring again.
-    "routes/pipelineRoutes.py": 4188,
+    # +3 (2026-10-13): the poll's hash drift passes through the
+    # missing-file filter, and acknowledge-step merges its baseline.
+    "routes/pipelineRoutes.py": 4191,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5528,7 +5530,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # project made every file of another read as changed.
     # +1 (2026-09-24): the per-project last-run record joins the
     # container-keyed caches the sweep evicts.
-    "fileStatusManager.py": 2321,
+    # +5 (2026-10-13): an acknowledged step MERGES its outputs into
+    # the poll baseline (replacing it made every input read as
+    # changed), and marker drift that is only a missing file
+    # invalidates a step only when the step claims results (a cleaned
+    # step was told its outputs "changed after you verified").
+    "fileStatusManager.py": 2326,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,

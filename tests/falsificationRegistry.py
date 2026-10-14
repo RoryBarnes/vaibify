@@ -32345,4 +32345,87 @@ LIST_FALSIFICATIONS = [
         ),
         new="            dictSetting.sElementId + '\">' + sOptions +\n",
     ),
+    Falsification(
+        nodeid=(
+            'tests/testAcknowledgementKeepsThePollBaseline.py::'
+            'testAnAcknowledgedStepsUntouchedInputIsNotReportedChanged'
+        ),
+        # The acknowledgment replaces the poll baseline with its outputs.
+        source='vaibify/gui/fileStatusManager.py',
+        old='    dictMerged = dict(dictBaseline)\n',
+        new='    dictMerged = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineTestRunnerCoverage.py::TestFiRunStepTests::'
+            'test_a_test_runs_step_result_says_it_came_from_tests'
+        ),
+        # A test run's result no longer says where it came from.
+        source='vaibify/gui/pipelineTestRunner.py',
+        old='        fnStatusCallback, iStepNumber, iExitCode, bFromTestRun=True,\n',
+        new='        fnStatusCallback, iStepNumber, iExitCode, bFromTestRun=False,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPendingSignOffIsNotAWarning.py::'
+            'testATestRunsResultKeepsTheResearchersSignOff'
+        ),
+        # Every step result resets the sign-off, a test run's included.
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='            if (!dictEvent.bFromTestRun) {\n',
+        new='            if (true) {\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPendingSignOffIsNotAWarning.py::'
+            'testAStepAwaitingSignOffShowsNoWarningGlyph'
+        ),
+        # The warning column voices the sign-off blocker again.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '        if (dictBlocker && dictBlocker.sCriterion !== '
+            '"user-not-approved") {\n'
+        ),
+        new='        if (dictBlocker) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAMissingOutputIsNotAModifiedOne.py::'
+            'testACleanedStepsMissingOutputIsNotListedAsModified'
+        ),
+        # Every missing output invalidates, claimed or not.
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '                if not (dictHashEntries.get(sPath) or {})'
+            '.get("bMissing")\n'
+        ),
+        new='                if True\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testAMissingOutputIsNotAModifiedOne.py::'
+            'testASignedOffStepWhoseOutputVanishesLosesLevelOne'
+        ),
+        # Missing outputs are dropped even for a step that claims results.
+        source='vaibify/gui/fileStatusManager.py',
+        old=(
+            '        if 0 <= iIndex < len(listSteps) and not '
+            '_fbStepClaimsResults(\n'
+        ),
+        new='        if 0 <= iIndex < len(listSteps) and not False and (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPendingSignOffIsNotAWarning.py::'
+            'testAnUnverifiedStepsChangedOutputDoesNotClaimAVerification'
+        ),
+        # Every modified output is said to have changed after a sign-off.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            '            var bResearcherVerified = dictVerify.sUser === '
+            '"passed" ||\n'
+        ),
+        new='            var bResearcherVerified = true ||\n',
+    ),
 ]
