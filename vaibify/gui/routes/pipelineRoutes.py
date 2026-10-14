@@ -1431,6 +1431,8 @@ async def _fdictFetchOutputStatus(
         bVerificationRunning=verificationProgress.fbVerificationIsLive(
             sContainerId, sRepoRoot,
         ),
+        sRunningRecordKind=verificationProgress.
+        fsRecordKindOfLiveVerification(sContainerId, sRepoRoot),
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=fdictBuildImageArchiveDetail(
             dictWorkflow, filesPoll, sContainerId,
@@ -2365,8 +2367,8 @@ def _ffilesFetchPollSnapshot(
 def _fdictBuildPollResponseRest(
     dictWorkflow, dictModTimes, dictVars, dictReload,
     sWorkflowPath, listInvalidated, sRepoRoot, filesPoll=None,
-    bHostProject=False, *, bVerificationRunning, dictImageCurrency,
-    dictImageArchive, dictUnknownFreshnessByStep,
+    bHostProject=False, *, bVerificationRunning, sRunningRecordKind,
+    dictImageCurrency, dictImageArchive, dictUnknownFreshnessByStep,
     dictLastNoVerdict=None, dictLockSatisfaction=None,
 ):
     """Return every poll-response key except ``dictModTimes``.
@@ -2386,7 +2388,8 @@ def _fdictBuildPollResponseRest(
     pulses, and every function in the chain still reads correctly.
     Requiring it makes a dropped hop a TypeError instead.
     ``dictImageCurrency`` and ``dictImageArchive`` travel the same way
-    and for the same reason, and so does ``dictUnknownFreshnessByStep``
+    and for the same reason, and so do ``sRunningRecordKind`` and
+    ``dictUnknownFreshnessByStep``
     (``{iStepIndex: [paths]}``): a dropped hop would read as "every
     marker's freshness was checked", which is the claim it denies.
     """
@@ -2405,6 +2408,7 @@ def _fdictBuildPollResponseRest(
         dictMtimes, dictScriptStatus, dictGates, filesPoll,
         dictUnknownFreshnessByStep=dictUnknownFreshnessByStep,
         bVerificationRunning=bVerificationRunning,
+        sRunningRecordKind=sRunningRecordKind,
         dictImageCurrency=dictImageCurrency,
         dictImageArchive=dictImageArchive,
         dictLastNoVerdict=dictLastNoVerdict,
@@ -2467,13 +2471,14 @@ def _fdictComputePollLevelGates(
 def _fdictAssemblePollResponse(
     dictWorkflow, dictModTimes, dictReload, listInvalidated,
     dictMtimes, dictScriptStatus, dictGates, filesPoll,
-    *, bVerificationRunning, dictImageCurrency, dictImageArchive,
-    dictUnknownFreshnessByStep, dictLastNoVerdict=None,
+    *, bVerificationRunning, sRunningRecordKind, dictImageCurrency,
+    dictImageArchive, dictUnknownFreshnessByStep, dictLastNoVerdict=None,
     dictLockSatisfaction=None,
 ):
     """Assemble the poll wire payload from the computed pieces.
 
-    ``bVerificationRunning`` and ``dictUnknownFreshnessByStep`` are
+    ``bVerificationRunning``, ``sRunningRecordKind`` and
+    ``dictUnknownFreshnessByStep`` are
     keyword-only with no default, for the reason given in
     ``_fdictBuildPollResponseRest``.
     """
@@ -2496,6 +2501,7 @@ def _fdictAssemblePollResponse(
         "dictWorkflowEnvelopeDetail": _fdictBuildWorkflowEnvelopeDetail(
             dictWorkflow, filesPoll,
             bVerificationRunning=bVerificationRunning,
+            sRunningRecordKind=sRunningRecordKind,
             dictImageCurrency=dictImageCurrency,
             dictImageArchive=dictImageArchive,
             dictLastNoVerdict=dictLastNoVerdict,
@@ -2717,6 +2723,7 @@ def _fdictBuildWorkflowEnvelopeDetail(
     dictWorkflow, filesPoll, bVerificationRunning=False,
     dictImageCurrency=None, *, dictImageArchive,
     dictLastNoVerdict=None, dictLockSatisfaction=None,
+    sRunningRecordKind="",
 ):
     """Assemble the expandable Workflow-row envelope payload.
 
@@ -2736,6 +2743,7 @@ def _fdictBuildWorkflowEnvelopeDetail(
          "bAiDeclarationAttested": bool,
          "bRebuildAttestationCurrent": bool,
          "bRebuildAttestationRunning": bool,
+         "sRunningRecordKind": "attestation" | "reproduction" | "",
          "dictRebuildAttestation": last attestation summary or None,
          "bOverleafBound": bool,
          "bArxivConfigured": bool,
@@ -2977,6 +2985,11 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # result, which is the class of error the level-cell and
         # determinism-row bugs both were.
         "bRebuildAttestationRunning": bool(bVerificationRunning),
+        # WHICH record that run writes, once it has asked git: the
+        # attestation row pulses only for a run that can change it. A
+        # reader's run writes a reproduction record; the flag above
+        # still says a run is live, for the badge that reports it.
+        "sRunningRecordKind": sRunningRecordKind,
         # The last attestation's own words, so the row can tell
         # "never run" from "ran and failed". A boolean could not: the
         # row said "No current rebuild attestation. Run this once

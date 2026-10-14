@@ -282,6 +282,12 @@ def testAPollTickDoesNotWipeAHalfTypedQuestion(pageDashboard, serverHub):
     pageDashboard.wait_for_selector("#btnCouncilChatOpen", timeout=16000)
     pageDashboard.click("#btnCouncilChatOpen")
     pageDashboard.wait_for_selector("#councilChatQuestion", timeout=16000)
+    # Opening the chat appends a chairbotChatOpened event, and the next
+    # poll that reads it redraws the panel for that real reason. On a
+    # slow runner that poll landed inside the window below; read it now.
+    pageDashboard.evaluate(
+        "async () => { await VaibifyAgentCouncil.fnPollOnceForTest(); }")
+    pageDashboard.wait_for_selector("#councilChatQuestion", timeout=16000)
 
     pageDashboard.fill("#councilChatQuestion", "half typed, do not lose me")
     pageDashboard.evaluate(

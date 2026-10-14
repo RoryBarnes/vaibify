@@ -1028,6 +1028,46 @@ def test_verification_worker_persists_passed_attestation(fixtureProjectRepo):
     assert dictStatus["sPhase"] == "passed"
 
 
+@pytest.mark.falsification
+def test_a_running_verification_says_which_record_it_writes(
+    fixtureProjectRepo,
+):
+    """The record kind is on the live status while the rerun runs.
+
+    Read inside the rerun, not after it: the Attestation row needs it
+    to decide whether to pulse for the whole time the rerun takes.
+
+    Kills: keeping the record kind off the live status until the run
+    has ended.
+    """
+    from vaibify.gui.routes import reproducibilityRoutes
+
+    _DICT_VERIFY_TASKS[S_CONTAINER_ID] = {
+        "task": None,
+        "dictStatus": {"sPhase": "starting"},
+    }
+    listSeenDuringRerun = []
+
+    def fdictCaptureThenStop(*args, **kwargs):
+        listSeenDuringRerun.append(_DICT_VERIFY_TASKS[S_CONTAINER_ID][
+            "dictStatus"].get("sRecordKindInFlight"))
+        raise RuntimeError("stop after the capture")
+
+    with patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fsRecordKindForProject",
+        return_value="reproduction",
+    ), patch(
+        "vaibify.gui.routes.reproducibilityRoutes._fdictRunReproductionSync",
+        side_effect=fdictCaptureThenStop,
+    ):
+        asyncio.run(reproducibilityRoutes._fnRunVerificationWorker(
+            S_CONTAINER_ID, fixtureProjectRepo,
+            "sha256:m", {"listSteps": []}, None,
+            fixtureProjectRepo + "/.vaibify/workflows/project.json",
+        ))
+    assert listSeenDuringRerun == ["reproduction"]
+
+
 def test_verification_worker_marks_no_verdict_on_exception(
     fixtureProjectRepo,
 ):

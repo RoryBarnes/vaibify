@@ -2694,7 +2694,15 @@ var VaibifyWorkflowRequirements = (function () {
         // which is observable, and the row text says so too, so the
         // colour is never the only signal. Do not "make these
         // consistent" in either direction.
-        var bRunning = dictDetail.bRebuildAttestationRunning === true;
+        var bVerificationRunning =
+            dictDetail.bRebuildAttestationRunning === true;
+        /* A reader's verification writes a reproduction record and can
+           never change the author's attestation this row describes, so
+           it does not pulse the row (researcher-reported, 2026-10-13).
+           Until the run has asked git which record it writes, it may
+           still be this one, so the row pulses. */
+        var bRunning = bVerificationRunning &&
+            dictDetail.sRunningRecordKind !== "reproduction";
         /* A CURRENT attestation, and nothing else. The combined
            sandbox gate used to hang here: it classifies TWO deposits,
            so a sandbox PROJECT deposit reddened this row -- whose
@@ -2726,7 +2734,7 @@ var VaibifyWorkflowRequirements = (function () {
                          dictDetail, bRunning)) + '</div>' +
                      _fsRenderAttestationFailure(dictDetail, bRunning) +
                      _fsRenderNoVerdictNote(dictDetail) +
-                     (bRunning ? "" : _fsRenderActionButton(
+                     (bVerificationRunning ? "" : _fsRenderActionButton(
                          "verify-l3", "",
                          "Verify Level 3 reproducibility")) +
                      (bViewable

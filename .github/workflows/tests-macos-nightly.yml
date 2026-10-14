@@ -1,12 +1,17 @@
 name: tests-macos-nightly
 
-# The full macOS unit matrix, once a night.
+# The full macOS unit matrix, once a night when main has changed.
 #
-# tests-macos.yml runs macOS 26 on every supported Python but macOS 15
-# on only the two that bracket the range (3.9 and 3.14), because macOS
-# runners queue for hours. This lane runs the whole 2 x 6 product, so
-# the four cells the pull-request lane leaves out are exercised within a
-# day instead of never.
+# tests-macos.yml runs both macOS versions on only the two Pythons that
+# bracket the range (3.9 and 3.14), because macOS runners queue for
+# hours. This lane runs the whole 2 x 6 product, so the eight cells the
+# pull-request lane leaves out are exercised within a day of a merge
+# instead of never.
+#
+# A night whose main is the commit the last completed night already
+# tested runs nothing: the same code on the same runners answers the
+# same way, and twelve macOS jobs is the queue pressure this lane
+# exists to relieve. A manual run always runs.
 #
 # It is neither a merge gate nor a publisher. Its job names start with
 # `nightly:` on purpose: the ruleset matches required checks by name, so
@@ -36,7 +41,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Deliberately unnamed: a `name` would join the check names
+  # testTheNightlyMacosMatrixCoversWhatThePullRequestLeavesOut compares
+  # with the pull-request product, and this job is no cell of it.
+  has-main-changed:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      bRun: ${{ steps.compare.outputs.bRun }}
+    steps:
+      - id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "bRun=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The last night that ran to a verdict, pass or fail. A
+          # cancelled night tested nothing, so it does not count.
+          sLastTested=$(gh run list --repo "${{ github.repository }}" \
+            --workflow tests-macos-nightly.yml --branch main \
+            --event schedule --status completed --limit 20 \
+            --json headSha,conclusion \
+            --jq '[.[] | select(.conclusion != "cancelled")][0].headSha // ""')
+          if [ "$sLastTested" = "${{ github.sha }}" ]; then
+            echo "main is still ${{ github.sha }}, which the last night tested; nothing to run."
+            echo "bRun=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved since the last night (${sLastTested:-none}); running."
+            echo "bRun=true" >> "$GITHUB_OUTPUT"
+          fi
+
   tests:
+    needs: has-main-changed
+    if: needs.has-main-changed.outputs.bRun == 'true'
     name: 'nightly:${{ matrix.os }}:python-${{ matrix.python-version }}'
     runs-on: ${{ matrix.os }}
     strategy:

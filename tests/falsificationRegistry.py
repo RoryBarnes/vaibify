@@ -19905,6 +19905,10 @@ LIST_FALSIFICATIONS = [
             '            _fsRecordKindForProject, connectionDocker, sContainerId,\n'
             '            dictWorkflow,\n'
             '        )\n'
+            '        # Told to the poll while the rerun runs, so only the row this\n'
+            '        # run can change pulses: a reader\'s run writes a reproduction\n'
+            '        # record and never touches the author\'s attestation.\n'
+            '        dictStatus["sRecordKindInFlight"] = sRecordKind\n'
             '        dictResult = await asyncio.to_thread(\n'
             '            _fdictRunReproductionSync, connectionDocker, sContainerId,\n'
             '            dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,\n'
@@ -19919,6 +19923,10 @@ LIST_FALSIFICATIONS = [
             '            _fsRecordKindForProject, connectionDocker, sContainerId,\n'
             '            dictWorkflow,\n'
             '        )\n'
+            '        # Told to the poll while the rerun runs, so only the row this\n'
+            '        # run can change pulses: a reader\'s run writes a reproduction\n'
+            '        # record and never touches the author\'s attestation.\n'
+            '        dictStatus["sRecordKindInFlight"] = sRecordKind\n'
         ),
     ),
     Falsification(
@@ -27413,11 +27421,11 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
-            'tests/testWorkflowMergeGateSplit.py::testThePullRequestMacosLaneRunsTheTwoEdgePythonsOnTheOlderMacos'
+            'tests/testWorkflowMergeGateSplit.py::testThePullRequestMacosLaneRunsOnlyTheTwoEdgePythons'
         ),
-        # one middle Python is quietly restored to the older macOS
+        # one middle Python is quietly restored to the newer macOS
         source='.github/workflows/tests-macos.yml',
-        old='          - {os: macos-15, python-version: "3.13"}\n',
+        old='          - {os: macos-26, python-version: "3.13"}\n',
         new='',
     ),
     Falsification(
@@ -32293,5 +32301,48 @@ LIST_FALSIFICATIONS = [
         source='tools/reconfirmFalsification.py',
         old='    sPycachePrefix = sSharedPrefix or tempfile.mkdtemp()\n',
         new='    sPycachePrefix = tempfile.mkdtemp()\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAReadersVerificationLeavesTheAttestationRowStill.py::'
+            'test_only_a_run_that_writes_the_attestation_pulses_its_row'
+        ),
+        # A reader's run pulses the author's attestation row again.
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            dictDetail.sRunningRecordKind !== "reproduction";\n',
+        new='            true;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRoutesCoverage.py::TestPollLevelStatePayload::'
+            'test_the_running_record_kind_reaches_the_poll'
+        ),
+        # The poll is never told which record the live run writes.
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old='        sRunningRecordKind=sRunningRecordKind,\n',
+        new='        sRunningRecordKind="",\n',
+        iExpectedOccurrences=2,
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproducibilityRoutes.py::'
+            'test_a_running_verification_says_which_record_it_writes'
+        ),
+        # The worker keeps the answer to itself until the run ends.
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old='        dictStatus["sRecordKindInFlight"] = sRecordKind\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testBlankProjectCanReadAndChangeItsSession.py::'
+            'testATimeoutCannotBeChangedBeforeItsValueArrives'
+        ),
+        # The select takes a change before its value or handler exists.
+        source='vaibify/gui/static/scriptApplication.js',
+        old=(
+            "            dictSetting.sElementId + '\" disabled>' + sOptions +\n"
+        ),
+        new="            dictSetting.sElementId + '\">' + sOptions +\n",
     ),
 ]

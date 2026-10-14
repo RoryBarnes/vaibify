@@ -270,6 +270,22 @@ def fnOpenTheSeededHostWorkflow(
         )
 
 
+S_STORED_CREDENTIAL_SCRIPT = (
+    "() => window.sessionStorage.getItem('vaibifySessionCredential')")
+
+
+def fnOpenTheDashboardUntilItHoldsACredential(page, serverHub):
+    """Navigate with a fresh capability, and wait until it is redeemed.
+
+    An idle network is not a redeemed capability. On a slow runner the
+    page had not yet stored its credential when the network went
+    quiet, and the test's next API call met the session middleware's
+    401 (Firefox, 2026-10-13).
+    """
+    page.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    page.wait_for_function(S_STORED_CREDENTIAL_SCRIPT, timeout=15000)
+
+
 def fnLoadThePickerUntilItsButtonsListen(pageDashboard, serverHub):
     """Load the dashboard and return once a click on the picker is heard.
 

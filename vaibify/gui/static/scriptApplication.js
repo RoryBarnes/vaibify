@@ -1820,9 +1820,14 @@ const VaibifyApp = (function () {
             return '<option value="' + tChoice[0] + '">' +
                 tChoice[1] + "</option>";
         }).join("");
+        // Disabled until the server's value arrives: before then the
+        // select shows its first option, which is no claim about the
+        // setting, and a change made then was dropped and overwritten
+        // by the late answer.
         return fsSettingsRowHtml(dictSetting.sLabel,
             '<select class="gs-input-local" id="' +
-            dictSetting.sElementId + '">' + sOptions + '</select>' +
+            dictSetting.sElementId + '" disabled>' + sOptions +
+            '</select>' +
             '<span id="' + dictSetting.sElementId +
             'Note" class="gs-idle-note"></span>',
             dictSetting.sHelp);
@@ -2061,15 +2066,17 @@ const VaibifyApp = (function () {
     async function fnLoadTimeoutSetting(dictSetting) {
         var elSelect = document.getElementById(dictSetting.sElementId);
         if (!elSelect) return;
+        elSelect.addEventListener("change", function () {
+            fnSaveTimeoutSetting(dictSetting);
+        });
         try {
             var dictInfo = await VaibifyApi.fdictGet(dictSetting.sEndpoint);
             fnApplyTimeoutSettingInfo(dictSetting, elSelect, dictInfo);
         } catch (error) {
-            // Best-effort: leave the default option selected.
+            // Best-effort: leave the default option selected, and let
+            // the researcher set it anyway.
+            elSelect.disabled = false;
         }
-        elSelect.addEventListener("change", function () {
-            fnSaveTimeoutSetting(dictSetting);
-        });
     }
 
     function fnApplyTimeoutSettingInfo(dictSetting, elSelect, dictInfo) {

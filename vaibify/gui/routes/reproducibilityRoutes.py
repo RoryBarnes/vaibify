@@ -1057,6 +1057,10 @@ async def _fnRunVerificationWorker(
             _fsRecordKindForProject, connectionDocker, sContainerId,
             dictWorkflow,
         )
+        # Told to the poll while the rerun runs, so only the row this
+        # run can change pulses: a reader's run writes a reproduction
+        # record and never touches the author's attestation.
+        dictStatus["sRecordKindInFlight"] = sRecordKind
         dictResult = await asyncio.to_thread(
             _fdictRunReproductionSync, connectionDocker, sContainerId,
             dictWorkflow, sWorkflowPath, filesRepo, dictImageOrigin,

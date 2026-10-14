@@ -518,8 +518,8 @@ every pull request (and can be started by hand):
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `tests-linux.yml` | the unit suite (including the invariants and falsification tests); a named `invariants` check; a `lint` check; and `docker-smoke`, the tests that need a live Docker daemon | Ubuntu 22.04 and 24.04 × Python 3.9–3.14 for the unit suite; one cell for each named check |
-| `tests-macos.yml` | the same unit suite | macOS 26 × Python 3.9–3.14, and macOS 15 × Python 3.9 and 3.14 |
-| `falsification.yml` | the architectural invariants, the falsification tests, and the re-kill harness, with a summary job over the union | Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, the exclusive class in its own Linux job |
+| `tests-macos.yml` | the same unit suite | macOS 15 and 26 × Python 3.9 and 3.14 |
+| `falsification.yml` | the architectural invariants, the falsification tests, and the re-kill harness, with a summary job over the union | Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14; the Linux shareable class split four ways, and the exclusive class split four ways in Linux jobs of its own |
 | `security.yml` | the security-boundary suite, in its own named lane so a green architectural badge can never hide a red security one | Ubuntu 24.04 and macOS 26 × Python 3.9 and 3.14 |
 | `styleContract.yml` | `tests/testStyleInvariants.py`, then `tools/generateStyleInventory.py --check` for inventory drift | one Linux cell |
 | `browser-chromium.yml` | the dashboard in real Chromium against a real hub | one Linux cell |
@@ -552,7 +552,7 @@ report on a pull request.
 | Workflow | Runs | Matrix |
 |---|---|---|
 | `mutation.yml` | the cosmic-ray gate on a branch's changed lines (warn-only) | manual (`workflow_dispatch`) |
-| `tests-macos-nightly.yml` | the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 on Python 3.10–3.13) still run within a day | macOS 15 and 26 × Python 3.9–3.14; nightly and manual |
+| `tests-macos-nightly.yml` | the full macOS unit matrix, so the cells the pull-request lane leaves out (macOS 15 and 26 on Python 3.10–3.13) still run within a day of a merge | macOS 15 and 26 × Python 3.9–3.14; nightly when `main` has changed since the last passing night, and manual |
 | `containerAcceptance.yml` | the modeled container commands and core container behavior, against a real container; and, as a separate job, the Prompt Record reading transcripts the real Codex and Gemini CLIs wrote (`agent_cli_live`) | one Linux cell; nightly and manual |
 | `freshImageBuild.yml` | a full image build from scratch, then acceptance | amd64 and arm64; weekly, manual, and on pull requests that touch the image, its build code, or the documents staged into it |
 | `publishedReproduction.yml` | reproduces a published project in its author's environment and fails unless the report's verdict is `reproduced` | one Linux cell; weekly and manual |

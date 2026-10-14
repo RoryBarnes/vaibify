@@ -60,6 +60,7 @@ __all__ = [
     "fnRecordNoVerdict",
     "fnRecordUnsettledTeardown",
     "fnRegisterTask",
+    "fsRecordKindOfLiveVerification",
 ]
 
 
@@ -164,6 +165,19 @@ def fbVerificationIsLive(sContainerId, sProjectRepoPath):
     if not dictStatus:
         return False
     return dictStatus.get("sPhase") in _T_LIVE_PHASES
+
+
+def fsRecordKindOfLiveVerification(sContainerId, sProjectRepoPath):
+    """Return the record this project's live verification writes, or "".
+
+    "" when nothing is running, and in the run's first moment, before
+    it has asked git whose attestation this clone carries. The worker
+    asks before any step runs, so the answer arrives with the rerun.
+    """
+    if not fbVerificationIsLive(sContainerId, sProjectRepoPath):
+        return ""
+    return fdictReadStatus(sContainerId, sProjectRepoPath).get(
+        "sRecordKindInFlight", "")
 
 
 def fnRecordNoVerdict(sContainerId, sProjectRepoPath, listReasons,

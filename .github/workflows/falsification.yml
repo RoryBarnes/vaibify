@@ -45,18 +45,21 @@
 # every runner has its own daemon and its own ports -- which is why it
 # arrives only now that workers exist.
 #
-# THE SPLIT IS UNEVEN BY MEASUREMENT, and the first sharded run
-# corrected the guess. Linux jobs start within a second; macOS jobs
-# queue at a concurrency of THREE. With four macOS jobs the fourth
-# waited 21 minutes and began the moment the first finished, so the
-# macOS lane took 37.7 minutes when 22 was predicted. macOS therefore
-# takes NO shard axis and four workers instead: two jobs, no queue.
-# Linux takes four shards of four workers -- the same speed as eight
-# shards of two, with half the jobs.
+# THE SPLIT IS UNEVEN BY MEASUREMENT. Linux jobs start within
+# seconds; macOS jobs share the account's FIVE macOS runners with every
+# other macOS job (measured 2026-10-13; an earlier note said three), and
+# on a busy push a macOS job queued for over an hour. macOS therefore
+# takes NO shard axis and four workers instead: a shard added there is
+# one more job waiting for the same five runners. Linux takes four
+# shareable shards of four workers, and FOUR EXCLUSIVE SHARDS of one:
+# the exclusive entries cannot share a machine, but they can share the
+# work across machines, and Linux machines cost no queue.
 #
-# Measured per entry: 5.0s on Linux, 3.2s on macOS, plus a ~3 minute
-# fixed prefix per job. Expected: Linux ~7 min, macOS ~12, exclusive
-# ~8, against 62 before any of this and 38.8 after sharding alone.
+# Measured 2026-10-13, with one warm bytecode cache per run: macOS
+# ~35-43 min, Linux shareable shards ~9-21, and the exclusive lane
+# ~90-96 min UNSHARDED (388 entries, 329 of them browser) against its
+# 110-minute ceiling -- which one slow runner crossed. Split four ways
+# it is expected at ~25-35.
 
 name: falsification
 
@@ -175,9 +178,9 @@ jobs:
           if-no-files-found: ignore
 
   falsification-macos:
-    # NO shard axis, deliberately: macOS concurrency here is three, so
-    # a fourth job waits for a slot and the lane pays the wait twice
-    # over. Two jobs and four workers each is strictly faster than four
+    # NO shard axis, deliberately: the account's five macOS runners are
+    # shared with every other macOS job, so an extra job waits for a
+    # slot and the lane pays the wait twice over. Two jobs and four workers each is strictly faster than four
     # jobs of two -- measured, not assumed.
     name: 'falsification:macos-26:python-${{ matrix.python-version }}'
     runs-on: macos-26
@@ -272,14 +275,18 @@ jobs:
   # ---------------------------------------------------------------
   falsification-exclusive:
     # Linux only. macOS runs its exclusive entries inside its own
-    # shareable job, because a fourth macOS job queues behind a
-    # concurrency of three and the wait dwarfs the work.
-    name: 'falsification:exclusive:ubuntu-24.04:python-${{ matrix.python-version }}'
+    # shareable job, because another macOS job queues behind the
+    # shared macOS runners and the wait dwarfs the work.
+    name: 'falsification:exclusive:ubuntu-24.04:python-${{ matrix.python-version }}:shard-${{ matrix.shard }}'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.14"]
+        # Four machines, one worker each: an exclusive entry holds a
+        # port, a socket, the daemon or a browser, so it may not share
+        # a MACHINE, and a shard is a machine of its own.
+        shard: [1, 2, 3, 4]
 
     steps:
       - uses: actions/checkout@v5
@@ -320,14 +327,12 @@ jobs:
           python -m playwright install-deps chromium
           python tools/checkBrowserLaunches.py chromium
 
-      - name: Re-confirm (exclusive, 1 worker)
-        # A hang detector, not a budget. The ubuntu exclusive leg measures
-        # 26-28 minutes (6 runs, 2026-09-08), so 45 left under 1.6x and one
-        # slow runner would kill a leg that was going to pass. RAISED
-        # from 75 (2026-10-05): merging the agent-free archive work and
-        # the reader-journey entries grew the registry by about a
-        # hundred entries, and the leg was cut off with every mutation
-        # it had reached killed.
+      - name: Re-confirm (exclusive, shard ${{ matrix.shard }}/4, 1 worker)
+        # A hang detector, not a budget. The whole exclusive lane ran
+        # 90-96 minutes on one machine (2026-10-13), so a quarter of it
+        # is expected at ~25-35; 110 stays until four-way runs are
+        # measured, so a slow runner cannot kill a shard that was going
+        # to pass while the split is new.
         timeout-minutes: 110
         env:
           VAIBIFY_REQUIRE_DOCKER_DAEMON: '1'
@@ -335,13 +340,14 @@ jobs:
         run: |
           python tools/reconfirmFalsification.py \
             --class exclusive \
+            --shard ${{ matrix.shard }}/4 \
             --summary-json "$RUNNER_TEMP/shareable/shardSummary.json"
 
-      - name: Upload this leg's summary
+      - name: Upload this shard's summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-exclusive-1
+          name: falsificationSummary-ubuntu-24.04-${{ matrix.python-version }}-exclusive-${{ matrix.shard }}
           path: ${{ runner.temp }}/shareable/shardSummary.json
           if-no-files-found: ignore
 
@@ -399,7 +405,7 @@ jobs:
             --expect "ubuntu-24.04:3.14:shareable:4" \
             --expect "macos-26:3.9:shareable:1" \
             --expect "macos-26:3.14:shareable:1" \
-            --expect "ubuntu-24.04:3.9:exclusive:1" \
-            --expect "ubuntu-24.04:3.14:exclusive:1" \
+            --expect "ubuntu-24.04:3.9:exclusive:4" \
+            --expect "ubuntu-24.04:3.14:exclusive:4" \
             --expect "macos-26:3.9:exclusive:1" \
             --expect "macos-26:3.14:exclusive:1"

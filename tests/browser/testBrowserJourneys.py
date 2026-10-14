@@ -31,6 +31,9 @@ import os
 
 import pytest
 
+from tests.browser.conftest import (
+    fnOpenTheDashboardUntilItHoldsACredential,
+)
 from tests.browser.fakeDockerAdapter import (
     S_CONTAINER_ID,
     S_CONTAINER_NAME,
@@ -48,10 +51,15 @@ def _fsPageCredential(page):
     its capability and stashes the credential in ``sessionStorage``; reading
     it back is how a journey obtains the genuine credential the retired
     ``/api/session-token`` oracle used to hand out.
+
+    It WAITS for the credential: an idle network is not a redeemed
+    capability, and a slow runner read the storage before the page had
+    written it.
     """
-    return page.evaluate(
-        """() => window.sessionStorage.getItem('vaibifySessionCredential')"""
-    )
+    sScript = (
+        "() => window.sessionStorage.getItem('vaibifySessionCredential')")
+    page.wait_for_function(sScript, timeout=15000)
+    return page.evaluate(sScript)
 
 
 # ---------------------------------------------------------------------
@@ -113,7 +121,7 @@ def testDashboardLoadsWithNoConsoleErrors(pageDashboard, serverHub):
         if response.status >= 500 else None
     ))
 
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
 
     assert pageDashboard.listPageErrors == [], (
         "Uncaught page errors: " + "; ".join(pageDashboard.listPageErrors)
@@ -138,7 +146,7 @@ def testFrontendGlobalsResolveAsBareIdentifiers(pageDashboard, serverHub):
     ``undefined`` for a module that is working perfectly. AGENTS.md
     records a session lost to exactly that false alarm.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     assert pageDashboard.evaluate("typeof VaibifyApp") == "object", (
         "VaibifyApp did not evaluate; the module graph is broken."
     )
@@ -162,7 +170,7 @@ def testSeededProjectReachesTheBrowser(pageDashboard, serverHub):
     middleware correctly rejects with a 401. Riding the app's wrapper
     is both the faithful path and the working one.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     # An idle network is not a redeemed capability: the tile renders
     # only from an authenticated registry read, so it is the signal.
     pageDashboard.wait_for_selector(
@@ -203,7 +211,7 @@ def testDoubledSessionTokenHeaderIsRefused(pageDashboard, serverHub):
     direction of the failure -- a doubled credential is refused, never
     accepted by prefix or by taking the first element.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     sCredential = _fsPageCredential(pageDashboard)
     assert sCredential, "the page must have bootstrapped a credential"
     iStatus = pageDashboard.evaluate(
@@ -266,7 +274,7 @@ def testCreationWizardPersistsSelectedAgent(
     """
     from vaibify.config.projectConfig import fconfigLoadFromFile
 
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     pageDashboard.locator("#btnAddContainer").click()
     pageDashboard.locator("#btnChoiceKindContainer").click()
     pageDashboard.locator("#btnChoiceCreateNew").click()
@@ -505,7 +513,7 @@ def testSessionCapWarningComesFromTheBackendAndReachesTheScreen(
     """
     from vaibify.gui import sessionLifecycle
     stateApp = serverHub.app.state
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     sCredential = _fsPageCredential(pageDashboard)
     assert sCredential, "the page must have bootstrapped a credential"
     assert pageDashboard.locator(".toast").count() == 0, (
@@ -557,7 +565,7 @@ def testAnEndedSessionIsToldWhatHappenedNotThatTheServerRestarted(
     """
     from vaibify.gui import browserSession
     stateApp = serverHub.app.state
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     sCredential = _fsPageCredential(pageDashboard)
     assert sCredential
     recordSession = stateApp.dictBrowserSessions[
@@ -640,9 +648,7 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
     serverHub.adapterDocker.flistGetRunningContainers = lambda: []
     startReservation._fsExecuteReservedStart = _fsHeldStart
     try:
-        pageDashboard.goto(
-            serverHub.fsBootstrapUrl(), wait_until="networkidle",
-        )
+        fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.evaluate(
             # Deliberately NOT awaited: the start is in flight for as
             # long as the held executor says, and `evaluate` resolves a
@@ -733,7 +739,7 @@ def testTheTerminalDialsItsSocketAndTheServerGatesIt(
     Run in a real browser because a string search of the source cannot
     tell whether a module actually reaches for the socket at runtime.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     sCredential = _fsPageCredential(pageDashboard)
 
     iCloseCode = pageDashboard.evaluate(
@@ -856,7 +862,7 @@ def testTheShellDialsOnlyOnTheResearchersGesture(
     that shell — so entry must leave the pane armed but silent, and
     the researcher's first mousedown into it is what dials.
     """
-    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="networkidle")
+    fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
     try:
         dictOutcome = pageDashboard.evaluate(
             """async ([sContainerId, sName]) => {
@@ -961,9 +967,7 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
     startReservation._fsExecuteReservedStart = _fsHeldStart
     pageControl = None
     try:
-        pageDashboard.goto(
-            serverHub.fsBootstrapUrl(), wait_until="networkidle",
-        )
+        fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.evaluate(
             "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
             % S_CONTAINER_NAME
@@ -983,9 +987,7 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
         # sessionStorage marker nor the owning session.
         contextControl = browserEngine.new_context()
         pageControl = contextControl.new_page()
-        pageControl.goto(
-            serverHub.fsBootstrapUrl(), wait_until="networkidle",
-        )
+        fnOpenTheDashboardUntilItHoldsACredential(pageControl, serverHub)
         assert pageControl.evaluate(
             "() => window.sessionStorage.getItem('vaibifyPendingStartName')"
         ) is None, (
@@ -993,6 +995,11 @@ def testReloadDuringAStartPicksTheOutcomeBackUp(
         )
 
         pageDashboard.reload(wait_until="networkidle")
+        # The claim is about the RELOADED page. WebKit reports the
+        # replaced page's in-flight /start-status, which the reload
+        # itself cancels, as an "access control checks" page error;
+        # that error belongs to the document the reload discarded.
+        pageDashboard.listPageErrors.clear()
         eventRelease.set()
 
         pageDashboard.locator(
@@ -1059,9 +1066,7 @@ def testAStartSurvivesATransientStatusPollFailure(
             route.continue_()
 
     try:
-        pageDashboard.goto(
-            serverHub.fsBootstrapUrl(), wait_until="networkidle",
-        )
+        fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.route("**/start-status", _fnAbortFirstStatusPoll)
         pageDashboard.evaluate(
             "() => { VaibifyContainerManager.fnStartContainer('%s'); }"
