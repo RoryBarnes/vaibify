@@ -45,7 +45,6 @@ S_SIGN_OFF_ROW = (
     S_DECLARATION_BODY + ' .ai-declaration-attestation '
     '.verification-row[data-approver="user"]'
 )
-I_HOLD_MILLISECONDS = 400
 
 
 def _fnPressTheCenterOf(pageDashboard, sSelector):
@@ -66,6 +65,24 @@ def _fnPressTheCenterOf(pageDashboard, sSelector):
     assert pageDashboard.evaluate("VaibifyUtilities.fbPointerIsDownForTest()")
     pageDashboard.locator(sSelector).first.evaluate(
         "element => { element.dataset.pressStamp = 'under the pointer'; }")
+
+
+def _fnWaitForTheRebuildToBeRequested(pageDashboard, sSelector):
+    """Wait until the forced rebuild has reached the render path.
+
+    A fixed pause is not enough on a loaded runner: when the fetch
+    answers only after the pointer is released, a build that renders at
+    once and a build that holds look the same, and the mutation
+    survives. So the release waits for one of two facts: a render is
+    being HELD (the fix), or the stamped element is already gone (the
+    render went through at once). Either way the rebuild was requested
+    while the pointer was down.
+    """
+    pageDashboard.wait_for_function(
+        "sSelector => VaibifyUtilities.fiHeldRendersForTest() > 0"
+        " || !(document.querySelector('[data-press-stamp]'))",
+        arg=sSelector, timeout=15000,
+    )
 
 
 def _fnReleaseOnTheStampedElement(pageDashboard, sSelector):
@@ -112,7 +129,7 @@ def test_a_sign_off_click_survives_the_file_state_answer_landing_inside_it(
         # its answer rebuilds the slot that holds the pressed row.
         pageDashboard.evaluate(
             "VaibifyStepRenderer.fnRefreshAiDeclarationFileSlots()")
-        pageDashboard.wait_for_timeout(I_HOLD_MILLISECONDS)
+        _fnWaitForTheRebuildToBeRequested(pageDashboard, S_SIGN_OFF_ROW)
         _fnReleaseOnTheStampedElement(pageDashboard, S_SIGN_OFF_ROW)
         pageDashboard.wait_for_selector(
             S_SIGN_OFF_ROW + ' .verification-badge:has-text("Passed")',
@@ -142,7 +159,7 @@ def test_an_ask_click_survives_a_council_render_landing_inside_it(
     # The real refresh-and-render path the poll takes, forced while
     # the pointer is down.
     pageDashboard.evaluate("VaibifyAgentCouncil.fnShowWorkspace()")
-    pageDashboard.wait_for_timeout(I_HOLD_MILLISECONDS)
+    _fnWaitForTheRebuildToBeRequested(pageDashboard, "#btnCouncilChatAsk")
     _fnReleaseOnTheStampedElement(pageDashboard, "#btnCouncilChatAsk")
     pageDashboard.wait_for_selector(".council-chat-chairbot", timeout=30000)
     assert pageDashboard.listPageErrors == []

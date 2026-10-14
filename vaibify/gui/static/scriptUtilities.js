@@ -486,11 +486,16 @@ var VaibifyUtilities = (function () {
         return _bPointerIsDown;
     }
 
+    function fiHeldRendersForTest() {
+        return _listRendersHeld.length;
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
         fsEncodeUrlPath: fsEncodeUrlPath,
         fnRenderWhenNoPointerIsDown: fnRenderWhenNoPointerIsDown,
         fbPointerIsDownForTest: fbPointerIsDownForTest,
+        fiHeldRendersForTest: fiHeldRendersForTest,
         fsFiniteNumberText: fsFiniteNumberText,
         fbPlatformIsMacintosh: fbPlatformIsMacintosh,
         fsNameSelectionModifierKey: fsNameSelectionModifierKey,
