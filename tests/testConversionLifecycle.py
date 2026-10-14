@@ -329,6 +329,34 @@ def test_an_open_project_refuses_the_commit_and_finish_commits_once_closed(
     assert dictWorld.storeImages.flistNamesOf(S_LOADED_ID) == [f"{S_NEW_NAME}:latest"]
 
 
+@pytest.mark.falsification
+def test_the_hub_holds_the_conversion_live_through_the_commit_attempt(
+    fixtureConversionWorld, monkeypatch,
+):
+    """Kills: dropping the live record before the worker's own commit.
+
+    The watchdog's veto and the "already being containerized" refusal
+    both read the live record. Dropping it the moment the image was
+    staged let the hub read "idle" during the switch, and let a Finish
+    from a browser race the worker's commit for the source lock -- the
+    crash-after-each-write test met that race on Linux (2026-10-14).
+    """
+    dictWorld = fixtureConversionWorld
+    listLiveDuringCommit = []
+    fnRealCommit = conversionLifecycle.fnCommitConversion
+
+    def fnCommitRecordingLiveness(sHostName):
+        listLiveDuringCommit.append(conversionLifecycle.fbHubHoldsLiveConversion())
+        return fnRealCommit(sHostName)
+
+    monkeypatch.setattr(conversionLifecycle, "fnCommitConversion", fnCommitRecordingLiveness)
+    dictWorld.fdictBegin()
+    _fnWaitUntil(lambda: _fdictView() is None, 30.0)
+    _fnWaitForTheWorkerToEnd()
+    assert listLiveDuringCommit == [True]
+    assert registryManager.fdictGetProject(S_NEW_NAME)["sMode"] == "container"
+
+
 # ---------------------------------------------------------------------
 # A crash at each commit step: roll back, or roll forward.
 # ---------------------------------------------------------------------

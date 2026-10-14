@@ -731,10 +731,19 @@ def fsetSelectNodeIdsCarryingMarker(sMarker):
             "marker, so the registry cannot be partitioned honestly:\n"
             + (result.stdout or "") + (result.stderr or "")
         )
-    return {
-        sLine.strip() for sLine in result.stdout.splitlines()
-        if sLine.startswith("tests/") and "::" in sLine
-    }
+    setNodeIds = set()
+    for sLine in result.stdout.splitlines():
+        sNodeId = sLine.strip()
+        if not (sNodeId.startswith("tests/") and "::" in sNodeId):
+            continue
+        setNodeIds.add(sNodeId)
+        # A parametrized test is collected once per parameter set, with
+        # the set in brackets, while the registry names the TEST. The
+        # bare id carries the marker too; without it a parametrized
+        # browser entry read as shareable and ran on a shard with no
+        # Playwright (CI, 2026-10-14).
+        setNodeIds.add(sNodeId.split("[", 1)[0])
+    return setNodeIds
 
 
 def _fdictSelectDeferredNodeIdsByReason():

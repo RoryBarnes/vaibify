@@ -32798,15 +32798,12 @@ LIST_FALSIFICATIONS = [
         # a staged image is never committed
         source='vaibify/gui/conversionLifecycle.py',
         old=(
-            '    _fnTryCommitQuietly(sHostName)\n'
-            '\n'
-            '\n'
-            'def _fdictProjectLike(dictRecord):\n'
+            '        _fnTryCommitQuietly(sHostName)\n'
+            '    finally:\n'
         ),
         new=(
-            '\n'
-            '\n'
-            'def _fdictProjectLike(dictRecord):\n'
+            '        pass\n'
+            '    finally:\n'
         ),
     ),
     Falsification(
@@ -33111,6 +33108,48 @@ LIST_FALSIFICATIONS = [
         # the Resume button is never rendered
         old='        if (!dictResume || !dictResume.sHostName) return "";\n',
         new='        if (dictResume) return "";\n',
+    ),
+    # --- 2026-10-14: the worker stays live through its own commit ---
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_the_hub_holds_the_conversion_live_through_the_commit_attempt'
+        ),
+        source='vaibify/gui/conversionLifecycle.py',
+        # the live record is dropped before the commit, as it was
+        old=(
+            '    else:\n'
+            '        # Still registered live: the commit is part of the work the\n'
+            '        # idle watchdog must not end, and a hub that reads "no live\n'
+            '        # conversion" the moment the image is staged would race the\n'
+            '        # commit\'s own lock (seen on Linux, 2026-10-14).\n'
+            '        _fnTryCommitQuietly(sHostName)\n'
+            '    finally:\n'
+            '        with _LOCK_LIVE:\n'
+            '            _DICT_LIVE.pop(sHostName, None)\n'
+        ),
+        new=(
+            '    else:\n'
+            '        with _LOCK_LIVE:\n'
+            '            _DICT_LIVE.pop(sHostName, None)\n'
+            '        _fnTryCommitQuietly(sHostName)\n'
+            '    finally:\n'
+            '        with _LOCK_LIVE:\n'
+            '            _DICT_LIVE.pop(sHostName, None)\n'
+        ),
+    ),
+    # --- 2026-10-14: a parametrized test carries its facility marker
+    # under the bare id the registry names ---
+    Falsification(
+        nodeid=(
+            'tests/testFalsificationSharding.py::'
+            'testAParametrizedTestCarriesItsMarkerUnderItsBareId'
+        ),
+        source='tools/reconfirmFalsification.py',
+        # only the bracketed ids carry the marker; the registry's bare id
+        # reads as shareable and runs where the facility is missing
+        old='        setNodeIds.add(sNodeId.split("[", 1)[0])\n',
+        new='        pass\n',
     ),
     # --- 2026-10-14: Clean Outputs has one authority on the cleared
     # block -- the route's answer -- on both sides of the wire ---

@@ -305,11 +305,15 @@ def _fnRunAcquisition(sHostName):
         _fnRecordStaged(sHostName, dictStaged, dictControl)
     except Exception as error:  # noqa: BLE001 -- every outcome is recorded
         _fnRecordFailure(sHostName, error, dictControl, fnReport)
-        return
+    else:
+        # Still registered live: the commit is part of the work the
+        # idle watchdog must not end, and a hub that reads "no live
+        # conversion" the moment the image is staged would race the
+        # commit's own lock (seen on Linux, 2026-10-14).
+        _fnTryCommitQuietly(sHostName)
     finally:
         with _LOCK_LIVE:
             _DICT_LIVE.pop(sHostName, None)
-    _fnTryCommitQuietly(sHostName)
 
 
 def _fdictProjectLike(dictRecord):

@@ -517,7 +517,12 @@ def test_the_sidecar_is_written_durably(serverFault, monkeypatch):
     monkeypatch.setattr(resumableDownload, "_I_CHECKPOINT_BYTES", 64 * I_KIBIBYTE)
     dictAcquisition = fdictOpenFor()
     fsDownload(serverFault, dictAcquisition)
-    assert listDurableWrites.count(dictAcquisition["sSidecarPath"]) >= len(BA_FILE) // (64 * I_KIBIBYTE)
+    # One checkpoint per 64 KiB, less one: the socket hands the body over
+    # in blocks that need not align with the checkpoint size (Linux reads
+    # them smaller than macOS does), so the last crossing can coincide
+    # with the completion write and be folded into it.
+    iCheckpointsExpected = len(BA_FILE) // (64 * I_KIBIBYTE) - 1
+    assert listDurableWrites.count(dictAcquisition["sSidecarPath"]) >= iCheckpointsExpected
 
 
 def test_the_durable_writer_flushes_the_drive_where_it_can(monkeypatch, tmp_path):
