@@ -284,18 +284,129 @@ def test_a_diverged_run_reports_the_files(sPublishedRepo):
     ]
 
 
-def test_an_acquisition_refusal_fails_the_job_with_its_reason(sPublishedRepo):
-    tPatches = _fcontextFakeTheDaemonHalf(
-        errorAcquire=ImageAcquisitionRefusedError("no link served the image"),
+def _fcontextAcquireFromAScript(listAnswers):
+    """Patch the acquisition to pop one scripted answer per call.
+
+    An answer that is an exception is raised; anything else is returned
+    as the acquired record. The rerun and the daemon half stay faked.
+    """
+    tPatches = _fcontextFakeTheDaemonHalf()
+
+    def fdictAcquire(*args, **kwargs):
+        del args, kwargs
+        answer = listAnswers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return dict(answer)
+
+    return (
+        tPatches[0],
+        patch.object(
+            reproductionRoutes.imageAcquisition, "fdictAcquirePinnedImage",
+            fdictAcquire,
+        ),
+        tPatches[2], tPatches[3],
+    )
+
+
+def _ferrorStoppedDownload(sAcquisitionId=""):
+    return ImageAcquisitionRefusedError(
+        "the archive stopped serving",
+        dictFailure={
+            "sFailureClass": "budget-exhausted", "bPartialKept": True,
+            "sSentence": "The download stopped after 6 attempts in a row.",
+            "iBytesOnDisk": 10, "iExpectedBytes": 100,
+            "sAcquisitionId": sAcquisitionId,
+        },
+    )
+
+
+@pytest.mark.falsification
+def test_an_acquisition_refusal_holds_the_job_with_its_snapshot_for_a_decision(
+    sPublishedRepo,
+):
+    """Kills: discarding the snapshot when a retryable download stops.
+
+    The job is not failed and not live: it waits, keeping the clone and
+    the lock, with the plain sentence, and a retry re-enters the
+    acquisition and runs to a report without staging again.
+    """
+    tPatches = _fcontextAcquireFromAScript(
+        [_ferrorStoppedDownload(), _fdictAcquiredFake()],
     )
     with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
         sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
         client.post(f"/api/reproductions/{sJobId}/run", json={})
         dictView = _fdictAwaitSettled(client, sJobId)
-    assert dictView["sPhase"] == "failed"
-    assert "no link served the image" in dictView["sFailure"]
-    assert dictView["dictReport"] is None
+        assert dictView["sPhase"] == "waiting-download"
+        assert dictView["bLive"] is False
+        assert dictView["dictFailure"]["sSentence"] == (
+            "The download stopped after 6 attempts in a row."
+        )
+        assert "10 MB" not in dictView["sFailure"]
+        assert dictView["dictReport"] is None
+        assert len(_flistStagingTokens()) == 1, "the snapshot is kept for the retry"
+        responseRun = client.post(f"/api/reproductions/{sJobId}/run", json={})
+        assert responseRun.status_code == 409, "the run claim stays consumed"
+        responseRetry = client.post(f"/api/reproductions/{sJobId}/retry", json={})
+        assert responseRetry.status_code == 200, responseRetry.text
+        dictSettled = _fdictAwaitSettled(client, sJobId)
+    assert dictSettled["sPhase"] == "settled"
+    assert dictSettled["dictReport"]["sVerdict"] == "reproduced"
+    assert dictSettled["dictFailure"] is None
     assert _flistStagingTokens() == []
+
+
+def test_a_final_refusal_fails_the_job_and_discards_the_snapshot(sPublishedRepo):
+    tPatches = _fcontextAcquireFromAScript([ImageAcquisitionRefusedError(
+        "gone", dictFailure={"sFailureClass": "not-available", "bPartialKept": False,
+                             "sSentence": "The author's archived environment is no "
+                                          "longer available."},
+    )])
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        client.post(f"/api/reproductions/{sJobId}/run", json={})
+        dictView = _fdictAwaitSettled(client, sJobId)
+        assert client.post(f"/api/reproductions/{sJobId}/retry", json={}).status_code == 409
+    assert dictView["sPhase"] == "failed"
+    assert dictView["sFailure"].startswith("The author's archived environment")
+    assert _flistStagingTokens() == []
+
+
+def test_a_retry_is_refused_for_a_job_that_is_not_waiting(sPublishedRepo):
+    with patch.object(
+        daemonDescription, "_fsReadDaemonArchitectureQuietly", lambda: "amd64",
+    ), _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        response = client.post(f"/api/reproductions/{sJobId}/retry", json={})
+    assert response.status_code == 409
+    assert "not waiting" in response.json()["detail"]
+    assert not reproductionProgress.fdictReadJobView(sJobId)["bConsumed"]
+
+
+@pytest.mark.falsification
+def test_giving_up_a_waiting_job_deletes_its_snapshot_and_partial(sPublishedRepo):
+    """Kills: a discard that leaves the stopped download's bytes behind."""
+    from vaibify.reproducibility import downloadPartial
+    dictAcquisition = downloadPartial.fdictOpenAcquisition({
+        "sTarballName": "image.tar.zst", "sTarballSha256": "sha256:" + "c" * 64,
+        "iTarballBytes": 100, "sVersionDoi": "10.5281/zenodo.1", "sZenodoService": "zenodo",
+    }, {"sKind": "reproduction"})
+    sAcquisitionId = dictAcquisition["sAcquisitionId"]
+    sDirectory = dictAcquisition["sDirectory"]
+    downloadPartial.fnReleaseAcquisition(dictAcquisition)
+    tPatches = _fcontextAcquireFromAScript([_ferrorStoppedDownload(sAcquisitionId)])
+    with tPatches[0], tPatches[1], tPatches[2], tPatches[3], _fclientBuild() as client:
+        sJobId = _fdictStage(client, sPublishedRepo)["sJobId"]
+        client.post(f"/api/reproductions/{sJobId}/run", json={})
+        dictView = _fdictAwaitSettled(client, sJobId)
+        assert dictView["sAcquisitionId"] == sAcquisitionId
+        assert os.path.isdir(sDirectory), "the partial is kept while the job waits"
+        response = client.post(f"/api/reproductions/{sJobId}/discard", json={})
+    assert response.status_code == 200
+    assert not os.path.isdir(sDirectory)
+    assert _flistStagingTokens() == []
+    assert reproductionProgress.fdictReadJobView(sJobId) is None
 
 
 def test_a_run_without_a_daemon_is_refused_and_keeps_the_snapshot(

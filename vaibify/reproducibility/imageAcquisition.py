@@ -28,7 +28,17 @@ happens and every refusal names which link failed and why.
 record page.** The tarball's hash is read from the envelope the
 snapshot carries and checked BEFORE anything is handed to the daemon;
 a download that differs is deleted and the link reports "did not match
-its hash", never a load. The tarball is removed on every exit path.
+its hash", never a load.
+
+**The download resumes, retries and can be cancelled**
+(:mod:`resumableDownload`), and its bytes live in an acquisition
+directory of their own (:mod:`downloadPartial`). A verified tarball is
+removed once the daemon has loaded it. Bytes a failure left behind are
+KEPT when another attempt can continue from them -- a spent retry
+budget, a full disk, a daemon that would not load -- and deleted when
+nothing could (the deposit changed, the researcher cancelled). Every
+refusal carries ``dictFailure`` saying which, so the dashboard can
+offer Try again with the right sentence.
 
 **A deposit is downloaded once per daemon that still holds it.** After
 a verified load the host notes which image ID that tarball produced
@@ -48,7 +58,6 @@ import gzip
 import json
 import os
 import re
-import shutil
 import tempfile
 from datetime import datetime, timezone
 
@@ -58,8 +67,10 @@ from vaibify.docker import daemonCapacity
 from vaibify.docker import disposableContainer
 from vaibify.gui.workflowManager import fsZenodoRecordIdFromDoi
 from vaibify.reproducibility import _hashing
+from vaibify.reproducibility import downloadPartial
 from vaibify.reproducibility import imageArchive
 from vaibify.reproducibility import imageDeposit
+from vaibify.reproducibility import resumableDownload
 from vaibify.reproducibility import zenodoClient
 from vaibify.reproducibility.reproductionSource import (
     fsRequiredPlatformFromArchitecture,
@@ -69,6 +80,7 @@ from vaibify.reproducibility.reproductionSource import (
 __all__ = [
     "ImageAcquisitionRefusedError",
     "fsDownloadVerifiedTarball",
+    "S_FAILURE_DAEMON_LOAD",
     "S_LINK_ARCHIVE",
     "S_LINK_LOCAL",
     "S_LINK_REGISTRY",
@@ -85,8 +97,16 @@ class ImageAcquisitionRefusedError(Exception):
 
     Derives from ``Exception``, never ``OSError``: a refusal swallowed by
     an ``except OSError`` is how a control decision downgrades into an
-    I/O hiccup.
+    I/O hiccup. ``dictFailure`` carries the archived-deposit link's
+    download failure when there was one -- its class, whether the
+    partial was kept, the byte counts -- so a caller can offer the
+    right next step instead of a sentence alone.
     """
+
+    def __init__(self, sMessage, dictFailure=None, listAttempts=None):
+        super().__init__(sMessage)
+        self.dictFailure = dict(dictFailure or {})
+        self.listAttempts = list(listAttempts or [])
 
 
 S_OBTAINED_REGISTRY = "registry"
@@ -97,6 +117,10 @@ S_LINK_REGISTRY = "registry pull"
 S_LINK_ARCHIVE = "archived deposit"
 S_LINK_LOCAL = "copy on this daemon"
 
+# The failure class of a verified tarball the daemon would not load;
+# the download's own classes live in ``resumableDownload``.
+S_FAILURE_DAEMON_LOAD = "daemon-load"
+
 # The resolver is the FALLBACK for a record the client cannot address,
 # and it is followed by hand: the record page and the deposit both
 # come from a cloned repository, so no URL read from either is fetched
@@ -105,10 +129,6 @@ S_LINK_LOCAL = "copy on this daemon"
 # it at a loopback server.
 _S_DOI_RESOLVER = zenodoClient.S_DOI_RESOLVER_BASE
 _T_HTTP_TIMEOUT_SECONDS = (10, 60)
-_I_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
-# A download is refused once it has grown past what the envelope
-# recorded, with some slack for a record that predates exact sizes.
-_F_DOWNLOAD_SIZE_SLACK = 1.25
 # A deposit already downloaded, verified and loaded here is not fetched
 # again while the daemon still holds the image it produced. Without
 # this, every retry after a later step failed (an agent overlay, a
@@ -129,13 +149,16 @@ def fsArchitectureOfPlatform(sPlatform):
 
 def fdictAcquirePinnedImage(
     dictEnvironment, sRequiredPlatform, fnStatusCallback=None,
-    bAllowEmulation=False, dockerDisposable=None,
+    bAllowEmulation=False, dockerDisposable=None, dictDownloadControl=None,
 ):
     """Obtain the pinned image and return where it came from and what it is.
 
     ``dictEnvironment`` is the staged envelope payload (the whole
     ``environment.json`` dict); the pinned reference and the deposit
-    record are read from it and nowhere else. Returns::
+    record are read from it and nowhere else. ``dictDownloadControl``
+    (:func:`resumableDownload.fdictCreateDownloadControl`) lets the
+    caller cancel the deposit download and read its progress; without
+    one the download runs to its own retry budget. Returns::
 
         {"sImageReference", "sImageId", "sObtainedFrom",
          "sRequiredPlatform", "sObtainedPlatform",
@@ -160,7 +183,7 @@ def fdictAcquirePinnedImage(
     listAttempts = []
     sImageReference, sObtainedFrom = _ftFollowTheChain(
         dockerDisposable, dictEnvironment, sPinnedReference,
-        sRequiredPlatform, listAttempts, fnStatus,
+        sRequiredPlatform, listAttempts, fnStatus, dictDownloadControl,
     )
     dictObtained = disposableContainer.fdictInspectImage(
         dockerDisposable, sImageReference,
@@ -230,7 +253,7 @@ def _fsPinnedReference(dictEnvironment):
 
 def _ftFollowTheChain(
     dockerDisposable, dictEnvironment, sPinnedReference, sRequiredPlatform,
-    listAttempts, fnStatus,
+    listAttempts, fnStatus, dictDownloadControl=None,
 ):
     """Try the three links in the published order; return what served."""
     if _fbRegistryServes(
@@ -240,6 +263,7 @@ def _ftFollowTheChain(
         return sPinnedReference, S_OBTAINED_REGISTRY
     sLoadedId = _fsArchiveServes(
         dockerDisposable, dictEnvironment, listAttempts, fnStatus,
+        dictDownloadControl,
     )
     if sLoadedId:
         return sLoadedId, S_OBTAINED_ARCHIVE
@@ -249,14 +273,27 @@ def _ftFollowTheChain(
         return sPinnedReference, S_OBTAINED_LOCAL
     raise ImageAcquisitionRefusedError(
         f"no link of the chain yielded {sPinnedReference}. "
-        + _fsDescribeAttempts(listAttempts)
+        + _fsDescribeAttempts(listAttempts),
+        dictFailure=_fdictArchiveLinkFailure(listAttempts),
+        listAttempts=listAttempts,
     )
 
 
-def _fnRecordAttempt(listAttempts, fnStatus, sLink, bSucceeded, sDetail):
+def _fdictArchiveLinkFailure(listAttempts):
+    """Return the archived link's download failure, or ``{}``."""
+    for dictAttempt in listAttempts:
+        if dictAttempt["sLink"] == S_LINK_ARCHIVE and dictAttempt.get("dictFailure"):
+            return dict(dictAttempt["dictFailure"])
+    return {}
+
+
+def _fnRecordAttempt(
+    listAttempts, fnStatus, sLink, bSucceeded, sDetail, dictFailure=None,
+):
     """Append one link's outcome and report it as it happens."""
     dictAttempt = {
         "sLink": sLink, "bSucceeded": bool(bSucceeded), "sDetail": sDetail,
+        "dictFailure": dict(dictFailure or {}),
     }
     listAttempts.append(dictAttempt)
     fnStatus({"sPhase": "attempt", **dictAttempt})
@@ -296,7 +333,10 @@ def _fbRegistryServes(
     return dictPull["bPulled"]
 
 
-def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
+def _fsArchiveServes(
+    dockerDisposable, dictEnvironment, listAttempts, fnStatus,
+    dictDownloadControl=None,
+):
     """Link two: fetch the deposit, verify it, load it; return the ID."""
     dictRecord = imageArchive.fdictReadArchiveRecord(dictEnvironment)
     if dictRecord is None:
@@ -320,21 +360,87 @@ def _fsArchiveServes(dockerDisposable, dictEnvironment, listAttempts, fnStatus):
             listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
         )
         return ""
-    sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
+    dictControl = (
+        dictDownloadControl or resumableDownload.fdictCreateDownloadControl()
+    )
     try:
-        sTarballPath = fsDownloadVerifiedTarball(
-            dictRecord, sScratchDirectory, fnStatus,
+        dictAcquisition = downloadPartial.fdictOpenAcquisition(
+            dictRecord, dictControl["dictPurpose"],
         )
-        sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)
-        _fnRecordDepositLoad(dictRecord, sLoadedId)
-    except ImageAcquisitionRefusedError as error:
+    except OSError as error:
+        _fnRecordAttempt(
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False,
+            f"no directory could be made for the download: {error}",
+        )
+        return ""
+    except ValueError as error:
+        # The record's file name cannot be stored under: the archive
+        # link is refused by name, and no directory was made.
         _fnRecordAttempt(
             listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
         )
         return ""
+    dictOutcome = {"bKeepPartial": False}
+    try:
+        sLoadedId = _fsDownloadAndLoad(
+            dockerDisposable, dictRecord, dictAcquisition, fnStatus,
+            dictControl, dictOutcome,
+        )
+    except ImageAcquisitionRefusedError as error:
+        _fnRecordAttempt(
+            listAttempts, fnStatus, S_LINK_ARCHIVE, False, str(error),
+            error.dictFailure,
+        )
+        if error.dictFailure.get("sFailureClass") == (
+            resumableDownload.S_FAILURE_CANCELLED
+        ):
+            # The researcher gave up: the chain stops here rather than
+            # offering a local copy they did not ask about.
+            raise
+        return ""
     finally:
-        shutil.rmtree(sScratchDirectory, ignore_errors=True)
+        # Give-up and failure-without-a-resume delete under the lock;
+        # resumable bytes are released with the lock freed, which is
+        # what marks them interrupted for the next acquisition.
+        if dictOutcome["bKeepPartial"]:
+            downloadPartial.fnReleaseAcquisition(dictAcquisition)
+        else:
+            downloadPartial.fnDiscardAcquisition(dictAcquisition)
     _fnRecordAttempt(listAttempts, fnStatus, S_LINK_ARCHIVE, True, sLoadedId)
+    return sLoadedId
+
+
+def _fsDownloadAndLoad(
+    dockerDisposable, dictRecord, dictAcquisition, fnStatus, dictControl,
+    dictOutcome,
+):
+    """Download or resume, verify, load; say in ``dictOutcome`` what to keep."""
+    iOnDisk = downloadPartial.fiBytesOnDisk(dictAcquisition)
+    if dictAcquisition["bAdopted"] and iOnDisk:
+        fnStatus({
+            "sPhase": "resuming", "iBytes": iOnDisk,
+            "iTotalBytes": int(dictRecord.get("iTarballBytes") or 0),
+        })
+    try:
+        sTarballPath = fsDownloadVerifiedTarball(
+            dictRecord, dictAcquisition, fnStatus, dictControl,
+        )
+    except ImageAcquisitionRefusedError as error:
+        dictOutcome["bKeepPartial"] = bool(error.dictFailure.get("bPartialKept"))
+        raise
+    # A complete, verified tarball is kept until the daemon has loaded
+    # it: a daemon that is down costs a retry, never a second download.
+    dictOutcome["bKeepPartial"] = True
+    try:
+        sLoadedId = _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus)
+    except ImageAcquisitionRefusedError as error:
+        error.dictFailure.setdefault("sFailureClass", S_FAILURE_DAEMON_LOAD)
+        error.dictFailure.setdefault("bPartialKept", True)
+        error.dictFailure.setdefault("sSentence", str(error))
+        error.dictFailure.setdefault("sAcquisitionId", dictAcquisition["sAcquisitionId"])
+        raise
+    _fnRecordDepositLoad(dictRecord, sLoadedId)
+    dictOutcome["bKeepPartial"] = False
     return sLoadedId
 
 
@@ -407,12 +513,18 @@ def _fdictPreviousLoadStillHeld(dockerDisposable, dictRecord):
     return dictNote
 
 
-def fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
-    """Stream the deposit into scratch and refuse it unless it hashes right.
+def fsDownloadVerifiedTarball(
+    dictRecord, dictAcquisition, fnStatus, dictControl=None,
+):
+    """Bring the acquisition's file to the recorded size; refuse it unless it hashes right.
 
     The hash and the size come from the ENVELOPE's record, never from
     the record page: the page is what a download is being checked
-    against, not the authority on what it should contain.
+    against, not the authority on what it should contain. Returns the
+    path of the verified file inside the acquisition directory. A file
+    that hashes wrong is thrown away and downloaded ONCE more from
+    zero, because a resumed file can carry a torn byte the checkpoint
+    missed; a second mismatch is refused with the partial deleted.
 
     Shared with the promotion lane, which falls back to the sandbox
     copy when the image is positively absent from the daemon. The
@@ -438,22 +550,69 @@ def fsDownloadVerifiedTarball(dictRecord, sScratchDirectory, fnStatus):
             "the envelope records no size for the archived image, so the "
             "download could not be bounded; nothing was fetched"
         )
-    imageDeposit._fnRefuseWithoutRoomOnDisk(sScratchDirectory, iExpectedBytes)
-    sTarballPath = os.path.join(sScratchDirectory, os.path.basename(sName))
+    dictControl = dictControl or resumableDownload.fdictCreateDownloadControl()
     sFileUrl = _fsResolveDepositFileUrl(dictRecord, sDoi, sName)
-    fnStatus({"sPhase": "downloading", "sDoi": sDoi, "iBytes": 0,
-              "iTotalBytes": iExpectedBytes})
-    sActualSha = _fsStreamDownload(
-        sFileUrl, sTarballPath, iExpectedBytes, fnStatus,
-    )
-    if sActualSha != sExpectedSha:
-        os.remove(sTarballPath)
-        raise ImageAcquisitionRefusedError(
-            "the deposit did not match its hash: the envelope records "
-            f"{sExpectedSha[:19]}... and the download hashed to "
-            f"{sActualSha[:19]}...; nothing was loaded"
+    fnStatus({
+        "sPhase": "downloading", "sDoi": sDoi,
+        "iBytes": downloadPartial.fiBytesOnDisk(dictAcquisition),
+        "iTotalBytes": iExpectedBytes,
+    })
+    for bLastChance in (False, True):
+        if downloadPartial.fbIsComplete(dictAcquisition):
+            # A file verified earlier whose load did not happen (the
+            # daemon was down) is checked again, never downloaded again.
+            sActualSha = "sha256:" + _hashing.fsHashFileSha256(
+                downloadPartial.fsCompletePath(dictAcquisition),
+            )
+        else:
+            sActualSha = _fsDownloadOrRefuse(
+                dictAcquisition, sFileUrl, fnStatus, dictControl,
+            )
+            if sActualSha == sExpectedSha:
+                downloadPartial.fnMarkComplete(dictAcquisition)
+        if sActualSha == sExpectedSha:
+            return downloadPartial.fsCompletePath(dictAcquisition)
+        downloadPartial.fnTruncatePart(dictAcquisition, 0)
+        downloadPartial.fnRecordSidecar(
+            dictAcquisition, {"iDurableBytes": 0, "iHighWaterBytes": 0},
         )
-    return sTarballPath
+        if not bLastChance:
+            fnStatus({
+                "sPhase": "downloadRestarting",
+                "sSentence": (
+                    "Starting over: the downloaded file did not match the "
+                    "hash the project records"
+                ),
+            })
+    raise ImageAcquisitionRefusedError(
+        "the deposit did not match its hash: the envelope records "
+        f"{sExpectedSha[:19]}... and the download hashed to "
+        f"{sActualSha[:19]}... twice; nothing was loaded",
+        dictFailure={
+            "sFailureClass": "hash-mismatch", "bPartialKept": False,
+            "sAcquisitionId": dictAcquisition["sAcquisitionId"],
+            "iBytesOnDisk": 0, "iExpectedBytes": iExpectedBytes,
+        },
+    )
+
+
+def _fsDownloadOrRefuse(dictAcquisition, sFileUrl, fnStatus, dictControl):
+    """Run the resumable download; translate its refusal into the chain's."""
+    try:
+        return resumableDownload.fsDownloadIntoAcquisition(
+            dictAcquisition, sFileUrl, zenodoClient.flistAllowedZenodoOrigins(),
+            fnStatus, dictControl,
+        )
+    except resumableDownload.DownloadRefusedError as error:
+        raise ImageAcquisitionRefusedError(
+            str(error),
+            dictFailure={
+                "sFailureClass": error.sFailureClass,
+                "bPartialKept": error.bPartialKept,
+                "sSentence": str(error),
+                **error.dictDetail,
+            },
+        ) from error
 
 
 def _fsResolveDepositFileUrl(dictRecord, sDoi, sTarballName):
@@ -564,62 +723,6 @@ def _fsFileUrlFromPublishedRecord(dictRecord, sDoi, sTarballName):
     except Exception:  # noqa: BLE001 - the DOI-follow is the fallback
         return ""
     return zenodoClient._fsFindFileUrlOrNone(dictPublished, sTarballName)
-
-
-def _fsStreamDownload(sFileUrl, sTarballPath, iExpectedBytes, fnStatus):
-    """Stream a URL to disk, hashing as it lands; return the sha256.
-
-    The URL came out of a record page or was composed from a DOI
-    follow, so it is handed to the allowlisted fetch like every other:
-    a file link that points off Zenodo is refused before any byte is
-    requested.
-    """
-    try:
-        with zenodoClient.fresponseGetWithinAllowlist(
-            sFileUrl, zenodoClient.flistAllowedZenodoOrigins(),
-            bStream=True, tTimeout=_T_HTTP_TIMEOUT_SECONDS,
-        ) as responseFile:
-            responseFile.raise_for_status()
-            with open(sTarballPath, "wb") as fileTarball:
-                sHexDigest = _hashing.fsHashChunkIteratorSha256(
-                    _fiterWriteBoundedChunks(
-                        responseFile.iter_content(_I_DOWNLOAD_CHUNK_BYTES),
-                        fileTarball, iExpectedBytes, fnStatus,
-                    ),
-                )
-    except zenodoClient.ZenodoRedirectRefusedError as error:
-        raise ImageAcquisitionRefusedError(
-            f"the archived image's link leaves Zenodo, so it was not "
-            f"fetched: {error}"
-        ) from error
-    except requests.RequestException as error:
-        raise ImageAcquisitionRefusedError(
-            f"the archived image could not be fetched: {error}"
-        ) from error
-    return "sha256:" + sHexDigest
-
-
-def _fiterWriteBoundedChunks(iterChunks, fileTarball, iExpectedBytes, fnStatus):
-    """Write each chunk to disk, report it, and yield it on for hashing.
-
-    Refuses once the download has grown past what the envelope
-    recorded, so a hostile or broken server cannot fill the disk. The
-    caller has already refused a record with no size, so the ceiling
-    is never disabled.
-    """
-    iCeiling = int(max(iExpectedBytes, 1) * _F_DOWNLOAD_SIZE_SLACK)
-    iReceived = 0
-    for baChunk in iterChunks:
-        iReceived += len(baChunk)
-        if iReceived > iCeiling:
-            raise ImageAcquisitionRefusedError(
-                "the download grew past the size the envelope records "
-                "and was stopped"
-            )
-        fileTarball.write(baChunk)
-        fnStatus({"sPhase": "downloading", "iBytes": iReceived,
-                  "iTotalBytes": iExpectedBytes})
-        yield baChunk
 
 
 def _fsLoadTarball(dockerDisposable, sTarballPath, fnStatus):

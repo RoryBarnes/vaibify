@@ -356,3 +356,43 @@ class TestFiRunStepTests:
         )
         sStepDirArg = mockRunTests.call_args[0][3]
         assert sStepDirArg == ""
+
+    @pytest.mark.falsification
+    @pytest.mark.parametrize("iExitCode, sType", [
+        (0, "stepPass"), (1, "stepFail"),
+    ])
+    @patch("vaibify.gui.pipelineTestRunner._fiRunTestCommands", new_callable=AsyncMock)
+    @patch("vaibify.gui.pipelineTestRunner._fnEmitStepBanner", new_callable=AsyncMock)
+    def test_a_test_runs_step_result_says_it_came_from_tests(
+        self, mockBanner, mockRunTests, iExitCode, sType,
+    ):
+        """The dashboard keeps a researcher's sign-off through a test
+        run only because the result event says where it came from.
+
+        Kills: the test runner emitting its result unmarked.
+        """
+        from vaibify.gui.pipelineTestRunner import _fiRunStepTests
+
+        mockRunTests.return_value = iExitCode
+        dictStep = {"sName": "Analyze", "sDirectory": "analyze"}
+        fnCallback = AsyncMock()
+        _fnRunAsync(
+            _fiRunStepTests(
+                MagicMock(), "ctr1", dictStep, {}, fnCallback, 1,
+                {"listSteps": [dictStep]},
+            )
+        )
+        dictEvent = fnCallback.await_args_list[-1].args[0]
+        assert dictEvent["sType"] == sType
+        assert dictEvent.get("bFromTestRun") is True
+
+
+def test_a_pipeline_runs_step_result_carries_no_test_run_mark():
+    """A run rewrites outputs, so its result must still reset sign-off."""
+    from vaibify.gui.pipelineUtils import _fnEmitStepResult
+
+    fnCallback = AsyncMock()
+    _fnRunAsync(_fnEmitStepResult(fnCallback, 1, 0))
+    assert fnCallback.await_args.args[0] == {
+        "sType": "stepPass", "iStepNumber": 1, "iExitCode": 0,
+    }

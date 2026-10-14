@@ -36,6 +36,8 @@ __all__ = [
     "remnantRoutes",
     "uploadRoutes",
     "downloadRoutes",
+    "conversionRoutes",
+    "connectionCheckRoutes",
 ]
 
 from . import (
@@ -74,4 +76,6 @@ from . import (
     remnantRoutes,
     uploadRoutes,
     downloadRoutes,
+    conversionRoutes,
+    connectionCheckRoutes,
 )

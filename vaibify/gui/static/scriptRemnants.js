@@ -19,7 +19,8 @@ var VaibifyRemnants = (function () {
         unregisteredKeepAlive: "Keep-alives no registry holds",
         unownedSessionLane: "Keep-alives of containers no window holds",
         containerWithoutInit: "Containers without an init process",
-        untrackedStoppedContainer: "Stopped containers vaibify no longer tracks"
+        untrackedStoppedContainer: "Stopped containers vaibify no longer tracks",
+        interruptedDownload: "Interrupted downloads"
     };
 
     /* The picker poll hands the registry's summary here on every tick;
@@ -152,7 +153,18 @@ var VaibifyRemnants = (function () {
                 ? ' <span class="remnants-remedy muted-text">' +
                   VaibifyUtilities.fnEscapeHtml(dictItem.sRemedy) + "</span>"
                 : "") +
+            _fsResumeButton(dictItem) +
             "</li>";
+    }
+
+    /* An interrupted download a pending containerization owns can be
+       resumed: the button opens that project's containerizing window,
+       where Resume lives, rather than posting anything from here. */
+    function _fsResumeButton(dictItem) {
+        var dictResume = dictItem.dictResume;
+        if (!dictResume || !dictResume.sHostName) return "";
+        return ' <button type="button" class="btn remnants-resume" data-resume-host="' +
+            VaibifyUtilities.fnEscapeHtml(dictResume.sHostName) + '">Resume</button>';
     }
 
     function _fbAnyActionable(listItems) {
@@ -208,6 +220,12 @@ var VaibifyRemnants = (function () {
         if (elRescan) {
             elRescan.addEventListener("click", function () { _fnRescan(); });
         }
+        elModal.querySelectorAll(".remnants-resume").forEach(function (elResume) {
+            elResume.addEventListener("click", function () {
+                elModal.remove();
+                VaibifyAcquisitionWindow.fnWatch(elResume.getAttribute("data-resume-host"));
+            });
+        });
     }
 
     /* Selected checkboxes, or every proven actionable item. Sessions are

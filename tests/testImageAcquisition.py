@@ -333,9 +333,16 @@ def tServedDeposit(tmp_path, monkeypatch):
 
 
 def _flistScratchLeftovers(tmp_path):
+    """Acquisition directories still under the (redirected) download root.
+
+    ``tmp_path`` is unused since the download moved out of the deposit's
+    scratch directory; the parameter stays so the callers read the same.
+    """
+    del tmp_path
+    from vaibify.reproducibility import downloadPartial
     return [
-        sName for sName in os.listdir(tmp_path / "scratch")
-        if os.listdir(tmp_path / "scratch" / sName)
+        dictPartial["sAcquisitionId"]
+        for dictPartial in downloadPartial.flistDescribePartials()
     ]
 
 

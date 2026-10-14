@@ -663,14 +663,16 @@ async def _fnEmitCommandHeader(fnStatusCallback, sOriginal, sResolved):
 
 async def _fnEmitStepResult(
     fnStatusCallback, iStepNumber, iExitCode,
-    bDownstreamOfDegradedProvenance=False,
+    bDownstreamOfDegradedProvenance=False, bFromTestRun=False,
 ):
     """Send a stepPass or stepFail event based on exit code.
 
     ``bDownstreamOfDegradedProvenance`` marks a step that EXECUTED
     after an earlier step's remote-data documentation degraded (ruling
-    R6: dependents run, visibly marked). The key travels only when
-    True, so untainted runs' events are byte-identical to before.
+    R6: dependents run, visibly marked). ``bFromTestRun`` marks a result
+    of running the step's tests, which leave its outputs as they were,
+    so the dashboard keeps the researcher's sign-off. Each key travels
+    only when True, so other events are byte-identical to before.
     """
     sType = "stepPass" if iExitCode == 0 else "stepFail"
     dictEvent = {
@@ -679,6 +681,8 @@ async def _fnEmitStepResult(
     }
     if bDownstreamOfDegradedProvenance:
         dictEvent["bDownstreamOfDegradedProvenance"] = True
+    if bFromTestRun:
+        dictEvent["bFromTestRun"] = True
     await fnStatusCallback(dictEvent)
 
 

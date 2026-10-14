@@ -3115,7 +3115,11 @@ var VaibifyWorkflowManager = (function () {
         elButton.disabled = true;
         var sHostName = _dictWizardData.sHostName;
         var sNewName = _dictWizardData.sProjectName;
-        var bHeldByThisTab = _fbWizardTargetsTheOpenProject();
+        /* Obtaining the author's image converts nothing until the image
+           is in hand, so the server keeps this tab's session and the
+           host project stays open; only the build path releases it. */
+        var bHeldByThisTab = _fbWizardTargetsTheOpenProject() &&
+            !_fbUsingPinnedImage();
         /* Converting from inside the open project: the server releases
            this tab's own session before re-registering, closing its
            sockets with a refusal code the connection monitor would
@@ -3146,6 +3150,18 @@ var VaibifyWorkflowManager = (function () {
         }
         elButton.disabled = false;
         _fnCloseWizard();
+        if (dictConverted && dictConverted.bConversionPending === true) {
+            /* The hub owns the download from here; this tab only
+               watches it, and the host project is untouched until the
+               image is in hand. The window re-opens from the tile. */
+            VaibifyApp.fnShowToast(
+                "Downloading the author’s environment for '" + sHostName +
+                "'. '" + sHostName + "' stays a host project until the " +
+                "image is here.", "info");
+            VaibifyAcquisitionWindow.fnWatch(sHostName);
+            VaibifyContainerManager.fnLoadContainers();
+            return;
+        }
         if (bHeldByThisTab) {
             /* The conversion released this tab's session, and the
                project is now an unbuilt container -- there is no host

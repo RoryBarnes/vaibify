@@ -65,6 +65,7 @@ from ...reproducibility.shadowRerun import (
     fdictRerunAndVerifyFromSnapshot,
 )
 from .. import reproductionProgress
+from ..acquisitionFailure import fdictDescribeAcquisitionFailure
 from ..actionCatalog import ffnAgentAction
 from ..routeContext import fnRejectAgentTokenLane
 from ..routeScope import (
@@ -227,13 +228,18 @@ async def _fnRunReproductionWorker(sJobId, connectionDocker):
 
     Every long step runs in a worker thread so the event loop keeps
     answering the progress poll. The staging directory is removed on
-    EVERY exit path -- it is scratch -- and the report is the one
-    durable thing a run leaves. A crash is a failed job with its
-    reason, never a stuck phase: a stuck phase is the one outcome a
-    poll-driven card cannot tell from a long run.
+    every exit path but one -- it is scratch, and the report is the one
+    durable thing a run leaves. The exception is an acquisition that
+    stopped and can be retried: the job then WAITS for the researcher
+    with its snapshot kept, because a retry that had to clone again
+    would be a new job, and the partial download is adopted on retry. A
+    crash is a failed job with its reason, never a stuck phase: a stuck
+    phase is the one outcome a poll-driven card cannot tell from a long
+    run.
     """
     sToken = reproductionProgress.fsStagingTokenOf(sJobId)
     fStarted = time.monotonic()
+    bKeepSnapshot = False
     try:
         dictAcquired = await asyncio.to_thread(
             _fdictAcquireForJob, sJobId, sToken,
@@ -248,15 +254,34 @@ async def _fnRunReproductionWorker(sJobId, connectionDocker):
         )
         reproductionProgress.fnSettleJob(sJobId, dictReport)
     except imageAcquisition.ImageAcquisitionRefusedError as error:
-        reproductionProgress.fnFailJob(sJobId, f"Refused: {error}")
+        bKeepSnapshot = _fbHoldForDecisionOrFail(sJobId, error)
     except Exception as error:  # noqa: BLE001 - a stuck phase is worse
         fnReRaiseControlPlaneRefusal(error)
         logger.exception("reproduction job %s crashed", sJobId)
+        # The type and nothing else: an unexpected exception's text can
+        # carry a host path, and no response of this module names one.
         reproductionProgress.fnFailJob(
-            sJobId, f"the reproduction crashed: {type(error).__name__}",
+            sJobId,
+            "The reproduction stopped before it finished "
+            f"({type(error).__name__}). The hub log has the details.",
         )
     finally:
-        fnDiscardStagedSource(sToken)
+        if not bKeepSnapshot:
+            fnDiscardStagedSource(sToken)
+
+
+def _fbHoldForDecisionOrFail(sJobId, error):
+    """Keep a retryable acquisition failure for a decision; fail a final one.
+
+    Returns True when the snapshot is kept. The sentence is the shared
+    plain-language record every lane shows, never the exception's type.
+    """
+    dictFailure = fdictDescribeAcquisitionFailure(error)
+    if not dictFailure["bRetryable"]:
+        reproductionProgress.fnFailJob(sJobId, dictFailure["sSentence"])
+        return False
+    reproductionProgress.fnHoldJobForDecision(sJobId, dictFailure)
+    return True
 
 
 def _fdictAcquireForJob(sJobId, sToken):
@@ -340,6 +365,45 @@ def _fdictRerunAndReport(
     return dictReport
 
 
+def _fnRegisterRetry(app, dictCtx):
+    """Register POST /api/reproductions/{sJobId}/retry."""
+
+    @app.post("/api/reproductions/{sJobId}/retry")
+    @ffnDeclareCarrierMode(S_CARRIER_SEPARATE_AUTHORITY)
+    @ffnAgentAction("retry-reproduction")
+    async def fdictRetryReproduction(sJobId: str, requestHttp: Request):
+        """Re-enter the acquisition of a job waiting for a decision.
+
+        A claim of its own, distinct from the one-time run claim: the
+        run claim stays consumed, so no retry can start a second
+        scientific rerun. The worker is the same one, and the download
+        adopts the bytes the stopped attempt left.
+        """
+        fnRejectAgentTokenLane(requestHttp)
+        _fnRequireJob(sJobId)
+        if not fbDockerReachable(dictCtx.get("docker")):
+            raise HTTPException(
+                409,
+                "No Docker daemon is reachable, and a reproduction runs "
+                "in a shadow container. The staged snapshot is kept; "
+                "start Docker and retry.",
+            )
+        if not reproductionProgress.fbClaimJobForRetry(sJobId):
+            raise HTTPException(
+                409,
+                "This reproduction is not waiting for a decision, so "
+                "there is nothing to retry.",
+            )
+        taskWorker = asyncio.create_task(
+            _fnRunReproductionWorker(sJobId, dictCtx.get("docker")),
+        )
+        fnKeepTaskReferenced(taskWorker)
+        return {
+            "bAccepted": True,
+            "sPhase": reproductionProgress.S_PHASE_PULLING,
+        }
+
+
 def _fnRegisterDiscard(app, dictCtx):
     """Register POST /api/reproductions/{sJobId}/discard."""
     del dictCtx
@@ -356,7 +420,9 @@ def _fnRegisterDiscard(app, dictCtx):
         repository until the hub restarted (found by review,
         2026-09-07). A job already RUNNING is refused rather than
         yanked out from under its shadow container; it discards its own
-        staging when it settles.
+        staging when it settles. For a job waiting on a stopped
+        download this is the researcher giving up: the partial download
+        goes with the snapshot.
         """
         fnRejectAgentTokenLane(requestHttp)
         _fnRequireJob(sJobId)
@@ -366,7 +432,7 @@ def _fnRegisterDiscard(app, dictCtx):
                 "This reproduction is running. It discards its staged "
                 "snapshot when it settles.",
             )
-        reproductionProgress.fnDiscardJob(sJobId)
+        reproductionProgress.fnDiscardJob(sJobId, bDeletePartial=True)
         return {"bDiscarded": True}
 
 
@@ -439,6 +505,7 @@ def fnRegisterAll(app, dictCtx):
     """Register the reproduction routes."""
     _fnRegisterStage(app, dictCtx)
     _fnRegisterRun(app, dictCtx)
+    _fnRegisterRetry(app, dictCtx)
     _fnRegisterDiscard(app, dictCtx)
     _fnRegisterReportRead(app, dictCtx)
     _fnRegisterReportManifestRead(app, dictCtx)

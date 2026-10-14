@@ -127,6 +127,21 @@ _TUPLE_REQUEST_TIMEOUT_SECONDS = (10, 60)
 _TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
 
 
+class _NoStoredCredentials(requests.auth.AuthBase):
+    """Send the request exactly as built: never consult ``~/.netrc``.
+
+    ``requests`` attaches a netrc entry's credentials whenever a call
+    passes no ``auth`` (verified in 2.32.5, ``Session.prepare_request``).
+    A researcher with a ``zenodo.org`` line in their netrc would have
+    that password sent on every public read, and have it REPLACE the
+    Bearer token on every upload. An explicit no-op auth is what turns
+    the lookup off; proxy settings from the environment still apply.
+    """
+
+    def __call__(self, requestPrepared):
+        return requestPrepared
+
+
 __all__ = [
     "fdictBuildApiMetadata",
     "flistBuildApiCreators",
@@ -411,6 +426,7 @@ class ZenodoClient:
             )
         else:
             kwargs.setdefault("allow_redirects", False)
+            kwargs.setdefault("auth", _NoStoredCredentials())
             responseHttp = requests.request(sMethod, sUrl, **kwargs)
         _fnCheckResponse(responseHttp)
         if responseHttp.status_code == 204:
@@ -545,6 +561,7 @@ def fresponseGetWithinAllowlist(
         responseHttp = requests.get(
             sUrl, headers=dictHeaders, stream=bStream, timeout=tTimeout,
             params=dictParams, allow_redirects=False,
+            auth=_NoStoredCredentials(),
         )
         if not _fbAnswersWithRedirect(responseHttp):
             return responseHttp
@@ -818,6 +835,7 @@ def _fdictPutFileOnce(
             responseHttp = requests.put(
                 sUploadUrl, headers=_fdictBuildUploadHeaders(clientZenodo),
                 data=fileBody, timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
+                auth=_NoStoredCredentials(),
             )
         except requests.exceptions.Timeout as errorTimeout:
             errorConnection, sCause = errorTimeout, "timed-out"
@@ -864,6 +882,7 @@ def _fnStreamUpload(clientZenodo, sBucketUrl, sFilePath):
             sUrl, headers=dictHeaders,
             data=_fiterReadChunks(fileHandle, barProgress),
             timeout=_TUPLE_UPLOAD_TIMEOUT_SECONDS,
+            auth=_NoStoredCredentials(),
         )
         barProgress.close()
     _fnCheckResponse(responseHttp)

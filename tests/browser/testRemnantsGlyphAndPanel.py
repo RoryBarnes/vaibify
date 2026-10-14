@@ -78,6 +78,38 @@ def testThePanelRendersTheServersSentencesVerbatim(pageDashboard, serverHub):
     assert pageDashboard.listPageErrors == []
 
 
+@pytest.mark.falsification
+def testAnInterruptedDownloadOffersResumeIntoTheContainerizingWindow(pageDashboard, serverHub):
+    """Kills: the panel listing an interrupted download with no way to resume it."""
+    from tests.browser.testContainerizeFromPinnedImage import fdictConversionView
+    _fnSeedScan(serverHub, [{
+        "sItemId": "d1", "sCategory": "interruptedDownload", "sTier": "proven",
+        "sContainerName": "",
+        "sEvidence": "A download of the author's environment for containerizing "
+                     "'hostLaneReady' was interrupted at 507 MB of 733 MB.",
+        "sRemedy": "Resume it from the project's tile, or Delete to throw the bytes away.",
+        "sAction": "deletePartial", "bConfirmRequired": True,
+        "dictIdentity": {"sAcquisitionId": "acquisition-abc"},
+        "dictResume": {"sHostName": "hostLaneReady"},
+    }])
+    pageDashboard.route("**/api/conversions/**", lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=json.dumps(fdictConversionView("interrupted", False)),
+    ))
+    pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
+    pageDashboard.wait_for_selector("#btnRemnants", state="visible", timeout=15000)
+    pageDashboard.click("#btnRemnants")
+    pageDashboard.wait_for_selector("#modalInfo .remnants-resume", timeout=10000)
+    assert "Interrupted downloads" in pageDashboard.text_content("#modalInfo")
+    assert "507 MB of 733 MB" in pageDashboard.text_content("#modalInfo")
+    pageDashboard.click("#modalInfo .remnants-resume")
+    pageDashboard.wait_for_selector("#modalAcquisition", state="visible", timeout=5000)
+    assert "interrupted" in pageDashboard.text_content("#modalAcquisition")
+    assert pageDashboard.query_selector(
+        '#modalAcquisition [data-acquisition-action="retry"]').text_content() == "Resume"
+    assert pageDashboard.listPageErrors == []
+
+
 def testRemoveSelectedPostsTheChosenIdsAndShowsTheOutcome(pageDashboard, serverHub):
     _fnSeedScan(serverHub, [_fdictSessionItem(serverHub)])
     listBodies = []

@@ -41,7 +41,8 @@ def fdictAcquireOnce(storeImages, listEvents):
 
 
 def flistTarballRequests(transportDouble):
-    return [sUrl for sUrl in transportDouble.listUrls if "/files/" in sUrl]
+    """The requests the loopback file server saw for the tarball."""
+    return transportDouble.serverFiles.listFileRequests
 
 
 @pytest.mark.falsification
@@ -78,7 +79,9 @@ def testADaemonThatNoLongerHoldsTheImageDownloadsAgain(transportDouble):
 
 def testADownloadThatFailsItsHashLeavesNoNote(transportDouble):
     """Only bytes that passed the hash check and loaded are noted."""
-    fnServeViaDoiResolver(transportDouble, BA_TARBALL + b"tampered")
+    fnServeViaDoiResolver(
+        transportDouble, BA_TARBALL[:-1] + bytes([BA_TARBALL[-1] ^ 0xFF]),
+    )
     storeImages = FakeImageStore()
     with pytest.raises(ImageAcquisitionRefusedError, match="did not match"):
         fdictAcquireOnce(storeImages, [])

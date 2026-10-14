@@ -208,7 +208,7 @@ class ZenodoDouble:
             return _FakeResponse(200, self.dictPublishedRecords[sUrl])
         return _FakeResponse(404, {"message": "not found"})
 
-    def fresponsePut(self, sUrl, headers=None, data=None, timeout=None):
+    def fresponsePut(self, sUrl, headers=None, data=None, timeout=None, auth=None):
         self.listRequests.append(("PUT", sUrl, {"headers": headers}))
         if self.fnOnUpload is not None:
             self.fnOnUpload()
@@ -723,28 +723,41 @@ def testPromotionFromTheLocalImageDepositsOnProduction(
 # ── promotion: the sandbox-archive lane ──────────────────────────
 
 
-S_SANDBOX_RECORD_URL = "https://sandbox.zenodo.org/api/records/4242"
-S_SANDBOX_FILE_URL = (
-    "https://sandbox.zenodo.org/api/records/4242/files/"
-    "environment-image.tar.gz/content"
-)
+@pytest.fixture
+def serverSandboxFiles(monkeypatch, zenodoDouble):
+    """A loopback sandbox serving the deposit's file to the ranged download.
 
+    The record page still comes through the requests double; the FILE
+    is fetched by the resumable download on a socket of its own, so it
+    must be served by a real server, and the sandbox's service entry
+    is pointed at it so the allowlist admits the link.
+    """
+    from tests.depositFaultServer import FaultInjectingDepositServer
+    with FaultInjectingDepositServer(
+        b"", sFilePath="/api/records/4242/files/environment-image.tar.gz/content",
+    ) as serverFiles:
+        monkeypatch.setattr(zenodoClient, "_SERVICES", {
+            "zenodo": "https://zenodo.org", "sandbox": serverFiles.sBase,
+        })
 
-def fnServeSandboxDeposit(zenodoDouble, baServed):
-    """Publish the sandbox record page and serve ``baServed`` as its file."""
-    zenodoDouble.dictPublishedRecords[S_SANDBOX_RECORD_URL] = {"files": [{
-        "key": "environment-image.tar.gz",
-        "links": {"self": S_SANDBOX_FILE_URL},
-    }]}
-    zenodoDouble.dictServedFiles[S_SANDBOX_FILE_URL] = baServed
+        def fnServe(baServed):
+            serverFiles.fnServeBytes(baServed)
+            zenodoDouble.dictPublishedRecords[
+                serverFiles.sBase + "/api/records/4242"
+            ] = {"files": [{
+                "key": "environment-image.tar.gz",
+                "links": {"self": serverFiles.sBase + serverFiles._server.sFilePath},
+            }]}
+        serverFiles.fnServe = fnServe
+        yield serverFiles
 
 
 def testPromotionFallsBackToTheVerifiedSandboxBytes(
-    dockerDouble, zenodoDouble, tmp_path,
+    dockerDouble, zenodoDouble, serverSandboxFiles, tmp_path,
 ):
     """An image gone from the daemon re-deposits the sandbox bytes."""
     dockerDouble.iInspectExitCode = 1
-    fnServeSandboxDeposit(zenodoDouble, b"sandbox tarball bytes")
+    serverSandboxFiles.fnServe(b"sandbox tarball bytes")
     pathRepo = tmp_path / "repo"
     dictContainer = fdictContainerWithRecord(fdictSandboxRecord())
     fnWriteEnvelope(pathRepo, dictContainer)
@@ -770,11 +783,11 @@ def testPromotionFallsBackToTheVerifiedSandboxBytes(
 
 
 def testATamperedSandboxDownloadIsNeverPromoted(
-    dockerDouble, zenodoDouble, tmp_path,
+    dockerDouble, zenodoDouble, serverSandboxFiles, tmp_path,
 ):
     """Bytes that do not hash to the record are refused before any draft."""
     dockerDouble.iInspectExitCode = 1
-    fnServeSandboxDeposit(zenodoDouble, b"sandbox tarball bytez")
+    serverSandboxFiles.fnServe(b"sandbox tarball bytez")
     pathRepo = tmp_path / "repo"
     dictContainer = fdictContainerWithRecord(fdictSandboxRecord())
     fnWriteEnvelope(pathRepo, dictContainer)

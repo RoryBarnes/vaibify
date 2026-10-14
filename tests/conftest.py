@@ -112,7 +112,7 @@ def fnKeepTheSuiteFromLaunchingCaffeinate():
     """
     from vaibify.config import keepAliveManager
     fiOriginalSpawnCaffeinate = keepAliveManager._fiSpawnCaffeinate
-    keepAliveManager._fiSpawnCaffeinate = lambda: 0
+    keepAliveManager._fiSpawnCaffeinate = lambda *aArguments: 0
     yield
     keepAliveManager._fiSpawnCaffeinate = fiOriginalSpawnCaffeinate
 
@@ -256,6 +256,8 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     fnRedirectDirectory(
         imageAcquisition, "_S_DEPOSIT_LOADS_DIRECTORY", "depositLoads",
     )
+    from vaibify.reproducibility import downloadPartial
+    fnRedirectDirectory(downloadPartial, "_S_DOWNLOAD_ROOT", "imageArchive")
     # Origin records resolve their directory per call, not as a constant;
     # a live test that obtains an image once left one in the real home.
     sOriginsDirectory = os.path.join(sHome, "imageOrigins")
@@ -314,6 +316,64 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     # constant to patch), and its own tests exercise that real behaviour
     # — a blanket patch here broke them. It carries its own isolation.
     yield sHome
+
+
+@pytest.fixture(autouse=True)
+def fnKeepPendingConversionsFromObtainingForReal(
+    monkeypatch, fnIsolateVaibifyStateDirectories,
+):
+    """A route test that starts a containerization must not reach Docker.
+
+    The convert route hands the wizard's answers to the lifecycle, which
+    starts a worker thread that opens a Docker client and downloads the
+    author's image. Under test that thread would run against the real
+    daemon and the real archive. The worker's starting seam is stubbed to
+    do nothing, so the record is written and the view reads
+    "interrupted"; a test OF the worker restores
+    ``conversionLifecycle.fnStartConversionWorker`` on the seam. The
+    record directory lives under the isolated home, created on first
+    use, rather than in a second temporary directory per test: every
+    ``tmp_path_factory.mktemp`` lists the whole numbered basetemp to
+    pick its suffix, so one extra call per test grows the serial unit
+    lane by minutes and pushed it past its CI timeout.
+    """
+    from vaibify.config import pendingConversions
+    from vaibify.gui import conversionLifecycle
+    sHome = fnIsolateVaibifyStateDirectories
+    monkeypatch.setattr(
+        pendingConversions, "_S_CONVERSIONS_DIRECTORY",
+        os.path.join(sHome, "pendingConversions"),
+    )
+    monkeypatch.setattr(
+        conversionLifecycle, "_fnStartWorker", lambda sHostName: None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def fnKeepTheRangedTransportOnLoopback(monkeypatch):
+    """The deposit download owns its sockets; no unit test may open one
+    to a host beyond this machine. A test that stubs the record fetch
+    but forgets the file fetch would otherwise contact the real
+    archive, retry it six times with backoff, and read as a hang. The
+    guard refuses the connection by name; tests of the download serve
+    their bytes from a loopback server and are untouched by it.
+    """
+    from urllib.parse import urlsplit
+    from vaibify.reproducibility import rangedHttpTransport
+    fsocketReal = rangedHttpTransport._fsocketOpenToUrl
+
+    def fsocketOpenOnLoopbackOnly(sUrl):
+        sHost = urlsplit(sUrl).hostname or ""
+        if sHost not in ("127.0.0.1", "localhost", "::1"):
+            raise rangedHttpTransport.TransportFailure(
+                f"the test suite refuses to open a connection to {sHost}",
+                rangedHttpTransport.S_FAILURE_REFUSED_HOST, False,
+            )
+        return fsocketReal(sUrl)
+
+    monkeypatch.setattr(
+        rangedHttpTransport, "_fsocketOpenToUrl", fsocketOpenOnLoopbackOnly,
+    )
 
 
 @pytest.fixture(autouse=True)

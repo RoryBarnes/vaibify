@@ -525,3 +525,35 @@ def testConcurrentWorktreesDoNotCollideOnOneName():
         f"them and concurrent workers race: {listLeafNames}"
     )
 
+
+
+@pytest.mark.falsification
+def testAParametrizedTestCarriesItsMarkerUnderItsBareId(monkeypatch):
+    """A parametrized test is collected once per parameter set; the
+    registry names the test.
+
+    Kills: returning only the bracketed ids pytest prints. The registry's
+    bare id then reads as shareable, and a browser entry runs on a shard
+    with no Playwright, where "does not pass on clean code" is a
+    deferral wearing a defect's clothes (CI, 2026-10-14).
+    """
+    import subprocess
+    import types
+    moduleTool = _fmoduleLoadTool("reconfirmFalsification.py")
+    sCollected = (
+        "tests/browser/testExample.py::testPlain\n"
+        "tests/browser/testExample.py::testParametrized[stepPass-0]\n"
+        "tests/browser/testExample.py::testParametrized[stepFail-1]\n"
+        "3 tests collected\n"
+    )
+    monkeypatch.setattr(
+        moduleTool.subprocess, "run",
+        lambda *aArguments, **dictArguments: types.SimpleNamespace(
+            returncode=0, stdout=sCollected, stderr=""),
+    )
+    setNodeIds = moduleTool.fsetSelectNodeIdsCarryingMarker("browser")
+    assert "tests/browser/testExample.py::testParametrized" in setNodeIds
+    assert "tests/browser/testExample.py::testParametrized[stepPass-0]" in setNodeIds
+    assert "tests/browser/testExample.py::testPlain" in setNodeIds
+    assert "3 tests collected" not in setNodeIds
+    del subprocess

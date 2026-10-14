@@ -131,6 +131,8 @@ def _fsActOnItem(dictCtx, dictItem):
         return _fsStopSessionLane(dictItem)
     if sAction == remnantScanner.S_ACTION_REMOVE:
         return _fsRemoveStoppedContainer(dictCtx, dictItem)
+    if sAction == remnantScanner.S_ACTION_DELETE_PARTIAL:
+        return _fsDeletePartialDownload(dictItem)
     raise HTTPException(409, (
         "This item cannot be removed from here; its evidence names what "
         "to do instead."))
@@ -255,6 +257,31 @@ def _fsRemoveStoppedContainer(dictCtx, dictItem):
     except RuntimeError as errorRemove:
         raise HTTPException(409, str(errorRemove))
     return f"Container '{dictItem['sContainerName']}' was removed; its volumes are kept."
+
+
+def _fsDeletePartialDownload(dictItem):
+    """Delete a partial download whose lock is still free; a held one is refused.
+
+    The researcher's explicit Delete is the ONE path that removes an
+    interrupted or legacy partial. The lock is re-checked by the delete
+    itself: a download that started since the scan holds it, and is
+    reported as live rather than deleted out from under it.
+    """
+    from vaibify.reproducibility import downloadPartial
+    sAcquisitionId = dictItem["dictIdentity"]["sAcquisitionId"]
+    listMatching = [
+        dictPartial for dictPartial in downloadPartial.flistDescribePartials()
+        if dictPartial["sAcquisitionId"] == sAcquisitionId
+    ]
+    if not listMatching:
+        _fnRefuseAlreadyGone(f"The download '{sAcquisitionId}'")
+    try:
+        downloadPartial.fnDeletePartial(sAcquisitionId)
+    except downloadPartial.PartialHeldElsewhereError:
+        raise HTTPException(409, (
+            f"The download '{sAcquisitionId}' is being downloaded in another "
+            "vaibify window or terminal now; it is not deleted.")) from None
+    return f"The download '{sAcquisitionId}' was deleted."
 
 
 def fnRegisterAll(app, dictCtx):

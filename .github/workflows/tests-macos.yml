@@ -98,7 +98,10 @@ jobs:
         # to kill a HANG -- this repo produces real ones, e.g. a helper
         # blocked on a stdin gate -- not to budget work that is legitimately
         # slow. 50 still kills a hang inside the hour.
-        timeout-minutes: 50
+        # RAISED from 50 (2026-10-14): these jobs now measure 40 to 52
+        # minutes (two runs, four cells), so the ceiling sat at the median
+        # again. Raised in step with the Linux leg.
+        timeout-minutes: 75
         env:
           VAIBIFY_REQUIRE_SHELLS: '1'
         run: |

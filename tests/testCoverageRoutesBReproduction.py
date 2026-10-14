@@ -193,7 +193,10 @@ def testACrashingWorkerFailsTheJobByTypeAndDiscardsTheStaging(
 
     dictView = fdictStageAndRun(sPublishedRepo, fnCrashingRerun)
     assert dictView["sPhase"] == "failed"
-    assert dictView["sFailure"] == "the reproduction crashed: ValueError"
+    assert dictView["sFailure"] == (
+        "The reproduction stopped before it finished (ValueError). The hub "
+        "log has the details."
+    )
     assert sHostPath not in json.dumps(dictView)
     assert dictView["dictReport"] is None
     assert flistStagingTokens() == []

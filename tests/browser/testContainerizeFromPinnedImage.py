@@ -70,22 +70,59 @@ def _fnFakePinnedEnvironment(page, dictAnswer):
     )
 
 
+def fdictConversionView(sState="obtaining", bLive=True, dictFailure=None):
+    """The view ``GET /api/conversions/<host>`` answers, in one state."""
+    return {
+        "sHostName": S_HOST_PROJECT_READY, "sNewName": S_NEW_NAME,
+        "sState": sState, "bLive": bLive,
+        "dictDownload": {
+            "iBytes": 507000000, "iTotalBytes": 733000000,
+            "fBytesPerSecond": 400000.0, "fSecondsRemaining": 565.0,
+            "fSecondsSinceLastByte": 0.2, "iAttempt": 1,
+            "sAttemptState": "", "fSecondsUntilRetry": 0.0, "bSlow": False,
+        },
+        "dictFailure": dictFailure, "dictStaged": None,
+        "saTailLines": ["downloading the archived image: 507 MB of 733 MB"],
+        "bJournalled": False, "sStartedIso": "", "sUpdatedIso": "",
+    }
+
+
 def _flistRecordConvertAndHandOffs(page, bAcquireRequired):
-    """Answer the convert POST and the two hand-offs; record every request."""
+    """Answer the convert POST and the hand-offs; record every request.
+
+    Obtaining the pinned image answers ``bConversionPending`` and the
+    page then WATCHES the hub's conversion record; building answers the
+    build hand-off as before.
+    """
     listRequests = []
 
     def fnConvert(route):
         listRequests.append(("convert", json.loads(route.request.post_data)))
+        dictAnswer = {
+            "sName": S_HOST_PROJECT_READY, "sMode": "host",
+            "bBuildRequired": not bAcquireRequired, "bAcquireRequired": False,
+            "sBuildPath": f"/api/containers/{S_NEW_NAME}/build",
+        }
+        if bAcquireRequired:
+            dictAnswer.update({
+                "bConversionPending": True, "sHostName": S_HOST_PROJECT_READY,
+                "sNewName": S_NEW_NAME,
+                "sConversionPath": f"/api/conversions/{S_HOST_PROJECT_READY}",
+                "dictConversion": fdictConversionView(),
+            })
         route.fulfill(
             status=200, content_type="application/json",
-            body=json.dumps({
-                "sName": S_NEW_NAME, "sMode": "container",
-                "bBuildRequired": not bAcquireRequired,
-                "bAcquireRequired": bAcquireRequired,
-                "sAcquirePath": f"/api/containers/{S_NEW_NAME}/acquire-image",
-                "sBuildPath": f"/api/containers/{S_NEW_NAME}/build",
-            }),
+            body=json.dumps(dictAnswer),
         )
+
+    def fnConversion(route):
+        listRequests.append(("conversion", route.request.url))
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps(fdictConversionView()),
+        )
+
+    page.route("**/api/conversions/**", fnConversion)
 
     def fnAcquire(route):
         listRequests.append(("acquire", route.request.url))
@@ -337,7 +374,13 @@ def testTheConversionSummaryHelpSaysConvertNotCreate(
 def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     pageDashboard, serverHub,
 ):
-    """ORDER: no convert or acquire request until Convert; then acquire, never /build."""
+    """ORDER: nothing until Convert; then the hub's conversion is watched, never /build.
+
+    Obtaining converts nothing until the image is in hand (2026-10-13):
+    the convert answer says a conversion is pending and the page opens
+    the window that follows the hub's record. No acquire-image request
+    and no build request leave the page.
+    """
     _fnFakePinnedEnvironment(pageDashboard, _fdictPinnedAnswer(bObtainable=True))
     listRequests = _flistRecordConvertAndHandOffs(pageDashboard, True)
     _fnWaitForPicker(pageDashboard, serverHub)
@@ -380,10 +423,14 @@ def testNothingIsRequestedBeforeConvertAndThenAcquireNotBuild(
     assert dictBody["bImageTrustWithCredentials"] is False
     assert "claude" in dictBody["listFeatures"]
     assert "codex" in dictBody["listFeatures"]
-    assert "acquire" in listKinds
+    assert "conversion" in listKinds
+    assert "acquire" not in listKinds
     assert "build" not in listKinds
-    sAcquireUrl = [t[1] for t in listRequests if t[0] == "acquire"][0]
-    assert "bAllowEmulation=false" in sAcquireUrl
+    pageDashboard.wait_for_selector("#modalAcquisition", state="visible", timeout=5000)
+    sWindow = pageDashboard.text_content("#modalAcquisition")
+    assert "Downloading the author’s environment" in sWindow
+    assert "507 MB of 733 MB" in sWindow
+    assert pageDashboard.listPageErrors == []
 
 
 def testANotBuiltTileWhoseEntrySaysArchiveCallsAcquireNeverBuild(

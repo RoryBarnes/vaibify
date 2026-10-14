@@ -72,6 +72,7 @@ __all__ = [
     "fiterReadInChunks",
     "fsLoadImageFromStream",
     "fdictInspectImage",
+    "fnRemoveImageTag",
     "fnTagImage",
     "fsReadDaemonArchitecture",
     "fnCopyArchiveIntoContainer",
@@ -282,6 +283,28 @@ def fnTagImage(dockerDisposable, sImageId, sRepository, sTag):
             f"the image {sImageId} could not be tagged as "
             f"{sRepository}:{sTag}: {type(errorTag).__name__}: {errorTag}"
         ) from errorTag
+
+
+def fnRemoveImageTag(dockerDisposable, sRepository, sTag):
+    """Remove the name ``<repository>:<tag>`` from whatever image holds it.
+
+    The SDK authority for the other name mutation an acquisition makes:
+    a STAGING tag is dropped once the project's own tag points at the
+    image, and a rolled-back commit drops the tag it had just written.
+    Docker untags when the image has other names and removes the image
+    when this was its last one, which is the intended meaning of
+    "nothing of this transaction remains" either way. A name the daemon
+    does not hold is not an error: the tag may never have been written.
+    """
+    try:
+        dockerDisposable.images.remove(f"{sRepository}:{sTag}")
+    except Exception as errorRemove:  # noqa: BLE001 -- absence is fine; refusal named
+        if "404" in str(errorRemove) or "No such image" in str(errorRemove):
+            return
+        raise DisposableContainerError(
+            f"the tag {sRepository}:{sTag} could not be removed: "
+            f"{type(errorRemove).__name__}: {errorRemove}"
+        ) from errorRemove
 
 
 def fsReadDaemonArchitecture(dockerDisposable):

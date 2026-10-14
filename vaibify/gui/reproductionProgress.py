@@ -54,7 +54,9 @@ __all__ = [
     "S_PHASE_SETTLED",
     "S_PHASE_STAGED",
     "S_PHASE_STAGING",
+    "S_PHASE_WAITING_DOWNLOAD",
     "T_LIVE_PHASES",
+    "fbClaimJobForRetry",
     "fbClaimJobForRun",
     "fbJobIsLive",
     "fdictCreateJob",
@@ -67,6 +69,7 @@ __all__ = [
     "fnDiscardJob",
     "fnSweepOnTheHubsTick",
     "fnFailJob",
+    "fnHoldJobForDecision",
     "fnForgetJob",
     "fnRecordAcquisitionEvent",
     "fnRecordPhase",
@@ -95,6 +98,11 @@ S_PHASE_COMPARING = "comparing"
 S_PHASE_TEARING_DOWN = "tearing-down"
 S_PHASE_SETTLED = "settled"
 S_PHASE_FAILED = "failed"
+# The acquisition stopped and the researcher decides: Retry re-enters
+# it with the partial download adopted; Close gives up. The snapshot and
+# its lock are KEPT, and the job keeps counting against the limits,
+# because a retry that had to clone again would be a new job.
+S_PHASE_WAITING_DOWNLOAD = "waiting-download"
 
 # A job in one of these is under way; the tab polls only while the
 # server reports one of them, and disarms otherwise. ``staged`` is
@@ -138,6 +146,12 @@ _DICT_PHASE_BY_LANE_EVENT = {
 _DICT_PHASE_BY_ACQUISITION_EVENT = {
     "pulling": S_PHASE_PULLING,
     "downloading": S_PHASE_DOWNLOADING,
+    # A resumed, retrying or restarted download is still the download
+    # phase; the sentence it carries is reported beside the bytes.
+    "resuming": S_PHASE_DOWNLOADING,
+    "downloadRetrying": S_PHASE_DOWNLOADING,
+    "downloadRestarting": S_PHASE_DOWNLOADING,
+    "downloadSlow": S_PHASE_DOWNLOADING,
     "loading": S_PHASE_LOADING,
 }
 
@@ -148,7 +162,8 @@ _T_PUBLIC_FIELDS = (
     "sJobId", "sPhase", "sStepLabel", "sStepName", "iBytes",
     "iTotalBytes", "sCurrentLink", "listAttempts", "dictStaged",
     "dictDaemon", "dictAcquired", "sReportId", "dictReport",
-    "sFailure", "bConsumed", "bAllowEmulation",
+    "sFailure", "bConsumed", "bAllowEmulation", "dictFailure",
+    "sAcquisitionId", "sResumeNote", "sDownloadNote",
 )
 
 DICT_JOBS = {}
@@ -268,6 +283,10 @@ def _fdictBuildJobRecord(
         "sFailure": "",
         "bConsumed": False,
         "bAllowEmulation": False,
+        "dictFailure": None,
+        "sAcquisitionId": "",
+        "sResumeNote": "",
+        "sDownloadNote": "",
         "fnReleaseSnapshot": fnReleaseSnapshot,
         "taskWorker": None,
         "fStagedAtMonotonic": time.monotonic(),
@@ -332,6 +351,43 @@ def fbClaimJobForRun(sJobId, bAllowEmulation, taskWorker=None):
         return True
 
 
+def fbClaimJobForRetry(sJobId, taskWorker=None):
+    """Re-enter the acquisition from the waiting state; False from any other.
+
+    Distinct from the run claim on purpose: the run claim is consumed
+    once and stays consumed, so a retry can never start a second
+    scientific rerun -- it can only re-enter the download that stopped.
+    The check and the move happen under the lock, as the run claim's do,
+    so two Retry clicks cannot both start a worker.
+    """
+    with _LOCK_JOBS:
+        dictJob = DICT_JOBS.get(sJobId)
+        if dictJob is None or dictJob["sPhase"] != S_PHASE_WAITING_DOWNLOAD:
+            return False
+        dictJob["taskWorker"] = taskWorker
+        dictJob["sPhase"] = S_PHASE_PULLING
+        dictJob["dictFailure"] = None
+        dictJob["sDownloadNote"] = ""
+        return True
+
+
+def fnHoldJobForDecision(sJobId, dictFailure):
+    """The acquisition stopped: keep the snapshot and wait for Retry or Close.
+
+    The hold on the snapshot stays, so the staging sweep leaves the
+    clone alone; the staged retention clock restarts, because a clone
+    nobody decides about is the same cost as one nobody ran.
+    """
+    with _LOCK_JOBS:
+        dictJob = DICT_JOBS.get(sJobId)
+        if dictJob is None:
+            return
+        dictJob["sPhase"] = S_PHASE_WAITING_DOWNLOAD
+        dictJob["dictFailure"] = dict(dictFailure)
+        dictJob["sAcquisitionId"] = str(dictFailure.get("sAcquisitionId") or "")
+        dictJob["fStagedAtMonotonic"] = time.monotonic()
+
+
 def fnRecordPhase(sJobId, sPhase, **dictFields):
     """Move a job to ``sPhase``, carrying any progress fields given."""
     with _LOCK_JOBS:
@@ -363,9 +419,30 @@ def fnRecordAcquisitionEvent(sJobId, dictEvent):
         if sPhase is None:
             return
         dictJob["sPhase"] = sPhase
-        if sEventPhase == "downloading":
-            dictJob["iBytes"] = int(dictEvent.get("iBytes") or 0)
-            dictJob["iTotalBytes"] = int(dictEvent.get("iTotalBytes") or 0)
+        _fnFoldDownloadEvent(dictJob, sEventPhase, dictEvent)
+
+
+def _fnFoldDownloadEvent(dictJob, sEventPhase, dictEvent):
+    """Keep the bytes, and the two notes the card shows beside them.
+
+    The resume note is STICKY: the download's first ``downloading`` event
+    follows ``resuming`` within the same call, so a note cleared by it
+    would never be seen. The retry/slow note is transient and is cleared
+    by the next ``downloading`` event, which only arrives once bytes flow
+    again.
+    """
+    if sEventPhase in ("downloading", "resuming"):
+        dictJob["iBytes"] = int(dictEvent.get("iBytes") or 0)
+        dictJob["iTotalBytes"] = int(dictEvent.get("iTotalBytes") or 0)
+    if sEventPhase == "resuming":
+        dictJob["sResumeNote"] = (
+            "Resuming a download interrupted earlier ("
+            f"{dictJob['iBytes'] / 1e6:.0f} of {dictJob['iTotalBytes'] / 1e6:.0f} MB)."
+        )
+    elif sEventPhase == "downloading":
+        dictJob["sDownloadNote"] = ""
+    else:
+        dictJob["sDownloadNote"] = str(dictEvent.get("sSentence") or "")
 
 
 def fnRecordPipelineEvent(sJobId, dictEvent, dictWorkflow):
@@ -459,12 +536,12 @@ def _fbJobIsPastRetention(
     """Return True when a job has outlived the retention for its state."""
     if dictJob["sPhase"] in (S_PHASE_SETTLED, S_PHASE_FAILED):
         return dictJob["fSettledAtMonotonic"] < fNow - fMaxAgeSeconds
-    if dictJob["sPhase"] == S_PHASE_STAGED:
+    if dictJob["sPhase"] in (S_PHASE_STAGED, S_PHASE_WAITING_DOWNLOAD):
         return dictJob["fStagedAtMonotonic"] < fNow - fStagedMaxAgeSeconds
     return False
 
 
-def fnDiscardJob(sJobId, fnDiscardSnapshot=None):
+def fnDiscardJob(sJobId, fnDiscardSnapshot=None, bDeletePartial=False):
     """Forget a job and DELETE its staged snapshot.
 
     ``fnForgetJob`` releases the hold and leaves the clone for the
@@ -472,9 +549,18 @@ def fnDiscardJob(sJobId, fnDiscardSnapshot=None):
     and an expired staged job both want. The discard is late-bound so
     this module keeps its one job -- being the record -- and the
     caller supplies the deleter; the default is the staging module's.
+
+    The partial DOWNLOAD a waiting job left is deleted only when the
+    caller says so -- the researcher's explicit Close. The sweep never
+    passes it: an interrupted download is a resumable asset the next
+    reproduction of the same project adopts, and nothing deletes one on
+    its own (ruled 2026-10-13).
     """
     sToken = fsStagingTokenOf(sJobId)
+    sAcquisitionId = _fsAcquisitionIdOf(sJobId) if bDeletePartial else ""
     fnForgetJob(sJobId)
+    if sAcquisitionId:
+        _fnDeletePartialQuietly(sAcquisitionId)
     if not sToken:
         return
     if fnDiscardSnapshot is None:
@@ -486,6 +572,24 @@ def fnDiscardJob(sJobId, fnDiscardSnapshot=None):
         fnDiscardSnapshot(sToken)
     except Exception:  # noqa: BLE001 - a discard must never mask an outcome
         pass
+
+
+def _fsAcquisitionIdOf(sJobId):
+    with _LOCK_JOBS:
+        dictJob = DICT_JOBS.get(sJobId)
+        return str(dictJob.get("sAcquisitionId") or "") if dictJob else ""
+
+
+def _fnDeletePartialQuietly(sAcquisitionId):
+    """Delete the partial the job named; a held lock means a live download, left alone."""
+    from vaibify.reproducibility import downloadPartial
+    try:
+        downloadPartial.fnDeletePartial(sAcquisitionId)
+    except downloadPartial.PartialHeldElsewhereError:
+        logger.info(
+            "The partial download %s is held by a live download; not deleted",
+            sAcquisitionId,
+        )
 
 
 def fnSweepOnTheHubsTick():

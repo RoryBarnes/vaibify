@@ -69,12 +69,13 @@ from ..fileStatusManager import (
     _flistCollectOutputPaths,
     _fdictDetectAndInvalidate,
     _fnClearStepModificationState,
-    _fnUpdateModTimeBaseline,
+    _fnMergeIntoModTimeBaseline,
     fbReconcileUpstreamFlags,
     fbReconcileUserVerificationTimestamps,
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fdictHandleCollectMarkerPathsByStep,
+    fdictHashDriftToInvalidate,
     fdictMarkerVerdictsByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
@@ -329,6 +330,27 @@ def _flistBuildCleanCommands(dictWorkflow):
             "sQuantitative": "untested",
         }
     return listCleanCommands
+
+
+def _flistDescribeClearedSteps(dictWorkflow):
+    """Return the blocks the clean wrote, one entry per cleared step.
+
+    The client applies these rather than mirroring the reset itself.
+    Its mirror set every key of the old block to "untested", which
+    turned ``listModifiedFiles`` (a list) into a string and broke the
+    next render, while the route had written a fresh five-axis block
+    and dropped every other key -- two authorities on one block,
+    disagreeing on every non-axis key (tracker row 59, 2026-10-13).
+    """
+    return [
+        {
+            "iStepIndex": iStepIndex,
+            "dictVerification": dict(dictStep["dictVerification"]),
+            "dictRunStats": dict(dictStep["dictRunStats"]),
+        }
+        for iStepIndex, dictStep in enumerate(dictWorkflow.get("listSteps", []))
+        if not fbStepIsInteractive(dictStep)
+    ]
 
 
 def _fsRunProcessSweep(connectionDocker, sContainerId, sCommand):
@@ -855,7 +877,10 @@ def _fnRegisterPipelineClean(app, dictCtx):
             dictCtx, sContainerId, dictWorkflow, requestHttp,
             "Recording the cleaned outputs",
         )
-        return {"bSuccess": True}
+        return {
+            "bSuccess": True,
+            "listClearedSteps": _flistDescribeClearedSteps(dictWorkflow),
+        }
 
 
 async def _fdictDeleteOutputsUnderTheDrain(
@@ -1019,7 +1044,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
         dictModTimes = await _fdictRebaselineModTimesUnderTheDrain(
             dictCtx, sContainerId, listPaths, requestHttp,
         )
-        _fnUpdateModTimeBaseline(
+        _fnMergeIntoModTimeBaseline(
             dictCtx, sContainerId, dictModTimes, dictWorkflow)
         fdictCommitWorkflowSave(
             dictCtx, sContainerId, dictWorkflow, requestHttp,
@@ -1398,7 +1423,9 @@ async def _fdictFetchOutputStatus(
     )
     listInvalidated = _flistRunPollSideEffects(
         dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
-        _fdictPathsByStepForVerdict(dictMarkerVerdicts, "listDrifted"),
+        fdictHashDriftToInvalidate(
+            dictWorkflow, dictMarkerVerdicts, filesPoll,
+        ),
         bPipelineRunning=bPipelineRunning,
     )
     if _fbReconcileUserVerificationByHash(

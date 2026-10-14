@@ -4,7 +4,6 @@ import fcntl
 import json
 import os
 import shutil
-import tempfile
 import time
 
 _S_REGISTRY_DIRECTORY = os.path.expanduser("~/.vaibify")
@@ -131,30 +130,16 @@ def _fnMutateRegistryLocked(fnMutateRegistry):
 
 
 def _fnWriteRegistryAtomic(dictRegistry):
-    """Write registry content to a temp file and replace."""
+    """Write the registry so the new content survives a power loss.
+
+    The registry is the one record of which projects exist and what
+    mode each is in; a conversion's switch is a single write of it.
+    Atomic replacement alone protects readers, not the disk, so the
+    durable writer syncs the bytes, renames, and syncs the directory.
+    """
+    from vaibify.config.durableFile import fnWriteFileDurably
     sContent = json.dumps(dictRegistry, indent=2) + "\n"
-    iFileDescriptor, sTempPath = tempfile.mkstemp(
-        dir=_S_REGISTRY_DIRECTORY, suffix=".tmp",
-    )
-    bClosed = False
-    try:
-        os.write(iFileDescriptor, sContent.encode("utf-8"))
-        os.close(iFileDescriptor)
-        bClosed = True
-        os.replace(sTempPath, _S_REGISTRY_PATH)
-    except Exception:
-        if not bClosed:
-            os.close(iFileDescriptor)
-        _fnSilentRemove(sTempPath)
-        raise
-
-
-def _fnSilentRemove(sPath):
-    """Remove a file, ignoring errors if it does not exist."""
-    try:
-        os.unlink(sPath)
-    except OSError:
-        pass
+    fnWriteFileDurably(_S_REGISTRY_PATH, sContent.encode("utf-8"), iMode=0o644)
 
 
 def fsDiscoverConfigInDirectory(sDirectory):
@@ -327,6 +312,7 @@ S_IMAGE_SOURCE_ARCHIVE = "archive"
 
 def fnConvertProjectToContainer(
     sOldName, sNewName, dictImageSource=None, dictImageTrust=None,
+    dictPendingSeed=None,
 ):
     """Re-register a host project as a container under a new name.
 
@@ -343,6 +329,9 @@ def fnConvertProjectToContainer(
     ``dictImageTrust`` is the answer the wizard gave about the image
     (see :mod:`vaibify.config.imageTrust`), written in the same
     mutation so a converted project never exists without it.
+    ``dictPendingSeed`` names the files the first start still has to
+    copy in; it rides the same write so the SWITCH from host to
+    container is one atomic registry write and nothing else.
 
     Parameters
     ----------
@@ -379,8 +368,44 @@ def fnConvertProjectToContainer(
         dictEntry.pop(S_IMAGE_TRUST_KEY, None)
         if dictImageTrust:
             dictEntry[S_IMAGE_TRUST_KEY] = dict(dictImageTrust)
+        if dictPendingSeed:
+            dictEntry[S_PENDING_SEED_KEY] = dict(dictPendingSeed)
 
     _fnMutateRegistryLocked(fnRewriteEntry)
+
+
+def fsReturnProjectToHost(sName):
+    """Re-register a container entry as the host project it was converted from.
+
+    The way back for an entry v0.1.0 converted BEFORE the image was in
+    hand and then stranded: a container in name that cannot start and
+    cannot be built. The entry's name returns to its directory's
+    basename, the registry name a host project carries; the image
+    source, trust answer and pending seed are dropped; the origin record
+    goes with them. The clone's files are the caller's to restore.
+    Returns the host name the entry now carries.
+    """
+    from vaibify.config.imageOrigins import fnRemoveOriginRecord
+    dictOutcome = {}
+
+    def fnRewriteEntry(dictRegistry):
+        dictEntry = _fdictFindEntryByName(dictRegistry, sName)
+        if dictEntry is None:
+            raise KeyError(f"Project '{sName}' not found in registry")
+        if dictEntry.get("sMode", "container") != "container":
+            raise ValueError(f"Project '{sName}' is already a host project")
+        sHostName = os.path.basename(dictEntry["sDirectory"].rstrip(os.sep))
+        _fnRequireNewNameFree(dictRegistry, dictEntry, sHostName)
+        dictEntry["sMode"] = "host"
+        dictEntry["sName"] = sHostName
+        dictEntry["sContainerName"] = sHostName
+        for sKey in (S_IMAGE_SOURCE_KEY, S_IMAGE_TRUST_KEY, S_PENDING_SEED_KEY):
+            dictEntry.pop(sKey, None)
+        fnRemoveOriginRecord(sName)
+        dictOutcome["sHostName"] = sHostName
+
+    _fnMutateRegistryLocked(fnRewriteEntry)
+    return dictOutcome["sHostName"]
 
 
 def fbProjectImageIsObtained(dictEntry):

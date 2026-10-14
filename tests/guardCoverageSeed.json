@@ -231,6 +231,5 @@
 "vaibify/reproducibility/reproductionSource.py::_fsGitQueryOrRefuse",
 "vaibify/reproducibility/reproductionSource.py::flistAdmittedLocalCloneRoots",
 "vaibify/reproducibility/rerunPreparation.py::_fnRefuseUnsafeProducedPaths",
-"vaibify/reproducibility/zenodoClient.py::_fnValidateService",
-"vaibify/reproducibility/zenodoClient.py::fresponseGetWithinAllowlist"
+"vaibify/reproducibility/zenodoClient.py::_fnValidateService"
 ]

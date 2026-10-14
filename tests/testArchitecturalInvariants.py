@@ -4273,6 +4273,14 @@ def testKeepAliveDirectoryChmod700(tmp_path):
 I_MODULE_LINE_CAP = 800
 
 DICT_GRANDFATHERED_MODULE_LINES = {
+    # NEW at 801 (2026-10-14): the interrupted-download classifier joins
+    # the remnant scanner. The module's stated purpose is one classifier
+    # per kind of leftover, each worded with its evidence and tier, and
+    # a partial download on the host is a fourth kind, not a second
+    # responsibility. The seam a split would cut -- "classifiers that
+    # read the daemon" from "classifiers that read the host" -- already
+    # runs through the keep-alive classifier, which is host-side too.
+    "remnantScanner.py": 801,
     # NEW at 852 (2026-09-21): a fourth background loop — the
     # ten-minute reclaim of disposable containers a crashed process
     # stranded. It belongs with the other three: this module's stated
@@ -4285,7 +4293,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the conversation this entry is deferring, not avoiding.
     # 852 -> 885 (2026-10-01): the watchdog tick runs its daemon probes on
     # worker threads, and the reaper reads the probe's snapshot.
-    "serverLifespan.py": 885,
+    # 885 -> 892 (2026-10-14): a live containerization vetoes the idle
+    # self-exit beside the council's and the reproduction's vetoes, for
+    # the same reason as both.
+    "serverLifespan.py": 892,
     # NEW at 823 (2026-10-09): the orphan terminator, which rebuilds a
     # dead hub's terminal records from the journal and ends them, and
     # the record-free group terminate-and-prove the CLI-shell lane
@@ -5226,7 +5237,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # verification writes, threaded keyword-only beside the running
     # flag, so a reader's run no longer pulses the author's
     # attestation row; poll wiring again.
-    "routes/pipelineRoutes.py": 4188,
+    # +3 (2026-10-13): the poll's hash drift passes through the
+    # missing-file filter, and acknowledge-step merges its baseline.
+    # 4191 -> 4215 (2026-10-14): the clean route answers with the
+    # verification blocks it wrote, so the client applies them instead
+    # of mirroring the reset by a rule of its own (tracker row 59). The
+    # describer sits beside the builder whose writes it reports.
+    "routes/pipelineRoutes.py": 4215,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5528,7 +5545,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # project made every file of another read as changed.
     # +1 (2026-09-24): the per-project last-run record joins the
     # container-keyed caches the sweep evicts.
-    "fileStatusManager.py": 2321,
+    # +5 (2026-10-13): an acknowledged step MERGES its outputs into
+    # the poll baseline (replacing it made every input read as
+    # changed), and marker drift that is only a missing file
+    # invalidates a step only when the step claims results (a cleaned
+    # step was told its outputs "changed after you verified").
+    "fileStatusManager.py": 2326,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -7011,7 +7033,17 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2481 -> 2487 (2026-10-11): the conversion carries the wizard's
     # image-trust answer for the author's pin; the rule itself lives in
     # imageTrust and pinnedEnvironmentConversion, the route only routes.
-    "registryRoutes.py": 2487,
+    # 2487 -> 2528 (2026-10-14): "Convert and obtain" converts nothing
+    # until the image is in hand; the route hands the wizard's answers
+    # to conversionLifecycle, which owns the record, the worker and the
+    # commit, and the way back lives in routes/conversionRoutes. What
+    # stays here is the branch and the one helper that shapes its answer.
+    # 2528 -> 2533 (2026-10-14): removing a project cancels its pending
+    # containerization, the one automatic deletion a partial has.
+    # 2533 -> 2544 (2026-10-14): that cancel runs BEFORE the entry goes,
+    # so a commit in flight refuses the removal by name (409) instead of
+    # losing its journal under a vanished entry.
+    "registryRoutes.py": 2544,
     # Grandfathered at 807 (2026-07-18): the catalog grows by design —
     # one block per new agent action (create-project in this lane;
     # project-context actions in the concurrent lane). It remains one
@@ -7216,7 +7248,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # and attach action; the catalog is one cohesive list of entries.
     # 1499 -> 1506 (2026-10-08): the remnant panel's two writes join the
     # intentional exclusions, with why an agent must never make them.
-    "actionCatalog.py": 1506,
+    # 1506 -> 1519 (2026-10-08): the pending containerization's three
+    # decisions and the way back to host mode join the intentional
+    # exclusions, with why an agent must never make them.
+    # 1519 -> 1525 (2026-10-14): the reproduction retry's catalog entry,
+    # human-only like its run and discard siblings.
+    "actionCatalog.py": 1525,
     # +105 (2026-07-26): reconcile-remote-state — the one action that
     # repairs the dashboard after a push vaibify did not make (an
     # agent or a terminal 'git push'). It is fetch + verify-cache
@@ -7742,7 +7779,13 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 1163 -> 1181 (2026-10-11): a claim lost mid-request answers the
     # authority's refusal instead of a 500; it re-asks the same
     # authority this route class already runs, so it belongs here.
-    "routeScope.py": 1181,
+    # 1181 -> 1192 (2026-10-14): the pending containerization's three
+    # decision routes and the way back to host mode join the
+    # browser-hub control plane, with why they are pre-container hub
+    # operations. Four rows in a map of rows.
+    # +1 (2026-10-14): the reproduction retry's scope row, beside its
+    # run and discard siblings.
+    "routeScope.py": 1193,
 }
 
 

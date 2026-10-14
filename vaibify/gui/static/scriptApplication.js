@@ -3092,7 +3092,9 @@ const VaibifyApp = (function () {
             _dictWorkflowState.dictBlockersByStep[iStepIndex];
         var sBlockerCriterion = dictBlocker
             ? dictBlocker.sCriterion : "";
-        if (dictBlocker) {
+        if (dictBlocker && dictBlocker.sCriterion !== "user-not-approved") {
+            // Awaiting sign-off is the expected next step, not a
+            // warning; the Level 1 cell's tooltip already names it.
             var dictMeta = _fdictBannerGlyphMeta(dictBlocker);
             if (dictMeta) {
                 listReasons.push(
@@ -3118,10 +3120,17 @@ const VaibifyApp = (function () {
         }
         var listModified = dictVerify.listModifiedFiles || [];
         if (listModified.length > 0) {
-            listReasons.push("Output files changed after you " +
-                "verified: " + listModified.map(function (sPath) {
+            var bResearcherVerified = dictVerify.sUser === "passed" ||
+                dictVerify.sUser === "stale";
+            listReasons.push((bResearcherVerified
+                ? "Output files changed after you verified: "
+                : "Output files changed since the step last ran or " +
+                    "was tested: ") +
+                listModified.map(function (sPath) {
                     return sPath.split("/").pop();
-                }).join(", ") + " — re-run or re-verify");
+                }).join(", ") +
+                (bResearcherVerified ? " — re-run or re-verify"
+                    : " — re-run the step"));
         }
         if (fbAnyDepTimingStale(iStepIndex) &&
                 sBlockerCriterion !== "upstream-modified") {

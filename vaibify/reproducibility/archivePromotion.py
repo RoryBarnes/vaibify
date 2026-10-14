@@ -260,7 +260,7 @@ def ftPromoteImageArchive(
     still be able to see.
     """
     import shutil
-    from vaibify.reproducibility import imageArchive, imageDeposit
+    from vaibify.reproducibility import downloadPartial, imageArchive, imageDeposit
     from vaibify.reproducibility.environmentSnapshot import (
         fdictReadEnvironmentJson,
     )
@@ -272,10 +272,17 @@ def ftPromoteImageArchive(
     )
     sPromotionId = fsGeneratePromotionId()
     sScratchDirectory = imageDeposit.fsResolveDepositScratchDirectory()
+    # The sandbox copy is downloaded into an acquisition of its own, so
+    # a dropped connection resumes; a promotion that ends, either way,
+    # discards it -- the bytes are the sandbox's to serve again.
+    dictAcquisition = (
+        None if sSource == S_BYTES_FROM_LOCAL_IMAGE
+        else downloadPartial.fdictOpenAcquisition(dictOld, {"sKind": "promotion"})
+    )
     try:
         tTarball = _ftObtainPromotionBytes(
             sSource, sImageReference, dictOld, sScratchDirectory,
-            dictProgressHooks,
+            dictProgressHooks, dictAcquisition,
         )
         _fnRecordPromotionIntent(
             filesRepo, sSidecarKey, sPromotionId, tTarball,
@@ -312,6 +319,8 @@ def ftPromoteImageArchive(
         ), sPromotionId
     finally:
         shutil.rmtree(sScratchDirectory, ignore_errors=True)
+        if dictAcquisition is not None:
+            downloadPartial.fnDiscardAcquisition(dictAcquisition)
 
 
 def _fdictStampPromotionIntoMetadata(dictMetadata, sPromotionId):
@@ -330,7 +339,7 @@ def _fdictStampPromotionIntoMetadata(dictMetadata, sPromotionId):
 
 def _ftObtainPromotionBytes(
     sSource, sImageReference, dictOldRecord, sScratchDirectory,
-    dictProgressHooks,
+    dictProgressHooks, dictAcquisition=None,
 ):
     """Return the save-tuple for whichever byte source was chosen."""
     from vaibify.reproducibility import imageAcquisition, imageDeposit
@@ -341,8 +350,9 @@ def _ftObtainPromotionBytes(
         )
     fnReportSave = dictProgressHooks.get("fnReportSaveProgress")
     sTarballPath = imageAcquisition.fsDownloadVerifiedTarball(
-        dictOldRecord, sScratchDirectory,
-        lambda dictStatus: fnReportSave and fnReportSave(
+        dictOldRecord, dictAcquisition,
+        lambda dictStatus: fnReportSave and dictStatus.get("sPhase") == (
+            "downloading") and fnReportSave(
             int(dictStatus.get("iBytes") or 0),
             int(dictStatus.get("iTotalBytes") or 0),
         ),

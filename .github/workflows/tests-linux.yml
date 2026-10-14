@@ -82,7 +82,12 @@ jobs:
         # RAISED from 25 (2026-09-08), for the reason on the macOS leg: these
         # measure 20-22 minutes median and 25 max (6 runs) -- the max WAS the
         # ceiling. Raised in step so the two lanes stay comparable.
-        timeout-minutes: 50
+        # RAISED from 50 (2026-10-14): the same cell now measures 28 to 50
+        # minutes across hosted runners (3 green runs), and a slow runner
+        # finished every test at 49 minutes and was killed during the
+        # coverage report. 75 still kills a hang well inside the hour the
+        # macOS leg's note budgets for one.
+        timeout-minutes: 75
         env:
           VAIBIFY_REQUIRE_SHELLS: '1'
         run: |
