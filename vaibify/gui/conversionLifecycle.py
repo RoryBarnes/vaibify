@@ -517,7 +517,10 @@ def _fnRecheckBeforeCommit(dictRecord, dockerDisposable):
             f"'{sHostName}' is no longer the host project this "
             "containerization started from."
         )
-    if registryManager.fdictGetProject(sNewName) is not None or any(
+    # The destination is taken when an entry OTHER than the source holds
+    # it: a host project containerized under its own name (the QuickStart's
+    # case) is the one entry that may already carry the destination name.
+    if (sNewName != sHostName and registryManager.fdictGetProject(sNewName) is not None) or any(
         dictOther["sNewName"] == sNewName and dictOther["sHostName"] != sHostName
         for dictOther in pendingConversions.flistReadConversionRecords()
     ):
@@ -717,7 +720,10 @@ def _fnRecoverJournalLocked(dictRecord):
     dictOrigin = imageOrigins.fdictReadOriginRecord(sNewName)
     if dictOrigin and dictOrigin.get("sTransactionId") == dictJournal["sTransactionId"]:
         imageOrigins.fnRemoveOriginRecord(sNewName)
-    if registryManager.fdictGetProject(sNewName) is None:
+    # The tag belongs to a finished conversion only when a CONTAINER entry
+    # holds the name; the source host entry itself may carry it too.
+    dictHolder = registryManager.fdictGetProject(sNewName)
+    if dictHolder is None or dictHolder.get("sMode") == "host":
         dictLatest = disposableContainer.fdictInspectImage(dockerDisposable, f"{sNewName}:latest")
         if dictLatest and dictLatest.get("sId") == dictJournal["sRunningImageId"]:
             disposableContainer.fnRemoveImageTag(dockerDisposable, sNewName, "latest")

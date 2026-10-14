@@ -32866,8 +32866,24 @@ LIST_FALSIFICATIONS = [
         ),
         # the commit never rechecks that the destination name is still free
         source='vaibify/gui/conversionLifecycle.py',
-        old='    if registryManager.fdictGetProject(sNewName) is not None or any(\n',
+        old=(
+            '    if (sNewName != sHostName and registryManager.fdictGetProject(sNewName) '
+            'is not None) or any(\n'
+        ),
         new='    if any(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testConversionLifecycle.py::'
+            'test_a_host_project_containerized_under_its_own_name_commits'
+        ),
+        # the source entry is read as a taken destination name
+        source='vaibify/gui/conversionLifecycle.py',
+        old=(
+            '    if (sNewName != sHostName and registryManager.fdictGetProject(sNewName) '
+            'is not None) or any(\n'
+        ),
+        new='    if registryManager.fdictGetProject(sNewName) is not None or any(\n',
     ),
     Falsification(
         nodeid=(

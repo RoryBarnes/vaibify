@@ -259,6 +259,40 @@ def test_a_spent_download_waits_and_try_again_resumes_into_a_commit(fixtureConve
     assert downloadPartial.flistDescribePartials() == []
 
 
+@pytest.mark.falsification
+def test_a_host_project_containerized_under_its_own_name_commits(fixtureConversionWorld):
+    """Kills: the recheck reading the source entry as a taken destination name.
+
+    The QuickStart's reader keeps the project's name when containerizing
+    it, so the registry holds the destination name throughout -- as the
+    HOST entry the conversion started from. The live journey found the
+    commit refusing exactly that (2026-10-14).
+    """
+    dictWorld = fixtureConversionWorld
+    dictRequest = _fdictRequestDump(ConvertToContainerRequest(
+        sProjectName=S_HOST_NAME, sEnvironmentSource="archive", iCpuLimit=2,
+        listFeatures=[],
+    ))
+    conversionLifecycle.fdictBeginPendingConversion(
+        registryManager.fdictGetProject(S_HOST_NAME), S_HOST_NAME, S_HOST_NAME,
+        dictRequest, {
+            "sSource": "archive", "bAllowEmulation": False,
+            "sPinnedImageReference": S_PIN, "sRequiredPlatform": "linux/amd64",
+            "listAuthorOverlays": [], "sAuthorRecipeFingerprint": "",
+            "listAdditionalAgents": [], "listResolvedOverlays": None,
+        },
+        {"sChoice": "as-built", "bWithCredentials": False,
+         "sPinnedImageReference": S_PIN, "sImageDigest": ""},
+        {"saRelativePaths": [], "bRestoreCommittedFiles": False},
+    )
+    _fnWaitUntil(lambda: _fdictView() is None, 30.0)
+    dictEntry = registryManager.fdictGetProject(S_HOST_NAME)
+    assert dictEntry["sMode"] == "container"
+    assert dictEntry["dictImageTrust"]["sChoice"] == "as-built"
+    assert dictWorld.storeImages.flistNamesOf(S_LOADED_ID) == [f"{S_HOST_NAME}:latest"]
+    assert imageOrigins.fdictReadOriginRecord(S_HOST_NAME)["sTransactionId"]
+
+
 # ---------------------------------------------------------------------
 # The commit waits for the project to be closed; Finish commits later.
 # ---------------------------------------------------------------------

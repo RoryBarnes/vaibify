@@ -461,6 +461,24 @@ def _flistRunPipelineAction(client, sContainerId, sLeaseId, sAction):
     return listEvents
 
 
+def _fnAwaitTheConversion(client, sHostName):
+    """Poll the conversion until the hub has switched the entry (404) or stopped."""
+    import time
+    fDeadline = time.monotonic() + 600
+    while time.monotonic() < fDeadline:
+        response = client.get(f"/api/conversions/{sHostName}")
+        if response.status_code == 404:
+            return
+        dictView = response.json()
+        print("CONVERSION", dictView["sState"], dictView.get("dictDownload"))
+        if not dictView["bLive"] and dictView["sState"] != "ready":
+            raise AssertionError(
+                f"the conversion stopped in {dictView['sState']!r}: "
+                f"{(dictView.get('dictFailure') or {}).get('sSentence')}")
+        time.sleep(1.0)
+    raise AssertionError("the conversion did not finish within ten minutes")
+
+
 @pytest.mark.falsification
 def test_the_readers_journey_through_the_real_hub(
     dictPublished, hubClient, monkeypatch,
@@ -486,23 +504,38 @@ def test_the_readers_journey_through_the_real_hub(
         f"/api/registry/{sHostName}/pinned-environment")
     assert dictPinned.status_code == 200
     assert dictPinned.json()["bObtainable"] is True
-    dictConverted = client.post(
-        f"/api/registry/{sHostName}/convert-to-container", json={
-            "sProjectName": S_PROJECT_NAME, "sWorkflowName": "Journey",
-            "sEnvironmentSource": "archive", "bAllowEmulation": False,
-            # The Files page leaves everything ticked.
-            "saSeedPaths": sorted(
-                sEntry for sEntry in os.listdir(sRepo) if sEntry != ".git"),
-            "bRestoreCommittedFiles": False,
-        })
-    print("CONVERT", dictConverted.status_code, dictConverted.text[:500])
-    assert dictConverted.status_code == 200, dictConverted.text
+    # "Convert and obtain" converts nothing until the image is in hand:
+    # the hub's own worker downloads the deposit, stages the image and
+    # switches the entry. The suite stubs that worker so route tests
+    # never reach Docker; this journey restores it, because the worker
+    # is the thing under test here.
+    from vaibify.config import imageOrigins
+    from vaibify.gui import conversionLifecycle
+    monkeypatch.setattr(
+        conversionLifecycle, "_fnStartWorker",
+        conversionLifecycle.fnStartConversionWorker,
+    )
     with LoopbackDeposit(dictPublished["pathZenodo"]) as server:
         fnPointZenodoAt(monkeypatch, server)
-        responseAcquire = client.post(
-            f"/api/containers/{S_PROJECT_NAME}/acquire-image")
-    assert responseAcquire.status_code == 200, responseAcquire.text
-    assert responseAcquire.json()["dictImageOrigin"]["sObtainedFrom"] == (
+        dictConverted = client.post(
+            f"/api/registry/{sHostName}/convert-to-container", json={
+                "sProjectName": S_PROJECT_NAME, "sWorkflowName": "Journey",
+                "sEnvironmentSource": "archive", "bAllowEmulation": False,
+                # The Files page leaves everything ticked.
+                "saSeedPaths": sorted(
+                    sEntry for sEntry in os.listdir(sRepo) if sEntry != ".git"),
+                "bRestoreCommittedFiles": False,
+            })
+        print("CONVERT", dictConverted.status_code, dictConverted.text[:500])
+        assert dictConverted.status_code == 200, dictConverted.text
+        assert dictConverted.json()["bConversionPending"] is True
+        assert registryManager.fdictGetProject(sHostName)["sMode"] == "host", (
+            "convert must leave the entry a host project until the image is in hand")
+        _fnAwaitTheConversion(client, sHostName)
+    # The reader keeps the project's name, so the one entry is now a
+    # container project under the name the host project had.
+    assert registryManager.fdictGetProject(S_PROJECT_NAME)["sMode"] != "host"
+    assert imageOrigins.fdictReadOriginRecord(S_PROJECT_NAME)["sObtainedFrom"] == (
         "archive")
     dictStarted = _fnStartTheContainer(client)
     assert dictStarted["sState"] == "SUCCEEDED", dictStarted
