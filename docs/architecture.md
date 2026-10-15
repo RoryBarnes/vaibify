@@ -193,7 +193,13 @@ it is given (`dictUserVerifiedHashes`), and the poll holds it to those
 bytes. Change is judged by content, not by clock: a byte-identical
 file with a newer mtime changes neither the tests nor the sign-off.
 Only the server decides whether a sign-off survives a run, whoever
-dispatched the run. When an upstream step is modified, downstream steps
+dispatched the run, and every poll ships each step's stored sign-off
+(`dictSignOffByStep`), which the page renders rather than re-deriving
+it from timestamps. The same content rule decides the modified-file
+report and the Level 1 pencil (`script-stale`): a data, input or plot
+file whose bytes the newest test run, or the sign-off, recorded and
+the poll measured unchanged is not stale; scripts, which nothing
+hashes, keep the timestamp rule. When an upstream step is modified, downstream steps
 are flagged as upstream-modified. The researcher sees verification
 badges dim automatically; no one has to remember to invalidate
 anything by hand.

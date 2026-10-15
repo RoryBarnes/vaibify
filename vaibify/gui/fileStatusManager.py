@@ -69,6 +69,8 @@ _LIST_CATEGORY_KEYS = (
 
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "fdictContentVouchedPathsByStep",
+    "fdictWithSignedOffPlots",
     "fdictMatchedPathsByStep",
     "fdictOutputMtimesByStep",
     "flistStepPlotsRepoRelative",
@@ -1193,12 +1195,17 @@ def _ftSplitOutputPaths(
 def _fdictBuildStepStatusEntry(
     dictStep, dictStepScripts, listOutputs, dictModTimes,
     dictResolvedVars, iMarkerMtime=None, dictManifestCache=None,
-    filesRepo=None,
+    filesRepo=None, setContentVouched=None,
 ):
     """Compute {sStatus, listStaleArtifacts} for a single step.
 
     The mtime-based verdict (``_ftStepIsPencilStale``) is the source
-    of "may be stale". The optional manifest short-circuit refines it
+    of "may be stale", over the data, input and plot files whose bytes
+    no recorded digest vouches for (``setContentVouched``, repo-relative:
+    the newest test run's matched digests and the plots matching the
+    sign-off) -- the same bytes earn the same verdict. Scripts are
+    hashed by nothing and keep the timestamp rule. The optional
+    manifest short-circuit refines it
     to "is/isn't actually drifted": if the project repo carries a
     ``MANIFEST.sha256`` that matches every output of this step, an
     mtime-stale verdict is downgraded to ``unchanged``. This prevents
@@ -1209,12 +1216,16 @@ def _fdictBuildStepStatusEntry(
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
     }
+    sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
     bStale, listStale = _ftStepIsPencilStale(
-        dictStep, dictStepScripts, listOutputs, dictModTimes,
+        dictStep, dictStepScripts,
+        _flistWithoutContentVouched(listOutputs, setContentVouched, sRepoRoot),
+        dictModTimes,
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
-        listStepInputPaths=_flistResolveInputPaths(
-            dictStep, dictResolvedVars,
+        listStepInputPaths=_flistWithoutContentVouched(
+            _flistResolveInputPaths(dictStep, dictResolvedVars),
+            setContentVouched, sRepoRoot,
         ),
     )
     if bStale and _fbStepHashesMatchManifest(
@@ -1285,12 +1296,14 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
 def _fdictBuildScriptStatus(
     dictWorkflow, dictModTimes, dictVars=None,
     dictMarkerMtimeByStep=None, filesRepo=None,
+    dictContentVouchedByStep=None,
 ):
     """Return per-step pencil status via timestamp staleness comparison.
 
     ``filesRepo`` is the poll's repo snapshot; when supplied, the
     manifest short-circuit reads container truth instead of probing
-    the host filesystem at a container path.
+    the host filesystem at a container path. A file in
+    ``dictContentVouchedByStep`` is judged by its bytes, not its mtime.
     """
     dictScriptsByStep = fdictHandleCollectScriptPathsByStep(dictWorkflow)
     dictOutputsByStep = fdictCollectOutputPathsByStep(
@@ -1311,6 +1324,7 @@ def _fdictBuildScriptStatus(
             iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
             dictManifestCache=dictManifestCache,
             filesRepo=filesRepo,
+            setContentVouched=(dictContentVouchedByStep or {}).get(iIndex),
         )
     return dictResult
 
@@ -1438,6 +1452,72 @@ def fdictMatchedPathsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
         dictResult[iIndex] = hashStaleness.fdictMatchedPathsByRun(
             dictMarker, dictHashEntries,
         )
+    return dictResult
+
+
+def fdictContentVouchedPathsByStep(dictMarkersByStep, dictMatchedPathsByStep):
+    """Return ``{iStepIndex: set of paths}`` the newest run vouches for by content.
+
+    A path is listed when the step's NEWEST test run recorded its
+    digest and this poll measured the same bytes. Such a file's mtime
+    may move without its content changing (a checkout, a touch, a
+    byte-identical redraw), and the poll does not report it modified.
+    """
+    from . import testMarkerContract
+    dictResult = {}
+    for iIndex, dictMatchedByRun in (dictMatchedPathsByStep or {}).items():
+        sNewestRunId = testMarkerContract.ftLatestRun(
+            (dictMarkersByStep or {}).get(iIndex))[0]
+        dictResult[iIndex] = set(dictMatchedByRun.get(sNewestRunId) or ())
+    return dictResult
+
+
+def fdictWithSignedOffPlots(dictWorkflow, dictContentVouchedByStep, filesPoll):
+    """Return the vouched sets, each joined by plots whose bytes match the sign-off.
+
+    A plot is vouched for by the sign-off when the poll snapshot hashed
+    it to exactly the SHA-256 the sign-off recorded; an unsampled or
+    unreadable plot vouches for nothing.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        setVouched = set((dictContentVouchedByStep or {}).get(iIndex) or ())
+        dictAttested = (dictStep.get("dictVerification") or {}).get(
+            S_USER_VERIFIED_HASHES_KEY) or {}
+        for sPath, sSha256 in dictAttested.items():
+            if sSha256 and (dictHashEntries.get(sPath) or {}).get(
+                "sSha256") == sSha256:
+                setVouched.add(sPath)
+        if setVouched:
+            dictResult[iIndex] = setVouched
+    return dictResult
+
+
+def _flistWithoutContentVouched(listAbsolutePaths, setVouched, sRepoRoot):
+    """Return the paths whose bytes no recorded digest vouches for."""
+    from .pathContract import fsAbsToRepoRelative
+    if not setVouched:
+        return list(listAbsolutePaths)
+    return [
+        sPath for sPath in listAbsolutePaths
+        if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]
+
+
+def _fdictDropContentVouchedChanges(
+    dictChangedFiles, dictContentVouchedByStep, sRepoRoot,
+):
+    """Return the mtime changes left once content-vouched paths are dropped."""
+    from .pathContract import fsAbsToRepoRelative
+    dictResult = {}
+    for iIndex, listPaths in dictChangedFiles.items():
+        setVouched = dictContentVouchedByStep.get(iIndex) or set()
+        listKept = [
+            sPath for sPath in listPaths
+            if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]
+        if listKept:
+            dictResult[iIndex] = listKept
     return dictResult
 
 
@@ -1607,18 +1687,26 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
 def _fdictDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictHashStaleByStep=None, bPipelineRunning=None,
+    dictContentVouchedByStep=None,
 ):
     """Detect mtime drift, merge the hash drift given, and invalidate.
 
     ``dictHashStaleByStep`` is ``{iStepIndex: [repo-relative paths]}``
     of the files a marker's digest proved drifted (see
     :func:`fdictMarkerVerdictsByStep`); it is computed from the poll
-    snapshot by the caller, so this function reads no file.
+    snapshot by the caller, so this function reads no file. An mtime
+    change to a path in ``dictContentVouchedByStep`` (see
+    :func:`fdictContentVouchedPathsByStep`) is not a modification: the
+    same bytes earn the same verdict, for data and plots alike.
     """
-    dictChangedFiles = _fdictDetectChangedFiles(
-        dictCtx, sContainerId, dictWorkflow,
-        dictNewModTimes, dictVars,
-        bPipelineRunning=bPipelineRunning,
+    dictChangedFiles = _fdictDropContentVouchedChanges(
+        _fdictDetectChangedFiles(
+            dictCtx, sContainerId, dictWorkflow,
+            dictNewModTimes, dictVars,
+            bPipelineRunning=bPipelineRunning,
+        ),
+        dictContentVouchedByStep or {},
+        _fsResolveRepoRoot(dictWorkflow, dictVars),
     )
     dictHashStaleByStep = dictHashStaleByStep or {}
     if not dictChangedFiles and not dictHashStaleByStep:

@@ -5251,7 +5251,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # per-path output mtimes and matched digests instead of one
     # maximum, logs every axis it changes with its reason, and samples
     # each declared plot under its resolved key.
-    "routes/pipelineRoutes.py": 4247,
+    # 4247 -> 4296 the same day (review): every poll ships each step's
+    # stored sign-off, the page's staleness flag reads the run's hash
+    # verdict, and the content-vouched sets reach the invalidation and
+    # the pencil.
+    "routes/pipelineRoutes.py": 4296,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5563,7 +5567,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # per-path mtimes and matched digests the content rule reads, and
     # the reconciliation table. All of it is the verification state
     # machine this module owns; the docstring grew with it.
-    "fileStatusManager.py": 2429,
+    # 2429 -> 2517 the same day (review): the modified-file report and
+    # the Level 1 pencil judge a file by the digest the newest test run
+    # or the sign-off recorded, the same rule as the tests.
+    "fileStatusManager.py": 2517,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -6123,10 +6130,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment archive branch into main; both sides' growth.
     # 3770 -> 3771 (2026-10-06): one registration line for uploadRoutes.
     # 3771 -> 3772 (2026-10-06): one registration line for downloadRoutes.
-    # 3772 -> 3778 (2026-10-15): re-exports the six public
+    # 3772 -> 3780 (2026-10-15): re-exports the eight public
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
-    "pipelineServer.py": 3778,
+    "pipelineServer.py": 3780,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

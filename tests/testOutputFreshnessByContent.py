@@ -59,7 +59,8 @@ def _fdictIntegrityAfterPoll(
         dictOutputMtimes, dictMatched)
     bStale = _fbMarkerStale(
         dictMarker, {"dictMtimes": dictTestFileMtimes or {}},
-        dictOutputMtimes=dictOutputMtimes, dictMatchedPathsByRun=dictMatched)
+        dictOutputMtimes=dictOutputMtimes, dictMatchedPathsByRun=dictMatched,
+        dictRunVerdicts=dictVerdicts)
     return dictStates["integrity"], bStale
 
 
@@ -81,7 +82,10 @@ def test_identical_bytes_with_a_newer_mtime_leave_the_run_current():
     assert bStale is False
 
 
+@pytest.mark.falsification
 def test_different_bytes_with_an_older_mtime_leave_the_run_not_current():
+    """Kills: _fbMarkerStale ignoring the run's hash verdict, so the page
+    treats a drifted run as standing and announces its result."""
     dictEntries = _fdictEntriesMatching()
     dictEntries[S_PLOT] = {"sBlobSha": "q" * 40}
     dictState, bStale = _fdictIntegrityAfterPoll(
@@ -89,6 +93,7 @@ def test_different_bytes_with_an_older_mtime_leave_the_run_not_current():
         {S_DATA: F_OLDER, S_PLOT: F_OLDER})
     assert dictState["sState"] == "untested"
     assert dictState["sNotCurrentBecause"] == "drift"
+    assert bStale is True
 
 
 @pytest.mark.falsification
@@ -159,3 +164,127 @@ def test_every_axis_the_poll_changes_is_logged_with_its_reason(caplog):
     assert listLines == [
         "POLL marker set step A01 sIntegrity: passed -> untested "
         "(reason: outputs-newer-than-run)"]
+
+
+# ---------------------------------------------------------------------
+# The modified-file report and the PROOF level follow the same rule
+# ---------------------------------------------------------------------
+
+
+def _fdictWorkflowDeclaringAnInput(sRepoRoot):
+    from tests.testInputDataStaleness import _fdictBuildStep
+    return {"sProjectRepoPath": sRepoRoot,
+            "listSteps": [_fdictBuildStep("step1", ["data/raw.csv"])]}
+
+
+def _fdictVerificationAfterATouch(tmp_path, dictContentVouchedByStep):
+    from tests.testInputDataStaleness import _fdictBuildCtx, _fsWrite
+    from vaibify.gui.fileStatusManager import _fdictDetectAndInvalidate
+    sRepoRoot = str(tmp_path)
+    sAbsInput = _fsWrite(sRepoRoot, "data/raw.csv", "v1")
+    dictWorkflow = _fdictWorkflowDeclaringAnInput(sRepoRoot)
+    _fdictDetectAndInvalidate(
+        _fdictBuildCtx({"cid": {sAbsInput: "100"}}), "cid", dictWorkflow,
+        {sAbsInput: "200"}, dictVars={"sRepoRoot": sRepoRoot},
+        dictContentVouchedByStep=dictContentVouchedByStep)
+    return dictWorkflow["listSteps"][0]["dictVerification"]
+
+
+@pytest.mark.falsification
+def test_a_touched_file_the_newest_run_vouches_for_is_not_modified(tmp_path):
+    """Kills: the mtime detector ignoring the content evidence, so a
+    byte-identical file is reported modified and PROOF regresses."""
+    dictVerification = _fdictVerificationAfterATouch(
+        tmp_path, {0: {"data/raw.csv"}})
+    assert dictVerification["sUnitTest"] == "passed"
+    assert not dictVerification.get("listModifiedFiles")
+
+
+def test_a_touched_file_no_run_vouches_for_is_still_modified(tmp_path):
+    dictVerification = _fdictVerificationAfterATouch(tmp_path, {0: set()})
+    assert dictVerification["sUnitTest"] == "untested"
+    assert dictVerification["listModifiedFiles"] == ["data/raw.csv"]
+
+
+def test_only_the_newest_run_vouches_for_a_file():
+    from vaibify.gui.fileStatusManager import fdictContentVouchedPathsByStep
+    dictMarker = _fdictMarker(_fdictBothHashed())
+    dictMarker["dictRuns"]["r0"] = dict(
+        dictMarker["dictRuns"]["r1"], fTimestamp=F_OLDER)
+    dictMatched = {0: {"r0": [S_DATA, S_PLOT], "r1": [S_DATA]}}
+    assert fdictContentVouchedPathsByStep({0: dictMarker}, dictMatched) == {
+        0: {S_DATA}}
+
+
+@pytest.mark.falsification
+def test_every_poll_ships_each_steps_stored_sign_off():
+    """Kills: the poll not shipping the server's sign-off, so a sign-off
+    the server voided never reaches a client that is on the current
+    workflow epoch (it is re-sent the workflow only when the epoch moves).
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+    from vaibify.gui.routes import pipelineRoutes
+    dictWorkflow = {"listSteps": [
+        {"dictVerification": {"sUser": "stale",
+                              "sLastUserUpdate": "2026-10-15 12:00:00 UTC"}},
+        {"dictVerification": {"sUser": "passed"}},
+        {},
+    ]}
+    with patch.object(pipelineRoutes, "_fdictFetchOutputStatus",
+                      AsyncMock(return_value={"dictModTimes": {}})), \
+            patch.object(pipelineRoutes, "_fdictFetchTestStatus",
+                         AsyncMock(return_value={})):
+        dictAnswer = asyncio.run(pipelineRoutes.fdictComputeFileStatus(
+            {}, "cid", dictWorkflow, {}))
+    assert dictAnswer["dictSignOffByStep"] == {
+        "0": {"sUser": "stale", "sLastUserUpdate": "2026-10-15 12:00:00 UTC"},
+        "1": {"sUser": "passed", "sLastUserUpdate": None},
+        "2": {"sUser": "untested", "sLastUserUpdate": None},
+    }
+
+
+def _fsPencilStatusWithTheDataNewerThanTheMarker(setVouched):
+    from vaibify.gui.fileStatusManager import _fdictBuildScriptStatus
+    dictWorkflow = {"sProjectRepoPath": "/repo", "listSteps": [{
+        "sName": "Step", "sDirectory": "Step",
+        "saDataCommands": ["python make.py"], "saPlotCommands": [],
+        "saOutputDataFiles": ["data.txt"], "saPlotFiles": [],
+        "dictVerification": {"sUser": "untested"},
+    }]}
+    dictModTimes = {"/repo/Step/data.txt": "200", "/repo/Step/make.py": "50"}
+    dictStatus = _fdictBuildScriptStatus(
+        dictWorkflow, dictModTimes, {"sRepoRoot": "/repo"},
+        dictMarkerMtimeByStep={"0": "100"},
+        dictContentVouchedByStep={0: setVouched})
+    return dictStatus[0]["sStatus"]
+
+
+@pytest.mark.falsification
+def test_a_data_file_whose_bytes_are_vouched_for_does_not_stale_the_step():
+    """Kills: the pencil check (PROOF's script-stale) judging a vouched
+    file by its mtime, so a byte-identical touch drops the level."""
+    assert _fsPencilStatusWithTheDataNewerThanTheMarker(
+        {"Step/data.txt"}) == "unchanged"
+
+
+def test_a_data_file_nothing_vouches_for_still_stales_the_step():
+    assert _fsPencilStatusWithTheDataNewerThanTheMarker(set()) == "modified"
+
+
+def test_a_plot_matching_the_sign_off_is_vouched_for_and_a_different_one_is_not():
+    from vaibify.gui.fileStatusManager import fdictWithSignedOffPlots
+    from vaibify.reproducibility.repoFiles import SnapshotRepoFiles
+
+    class _Snapshot(SnapshotRepoFiles):
+        def __init__(self, dictHashes):
+            self._dictHashes = dictHashes
+
+    dictWorkflow = {"listSteps": [{"dictVerification": {
+        "sUser": "passed",
+        "dictUserVerifiedHashes": {"Plot/a.png": "1" * 64, "Plot/b.png": "2" * 64},
+    }}]}
+    filesPoll = _Snapshot({"Plot/a.png": {"sSha256": "1" * 64},
+                           "Plot/b.png": {"sSha256": "9" * 64}})
+    assert fdictWithSignedOffPlots(dictWorkflow, {0: {"Step/data.txt"}}, filesPoll) == {
+        0: {"Step/data.txt", "Plot/a.png"}}

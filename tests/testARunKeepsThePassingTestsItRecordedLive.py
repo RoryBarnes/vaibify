@@ -299,16 +299,28 @@ def _flistRunAllAsTheDashboard(client, sProject, sLeaseId):
 
 
 def _flistPollAfterTheRun(client, sProject):
+    """Poll as scriptPolling does, carrying the client's workflow epoch.
+
+    An up-to-date client is not re-sent the workflow, so the step's
+    verdict is read back from the server when the poll carries none.
+    """
     listHistory = []
+    iWorkflowEpoch = -1
     for iPoll in range(I_POLLS_AFTER_RUN):
-        response = client.get(f"/api/pipeline/{sProject}/file-status")
+        response = client.get(
+            f"/api/pipeline/{sProject}/file-status",
+            params={"iWorkflowEpoch": iWorkflowEpoch})
         if response.status_code != 200:
             listHistory.append((iPoll, f"HTTP {response.status_code}: {response.text[:200]}", None))
             print("POLL", listHistory[-1])
             time.sleep(1.0)
             continue
         dictPoll = response.json()
+        iWorkflowEpoch = dictPoll["iWorkflowEpoch"]
         dictVerdict = _fdictStepVerdict(dictPoll)
+        if "_sPollKeys" in dictVerdict:
+            dictVerdict = client.get(f"/api/steps/{sProject}/0").json()[
+                "dictVerification"]
         listHistory.append((iPoll, dictVerdict.get("sUnitTest"),
                             dictVerdict.get("listModifiedFiles")))
         print("POLL", listHistory[-1], "epoch=", dictPoll.get("iWorkflowEpoch"),

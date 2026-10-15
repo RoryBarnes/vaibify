@@ -15,10 +15,17 @@ behavior and no client-side sign-off write anywhere:
   poll response, including no transient ``stale``;
 * a marker from before plots were hashed falls back to the timestamp,
   and says why;
-* a sign-off over an unreadable or missing plot is refused.
+* a sign-off over an unreadable or missing plot is refused, and a
+  signed-off plot that becomes unreadable voids the sign-off;
+* a byte-identical DATA file with a newer mtime changes nothing either:
+  no modified-file report, no PROOF regression.
 
 Every case asserts the state it starts from, then asserts on EACH poll
-response after the action, because the dashboard renders each one.
+response after the action, because the dashboard renders each one. The
+polls are the browser's: they carry the client's ``iWorkflowEpoch``, so
+an up-to-date client is never re-sent the workflow, and the test reads
+only what such a client renders -- the sign-off from
+``dictSignOffByStep`` and the tests from ``dictTestMarkers``.
 """
 
 import json
@@ -30,9 +37,10 @@ from pathlib import Path
 import pytest
 
 from tests.testARunKeepsThePassingTestsItRecordedLive import (  # noqa: F401
+    S_OUTPUT,
     S_PLOT_RELATIVE,
     S_PROJECT,
-    _fdictStepVerdict,
+    S_STEP,
     _fnActAsTheDashboard,
     hubHost,
 )
@@ -40,6 +48,8 @@ from tests.testARunKeepsThePassingTestsItRecordedLive import (  # noqa: F401
 pytestmark = pytest.mark.exclusive
 
 I_POLLS_PER_CASE = 5
+# A tested, signed-off step with nothing else declared reaches Level 1.
+I_LEVEL_SIGNED_OFF = 1
 S_KEY = "dictUserVerifiedHashes"
 S_REASON_NEWER = "outputs-newer-than-run"
 T_TERMINAL_EVENTS = ("completed", "failed", "error")
@@ -64,6 +74,7 @@ class _Dashboard:
         self.websocket = websocket
         self.sFingerprint = dictBound["sExactSourceFingerprint"]
         self.sWorkflowPath = dictBound["sWorkflowPath"]
+        self.iWorkflowEpoch = -1
 
     def fsPlotPath(self):
         return os.path.join(self.sRepo, S_PLOT_RELATIVE)
@@ -115,22 +126,36 @@ class _Dashboard:
         """Poll as the dashboard does; return what each response says."""
         listStates = []
         for _ in range(iCount):
-            response = self.client.get(f"/api/pipeline/{S_PROJECT}/file-status")
-            assert response.status_code == 200, response.text
-            listStates.append(self._fdictStateOfPoll(response.json()))
+            listStates.append(self.fdictPollOnce())
             time.sleep(1.0)
         return listStates
 
+    def fdictPollOnce(self):
+        """One poll carrying this client's epoch, as scriptPolling sends it."""
+        response = self.client.get(
+            f"/api/pipeline/{S_PROJECT}/file-status",
+            params={"iWorkflowEpoch": self.iWorkflowEpoch})
+        assert response.status_code == 200, response.text
+        dictPoll = response.json()
+        bResent = self.iWorkflowEpoch != -1 and dictPoll.get("dictWorkflow")
+        self.iWorkflowEpoch = dictPoll["iWorkflowEpoch"]
+        dictState = self._fdictStateOfPoll(dictPoll)
+        dictState["bWorkflowResent"] = bool(bResent)
+        return dictState
+
     def _fdictStateOfPoll(self, dictPoll):
-        dictVerification = _fdictStepVerdict(dictPoll)
-        if "_sPollKeys" in dictVerification:
-            dictVerification = self.fdictStoredVerification()
-        dictIntegrity = (((dictPoll.get("dictTestMarkers") or {}).get("0") or {})
-                         .get("dictCategoryStates") or {}).get("integrity") or {}
+        dictMarker = (dictPoll.get("dictTestMarkers") or {}).get("0") or {}
+        dictIntegrity = (dictMarker.get("dictCategoryStates") or {}).get(
+            "integrity") or {}
+        dictStored = self.fdictStoredVerification()
         return {
-            "sUnitTest": dictVerification.get("sUnitTest"),
-            "sUser": dictVerification.get("sUser"),
-            "dictHashes": dictVerification.get(S_KEY),
+            "sUnitTest": dictIntegrity.get("sState"),
+            "bStale": dictMarker.get("bStale"),
+            "sUser": (dictPoll.get("dictSignOffByStep") or {}).get(
+                "0", {}).get("sUser"),
+            "dictHashes": dictStored.get(S_KEY),
+            "listModifiedFiles": dictStored.get("listModifiedFiles") or [],
+            "iProofLevel": dictPoll.get("iProofLevel"),
             "sReason": dictIntegrity.get("sNotCurrentBecause", ""),
         }
 
@@ -154,10 +179,13 @@ def _fdashboardOpen(client, sRepo, fnBody):
                  open_timeout=30) as websocket:
         dictBound = json.loads(websocket.recv(timeout=60))
         assert dictBound["sType"] == "workflowBound", dictBound
-        fnBody(_Dashboard(client, sRepo, websocket, dictBound))
+        dashboard = _Dashboard(client, sRepo, websocket, dictBound)
+        dashboard.fdictPollOnce()
+        fnBody(dashboard)
 
 
 def _fnAssertEvery(listStates, **dictExpected):
+    dictExpected.setdefault("bWorkflowResent", False)
     for dictState in listStates:
         for sKey, expected in dictExpected.items():
             assert dictState[sKey] == expected, (sKey, listStates)
@@ -180,7 +208,8 @@ def _fnRunTheFirstRunAndSignOff(dashboard):
     assert response.status_code == 200, response.text
     dictHashes = dashboard.fdictStoredVerification()[S_KEY]
     assert dictHashes == {S_PLOT_RELATIVE: _fsSha256(dashboard.fsPlotPath())}
-    _fnAssertEvery(dashboard.flistPoll(2), sUnitTest="passed", sUser="passed")
+    _fnAssertEvery(dashboard.flistPoll(2), sUnitTest="passed", sUser="passed",
+                   iProofLevel=I_LEVEL_SIGNED_OFF)
 
 
 def _fnCaseRunningTheTestsKeepsTheSignOff(dashboard):
@@ -195,7 +224,35 @@ def _fnCaseIdenticalBytesWithANewerMtimeChangeNothing(dashboard):
     assert dictBefore["sUser"] == "passed" and dictBefore["sUnitTest"] == "passed"
     _fnSetMtime(dashboard.fsPlotPath(), time.time() + 120)
     _fnAssertEvery(dashboard.flistPoll(), sUnitTest="passed", sUser="passed",
+                   dictHashes=dictBefore[S_KEY], listModifiedFiles=[],
+                   iProofLevel=I_LEVEL_SIGNED_OFF)
+
+
+def _fnCaseASignedOffPlotThatBecomesUnreadableVoidsTheSignOff(dashboard):
+    """Case j: delivered to an up-to-date client, then healed."""
+    dictBefore = dashboard.fdictStoredVerification()
+    assert dictBefore["sUser"] == "passed"
+    sPlot = dashboard.fsPlotPath()
+    os.chmod(sPlot, 0)
+    try:
+        _fnAssertEvery(dashboard.flistPoll(2), sUser="stale",
+                       dictHashes=dictBefore[S_KEY])
+    finally:
+        os.chmod(sPlot, stat.S_IRUSR | stat.S_IWUSR)
+    _fnAssertEvery(dashboard.flistPoll(2), sUser="passed",
                    dictHashes=dictBefore[S_KEY])
+
+
+def _fnCaseIdenticalDataWithANewerMtimeChangesNothing(dashboard):
+    """Case i: no modified-file report and no PROOF regression."""
+    dictBefore = dashboard.fdictPollOnce()
+    assert dictBefore["sUser"] == "passed" and dictBefore["sUnitTest"] == "passed"
+    assert dictBefore["iProofLevel"] == I_LEVEL_SIGNED_OFF, dictBefore
+    sData = os.path.join(dashboard.sRepo, S_STEP, S_OUTPUT)
+    _fnSetMtime(sData, time.time() + 120)
+    _fnAssertEvery(dashboard.flistPoll(), sUnitTest="passed", sUser="passed",
+                   listModifiedFiles=[], iProofLevel=I_LEVEL_SIGNED_OFF,
+                   bStale=False)
 
 
 def _fnCaseDifferentBytesWithAnOlderMtimeAreCaught(dashboard):
@@ -207,7 +264,7 @@ def _fnCaseDifferentBytesWithAnOlderMtimeAreCaught(dashboard):
     Path(sPlot).write_bytes(b"a plot replaced by hand")
     _fnSetMtime(sPlot, fOlder)
     _fnAssertEvery(dashboard.flistPoll(), sUnitTest="untested", sReason="drift",
-                   sUser="stale", dictHashes=dictBefore[S_KEY])
+                   sUser="stale", dictHashes=dictBefore[S_KEY], bStale=True)
 
 
 def _fnCaseAFullRunWithNewBytesVoidsOnlyTheSignOff(dashboard):
@@ -277,6 +334,8 @@ def test_the_tests_and_the_sign_off_follow_the_plot_bytes(hubHost):
         _fnRunTheFirstRunAndSignOff(dashboard)
         _fnCaseRunningTheTestsKeepsTheSignOff(dashboard)
         _fnCaseIdenticalBytesWithANewerMtimeChangeNothing(dashboard)
+        _fnCaseASignedOffPlotThatBecomesUnreadableVoidsTheSignOff(dashboard)
+        _fnCaseIdenticalDataWithANewerMtimeChangesNothing(dashboard)
         _fnCaseDifferentBytesWithAnOlderMtimeAreCaught(dashboard)
         _fnCaseAFullRunWithNewBytesVoidsOnlyTheSignOff(dashboard)
         _fnCaseDrawingThePlotsAloneVoidsBoth(dashboard)

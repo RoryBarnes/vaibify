@@ -5428,14 +5428,6 @@ const VaibifyApp = (function () {
         _dictSessionState.sUserName = sName || "User";
     }
 
-    function fiParseUtcTimestamp(sTimestamp) {
-        if (!sTimestamp) return 0;
-        var sClean = sTimestamp.replace(" UTC", "").trim();
-        var dtParsed = new Date(sClean + "Z");
-        if (isNaN(dtParsed.getTime())) return 0;
-        return Math.floor(dtParsed.getTime() / 1000);
-    }
-
     var fsFormatUtcTimestamp = VaibifyUtilities.fsFormatUtcTimestamp;
 
     function fsGetFileCategory(iStep, sFilePath, sArrayKey) {
@@ -6356,11 +6348,10 @@ const VaibifyApp = (function () {
             "untested", "passed", "failed", "error"
         ];
         var sCurrent = dictVerify.sUser || "untested";
-        // A stale AI Declaration is one click from a fresh sign-off:
-        // the researcher has already read it once, and signing again
-        // is the remedy the warning names.
-        if (sCurrent === "stale" &&
-                dictStep.sStepKind === "ai-declaration") {
+        // A stale sign-off is one click from a fresh one: the
+        // researcher has already looked once, and signing again is
+        // the remedy the warning names.
+        if (sCurrent === "stale") {
             sCurrent = "untested";
         }
         var iNext = (listStates.indexOf(sCurrent) + 1) %
@@ -7020,11 +7011,11 @@ const VaibifyApp = (function () {
         _fnApplyBlockerAndLevelState(dictStatus);
         _fnApplyAiDeclarationFreshness(
             dictStatus.dictAiDeclarationFreshness);
-        fnResetStaleUserVerifications();
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
         }
+        _fnApplyServerSignOffs(dictStatus.dictSignOffByStep);
         fnUpdateDepsTimestamps();
         VaibifyFileOps.fnUpdateScriptStatus(
             dictStatus.dictScriptStatus, _dictWorkflowState);
@@ -7379,43 +7370,36 @@ const VaibifyApp = (function () {
                 : Object.keys(dictByStepL3).length;
     }
 
-    function fnResetStaleUserVerifications() {
-        if (!_dictWorkflowState.dictWorkflow || !_dictWorkflowState.dictWorkflow.listSteps) return;
+    function _fnApplyServerSignOffs(dictSignOffByStep) {
+        /* The server decides whether a sign-off survives -- by the
+           bytes of the step's plots, on every poll -- and ships its
+           stored answer every time. The step renders that answer and
+           never re-derives it from timestamps. A click of the
+           researcher's own is held for the grace window, because a
+           poll computed before the click's save landed answers with
+           the sign-off as it was. */
+        var listSteps = ((_dictWorkflowState.dictWorkflow || {})
+            .listSteps) || [];
+        if (!dictSignOffByStep) return;
         var bChanged = false;
         var iNow = Date.now();
-        for (var i = 0; i < _dictWorkflowState.dictWorkflow.listSteps.length; i++) {
-            if (_dictWorkflowState.dictUserVerifiedAt[i] &&
-                (iNow - _dictWorkflowState.dictUserVerifiedAt[i]) < 15000) {
-                continue;
-            }
-            var dictStep = _dictWorkflowState.dictWorkflow.listSteps[i];
-            var dictVerify = (dictStep.dictVerification || {});
-            if (dictVerify.sUser !== "passed") continue;
-            if (_fbOutputNewerThanVerification(i, dictVerify)) {
-                dictVerify.sUser = "untested";
+        for (var i = 0; i < listSteps.length; i++) {
+            var dictServer = dictSignOffByStep[String(i)];
+            if (!dictServer) continue;
+            var iVerifiedAt = _dictWorkflowState.dictUserVerifiedAt[i];
+            if (iVerifiedAt && (iNow - iVerifiedAt) < 15000) continue;
+            var dictVerify = listSteps[i].dictVerification || {};
+            if (dictVerify.sUser === dictServer.sUser) continue;
+            dictVerify.sUser = dictServer.sUser;
+            if (dictServer.sLastUserUpdate) {
+                dictVerify.sLastUserUpdate = dictServer.sLastUserUpdate;
+            } else {
                 delete dictVerify.sLastUserUpdate;
-                dictStep.dictVerification = dictVerify;
-                bChanged = true;
             }
+            listSteps[i].dictVerification = dictVerify;
+            bChanged = true;
         }
         if (bChanged) fnRenderStepList();
-    }
-
-    function _fbOutputNewerThanVerification(iStep, dictVerify) {
-        var sMaxMtime = _dictWorkflowState.dictPlotMtimes[String(iStep)];
-        if (!sMaxMtime) return false;
-        var iOutputEpoch = parseInt(sMaxMtime, 10);
-        var iUserEpoch = fiParseUtcTimestamp(
-            dictVerify.sLastUserUpdate);
-        var bResult = iUserEpoch > 0 && iOutputEpoch > iUserEpoch;
-        if (bResult) {
-            console.log(
-                "[STALE] step " + iStep + ": plotEpoch=" +
-                iOutputEpoch + " userEpoch=" + iUserEpoch +
-                " sLastUserUpdate=" + dictVerify.sLastUserUpdate
-            );
-        }
-        return bResult;
     }
 
     function fnUpdateDepsTimestamps() {

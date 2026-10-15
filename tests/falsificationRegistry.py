@@ -1614,6 +1614,80 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/browser/testTheSignOffFollowsTheServer.py::'
+            'testANewerPlotAloneNeverVoidsTheSignOffOnScreen'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The page re-derives the sign-off from a plot timestamp again,
+        # voiding on screen a sign-off the server holds.
+        old=(
+            '            if (dictVerify.sUser === dictServer.sUser) continue;\n'
+            '            dictVerify.sUser = dictServer.sUser;\n'
+        ),
+        new=(
+            '            dictVerify.sUser = parseInt(_dictWorkflowState'
+            '.dictPlotMtimes[String(i)] || "0", 10) > 1e9 ?\n'
+            '                "untested" : dictServer.sUser;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheSignOffFollowsTheServer.py::'
+            'testASignOffTheServerVoidedReachesThePage'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The page drops the server's shipped sign-off.
+        old='        _fnApplyServerSignOffs(dictStatus.dictSignOffByStep);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_data_file_whose_bytes_are_vouched_for_does_not_stale_the_step'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The pencil check judges every file by its mtime again, so a
+        # byte-identical touch flags script-stale and drops PROOF.
+        old='    if not setVouched:\n        return list(listAbsolutePaths)\n',
+        new='    if True:\n        return list(listAbsolutePaths)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_different_bytes_with_an_older_mtime_leave_the_run_not_current'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The page's staleness flag ignores the run's hash verdict: a
+        # run whose plot drifted reads as standing, and its result is
+        # announced as an external run.
+        old='    if (dictRunVerdicts or {}).get(sRunId) in (\n',
+        new='    if False and (dictRunVerdicts or {}).get(sRunId) in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_touched_file_the_newest_run_vouches_for_is_not_modified'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The mtime detector stops consulting the content evidence: a
+        # byte-identical file is reported modified and PROOF regresses.
+        old='            if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]\n',
+        new='            if True]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_every_poll_ships_each_steps_stored_sign_off'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    dictOutputStatus["dictSignOffByStep"] = '
+            '_fdictSignOffByStep(dictWorkflow)\n'
+        ),
+        new='    dictOutputStatus["dictSignOffByStep"] = {}\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testOutputFreshnessByContent.py::'
             'test_identical_bytes_with_a_newer_mtime_leave_the_run_current'
         ),
@@ -30470,6 +30544,7 @@ LIST_FALSIFICATIONS = [
             '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
             '        dictHashStaleByStep=dictHashStaleByStep,\n'
             '        bPipelineRunning=bPipelineRunning,\n'
+            '        dictContentVouchedByStep=dictContentVouchedByStep,\n'
             '    )\n'
             '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
             '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
@@ -30494,6 +30569,7 @@ LIST_FALSIFICATIONS = [
             '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
             '        dictHashStaleByStep=dictHashStaleByStep,\n'
             '        bPipelineRunning=bPipelineRunning,\n'
+            '        dictContentVouchedByStep=dictContentVouchedByStep,\n'
             '    )\n'
             '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
         ),
