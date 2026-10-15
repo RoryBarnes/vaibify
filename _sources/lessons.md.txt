@@ -663,3 +663,20 @@ correct approach.
   form: before writing a file into a researcher's repository, ask
   whether it will be committed, and if so, whether any later vaibify
   could want different bytes there.
+- **A panel rebuilt under a pressed pointer swallows the click.** The
+  browser fires `click` only when the mousedown and the mouseup land
+  on the same element. Two panels rebuild themselves through
+  `innerHTML` when a fetch or a poll answers, and both answered inside
+  a click on the same afternoon: the AI Declaration's file-state answer
+  replaced the sign-off row between a mousedown and a mouseup 29 ms
+  apart, and a council poll replaced the chat's Ask button. No handler
+  ran and nothing was sent, in two browsers, on two panels this branch
+  had not touched, and the Playwright traces were the only thing that
+  said so: the request log showed no request, and the click's own
+  phase log put the answers between "performing click action" and
+  "click action done". `VaibifyUtilities.fnRenderWhenNoPointerIsDown`
+  now holds such renders until the pointer lifts, bounded by a second
+  so a release the page never hears about cannot freeze a panel. The
+  general form: a red whose click sent NO request is a rebuild under
+  the pointer, not a slow server, and the trace, not the selector,
+  says which (`tests/browser/testAClickSurvivesAPollRender.py`).

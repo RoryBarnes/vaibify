@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lessons from past sessions &mdash; Vaibify 0.1.1.dev12 documentation</title>
+  <title>Lessons from past sessions &mdash; Vaibify 0.1.1.dev17 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba7bc1a4"></script>
+      <script src="_static/documentation_options.js?v=e2725f1a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -771,6 +771,23 @@ plugin it loads lives in a directory that ignores itself
 form: before writing a file into a researcher’s repository, ask
 whether it will be committed, and if so, whether any later vaibify
 could want different bytes there.</p></li>
+<li><p><strong>A panel rebuilt under a pressed pointer swallows the click.</strong> The
+browser fires <code class="docutils literal notranslate"><span class="pre">click</span></code> only when the mousedown and the mouseup land
+on the same element. Two panels rebuild themselves through
+<code class="docutils literal notranslate"><span class="pre">innerHTML</span></code> when a fetch or a poll answers, and both answered inside
+a click on the same afternoon: the AI Declaration’s file-state answer
+replaced the sign-off row between a mousedown and a mouseup 29 ms
+apart, and a council poll replaced the chat’s Ask button. No handler
+ran and nothing was sent, in two browsers, on two panels this branch
+had not touched, and the Playwright traces were the only thing that
+said so: the request log showed no request, and the click’s own
+phase log put the answers between “performing click action” and
+“click action done”. <code class="docutils literal notranslate"><span class="pre">VaibifyUtilities.fnRenderWhenNoPointerIsDown</span></code>
+now holds such renders until the pointer lifts, bounded by a second
+so a release the page never hears about cannot freeze a panel. The
+general form: a red whose click sent NO request is a rebuild under
+the pointer, not a slow server, and the trace, not the selector,
+says which (<code class="docutils literal notranslate"><span class="pre">tests/browser/testAClickSurvivesAPollRender.py</span></code>).</p></li>
 </ul>
 </section>
 

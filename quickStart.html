@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.1.1.dev12 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.1.1.dev17 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=ba7bc1a4"></script>
+      <script src="_static/documentation_options.js?v=e2725f1a"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -280,15 +280,20 @@ and compare the bytes.</p>
 </section>
 <section id="when-something-is-wrong">
 <h2>8. When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Link to this heading"></a></h2>
-<p>Run a diagnosis, and do what it says. Error messages in the
-dashboard end with <strong>Click to run a diagnosis</strong>, and the build-failure
-window has a <strong>Run a diagnosis</strong> button. Use it when a build will not
-build, a container will not start, or the dashboard is saying something
-you did not expect. The report checks this machine, and every finding
-that needs action names the exact command to run, correct for the
-Docker runtime you are actually using. The same checks, plus the inside
-of the running container and vaibify’s own record of the project, are
-available as <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">doctor</span></code> from a terminal; see the
+<p>There is no diagnosis button to look for while things are working.
+A diagnosis is offered where a problem is reported: an error message
+in the dashboard ends with <strong>Click to run a diagnosis</strong>, and the window
+that reports a failed build or a failed download has a <strong>Run a
+diagnosis</strong> button. Click either and a report opens. It checks this
+machine, and every finding that needs action names the exact command
+to run, correct for the Docker runtime you are actually using.</p>
+<p>When nothing is reporting an error but the dashboard is saying
+something you did not expect, run the same checks from a terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor
+</pre></div>
+</div>
+<p>That report covers everything the dashboard’s does, plus the inside of
+the running container and vaibify’s own record of the project; see the
 <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
 <p>Three things about the report are worth knowing before you read one.</p>
 <p><strong>The diagnosis changes nothing.</strong> It never starts, stops, removes or restarts
@@ -302,7 +307,7 @@ than no diagnostic.</p>
 apply the fix itself, that command is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code>. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.</p>
-<p><strong>Emulation can occassionally crash.</strong> About 0.2% of emulation runs fail. If you see a “killed by signal 11” message while running with an emulator, just run again and it will very likely work.</p>
+<p><strong>Emulation can occasionally crash.</strong> About 0.2% of emulation runs fail. If you see a “killed by signal 11” message while running with an emulator, just run again and it will very likely work.</p>
 <section id="outputs-that-were-re-run-outside-the-container">
 <h3>Outputs that were re-run outside the container<a class="headerlink" href="#outputs-that-were-re-run-outside-the-container" title="Link to this heading"></a></h3>
 <p>If you run a step’s script yourself — in a terminal, in your editor, on
