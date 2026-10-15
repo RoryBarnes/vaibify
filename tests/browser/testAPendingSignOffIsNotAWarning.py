@@ -5,8 +5,11 @@ tests passed, its warning column showed "Step has never been verified"
 under the warning glyph. The sign-off is the step's expected next
 action, and the Level 1 cell's tooltip already names it, so the warning
 column stays empty for it. The same report found that running the unit
-tests cleared a sign-off the researcher had already given; a test run
-leaves the outputs as they were, so it must leave the sign-off too.
+tests cleared a sign-off the researcher had already given. Since then
+the rule has become general (R6, 2026-10-15): no step result, from a
+test run or a full run, touches the sign-off in the browser. The server
+alone decides whether it survives, by the bytes of the step's plots,
+and the poll reports its verdict.
 
 The first two are claims about the SCREEN: the real page loads the real
 poll, altered in flight to the blocker the server sends for a step whose
@@ -121,13 +124,24 @@ def testATestRunsResultKeepsTheResearchersSignOff(
     assert pageDashboard.listPageErrors == []
 
 
-def testARunsResultStillClearsTheSignOff(pageDashboard, serverHub):
-    """A run rewrites the outputs the sign-off was about."""
+@pytest.mark.falsification
+@pytest.mark.parametrize("sType, iExitCode", [
+    ("stepPass", 0), ("stepFail", 1),
+])
+def testARunsResultLeavesTheSignOffToTheServer(
+    pageDashboard, serverHub, sType, iExitCode,
+):
+    """Kills: the browser resetting the sign-off on a run's result.
+
+    A run that redraws a plot byte for byte leaves the sign-off
+    standing on the server; a browser reset would contradict the poll
+    and differ from the same run dispatched by the CLI or an agent.
+    """
     fnOpenTheSeededHostWorkflow(pageDashboard, serverHub)
     sUser = pageDashboard.evaluate(_S_SIGN_OFF_THEN_DELIVER, {
-        "sType": "stepPass", "iStepNumber": 1, "iExitCode": 0,
+        "sType": sType, "iStepNumber": 1, "iExitCode": iExitCode,
     })
-    assert sUser == "untested"
+    assert sUser == "passed"
     assert pageDashboard.listPageErrors == []
 
 

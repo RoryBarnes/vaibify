@@ -32559,11 +32559,30 @@ LIST_FALSIFICATIONS = [
             'tests/browser/testAPendingSignOffIsNotAWarning.py::'
             'testATestRunsResultKeepsTheResearchersSignOff'
         ),
-        # Every step result resets the sign-off, a test run's included.
+        # A step result resets the sign-off in the browser again, a
+        # test run's included.
         source='vaibify/gui/static/scriptPipelineRunner.js',
-        old='            if (!dictEvent.bFromTestRun) {\n',
-        new='            if (true) {\n',
-        iExpectedOccurrences=2,
+        old='            fnAcknowledgeStepCompletion(iPassIdx);\n',
+        new=(
+            '            VaibifyApp.fdictGetWorkflow().listSteps[iPassIdx]'
+            '.dictVerification.sUser = "untested";\n'
+            '            fnAcknowledgeStepCompletion(iPassIdx);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPendingSignOffIsNotAWarning.py::'
+            'testARunsResultLeavesTheSignOffToTheServer'
+        ),
+        # The browser's own reset on a failed run is restored, so the
+        # dashboard voids a sign-off the server still holds.
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='            VaibifyApp.fnInvalidateStepFileCache(iFailIdx);\n',
+        new=(
+            '            VaibifyApp.fdictGetWorkflow().listSteps[iFailIdx]'
+            '.dictVerification.sUser = "untested";\n'
+            '            VaibifyApp.fnInvalidateStepFileCache(iFailIdx);\n'
+        ),
     ),
     Falsification(
         nodeid=(

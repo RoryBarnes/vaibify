@@ -670,9 +670,11 @@ async def _fnEmitStepResult(
     ``bDownstreamOfDegradedProvenance`` marks a step that EXECUTED
     after an earlier step's remote-data documentation degraded (ruling
     R6: dependents run, visibly marked). ``bFromTestRun`` marks a result
-    of running the step's tests, which leave its outputs as they were,
-    so the dashboard keeps the researcher's sign-off. Each key travels
-    only when True, so other events are byte-identical to before.
+    of running the step's tests, which leave its outputs as they were.
+    The dashboard no longer acts on it for the sign-off: the server
+    alone decides whether a sign-off survives a run of any kind. Each
+    key travels only when True, so other events are byte-identical to
+    before.
     """
     sType = "stepPass" if iExitCode == 0 else "stepFail"
     dictEvent = {
