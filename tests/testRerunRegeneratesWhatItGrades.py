@@ -567,3 +567,108 @@ def testTheAttestationRecordsThePinnedInputSplitAndTheDeletions():
     assert dictAttestation["iPinnedInputsUnchanged"] == 4
     assert dictAttestation["dictPreRerunClearing"][
         "listDeletedOutputs"] == ["result.txt"]
+
+
+# ---------------------------------------------------------------------
+# The real sequence: the rerun runner, a real host step, a real marker
+# ---------------------------------------------------------------------
+
+S_RERUN_HOST_PROJECT = "rerunSequenceProject"
+S_RERUN_PLOT_TEMPLATE = "{sPlotDirectory}/fig.{sFigureType}"
+S_RERUN_PLOT = "Plot/fig.png"
+S_RERUN_DATA = "Step/data.txt"
+_S_APPEND_SECTION = (
+    "import sys\nopen('order.log', 'a').write(sys.argv[1] + '\\n')\n")
+
+
+@pytest.fixture
+def pathRerunHostRepo(tmp_path, monkeypatch):
+    """A host project whose one plot-only step has data, plot and tests."""
+    import json
+    from vaibify.config import containerLock, operationJournal, registryManager
+    from vaibify.gui import conftestManager
+    from vaibify.host import hostScratch
+    for moduleTarget, sName, sValue in (
+        (operationJournal, "_S_JOURNAL_DIRECTORY", str(tmp_path / "journal")),
+        (containerLock, "_S_LOCK_DIRECTORY", str(tmp_path / "locks")),
+        (hostScratch, "_S_HOST_DIAGNOSTICS_ROOT", str(tmp_path / "scratch")),
+        (registryManager, "_S_REGISTRY_PATH", str(tmp_path / "registry.json")),
+        (registryManager, "_S_LOCK_PATH", str(tmp_path / "registry.lock")),
+    ):
+        monkeypatch.setattr(moduleTarget, sName, sValue)
+    pathRepo = tmp_path / "repo"
+    (tmp_path / "registry.json").write_text(json.dumps({"listProjects": [{
+        "sName": S_RERUN_HOST_PROJECT, "sMode": "host",
+        "sDirectory": str(pathRepo)}]}))
+    _fnWriteFile(pathRepo, "Step/section.py", _S_APPEND_SECTION)
+    _fnWriteFile(pathRepo, "Step/makeData.py", (
+        "open('data.txt', 'w').write('data 42\\n')\n"))
+    _fnWriteFile(pathRepo, "Step/makePlot.py", (
+        "import sys\nopen(sys.argv[1], 'wb').write(b'plot bytes')\n"))
+    _fnWriteFile(pathRepo, "Step/tests/conftest.py",
+                 conftestManager.fsBuildConftestSource(str(pathRepo)))
+    _fnWriteFile(pathRepo, "Step/tests/test_integrity_step.py", (
+        "def test_data():\n"
+        "    open('order.log', 'a').write('test\\n')\n"
+        "    assert open('data.txt').read() == 'data 42\\n'\n"))
+    _fnWriteFile(pathRepo, ".vaibify/projects/project.json",
+                 json.dumps(_fdictRerunSequenceWorkflow(str(pathRepo))))
+    (pathRepo / "Plot").mkdir()
+    _fnWriteFile(pathRepo, S_RERUN_DATA, "data 42\n")
+    _fnWriteFile(pathRepo, S_RERUN_PLOT, "plot bytes")
+    _fnPinManifest(pathRepo, [S_RERUN_DATA, S_RERUN_PLOT, "Step/makeData.py"])
+    return pathRepo
+
+
+def _fdictRerunSequenceWorkflow(sRepo):
+    return {
+        "sProjectRepoPath": sRepo, "sPlotDirectory": "Plot",
+        "sFigureType": "png",
+        "listSteps": [{
+            "sName": "Step", "sStepId": "rerun-step", "sDirectory": "Step",
+            "bRunEnabled": True, "bPlotOnly": True, "bNoInputData": True,
+            "saDataCommands": ["python3 section.py data",
+                               "python3 makeData.py"],
+            "saPlotCommands": ["python3 section.py plot",
+                               f"python3 makePlot.py {S_RERUN_PLOT_TEMPLATE}"],
+            "saTestCommands": [
+                "python3 -m pytest tests/test_integrity_step.py -q "
+                "-p no:cacheprovider"],
+            "saOutputDataFiles": ["data.txt"],
+            "saPlotFiles": [S_RERUN_PLOT_TEMPLATE],
+        }],
+    }
+
+
+def testTheRerunRunsDataThenPlotsThenTestsAndGradesWhatItWrote(
+    pathRerunHostRepo,
+):
+    """Drives fiRunAllSteps in the rerun mode for real, in host mode.
+
+    The plot-only step's data commands run (the rerun ignores the flag),
+    then its plots, then its tests; the outputs the rerun grades are the
+    bytes it wrote; and the marker the tests left is newer than the plot.
+    """
+    import json
+    from vaibify.host.hostConnection import HostConnection
+    sRepo = str(pathRerunHostRepo)
+    connection = HostConnection(fnResolveProjectRoot=lambda sResourceId: sRepo)
+    dictOutcome = fdictRerunAndVerifyWorkflow(
+        connection, S_RERUN_HOST_PROJECT,
+        _fdictRerunSequenceWorkflow(sRepo), _fsWorkflowPathIn(pathRerunHostRepo),
+        sRepo,
+    )
+    sOrder = (pathRerunHostRepo / "Step" / "order.log").read_text()
+    assert sOrder.split() == ["data", "plot", "test"], sOrder
+    dictByPath = _fdictOutcomeByPath(dictOutcome)
+    for sPath in (S_RERUN_DATA, S_RERUN_PLOT):
+        assert dictByPath[sPath]["sStatus"] == S_FILE_MATCHED, dictByPath
+        assert dictByPath[sPath]["sObserved"] == hashlib.sha256(
+            (pathRerunHostRepo / sPath).read_bytes()).hexdigest()
+    assert dictOutcome["bPassed"] is True, dictOutcome
+    listMarkers = list((pathRerunHostRepo / ".vaibify" / "test_markers").rglob(
+        "*.json"))
+    assert len(listMarkers) == 1, listMarkers
+    dictRuns = json.loads(listMarkers[0].read_text())["dictRuns"]
+    fNewestRun = max(dictRun["fTimestamp"] for dictRun in dictRuns.values())
+    assert fNewestRun > os.stat(pathRerunHostRepo / S_RERUN_PLOT).st_mtime
