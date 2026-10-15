@@ -1908,9 +1908,14 @@ var VaibifyStepRenderer = (function () {
                     elSlot, dictState.sReason);
                 return;
             }
-            elSlot.innerHTML = fsRenderAiDeclarationFileRow(
-                sFilePath, iIndex, dictState);
-            _fnFillDeclarationPreviewShells(elSlot);
+            /* Held while a pointer is down: this answer once landed
+               between the mousedown and the mouseup of a sign-off
+               click, replaced the row, and the click was lost. */
+            VaibifyUtilities.fnRenderWhenNoPointerIsDown(function () {
+                elSlot.innerHTML = fsRenderAiDeclarationFileRow(
+                    sFilePath, iIndex, dictState);
+                _fnFillDeclarationPreviewShells(elSlot);
+            });
         }).catch(function (error) {
             _fnRenderDeclarationUncheckable(
                 elSlot, VaibifyDiagnosis.fsExplainError(error));
@@ -1982,9 +1987,13 @@ var VaibifyStepRenderer = (function () {
             "?sWorkdir=" + encodeURIComponent(sRepoRoot);
         VaibifyApi.fsGetText(sUrl).then(function (sText) {
             // textContent assignment never parses HTML, so the file
-            // body cannot inject markup into the dashboard.
-            elShell.textContent = _fsTruncateToLines(
-                sText, _I_DECLARATION_PREVIEW_LINES);
+            // body cannot inject markup into the dashboard. Held while
+            // a pointer is down: the preview growing by eight lines
+            // moves the sign-off row out from under a press.
+            VaibifyUtilities.fnRenderWhenNoPointerIsDown(function () {
+                elShell.textContent = _fsTruncateToLines(
+                    sText, _I_DECLARATION_PREVIEW_LINES);
+            });
         }).catch(function () {
             elShell.textContent =
                 "Declaration file could not be read.";

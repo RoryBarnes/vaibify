@@ -239,6 +239,10 @@ def test_a_spent_download_waits_and_try_again_resumes_into_a_commit(fixtureConve
     assert "attempts" in dictView["dictFailure"]["sSentence"]
     assert registryManager.fbIsHostProject(S_HOST_NAME)
     assert _fsConfig(dictWorld.sConfigPath) == sConfigBefore
+    # The record reads WAITING a moment before the worker thread leaves
+    # the live map (it stays live through its commit attempt), and the
+    # self-exit veto reads that map; wait for the thread, not the record.
+    _fnWaitForTheWorkerToEnd()
     assert serverLifespan._fbHubShouldSelfExit(_fappFake(), {"docker": None}, 0.0) is True
     conversionLifecycle.fnRetryConversion(S_HOST_NAME)
     _fnWaitUntil(lambda: _fdictView() is None, 30.0)

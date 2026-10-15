@@ -33280,4 +33280,44 @@ LIST_FALSIFICATIONS = [
             '                f"\'{sHostName}\' is being finished; wait for Finish to complete "\n'
         ),
     ),
+    # --- a click survives a panel rebuilt under a pressed pointer (2026-10-14) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAClickSurvivesAPollRender.py::'
+            'test_a_sign_off_click_survives_the_file_state_answer_landing_inside_it'
+        ),
+        # renders go through at once while a pointer is down, so the
+        # element under the press is replaced and the click is lost
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        if (!_bPointerIsDown) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAClickSurvivesAPollRender.py::'
+            'test_an_ask_click_survives_a_council_render_landing_inside_it'
+        ),
+        # same hold, observed through the council chat's Ask button
+        source='vaibify/gui/static/scriptUtilities.js',
+        old='        if (!_bPointerIsDown) {\n',
+        new='        if (true) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testARunKeepsThePassingTestsItRecordedLive.py::'
+            'test_a_run_keeps_the_passing_tests_it_recorded'
+        ),
+        # the acknowledgement replaces the poll's mtime baseline with the
+        # step's outputs, so every declared input reads as modified next poll
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '        _fnMergeIntoModTimeBaseline(\n'
+            '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
+        ),
+        new=(
+            '        from ..fileStatusManager import _fnUpdateModTimeBaseline\n'
+            '        _fnUpdateModTimeBaseline(\n'
+            '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
+        ),
+    ),
 ]

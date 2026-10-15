@@ -173,15 +173,23 @@ and compare the bytes.
 
 ## 8. When something is wrong
 
-Run a diagnosis, and do what it says. Error messages in the
-dashboard end with **Click to run a diagnosis**, and the build-failure
-window has a **Run a diagnosis** button. Use it when a build will not
-build, a container will not start, or the dashboard is saying something
-you did not expect. The report checks this machine, and every finding
-that needs action names the exact command to run, correct for the
-Docker runtime you are actually using. The same checks, plus the inside
-of the running container and vaibify's own record of the project, are
-available as `vaibify doctor` from a terminal; see the
+There is no diagnosis button to look for while things are working.
+A diagnosis is offered where a problem is reported: an error message
+in the dashboard ends with **Click to run a diagnosis**, and the window
+that reports a failed build or a failed download has a **Run a
+diagnosis** button. Click either and a report opens. It checks this
+machine, and every finding that needs action names the exact command
+to run, correct for the Docker runtime you are actually using.
+
+When nothing is reporting an error but the dashboard is saying
+something you did not expect, run the same checks from a terminal:
+
+```bash
+vaibify doctor
+```
+
+That report covers everything the dashboard's does, plus the inside of
+the running container and vaibify's own record of the project; see the
 [CLI Reference](cli.md).
 
 Three things about the report are worth knowing before you read one.
@@ -200,7 +208,7 @@ apply the fix itself, that command is `vaibify repair`. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.
 
-**Emulation can occassionally crash.** About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.
+**Emulation can occasionally crash.** About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.
 
 ### Outputs that were re-run outside the container
 

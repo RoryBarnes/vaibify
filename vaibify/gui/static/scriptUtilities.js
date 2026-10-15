@@ -423,9 +423,79 @@ var VaibifyUtilities = (function () {
         return String(sPath).split("/").map(encodeURIComponent).join("/");
     }
 
+    /* A re-render that replaces the element under a pressed pointer
+       swallows the click: the browser fires "click" only when mousedown
+       and mouseup land on the same element, and a poll answer that
+       rebuilt a panel through innerHTML between the two left the
+       handler never run and nothing sent (seen on the AI Declaration
+       sign-off and the council chat's Ask, 2026-10-14, from Playwright
+       traces). Renders requested while a pointer is down are held
+       until it lifts, each render function once, and never longer
+       than _I_POINTER_HOLD_MILLISECONDS so a release the page never
+       hears about (a button let go outside the window) cannot freeze
+       the panels. */
+    var _I_POINTER_HOLD_MILLISECONDS = 1000;
+    var _bPointerIsDown = false;
+    var _listRendersHeld = [];
+    var _idPointerHoldTimer = null;
+
+    function _fnRunHeldRenders() {
+        var listRenders = _listRendersHeld.splice(0, _listRendersHeld.length);
+        listRenders.forEach(function (fnRender) { fnRender(); });
+    }
+
+    function _fnReleaseHeldRenders() {
+        _bPointerIsDown = false;
+        if (_idPointerHoldTimer !== null) {
+            clearTimeout(_idPointerHoldTimer);
+            _idPointerHoldTimer = null;
+        }
+        /* pointerup, mouseup and click are dispatched in that order
+           within one task, so a render run from pointerup would still
+           replace the element before its click arrives. The held
+           renders run on the next task, after the click has been
+           delivered. */
+        setTimeout(_fnRunHeldRenders, 0);
+    }
+
+    function _fnNoticePointerDown() {
+        _bPointerIsDown = true;
+        if (_idPointerHoldTimer !== null) clearTimeout(_idPointerHoldTimer);
+        _idPointerHoldTimer = setTimeout(
+            _fnReleaseHeldRenders, _I_POINTER_HOLD_MILLISECONDS);
+    }
+
+    if (typeof document !== "undefined") {
+        document.addEventListener("pointerdown", _fnNoticePointerDown, true);
+        document.addEventListener("pointerup", _fnReleaseHeldRenders, true);
+        document.addEventListener("pointercancel", _fnReleaseHeldRenders, true);
+        window.addEventListener("blur", _fnReleaseHeldRenders);
+    }
+
+    function fnRenderWhenNoPointerIsDown(fnRender) {
+        if (!_bPointerIsDown) {
+            fnRender();
+            return;
+        }
+        if (_listRendersHeld.indexOf(fnRender) === -1) {
+            _listRendersHeld.push(fnRender);
+        }
+    }
+
+    function fbPointerIsDownForTest() {
+        return _bPointerIsDown;
+    }
+
+    function fiHeldRendersForTest() {
+        return _listRendersHeld.length;
+    }
+
     return {
         fnEscapeHtml: fnEscapeHtml,
         fsEncodeUrlPath: fsEncodeUrlPath,
+        fnRenderWhenNoPointerIsDown: fnRenderWhenNoPointerIsDown,
+        fbPointerIsDownForTest: fbPointerIsDownForTest,
+        fiHeldRendersForTest: fiHeldRendersForTest,
         fsFiniteNumberText: fsFiniteNumberText,
         fbPlatformIsMacintosh: fbPlatformIsMacintosh,
         fsNameSelectionModifierKey: fsNameSelectionModifierKey,
