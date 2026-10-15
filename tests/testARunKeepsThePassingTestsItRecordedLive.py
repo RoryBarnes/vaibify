@@ -53,6 +53,10 @@ S_COUNTER = "plotCounter.txt"
 # downstream analysis does; it never reads the first step's plot.
 S_DOWNSTREAM = "SumNumbers"
 S_DOWNSTREAM_OUTPUT = "total.json"
+# A raw input of the step below. That step has no tests, so no test run
+# ever records this file's digest: only the mtime baseline speaks for
+# it, which is what keeps the acknowledgement's merge observable.
+S_SCALE = "scale.json"
 I_POLLS_AFTER_RUN = 20
 
 _S_SCRIPT = """import argparse, json
@@ -86,12 +90,15 @@ with open(args.output, "wb") as f:
 _S_SUM_SCRIPT = """import argparse, json
 parser = argparse.ArgumentParser()
 parser.add_argument("--input", required=True)
+parser.add_argument("--scale", required=True)
 parser.add_argument("--output", required=True)
 args = parser.parse_args()
 with open(args.input) as f:
     d = json.load(f)
+with open(args.scale) as f:
+    iScale = json.load(f)["iScale"]
 with open(args.output, "w") as f:
-    json.dump({"iTotal": sum(d["listValues"])}, f)
+    json.dump({"iTotal": iScale * sum(d["listValues"])}, f)
 """
 
 _S_TEST = """import json, os
@@ -120,11 +127,12 @@ def _fdictProjectDocument():
         }, {
             "sName": S_DOWNSTREAM, "sStepId": "sum-numbers",
             "sDirectory": S_DOWNSTREAM, "bRunEnabled": True,
-            "bPlotOnly": False, "bNoInputData": True,
+            "bPlotOnly": False,
             "saDataCommands": [
                 "python3 sumNumbers.py --input {step:make-numbers.numbers} "
-                f"--output {S_DOWNSTREAM_OUTPUT}",
+                f"--scale ../{S_SCALE} --output {S_DOWNSTREAM_OUTPUT}",
             ],
+            "saInputDataFiles": [S_SCALE],
             "saOutputDataFiles": [S_DOWNSTREAM_OUTPUT],
             "saTestCommands": [], "saPlotCommands": [], "saPlotFiles": [],
         }],
@@ -144,6 +152,7 @@ def _fsSeedProject(sHome, sPlotScript=None):
     os.makedirs(os.path.join(sRepo, ".vaibify", "projects"))
     Path(sRepo, "vaibify.yml").write_text(f"projectName: {S_PROJECT}\n")
     Path(sRepo, S_INPUT).write_text(json.dumps({"listValues": [1, 2, 3]}))
+    Path(sRepo, S_SCALE).write_text(json.dumps({"iScale": 1}))
     Path(sRepo, S_STEP, "makeNumbers.py").write_text(_S_SCRIPT)
     Path(sRepo, S_STEP, "makePlot.py").write_text(sPlotScript or _S_PLOT_SCRIPT)
     os.makedirs(os.path.join(sRepo, S_DOWNSTREAM))
@@ -348,8 +357,11 @@ def _flistPollAfterTheRun(client, sProject):
         if "_sPollKeys" in dictVerdict:
             dictVerdict = client.get(f"/api/steps/{sProject}/0").json()[
                 "dictVerification"]
+        dictDownstream = client.get(f"/api/steps/{sProject}/1").json()[
+            "dictVerification"]
         listHistory.append((iPoll, dictVerdict.get("sUnitTest"),
-                            dictVerdict.get("listModifiedFiles")))
+                            (dictVerdict.get("listModifiedFiles") or [])
+                            + (dictDownstream.get("listModifiedFiles") or [])))
         print("POLL", listHistory[-1], "epoch=", dictPoll.get("iWorkflowEpoch"),
               "reloaded=", dictPoll.get("bWorkflowReloaded"))
         time.sleep(1.0)
@@ -385,4 +397,6 @@ def test_a_run_keeps_the_passing_tests_it_recorded(hubHost):
     assert Path(sRepo, S_PLOT_RELATIVE).is_file(), "the plot command drew nothing"
     assert all(sUnitTest == "passed" for _, sUnitTest, _ in listHistory), listHistory
     assert not any(S_INPUT in (listModified or []) for _, _, listModified in listHistory), (
+        listHistory)
+    assert not any(S_SCALE in listModified for _, _, listModified in listHistory), (
         listHistory)
