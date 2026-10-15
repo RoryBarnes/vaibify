@@ -113,14 +113,14 @@ def _fnGit(sRepo, *listArguments):
     )
 
 
-def _fsSeedProject(sHome):
+def _fsSeedProject(sHome, sPlotScript=None):
     sRepo = os.path.join(sHome, S_PROJECT)
     os.makedirs(os.path.join(sRepo, S_STEP, "tests"))
     os.makedirs(os.path.join(sRepo, ".vaibify", "projects"))
     Path(sRepo, "vaibify.yml").write_text(f"projectName: {S_PROJECT}\n")
     Path(sRepo, S_INPUT).write_text(json.dumps({"listValues": [1, 2, 3]}))
     Path(sRepo, S_STEP, "makeNumbers.py").write_text(_S_SCRIPT)
-    Path(sRepo, S_STEP, "makePlot.py").write_text(_S_PLOT_SCRIPT)
+    Path(sRepo, S_STEP, "makePlot.py").write_text(sPlotScript or _S_PLOT_SCRIPT)
     Path(sRepo, ".gitignore").write_text(f"{S_STEP}/{S_COUNTER}\n")
     Path(sRepo, S_STEP, "tests", "test_integrity_makeNumbers.py").write_text(_S_TEST)
     Path(sRepo, ".vaibify", "projects", "project.json").write_text(
@@ -134,8 +134,11 @@ def _fsSeedProject(sHome):
 
 
 @pytest.fixture
-def hubHost(monkeypatch):
-    """The real hub, its state redirected, serving one host project."""
+def hubHost(monkeypatch, request):
+    """The real hub, its state redirected, serving one host project.
+
+    Indirect parametrization replaces the step's plot script.
+    """
     from vaibify.config import (
         containerLock, operationJournal, preferencesStore, registryManager,
     )
@@ -159,7 +162,7 @@ def hubHost(monkeypatch):
             (containerLock, "_S_LOCK_DIRECTORY", os.path.join(sHome, "locks")),
         ):
             monkeypatch.setattr(moduleTarget, sName, sValue)
-        sRepo = _fsSeedProject(sHome)
+        sRepo = _fsSeedProject(sHome, getattr(request, "param", None))
         registryManager.fnAddProject(sRepo, sMode="host")
         socketListening = fsocketBindLoopbackPort()
         iPort = socketListening.getsockname()[1]
