@@ -199,7 +199,12 @@ it from timestamps. The same content rule decides the modified-file
 report and the Level 1 pencil (`script-stale`): a data, input or plot
 file whose bytes the newest test run, or the sign-off, recorded and
 the poll measured unchanged is not stale; scripts, which nothing
-hashes, keep the timestamp rule. When an upstream step is modified, downstream steps
+hashes, keep the timestamp rule. A step is flagged upstream-modified
+only by the upstream files it names by `{step:…}` token, and only when
+their bytes differ from the ones it recorded consuming while it was
+current (`dictConsumedUpstreamDigests`): redrawing a plot no step reads,
+or re-running a step that reproduces its data byte for byte, leaves the
+steps below it at their level. When an upstream step is modified, downstream steps
 are flagged as upstream-modified. The researcher sees verification
 badges dim automatically; no one has to remember to invalidate
 anything by hand.

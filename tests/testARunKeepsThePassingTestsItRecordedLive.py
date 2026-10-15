@@ -49,6 +49,10 @@ S_OUTPUT = "numbers.json"
 S_PLOT_TEMPLATE = "{sPlotDirectory}/numbers.{sFigureType}"
 S_PLOT_RELATIVE = "Plot/numbers.png"
 S_COUNTER = "plotCounter.txt"
+# A second step reads the first step's data through a step token, as a
+# downstream analysis does; it never reads the first step's plot.
+S_DOWNSTREAM = "SumNumbers"
+S_DOWNSTREAM_OUTPUT = "total.json"
 I_POLLS_AFTER_RUN = 20
 
 _S_SCRIPT = """import argparse, json
@@ -79,6 +83,17 @@ with open(args.output, "wb") as f:
     f.write(("numbers plot, run %d" % iRun).encode())
 """
 
+_S_SUM_SCRIPT = """import argparse, json
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--output", required=True)
+args = parser.parse_args()
+with open(args.input) as f:
+    d = json.load(f)
+with open(args.output, "w") as f:
+    json.dump({"iTotal": sum(d["listValues"])}, f)
+"""
+
 _S_TEST = """import json, os
 def test_numbers_were_written():
     with open("numbers.json") as f:
@@ -102,6 +117,16 @@ def _fdictProjectDocument():
                 f"python3 makePlot.py --output {S_PLOT_TEMPLATE}",
             ],
             "saPlotFiles": [S_PLOT_TEMPLATE],
+        }, {
+            "sName": S_DOWNSTREAM, "sStepId": "sum-numbers",
+            "sDirectory": S_DOWNSTREAM, "bRunEnabled": True,
+            "bPlotOnly": False, "bNoInputData": True,
+            "saDataCommands": [
+                "python3 sumNumbers.py --input {step:make-numbers.numbers} "
+                f"--output {S_DOWNSTREAM_OUTPUT}",
+            ],
+            "saOutputDataFiles": [S_DOWNSTREAM_OUTPUT],
+            "saTestCommands": [], "saPlotCommands": [], "saPlotFiles": [],
         }],
     }
 
@@ -121,6 +146,8 @@ def _fsSeedProject(sHome, sPlotScript=None):
     Path(sRepo, S_INPUT).write_text(json.dumps({"listValues": [1, 2, 3]}))
     Path(sRepo, S_STEP, "makeNumbers.py").write_text(_S_SCRIPT)
     Path(sRepo, S_STEP, "makePlot.py").write_text(sPlotScript or _S_PLOT_SCRIPT)
+    os.makedirs(os.path.join(sRepo, S_DOWNSTREAM))
+    Path(sRepo, S_DOWNSTREAM, "sumNumbers.py").write_text(_S_SUM_SCRIPT)
     Path(sRepo, ".gitignore").write_text(f"{S_STEP}/{S_COUNTER}\n")
     Path(sRepo, S_STEP, "tests", "test_integrity_makeNumbers.py").write_text(_S_TEST)
     Path(sRepo, ".vaibify", "projects", "project.json").write_text(

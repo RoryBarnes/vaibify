@@ -5254,8 +5254,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4247 -> 4296 the same day (review): every poll ships each step's
     # stored sign-off, the page's staleness flag reads the run's hash
     # verdict, and the content-vouched sets reach the invalidation and
-    # the pencil.
-    "routes/pipelineRoutes.py": 4296,
+    # the pencil. -> 4301: and the per-edge upstream evidence.
+    "routes/pipelineRoutes.py": 4301,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5569,8 +5569,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # machine this module owns; the docstring grew with it.
     # 2429 -> 2517 the same day (review): the modified-file report and
     # the Level 1 pencil judge a file by the digest the newest test run
-    # or the sign-off recorded, the same rule as the tests.
-    "fileStatusManager.py": 2517,
+    # or the sign-off recorded, the same rule as the tests. -> 2646: the
+    # upstream flag judges the files a step names by token, by the
+    # digests the step recorded consuming.
+    "fileStatusManager.py": 2646,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -5720,7 +5722,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 2918 -> 2946 (2026-10-01): the loader attaches the hub-held record
     # of the GitHub remote a push reached (and the save strips it).
     # 2946 -> 2947 (2026-10-01): the dependency-graph cache key carries sStepId.
-    "workflowManager.py": 2947,
+    # 2947 -> 2952 (2026-10-15): T_STEP_REFERENCE_FIELDS, the one list of
+    # fields a step token may sit in, read by the graph and the upstream
+    # freshness check alike.
+    "workflowManager.py": 2952,
     # NEW at 802 (2026-08-13): stateManager.py crossed the default cap
     # adding the schema-v3 workflow namespace. state.json is
     # repo-scoped and a repo may hold several projects, but v2 kept one
@@ -6130,10 +6135,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment archive branch into main; both sides' growth.
     # 3770 -> 3771 (2026-10-06): one registration line for uploadRoutes.
     # 3771 -> 3772 (2026-10-06): one registration line for downloadRoutes.
-    # 3772 -> 3780 (2026-10-15): re-exports the eight public
+    # 3772 -> 3782 (2026-10-15): re-exports the ten public
     # fileStatusManager symbols, required by the orchestrator re-export
     # invariant.
-    "pipelineServer.py": 3780,
+    "pipelineServer.py": 3782,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated

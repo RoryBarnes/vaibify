@@ -154,7 +154,9 @@ Invariants:
   a newer mtime changes neither the tests nor the sign-off.
 - Data- or plot-file change (by content) makes the tests not current.
 - Upstream change sets `bUpstreamModified = True` and resets
-  `sUnitTest`.
+  `sUnitTest`. Only the upstream files a step names by `{step:…}`
+  token count, and only when their bytes differ from the ones the step
+  recorded consuming (`dictConsumedUpstreamDigests`).
 
 Any change to these transitions is an ask-first operation — consult
 the user before proceeding.

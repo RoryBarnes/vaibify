@@ -3376,6 +3376,8 @@ from .fileStatusManager import (  # noqa: F401
     fdictCollectInputPathsByStep,
     fdictCollectOutputPathsByStep,
     fdictContentVouchedPathsByStep,
+    fdictUpstreamEvidenceByEdge,
+    S_CONSUMED_UPSTREAM_DIGESTS_KEY,
     fdictMatchedPathsByStep,
     fdictWithSignedOffPlots,
     fdictOutputMtimesByStep,

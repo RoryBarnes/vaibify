@@ -37,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from tests.testARunKeepsThePassingTestsItRecordedLive import (  # noqa: F401
+    S_INPUT,
     S_OUTPUT,
     S_PLOT_RELATIVE,
     S_PROJECT,
@@ -48,8 +49,8 @@ from tests.testARunKeepsThePassingTestsItRecordedLive import (  # noqa: F401
 pytestmark = pytest.mark.exclusive
 
 I_POLLS_PER_CASE = 5
-# A tested, signed-off step with nothing else declared reaches Level 1.
-I_LEVEL_SIGNED_OFF = 1
+# A tested, signed-off step with nothing else declared attains Level 1.
+S_LEVEL_ONE_ATTAINED = "attained"
 S_KEY = "dictUserVerifiedHashes"
 S_REASON_NEWER = "outputs-newer-than-run"
 T_TERMINAL_EVENTS = ("completed", "failed", "error")
@@ -148,14 +149,24 @@ class _Dashboard:
         dictIntegrity = (dictMarker.get("dictCategoryStates") or {}).get(
             "integrity") or {}
         dictStored = self.fdictStoredVerification()
+        responseDownstream = self.client.get(f"/api/steps/{S_PROJECT}/1")
+        assert responseDownstream.status_code == 200, responseDownstream.text
+        dictDownstream = responseDownstream.json().get("dictVerification") or {}
         return {
+            "bDownstreamFlagged": dictDownstream.get("bUpstreamModified") is True,
+            "listUpstreamBlockers": sorted(
+                dictBlocker["sStepLabel"]
+                for dictBlocker in dictPoll.get("listBlockers") or []
+                if dictBlocker.get("sCriterion") == "upstream-modified"),
             "sUnitTest": dictIntegrity.get("sState"),
             "bStale": dictMarker.get("bStale"),
             "sUser": (dictPoll.get("dictSignOffByStep") or {}).get(
                 "0", {}).get("sUser"),
             "dictHashes": dictStored.get(S_KEY),
             "listModifiedFiles": dictStored.get("listModifiedFiles") or [],
-            "iProofLevel": dictPoll.get("iProofLevel"),
+            "sLevelOneOfTheStep": (((dictPoll.get("dictStepLevels") or {})
+                                    .get("0") or {}).get("s1") or {}).get(
+                "sState"),
             "sReason": dictIntegrity.get("sNotCurrentBecause", ""),
         }
 
@@ -188,7 +199,8 @@ def _fnAssertEvery(listStates, **dictExpected):
     dictExpected.setdefault("bWorkflowResent", False)
     for dictState in listStates:
         for sKey, expected in dictExpected.items():
-            assert dictState[sKey] == expected, (sKey, listStates)
+            assert dictState[sKey] == expected, (
+                sKey, json.dumps(listStates, indent=1, sort_keys=True))
 
 
 def _fnSetMtime(sPath, fMtime):
@@ -209,7 +221,7 @@ def _fnRunTheFirstRunAndSignOff(dashboard):
     dictHashes = dashboard.fdictStoredVerification()[S_KEY]
     assert dictHashes == {S_PLOT_RELATIVE: _fsSha256(dashboard.fsPlotPath())}
     _fnAssertEvery(dashboard.flistPoll(2), sUnitTest="passed", sUser="passed",
-                   iProofLevel=I_LEVEL_SIGNED_OFF)
+                   sLevelOneOfTheStep=S_LEVEL_ONE_ATTAINED)
 
 
 def _fnCaseRunningTheTestsKeepsTheSignOff(dashboard):
@@ -225,7 +237,8 @@ def _fnCaseIdenticalBytesWithANewerMtimeChangeNothing(dashboard):
     _fnSetMtime(dashboard.fsPlotPath(), time.time() + 120)
     _fnAssertEvery(dashboard.flistPoll(), sUnitTest="passed", sUser="passed",
                    dictHashes=dictBefore[S_KEY], listModifiedFiles=[],
-                   iProofLevel=I_LEVEL_SIGNED_OFF)
+                   sLevelOneOfTheStep=S_LEVEL_ONE_ATTAINED, bDownstreamFlagged=False,
+                   listUpstreamBlockers=[])
 
 
 def _fnCaseASignedOffPlotThatBecomesUnreadableVoidsTheSignOff(dashboard):
@@ -247,12 +260,13 @@ def _fnCaseIdenticalDataWithANewerMtimeChangesNothing(dashboard):
     """Case i: no modified-file report and no PROOF regression."""
     dictBefore = dashboard.fdictPollOnce()
     assert dictBefore["sUser"] == "passed" and dictBefore["sUnitTest"] == "passed"
-    assert dictBefore["iProofLevel"] == I_LEVEL_SIGNED_OFF, dictBefore
+    assert dictBefore["sLevelOneOfTheStep"] == S_LEVEL_ONE_ATTAINED, dictBefore
     sData = os.path.join(dashboard.sRepo, S_STEP, S_OUTPUT)
     _fnSetMtime(sData, time.time() + 120)
     _fnAssertEvery(dashboard.flistPoll(), sUnitTest="passed", sUser="passed",
-                   listModifiedFiles=[], iProofLevel=I_LEVEL_SIGNED_OFF,
-                   bStale=False)
+                   listModifiedFiles=[], sLevelOneOfTheStep=S_LEVEL_ONE_ATTAINED,
+                   bStale=False, bDownstreamFlagged=False,
+                   listUpstreamBlockers=[])
 
 
 def _fnCaseDifferentBytesWithAnOlderMtimeAreCaught(dashboard):
@@ -285,8 +299,12 @@ def _fnCaseDrawingThePlotsAloneVoidsBoth(dashboard):
     assert dictBefore["sUser"] == "passed" and dictBefore["sUnitTest"] == "passed"
     dashboard.flistRun({"sAction": "runSelected", "listStepIndices": [0],
                         "sRunMode": "plotsOnly"})
+    # The redrawn step's own plot changed after its tests ran, so it is
+    # blocked; the step below reads only the data, which did not
+    # change, so new plot bytes upstream leave it alone.
     _fnAssertEvery(dashboard.flistPoll(), sUnitTest="untested", sReason="drift",
-                   sUser="stale", dictHashes=dictBefore[S_KEY])
+                   sUser="stale", dictHashes=dictBefore[S_KEY], bStale=True,
+                   bDownstreamFlagged=False, listUpstreamBlockers=["A01"])
 
 
 def _fnCaseASignOffOverAnUnreadablePlotIsRefused(dashboard):
@@ -327,6 +345,17 @@ def _fnCaseAMarkerWithoutPlotDigestsFallsBackToTheClock(dashboard):
                    sReason=S_REASON_NEWER)
 
 
+def _fnCaseNewUpstreamDataFlagsTheStepBelow(dashboard):
+    """Case k: the upstream's data really changes; only it is rerun."""
+    assert not dashboard.fdictPollOnce()["bDownstreamFlagged"]
+    Path(dashboard.sRepo, S_INPUT).write_text(
+        json.dumps({"listValues": [1, 2, 4]}))
+    dashboard.flistRun({"sAction": "runSelected", "listStepIndices": [0],
+                        "sRunMode": "full"})
+    _fnAssertEvery(dashboard.flistPoll(), bDownstreamFlagged=True,
+                   listUpstreamBlockers=["A02"])
+
+
 def test_the_tests_and_the_sign_off_follow_the_plot_bytes(hubHost):
     client, sRepo = hubHost
 
@@ -341,6 +370,7 @@ def test_the_tests_and_the_sign_off_follow_the_plot_bytes(hubHost):
         _fnCaseDrawingThePlotsAloneVoidsBoth(dashboard)
         _fnCaseASignOffOverAnUnreadablePlotIsRefused(dashboard)
         _fnCaseAMarkerWithoutPlotDigestsFallsBackToTheClock(dashboard)
+        _fnCaseNewUpstreamDataFlagsTheStepBelow(dashboard)
     _fdashboardOpen(client, sRepo, fnBody)
 
 
@@ -358,6 +388,10 @@ def test_redrawing_a_byte_identical_plot_keeps_the_tests_and_the_sign_off(hubHos
                        sUser="passed", dictHashes=dictBaseline)
         dashboard.flistRun({"sAction": "runSelected", "listStepIndices": [0],
                             "sRunMode": "plotsOnly"})
+        # The step below reads the redrawn step's data; a byte-identical
+        # redraw upstream leaves it unflagged and at its level.
         _fnAssertEvery(dashboard.flistPoll(), sUnitTest="passed",
-                       sUser="passed", dictHashes=dictBaseline)
+                       sUser="passed", dictHashes=dictBaseline,
+                       bDownstreamFlagged=False, listUpstreamBlockers=[],
+                       sLevelOneOfTheStep=S_LEVEL_ONE_ATTAINED)
     _fdashboardOpen(client, sRepo, fnBody)

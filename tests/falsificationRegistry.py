@@ -1654,6 +1654,39 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testOutputFreshnessByContent.py::'
+            'test_upstream_bytes_the_step_below_consumed_do_not_flag_it'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The upstream check judges by the timestamp alone again: a
+        # re-run that reproduced the same bytes drops the step below.
+        old='            _fbStepConsumedTheseBytes(dictVerify or {}, dictEdge)\n',
+        new='            False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_flagged_step_never_records_the_new_upstream_bytes'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # A stale step records the new upstream bytes as consumed, so
+        # the next poll clears a flag nothing earned.
+        old='        if iSignal == 0 and _fbRecordConsumedDigests(dictVerify, listEdges):\n',
+        new='        if _fbRecordConsumedDigests(dictVerify, listEdges):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_plot_the_step_below_never_names_is_not_compared'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # Every upstream output is compared again, so redrawing a plot
+        # the step below never reads drops that step from Level 1.
+        old='            listPaths = dictNamed.get((iUp, iDown)) or [\n',
+        new='            listPaths = None or [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
             'test_different_bytes_with_an_older_mtime_leave_the_run_not_current'
         ),
         source='vaibify/gui/routes/pipelineRoutes.py',
@@ -30552,7 +30585,8 @@ LIST_FALSIFICATIONS = [
             '        dictPathsByStep, dictModTimes,\n'
             '    )\n'
             '    bAnyReconciled = (\n'
-            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        fbReconcileUpstreamFlags(\n'
+            '            dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge)\n'
             '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
             '    )\n'
         ),
@@ -30562,7 +30596,8 @@ LIST_FALSIFICATIONS = [
             '        dictPathsByStep, dictModTimes,\n'
             '    )\n'
             '    bAnyReconciled = (\n'
-            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        fbReconcileUpstreamFlags(\n'
+            '            dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge)\n'
             '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
             '    )\n'
             '    listInvalidated = _fdictDetectAndInvalidate(\n'

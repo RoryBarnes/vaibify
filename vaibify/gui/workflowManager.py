@@ -26,6 +26,14 @@ S_STEP_REF_PATTERN = r"\{Step(\d+)\.([^}]+)\}"
 # unambiguous — positional is capitalized "Step" + digits, symbolic is
 # lowercase "step:" + a kebab id.
 S_STEP_SYMBOLIC_PATTERN = r"\{step:([a-z0-9][a-z0-9-]*)\.([^}]+)\}"
+# Every step field a cross-step token may sit in. The dependency graph
+# and the upstream freshness check both read this one list, so an edge
+# and the files it names can never be taken from different fields.
+T_STEP_REFERENCE_FIELDS = (
+    "saDataCommands", "saPlotCommands", "saTestCommands",
+    "saOutputDataFiles", "saPlotFiles", "saDependencies",
+    "saSetupCommands", "saCommands",
+)
 S_VAIBIFY_PROJECTS_SUFFIX = "/.vaibify/projects/"
 S_VAIBIFY_WORKFLOWS_SUFFIX = "/.vaibify/workflows/"
 # Both the canonical and the legacy suffix, longest first, so path
@@ -2758,10 +2766,7 @@ def _fdictComputeDirectDependencies(dictWorkflow):
     dictDirect = {}
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         setUpstream = set()
-        for sKey in ("saDataCommands", "saPlotCommands",
-                     "saTestCommands", "saOutputDataFiles", "saPlotFiles",
-                     "saDependencies", "saSetupCommands",
-                     "saCommands"):
+        for sKey in T_STEP_REFERENCE_FIELDS:
             for sItem in dictStep.get(sKey, []):
                 setUpstream |= fsetExtractUpstreamIndices(
                     sItem, dictIdToIndex,

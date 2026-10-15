@@ -753,7 +753,7 @@ async def ftRunStepCommands(
     when that fails or no plot section runs; failing tests never fail
     the step.
     """
-    from .pipelineTestRunner import _fiRunTestCommands, _flistResolveTestCommands
+    from .pipelineTestRunner import _fiRunTestCommands
 
     sStepDirectory = workflowManager.fsResolveStepWorkdir(
         dictStep.get("sDirectory", sWorkdir), dictVariables,

@@ -44,7 +44,9 @@ content: a byte-identical file with a newer mtime changes nothing.
 - Plot file changes  -> sUser becomes "stale" (the attested hashes are
                         kept as evidence), AND the step's tests are no
                         longer current: a plot is a declared output
-- Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True
+- Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True,
+                        judged by the bytes of the upstream files the step
+                        names by token against the ones it consumed
 - Tests pass/fail    -> sUnitTest, sIntegrity, sQualitative, sQuantitative updated
 - User clicks verify -> sUser cycles: untested -> passed -> failed -> untested;
                         a sign-off records the bytes of every declared plot
@@ -70,6 +72,8 @@ _LIST_CATEGORY_KEYS = (
 __all__ = [
     "fdictCollectOutputPathsByStep",
     "fdictContentVouchedPathsByStep",
+    "fdictUpstreamEvidenceByEdge",
+    "S_CONSUMED_UPSTREAM_DIGESTS_KEY",
     "fdictWithSignedOffPlots",
     "fdictMatchedPathsByStep",
     "fdictOutputMtimesByStep",
@@ -1005,23 +1009,142 @@ def fbReconcileUserVerificationTimestamps(dictWorkflow):
     return bAnyChanged
 
 
-def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
+def _fdictNamedUpstreamPaths(dictWorkflow, dictVars):
+    """Return ``{(iUpstream, iDownstream): set of paths}`` a step names by token.
+
+    The paths are the upstream outputs a downstream step reads through a
+    ``{step:<id>.<stem>}`` token, resolved as the runner resolves them.
+    An edge with no such token (a directory overlap, a deprecated
+    positional reference) is absent, and the caller compares every
+    output of the upstream step instead.
+    """
+    import re
+    dictStepPaths = workflowManager.fdictBuildStepVariables(
+        dictWorkflow, dictVars or _fdictBuildFileStatusVars(dictWorkflow))
+    dictIdToIndex = workflowManager.fdictStepIdToIndex(dictWorkflow)
+    dictResult = {}
+    for iDownstream, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        for sField in workflowManager.T_STEP_REFERENCE_FIELDS:
+            for sItem in dictStep.get(sField, []) or []:
+                for sId, sStem in re.findall(
+                    workflowManager.S_STEP_SYMBOLIC_PATTERN, sItem,
+                ):
+                    sPath = dictStepPaths.get(f"step:{sId}.{sStem}")
+                    if sId in dictIdToIndex and sPath:
+                        dictResult.setdefault(
+                            (dictIdToIndex[sId], iDownstream), set(),
+                        ).add(posixpath.normpath(sPath))
+    return dictResult
+
+
+S_CONSUMED_UPSTREAM_DIGESTS_KEY = "dictConsumedUpstreamDigests"
+
+
+def fdictUpstreamEvidenceByEdge(dictWorkflow, dictModTimes, dictVars, filesPoll):
+    """Return, for each dependency edge, the upstream files the step reads.
+
+    ``{(iUpstream, iDownstream): {"iMtime", "dictDigests"}}``. The files
+    are the ones the downstream names by step token -- a plot it never
+    reads is no reason to flag it -- or every upstream output when it
+    names none. ``iMtime`` is their newest mtime; ``dictDigests`` maps
+    each (repo-relative) to the SHA-256 this poll's snapshot measured,
+    ``None`` when it measured none. See :func:`fbReconcileUpstreamFlags`.
+    """
+    from . import hashStaleness
+    from .pathContract import fsAbsToRepoRelative
+    sRepoRoot = _fsResolveRepoRoot(dictWorkflow, dictVars)
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictNamed = _fdictNamedUpstreamPaths(dictWorkflow, dictVars)
+    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
+    dictMtimes = {
+        posixpath.normpath(sPath): int(sMtime)
+        for sPath, sMtime in dictModTimes.items()}
+    dictResult = {}
+    for iUp, setDownstream in workflowManager.fdictBuildDirectDependencies(
+        dictWorkflow,
+    ).items():
+        for iDown in setDownstream:
+            listPaths = dictNamed.get((iUp, iDown)) or [
+                posixpath.normpath(sPath)
+                for sPath in dictPathsByStep.get(iUp, [])]
+            dictResult[(iUp, iDown)] = {
+                "iMtime": max((dictMtimes[sPath] for sPath in listPaths
+                               if sPath in dictMtimes), default=0),
+                "dictDigests": {
+                    sRelative: (dictHashEntries.get(sRelative) or {}).get(
+                        "sSha256")
+                    for sRelative in (
+                        fsAbsToRepoRelative(sPath, sRepoRoot)
+                        for sPath in listPaths)},
+            }
+    return dictResult
+
+
+def _fbStepConsumedTheseBytes(dictVerify, dictEdge):
+    """Return True when every upstream file the step reads is the bytes it consumed.
+
+    The step recorded the digests while its outputs were newer than
+    those files (:func:`_fbRecordConsumedDigests`); an unmeasured digest
+    or a file with no record proves nothing and returns False.
+    """
+    if not dictEdge or not dictEdge["dictDigests"]:
+        return False
+    dictConsumed = dictVerify.get(S_CONSUMED_UPSTREAM_DIGESTS_KEY) or {}
+    return all(
+        sSha256 and dictConsumed.get(sPath) == sSha256
+        for sPath, sSha256 in dictEdge["dictDigests"].items())
+
+
+def _fbRecordConsumedDigests(dictVerify, listEdges):
+    """Record the upstream bytes a current step consumed; True when it changed.
+
+    Called only while the step is current against every upstream, so
+    the files are older than its outputs, or carry the bytes already
+    recorded. A digest this poll did not measure is never recorded.
+    """
+    dictMeasured = {}
+    for dictEdge in listEdges:
+        for sPath, sSha256 in dictEdge["dictDigests"].items():
+            if sSha256:
+                dictMeasured[sPath] = sSha256
+    dictConsumed = dictVerify.get(S_CONSUMED_UPSTREAM_DIGESTS_KEY) or {}
+    if all(dictConsumed.get(sPath) == sSha256
+           for sPath, sSha256 in dictMeasured.items()):
+        return False
+    dictConsumed.update(dictMeasured)
+    dictVerify[S_CONSUMED_UPSTREAM_DIGESTS_KEY] = dictConsumed
+    return True
+
+
+def fbReconcileUpstreamFlags(
+    dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge=None,
+):
     """Sync bUpstreamModified with the current mtime state on every step.
 
     Makes ``bUpstreamModified`` a pure derived field rather than an
     edge-triggered flag that lags reality. Sets it on steps whose
     output is older than any upstream's output; clears it on steps
-    where current mtimes say nothing is stale. Steps with no output
-    mtime (never run) are left alone — no comparison is possible.
-    Returns True when any flag changed so the caller can persist.
+    where current mtimes say nothing is stale. The flag blocks Level 1.
+
+    With ``dictUpstreamEvidenceByEdge`` (see
+    :func:`fdictUpstreamEvidenceByEdge`) an upstream is judged by the
+    files the step names by token, and by their bytes: while a step is
+    current it records the digests of the upstream files it consumed
+    (``dictConsumedUpstreamDigests``), and a later upstream file that is
+    newer but carries exactly those bytes -- a re-run that reproduced
+    them, a touch -- does not flag it. New bytes, or bytes never
+    recorded, do. Steps with no output mtime (never run) are left
+    alone — no comparison is possible. Returns True when any flag or
+    record changed so the caller can persist.
     """
     dictUpstream = _fdictBuildUpstreamMap(dictWorkflow)
+    dictEdges = dictUpstreamEvidenceByEdge or {}
     listSteps = dictWorkflow.get("listSteps", [])
     bAnyChanged = False
     for iStep, dictStep in enumerate(listSteps):
         dictVerify = dictStep.setdefault("dictVerification", {})
         iSignal = _fiMtimeStalenessSignal(
-            iStep, dictUpstream, dictMaxMtimeByStep,
+            iStep, dictUpstream, dictMaxMtimeByStep, dictVerify, dictEdges,
         )
         if iSignal < 0:
             continue
@@ -1031,6 +1154,11 @@ def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
             bAnyChanged = True
         elif iSignal == 0 and bHasFlag:
             dictVerify.pop("bUpstreamModified", None)
+            bAnyChanged = True
+        listEdges = [
+            dictEdges[(iUp, iStep)] for iUp in dictUpstream.get(iStep, set())
+            if (iUp, iStep) in dictEdges]
+        if iSignal == 0 and _fbRecordConsumedDigests(dictVerify, listEdges):
             bAnyChanged = True
     return bAnyChanged
 
@@ -1048,7 +1176,7 @@ def _fdictBuildUpstreamMap(dictWorkflow):
 
 
 def _fiMtimeStalenessSignal(
-    iStep, dictUpstream, dictMaxMtimeByStep,
+    iStep, dictUpstream, dictMaxMtimeByStep, dictVerify=None, dictEdges=None,
 ):
     """Return 1 (stale), 0 (fresh), or -1 (unknown — step not run)."""
     iMyMtime = int(
@@ -1057,10 +1185,13 @@ def _fiMtimeStalenessSignal(
     if not iMyMtime:
         return -1
     for iUp in dictUpstream.get(iStep, set()):
-        iUpMtime = int(
+        dictEdge = (dictEdges or {}).get((iUp, iStep))
+        iUpMtime = dictEdge["iMtime"] if dictEdge else int(
             dictMaxMtimeByStep.get(str(iUp), "0") or 0,
         )
-        if iUpMtime and iUpMtime > iMyMtime:
+        if iUpMtime and iUpMtime > iMyMtime and not (
+            _fbStepConsumedTheseBytes(dictVerify or {}, dictEdge)
+        ):
             return 1
     return 0
 
@@ -2391,14 +2522,14 @@ def ftCaptureStepPlotHashes(dictWorkflow, dictStep, filesRepo):
     never be taken for the whole, because a plot it omits would then
     compare as "nothing to compare" rather than as a difference.
     """
-    from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
     listPlotPaths = flistStepPlotsRepoRelative(dictWorkflow, dictStep)
     if not listPlotPaths:
         return {}, []
     try:
         dictEntries = filesRepo.fdictHashFiles(listPlotPaths)
-    except (OSError, KeyError, ValueError) as error:
-        fnReRaiseControlPlaneRefusal(error)
+    except (OSError, KeyError, ValueError):
+        # A control-plane refusal is not one of these, so it passes
+        # through to the route rather than reading as an unreadable plot.
         return {}, list(listPlotPaths)
     dictHashes = {}
     for sPath in listPlotPaths:

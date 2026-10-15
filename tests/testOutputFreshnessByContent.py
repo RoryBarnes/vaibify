@@ -288,3 +288,104 @@ def test_a_plot_matching_the_sign_off_is_vouched_for_and_a_different_one_is_not(
                            "Plot/b.png": {"sSha256": "9" * 64}})
     assert fdictWithSignedOffPlots(dictWorkflow, {0: {"Step/data.txt"}}, filesPoll) == {
         0: {"Step/data.txt", "Plot/a.png"}}
+
+
+# ---------------------------------------------------------------------
+# An upstream redraw flags a downstream step only when its bytes are new
+# ---------------------------------------------------------------------
+
+
+def _fdictTwoStepWorkflow():
+    """Step 1 reads step 0's data through a token; step 0 also draws a plot."""
+    return {"sProjectRepoPath": "/repo", "sPlotDirectory": "Plot",
+            "sFigureType": "png", "listSteps": [
+        {"sStepId": "up", "sDirectory": "Up", "saOutputDataFiles": ["a.json"],
+         "saPlotFiles": ["{sPlotDirectory}/up.{sFigureType}"],
+         "saDataCommands": ["python up.py"], "dictVerification": {}},
+        {"sStepId": "down", "sDirectory": "Down",
+         "saOutputDataFiles": ["b.json"],
+         "saDataCommands": ["python down.py {step:up.a}"],
+         "dictVerification": {}},
+    ]}
+
+
+S_UPSTREAM_DATA = "Up/a.json"
+
+
+def _fdictDownstreamAfterReconcile(dictEdge, dictConsumed=None):
+    """Step 1's outputs date from 200; return its verification after one pass."""
+    from vaibify.gui.fileStatusManager import fbReconcileUpstreamFlags
+    dictWorkflow = _fdictTwoStepWorkflow()
+    if dictConsumed is not None:
+        dictWorkflow["listSteps"][1]["dictVerification"][
+            "dictConsumedUpstreamDigests"] = dict(dictConsumed)
+    fbReconcileUpstreamFlags(
+        dictWorkflow, {"0": "300", "1": "200"},
+        None if dictEdge is None else {(0, 1): dictEdge})
+    return dictWorkflow["listSteps"][1]["dictVerification"]
+
+
+def _fbDownstreamFlagged(dictEdge, dictConsumed=None):
+    return _fdictDownstreamAfterReconcile(dictEdge, dictConsumed).get(
+        "bUpstreamModified") is True
+
+
+@pytest.mark.falsification
+def test_upstream_bytes_the_step_below_consumed_do_not_flag_it():
+    """Kills: the upstream check judging by the timestamp alone again, so
+    a re-run that reproduced the same bytes drops the step below."""
+    assert _fbDownstreamFlagged(
+        {"iMtime": 300, "dictDigests": {S_UPSTREAM_DATA: "1" * 64}},
+        {S_UPSTREAM_DATA: "1" * 64}) is False
+
+
+def test_new_upstream_bytes_flag_the_step_below():
+    assert _fbDownstreamFlagged(
+        {"iMtime": 300, "dictDigests": {S_UPSTREAM_DATA: "2" * 64}},
+        {S_UPSTREAM_DATA: "1" * 64}) is True
+
+
+def test_upstream_bytes_never_recorded_or_unmeasured_flag_the_step_below():
+    assert _fbDownstreamFlagged(
+        {"iMtime": 300, "dictDigests": {S_UPSTREAM_DATA: "1" * 64}}) is True
+    assert _fbDownstreamFlagged(
+        {"iMtime": 300, "dictDigests": {S_UPSTREAM_DATA: None}},
+        {S_UPSTREAM_DATA: None}) is True
+    assert _fbDownstreamFlagged(None) is True
+
+
+def test_a_current_step_records_the_upstream_bytes_it_consumed():
+    dictVerification = _fdictDownstreamAfterReconcile(
+        {"iMtime": 150, "dictDigests": {S_UPSTREAM_DATA: "1" * 64}})
+    assert dictVerification["dictConsumedUpstreamDigests"] == {
+        S_UPSTREAM_DATA: "1" * 64}
+    assert not dictVerification.get("bUpstreamModified")
+
+
+@pytest.mark.falsification
+def test_a_flagged_step_never_records_the_new_upstream_bytes():
+    """Kills: recording while the step is stale, so the new upstream bytes
+    are adopted as consumed and the next poll clears the flag."""
+    dictVerification = _fdictDownstreamAfterReconcile(
+        {"iMtime": 300, "dictDigests": {S_UPSTREAM_DATA: "2" * 64}},
+        {S_UPSTREAM_DATA: "1" * 64})
+    assert dictVerification["bUpstreamModified"] is True
+    assert dictVerification["dictConsumedUpstreamDigests"] == {
+        S_UPSTREAM_DATA: "1" * 64}
+
+
+@pytest.mark.falsification
+def test_a_plot_the_step_below_never_names_is_not_compared():
+    """Kills: comparing every upstream output, so redrawing a plot the
+    step below never reads drops it from Level 1."""
+    from vaibify.gui.fileStatusManager import fdictUpstreamEvidenceByEdge
+    dictWorkflow = _fdictTwoStepWorkflow()
+    dictModTimes = {"/repo/Up/a.json": "100", "/repo/Plot/up.png": "300",
+                    "/repo/Down/b.json": "200"}
+    dictEdges = fdictUpstreamEvidenceByEdge(
+        dictWorkflow, dictModTimes, {"sRepoRoot": "/repo",
+                                     "sPlotDirectory": "/repo/Plot",
+                                     "sFigureType": "png"}, None)
+    assert dictEdges[(0, 1)]["iMtime"] == 100
+    assert list(dictEdges[(0, 1)]["dictDigests"]) == [S_UPSTREAM_DATA]
+    assert _fbDownstreamFlagged(dictEdges[(0, 1)]) is False

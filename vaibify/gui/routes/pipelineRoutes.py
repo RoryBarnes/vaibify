@@ -77,6 +77,7 @@ from ..fileStatusManager import (
     fdictHandleCollectMarkerPathsByStep,
     fdictHashDriftToInvalidate,
     fdictContentVouchedPathsByStep,
+    fdictUpstreamEvidenceByEdge,
     fdictWithSignedOffPlots,
     fdictMarkerVerdictsByStep,
     fdictMatchedPathsByStep,
@@ -1464,6 +1465,9 @@ async def _fdictFetchOutputStatus(
         ),
         bPipelineRunning=bPipelineRunning,
         dictContentVouchedByStep=dictContentVouchedByStep,
+        dictUpstreamEvidenceByEdge=fdictUpstreamEvidenceByEdge(
+            dictWorkflow, dictModTimes, dictVars, filesPoll,
+        ),
     )
     if _fbReconcileUserVerificationByHash(
         dictCtx, sContainerId, dictWorkflow, filesPoll, sRepoRoot,
@@ -1724,7 +1728,7 @@ def _fdictPathsByStepForVerdict(dictMarkerVerdicts, sVerdictKey):
 def _flistRunPollSideEffects(
     dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,
     dictHashStaleByStep, bPipelineRunning=False,
-    dictContentVouchedByStep=None,
+    dictContentVouchedByStep=None, dictUpstreamEvidenceByEdge=None,
 ):
     """Invalidate on mtime and hash drift, log, reconcile; return invalidated.
 
@@ -1753,7 +1757,8 @@ def _flistRunPollSideEffects(
         dictPathsByStep, dictModTimes,
     )
     bAnyReconciled = (
-        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)
+        fbReconcileUpstreamFlags(
+            dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge)
         | fbReconcileUserVerificationTimestamps(dictWorkflow)
     )
     if bAnyReconciled:
