@@ -1566,6 +1566,54 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testSignOffReconciliationByContent.py::'
+            'test_a_changed_plot_voids_the_sign_off_and_keeps_the_attested_bytes'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The shipped defect, restored: a passed sign-off whose plots
+        # differ adopts the bytes on disk as the ones attested.
+        old=(
+            '    if bMatches:\n'
+            '        return False\n'
+            '    dictVerification["sUser"] = "stale"\n'
+        ),
+        new=(
+            '    if bMatches:\n'
+            '        return False\n'
+            '    dictVerification[S_USER_VERIFIED_HASHES_KEY] = dictCurrent\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffCapturesPlotBytes.py::'
+            'test_an_unreadable_plot_refuses_the_sign_off_and_writes_nothing'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # A partial capture is let through: the sign-off is stored with
+        # a baseline that omits the plot nobody could read.
+        old='    if listUnhashed:\n        raise HTTPException(\n',
+        new='    if False:\n        raise HTTPException(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffCapturesPlotBytes.py::'
+            'test_the_browsers_test_result_save_keeps_the_baseline'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # The stored baseline is not carried forward, so the browser's
+        # whole-block PUT erases it and the next poll re-adopts the
+        # plots as a sign-off from before baselines existed.
+        old=(
+            '    if S_USER_VERIFIED_HASHES_KEY in dictStored:\n'
+            '        dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictStored[\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictStored[\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testOutputFreshnessByContent.py::'
             'test_identical_bytes_with_a_newer_mtime_leave_the_run_current'
         ),
@@ -3713,7 +3761,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testCrossMachineUserVerification.py::test_fresh_clone_does_not_discard_the_researchers_attestation',
         source='vaibify/gui/fileStatusManager.py',
         old=(
-            '        if dictRecorded and dictRecorded == dictCurrent:\n'
+            '        if bMatches and dictRecorded:\n'
             '            dictVerification["sUser"] = "passed"'
         ),
         new=(
@@ -3726,7 +3774,7 @@ LIST_FALSIFICATIONS = [
         # launder a real change into a verified state.
         nodeid='tests/testCrossMachineUserVerification.py::test_a_genuinely_changed_plot_stays_stale',
         source='vaibify/gui/fileStatusManager.py',
-        old='        if dictRecorded and dictRecorded == dictCurrent:',
+        old='        if bMatches and dictRecorded:',
         new='        if dictRecorded:',
     ),
     Falsification(
@@ -3734,8 +3782,8 @@ LIST_FALSIFICATIONS = [
         # new hash and verify itself on the following poll.
         nodeid='tests/testCrossMachineUserVerification.py::test_a_stale_step_never_adopts_the_current_hash_as_verified',
         source='vaibify/gui/fileStatusManager.py',
-        old='        if sUser == "passed":',
-        new='        if sUser in ("passed", "stale"):',
+        old='    if dictVerification["sUser"] == "stale":\n',
+        new='    if False:\n',
     ),
     Falsification(
         # Observed on a real machine: sweeping an April-dated token

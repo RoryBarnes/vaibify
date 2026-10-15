@@ -16,7 +16,10 @@ nothing to run. ``fbStepTestsPassing`` treats it as green;
 invalidation skips it; marker-application leaves it sticky.
 
 **User verification** (set by researcher clicking UI badge):
-- ``sUser``:          untested | passed | failed
+- ``sUser``:          untested | passed | failed | stale
+- ``dictUserVerifiedHashes``: the SHA-256 of every declared plot,
+  recorded server-side at sign-off; absent for a sign-off made before
+  baselines existed
 
 **Plot standards** (set by standardize-plots endpoint):
 - ``sPlotStandards``: passed | stale
@@ -31,12 +34,20 @@ invalidation skips it; marker-application leaves it sticky.
 
 State Transitions
 ~~~~~~~~~~~~~~~~~
-- Step executes      -> sUser resets to "untested"
-- Data file changes  -> sUnitTest, sIntegrity, sQualitative, sQuantitative reset to "untested"
-- Plot file changes  -> sUser resets to "untested" (if newer than sLastUserUpdate)
+A step runs data, then plots, then tests. Outputs are judged by
+content: a byte-identical file with a newer mtime changes nothing.
+
+- Step executes      -> sUser is left to the content rule below, for
+                        every run, whoever dispatched it
+- Data file changes  -> sUnitTest, sIntegrity, sQualitative, sQuantitative
+                        are no longer current ("untested")
+- Plot file changes  -> sUser becomes "stale" (the attested hashes are
+                        kept as evidence), AND the step's tests are no
+                        longer current: a plot is a declared output
 - Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True
 - Tests pass/fail    -> sUnitTest, sIntegrity, sQualitative, sQuantitative updated
-- User clicks verify -> sUser cycles: untested -> passed -> failed -> untested
+- User clicks verify -> sUser cycles: untested -> passed -> failed -> untested;
+                        a sign-off records the bytes of every declared plot
 """
 
 import logging
@@ -61,6 +72,8 @@ __all__ = [
     "fdictMatchedPathsByStep",
     "fdictOutputMtimesByStep",
     "flistStepPlotsRepoRelative",
+    "ftCaptureStepPlotHashes",
+    "S_USER_VERIFIED_HASHES_KEY",
     "fsStepFileRepoRelative",
     "fdictCollectInputPathsByStep",
     "fdictHandleCollectScriptPathsByStep",
@@ -2277,22 +2290,34 @@ def fbMaybeAutoArchive(
     return bAnyPushed
 
 
-def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot, dictWorkflow):
-    """Return ``{sRepoRelPath: sSha256}`` for a step's declared plots.
+S_USER_VERIFIED_HASHES_KEY = "dictUserVerifiedHashes"
 
-    Paths whose hash the poll did not sample are omitted rather than
-    recorded as ``None``: a missing hash must never later compare equal
-    to another missing hash and silently vouch for a file nobody read.
+
+def ftCaptureStepPlotHashes(dictWorkflow, dictStep, filesRepo):
+    """Return ``(dictHashes, listUnhashed)`` for a step's declared plots.
+
+    ``dictHashes`` maps each declared plot that hashed to its SHA-256;
+    ``listUnhashed`` names every declared plot that is missing,
+    unreadable, unsampled, or answered with no hash. A capture is
+    COMPLETE only when ``listUnhashed`` is empty: a partial map must
+    never be taken for the whole, because a plot it omits would then
+    compare as "nothing to compare" rather than as a difference.
     """
+    from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
     listPlotPaths = flistStepPlotsRepoRelative(dictWorkflow, dictStep)
     if not listPlotPaths:
-        return {}
-    dictHashes = filesRepo.fdictHashFiles(listPlotPaths)
-    return {
-        sPath: dictEntry.get("sSha256")
-        for sPath, dictEntry in dictHashes.items()
-        if dictEntry.get("sSha256")
-    }
+        return {}, []
+    try:
+        dictEntries = filesRepo.fdictHashFiles(listPlotPaths)
+    except (OSError, KeyError, ValueError) as error:
+        fnReRaiseControlPlaneRefusal(error)
+        return {}, list(listPlotPaths)
+    dictHashes = {}
+    for sPath in listPlotPaths:
+        sSha256 = (dictEntries.get(sPath) or {}).get("sSha256")
+        if sSha256:
+            dictHashes[sPath] = sSha256
+    return dictHashes, [s for s in listPlotPaths if s not in dictHashes]
 
 
 def fsStepFileRepoRelative(dictWorkflow, dictStep, sFile):
@@ -2332,59 +2357,73 @@ def flistStepPlotsRepoRelative(dictWorkflow, dictStep):
 def fbReconcileUserVerificationByContentHash(
     dictWorkflow, filesRepo, sRepoRoot,
 ):
-    """Restore attestations that only *look* stale, and record hashes.
+    """Hold each sign-off to the bytes it attested; True when any step changed.
 
-    A git checkout stamps every file with the checkout time, so on a
-    fresh clone every plot is "newer than" ``sLastUserUpdate`` and the
-    mtime comparison marks every researcher attestation stale — even
-    though the bytes are identical and committed. That silently
-    discards the researcher's "yes, I looked at this" on every machine
-    hop, which is exactly what the multi-machine workflow must not do.
+    A sign-off attests the exact bytes of every declared plot, recorded
+    server-side at the moment of sign-off (``dictUserVerifiedHashes``,
+    see ``stepRoutes``). Judged by content, never by clock:
 
-    Two passes, both keyed on content rather than clock:
+    * ``passed`` with a recorded baseline stays ``passed`` only while
+      every declared plot hashes and the hashes equal the baseline.
+      Different bytes, or a declared plot missing or unreadable, make
+      it ``stale``, and the baseline is KEPT as evidence of what was
+      attested. It is never replaced by what is on disk now.
+    * ``stale`` is restored to ``passed`` when a non-empty baseline
+      matches every declared plot again: the mtime moved (a git
+      checkout stamps every file), the content did not.
+    * A ``passed`` sign-off with NO baseline was made before baselines
+      were recorded. It is recorded once, trusting the plots as they
+      are on first use, and only from a COMPLETE capture; a partial
+      or empty capture of declared plots records nothing and makes it
+      ``stale``. A legacy sign-off made stale this way cannot heal,
+      because there is nothing to match against; the researcher signs
+      off again.
 
-    * a step still reading ``passed`` records the hashes of its plots,
-      so a later machine has something to compare against. Recording
-      happens only while the step reads ``passed`` — never while it
-      reads ``stale`` — so a plot that genuinely changed after the
-      attestation can never have its new hash adopted as verified.
-    * a step reading ``stale`` whose recorded hashes all still match
-      is restored to ``passed``: the mtime moved, the content did not.
-
-    Returns True when any step changed, so the caller can persist.
-    The caller owns the write-back; this never saves.
+    Absence of the key means "never recorded"; a present ``{}`` means a
+    step with no declared plots was captured at sign-off. Returns True
+    when any step changed, so the caller can persist; this never saves.
+    ``sRepoRoot`` is unused: every path resolves through
+    ``fsStepFileRepoRelative`` from the workflow's own root.
 
     The AI Declaration step is EXCLUDED, explicitly: its ``stale`` is
     a latched verdict about OTHER steps' files, and only a new
     researcher sign-off may clear it (``declarationFreshness``).
-    Restoring it here because its own plot hashes matched would undo
-    the stickiness that ruling requires.
     """
     from vaibify.reproducibility.aiDeclarationStep import (
         fbStepIsAiDeclaration,
     )
+    del sRepoRoot
     bChanged = False
     for dictStep in dictWorkflow.get("listSteps", []) or []:
         if fbStepIsAiDeclaration(dictStep):
             continue
         dictVerification = dictStep.get("dictVerification") or {}
-        sUser = dictVerification.get("sUser")
-        if sUser not in ("passed", "stale"):
+        if dictVerification.get("sUser") not in ("passed", "stale"):
             continue
-        dictCurrent = _fdictPlotHashesForStep(
-            dictStep, filesRepo, sRepoRoot, dictWorkflow,
-        )
-        if not dictCurrent:
-            continue
-        dictRecorded = dictVerification.get("dictUserVerifiedHashes") or {}
-        if sUser == "passed":
-            if dictRecorded != dictCurrent:
-                dictVerification["dictUserVerifiedHashes"] = dictCurrent
-                dictStep["dictVerification"] = dictVerification
-                bChanged = True
-            continue
-        if dictRecorded and dictRecorded == dictCurrent:
-            dictVerification["sUser"] = "passed"
+        if _fbReconcileOneSignOff(dictWorkflow, dictStep, filesRepo):
             dictStep["dictVerification"] = dictVerification
             bChanged = True
     return bChanged
+
+
+def _fbReconcileOneSignOff(dictWorkflow, dictStep, filesRepo):
+    """Apply the content rule to one attested step; True when it changed."""
+    dictVerification = dictStep["dictVerification"]
+    dictCurrent, listUnhashed = ftCaptureStepPlotHashes(
+        dictWorkflow, dictStep, filesRepo)
+    bComplete = not listUnhashed
+    bRecorded = S_USER_VERIFIED_HASHES_KEY in dictVerification
+    dictRecorded = dictVerification.get(S_USER_VERIFIED_HASHES_KEY)
+    bMatches = bRecorded and bComplete and dictCurrent == dictRecorded
+    if dictVerification["sUser"] == "stale":
+        if bMatches and dictRecorded:
+            dictVerification["sUser"] = "passed"
+            return True
+        return False
+    if not bRecorded and bComplete:
+        dictVerification[S_USER_VERIFIED_HASHES_KEY] = dictCurrent
+        return True
+    if bMatches:
+        return False
+    dictVerification["sUser"] = "stale"
+    return True

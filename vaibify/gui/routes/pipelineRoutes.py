@@ -2195,13 +2195,22 @@ def _fdictHydrateShaCacheFromContainer(dictCtx, sContainerId, sRepoRoot):
 
 
 def _flistAllOutputRepoPaths(dictWorkflow, sRepoRoot):
-    """Return deduplicated repo-relative declared outputs across steps."""
-    from ..fileStatusManager import _flistStepOutputsRepoRelative
+    """Return deduplicated repo-relative declared outputs across steps.
+
+    The declared plots are also sampled as ``fsStepFileRepoRelative``
+    resolves them, with the workflow's variables filled: the sign-off
+    content pass judges each plot by that key, and a plot the snapshot
+    never hashed would read as unreadable and void the sign-off.
+    """
+    from ..fileStatusManager import (
+        _flistStepOutputsRepoRelative, flistStepPlotsRepoRelative,
+    )
     setPaths = set()
     for dictStep in dictWorkflow.get("listSteps", []) or []:
         setPaths.update(
             _flistStepOutputsRepoRelative(dictStep, sRepoRoot),
         )
+        setPaths.update(flistStepPlotsRepoRelative(dictWorkflow, dictStep))
     return sorted(sPath for sPath in setPaths if sPath)
 
 

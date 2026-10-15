@@ -10,7 +10,9 @@ from fastapi import HTTPException, Request
 from ...config.registryManager import fbIsHostProject
 from .. import stepRename, workflowManager
 from ..actionCatalog import ffnAgentAction
-from ..fileStatusManager import fbMaybeAutoArchive
+from ..fileStatusManager import (
+    S_USER_VERIFIED_HASHES_KEY, fbMaybeAutoArchive, ftCaptureStepPlotHashes,
+)
 from vaibify.reproducibility.levelGates import fiProofLevel
 from vaibify.reproducibility.declarationFreshness import (
     DeclarationEvidenceUnreadableError,
@@ -321,6 +323,10 @@ async def _fnUpdateThenArchiveUnderTheDrain(
             dictCtx["docker"], sContainerId, dictWorkflow, iStepIndex,
             dictUpdates,
         )
+        _fnRecordUserVerifiedHashes(
+            ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
+            dictWorkflow, iStepIndex, dictUpdates,
+        )
         _fnRecordDeclarationBaseline(
             ffilesForWorkflow(dictCtx, sContainerId, dictWorkflow),
             dictWorkflow, iStepIndex, dictUpdates,
@@ -426,6 +432,51 @@ def _fnStampServerSideUserUpdate(
         dictStamped["sLastUserUpdate"] = _fsReadContainerClockUtc(
             connectionDocker, sContainerId)
     dictUpdates["dictVerification"] = dictStamped
+
+
+def _fnRecordUserVerifiedHashes(
+    filesRepo, dictWorkflow, iStepIndex, dictUpdates,
+):
+    """Record the bytes a sign-off attests, or refuse the sign-off (409).
+
+    The baseline (``dictUserVerifiedHashes``) is never taken from the
+    client, whose copy is discarded as ``sLastUserUpdate``'s is. The
+    request REPLACES the whole verification block, so every update
+    that is not a fresh sign-off carries the stored baseline forward:
+    a baseline the request omits would otherwise vanish and read as a
+    sign-off from before baselines existed. On a transition to
+    ``passed`` every declared plot is hashed NOW; if any one cannot be,
+    the sign-off is refused before anything is written, and a partial
+    record is never kept. A step with no declared plots records
+    ``{}``. The AI Declaration step records its own baseline.
+    """
+    from vaibify.reproducibility.aiDeclarationStep import (
+        fbStepIsAiDeclaration,
+    )
+    dictUpdate = dictUpdates.get("dictVerification")
+    listSteps = dictWorkflow.get("listSteps", [])
+    if not isinstance(dictUpdate, dict) or not 0 <= iStepIndex < len(listSteps):
+        return
+    dictStep = listSteps[iStepIndex]
+    dictStored = dictStep.get("dictVerification") or {}
+    dictUpdate.pop(S_USER_VERIFIED_HASHES_KEY, None)
+    if S_USER_VERIFIED_HASHES_KEY in dictStored:
+        dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictStored[
+            S_USER_VERIFIED_HASHES_KEY]
+    if fbStepIsAiDeclaration(dictStep) or dictUpdate.get("sUser") != (
+            "passed") or dictStored.get("sUser") == "passed":
+        return
+    dictHashes, listUnhashed = ftCaptureStepPlotHashes(
+        dictWorkflow, dictStep, filesRepo)
+    if listUnhashed:
+        raise HTTPException(
+            409, "The sign-off was not recorded: vaibify could not read "
+            + ", ".join(listUnhashed[:5])
+            + (" and others" if len(listUnhashed) > 5 else "")
+            + ", so it could not record the plots you are signing off. "
+            "Check that each declared plot exists and is readable, then "
+            "sign off again.")
+    dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictHashes
 
 
 def _fnRecordDeclarationBaseline(

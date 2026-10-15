@@ -1623,13 +1623,20 @@ def _fdictActivePollStep():
     """Return a step with activity whose L1 requirements are all met.
 
     Declares one data file so exactly one L3 criterion applies — the
-    expected "attained" L3 cell below is earned, not vacuous.
+    expected "attained" L3 cell below is earned, not vacuous. The
+    sign-off carries the baseline recorded at sign-off (no plots, so
+    ``{}``), as every sign-off now does; without it the first poll
+    records the baseline and saves once, and the steady state these
+    tests count saves in is the one after that.
     """
     return {
         "sDirectory": "stepA", "sName": "A",
         "saOutputDataFiles": ["stepA/output.json"],
         "bNoInputData": True,
-        "dictVerification": {"sUser": "passed", "sUnitTest": "passed"},
+        "dictVerification": {
+            "sUser": "passed", "sUnitTest": "passed",
+            "dictUserVerifiedHashes": {},
+        },
     }
 
 
