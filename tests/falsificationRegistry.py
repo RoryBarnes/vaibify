@@ -1559,8 +1559,67 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old='return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
-        new='return (iExitCode, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
+        # The plot section's exit code is dropped, so the step reports
+        # the data section's success over a failed plot.
+        old='        iExitCode, fPlotCpu = await _ftRunCommandList(',
+        new='        _iPlotExit, fPlotCpu = await _ftRunCommandList(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_full_runs_data_then_plots_then_tests'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The tests run before the plots again, so every plot the step
+        # draws is newer than the run its tests recorded.
+        old=(
+            '    if sRunMode != "dataOnly":\n'
+            '        iExitCode, fPlotCpu = await _ftRunCommandList(\n'
+        ),
+        new=(
+            '    if sRunMode != "plotsOnly":\n'
+            '        await _fiRunTestCommands(\n'
+            '            connectionDocker, sContainerId, dictStep,\n'
+            '            sStepDirectory, dictVariables, fnStatusCallback,\n'
+            '            iStepNumber,\n'
+            '        )\n'
+            '    if sRunMode != "dataOnly":\n'
+            '        iExitCode, fPlotCpu = await _ftRunCommandList(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_failing_tests_leave_the_plot_exit_code'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The step takes the tests' exit code, so failing tests fail a
+        # step whose commands all succeeded.
+        old=(
+            '    await _fiRunTestCommands(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+        ),
+        new=(
+            '    iExitCode = await _fiRunTestCommands(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_plot_failure_leaves_the_tests_unrun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # A plot failure no longer stops the step, so the tests run
+        # against plots that were never drawn and record a result.
+        old=(
+            '    if iExitCode != 0:\n'
+            '        if _flistResolveTestCommands(dictStep):\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        if _flistResolveTestCommands(dictStep):\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fnVerifyOnly_missing_output_emits_stepFail_badge',
