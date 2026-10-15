@@ -798,11 +798,17 @@ def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, listPlotPaths):
     ``_fdictResolvePlotPathsForAttestedSteps``). ``bChecked`` is False
     when the step is not user-attested, has no ``sLastUserUpdate``
     field, or carries an unparseable timestamp — in any of those
-    cases the caller skips the step. When ``bChecked`` is True the
+    cases the caller skips the step. It is False too for a sign-off
+    that recorded its plots' bytes (``dictUserVerifiedHashes``): the
+    content pass judges that one in both directions, and a timestamp
+    verdict here would only be reversed by it on every poll, saving
+    the workflow twice for nothing. When ``bChecked`` is True the
     freshness-check log line has been emitted as a side effect.
     """
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUser") != "passed":
+        return False, False
+    if S_USER_VERIFIED_HASHES_KEY in dictVerification:
         return False, False
     sLastUserUpdate = dictVerification.get("sLastUserUpdate", "")
     if not sLastUserUpdate:

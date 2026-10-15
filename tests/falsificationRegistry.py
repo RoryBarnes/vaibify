@@ -1567,6 +1567,18 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/testSignOffReconciliationByContent.py::'
+            'test_a_sign_off_with_a_recorded_baseline_is_left_to_the_content_pass'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The timestamp check judges a sign-off whose bytes are recorded
+        # again: every poll marks it stale and the content pass restores
+        # it, saving the workflow twice for nothing.
+        old='    if S_USER_VERIFIED_HASHES_KEY in dictVerification:\n        return False, False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffReconciliationByContent.py::'
             'test_a_changed_plot_voids_the_sign_off_and_keeps_the_attested_bytes'
         ),
         source='vaibify/gui/fileStatusManager.py',

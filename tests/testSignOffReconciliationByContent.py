@@ -143,3 +143,34 @@ def test_a_stale_sign_off_is_otherwise_left_stale(
     assert bChanged is False
     assert dictVerification["sUser"] == "stale"
     assert dictVerification.get(S_KEY) == dictRecorded
+
+
+def _ftTimestampCheckWithAPlotNewerThanTheSignOff(dictRecorded):
+    """Run the poll's timestamp check; return (bChanged, sUser)."""
+    import calendar
+    import time
+    from vaibify.gui.fileStatusManager import _fbCheckStaleUserVerification
+    dictWorkflow = _fdictWorkflow("passed", dictRecorded)
+    iSignedOff = calendar.timegm(time.strptime(
+        "2026-10-15 12:00:00 UTC", "%Y-%m-%d %H:%M:%S UTC"))
+    dictModTimes = {
+        S_REPO_ROOT + "/Plot/fig.pdf": str(iSignedOff + 600),
+        S_REPO_ROOT + "/Step/figure.pdf": str(iSignedOff + 600),
+    }
+    bChanged = _fbCheckStaleUserVerification(dictWorkflow, dictModTimes, {
+        "sRepoRoot": S_REPO_ROOT, "sPlotDirectory": S_REPO_ROOT + "/Plot",
+        "sFigureType": "pdf"})
+    return bChanged, dictWorkflow["listSteps"][0]["dictVerification"]["sUser"]
+
+
+@pytest.mark.falsification
+def test_a_sign_off_with_a_recorded_baseline_is_left_to_the_content_pass():
+    """Kills: the timestamp check judging a sign-off whose bytes are
+    recorded, which the content pass then reverses on every poll."""
+    assert _ftTimestampCheckWithAPlotNewerThanTheSignOff(DICT_ATTESTED) == (
+        False, "passed")
+
+
+def test_a_sign_off_from_before_baselines_still_goes_stale_by_the_clock():
+    assert _ftTimestampCheckWithAPlotNewerThanTheSignOff(None) == (
+        True, "stale")
