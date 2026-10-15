@@ -59,7 +59,7 @@ I_REFRESH_CACHE_MAX_ENTRIES = 256
 # The constant is embedded in every generated file as a comment line
 # beginning with ``S_CONFTEST_VERSION_PREFIX`` so the reader can detect
 # stale copies without parsing the source.
-S_CONFTEST_VERSION = "9"
+S_CONFTEST_VERSION = "10"
 S_CONFTEST_VERSION_PREFIX = "# vaibify-conftest-version: "
 S_NO_TESTS_DIRECTORY = "no-tests-directory"
 _REGEX_CONFTEST_VERSION = re.compile(
@@ -992,13 +992,40 @@ def _fsRepoRelFromFile(sFile, sStepDirRel):
     return os.path.normpath(sJoined).replace(os.sep, "/")
 
 
+def _fdictOutputVariables(dictWorkflow):
+    """Return the workflow variables a declared output path may name.
+
+    Mirrors the host's ``fdictBuildGlobalVariablesForRoot``: a relative
+    ``sPlotDirectory`` lies under the project repo, and the figure type
+    is lower case. The host's poll and sign-off resolve the same names
+    the same way, so a templated plot is hashed here under the key the
+    host judges it by.
+    """
+    sPlotDirectory = str(dictWorkflow.get("sPlotDirectory", "Plot"))
+    if not sPlotDirectory.startswith("/"):
+        sPlotDirectory = str(_PROJECT_REPO).rstrip("/") + "/" + sPlotDirectory
+    return {
+        "sPlotDirectory": sPlotDirectory,
+        "sRepoRoot": str(_PROJECT_REPO),
+        "sFigureType": str(dictWorkflow.get("sFigureType", "pdf")).lower(),
+    }
+
+
+def _fsFillOutputTemplate(sFile, dictVariables):
+    """Return sFile with the workflow variables filled, or "" if a token stays."""
+    for sName, sValue in dictVariables.items():
+        sFile = sFile.replace("{" + sName + "}", sValue)
+    return "" if "{" in sFile else sFile
+
+
 def _flistStepOutputFiles(sStepDir):
     """Return repo-relative posix paths of the step's output files.
 
     Reads every workflow JSON under ``.vaibify/workflows`` and
     collects files from the step whose directory (repo-relative)
-    matches sStepDir's repo-relative form. Duplicates are removed
-    while order is preserved.
+    matches sStepDir's repo-relative form. A templated entry has its
+    workflow variables filled first; one naming any other token is
+    skipped. Duplicates are removed while order is preserved.
     """
     listResult = []
     setSeen = set()
@@ -1014,9 +1041,11 @@ def _flistStepOutputFiles(sStepDir):
             )
             if sCandidateRel != sWantedRel:
                 continue
+            dictVariables = _fdictOutputVariables(dictWorkflow)
             for sKey in ("saOutputDataFiles", "saPlotFiles"):
-                for sFile in dictStep.get(sKey, []):
-                    if "{" in sFile:
+                for sTemplate in dictStep.get(sKey, []):
+                    sFile = _fsFillOutputTemplate(sTemplate, dictVariables)
+                    if not sFile:
                         continue
                     sRel = _fsRepoRelFromFile(sFile, sWantedRel)
                     if sRel and sRel not in setSeen:

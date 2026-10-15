@@ -58,6 +58,8 @@ _LIST_CATEGORY_KEYS = (
 
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "flistStepPlotsRepoRelative",
+    "fsStepFileRepoRelative",
     "fdictCollectInputPathsByStep",
     "fdictHandleCollectScriptPathsByStep",
     "fdictHandleCollectMarkerPathsByStep",
@@ -2226,14 +2228,14 @@ def fbMaybeAutoArchive(
     return bAnyPushed
 
 
-def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot):
+def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot, dictWorkflow):
     """Return ``{sRepoRelPath: sSha256}`` for a step's declared plots.
 
     Paths whose hash the poll did not sample are omitted rather than
     recorded as ``None``: a missing hash must never later compare equal
     to another missing hash and silently vouch for a file nobody read.
     """
-    listPlotPaths = _flistStepPlotsRepoRelative(dictStep, sRepoRoot)
+    listPlotPaths = flistStepPlotsRepoRelative(dictWorkflow, dictStep)
     if not listPlotPaths:
         return {}
     dictHashes = filesRepo.fdictHashFiles(listPlotPaths)
@@ -2244,22 +2246,35 @@ def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot):
     }
 
 
-def _flistStepPlotsRepoRelative(dictStep, sRepoRoot):
-    """Return repo-relative paths for this step's declared plot files.
+def fsStepFileRepoRelative(dictWorkflow, dictStep, sFile):
+    """Return one declared output of a step as a repo-relative path.
 
-    Resolves exactly as :func:`_flistStepOutputsRepoRelative` does, so
-    the keys line up with the hashes the poll snapshot sampled.
+    THE resolution of a declared data or plot path, shared by the
+    poll's per-path freshness, the sign-off capture and its content
+    reconciliation: the workflow's variables are filled exactly as the
+    runner fills them (``fdictBuildGlobalVariablesForRoot``, so
+    ``{sPlotDirectory}`` names the repo's plot directory, never one
+    under the step), a relative result is joined onto the step
+    directory and then the repo root, and the repo root is stripped
+    again. The container's marker plugin cannot import this and carries
+    a mirror of it; a parity test holds the two together.
     """
     from .pathContract import fsAbsToRepoRelative
-    sStepDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictVariables = workflowManager.fdictBuildGlobalVariablesForRoot(
+        dictWorkflow, sRepoRoot)
+    sAbsolute = _fsResolveStepFilePath(
+        sFile, dictStep.get("sDirectory", ""), dictVariables)
+    return fsAbsToRepoRelative(sAbsolute, sRepoRoot)
+
+
+def flistStepPlotsRepoRelative(dictWorkflow, dictStep):
+    """Return repo-relative paths for this step's declared plot files."""
     listRelative = []
     for sFile in dictStep.get("saPlotFiles", []) or []:
         if not sFile:
             continue
-        sAbs = _fsResolveStepFilePath(
-            sFile, sStepDirectory, {"sRepoRoot": sRepoRoot},
-        )
-        sRelative = fsAbsToRepoRelative(sAbs, sRepoRoot)
+        sRelative = fsStepFileRepoRelative(dictWorkflow, dictStep, sFile)
         if sRelative:
             listRelative.append(sRelative)
     return listRelative
@@ -2308,7 +2323,7 @@ def fbReconcileUserVerificationByContentHash(
         if sUser not in ("passed", "stale"):
             continue
         dictCurrent = _fdictPlotHashesForStep(
-            dictStep, filesRepo, sRepoRoot,
+            dictStep, filesRepo, sRepoRoot, dictWorkflow,
         )
         if not dictCurrent:
             continue

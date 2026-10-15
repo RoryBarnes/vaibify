@@ -1566,6 +1566,26 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testMarkerHashesTemplatedPlots.py::'
+            'test_a_changed_templated_plot_with_an_older_mtime_leaves_the_tests_not_current'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        # The plugin skips templated outputs again, so a plot declared
+        # as {sPlotDirectory}/fig.{sFigureType} is never hashed and a
+        # change to its bytes is invisible to the run's content check.
+        old=(
+            '                    sFile = _fsFillOutputTemplate(sTemplate, dictVariables)\n'
+            '                    if not sFile:\n'
+            '                        continue\n'
+        ),
+        new=(
+            '                    if "{" in sTemplate:\n'
+            '                        continue\n'
+            '                    sFile = sTemplate\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
             'tests/testPipelineRunnerBranches.py::'
             'test_ftRunStepCommands_full_runs_data_then_plots_then_tests'
         ),
