@@ -5571,8 +5571,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # the Level 1 pencil judge a file by the digest the newest test run
     # or the sign-off recorded, the same rule as the tests. -> 2646: the
     # upstream flag judges the files a step names by token, by the
-    # digests the step recorded consuming.
-    "fileStatusManager.py": 2646,
+    # digests the step recorded consuming; its state-machine docstring
+    # says so (2648).
+    "fileStatusManager.py": 2648,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
