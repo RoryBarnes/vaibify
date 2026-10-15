@@ -81,4 +81,4 @@ def fdictStates(sRepo, dictRunVerdicts=None):
         sFile for sFile in os.listdir(sTests)
         if sFile.startswith("test_") and sFile.endswith(".py"))
     return contract.fdictCategoryStatesFromMarker(
-        dictMarker, listFiles, {}, dictRunVerdicts or {}, 0)
+        dictMarker, listFiles, {}, dictRunVerdicts or {}, {})

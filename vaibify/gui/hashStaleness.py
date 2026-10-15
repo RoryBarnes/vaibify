@@ -31,6 +31,7 @@ from . import testMarkerContract
 
 __all__ = [
     "fdictHashEntriesOfSnapshot",
+    "fdictMatchedPathsByRun",
     "fdictVerdictsForMarker",
     "fdictVerdictsForMarkerRuns",
     "flistMarkerHashedPaths",
@@ -167,6 +168,31 @@ def fdictVerdictsForMarkerRuns(dictMarker, dictHashEntries):
     dictStep = _fdictStepVerdictFromRuns(dictPerRun, dictRunVerdicts, dictRuns)
     dictStep["dictRunVerdicts"] = dictRunVerdicts
     return dictStep
+
+
+def fdictMatchedPathsByRun(dictMarker, dictHashEntries):
+    """Return ``{sRunId: [paths]}``: each run's recorded paths that still match.
+
+    A path is listed for a run only when that run recorded its digest
+    and the poll snapshot measured the same bytes. This is the content
+    evidence that lets an output newer than a run leave the run current
+    (``testMarkerContract.flistOutputsOutrunningRun``); a path missing,
+    unreadable or unsampled is never listed.
+    """
+    dictNormalized = testMarkerContract.fdictNormalizeMarker(dictMarker)
+    dictResult = {}
+    for sRunId, dictRun in (dictNormalized or {}).get("dictRuns", {}).items():
+        setMatched = set()
+        for sHashKey in _T_MARKER_HASH_KEYS:
+            if not fbMarkerHasHashes(dictRun, sHashKey):
+                continue
+            for sRelPath, sBaselineSha in dictRun[sHashKey].items():
+                if fsVerdictForPath(
+                    sBaselineSha, dictHashEntries.get(sRelPath),
+                ) == S_VERDICT_MATCH:
+                    setMatched.add(sRelPath)
+        dictResult[sRunId] = sorted(setMatched)
+    return dictResult
 
 
 def _fdictStepVerdictFromRuns(dictPerRun, dictRunVerdicts, dictRuns):

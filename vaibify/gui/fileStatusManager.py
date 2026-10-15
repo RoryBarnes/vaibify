@@ -58,6 +58,8 @@ _LIST_CATEGORY_KEYS = (
 
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "fdictMatchedPathsByStep",
+    "fdictOutputMtimesByStep",
     "flistStepPlotsRepoRelative",
     "fsStepFileRepoRelative",
     "fdictCollectInputPathsByStep",
@@ -1400,6 +1402,53 @@ def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
             & set(dictVerdicts["dictRunVerdicts"].values())
         ):
             dictResult[iIndex] = dictVerdicts
+    return dictResult
+
+
+def fdictMatchedPathsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
+    """Return ``{iStepIndex: {sRunId: [paths]}}`` of digests that still match.
+
+    Listed for EVERY step whose marker matches the live step, not only
+    for the steps ``fdictMarkerVerdictsByStep`` keeps: a step whose
+    every digest matches is exactly the one whose newer outputs the
+    content can vouch for. An unreadable marker vouches for nothing.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictMarker = _fdictMarkerForStep(
+            dictStep, iIndex, dictMarkersByStep or {},
+        )
+        if dictMarker is None or dictMarker.get("bMarkerUnreadable"):
+            continue
+        dictResult[iIndex] = hashStaleness.fdictMatchedPathsByRun(
+            dictMarker, dictHashEntries,
+        )
+    return dictResult
+
+
+def fdictOutputMtimesByStep(dictWorkflow, dictRepoRelativeModTimes):
+    """Return ``{iStepIndex: {sRepoRelPath: fMtime}}`` for declared outputs.
+
+    Each step's declared data and plot files, resolved by
+    ``fsStepFileRepoRelative``, with the mtime the poll measured; a
+    path the poll could not stat is left out, as it was from the
+    per-step maximum this replaces for test freshness.
+    """
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictMtimes = {}
+        for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
+            dictStep.get("saPlotFiles", []) or []
+        ):
+            if not sFile:
+                continue
+            sRelative = fsStepFileRepoRelative(dictWorkflow, dictStep, sFile)
+            if sRelative in dictRepoRelativeModTimes:
+                dictMtimes[sRelative] = float(
+                    dictRepoRelativeModTimes[sRelative])
+        dictResult[iIndex] = dictMtimes
     return dictResult
 
 

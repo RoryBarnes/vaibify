@@ -38,12 +38,14 @@ the standard library, and name only what is transcribed with it.
 __all__ = [
     "LIST_TRANSCRIBED_WRITER_FUNCTIONS",
     "S_LEGACY_RUN_ID",
+    "S_REASON_OUTPUTS_NEWER_THAN_RUN",
     "T_CATEGORY_FILE_PREFIXES",
     "T_NON_FAILING_OUTCOMES",
     "T_NOT_CURRENT_VERDICTS",
     "fdictCategoryStatesFromMarker",
     "fdictMergeSessionIntoMarker",
     "fdictNormalizeMarker",
+    "flistOutputsOutrunningRun",
     "fsCategoryOfFileName",
     "ftLatestRun",
 ]
@@ -67,6 +69,10 @@ T_NON_FAILING_OUTCOMES = ("passed", "skipped", "xfailed", "xpassed")
 T_NOT_CURRENT_VERDICTS = (
     "drift", "outputs-changed", "outputs-missing", "unrecorded",
 )
+
+# Why a run is not current when an output is newer than it and its
+# content could not vouch for the change (``flistOutputsOutrunningRun``).
+S_REASON_OUTPUTS_NEWER_THAN_RUN = "outputs-newer-than-run"
 
 # The run id the normalizer gives a marker written before runs existed.
 S_LEGACY_RUN_ID = "legacy"
@@ -258,15 +264,39 @@ def ftLatestRun(dictMarker):
     return (sRunId, dictRuns[sRunId])
 
 
+def flistOutputsOutrunningRun(
+    sRunId, dictRun, dictOutputMtimes, dictMatchedPathsByRun,
+):
+    """Return the step outputs newer than a run that content cannot vouch for.
+
+    ``dictOutputMtimes`` maps each declared output (repo-relative) to
+    its mtime; ``dictMatchedPathsByRun`` maps a run id to the paths
+    whose digest that run recorded AND this poll measured unchanged. A
+    newer output is excused only when it is among the run's matched
+    paths: the same bytes earn the same verdict, whatever the clock
+    says. Anything less -- no digest recorded (a marker written before
+    plots were hashed), the file missing or unreadable, a path the poll
+    did not sample, an unknown verdict -- leaves the timestamp's word
+    standing, so uncertainty reads as not current, never as passed.
+    """
+    fRunTime = (dictRun or {}).get("fTimestamp", 0)
+    setMatched = set((dictMatchedPathsByRun or {}).get(sRunId) or ())
+    return sorted(
+        sPath for sPath, fMtime in (dictOutputMtimes or {}).items()
+        if fMtime > fRunTime and sPath not in setMatched)
+
+
 def _fbRunIsCurrent(sRunId, dictContext):
     """Return True iff nothing known says the run's results no longer apply.
 
     A run is not current when it carries no UTC stamp (the pre-2026-04
     format cannot be tied to any data state), when its recorded data
     DRIFTED from the files now (the poll's own hash verdict for THIS
-    run), when the step's outputs are newer than the run, or when an
+    run), when a step output is newer than the run and its content
+    cannot vouch for it (``flistOutputsOutrunningRun``), or when an
     unattributed failure is newer than the run. An UNKNOWN verdict does
-    not make a run stale: the dashboard says so on its own row.
+    not by itself make a run stale: the dashboard says so on its own
+    row.
     """
     dictRun = dictContext["dictMarker"]["dictRuns"].get(sRunId)
     if not dictRun or not dictRun.get("sRunAtUtc"):
@@ -274,7 +304,10 @@ def _fbRunIsCurrent(sRunId, dictContext):
     if dictContext["dictRunVerdicts"].get(sRunId) in T_NOT_CURRENT_VERDICTS:
         return False
     fRunTime = dictRun.get("fTimestamp", 0)
-    if dictContext["fMaxOutputMtime"] > fRunTime:
+    if flistOutputsOutrunningRun(
+        sRunId, dictRun, dictContext["dictOutputMtimes"],
+        dictContext["dictMatchedPathsByRun"],
+    ):
         return False
     dictFailure = dictContext["dictMarker"]["dictUnattributedFailure"]
     return not (dictFailure and dictFailure.get("fTimestamp", 0) >= fRunTime)
@@ -348,9 +381,16 @@ def _fsFileStateFromCounts(dictResult):
 
 
 def _fsReasonRunIsNotCurrent(sRunId, dictContext):
-    """Return the verdict that made a run non-current, or ""."""
+    """Return why a run is not current, or "" when no named reason applies."""
     sVerdict = dictContext["dictRunVerdicts"].get(sRunId, "")
-    return sVerdict if sVerdict in T_NOT_CURRENT_VERDICTS else ""
+    if sVerdict in T_NOT_CURRENT_VERDICTS:
+        return sVerdict
+    if flistOutputsOutrunningRun(
+        sRunId, dictContext["dictMarker"]["dictRuns"].get(sRunId),
+        dictContext["dictOutputMtimes"], dictContext["dictMatchedPathsByRun"],
+    ):
+        return S_REASON_OUTPUTS_NEWER_THAN_RUN
+    return ""
 
 
 def _fdictLegacyCategoryState(sCategory, dictContext):
@@ -420,7 +460,8 @@ def _fdictStateOfCategory(sCategory, listFiles, dictContext):
 
 
 _T_REASON_SEVERITY = (
-    "outputs-missing", "outputs-changed", "drift", "unrecorded",
+    "outputs-missing", "outputs-changed", "drift",
+    S_REASON_OUTPUTS_NEWER_THAN_RUN, "unrecorded",
 )
 
 
@@ -452,7 +493,7 @@ def _fdictFoldFileStates(dictResult, listStates):
 
 def fdictCategoryStatesFromMarker(
     dictMarker, listPresentFiles, dictFileMtimes, dictRunVerdicts,
-    fMaxOutputMtime,
+    dictOutputMtimes, dictMatchedPathsByRun=None,
 ):
     """Return ``{category: {sState, iTotalTests, iCurrentTests, ...}}``.
 
@@ -467,9 +508,11 @@ def fdictCategoryStatesFromMarker(
     * ``untested`` -- anything else.
 
     A result is CURRENT when its run's data still matches (the run is
-    not ``drift`` in ``dictRunVerdicts``, the step's outputs are not
-    newer than the run, and no unattributed failure is newer) and the
-    run is not older than the test file it lives in. ``bHasMarkerInfo``
+    not ``drift`` in ``dictRunVerdicts``, no step output in
+    ``dictOutputMtimes`` is newer than the run unless the run recorded
+    that output's digest and ``dictMatchedPathsByRun`` says this poll
+    measured the same bytes, and no unattributed failure is newer) and
+    the run is not older than the test file it lives in. ``bHasMarkerInfo``
     says whether the marker speaks for the category at all; a category it
     never mentions is left to its other writers. The vocabulary stays
     ``passed`` / ``failed`` / ``untested``; counts ride beside it, and
@@ -482,7 +525,8 @@ def fdictCategoryStatesFromMarker(
     dictContext = {
         "dictMarker": dictNormalized, "dictFileMtimes": dictFileMtimes or {},
         "dictRunVerdicts": dictRunVerdicts or {},
-        "fMaxOutputMtime": fMaxOutputMtime or 0,
+        "dictOutputMtimes": dictOutputMtimes or {},
+        "dictMatchedPathsByRun": dictMatchedPathsByRun or {},
     }
     dictResult = {}
     for _sPrefix, sCategory in T_CATEGORY_FILE_PREFIXES:

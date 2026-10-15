@@ -1289,7 +1289,7 @@ def _fdictVerificationFromMarker(dictMarker, dictOnDiskHashes):
     }
     dictStates = testMarkerContract.fdictCategoryStatesFromMarker(
         dictNormalized, sorted(dictNormalized["dictTestFiles"]), {},
-        dictRunVerdicts, 0)
+        dictRunVerdicts, {})
     return truthDerivation.fdictComputeTestAxes(
         testMarkerContract.ftLatestRun(dictNormalized)[1],
         dictOnDiskHashes, listCategories, dictStates)

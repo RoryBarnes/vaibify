@@ -1566,6 +1566,57 @@ LIST_FALSIFICATIONS = [
     ),
     Falsification(
         nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_identical_bytes_with_a_newer_mtime_leave_the_run_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # The content exemption is gone: a byte-identical output with a
+        # newer timestamp makes the run stale on the timestamp alone.
+        old='        if fMtime > fRunTime and sPath not in setMatched)',
+        new='        if fMtime > fRunTime)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_output_the_run_never_hashed_leaves_it_not_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # Every newer output is excused whether or not its digest was
+        # recorded, so a run from before plots were hashed reads current
+        # over a plot it never saw.
+        old='        if fMtime > fRunTime and sPath not in setMatched)',
+        new='        if fMtime > fRunTime and False)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_output_the_poll_did_not_sample_leaves_it_not_current'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        # An unknown verdict counts as a match, so a path the poll never
+        # hashed vouches for the run.
+        old=(
+            '                    sBaselineSha, dictHashEntries.get(sRelPath),\n'
+            '                ) == S_VERDICT_MATCH:\n'
+        ),
+        new=(
+            '                    sBaselineSha, dictHashEntries.get(sRelPath),\n'
+            '                ) != S_VERDICT_DRIFT:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_unreadable_output_names_why_the_run_is_not_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # The reason drops back to "", so a demoted badge says nothing
+        # about why, as it said nothing before.
+        old='        return S_REASON_OUTPUTS_NEWER_THAN_RUN\n',
+        new='        return ""\n',
+    ),
+    Falsification(
+        nodeid=(
             'tests/testMarkerHashesTemplatedPlots.py::'
             'test_a_changed_templated_plot_with_an_older_mtime_leaves_the_tests_not_current'
         ),
@@ -13084,8 +13135,8 @@ LIST_FALSIFICATIONS = [
         # work, and no log, because the finalizer never ran. (Moved
         # here from the browser journey entry when host readings
         # became real floats on the healthy path.)
-        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
-        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+        old='        fCpuTime = _ffTotalCpuTime(fCpuTime, fPlotCpu)\n',
+        new='        fCpuTime = fCpuTime + fPlotCpu\n',
     ),
     Falsification(
         nodeid=(

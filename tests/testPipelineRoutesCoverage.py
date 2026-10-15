@@ -1273,7 +1273,6 @@ class TestFdictFetchTestStatusAggregateSelfHeal:
 
 from vaibify.gui.routes.pipelineRoutes import (
     _fbApplyRandomnessLint,
-    _ffParseMtime,
 )
 from vaibify.gui.pipelineState import (
     fdictReadReconciledState,
@@ -1422,18 +1421,6 @@ class TestFsBuildHeartbeatStaleReason:
         dictState = {"sLastHeartbeat": "not-a-timestamp"}
         sReason = fsBuildHeartbeatStaleReason(dictState)
         assert "unparseable" in sReason
-
-
-class TestFfParseMtime:
-    def test_returns_zero_for_unparseable_mtime(self):
-        """Lines 706-707: float() failure returns 0.0."""
-        assert _ffParseMtime("not-a-float") == 0.0
-
-    def test_returns_zero_for_none(self):
-        assert _ffParseMtime(None) == 0.0
-
-    def test_parses_valid_string(self):
-        assert _ffParseMtime("123.5") == 123.5
 
 
 class TestWorkflowDiscoveryRoute:

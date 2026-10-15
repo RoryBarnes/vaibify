@@ -25,7 +25,7 @@ def fdictStatesFromCounts(dictCategories, bCurrent=True):
         "iExitStatus": 0, "dictCategories": dictCategories,
     }
     return testMarkerContract.fdictCategoryStatesFromMarker(
-        dictMarker, [], {}, {}, 0)
+        dictMarker, [], {}, {}, {})
 
 
 def fdictEntryFromCounts(dictCategories, bStale=False):

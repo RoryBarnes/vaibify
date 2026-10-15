@@ -65,11 +65,12 @@ def _fdictNarrowed(sFile, dictOutcomes):
 
 def _fdictStates(
     dictMarker, listPresentFiles=None, dictFileMtimes=None,
-    dictRunVerdicts=None, fMaxOutputMtime=0,
+    dictRunVerdicts=None, dictOutputMtimes=None, dictMatchedPathsByRun=None,
 ):
     return contract.fdictCategoryStatesFromMarker(
         dictMarker, listPresentFiles or [S_FILE_A, S_FILE_B, S_FILE_C],
-        dictFileMtimes or {}, dictRunVerdicts or {}, fMaxOutputMtime)
+        dictFileMtimes or {}, dictRunVerdicts or {}, dictOutputMtimes or {},
+        dictMatchedPathsByRun)
 
 
 def _fsState(dictStates, sCategory):
@@ -284,14 +285,19 @@ def test_a_test_file_newer_than_a_run_unproves_only_its_own_tests():
     assert _fsState(dictStates, "integrity") == "passed"
 
 
-def test_outputs_newer_than_a_run_make_its_results_stale():
+def test_outputs_newer_than_a_run_make_its_results_stale_unless_content_vouches():
+    """An output newer than the run makes it stale, unless the run
+    recorded that output's digest and the poll measured the same bytes.
+    """
     dictMarker = _fdictMarkerAfter(
         _fdictSession("r1", 5, {S_FILE_A: _fdictWholeFile(
             S_FILE_A, {"test_a": "passed"})}))
     assert _fsState(_fdictStates(
-        dictMarker, fMaxOutputMtime=9), "quantitative") == "untested"
+        dictMarker, dictOutputMtimes={"Step/out.dat": 9}),
+        "quantitative") == "untested"
     assert _fsState(_fdictStates(
-        dictMarker, fMaxOutputMtime=1), "quantitative") == "passed"
+        dictMarker, dictOutputMtimes={"Step/out.dat": 1}),
+        "quantitative") == "passed"
 
 
 def test_a_present_file_the_marker_never_collected_is_untested_and_unspoken():
@@ -413,7 +419,7 @@ def test_a_non_dict_marker_has_no_states():
     assert contract.fdictNormalizeMarker(None) is None
     assert contract.fdictNormalizeMarker("not a marker") is None
     assert contract.fdictCategoryStatesFromMarker(
-        None, [S_FILE_A], {}, {}, 0) == {}
+        None, [S_FILE_A], {}, {}, {}) == {}
 
 
 def test_category_of_file_name_mirrors_the_conftest_prefix_rule():

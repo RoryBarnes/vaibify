@@ -28,7 +28,7 @@ from .. import containerOwnership
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
-from ..pipelineUtils import fbStepIsInteractive
+from ..pipelineUtils import fbStepIsInteractive, fsLabelFromStepIndex
 from ..templateManager import fbIsVaibifyTemplateHash
 from ..pipelineServer import (
     WORKSPACE_ROOT,
@@ -77,6 +77,8 @@ from ..fileStatusManager import (
     fdictHandleCollectMarkerPathsByStep,
     fdictHashDriftToInvalidate,
     fdictMarkerVerdictsByStep,
+    fdictMatchedPathsByStep,
+    fdictOutputMtimesByStep,
     fsMarkerNameFromStepDirectory,
     fsWorkflowSlugFromPath,
 )
@@ -1057,6 +1059,7 @@ def _fnRegisterAcknowledgeStep(app, dictCtx):
 # computed, handed to the test-status half and popped before the answer
 # leaves, like the level ratchet's flag. They are never on the wire.
 _S_RUN_VERDICTS_PRIVATE_KEY = "_dictRunVerdictsByStep"
+_S_MATCHED_PATHS_PRIVATE_KEY = "_dictMatchedPathsByStep"
 
 
 async def fdictComputeFileStatus(
@@ -1070,12 +1073,15 @@ async def fdictComputeFileStatus(
         dictWorkflow = dictCtx["workflows"][sContainerId]
     dictRunVerdictsByStep = dictOutputStatus.pop(
         _S_RUN_VERDICTS_PRIVATE_KEY, {})
+    dictMatchedPathsByStep = dictOutputStatus.pop(
+        _S_MATCHED_PATHS_PRIVATE_KEY, {})
     dictTestStatus = await _fdictFetchTestStatus(
         dictCtx, sContainerId, dictWorkflow,
-        dictMaxOutputMtimeByStep=dictOutputStatus.get(
-            "dictMaxMtimeByStep", {},
+        dictOutputMtimesByStep=fdictOutputMtimesByStep(
+            dictWorkflow, dictOutputStatus.get("dictModTimes", {}),
         ),
         dictRunVerdictsByStep=dictRunVerdictsByStep,
+        dictMatchedPathsByStep=dictMatchedPathsByStep,
     )
     dictOutputStatus.update(dictTestStatus)
     return dictOutputStatus
@@ -1515,6 +1521,8 @@ async def _fdictFetchOutputStatus(
         ),
         _S_RUN_VERDICTS_PRIVATE_KEY: _fdictRunVerdictsByStep(
             dictMarkerVerdicts),
+        _S_MATCHED_PATHS_PRIVATE_KEY: fdictMatchedPathsByStep(
+            dictWorkflow, dictMarkersByStep, filesPoll),
         **dictRest,
     }
 
@@ -3518,7 +3526,8 @@ def _fdictBuildReloadedWorkflowShape(dictReload):
 
 async def _fdictFetchTestStatus(
     dictCtx, sContainerId, dictWorkflow,
-    dictMaxOutputMtimeByStep=None, dictRunVerdictsByStep=None,
+    dictOutputMtimesByStep=None, dictRunVerdictsByStep=None,
+    dictMatchedPathsByStep=None,
 ):
     """Fetch test markers, refresh conftest, migrate flat markers, build status."""
     listStepDirs = _flistExtractStepDirectories(dictWorkflow)
@@ -3536,8 +3545,9 @@ async def _fdictFetchTestStatus(
     )
     dictTestMarkers = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
-        dictMaxOutputMtimeByStep=dictMaxOutputMtimeByStep,
+        dictOutputMtimesByStep=dictOutputMtimesByStep,
         dictRunVerdictsByStep=dictRunVerdictsByStep,
+        dictMatchedPathsByStep=dictMatchedPathsByStep,
     )
     bChanged = _fbApplyExternalTestResults(
         dictWorkflow, dictTestMarkers,
@@ -3714,26 +3724,30 @@ def _fnEnsureConftestTemplate(
 
 
 def _fdictBuildTestMarkerStatus(
-    dictWorkflow, dictTestInfo, dictMaxOutputMtimeByStep=None,
-    dictRunVerdictsByStep=None,
+    dictWorkflow, dictTestInfo, dictOutputMtimesByStep=None,
+    dictRunVerdictsByStep=None, dictMatchedPathsByStep=None,
 ):
     """Read each step's marker into category states for the wire.
 
-    ``dictMaxOutputMtimeByStep`` (str step index → mtime string) lets a
-    result be recognised as out-of-date when the step's output files
-    were regenerated since its run, and ``dictRunVerdictsByStep``
-    (``{iStepIndex: {sRunId: verdict}}``, computed from this same
-    poll's snapshot) lets a result be recognised as about data that no
-    longer exists. Each entry carries the category states
-    ``testMarkerContract`` derived, the newest run's summary, and
-    ``bStale`` (the newest run no longer applies), which the page uses
-    to stay quiet about a result that no longer stands.
+    ``dictOutputMtimesByStep`` (``{iStepIndex: {sRepoRelPath: fMtime}}``)
+    and ``dictMatchedPathsByStep`` (``{iStepIndex: {sRunId: [paths]}}``,
+    the digests each run recorded that this poll measured unchanged)
+    let a result be recognised as out of date when a step output is
+    newer than its run and its content cannot vouch for it, and
+    ``dictRunVerdictsByStep`` (``{iStepIndex: {sRunId: verdict}}``,
+    computed from this same poll's snapshot) lets a result be
+    recognised as about data that no longer exists. Each entry carries
+    the category states ``testMarkerContract`` derived, the newest
+    run's summary, and ``bStale`` (the newest run no longer applies),
+    which the page uses to stay quiet about a result that no longer
+    stands.
     """
     from .. import testMarkerContract
     dictMarkers = dictTestInfo.get("markers", {})
     dictTestFiles = dictTestInfo.get("testFiles", {})
-    dictMaxMtimes = dictMaxOutputMtimeByStep or {}
+    dictMtimesByStep = dictOutputMtimesByStep or {}
     dictVerdicts = dictRunVerdictsByStep or {}
+    dictMatched = dictMatchedPathsByStep or {}
     dictResult = {}
     for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
         sDir = dictStep.get("sDirectory", "")
@@ -3743,16 +3757,19 @@ def _fdictBuildTestMarkerStatus(
         if dictMarker is None:
             continue
         dictFileInfo = dictTestFiles.get(sDir, {})
-        fMaxOutputMtime = _ffParseMtime(dictMaxMtimes.get(str(iIndex)))
+        dictOutputMtimes = dictMtimesByStep.get(iIndex, {})
+        dictMatchedPathsByRun = dictMatched.get(iIndex, {})
         dictResult[str(iIndex)] = {
             "dictMarker": _fdictLatestRunSummary(dictMarker),
             "dictCategoryStates":
                 testMarkerContract.fdictCategoryStatesFromMarker(
                     dictMarker, dictFileInfo.get("listFiles", []),
                     dictFileInfo.get("dictMtimes", {}),
-                    dictVerdicts.get(iIndex, {}), fMaxOutputMtime),
+                    dictVerdicts.get(iIndex, {}), dictOutputMtimes,
+                    dictMatchedPathsByRun),
             "bStale": _fbMarkerStale(
-                dictMarker, dictFileInfo, fMaxOutputMtime=fMaxOutputMtime),
+                dictMarker, dictFileInfo, dictOutputMtimes=dictOutputMtimes,
+                dictMatchedPathsByRun=dictMatchedPathsByRun),
         }
     return dictResult
 
@@ -3768,17 +3785,10 @@ def _fdictLatestRunSummary(dictMarker):
     }
 
 
-def _ffParseMtime(sMtime):
-    """Return mtime as float, 0.0 when missing or unparseable."""
-    if not sMtime:
-        return 0.0
-    try:
-        return float(sMtime)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _fbMarkerStale(dictMarker, dictTestFileInfo, fMaxOutputMtime=0):
+def _fbMarkerStale(
+    dictMarker, dictTestFileInfo, dictOutputMtimes=None,
+    dictMatchedPathsByRun=None,
+):
     """Return True if the marker's newest run no longer reflects the state.
 
     The newest run is stale when any of:
@@ -3786,22 +3796,26 @@ def _fbMarkerStale(dictMarker, dictTestFileInfo, fMaxOutputMtime=0):
     1. It lacks ``sRunAtUtc`` (legacy pre-2026-04 conftest format --
        cannot be trusted to map to any specific data state).
     2. Any test file is newer than it.
-    3. Any output file is newer than it -- the data the step's tests
-       would run against has moved since the recorded result.
+    3. Any output file is newer than it, unless the run recorded that
+       output's digest and this poll measured the same bytes -- the
+       rule the category states apply
+       (``testMarkerContract.flistOutputsOutrunningRun``), so the two
+       never disagree.
 
     A marker with no run at all is stale. This is the page's cue to
     stay quiet about a result that no longer stands; what each
     category's state IS lives in ``testMarkerContract``.
     """
     from .. import testMarkerContract
-    dictRun = testMarkerContract.ftLatestRun(dictMarker)[1]
+    sRunId, dictRun = testMarkerContract.ftLatestRun(dictMarker)
     if not dictRun or "sRunAtUtc" not in dictRun or not dictRun["sRunAtUtc"]:
         return True
     fMarkerTime = dictRun.get("fTimestamp", 0)
     dictMtimes = dictTestFileInfo.get("dictMtimes", {})
     if any(fMtime > fMarkerTime for fMtime in dictMtimes.values()):
         return True
-    return bool(fMaxOutputMtime and fMaxOutputMtime > fMarkerTime)
+    return bool(testMarkerContract.flistOutputsOutrunningRun(
+        sRunId, dictRun, dictOutputMtimes, dictMatchedPathsByRun))
 
 
 _LIST_MARKER_CATEGORY_KEYS = [
@@ -3835,11 +3849,13 @@ def _fbApplyCategoryState(dictVerify, sVerifyKey, sNewValue):
     return True
 
 
-def _fbApplyCategoryStates(dictVerify, dictCategoryStates):
+def _fbApplyCategoryStates(dictVerify, dictCategoryStates, sStepLabel=""):
     """Apply every category state the marker speaks for; True if any changed.
 
     The value written is the one ``truthDerivation`` names for the
-    state, so no truth claim is minted in the route layer.
+    state, so no truth claim is minted in the route layer. Every axis
+    the poll changes is logged with the reason the marker contract
+    gave, so a badge that moves after a run says why in the hub log.
     """
     from .. import truthDerivation
     bChanged = False
@@ -3847,10 +3863,16 @@ def _fbApplyCategoryStates(dictVerify, dictCategoryStates):
         dictState = (dictCategoryStates or {}).get(sCategory) or {}
         if not dictState.get("bHasMarkerInfo"):
             continue
+        sBefore = dictVerify.get(sVerifyKey)
         if _fbApplyCategoryState(
             dictVerify, sVerifyKey,
             truthDerivation.fsResolveCategoryAxisFromState(dictState),
         ):
+            logger.info(
+                "POLL marker set step %s %s: %s -> %s (reason: %s)",
+                sStepLabel, sVerifyKey, sBefore, dictVerify.get(sVerifyKey),
+                dictState.get("sNotCurrentBecause") or "none",
+            )
             bChanged = True
     return bChanged
 
@@ -3870,6 +3892,7 @@ def _fbApplyExternalTestResults(dictWorkflow, dictTestMarkers):
         dictVerify = listSteps[iIndex].setdefault("dictVerification", {})
         if _fbApplyCategoryStates(
             dictVerify, dictEntry.get("dictCategoryStates"),
+            sStepLabel=fsLabelFromStepIndex(dictWorkflow, iIndex),
         ):
             bChanged = True
     return bChanged

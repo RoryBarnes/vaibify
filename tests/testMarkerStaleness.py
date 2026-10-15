@@ -43,13 +43,15 @@ def test_fbMarkerStale_modern_marker_with_no_files_is_fresh():
 
 
 def test_fbMarkerStale_data_mtime_newer_is_stale():
-    """A modern marker is stale when output files are newer than it."""
+    """A modern marker is stale when output files are newer than it,
+    unless the run recorded that output's digest and the poll measured
+    the same bytes; no digest is recorded here, so it is stale."""
     dictMarker = {
         "fTimestamp": 1_000.0,
         "sRunAtUtc": "2026-04-23T00:00:00Z",
     }
     bStale = _fbMarkerStale(
-        dictMarker, {}, fMaxOutputMtime=2_000.0,
+        dictMarker, {}, dictOutputMtimes={"step/out.dat": 2_000.0},
     )
     assert bStale is True
 
@@ -61,7 +63,7 @@ def test_fbMarkerStale_data_mtime_equal_is_fresh():
         "sRunAtUtc": "2026-04-23T00:00:00Z",
     }
     bStale = _fbMarkerStale(
-        dictMarker, {}, fMaxOutputMtime=2_000.0,
+        dictMarker, {}, dictOutputMtimes={"step/out.dat": 2_000.0},
     )
     assert bStale is False
 
@@ -72,7 +74,7 @@ def test_fbMarkerStale_data_mtime_older_is_fresh():
         "sRunAtUtc": "2026-04-23T00:00:00Z",
     }
     bStale = _fbMarkerStale(
-        dictMarker, {}, fMaxOutputMtime=1_000.0,
+        dictMarker, {}, dictOutputMtimes={"step/out.dat": 1_000.0},
     )
     assert bStale is False
 
@@ -87,7 +89,7 @@ def test_fbMarkerStale_test_file_newer_still_wins():
     assert _fbMarkerStale(dictMarker, dictTestFiles) is True
 
 
-def test_fbMarkerStale_default_fMaxOutputMtime_does_not_flag():
+def test_fbMarkerStale_default_output_mtimes_do_not_flag():
     """Calls without the new arg behave as before for fresh markers."""
     dictMarker = {
         "fTimestamp": 1_000.0,
@@ -117,7 +119,7 @@ def test_fdictBuildTestMarkerStatus_marks_data_superseded_as_stale():
     }
     dictResult = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
-        dictMaxOutputMtimeByStep={"0": "9999"},
+        dictOutputMtimesByStep={0: {"step1/out.dat": 9999.0}},
     )
     assert dictResult["0"]["bStale"] is True
 
@@ -138,7 +140,7 @@ def test_fdictBuildTestMarkerStatus_keeps_marker_fresh_when_data_older():
     }
     dictResult = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
-        dictMaxOutputMtimeByStep={"0": "1000"},
+        dictOutputMtimesByStep={0: {"step1/out.dat": 1000.0}},
     )
     assert dictResult["0"]["bStale"] is False
 
@@ -159,7 +161,7 @@ def test_fdictBuildTestMarkerStatus_legacy_marker_stale_regardless_of_mtime():
     }
     dictResult = _fdictBuildTestMarkerStatus(
         dictWorkflow, dictTestInfo,
-        dictMaxOutputMtimeByStep={"0": "1000"},
+        dictOutputMtimesByStep={0: {"step1/out.dat": 1000.0}},
     )
     assert dictResult["0"]["bStale"] is True
 
