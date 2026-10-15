@@ -4377,7 +4377,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # deploying the test-marker plugin. The seam recorded above is now
     # three texts (loader, plugin template, transcriptions) against the
     # deploy logic; still no force to split it.
-    "conftestManager.py": 1458,
+    # 1458 -> 1487 (2026-10-15): the plugin fills {sPlotDirectory} and
+    # {sFigureType} as the host does, so a templated plot is hashed;
+    # the plugin cannot import the host resolver, so its mirror lives
+    # in the template it belongs to.
+    "conftestManager.py": 1487,
     # NEW at 854 (2026-08-02): containerOwnership.py crossed the cap
     # when the ownership IDENTITY joined it — the recorded
     # (prior-owner, lease, generation, session) tuple an in-flight
@@ -5243,7 +5247,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # verification blocks it wrote, so the client applies them instead
     # of mirroring the reset by a rule of its own (tracker row 59). The
     # describer sits beside the builder whose writes it reports.
-    "routes/pipelineRoutes.py": 4215,
+    # 4215 -> 4247 (2026-10-15): the poll hands the marker contract
+    # per-path output mtimes and matched digests instead of one
+    # maximum, logs every axis it changes with its reason, and samples
+    # each declared plot under its resolved key.
+    "routes/pipelineRoutes.py": 4247,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5550,7 +5558,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # changed), and marker drift that is only a missing file
     # invalidates a step only when the step claims results (a cleaned
     # step was told its outputs "changed after you verified").
-    "fileStatusManager.py": 2326,
+    # 2326 -> 2429 (2026-10-15): one resolver for a declared output
+    # (fsStepFileRepoRelative), the all-or-nothing plot capture, the
+    # per-path mtimes and matched digests the content rule reads, and
+    # the reconciliation table. All of it is the verification state
+    # machine this module owns; the docstring grew with it.
+    "fileStatusManager.py": 2429,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
@@ -6110,7 +6123,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # environment archive branch into main; both sides' growth.
     # 3770 -> 3771 (2026-10-06): one registration line for uploadRoutes.
     # 3771 -> 3772 (2026-10-06): one registration line for downloadRoutes.
-    "pipelineServer.py": 3772,
+    # 3772 -> 3778 (2026-10-15): re-exports the six public
+    # fileStatusManager symbols, required by the orchestrator re-export
+    # invariant.
+    "pipelineServer.py": 3778,
     # NEW at 975 (2026-07-31): the commit-guard carrier (design §8) is
     # one normative unit — three commit modes, the shielded supervisor
     # + registry, the out-of-band cancellation plane, the parent-gated
@@ -6730,7 +6746,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # -> 1874 the same day: re-exports
     # pipelineTestRunner.fsDescribeUnrecordableTestRun, required by the
     # orchestrator re-export invariant.
-    "pipelineRunner.py": 1874,
+    # 1874 -> 1896 (2026-10-15): the step docstring states the
+    # data -> plots -> tests order per mode, and a plot failure leaves
+    # the tests unrun with a line that says so.
+    "pipelineRunner.py": 1896,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush
@@ -7409,7 +7428,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 959 -> 984 (2026-10-08): the sign-off records what an AI
     # Declaration covers (the rules live in declarationFreshness; this
     # is the route's refusal when the files cannot be read).
-    "routes/stepRoutes.py": 984,
+    # 984 -> 1035 (2026-10-15): the sign-off records the bytes of every
+    # declared plot, refuses (409) when one cannot be read, and carries
+    # the stored baseline through every other update; the route's
+    # mode-(b) drain is where the capture must run.
+    "routes/stepRoutes.py": 1035,
     # NEW at 962 (2026-08-05): replayRoutes.py crossed the cap when its
     # five remaining routes were migrated (phase 2, under the
     # 2026-08-05 ruling above). Three of the five are probe-then-write

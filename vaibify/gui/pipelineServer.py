@@ -3380,6 +3380,8 @@ from .fileStatusManager import (  # noqa: F401
     flistStepPlotsRepoRelative,
     flistStepRemoteFiles,
     fsStepFileRepoRelative,
+    ftCaptureStepPlotHashes,
+    S_USER_VERIFIED_HASHES_KEY,
     fdictHandleCollectMarkerPathsByStep,
     fdictHandleCollectScriptPathsByStep,
     fbMaybeAutoArchive,

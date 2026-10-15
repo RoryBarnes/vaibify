@@ -29853,8 +29853,8 @@ LIST_FALSIFICATIONS = [
             'test_the_plot_reconciliation_never_restores_the_declaration'
         ),
         source='vaibify/gui/fileStatusManager.py',
-        old='        if fbStepIsAiDeclaration(dictStep):\n            continue\n        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
-        new='        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
+        old='        if fbStepIsAiDeclaration(dictStep):\n            continue\n        dictVerification = dictStep.get("dictVerification") or {}\n        if dictVerification.get("sUser") not in',
+        new='        dictVerification = dictStep.get("dictVerification") or {}\n        if dictVerification.get("sUser") not in',
     ),
     # Drop the freshness verdict from the L2 blocker cache key: deleted
     # and unreadable share a published-files fingerprint.
