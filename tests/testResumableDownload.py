@@ -25,6 +25,7 @@ import sys
 import textwrap
 import threading
 import time
+import types
 
 import pytest
 
@@ -330,6 +331,11 @@ def test_cancel_cuts_a_retry_wait_short(serverFault, monkeypatch):
     """Kills: sleeping out the backoff instead of waiting on the cancel flag."""
     monkeypatch.setattr(resumableDownload, "_F_BACKOFF_BASE_SECONDS", 30.0)
     monkeypatch.setattr(resumableDownload, "_F_BACKOFF_CAP_SECONDS", 30.0)
+    # The backoff is full jitter, uniform from zero, so about one draw in
+    # thirty waited under a second and a slept-out wait passed the
+    # one-second bound. The longest wait is drawn every time instead.
+    monkeypatch.setattr(resumableDownload, "random", types.SimpleNamespace(
+        uniform=lambda fLow, fHigh: fHigh))
     serverFault.dictBehavior["listCannedAnswers"] = [(503, {}, b"")] * 3
     dictControl = resumableDownload.fdictCreateDownloadControl()
     listOutcome = []
