@@ -626,6 +626,12 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
     while it is held the page must show progress and the reservation
     must be live on the server; when it is released the page must show
     success and hold the lease the server derived.
+
+    A start that does not open the container then releases that claim,
+    so the tile is not left "held by this tab" (2026-10-16). The release
+    is the proof the page held the derived lease -- it can only send the
+    lease it recorded -- and it makes the check independent of how soon
+    after the toast the page is read.
     """
     import threading
 
@@ -647,6 +653,12 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
     # the premise has to be the honest pre-start one.
     serverHub.adapterDocker.flistGetRunningContainers = lambda: []
     startReservation._fsExecuteReservedStart = _fsHeldStart
+    listReleaseLeases = []
+    pageDashboard.on("request", lambda request: listReleaseLeases.append(
+        request.headers.get("x-vaibify-lease", "")) if (
+            request.method == "POST"
+            and request.url.endswith(f"/api/registry/{S_CONTAINER_NAME}/release")
+        ) else None)
     try:
         fnOpenTheDashboardUntilItHoldsACredential(pageDashboard, serverHub)
         pageDashboard.evaluate(
@@ -673,10 +685,16 @@ def testStartReportsItsRealOutcomeAndNotTheAcceptedRequest(
             ".toast", has_text="Container started"
         ).first.wait_for(state="visible", timeout=15000)
         assert recordOwner.reservation is None
-        sPageLease = pageDashboard.evaluate("() => VaibifyApp.fsGetLeaseId()")
-        assert sPageLease == recordOwner.sLeaseId, (
+        sDerivedLease = recordOwner.sLeaseId
+        assert sDerivedLease
+        pageDashboard.wait_for_function(
+            "() => VaibifyApp.fsGetLeaseId() === ''", timeout=15000)
+        assert listReleaseLeases == [sDerivedLease], (
             "the page must hold the lease the status poll derived from "
-            "the live owner record"
+            "the live owner record, and release the claim with it"
+        )
+        assert S_CONTAINER_NAME not in stateApp.dictContainerOwners, (
+            "a start that does not open the container leaves it unheld"
         )
         assert pageDashboard.listPageErrors == []
         assert pageDashboard.listConsoleErrors == []
