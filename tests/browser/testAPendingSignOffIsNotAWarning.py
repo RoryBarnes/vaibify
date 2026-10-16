@@ -159,9 +159,43 @@ _S_WARNING_NAMES_THE_OUTPUT = """() => (document.querySelector(
     "numbers.json")"""
 
 
+def _flistServerHoldsTheSignOff(pageDashboard, sUser):
+    """Answer every poll with step 0's stored sign-off as sUser.
+
+    The page renders the server's sign-off on every poll
+    (``dictSignOffByStep``), so a sign-off set in the page alone lasts
+    only until the next poll; the server must hold the state the case
+    describes. Returns the list each answered poll is appended to.
+    """
+    listPolls = []
+
+    def fnHandle(routePoll):
+        responsePoll = routePoll.fetch()
+        dictBody = responsePoll.json()
+        dictBody.setdefault("dictSignOffByStep", {})["0"] = {
+            "sUser": sUser, "sLastUserUpdate": "2026-01-01 00:00:00 UTC"}
+        routePoll.fulfill(
+            response=responsePoll, body=json.dumps(dictBody),
+            headers={"content-type": "application/json"})
+        listPolls.append(True)
+    pageDashboard.route("**/file-status*", fnHandle)
+    return listPolls
+
+
 def _fsTooltipAfterListingAModifiedOutput(pageDashboard, sUser):
-    """List step 0's output as modified under sUser; return the tooltip."""
+    """List step 0's output as modified under sUser; return the tooltip.
+
+    Read only after a poll has been answered, so every run crosses one,
+    as a slower browser does by chance.
+    """
+    listPolls = _flistServerHoldsTheSignOff(pageDashboard, sUser)
     pageDashboard.evaluate(_S_LIST_A_MODIFIED_OUTPUT, sUser)
+    for _ in range(80):
+        if listPolls:
+            break
+        pageDashboard.wait_for_timeout(250)
+    assert listPolls, "the page stopped polling"
+    pageDashboard.wait_for_timeout(500)
     pageDashboard.wait_for_function(
         _S_WARNING_NAMES_THE_OUTPUT, timeout=10000)
     return pageDashboard.locator(
