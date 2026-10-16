@@ -20,6 +20,11 @@ var VaibifyContainerManager = (function () {
     /* Names whose deletion this tab requested and has not heard back
        about; every render reads it, so mutate it, never reassign it. */
     var _setNamesBeingDeleted = new Set();
+    /* The container whose start the readiness banners describe. They
+       are drawn only when a start is checked, so entering any other
+       project -- or the same project after its container was removed,
+       which leaves no container to describe -- must clear them. */
+    var _sReadinessBannersContainerId = "";
 
     async function fnLoadContainers() {
         try {
@@ -925,7 +930,7 @@ var VaibifyContainerManager = (function () {
         _fnShowInitializingOverlay();
         var dictReadiness = await _fdictWaitForContainerReady(sTargetId);
         _fnHideInitializingOverlay();
-        _fnSurfaceReadinessOutcome(dictReadiness);
+        _fnSurfaceReadinessOutcome(dictReadiness, sTargetId);
         if (!dictReadiness || !dictReadiness.bReady) {
             var sStatus = dictReadiness ? dictReadiness.sStatus : "";
             if (sStatus !== "failed" && sStatus !== "stalled") {
@@ -2634,7 +2639,8 @@ var VaibifyContainerManager = (function () {
         };
     }
 
-    function _fnSurfaceReadinessOutcome(dictReadiness) {
+    function _fnSurfaceReadinessOutcome(dictReadiness, sContainerId) {
+        _sReadinessBannersContainerId = sContainerId || "";
         _fnRenderBuildWarningsBanner(
             (dictReadiness && dictReadiness.saWarnings) || []
         );
@@ -2940,6 +2946,9 @@ var VaibifyContainerManager = (function () {
            the container fills it in; waiting for the search first left
            the researcher on the previous screen with no sign that the
            click had registered. */
+        if (sId !== _sReadinessBannersContainerId) {
+            _fnSurfaceReadinessOutcome(null, "");
+        }
         _sSelectedContainerId = sId;
         _sSelectedContainerName = _fsContainerNameById(sId);
         _sSelectedContainerDirectory = _fsContainerDirectoryById(sId);

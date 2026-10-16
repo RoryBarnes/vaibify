@@ -33918,4 +33918,16 @@ LIST_FALSIFICATIONS = [
         old='    return (None, sStderr.startswith(_S_DAEMON_FILE_ABSENT_PREFIX))\n',
         new='    return (None, True)\n',
     ),
+    # --- 2026-10-16: a container's start banners never follow the
+    # researcher into a project without that container ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testStartBannersBelongToTheirContainer.py::'
+            'test_opening_a_project_without_that_container_clears_its_start_banners'
+        ),
+        # entering a project leaves another container's banners up
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='        if (sId !== _sReadinessBannersContainerId) {\n            _fnSurfaceReadinessOutcome(null, "");\n        }\n',
+        new='',
+    ),
 ]
