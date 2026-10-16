@@ -1559,8 +1559,305 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_ftRunStepCommands_full_returns_plot_exit_code',
         source='vaibify/gui/pipelineRunner.py',
-        old='return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
-        new='return (iExitCode, _ffTotalCpuTime(fCpuTime, fPlotCpu))',
+        # The plot section's exit code is dropped, so the step reports
+        # the data section's success over a failed plot.
+        old='        iExitCode, fPlotCpu = await _ftRunCommandList(',
+        new='        _iPlotExit, fPlotCpu = await _ftRunCommandList(',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffReconciliationByContent.py::'
+            'test_a_sign_off_with_a_recorded_baseline_is_left_to_the_content_pass'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The timestamp check judges a sign-off whose bytes are recorded
+        # again: every poll marks it stale and the content pass restores
+        # it, saving the workflow twice for nothing.
+        old='    if S_USER_VERIFIED_HASHES_KEY in dictVerification:\n        return False, False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffReconciliationByContent.py::'
+            'test_a_changed_plot_voids_the_sign_off_and_keeps_the_attested_bytes'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The shipped defect, restored: a passed sign-off whose plots
+        # differ adopts the bytes on disk as the ones attested.
+        old=(
+            '    if bMatches:\n'
+            '        return False\n'
+            '    dictVerification["sUser"] = "stale"\n'
+        ),
+        new=(
+            '    if bMatches:\n'
+            '        return False\n'
+            '    dictVerification[S_USER_VERIFIED_HASHES_KEY] = dictCurrent\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffCapturesPlotBytes.py::'
+            'test_an_unreadable_plot_refuses_the_sign_off_and_writes_nothing'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # A partial capture is let through: the sign-off is stored with
+        # a baseline that omits the plot nobody could read.
+        old='    if listUnhashed:\n        raise HTTPException(\n',
+        new='    if False:\n        raise HTTPException(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSignOffCapturesPlotBytes.py::'
+            'test_the_browsers_test_result_save_keeps_the_baseline'
+        ),
+        source='vaibify/gui/routes/stepRoutes.py',
+        # The stored baseline is not carried forward, so the browser's
+        # whole-block PUT erases it and the next poll re-adopts the
+        # plots as a sign-off from before baselines existed.
+        old=(
+            '    if S_USER_VERIFIED_HASHES_KEY in dictStored:\n'
+            '        dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictStored[\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        dictUpdate[S_USER_VERIFIED_HASHES_KEY] = dictStored[\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheSignOffFollowsTheServer.py::'
+            'testANewerPlotAloneNeverVoidsTheSignOffOnScreen'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The page re-derives the sign-off from a plot timestamp again,
+        # voiding on screen a sign-off the server holds.
+        old=(
+            '            if (dictVerify.sUser === dictServer.sUser) continue;\n'
+            '            dictVerify.sUser = dictServer.sUser;\n'
+        ),
+        new=(
+            '            dictVerify.sUser = parseInt(_dictWorkflowState'
+            '.dictPlotMtimes[String(i)] || "0", 10) > 1e9 ?\n'
+            '                "untested" : dictServer.sUser;\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheSignOffFollowsTheServer.py::'
+            'testASignOffTheServerVoidedReachesThePage'
+        ),
+        source='vaibify/gui/static/scriptApplication.js',
+        # The page drops the server's shipped sign-off.
+        old='        _fnApplyServerSignOffs(dictStatus.dictSignOffByStep);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_data_file_whose_bytes_are_vouched_for_does_not_stale_the_step'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The pencil check judges every file by its mtime again, so a
+        # byte-identical touch flags script-stale and drops PROOF.
+        old='    if not setVouched:\n        return list(listAbsolutePaths)\n',
+        new='    if True:\n        return list(listAbsolutePaths)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_upstream_bytes_the_step_below_consumed_do_not_flag_it'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The upstream check judges by the timestamp alone again: a
+        # re-run that reproduced the same bytes drops the step below.
+        old='            _fbStepConsumedTheseBytes(dictVerify or {}, dictEdge)\n',
+        new='            False\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_flagged_step_never_records_the_new_upstream_bytes'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # A stale step records the new upstream bytes as consumed, so
+        # the next poll clears a flag nothing earned.
+        old='        if iSignal == 0 and _fbRecordConsumedDigests(dictVerify, listEdges):\n',
+        new='        if _fbRecordConsumedDigests(dictVerify, listEdges):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_plot_the_step_below_never_names_is_not_compared'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # Every upstream output is compared again, so redrawing a plot
+        # the step below never reads drops that step from Level 1.
+        old='            listPaths = dictNamed.get((iUp, iDown)) or [\n',
+        new='            listPaths = None or [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_different_bytes_with_an_older_mtime_leave_the_run_not_current'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        # The page's staleness flag ignores the run's hash verdict: a
+        # run whose plot drifted reads as standing, and its result is
+        # announced as an external run.
+        old='    if (dictRunVerdicts or {}).get(sRunId) in (\n',
+        new='    if False and (dictRunVerdicts or {}).get(sRunId) in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_touched_file_the_newest_run_vouches_for_is_not_modified'
+        ),
+        source='vaibify/gui/fileStatusManager.py',
+        # The mtime detector stops consulting the content evidence: a
+        # byte-identical file is reported modified and PROOF regresses.
+        old='            if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]\n',
+        new='            if True]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_every_poll_ships_each_steps_stored_sign_off'
+        ),
+        source='vaibify/gui/routes/pipelineRoutes.py',
+        old=(
+            '    dictOutputStatus["dictSignOffByStep"] = '
+            '_fdictSignOffByStep(dictWorkflow)\n'
+        ),
+        new='    dictOutputStatus["dictSignOffByStep"] = {}\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_identical_bytes_with_a_newer_mtime_leave_the_run_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # The content exemption is gone: a byte-identical output with a
+        # newer timestamp makes the run stale on the timestamp alone.
+        old='        if fMtime > fRunTime and sPath not in setMatched)',
+        new='        if fMtime > fRunTime)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_output_the_run_never_hashed_leaves_it_not_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # Every newer output is excused whether or not its digest was
+        # recorded, so a run from before plots were hashed reads current
+        # over a plot it never saw.
+        old='        if fMtime > fRunTime and sPath not in setMatched)',
+        new='        if fMtime > fRunTime and False)',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_output_the_poll_did_not_sample_leaves_it_not_current'
+        ),
+        source='vaibify/gui/hashStaleness.py',
+        # An unknown verdict counts as a match, so a path the poll never
+        # hashed vouches for the run.
+        old=(
+            '                    sBaselineSha, dictHashEntries.get(sRelPath),\n'
+            '                ) == S_VERDICT_MATCH:\n'
+        ),
+        new=(
+            '                    sBaselineSha, dictHashEntries.get(sRelPath),\n'
+            '                ) != S_VERDICT_DRIFT:\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputFreshnessByContent.py::'
+            'test_a_newer_unreadable_output_names_why_the_run_is_not_current'
+        ),
+        source='vaibify/gui/testMarkerContract.py',
+        # The reason drops back to "", so a demoted badge says nothing
+        # about why, as it said nothing before.
+        old='        return S_REASON_OUTPUTS_NEWER_THAN_RUN\n',
+        new='        return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testMarkerHashesTemplatedPlots.py::'
+            'test_a_changed_templated_plot_with_an_older_mtime_leaves_the_tests_not_current'
+        ),
+        source='vaibify/gui/conftestManager.py',
+        # The plugin skips templated outputs again, so a plot declared
+        # as {sPlotDirectory}/fig.{sFigureType} is never hashed and a
+        # change to its bytes is invisible to the run's content check.
+        old=(
+            '                    sFile = _fsFillOutputTemplate(sTemplate, dictVariables)\n'
+            '                    if not sFile:\n'
+            '                        continue\n'
+        ),
+        new=(
+            '                    if "{" in sTemplate:\n'
+            '                        continue\n'
+            '                    sFile = sTemplate\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_full_runs_data_then_plots_then_tests'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The tests run before the plots again, so every plot the step
+        # draws is newer than the run its tests recorded.
+        old=(
+            '    if sRunMode != "dataOnly":\n'
+            '        iExitCode, fPlotCpu = await _ftRunCommandList(\n'
+        ),
+        new=(
+            '    if sRunMode != "plotsOnly":\n'
+            '        await _fiRunTestCommands(\n'
+            '            connectionDocker, sContainerId, dictStep,\n'
+            '            sStepDirectory, dictVariables, fnStatusCallback,\n'
+            '            iStepNumber,\n'
+            '        )\n'
+            '    if sRunMode != "dataOnly":\n'
+            '        iExitCode, fPlotCpu = await _ftRunCommandList(\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_failing_tests_leave_the_plot_exit_code'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # The step takes the tests' exit code, so failing tests fail a
+        # step whose commands all succeeded.
+        old=(
+            '    await _fiRunTestCommands(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+        ),
+        new=(
+            '    iExitCode = await _fiRunTestCommands(\n'
+            '        connectionDocker, sContainerId, dictStep,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testPipelineRunnerBranches.py::'
+            'test_ftRunStepCommands_plot_failure_leaves_the_tests_unrun'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # A plot failure no longer stops the step, so the tests run
+        # against plots that were never drawn and record a result.
+        old=(
+            '    if iExitCode != 0:\n'
+            '        if _flistResolveTestCommands(dictStep):\n'
+        ),
+        new=(
+            '    if False:\n'
+            '        if _flistResolveTestCommands(dictStep):\n'
+        ),
     ),
     Falsification(
         nodeid='tests/testPipelineRunnerMutationCoverage.py::test_fnVerifyOnly_missing_output_emits_stepFail_badge',
@@ -3583,7 +3880,7 @@ LIST_FALSIFICATIONS = [
         nodeid='tests/testCrossMachineUserVerification.py::test_fresh_clone_does_not_discard_the_researchers_attestation',
         source='vaibify/gui/fileStatusManager.py',
         old=(
-            '        if dictRecorded and dictRecorded == dictCurrent:\n'
+            '        if bMatches and dictRecorded:\n'
             '            dictVerification["sUser"] = "passed"'
         ),
         new=(
@@ -3596,7 +3893,7 @@ LIST_FALSIFICATIONS = [
         # launder a real change into a verified state.
         nodeid='tests/testCrossMachineUserVerification.py::test_a_genuinely_changed_plot_stays_stale',
         source='vaibify/gui/fileStatusManager.py',
-        old='        if dictRecorded and dictRecorded == dictCurrent:',
+        old='        if bMatches and dictRecorded:',
         new='        if dictRecorded:',
     ),
     Falsification(
@@ -3604,8 +3901,8 @@ LIST_FALSIFICATIONS = [
         # new hash and verify itself on the following poll.
         nodeid='tests/testCrossMachineUserVerification.py::test_a_stale_step_never_adopts_the_current_hash_as_verified',
         source='vaibify/gui/fileStatusManager.py',
-        old='        if sUser == "passed":',
-        new='        if sUser in ("passed", "stale"):',
+        old='    if dictVerification["sUser"] == "stale":\n',
+        new='    if False:\n',
     ),
     Falsification(
         # Observed on a real machine: sweeping an April-dated token
@@ -13005,8 +13302,8 @@ LIST_FALSIFICATIONS = [
         # work, and no log, because the finalizer never ran. (Moved
         # here from the browser journey entry when host readings
         # became real floats on the healthy path.)
-        old='    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))\n',
-        new='    return (iPlotExit, fCpuTime + fPlotCpu)\n',
+        old='        fCpuTime = _ffTotalCpuTime(fCpuTime, fPlotCpu)\n',
+        new='        fCpuTime = fCpuTime + fPlotCpu\n',
     ),
     Falsification(
         nodeid=(
@@ -29675,8 +29972,8 @@ LIST_FALSIFICATIONS = [
             'test_the_plot_reconciliation_never_restores_the_declaration'
         ),
         source='vaibify/gui/fileStatusManager.py',
-        old='        if fbStepIsAiDeclaration(dictStep):\n            continue\n        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
-        new='        dictVerification = dictStep.get("dictVerification") or {}\n        sUser',
+        old='        if fbStepIsAiDeclaration(dictStep):\n            continue\n        dictVerification = dictStep.get("dictVerification") or {}\n        if dictVerification.get("sUser") not in',
+        new='        dictVerification = dictStep.get("dictVerification") or {}\n        if dictVerification.get("sUser") not in',
     ),
     # Drop the freshness verdict from the L2 blocker cache key: deleted
     # and unreadable share a published-files fingerprint.
@@ -30292,6 +30589,7 @@ LIST_FALSIFICATIONS = [
             '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
             '        dictHashStaleByStep=dictHashStaleByStep,\n'
             '        bPipelineRunning=bPipelineRunning,\n'
+            '        dictContentVouchedByStep=dictContentVouchedByStep,\n'
             '    )\n'
             '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
             '    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)\n'
@@ -30299,7 +30597,8 @@ LIST_FALSIFICATIONS = [
             '        dictPathsByStep, dictModTimes,\n'
             '    )\n'
             '    bAnyReconciled = (\n'
-            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        fbReconcileUpstreamFlags(\n'
+            '            dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge)\n'
             '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
             '    )\n'
         ),
@@ -30309,13 +30608,15 @@ LIST_FALSIFICATIONS = [
             '        dictPathsByStep, dictModTimes,\n'
             '    )\n'
             '    bAnyReconciled = (\n'
-            '        fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep)\n'
+            '        fbReconcileUpstreamFlags(\n'
+            '            dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge)\n'
             '        | fbReconcileUserVerificationTimestamps(dictWorkflow)\n'
             '    )\n'
             '    listInvalidated = _fdictDetectAndInvalidate(\n'
             '        dictCtx, sContainerId, dictWorkflow, dictModTimes, dictVars,\n'
             '        dictHashStaleByStep=dictHashStaleByStep,\n'
             '        bPipelineRunning=bPipelineRunning,\n'
+            '        dictContentVouchedByStep=dictContentVouchedByStep,\n'
             '    )\n'
             '    _fnLogInvalidations(sContainerId, listInvalidated)\n'
         ),
@@ -32381,11 +32682,30 @@ LIST_FALSIFICATIONS = [
             'tests/browser/testAPendingSignOffIsNotAWarning.py::'
             'testATestRunsResultKeepsTheResearchersSignOff'
         ),
-        # Every step result resets the sign-off, a test run's included.
+        # A step result resets the sign-off in the browser again, a
+        # test run's included.
         source='vaibify/gui/static/scriptPipelineRunner.js',
-        old='            if (!dictEvent.bFromTestRun) {\n',
-        new='            if (true) {\n',
-        iExpectedOccurrences=2,
+        old='            fnAcknowledgeStepCompletion(iPassIdx);\n',
+        new=(
+            '            VaibifyApp.fdictGetWorkflow().listSteps[iPassIdx]'
+            '.dictVerification.sUser = "untested";\n'
+            '            fnAcknowledgeStepCompletion(iPassIdx);\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAPendingSignOffIsNotAWarning.py::'
+            'testARunsResultLeavesTheSignOffToTheServer'
+        ),
+        # The browser's own reset on a failed run is restored, so the
+        # dashboard voids a sign-off the server still holds.
+        source='vaibify/gui/static/scriptPipelineRunner.js',
+        old='            VaibifyApp.fnInvalidateStepFileCache(iFailIdx);\n',
+        new=(
+            '            VaibifyApp.fdictGetWorkflow().listSteps[iFailIdx]'
+            '.dictVerification.sUser = "untested";\n'
+            '            VaibifyApp.fnInvalidateStepFileCache(iFailIdx);\n'
+        ),
     ),
     Falsification(
         nodeid=(

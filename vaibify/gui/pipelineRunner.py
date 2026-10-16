@@ -736,9 +736,22 @@ async def ftRunStepCommands(
 ):
     """Run a single step's commands sequentially in its directory.
 
-    ``sRunMode`` gates which sections execute:
-    ``full`` (default) runs data, tests, then plots; ``dataOnly``
-    runs data only; ``plotsOnly`` runs plots only.
+    ``sRunMode`` gates which sections execute, always in this order:
+
+    * ``full`` (the default) and the attestation rerun: data, then
+      plots, then tests. A ``bPlotOnly`` step skips its data, except
+      in the rerun.
+    * ``dataOnly``: data, then tests.
+    * ``plotsOnly``: plots only.
+
+    Tests run last so they judge the plots the step has just drawn: a
+    plot drawn after the tests' run is newer than that run, and the
+    poll then reads the run as out of date. A section runs only when
+    the one before it succeeded: a data failure ends the step, and a
+    plot failure leaves the tests unrun, with no new result recorded.
+    The step's exit code is the plot section's, or the data section's
+    when that fails or no plot section runs; failing tests never fail
+    the step.
     """
     from .pipelineTestRunner import _fiRunTestCommands
 
@@ -760,19 +773,28 @@ async def ftRunStepCommands(
         )
         if iExitCode != 0:
             return (iExitCode, fCpuTime)
-        await _fiRunTestCommands(
-            connectionDocker, sContainerId, dictStep,
+    if sRunMode != "dataOnly":
+        iExitCode, fPlotCpu = await _ftRunCommandList(
+            connectionDocker, sContainerId,
+            dictStep.get("saPlotCommands", []),
             sStepDirectory, dictVariables, fnStatusCallback,
-            iStepNumber,
         )
-    if sRunMode == "dataOnly":
+        fCpuTime = _ffTotalCpuTime(fCpuTime, fPlotCpu)
+    if sRunMode == "plotsOnly":
         return (iExitCode, fCpuTime)
-    iPlotExit, fPlotCpu = await _ftRunCommandList(
-        connectionDocker, sContainerId,
-        dictStep.get("saPlotCommands", []),
+    if iExitCode != 0:
+        if _flistResolveTestCommands(dictStep):
+            await fnStatusCallback({
+                "sType": "output",
+                "sLine": "Tests not run: the plot commands failed.",
+            })
+        return (iExitCode, fCpuTime)
+    await _fiRunTestCommands(
+        connectionDocker, sContainerId, dictStep,
         sStepDirectory, dictVariables, fnStatusCallback,
+        iStepNumber,
     )
-    return (iPlotExit, _ffTotalCpuTime(fCpuTime, fPlotCpu))
+    return (iExitCode, fCpuTime)
 
 
 def _ffTotalCpuTime(fFirst, fSecond):

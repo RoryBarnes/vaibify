@@ -1,6 +1,6 @@
 # QuickStart
 
-In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly. This latter step can take over an hour if you do not already have Docker installed on your computer.
+In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author's. Thus, you will then recreate the author's computing environment inside your computer and verify that you reproduce the results exactly. This latter step requires that you have [Docker installed](install.md) on your computer.
 
 ## 1. Install
 
@@ -23,14 +23,14 @@ Return to the terminal and run
 ```bash
 git clone https://github.com/RoryBarnes/aigreenhouse.git
 cd aigreenhouse
-pip install -r .vaibify/requirements.txt                   # Initializes vaibify
+pip install -r .vaibify/requirements.txt                   # Install the project's dependencies
 ```
 
 This repository contains the data to generate two figures from the `vaibify` paper (Barnes 2026): estimates for how long it will be before the waste heat from AI
 data centers becomes large enough for Earth to begin losing water permanently to space. The Project consists of two
 computational steps, a figure from each, three tiers of tests, and a
-declaration of which AI models helped write it. It is published at PROOF
-Level 3, which means its author committed a manifest of every artifact's
+declaration of which AI models helped write it. It is published at [PROOF
+Level 3](proofLadder.md), which means its author committed a manifest of every artifact's
 SHA-256 hash along with the pinned environment that produced them.
 
 ## 3. View the example project in vaibify
@@ -40,15 +40,15 @@ Existing**. Navigate the directory tree to your aigreenhouse clone (it will have
 
 You will now move to the **Projects Hub**. An environment is a *place* projects run, and it can hold more than one, so
 this hub offers you one or more Projects to work on. You will see two options: A **Blank Project** is an empty
-workspace (a "sandbox") in which you can experiment in the environment. All environments include a "Blank Project". The second option is **AI Greenhouse**, the project you are reproducing in this guide. Select it. 
+workspace (a "sandbox") in which you can experiment in the environment. All `vaibify` environments include a "Blank Project". The second option is **AI Greenhouse**, the project you are reproducing in this guide. Select it. 
 
-After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. Click on **Steps** and **Projects** and leave them in the expanded view. These sections give you up-to-date information on the status of the Project. The top right consists of two "viewing windows" that displays images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.
+After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. `vaibify` divides the work of climbing the [PROOF Ladder](proofLadder.md) into **Steps**, the components of your pipeline,  and the **Project**, which are features that apply to all Steps. These sections give you up-to-date information on the status of the Project. The top right consists of two "viewing windows" that display images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.
 
-Although the published result is at PROOF Level 3, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you're at "Level 0", meaning your results aren't even being labeled as "self-consistent"! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author's results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we're going to explore the repository a bit more.
+Although the published result is at [PROOF Level 3](proofLadder.md), meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you're at "Level 0", meaning your results aren't even being labeled as "self-consistent"! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author's results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we're going to explore the repository a bit more.
 
 ## 4. Check the archive before touching it
 
-From the **Run** menu, choose **Check Files Against Manifest**. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the file MANIFEST.sha256 that contains the summary of the tracked files, and reports that all of them match.
+From the **Run** menu, choose **Check Files Against Manifest**. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the repository's file `MANIFEST.sha256` that contains the summary of the tracked files, and reports if they match. In this case, they will.
 
 This result *must* hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
@@ -61,17 +61,14 @@ Next we will rerun the results locally and see if they pass the unit tests. Firs
 From the **Run** menu, choose **Clean Outputs**, and confirm. Every automatic step's data files and figures are deleted and every
 verification mark resets to untested. 
 
-Now we're ready to rerun the pipeline. From the **Run** menu, choose **Run All Steps** and confirm. Each step runs its data analysis commands, then its plot commands. The cirlce to the right 
-pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You'll also see the terminal output of the command in the left viewing window. You will be prompted about the AI Declaration because it is interactive. Select **Skip** for this step because that is the author's statement and should not be deleted or modified until you make changes that you plan on publishing.
+Now we're ready to rerun the pipeline. From the **Run** menu, choose **Run All Steps** and confirm. Each step runs its data analysis commands, plot commands, and test commands. The circle to the right 
+pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You'll also see the terminal output of the command in the left viewing window. You will also see notifications that the Steps' tests have passed. Finally, you will be prompted about the AI Declaration because it is interactive. Select **Skip** for this step because that is the author's statement and should not be deleted or modified until you make changes that you plan on publishing. You will be notified that the pipeline has completed.
 
-Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here about input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange, meaning they have not reached PROOF Level 1. Click on the plot file and you will see the figure appear in the top right viewing window. Compare it to Figure 2 in Barnes (2026), resizing if necessary. It looks the same, but yet the file is colored orange, indicating something is wrong. The issue is that the results have not yet been verified.
+Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here that break down the progress toward [PROOF Level 3](proofLadder.md), including input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange, meaning they have not reached PROOF Level 1. Click on the plot file and you will see the figure appear in the top right viewing window. Compare it to Figure 2 in Barnes (2026), resizing if necessary. It looks the same, the unit tests pass, but yet the file is colored orange, indicating something is wrong. The issue is that *you* have not yet declared that the results meet your own standard of scientific rigor. 
 
-So let's do that: From the Run
-menu, select **Run All Unit Tests** and you will see a log in the left viewing window that states that they pass. You will also see notifications in the top right that say they passed. Now look at the Step A01 block under verification and you can see that the Unit Tests marker has changed to "Passed". If you expand the Unit Tests, you can see the three types of unit tests - Qualitative, Quantitative, and Integrity - all pass, too. 
+When you're using `vaibify` for your own research, you'll want to be very careful about marking a step as "Passed" because that means you are declaring the results to be accurate. While the declaration can of course be undone, waiting until you are sure is the best approach because it affects later steps. But for this example, go ahead and click the researcher badge for Step A01 and it will change to "Passed". After a few seconds, the left-most orange marker in the Step's banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1 (the delay is due to the `vaibify`'s polling). 
 
-Note, however, that the researcher field still says "Untested". *You* have not declared that the results meet your own standard of scientific rigor. When you're using `vaibify` for your own research, you'll want to be very careful about marking a step as "Passed" because that means you are declaring the results to be accurate. While the declaration can of course be undone, waiting until you are sure is the best approach because it affects later steps. But for this example, go ahead and click the researcher badge for Step A01 and it will change to "Passed". After a few seconds, the left-most orange marker in the Step's banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1 (the delay is due to the `vaibify`'s polling). 
-
-Next, do the same for Step A02. This time, when the dashboard detects the change, not only will the orange marker  in the Step's banner flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of "AI Greenhouse" along the top bar. The number of checks next to the project name indicates the current PROOF Level of the project, Level 1 in this case.
+Next, do the same for Step A02. This time, when the dashboard detects the change, not only will the orange marker in the Step's banner flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of "AI Greenhouse" along the top bar. The number of checks next to the project name indicates the current PROOF Level of the project, Level 1 in this case.
 
 ### Doing the same thing with an agent
 
@@ -87,7 +84,7 @@ You will see an alert in the top right that tells you that some files did not ma
   is a sequence of floating-point operations, and different environments'
   build orders and vectorization schemes are not always the same. The science is identical
   to twelve significant figures (the quantitative unit tests pass), which is close enough for most scientific reproducibility expectations. The bytes, however, are not identical.
-- **The figures differ significantly.** Matplotlib stamps its own version into
+- **The figures' bytes differ.** Matplotlib stamps its own version into
   every PNG it writes, so a different matplotlib version guarantees
   different bytes before the figure is ever generated, which also
   differs by platform.
@@ -95,7 +92,7 @@ You will see an alert in the top right that tells you that some files did not ma
 Your run passed every *scientific test* (the unit tests) the project defines, but did
 not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the *exact same environment* that the author used.
 
-This next section, which describes how to generate byte-identical results, is technically optional, but discouraged. While `vaibify`'s behavior is the same in both "host mode" and "container mode", the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use `vaibify` on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!
+This next section, which describes how to generate byte-identical results, is technically optional, but encouraged. While `vaibify`'s behavior is the same in both "host mode" and "container mode", the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use `vaibify` on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!
 
 ## 7. Containerize the same project
 
@@ -118,12 +115,12 @@ Once you're ready, then from the dashboard, press the Admin pulldown menu in the
 | # | Page | What to enter here |
 |---|------|--------------------|
 | 1 | **Project Name** | Set the **Project Name** to "AI Greenhouse" and note that the container's name changes to include a dash. Container names cannot have spaces or uppercase letters. Click "Next". |
-| 2 | **Environment** | Leave **Use the author's pinned image** selected. The table beneath it names the image, the kind of processor it was built for (`linux/amd64`), and the archived copy on Zenodo. If your computer has a different processor ("This daemon"), such as `arm64`, check the **Allow emulation** box. Below that, under "How the author's image may run on this machine", choose **Run it as its author built it**, so the environment remains exactly as the author saved it. Click "Next". |
-| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under *Resource limits*, Leave *CPU cores* at **all cores -1**, which leaves 1 reserved for the host (you can still use all of them outside the container); and *Memory (GB)* at**5**. (You can adjust this later if you choose to keep the container.) Click "Next".|
+| 2 | **Environment** | Leave **Use the author's pinned image** selected. The table beneath it names the image, the kind of processor it was built for (`linux/amd64`), and the archived copy on Zenodo. If your computer has a different processor ("This daemon"), such as `arm64`, check the **Allow emulation** box. (About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.) Below that, under "How the author's image may run on this machine", choose **Run it as its author built it**, so the environment remains exactly as the author saved it. Click "Next". |
+| 3 | **Features & Authentication** | Select one of the available coding agents. LaTeX and the other base features are grayed out because the author's image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under *Resource limits*, leave *CPU cores* at **all cores -1**, which leaves 1 reserved for the host (you can still use all of them outside the container); and *Memory (GB)* at **5**. (You can adjust this later if you choose to keep the container.) Click "Next".|
 | 4 | **Files to Copy** | Leave everything at their defaults. Click "Next". |
 | 5 | **Summary** | Read it and confirm it matches the above instructions. Click **Convert and obtain**. |
 
-You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, *this download may take an hour or more.* In some cases, the connection can be severd
+You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, *this download may take an hour or more.* If the connection drops, `vaibify` resumes the download. If it keeps failing, `vaibify` pauses with the partial download kept and presents a "Try again" button. Note that if you cancel a download, the partial file is deleted.
 
 When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the `host-mode` badges become `contained`. The steps still do the
 same things, but now they do them in the pinned environment, and the
@@ -142,12 +139,9 @@ environment.
 1. From the **Run** menu, choose **Check Files Against Manifest**. The
    data files and figures still differ, because they are still the
    bytes your own computer produced.
-2. From the **Run** menu, choose **Run All Steps**, then **Run All Unit
-   Tests**. This time every step runs inside the author's environment,
+2. From the **Run** menu, choose **Run All Steps**. This time every step runs inside the author's environment,
    and the run log notes that it used the date the author recorded, so
-   any figure with a date inside it comes out the same. If any step's
-   Researcher marker no longer reads "Passed", mark it again as you
-   did in section 5; the project returns to Level 1.
+   any figure with a date inside it comes out the same. Each step's Researcher marker now reads stale because the plot's bytes changed. Click it once and the badge reads "Passed".
 3. Choose **Check Files Against Manifest** again. Every file now
    matches: in the author's environment, your run produced the
    author's bytes.
@@ -173,67 +167,42 @@ and compare the bytes.
 
 ## 8. When something is wrong
 
-There is no diagnosis button to look for while things are working.
 A diagnosis is offered where a problem is reported: an error message
 in the dashboard ends with **Click to run a diagnosis**, and the window
-that reports a failed build or a failed download has a **Run a
-diagnosis** button. Click either and a report opens. It checks this
-machine, and every finding that needs action names the exact command
-to run, correct for the Docker runtime you are actually using.
+that reports a failed build or a failed download has a **Run a diagnosis** button. Click either and a report opens. It checks this
+machine and gives you the exact command
+to run to fix the issue.
 
-When nothing is reporting an error but the dashboard is saying
-something you did not expect, run the same checks from a terminal:
+When nothing is reporting an error but the dashboard reports
+something you did not expect, you can run the same checks from a terminal on the host machine:
 
 ```bash
 vaibify doctor
 ```
 
-That report covers everything the dashboard's does, plus the inside of
-the running container and vaibify's own record of the project; see the
+That report covers everything the dashboard reports, plus additional information about the container and vaibify's own record of the project; see the
 [CLI Reference](cli.md).
 
 Three things about the report are worth knowing before you read one.
 
 **The diagnosis changes nothing.** It never starts, stops, removes or restarts
 anything. You can run it against a container that has just died without
-destroying the evidence of why.
+destroying the evidence of what happened.
 
-**"Not checked" is not "ok".** A check that could not run says so, with
-the reason, in its own group, and it is counted in its own column. A
-diagnostic that quietly reports success for having run nothing is worse
-than no diagnostic.
+**"Not checked" is not "ok".** A check that could not run is not labeled as working correctly. Instead, the doctor explains the reason for the issue. 
 
-**A finding you can act on names its own command.** Where vaibify can
+**The doctor tells you the command to fix an issue.** Where vaibify can
 apply the fix itself, that command is `vaibify repair`. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.
 
-**Emulation can occasionally crash.** About 0.2% of emulation runs fail. If you see a "killed by signal 11" message while running with an emulator, just run again and it will very likely work.
-
-### Outputs that were re-run outside the container
-
-If you run a step's script yourself — in a terminal, in your editor, on
-a cluster — the outputs it writes are not the outputs vaibify recorded,
-and the dashboard will turn those files red. Nothing is broken and
-nothing was lost: the badge is telling you the truth, which is that the
-file on disk is no longer the one the recorded run produced.
-
-The way forward is to run the step through vaibify (**Run Step**), so the run that produced the file is the run vaibify
-recorded. Vaibify deliberately does not offer a way to mark a file
-"fine as it is": a green badge over a file whose provenance nobody
-knows is exactly the claim this tool exists not to make.
-
 ## 9. Where to next
 
-- **[The three templates: sandbox, toolkit, workflow](environmentsAndProjects.md)** —
-  starting your own project rather than driving someone else's.
-- **[Environments and Projects](environmentsAndProjects.md)** — every
-  panel of the dashboard, the status colors, and how steps are verified.
-- **[The PROOF Ladder](proofLadder.md)** — what Levels 1 through 3 each
-  certify, and what none of them do.
-- **[Security model](security.md)** — what a container protects against
-  and what host mode does not. Worth reading before you let an agent
+- **[The three templates: sandbox, toolkit, workflow](environmentsAndProjects.md#templates)** —
+  Start your own project rather than reproduce someone else's work.
+- **[Environments and Projects](environmentsAndProjects.md#the-dashboard)** — Learn more about the dashboard: status colors, symbols, and how steps are verified.
+- **[The PROOF Ladder](proofLadder.md)** — Get familiar with what Levels 1 through 3
+  certify, what they don't do, and how to go beyond Level 3 (`vaibify`'s ceiling).
+- **[Security model](security.md)** — Explore how `vaibify` protects your data and secrets, as well as how to ensure you don't dismantle the safeguards. Worth reading before you let an agent
   write code anywhere.
-- **[Advanced Installation](install.md)** — Docker and Colima,
-  platform-specific troubleshooting, the configuration reference, and
-  the command line that makes everything above scriptable.
+- **[The System Prompt](systemPrompt.md)** — Read the instructions that agents launched in `vaibify` are given so you know what to expect, what you don't need to repeat, and how to tailor your own prompt to cover what you think is missing. 

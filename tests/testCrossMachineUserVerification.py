@@ -81,9 +81,9 @@ def test_fresh_clone_does_not_discard_the_researchers_attestation():
     a checkout-time mtime. The mtime pass marks it stale; the content
     is unchanged, so it must be restored.
 
-    Kills: in fileStatusManager.fbReconcileUserVerificationByContentHash,
-    remove the restore branch (the ``dictRecorded == dictCurrent``
-    assignment of sUser back to "passed").
+    Kills: in fileStatusManager._fbReconcileOneSignOff, remove the
+    restore branch (the ``bMatches and dictRecorded`` assignment of
+    sUser back to "passed").
     """
     dictStep = _fdictStep(
         "stale", {"PlotStep/figure.pdf": S_PLOT_SHA},
@@ -106,9 +106,9 @@ def test_a_genuinely_changed_plot_stays_stale():
     recorded hash, or a real change would be laundered into a verified
     state and the dashboard would vouch for a plot nobody looked at.
 
-    Kills: in fileStatusManager.fbReconcileUserVerificationByContentHash,
-    weaken the restore condition from ``dictRecorded == dictCurrent``
-    to ``dictRecorded`` alone.
+    Kills: in fileStatusManager._fbReconcileOneSignOff, weaken the
+    restore condition from ``bMatches and dictRecorded`` to
+    ``dictRecorded`` alone.
     """
     dictStep = _fdictStep(
         "stale", {"PlotStep/figure.pdf": S_PLOT_SHA},
@@ -130,9 +130,9 @@ def test_a_stale_step_never_adopts_the_current_hash_as_verified():
     and the following poll would restore the attestation — the change
     would verify itself.
 
-    Kills: in fileStatusManager.fbReconcileUserVerificationByContentHash,
-    move the recording branch so it also runs for a stale step (drop
-    the ``if sUser == "passed":`` guard around it).
+    Kills: in fileStatusManager._fbReconcileOneSignOff, let a stale
+    step fall through to the recording branch (drop the early
+    ``if dictVerification["sUser"] == "stale":`` return).
     """
     dictStep = _fdictStep("stale")
     filesRepo = _StubRepoFiles({"PlotStep/figure.pdf": S_PLOT_SHA})
@@ -149,7 +149,9 @@ def test_an_unsampled_plot_hash_is_never_recorded():
     """A hash the poll did not sample must not vouch for anything.
 
     Two missing hashes would otherwise compare equal and restore an
-    attestation on the strength of two files nobody read.
+    attestation on the strength of two files nobody read. A sign-off
+    with no recorded baseline whose plot cannot be hashed records
+    nothing, and goes stale: what it attested can no longer be shown.
     """
     dictStep = _fdictStep("passed")
     filesRepo = _StubRepoFiles({})
@@ -158,5 +160,6 @@ def test_an_unsampled_plot_hash_is_never_recorded():
         _fdictWorkflow(dictStep), filesRepo, S_REPO_ROOT,
     )
 
-    assert bChanged is False
+    assert bChanged is True
+    assert dictStep["dictVerification"]["sUser"] == "stale"
     assert "dictUserVerifiedHashes" not in dictStep["dictVerification"]

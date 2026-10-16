@@ -727,7 +727,7 @@ The rest are optional:
 | `saInputDataFiles` | string array | `[]` | Raw files the step reads that no step produces. |
 | `bNoInputData` | boolean | `false` | Declares that the step needs no input data. |
 | `saDependencies` | string array | `[]` | Extra `{step:…}` tokens for dependencies not in a command. |
-| `saTestCommands` | string array | `[]` | Additional test commands. |
+| `saTestCommands` | string array | `[]` | Additional test commands, run after the plots. |
 | `dictTests` | object | — | The step's generated integrity, qualitative, and quantitative tests. |
 | `listRemoteData` | array | `[]` | Provenance of files fetched from a remote source. |
 | `fWallClockBudgetSeconds` | number | `0` (use the Project default) | The step's runtime limit. |

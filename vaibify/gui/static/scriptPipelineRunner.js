@@ -127,11 +127,9 @@ var VaibifyPipelineRunner = (function () {
             VaibifyApp.fnSetStepTaint(
                 iPassIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
             VaibifyApp.fnClearOutputModified(iPassIdx);
-            /* Running a step's tests leaves its outputs as they were,
-               so the researcher's sign-off stands (2026-10-13 ruling). */
-            if (!dictEvent.bFromTestRun) {
-                fnResetUserVerification(iPassIdx);
-            }
+            /* A run never resets the sign-off here: the server decides
+               whether it survives, by the bytes of the step's plots,
+               whoever dispatched the run (R6). The poll reports it. */
             fnAcknowledgeStepCompletion(iPassIdx);
             VaibifyApp.fnInvalidateStepFileCache(iPassIdx);
             VaibifyApp.fnRenderStepList();
@@ -147,9 +145,6 @@ var VaibifyPipelineRunner = (function () {
                     ? "stopped" : "fail");
             VaibifyApp.fnSetStepTaint(
                 iFailIdx, !!dictEvent.bDownstreamOfDegradedProvenance);
-            if (!dictEvent.bFromTestRun) {
-                fnResetUserVerification(iFailIdx);
-            }
             VaibifyApp.fnInvalidateStepFileCache(iFailIdx);
             VaibifyApp.fnRenderStepList();
         } else if (dictEvent.sType === "started") {
@@ -537,20 +532,6 @@ var VaibifyPipelineRunner = (function () {
     }
 
     /* --- State --- */
-
-    function fnResetUserVerification(iStepIndex) {
-        var dictWorkflow = VaibifyApp.fdictGetWorkflow();
-        var dictStep = dictWorkflow.listSteps[iStepIndex];
-        if (!dictStep) return;
-        var dictVerify = VaibifyApp.fdictGetVerification(dictStep);
-        if (dictVerify.sUser === "untested") return;
-        dictVerify.sUser = "untested";
-        delete dictVerify.sLastUserUpdate;
-        dictStep.dictVerification = dictVerify;
-        VaibifyApp.fnSaveStepUpdate(iStepIndex, {
-            dictVerification: dictStep.dictVerification,
-        });
-    }
 
     function fnAcknowledgeStepCompletion(iStepIndex) {
         var sContainerId = VaibifyApp.fsGetContainerId();
@@ -1016,7 +997,6 @@ var VaibifyPipelineRunner = (function () {
     function fnHandleStandaloneStepComplete(iStepIndex, iExitCode) {
         var sStatus = iExitCode === 0 ? "pass" : "fail";
         VaibifyApp.fnSetStepStatus(iStepIndex, sStatus);
-        fnResetUserVerification(iStepIndex);
         if (iExitCode === 0) {
             VaibifyApp.fnClearOutputModified(iStepIndex);
         }
@@ -1524,7 +1504,6 @@ var VaibifyPipelineRunner = (function () {
         fnSendPipelineAction: fnSendPipelineAction,
         fnShowInteractivePauseDialog: fnShowInteractivePauseDialog,
         fnRunInteractiveInTerminal: fnRunInteractiveInTerminal,
-        fnResetUserVerification: fnResetUserVerification,
         fnAcknowledgeStepCompletion: fnAcknowledgeStepCompletion,
         fnRecoverPipelineState: fnRecoverPipelineState,
         fnHandlePipelinePollResult: fnHandlePipelinePollResult,

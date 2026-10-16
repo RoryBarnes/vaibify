@@ -137,18 +137,26 @@ docstring; read it in full before modifying any transition.
 Summary of the fields and invariants:
 
 - `sUnitTest`, `sUser`, `sIntegrity`, `sQualitative`, `sQuantitative`
-  — each is `untested | passed | failed`.
+  — each is `untested | passed | failed`; `sUser` may also be
+  `stale`.
 - `bUpstreamModified` flags a step whose upstream outputs have
   changed.
 - `listModifiedFiles` is populated by polling.
 
 Invariants:
 
-- Step execution resets `sUser` to `untested` (user must re-verify).
-- Data-file change resets `sUnitTest` to `untested`.
-- Plot file newer than `sLastUserUpdate` resets `sUser`.
+- A step runs data, then plots, then tests.
+- Only the server decides whether `sUser` survives a run, whoever
+  dispatched it; the browser never resets it. A sign-off records
+  every declared plot's SHA-256 (`dictUserVerifiedHashes`); different
+  bytes, or a missing plot, make it `stale` with the hashes kept.
+- Change is judged by content: a byte-identical data or plot file with
+  a newer mtime changes neither the tests nor the sign-off.
+- Data- or plot-file change (by content) makes the tests not current.
 - Upstream change sets `bUpstreamModified = True` and resets
-  `sUnitTest`.
+  `sUnitTest`. Only the upstream files a step names by `{step:…}`
+  token count, and only when their bytes differ from the ones the step
+  recorded consuming (`dictConsumedUpstreamDigests`).
 
 Any change to these transitions is an ask-first operation — consult
 the user before proceeding.

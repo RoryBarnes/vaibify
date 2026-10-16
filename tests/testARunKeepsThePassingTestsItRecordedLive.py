@@ -10,11 +10,21 @@ baseline with the step's outputs alone, so every other path the poll
 measures -- the declared inputs first -- was absent from the baseline
 and read as changed on the next poll. The acknowledgement now merges.
 
+A second demotion had the same face. The runner ran each step as data,
+then tests, then plots, so every plot was written after the run its
+tests recorded, and the first poll read the step's outputs as newer
+than that run and demoted the tests. A step now runs data, plots, then
+tests. The project's step therefore draws a templated plot
+(``{sPlotDirectory}/numbers.{sFigureType}``) whose bytes differ on
+every run, as a researcher's plot of new data does.
+
 The test mimics the browser: it acknowledges each finished step and
-saves each test result as the dashboard does, then polls as the
-dashboard does with the pipeline socket held open, and records every
-poll's verdict for the step. Run at the commit before the fix, it lists
-the input on every poll after the run.
+saves each test result as the dashboard does -- the whole verification
+block with the unit and category axes set, and never a sign-off write --
+then polls as the dashboard does with the pipeline socket held open, and
+records every poll's verdict for the step. Run at the commit before the
+merge fix, it lists the input on every poll after the run; run at the
+commit before the reorder, it reads the tests untested on poll 0.
 """
 
 import json
@@ -36,6 +46,17 @@ S_PROJECT = "inputHoldsProject"
 S_STEP = "MakeNumbers"
 S_INPUT = "input.json"
 S_OUTPUT = "numbers.json"
+S_PLOT_TEMPLATE = "{sPlotDirectory}/numbers.{sFigureType}"
+S_PLOT_RELATIVE = "Plot/numbers.png"
+S_COUNTER = "plotCounter.txt"
+# A second step reads the first step's data through a step token, as a
+# downstream analysis does; it never reads the first step's plot.
+S_DOWNSTREAM = "SumNumbers"
+S_DOWNSTREAM_OUTPUT = "total.json"
+# A raw input of the step below. That step has no tests, so no test run
+# ever records this file's digest: only the mtime baseline speaks for
+# it, which is what keeps the acknowledgement's merge observable.
+S_SCALE = "scale.json"
 I_POLLS_AFTER_RUN = 20
 
 _S_SCRIPT = """import argparse, json
@@ -47,6 +68,37 @@ with open(args.input) as f:
     d = json.load(f)
 with open(args.output, "w") as f:
     json.dump({"listValues": [v * 2 for v in d["listValues"]]}, f)
+"""
+
+# Each run draws different bytes, as a plot of new data does: the
+# counter beside the step advances on every call. The poll compares
+# WHOLE-second mtimes, and a real plotting library takes over a second
+# to import and draw; the pause stands in for that, so the plot's
+# whole-second mtime is always later than any run that came before it.
+_S_PLOT_SCRIPT = """import argparse, os, time
+time.sleep(1.1)
+parser = argparse.ArgumentParser()
+parser.add_argument("--output", required=True)
+args = parser.parse_args()
+iRun = int(open("plotCounter.txt").read()) + 1 if os.path.exists("plotCounter.txt") else 1
+with open("plotCounter.txt", "w") as f:
+    f.write(str(iRun))
+with open(args.output, "wb") as f:
+    f.write(("numbers plot, run %d" % iRun).encode())
+"""
+
+_S_SUM_SCRIPT = """import argparse, json
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", required=True)
+parser.add_argument("--scale", required=True)
+parser.add_argument("--output", required=True)
+args = parser.parse_args()
+with open(args.input) as f:
+    d = json.load(f)
+with open(args.scale) as f:
+    iScale = json.load(f)["iScale"]
+with open(args.output, "w") as f:
+    json.dump({"iTotal": iScale * sum(d["listValues"])}, f)
 """
 
 _S_TEST = """import json, os
@@ -68,7 +120,21 @@ def _fdictProjectDocument():
             "saInputDataFiles": [S_INPUT],
             "saOutputDataFiles": [S_OUTPUT],
             "saTestCommands": ["python3 -m pytest tests/test_integrity_makeNumbers.py"],
-            "saPlotCommands": [], "saPlotFiles": [],
+            "saPlotCommands": [
+                f"python3 makePlot.py --output {S_PLOT_TEMPLATE}",
+            ],
+            "saPlotFiles": [S_PLOT_TEMPLATE],
+        }, {
+            "sName": S_DOWNSTREAM, "sStepId": "sum-numbers",
+            "sDirectory": S_DOWNSTREAM, "bRunEnabled": True,
+            "bPlotOnly": False,
+            "saDataCommands": [
+                "python3 sumNumbers.py --input {step:make-numbers.numbers} "
+                f"--scale ../{S_SCALE} --output {S_DOWNSTREAM_OUTPUT}",
+            ],
+            "saInputDataFiles": [S_SCALE],
+            "saOutputDataFiles": [S_DOWNSTREAM_OUTPUT],
+            "saTestCommands": [], "saPlotCommands": [], "saPlotFiles": [],
         }],
     }
 
@@ -80,13 +146,18 @@ def _fnGit(sRepo, *listArguments):
     )
 
 
-def _fsSeedProject(sHome):
+def _fsSeedProject(sHome, sPlotScript=None):
     sRepo = os.path.join(sHome, S_PROJECT)
     os.makedirs(os.path.join(sRepo, S_STEP, "tests"))
     os.makedirs(os.path.join(sRepo, ".vaibify", "projects"))
     Path(sRepo, "vaibify.yml").write_text(f"projectName: {S_PROJECT}\n")
     Path(sRepo, S_INPUT).write_text(json.dumps({"listValues": [1, 2, 3]}))
+    Path(sRepo, S_SCALE).write_text(json.dumps({"iScale": 1}))
     Path(sRepo, S_STEP, "makeNumbers.py").write_text(_S_SCRIPT)
+    Path(sRepo, S_STEP, "makePlot.py").write_text(sPlotScript or _S_PLOT_SCRIPT)
+    os.makedirs(os.path.join(sRepo, S_DOWNSTREAM))
+    Path(sRepo, S_DOWNSTREAM, "sumNumbers.py").write_text(_S_SUM_SCRIPT)
+    Path(sRepo, ".gitignore").write_text(f"{S_STEP}/{S_COUNTER}\n")
     Path(sRepo, S_STEP, "tests", "test_integrity_makeNumbers.py").write_text(_S_TEST)
     Path(sRepo, ".vaibify", "projects", "project.json").write_text(
         json.dumps(_fdictProjectDocument(), indent=2))
@@ -99,8 +170,11 @@ def _fsSeedProject(sHome):
 
 
 @pytest.fixture
-def hubHost(monkeypatch):
-    """The real hub, its state redirected, serving one host project."""
+def hubHost(monkeypatch, request):
+    """The real hub, its state redirected, serving one host project.
+
+    Indirect parametrization replaces the step's plot script.
+    """
     from vaibify.config import (
         containerLock, operationJournal, preferencesStore, registryManager,
     )
@@ -124,7 +198,7 @@ def hubHost(monkeypatch):
             (containerLock, "_S_LOCK_DIRECTORY", os.path.join(sHome, "locks")),
         ):
             monkeypatch.setattr(moduleTarget, sName, sValue)
-        sRepo = _fsSeedProject(sHome)
+        sRepo = _fsSeedProject(sHome, getattr(request, "param", None))
         registryManager.fnAddProject(sRepo, sMode="host")
         socketListening = fsocketBindLoopbackPort()
         iPort = socketListening.getsockname()[1]
@@ -184,16 +258,50 @@ def _fdictStepVerdict(dictPoll):
     return {"_sPollKeys": sorted(dictPoll.keys())}
 
 
+_T_CATEGORY_AXES = (
+    ("dictIntegrity", "sIntegrity"),
+    ("dictQualitative", "sQualitative"),
+    ("dictQuantitative", "sQuantitative"),
+)
+
+
+def _fnSaveTestResultAsTheDashboard(client, sProject, dictEvent):
+    """Save a test result as ``fnHandleTestResult`` does.
+
+    The browser sets the unit axis and every category axis that has
+    commands, then PUTs its WHOLE verification block, which the route
+    stores in place of the old one. It never writes the sign-off here.
+    """
+    iStep = dictEvent["iStepNumber"] - 1
+    responseStep = client.get(f"/api/steps/{sProject}/{iStep}")
+    assert responseStep.status_code == 200, responseStep.text
+    dictStep = responseStep.json()
+    dictVerification = dict(dictStep.get("dictVerification") or {
+        "sUnitTest": "untested", "sUser": "untested"})
+    dictVerification["sUnitTest"] = dictEvent["sResult"]
+    dictCategoryResults = dictEvent.get("dictCategoryResults") or {}
+    for sCategoryKey, sVerifyKey in _T_CATEGORY_AXES:
+        dictCategory = (dictStep.get("dictTests") or {}).get(sCategoryKey) or {}
+        if not dictCategory.get("saCommands"):
+            continue
+        entryResult = dictCategoryResults.get(sCategoryKey)
+        if isinstance(entryResult, dict):
+            dictVerification[sVerifyKey] = entryResult.get("sStatus") or dictEvent["sResult"]
+        elif isinstance(entryResult, str):
+            dictVerification[sVerifyKey] = entryResult
+        else:
+            dictVerification[sVerifyKey] = dictEvent["sResult"]
+    dictUpdate = {"dictVerification": dictVerification}
+    if dictStep.get("dictTests"):
+        dictUpdate["dictTests"] = dictStep["dictTests"]
+    response = client.put(f"/api/steps/{sProject}/{iStep}", json=dictUpdate)
+    assert response.status_code == 200, response.text
+
+
 def _fnActAsTheDashboard(client, sProject, dictEvent):
     """Do what the dashboard does on the events the run emits."""
     if dictEvent.get("sType") == "testResult":
-        iStep = dictEvent["iStepNumber"] - 1
-        response = client.put(f"/api/steps/{sProject}/{iStep}", json={
-            "dictVerification": {
-                "sUnitTest": dictEvent["sResult"], "sUser": "untested",
-            },
-        })
-        assert response.status_code == 200, response.text
+        _fnSaveTestResultAsTheDashboard(client, sProject, dictEvent)
     if dictEvent.get("sType") == "stepPass":
         iStep = dictEvent["iStepNumber"] - 1
         response = client.post(f"/api/pipeline/{sProject}/acknowledge-step/{iStep}")
@@ -227,18 +335,33 @@ def _flistRunAllAsTheDashboard(client, sProject, sLeaseId):
 
 
 def _flistPollAfterTheRun(client, sProject):
+    """Poll as scriptPolling does, carrying the client's workflow epoch.
+
+    An up-to-date client is not re-sent the workflow, so the step's
+    verdict is read back from the server when the poll carries none.
+    """
     listHistory = []
+    iWorkflowEpoch = -1
     for iPoll in range(I_POLLS_AFTER_RUN):
-        response = client.get(f"/api/pipeline/{sProject}/file-status")
+        response = client.get(
+            f"/api/pipeline/{sProject}/file-status",
+            params={"iWorkflowEpoch": iWorkflowEpoch})
         if response.status_code != 200:
             listHistory.append((iPoll, f"HTTP {response.status_code}: {response.text[:200]}", None))
             print("POLL", listHistory[-1])
             time.sleep(1.0)
             continue
         dictPoll = response.json()
+        iWorkflowEpoch = dictPoll["iWorkflowEpoch"]
         dictVerdict = _fdictStepVerdict(dictPoll)
+        if "_sPollKeys" in dictVerdict:
+            dictVerdict = client.get(f"/api/steps/{sProject}/0").json()[
+                "dictVerification"]
+        dictDownstream = client.get(f"/api/steps/{sProject}/1").json()[
+            "dictVerification"]
         listHistory.append((iPoll, dictVerdict.get("sUnitTest"),
-                            dictVerdict.get("listModifiedFiles")))
+                            (dictVerdict.get("listModifiedFiles") or [])
+                            + (dictDownstream.get("listModifiedFiles") or [])))
         print("POLL", listHistory[-1], "epoch=", dictPoll.get("iWorkflowEpoch"),
               "reloaded=", dictPoll.get("bWorkflowReloaded"))
         time.sleep(1.0)
@@ -249,7 +372,9 @@ def _flistPollAfterTheRun(client, sProject):
 def test_a_run_keeps_the_passing_tests_it_recorded(hubHost):
     """Kills: the acknowledgement replacing the mtime baseline with the
     step's outputs, which reports every declared input as modified on
-    the next poll and demotes the tests that just passed.
+    the next poll and demotes the tests that just passed; and the
+    runner drawing a step's plots after its tests, which leaves every
+    plot newer than the run the tests recorded.
     """
     client, sRepo = hubHost
     dictClaim = client.post(f"/api/registry/{S_PROJECT}/claim")
@@ -269,6 +394,9 @@ def test_a_run_keeps_the_passing_tests_it_recorded(hubHost):
     assert listEvents[-1]["sType"] == "completed", listEvents[-3:]
     listTestResults = [e for e in listEvents if e.get("sType") == "testResult"]
     assert listTestResults and listTestResults[0]["sResult"] == "passed", listEvents
+    assert Path(sRepo, S_PLOT_RELATIVE).is_file(), "the plot command drew nothing"
     assert all(sUnitTest == "passed" for _, sUnitTest, _ in listHistory), listHistory
     assert not any(S_INPUT in (listModified or []) for _, _, listModified in listHistory), (
+        listHistory)
+    assert not any(S_SCALE in listModified for _, _, listModified in listHistory), (
         listHistory)

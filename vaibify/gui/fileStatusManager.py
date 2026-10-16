@@ -16,7 +16,10 @@ nothing to run. ``fbStepTestsPassing`` treats it as green;
 invalidation skips it; marker-application leaves it sticky.
 
 **User verification** (set by researcher clicking UI badge):
-- ``sUser``:          untested | passed | failed
+- ``sUser``:          untested | passed | failed | stale
+- ``dictUserVerifiedHashes``: the SHA-256 of every declared plot,
+  recorded server-side at sign-off; absent for a sign-off made before
+  baselines existed
 
 **Plot standards** (set by standardize-plots endpoint):
 - ``sPlotStandards``: passed | stale
@@ -31,12 +34,22 @@ invalidation skips it; marker-application leaves it sticky.
 
 State Transitions
 ~~~~~~~~~~~~~~~~~
-- Step executes      -> sUser resets to "untested"
-- Data file changes  -> sUnitTest, sIntegrity, sQualitative, sQuantitative reset to "untested"
-- Plot file changes  -> sUser resets to "untested" (if newer than sLastUserUpdate)
-- Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True
+A step runs data, then plots, then tests. Outputs are judged by
+content: a byte-identical file with a newer mtime changes nothing.
+
+- Step executes      -> sUser is left to the content rule below, for
+                        every run, whoever dispatched it
+- Data file changes  -> sUnitTest, sIntegrity, sQualitative, sQuantitative
+                        are no longer current ("untested")
+- Plot file changes  -> sUser becomes "stale" (the attested hashes are
+                        kept as evidence), AND the step's tests are no
+                        longer current: a plot is a declared output
+- Upstream changes   -> same resets as data file changes, plus bUpstreamModified = True,
+                        judged by the bytes of the upstream files the step
+                        names by token against the ones it consumed
 - Tests pass/fail    -> sUnitTest, sIntegrity, sQualitative, sQuantitative updated
-- User clicks verify -> sUser cycles: untested -> passed -> failed -> untested
+- User clicks verify -> sUser cycles: untested -> passed -> failed -> untested;
+                        a sign-off records the bytes of every declared plot
 """
 
 import logging
@@ -58,6 +71,16 @@ _LIST_CATEGORY_KEYS = (
 
 __all__ = [
     "fdictCollectOutputPathsByStep",
+    "fdictContentVouchedPathsByStep",
+    "fdictUpstreamEvidenceByEdge",
+    "S_CONSUMED_UPSTREAM_DIGESTS_KEY",
+    "fdictWithSignedOffPlots",
+    "fdictMatchedPathsByStep",
+    "fdictOutputMtimesByStep",
+    "flistStepPlotsRepoRelative",
+    "ftCaptureStepPlotHashes",
+    "S_USER_VERIFIED_HASHES_KEY",
+    "fsStepFileRepoRelative",
     "fdictCollectInputPathsByStep",
     "fdictHandleCollectScriptPathsByStep",
     "fdictHandleCollectMarkerPathsByStep",
@@ -775,11 +798,17 @@ def _ftEvaluateFreshness(iIndex, dictStep, dictModTimes, listPlotPaths):
     ``_fdictResolvePlotPathsForAttestedSteps``). ``bChecked`` is False
     when the step is not user-attested, has no ``sLastUserUpdate``
     field, or carries an unparseable timestamp — in any of those
-    cases the caller skips the step. When ``bChecked`` is True the
+    cases the caller skips the step. It is False too for a sign-off
+    that recorded its plots' bytes (``dictUserVerifiedHashes``): the
+    content pass judges that one in both directions, and a timestamp
+    verdict here would only be reversed by it on every poll, saving
+    the workflow twice for nothing. When ``bChecked`` is True the
     freshness-check log line has been emitted as a side effect.
     """
     dictVerification = dictStep.get("dictVerification", {})
     if dictVerification.get("sUser") != "passed":
+        return False, False
+    if S_USER_VERIFIED_HASHES_KEY in dictVerification:
         return False, False
     sLastUserUpdate = dictVerification.get("sLastUserUpdate", "")
     if not sLastUserUpdate:
@@ -986,23 +1015,142 @@ def fbReconcileUserVerificationTimestamps(dictWorkflow):
     return bAnyChanged
 
 
-def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
+def _fdictNamedUpstreamPaths(dictWorkflow, dictVars):
+    """Return ``{(iUpstream, iDownstream): set of paths}`` a step names by token.
+
+    The paths are the upstream outputs a downstream step reads through a
+    ``{step:<id>.<stem>}`` token, resolved as the runner resolves them.
+    An edge with no such token (a directory overlap, a deprecated
+    positional reference) is absent, and the caller compares every
+    output of the upstream step instead.
+    """
+    import re
+    dictStepPaths = workflowManager.fdictBuildStepVariables(
+        dictWorkflow, dictVars or _fdictBuildFileStatusVars(dictWorkflow))
+    dictIdToIndex = workflowManager.fdictStepIdToIndex(dictWorkflow)
+    dictResult = {}
+    for iDownstream, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        for sField in workflowManager.T_STEP_REFERENCE_FIELDS:
+            for sItem in dictStep.get(sField, []) or []:
+                for sId, sStem in re.findall(
+                    workflowManager.S_STEP_SYMBOLIC_PATTERN, sItem,
+                ):
+                    sPath = dictStepPaths.get(f"step:{sId}.{sStem}")
+                    if sId in dictIdToIndex and sPath:
+                        dictResult.setdefault(
+                            (dictIdToIndex[sId], iDownstream), set(),
+                        ).add(posixpath.normpath(sPath))
+    return dictResult
+
+
+S_CONSUMED_UPSTREAM_DIGESTS_KEY = "dictConsumedUpstreamDigests"
+
+
+def fdictUpstreamEvidenceByEdge(dictWorkflow, dictModTimes, dictVars, filesPoll):
+    """Return, for each dependency edge, the upstream files the step reads.
+
+    ``{(iUpstream, iDownstream): {"iMtime", "dictDigests"}}``. The files
+    are the ones the downstream names by step token -- a plot it never
+    reads is no reason to flag it -- or every upstream output when it
+    names none. ``iMtime`` is their newest mtime; ``dictDigests`` maps
+    each (repo-relative) to the SHA-256 this poll's snapshot measured,
+    ``None`` when it measured none. See :func:`fbReconcileUpstreamFlags`.
+    """
+    from . import hashStaleness
+    from .pathContract import fsAbsToRepoRelative
+    sRepoRoot = _fsResolveRepoRoot(dictWorkflow, dictVars)
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictNamed = _fdictNamedUpstreamPaths(dictWorkflow, dictVars)
+    dictPathsByStep = fdictCollectOutputPathsByStep(dictWorkflow, dictVars)
+    dictMtimes = {
+        posixpath.normpath(sPath): int(sMtime)
+        for sPath, sMtime in dictModTimes.items()}
+    dictResult = {}
+    for iUp, setDownstream in workflowManager.fdictBuildDirectDependencies(
+        dictWorkflow,
+    ).items():
+        for iDown in setDownstream:
+            listPaths = dictNamed.get((iUp, iDown)) or [
+                posixpath.normpath(sPath)
+                for sPath in dictPathsByStep.get(iUp, [])]
+            dictResult[(iUp, iDown)] = {
+                "iMtime": max((dictMtimes[sPath] for sPath in listPaths
+                               if sPath in dictMtimes), default=0),
+                "dictDigests": {
+                    sRelative: (dictHashEntries.get(sRelative) or {}).get(
+                        "sSha256")
+                    for sRelative in (
+                        fsAbsToRepoRelative(sPath, sRepoRoot)
+                        for sPath in listPaths)},
+            }
+    return dictResult
+
+
+def _fbStepConsumedTheseBytes(dictVerify, dictEdge):
+    """Return True when every upstream file the step reads is the bytes it consumed.
+
+    The step recorded the digests while its outputs were newer than
+    those files (:func:`_fbRecordConsumedDigests`); an unmeasured digest
+    or a file with no record proves nothing and returns False.
+    """
+    if not dictEdge or not dictEdge["dictDigests"]:
+        return False
+    dictConsumed = dictVerify.get(S_CONSUMED_UPSTREAM_DIGESTS_KEY) or {}
+    return all(
+        sSha256 and dictConsumed.get(sPath) == sSha256
+        for sPath, sSha256 in dictEdge["dictDigests"].items())
+
+
+def _fbRecordConsumedDigests(dictVerify, listEdges):
+    """Record the upstream bytes a current step consumed; True when it changed.
+
+    Called only while the step is current against every upstream, so
+    the files are older than its outputs, or carry the bytes already
+    recorded. A digest this poll did not measure is never recorded.
+    """
+    dictMeasured = {}
+    for dictEdge in listEdges:
+        for sPath, sSha256 in dictEdge["dictDigests"].items():
+            if sSha256:
+                dictMeasured[sPath] = sSha256
+    dictConsumed = dictVerify.get(S_CONSUMED_UPSTREAM_DIGESTS_KEY) or {}
+    if all(dictConsumed.get(sPath) == sSha256
+           for sPath, sSha256 in dictMeasured.items()):
+        return False
+    dictConsumed.update(dictMeasured)
+    dictVerify[S_CONSUMED_UPSTREAM_DIGESTS_KEY] = dictConsumed
+    return True
+
+
+def fbReconcileUpstreamFlags(
+    dictWorkflow, dictMaxMtimeByStep, dictUpstreamEvidenceByEdge=None,
+):
     """Sync bUpstreamModified with the current mtime state on every step.
 
     Makes ``bUpstreamModified`` a pure derived field rather than an
     edge-triggered flag that lags reality. Sets it on steps whose
     output is older than any upstream's output; clears it on steps
-    where current mtimes say nothing is stale. Steps with no output
-    mtime (never run) are left alone — no comparison is possible.
-    Returns True when any flag changed so the caller can persist.
+    where current mtimes say nothing is stale. The flag blocks Level 1.
+
+    With ``dictUpstreamEvidenceByEdge`` (see
+    :func:`fdictUpstreamEvidenceByEdge`) an upstream is judged by the
+    files the step names by token, and by their bytes: while a step is
+    current it records the digests of the upstream files it consumed
+    (``dictConsumedUpstreamDigests``), and a later upstream file that is
+    newer but carries exactly those bytes -- a re-run that reproduced
+    them, a touch -- does not flag it. New bytes, or bytes never
+    recorded, do. Steps with no output mtime (never run) are left
+    alone — no comparison is possible. Returns True when any flag or
+    record changed so the caller can persist.
     """
     dictUpstream = _fdictBuildUpstreamMap(dictWorkflow)
+    dictEdges = dictUpstreamEvidenceByEdge or {}
     listSteps = dictWorkflow.get("listSteps", [])
     bAnyChanged = False
     for iStep, dictStep in enumerate(listSteps):
         dictVerify = dictStep.setdefault("dictVerification", {})
         iSignal = _fiMtimeStalenessSignal(
-            iStep, dictUpstream, dictMaxMtimeByStep,
+            iStep, dictUpstream, dictMaxMtimeByStep, dictVerify, dictEdges,
         )
         if iSignal < 0:
             continue
@@ -1012,6 +1160,11 @@ def fbReconcileUpstreamFlags(dictWorkflow, dictMaxMtimeByStep):
             bAnyChanged = True
         elif iSignal == 0 and bHasFlag:
             dictVerify.pop("bUpstreamModified", None)
+            bAnyChanged = True
+        listEdges = [
+            dictEdges[(iUp, iStep)] for iUp in dictUpstream.get(iStep, set())
+            if (iUp, iStep) in dictEdges]
+        if iSignal == 0 and _fbRecordConsumedDigests(dictVerify, listEdges):
             bAnyChanged = True
     return bAnyChanged
 
@@ -1029,7 +1182,7 @@ def _fdictBuildUpstreamMap(dictWorkflow):
 
 
 def _fiMtimeStalenessSignal(
-    iStep, dictUpstream, dictMaxMtimeByStep,
+    iStep, dictUpstream, dictMaxMtimeByStep, dictVerify=None, dictEdges=None,
 ):
     """Return 1 (stale), 0 (fresh), or -1 (unknown — step not run)."""
     iMyMtime = int(
@@ -1038,10 +1191,13 @@ def _fiMtimeStalenessSignal(
     if not iMyMtime:
         return -1
     for iUp in dictUpstream.get(iStep, set()):
-        iUpMtime = int(
+        dictEdge = (dictEdges or {}).get((iUp, iStep))
+        iUpMtime = dictEdge["iMtime"] if dictEdge else int(
             dictMaxMtimeByStep.get(str(iUp), "0") or 0,
         )
-        if iUpMtime and iUpMtime > iMyMtime:
+        if iUpMtime and iUpMtime > iMyMtime and not (
+            _fbStepConsumedTheseBytes(dictVerify or {}, dictEdge)
+        ):
             return 1
     return 0
 
@@ -1176,12 +1332,17 @@ def _ftSplitOutputPaths(
 def _fdictBuildStepStatusEntry(
     dictStep, dictStepScripts, listOutputs, dictModTimes,
     dictResolvedVars, iMarkerMtime=None, dictManifestCache=None,
-    filesRepo=None,
+    filesRepo=None, setContentVouched=None,
 ):
     """Compute {sStatus, listStaleArtifacts} for a single step.
 
     The mtime-based verdict (``_ftStepIsPencilStale``) is the source
-    of "may be stale". The optional manifest short-circuit refines it
+    of "may be stale", over the data, input and plot files whose bytes
+    no recorded digest vouches for (``setContentVouched``, repo-relative:
+    the newest test run's matched digests and the plots matching the
+    sign-off) -- the same bytes earn the same verdict. Scripts are
+    hashed by nothing and keep the timestamp rule. The optional
+    manifest short-circuit refines it
     to "is/isn't actually drifted": if the project repo carries a
     ``MANIFEST.sha256`` that matches every output of this step, an
     mtime-stale verdict is downgraded to ``unchanged``. This prevents
@@ -1192,12 +1353,16 @@ def _fdictBuildStepStatusEntry(
         sResolved for sResolved, _sBase
         in _flistResolvePlotPaths(dictStep, dictResolvedVars)
     }
+    sRepoRoot = (dictResolvedVars or {}).get("sRepoRoot", "")
     bStale, listStale = _ftStepIsPencilStale(
-        dictStep, dictStepScripts, listOutputs, dictModTimes,
+        dictStep, dictStepScripts,
+        _flistWithoutContentVouched(listOutputs, setContentVouched, sRepoRoot),
+        dictModTimes,
         iMarkerMtime=iMarkerMtime,
         setResolvedPlotPaths=setPlotPaths,
-        listStepInputPaths=_flistResolveInputPaths(
-            dictStep, dictResolvedVars,
+        listStepInputPaths=_flistWithoutContentVouched(
+            _flistResolveInputPaths(dictStep, dictResolvedVars),
+            setContentVouched, sRepoRoot,
         ),
     )
     if bStale and _fbStepHashesMatchManifest(
@@ -1268,12 +1433,14 @@ def _flistStepOutputsRepoRelative(dictStep, sRepoRoot):
 def _fdictBuildScriptStatus(
     dictWorkflow, dictModTimes, dictVars=None,
     dictMarkerMtimeByStep=None, filesRepo=None,
+    dictContentVouchedByStep=None,
 ):
     """Return per-step pencil status via timestamp staleness comparison.
 
     ``filesRepo`` is the poll's repo snapshot; when supplied, the
     manifest short-circuit reads container truth instead of probing
-    the host filesystem at a container path.
+    the host filesystem at a container path. A file in
+    ``dictContentVouchedByStep`` is judged by its bytes, not its mtime.
     """
     dictScriptsByStep = fdictHandleCollectScriptPathsByStep(dictWorkflow)
     dictOutputsByStep = fdictCollectOutputPathsByStep(
@@ -1294,6 +1461,7 @@ def _fdictBuildScriptStatus(
             iMarkerMtime=_fiMarkerMtime(dictMarkerMtimes, iIndex),
             dictManifestCache=dictManifestCache,
             filesRepo=filesRepo,
+            setContentVouched=(dictContentVouchedByStep or {}).get(iIndex),
         )
     return dictResult
 
@@ -1398,6 +1566,119 @@ def fdictMarkerVerdictsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
             & set(dictVerdicts["dictRunVerdicts"].values())
         ):
             dictResult[iIndex] = dictVerdicts
+    return dictResult
+
+
+def fdictMatchedPathsByStep(dictWorkflow, dictMarkersByStep, filesPoll):
+    """Return ``{iStepIndex: {sRunId: [paths]}}`` of digests that still match.
+
+    Listed for EVERY step whose marker matches the live step, not only
+    for the steps ``fdictMarkerVerdictsByStep`` keeps: a step whose
+    every digest matches is exactly the one whose newer outputs the
+    content can vouch for. An unreadable marker vouches for nothing.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictMarker = _fdictMarkerForStep(
+            dictStep, iIndex, dictMarkersByStep or {},
+        )
+        if dictMarker is None or dictMarker.get("bMarkerUnreadable"):
+            continue
+        dictResult[iIndex] = hashStaleness.fdictMatchedPathsByRun(
+            dictMarker, dictHashEntries,
+        )
+    return dictResult
+
+
+def fdictContentVouchedPathsByStep(dictMarkersByStep, dictMatchedPathsByStep):
+    """Return ``{iStepIndex: set of paths}`` the newest run vouches for by content.
+
+    A path is listed when the step's NEWEST test run recorded its
+    digest and this poll measured the same bytes. Such a file's mtime
+    may move without its content changing (a checkout, a touch, a
+    byte-identical redraw), and the poll does not report it modified.
+    """
+    from . import testMarkerContract
+    dictResult = {}
+    for iIndex, dictMatchedByRun in (dictMatchedPathsByStep or {}).items():
+        sNewestRunId = testMarkerContract.ftLatestRun(
+            (dictMarkersByStep or {}).get(iIndex))[0]
+        dictResult[iIndex] = set(dictMatchedByRun.get(sNewestRunId) or ())
+    return dictResult
+
+
+def fdictWithSignedOffPlots(dictWorkflow, dictContentVouchedByStep, filesPoll):
+    """Return the vouched sets, each joined by plots whose bytes match the sign-off.
+
+    A plot is vouched for by the sign-off when the poll snapshot hashed
+    it to exactly the SHA-256 the sign-off recorded; an unsampled or
+    unreadable plot vouches for nothing.
+    """
+    from . import hashStaleness
+    dictHashEntries = hashStaleness.fdictHashEntriesOfSnapshot(filesPoll)
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        setVouched = set((dictContentVouchedByStep or {}).get(iIndex) or ())
+        dictAttested = (dictStep.get("dictVerification") or {}).get(
+            S_USER_VERIFIED_HASHES_KEY) or {}
+        for sPath, sSha256 in dictAttested.items():
+            if sSha256 and (dictHashEntries.get(sPath) or {}).get(
+                "sSha256") == sSha256:
+                setVouched.add(sPath)
+        if setVouched:
+            dictResult[iIndex] = setVouched
+    return dictResult
+
+
+def _flistWithoutContentVouched(listAbsolutePaths, setVouched, sRepoRoot):
+    """Return the paths whose bytes no recorded digest vouches for."""
+    from .pathContract import fsAbsToRepoRelative
+    if not setVouched:
+        return list(listAbsolutePaths)
+    return [
+        sPath for sPath in listAbsolutePaths
+        if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]
+
+
+def _fdictDropContentVouchedChanges(
+    dictChangedFiles, dictContentVouchedByStep, sRepoRoot,
+):
+    """Return the mtime changes left once content-vouched paths are dropped."""
+    from .pathContract import fsAbsToRepoRelative
+    dictResult = {}
+    for iIndex, listPaths in dictChangedFiles.items():
+        setVouched = dictContentVouchedByStep.get(iIndex) or set()
+        listKept = [
+            sPath for sPath in listPaths
+            if fsAbsToRepoRelative(sPath, sRepoRoot) not in setVouched]
+        if listKept:
+            dictResult[iIndex] = listKept
+    return dictResult
+
+
+def fdictOutputMtimesByStep(dictWorkflow, dictRepoRelativeModTimes):
+    """Return ``{iStepIndex: {sRepoRelPath: fMtime}}`` for declared outputs.
+
+    Each step's declared data and plot files, resolved by
+    ``fsStepFileRepoRelative``, with the mtime the poll measured; a
+    path the poll could not stat is left out, as it was from the
+    per-step maximum this replaces for test freshness.
+    """
+    dictResult = {}
+    for iIndex, dictStep in enumerate(dictWorkflow.get("listSteps", [])):
+        dictMtimes = {}
+        for sFile in (dictStep.get("saOutputDataFiles", []) or []) + (
+            dictStep.get("saPlotFiles", []) or []
+        ):
+            if not sFile:
+                continue
+            sRelative = fsStepFileRepoRelative(dictWorkflow, dictStep, sFile)
+            if sRelative in dictRepoRelativeModTimes:
+                dictMtimes[sRelative] = float(
+                    dictRepoRelativeModTimes[sRelative])
+        dictResult[iIndex] = dictMtimes
     return dictResult
 
 
@@ -1543,18 +1824,26 @@ def _fdictUnionChangedFiles(dictMtimeChanged, dictHashStaleAbs):
 def _fdictDetectAndInvalidate(
     dictCtx, sContainerId, dictWorkflow, dictNewModTimes,
     dictVars=None, dictHashStaleByStep=None, bPipelineRunning=None,
+    dictContentVouchedByStep=None,
 ):
     """Detect mtime drift, merge the hash drift given, and invalidate.
 
     ``dictHashStaleByStep`` is ``{iStepIndex: [repo-relative paths]}``
     of the files a marker's digest proved drifted (see
     :func:`fdictMarkerVerdictsByStep`); it is computed from the poll
-    snapshot by the caller, so this function reads no file.
+    snapshot by the caller, so this function reads no file. An mtime
+    change to a path in ``dictContentVouchedByStep`` (see
+    :func:`fdictContentVouchedPathsByStep`) is not a modification: the
+    same bytes earn the same verdict, for data and plots alike.
     """
-    dictChangedFiles = _fdictDetectChangedFiles(
-        dictCtx, sContainerId, dictWorkflow,
-        dictNewModTimes, dictVars,
-        bPipelineRunning=bPipelineRunning,
+    dictChangedFiles = _fdictDropContentVouchedChanges(
+        _fdictDetectChangedFiles(
+            dictCtx, sContainerId, dictWorkflow,
+            dictNewModTimes, dictVars,
+            bPipelineRunning=bPipelineRunning,
+        ),
+        dictContentVouchedByStep or {},
+        _fsResolveRepoRoot(dictWorkflow, dictVars),
     )
     dictHashStaleByStep = dictHashStaleByStep or {}
     if not dictChangedFiles and not dictHashStaleByStep:
@@ -2226,40 +2515,65 @@ def fbMaybeAutoArchive(
     return bAnyPushed
 
 
-def _fdictPlotHashesForStep(dictStep, filesRepo, sRepoRoot):
-    """Return ``{sRepoRelPath: sSha256}`` for a step's declared plots.
+S_USER_VERIFIED_HASHES_KEY = "dictUserVerifiedHashes"
 
-    Paths whose hash the poll did not sample are omitted rather than
-    recorded as ``None``: a missing hash must never later compare equal
-    to another missing hash and silently vouch for a file nobody read.
+
+def ftCaptureStepPlotHashes(dictWorkflow, dictStep, filesRepo):
+    """Return ``(dictHashes, listUnhashed)`` for a step's declared plots.
+
+    ``dictHashes`` maps each declared plot that hashed to its SHA-256;
+    ``listUnhashed`` names every declared plot that is missing,
+    unreadable, unsampled, or answered with no hash. A capture is
+    COMPLETE only when ``listUnhashed`` is empty: a partial map must
+    never be taken for the whole, because a plot it omits would then
+    compare as "nothing to compare" rather than as a difference.
     """
-    listPlotPaths = _flistStepPlotsRepoRelative(dictStep, sRepoRoot)
+    listPlotPaths = flistStepPlotsRepoRelative(dictWorkflow, dictStep)
     if not listPlotPaths:
-        return {}
-    dictHashes = filesRepo.fdictHashFiles(listPlotPaths)
-    return {
-        sPath: dictEntry.get("sSha256")
-        for sPath, dictEntry in dictHashes.items()
-        if dictEntry.get("sSha256")
-    }
+        return {}, []
+    try:
+        dictEntries = filesRepo.fdictHashFiles(listPlotPaths)
+    except (OSError, KeyError, ValueError):
+        # A control-plane refusal is not one of these, so it passes
+        # through to the route rather than reading as an unreadable plot.
+        return {}, list(listPlotPaths)
+    dictHashes = {}
+    for sPath in listPlotPaths:
+        sSha256 = (dictEntries.get(sPath) or {}).get("sSha256")
+        if sSha256:
+            dictHashes[sPath] = sSha256
+    return dictHashes, [s for s in listPlotPaths if s not in dictHashes]
 
 
-def _flistStepPlotsRepoRelative(dictStep, sRepoRoot):
-    """Return repo-relative paths for this step's declared plot files.
+def fsStepFileRepoRelative(dictWorkflow, dictStep, sFile):
+    """Return one declared output of a step as a repo-relative path.
 
-    Resolves exactly as :func:`_flistStepOutputsRepoRelative` does, so
-    the keys line up with the hashes the poll snapshot sampled.
+    THE resolution of a declared data or plot path, shared by the
+    poll's per-path freshness, the sign-off capture and its content
+    reconciliation: the workflow's variables are filled exactly as the
+    runner fills them (``fdictBuildGlobalVariablesForRoot``, so
+    ``{sPlotDirectory}`` names the repo's plot directory, never one
+    under the step), a relative result is joined onto the step
+    directory and then the repo root, and the repo root is stripped
+    again. The container's marker plugin cannot import this and carries
+    a mirror of it; a parity test holds the two together.
     """
     from .pathContract import fsAbsToRepoRelative
-    sStepDirectory = dictStep.get("sDirectory", "")
+    sRepoRoot = dictWorkflow.get("sProjectRepoPath", "")
+    dictVariables = workflowManager.fdictBuildGlobalVariablesForRoot(
+        dictWorkflow, sRepoRoot)
+    sAbsolute = _fsResolveStepFilePath(
+        sFile, dictStep.get("sDirectory", ""), dictVariables)
+    return fsAbsToRepoRelative(sAbsolute, sRepoRoot)
+
+
+def flistStepPlotsRepoRelative(dictWorkflow, dictStep):
+    """Return repo-relative paths for this step's declared plot files."""
     listRelative = []
     for sFile in dictStep.get("saPlotFiles", []) or []:
         if not sFile:
             continue
-        sAbs = _fsResolveStepFilePath(
-            sFile, sStepDirectory, {"sRepoRoot": sRepoRoot},
-        )
-        sRelative = fsAbsToRepoRelative(sAbs, sRepoRoot)
+        sRelative = fsStepFileRepoRelative(dictWorkflow, dictStep, sFile)
         if sRelative:
             listRelative.append(sRelative)
     return listRelative
@@ -2268,59 +2582,73 @@ def _flistStepPlotsRepoRelative(dictStep, sRepoRoot):
 def fbReconcileUserVerificationByContentHash(
     dictWorkflow, filesRepo, sRepoRoot,
 ):
-    """Restore attestations that only *look* stale, and record hashes.
+    """Hold each sign-off to the bytes it attested; True when any step changed.
 
-    A git checkout stamps every file with the checkout time, so on a
-    fresh clone every plot is "newer than" ``sLastUserUpdate`` and the
-    mtime comparison marks every researcher attestation stale — even
-    though the bytes are identical and committed. That silently
-    discards the researcher's "yes, I looked at this" on every machine
-    hop, which is exactly what the multi-machine workflow must not do.
+    A sign-off attests the exact bytes of every declared plot, recorded
+    server-side at the moment of sign-off (``dictUserVerifiedHashes``,
+    see ``stepRoutes``). Judged by content, never by clock:
 
-    Two passes, both keyed on content rather than clock:
+    * ``passed`` with a recorded baseline stays ``passed`` only while
+      every declared plot hashes and the hashes equal the baseline.
+      Different bytes, or a declared plot missing or unreadable, make
+      it ``stale``, and the baseline is KEPT as evidence of what was
+      attested. It is never replaced by what is on disk now.
+    * ``stale`` is restored to ``passed`` when a non-empty baseline
+      matches every declared plot again: the mtime moved (a git
+      checkout stamps every file), the content did not.
+    * A ``passed`` sign-off with NO baseline was made before baselines
+      were recorded. It is recorded once, trusting the plots as they
+      are on first use, and only from a COMPLETE capture; a partial
+      or empty capture of declared plots records nothing and makes it
+      ``stale``. A legacy sign-off made stale this way cannot heal,
+      because there is nothing to match against; the researcher signs
+      off again.
 
-    * a step still reading ``passed`` records the hashes of its plots,
-      so a later machine has something to compare against. Recording
-      happens only while the step reads ``passed`` — never while it
-      reads ``stale`` — so a plot that genuinely changed after the
-      attestation can never have its new hash adopted as verified.
-    * a step reading ``stale`` whose recorded hashes all still match
-      is restored to ``passed``: the mtime moved, the content did not.
-
-    Returns True when any step changed, so the caller can persist.
-    The caller owns the write-back; this never saves.
+    Absence of the key means "never recorded"; a present ``{}`` means a
+    step with no declared plots was captured at sign-off. Returns True
+    when any step changed, so the caller can persist; this never saves.
+    ``sRepoRoot`` is unused: every path resolves through
+    ``fsStepFileRepoRelative`` from the workflow's own root.
 
     The AI Declaration step is EXCLUDED, explicitly: its ``stale`` is
     a latched verdict about OTHER steps' files, and only a new
     researcher sign-off may clear it (``declarationFreshness``).
-    Restoring it here because its own plot hashes matched would undo
-    the stickiness that ruling requires.
     """
     from vaibify.reproducibility.aiDeclarationStep import (
         fbStepIsAiDeclaration,
     )
+    del sRepoRoot
     bChanged = False
     for dictStep in dictWorkflow.get("listSteps", []) or []:
         if fbStepIsAiDeclaration(dictStep):
             continue
         dictVerification = dictStep.get("dictVerification") or {}
-        sUser = dictVerification.get("sUser")
-        if sUser not in ("passed", "stale"):
+        if dictVerification.get("sUser") not in ("passed", "stale"):
             continue
-        dictCurrent = _fdictPlotHashesForStep(
-            dictStep, filesRepo, sRepoRoot,
-        )
-        if not dictCurrent:
-            continue
-        dictRecorded = dictVerification.get("dictUserVerifiedHashes") or {}
-        if sUser == "passed":
-            if dictRecorded != dictCurrent:
-                dictVerification["dictUserVerifiedHashes"] = dictCurrent
-                dictStep["dictVerification"] = dictVerification
-                bChanged = True
-            continue
-        if dictRecorded and dictRecorded == dictCurrent:
-            dictVerification["sUser"] = "passed"
+        if _fbReconcileOneSignOff(dictWorkflow, dictStep, filesRepo):
             dictStep["dictVerification"] = dictVerification
             bChanged = True
     return bChanged
+
+
+def _fbReconcileOneSignOff(dictWorkflow, dictStep, filesRepo):
+    """Apply the content rule to one attested step; True when it changed."""
+    dictVerification = dictStep["dictVerification"]
+    dictCurrent, listUnhashed = ftCaptureStepPlotHashes(
+        dictWorkflow, dictStep, filesRepo)
+    bComplete = not listUnhashed
+    bRecorded = S_USER_VERIFIED_HASHES_KEY in dictVerification
+    dictRecorded = dictVerification.get(S_USER_VERIFIED_HASHES_KEY)
+    bMatches = bRecorded and bComplete and dictCurrent == dictRecorded
+    if dictVerification["sUser"] == "stale":
+        if bMatches and dictRecorded:
+            dictVerification["sUser"] = "passed"
+            return True
+        return False
+    if not bRecorded and bComplete:
+        dictVerification[S_USER_VERIFIED_HASHES_KEY] = dictCurrent
+        return True
+    if bMatches:
+        return False
+    dictVerification["sUser"] = "stale"
+    return True
