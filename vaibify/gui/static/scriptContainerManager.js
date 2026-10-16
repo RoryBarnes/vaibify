@@ -2037,6 +2037,7 @@ var VaibifyContainerManager = (function () {
             );
             if (await _fnFollowStartToItsOutcome(sName, dictStart)) {
                 await _fnCopyPendingFilesIntoContainer(sName);
+                await _fnReleaseClaimUnlessInside(sName);
             }
         } catch (error) {
             _fnForgetPendingStart();
@@ -2050,6 +2051,19 @@ var VaibifyContainerManager = (function () {
         } finally {
             fnLoadContainers();
         }
+    }
+
+    async function _fnReleaseClaimUnlessInside(sName) {
+        /* A start claims the container for this tab, because copying a
+           converted project's files in needs the claim. A start that
+           does not open the container has no use for it afterwards, and
+           holding it left the tile "held by this tab" for a project
+           nobody had opened (researcher-reported, 2026-10-15). Opening
+           claims it again, so only a container this tab is inside keeps
+           its claim. */
+        var sInsideId = VaibifyApp.fsGetContainerId();
+        if (sInsideId && _fsContainerNameById(sInsideId) === sName) return;
+        await fnReleaseClaim(sName);
     }
 
     function _fbOfferImageTrust(error, sName) {

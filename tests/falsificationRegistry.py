@@ -33751,7 +33751,7 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
-            'testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld'
+            'testAFinishedConversionAsksBeforeStartingAndStartsNothingOnItsOwn'
         ),
         # the window starts (and so claims) the converted container itself
         source='vaibify/gui/static/scriptAcquisitionWindow.js',
@@ -33940,5 +33940,17 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptAcquisitionWindow.js',
         old='            if (_sWatchedHost !== sHostName) return;\n            if (error && error.iStatus === 404) {\n',
         new="            if (error && error.iStatus === 404) {\n",
+    ),
+    # --- 2026-10-16: a finished conversion offers Start container; a
+    # start that does not open the container releases its claim ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testStartContainerStartsWithoutOpeningAndLeavesTheTileUnheld'
+        ),
+        # the start keeps this tab's claim on a container nobody opened
+        source='vaibify/gui/static/scriptContainerManager.js',
+        old='                await _fnReleaseClaimUnlessInside(sName);\n',
+        new='',
     ),
 ]

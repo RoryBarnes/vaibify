@@ -25,6 +25,7 @@ var VaibifyAcquisitionWindow = (function () {
     var _S_TITLE_WAITING = "The download stopped";
     var _S_TITLE_READY = "The author’s environment is ready";
     var _S_TITLE_INTERRUPTED = "Containerizing was interrupted";
+    var _S_TITLE_CONVERTED = "Containerized";
 
     /* One title and one sentence per stage the hub stamps as the stage
        begins (imageAcquisition.S_STAGE_*). Nothing here is inferred from
@@ -529,15 +530,31 @@ var VaibifyAcquisitionWindow = (function () {
     }
 
     async function _fnAnnounceConverted(sHostName, sNewName) {
-        /* The container is NOT started here. Starting claims a container
-           for the starting tab, so an automatic start left the new tile
-           "held by this tab" before the researcher had touched it; the
-           first click on the tile starts, fills and opens it, exactly as
-           for any other stopped container. */
-        fnClose();
-        VaibifyApp.fnShowToast(
-            "Converted '" + sHostName + "' to '" + sNewName + "'. " +
-            "Click its tile to start and open it.", "success");
+        /* The container is not started until the researcher says so, and
+           is never opened from here: the new tile is meant to be seen,
+           stopped and then running, before the project is entered. The
+           start releases the claim it takes to copy the files in, so the
+           tile is not left "held by this tab" for a project nobody has
+           opened. */
+        _fnStopPolling();
+        _sWatchedHost = null;
+        var elBody = document.createElement("div");
+        elBody.appendChild(_felParagraph(
+            "Converted '" + sHostName + "' to '" + sNewName + "'. The " +
+            "author’s environment is on this machine, and its container " +
+            "has not been started yet.", "acquisition-sentence"));
+        elBody.appendChild(_felParagraph(
+            "Start container starts it and copies your files in, without " +
+            "opening it; open it afterwards from its tile. You can also " +
+            "start it later from the tile’s ⋮ menu.", "acquisition-note"));
+        _fnRender(_S_TITLE_CONVERTED + " '" + sNewName + "'", elBody, [
+            {sLabel: "Start container", sAction: "start", bPrimary: true,
+             fnOnClick: function () {
+                 fnClose();
+                 VaibifyContainerManager.fnStartContainer(sNewName);
+             }},
+            {sLabel: "Not now", sAction: "close", fnOnClick: fnClose},
+        ]);
         await VaibifyContainerManager.fnLoadContainers();
     }
 

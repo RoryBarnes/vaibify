@@ -474,20 +474,13 @@ def testTheLogFollowsNewLinesAndStaysWhereTheReaderScrolled(pageDashboard, serve
     assert pageDashboard.listPageErrors == []
 
 
-@pytest.mark.falsification
-def testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld(
-    pageDashboard, serverHub,
-):
-    """Kills: starting the converted container on the researcher's behalf.
+S_START_BUTTON = '#modalAcquisition [data-acquisition-action="start"]'
 
-    A start claims the container for the starting tab, so the automatic
-    start left the new tile "held by this tab" before the researcher had
-    opened it. The window now finishes, says how to start, and starts
-    nothing.
-    """
+
+def _fnFinishTheConversion(pageDashboard, serverHub, listStarts, listReleases):
+    """Commit a staged conversion; answer and record the start and release."""
     _fnListTheHostTileAsContainerizing(pageDashboard, "ready")
     dictView = fdictConversionView("ready", False)
-    listStarts = []
 
     def fnAnswer(route):
         if route.request.method == "POST":
@@ -496,11 +489,25 @@ def testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld(
             return
         route.fulfill(status=200, content_type="application/json",
                       body=json.dumps(dictView))
+
+    def fnAnswerTheStart(route):
+        listStarts.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"sReservationId": "r" * 32}))
+
+    def fnAnswerTheStatus(route):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({
+            "sState": "SUCCEEDED", "sLeaseId": "lease-of-the-start",
+            "sReservationId": "r" * 32}))
+
+    def fnAnswerTheRelease(route):
+        listReleases.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"bReleased": True}))
     pageDashboard.route("**/api/conversions/**", fnAnswer)
-    pageDashboard.route(
-        "**/api/containers/**/start",
-        lambda route: (listStarts.append(route.request.url), route.abort()),
-    )
+    pageDashboard.route("**/api/containers/*/start", fnAnswerTheStart)
+    pageDashboard.route("**/api/containers/*/start-status", fnAnswerTheStatus)
+    pageDashboard.route("**/api/registry/*/release", fnAnswerTheRelease)
     _fnWaitForPicker(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
     pageDashboard.click(_fsChipSelector())
@@ -508,13 +515,57 @@ def testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld(
         '#modalAcquisition [data-acquisition-action="commit"]', timeout=5000,
     )
     pageDashboard.click('#modalAcquisition [data-acquisition-action="commit"]')
-    pageDashboard.wait_for_function(
-        "() => Array.from(document.querySelectorAll('.toast'))"
-        ".some(el => el.textContent.includes('Click its tile to start'))",
-        timeout=5000,
-    )
+    pageDashboard.wait_for_selector(S_START_BUTTON, timeout=5000)
+
+
+@pytest.mark.falsification
+def testAFinishedConversionAsksBeforeStartingAndStartsNothingOnItsOwn(
+    pageDashboard, serverHub,
+):
+    """Kills: starting the converted container on the researcher's behalf.
+
+    A start claims the container for the starting tab, so the automatic
+    start left the new tile "held by this tab" before the researcher had
+    opened it. The window now finishes by offering Start container, and
+    starts nothing until it is pressed.
+    """
+    listStarts, listReleases = [], []
+    _fnFinishTheConversion(pageDashboard, serverHub, listStarts, listReleases)
+    sWindow = pageDashboard.text_content("#modalAcquisition")
+    assert f"Containerized '{S_NEW_NAME}'" in sWindow
+    assert "has not been started yet" in sWindow
     pageDashboard.wait_for_timeout(1500)
     assert listStarts == []
+    pageDashboard.click('#modalAcquisition [data-acquisition-action="close"]')
+    assert pageDashboard.is_hidden("#modalAcquisition")
+    assert listStarts == []
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testStartContainerStartsWithoutOpeningAndLeavesTheTileUnheld(
+    pageDashboard, serverHub,
+):
+    """Kills: a start from the window that keeps this tab's claim.
+
+    The researcher sees the new tile running before entering it, so the
+    start must neither open the project nor leave it "held by this tab":
+    the claim the start took to copy the files in is released.
+    """
+    listStarts, listReleases = [], []
+    _fnFinishTheConversion(pageDashboard, serverHub, listStarts, listReleases)
+    pageDashboard.click(S_START_BUTTON)
+    pageDashboard.wait_for_function(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".some(el => el.textContent.includes('Container started'))",
+        timeout=10000,
+    )
+    pageDashboard.wait_for_timeout(1000)
+    assert len(listStarts) == 1 and S_NEW_NAME in listStarts[0]
+    assert len(listReleases) == 1 and S_NEW_NAME in listReleases[0]
+    assert pageDashboard.is_hidden("#modalAcquisition")
+    assert pageDashboard.is_visible("#containerLanding")
+    assert pageDashboard.evaluate("() => VaibifyApp.fsGetContainerId()") is None
     assert pageDashboard.listPageErrors == []
 
 
@@ -527,8 +578,9 @@ def testAFinishedConversionIsAnnouncedOnceHoweverManyPollsWereWaiting(
     The poll fires every 1.5 s whether or not the last answer has come
     back, and the hub is slow to answer while it commits, so several
     polls can be waiting when the record disappears. Each one that met
-    the 404 showed "Converted ...", and the researcher saw three
-    identical toasts (researcher-reported, 2026-10-16).
+    the 404 announced the conversion: three identical toasts
+    (researcher-reported, 2026-10-16), and now a finished window that
+    would come back after the researcher had closed it.
     """
     _fsOpenTheWindow(pageDashboard, serverHub, fdictConversionView())
     listHeld = []
@@ -539,18 +591,17 @@ def testAFinishedConversionIsAnnouncedOnceHoweverManyPollsWereWaiting(
     )
     pageDashboard.wait_for_timeout(5000)
     assert len(listHeld) >= 3, "the poll must have several checks waiting"
-    for routeHeld in listHeld:
+
+    def fnAnswerGone(routeHeld):
         routeHeld.fulfill(status=404, content_type="application/json",
                           body=json.dumps({"detail": "no conversion"}))
-    pageDashboard.wait_for_function(
-        "() => Array.from(document.querySelectorAll('.toast'))"
-        ".some(el => el.textContent.includes('Click its tile to start'))",
-        timeout=5000,
+    fnAnswerGone(listHeld[0])
+    pageDashboard.wait_for_selector(S_START_BUTTON, timeout=5000)
+    pageDashboard.click('#modalAcquisition [data-acquisition-action="close"]')
+    for routeHeld in listHeld[1:]:
+        fnAnswerGone(routeHeld)
+    pageDashboard.wait_for_timeout(1500)
+    assert pageDashboard.is_hidden("#modalAcquisition"), (
+        "a late poll must not bring the finished window back"
     )
-    pageDashboard.wait_for_timeout(1000)
-    iAnnouncements = pageDashboard.evaluate(
-        "() => Array.from(document.querySelectorAll('.toast'))"
-        ".filter(el => el.textContent.includes('Click its tile to start'))"
-        ".length")
-    assert iAnnouncements == 1
     assert pageDashboard.listPageErrors == []
