@@ -5572,8 +5572,9 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # or the sign-off recorded, the same rule as the tests. -> 2646: the
     # upstream flag judges the files a step names by token, by the
     # digests the step recorded consuming; its state-machine docstring
-    # says so (2648).
-    "fileStatusManager.py": 2648,
+    # says so (2648). -> 2654: a sign-off with recorded plot bytes is
+    # left to the content check, not re-judged by timestamp each poll.
+    "fileStatusManager.py": 2654,
     # main +35 (2026-07-10): single serialization authority
     # (_ftSplitAndSerializeWorkflow + fsComputeWorkflowFingerprint)
     # and the loader's _sSourceFingerprint stamp for byte-exact,
