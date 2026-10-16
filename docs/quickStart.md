@@ -130,6 +130,8 @@ whether a rebuild from that image reproduces the outputs.
 This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its `vaibify.yml` change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your `vaibify` interactions will now take place inside this container leaving your own computer safe.
 
+At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to **Start container** and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (**⋮**) and select **Start**. A dark red circle next to the environment's name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the `ai-greenhouse` environment and then the `AI Greenhouse` Project to return to its dashboard.
+
 ### Confirm the reproduction
 
 The container now holds the files your own computer made in
