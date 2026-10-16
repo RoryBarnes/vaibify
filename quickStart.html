@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.1.1.dev17 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.1.2.dev20 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=e2725f1a"></script>
+      <script src="_static/documentation_options.js?v=b464f649"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -59,10 +59,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#confirm-the-reproduction">Confirm the reproduction</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#when-something-is-wrong">8. When something is wrong</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#outputs-that-were-re-run-outside-the-container">Outputs that were re-run outside the container</a></li>
-</ul>
-</li>
+<li class="toctree-l2"><a class="reference internal" href="#when-something-is-wrong">8. When something is wrong</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#where-to-next">9. Where to next</a></li>
 </ul>
 </li>
@@ -108,7 +105,7 @@
              
   <section id="quickstart">
 <h1>QuickStart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify that you reproduce the results exactly. This latter step can take over an hour if you do not already have Docker installed on your computer.</p>
+<p>In this guide you will first reproduce an existing result within 15 minutes. These results, however, will not be byte-identical to those that were published because you will reproduce the results locally on a computer that is slightly different than the original author’s. Thus, you will then recreate the author’s computing environment inside your computer and verify that you reproduce the results exactly. This latter step requires that you have <a class="reference internal" href="install.html"><span class="std std-doc">Docker installed</span></a> on your computer.</p>
 <section id="install">
 <h2>1. Install<a class="headerlink" href="#install" title="Link to this heading"></a></h2>
 <p>You need Python 3.9 or later to run <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>.</p>
@@ -126,14 +123,14 @@ list.</p>
 <p>Return to the terminal and run</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/RoryBarnes/aigreenhouse.git
 <span class="nb">cd</span><span class="w"> </span>aigreenhouse
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt<span class="w">                   </span><span class="c1"># Initializes vaibify</span>
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>.vaibify/requirements.txt<span class="w">                   </span><span class="c1"># Install the project's dependencies</span>
 </pre></div>
 </div>
 <p>This repository contains the data to generate two figures from the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> paper (Barnes 2026): estimates for how long it will be before the waste heat from AI
 data centers becomes large enough for Earth to begin losing water permanently to space. The Project consists of two
 computational steps, a figure from each, three tiers of tests, and a
-declaration of which AI models helped write it. It is published at PROOF
-Level 3, which means its author committed a manifest of every artifact’s
+declaration of which AI models helped write it. It is published at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF
+Level 3</span></a>, which means its author committed a manifest of every artifact’s
 SHA-256 hash along with the pinned environment that produced them.</p>
 </section>
 <section id="view-the-example-project-in-vaibify">
@@ -142,13 +139,13 @@ SHA-256 hash along with the pinned environment that produced them.</p>
 Existing</strong>. Navigate the directory tree to your aigreenhouse clone (it will have a blue checkmark next to it) and select it. You will then return to the Environments Hub and see a registered environment: <code class="docutils literal notranslate"><span class="pre">aigreenhouse</span></code>. Select it and you will see a window that warns you that you are working in an uncontained environment. Press “I understand, continue”.</p>
 <p>You will now move to the <strong>Projects Hub</strong>. An environment is a <em>place</em> projects run, and it can hold more than one, so
 this hub offers you one or more Projects to work on. You will see two options: A <strong>Blank Project</strong> is an empty
-workspace (a “sandbox”) in which you can experiment in the environment. All environments include a “Blank Project”. The second option is <strong>AI Greenhouse</strong>, the project you are reproducing in this guide. Select it.</p>
-<p>After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. Click on <strong>Steps</strong> and <strong>Projects</strong> and leave them in the expanded view. These sections give you up-to-date information on the status of the Project. The top right consists of two “viewing windows” that displays images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.</p>
-<p>Although the published result is at PROOF Level 3, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
+workspace (a “sandbox”) in which you can experiment in the environment. All <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> environments include a “Blank Project”. The second option is <strong>AI Greenhouse</strong>, the project you are reproducing in this guide. Select it.</p>
+<p>After a few seconds, you will land in the dashboard for this project. Take a look around. Along the top are some fundamental facts about the Project as well as menus for interacting with the Project. The left side shows the steps of the project and information about the project as a whole. <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> divides the work of climbing the <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Ladder</span></a> into <strong>Steps</strong>, the components of your pipeline,  and the <strong>Project</strong>, which are features that apply to all Steps. These sections give you up-to-date information on the status of the Project. The top right consists of two “viewing windows” that display images and ASCII text files for you to examine and compare. The bottom right is one large reproduction of a terminal. You can create multiple tabs (+) and multiple terminals (+pane in the very bottom right). This dashboard is where you will use coding agents to modify files, examine their efforts, lock down verified results, and connect to external resources like Overleaf and Zenodo.</p>
+<p>Although the published result is at <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Level 3</span></a>, meaning the author verified they reproduced the results at the bit level, your copy is not at that level. In fact, you’re at “Level 0”, meaning your results aren’t even being labeled as “self-consistent”! This status is because you have not run any of the steps locally or verified the results pass the unit tests (which check that the output files match the author’s results to some tolerance that they deemed acceptable for scientific reproduction). Before we start driving your copy up the PROOF Ladder, we’re going to explore the repository a bit more.</p>
 </section>
 <section id="check-the-archive-before-touching-it">
 <h2>4. Check the archive before touching it<a class="headerlink" href="#check-the-archive-before-touching-it" title="Link to this heading"></a></h2>
-<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the file MANIFEST.sha256 that contains the summary of the tracked files, and reports that all of them match.</p>
+<p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. (The manifest is the list of artifacts in the repository and their SHA-256 hashes, which is a summary of the bytes in the file.) This action regenerates the hashes of every file in the repository, compares them to the repository’s file <code class="docutils literal notranslate"><span class="pre">MANIFEST.sha256</span></code> that contains the summary of the tracked files, and reports if they match. In this case, they will.</p>
 <p>This result <em>must</em> hold for a freshly cloned Level 3 project because nothing has changed. You have
 confirmed that the files in your clone are byte-for-byte identical to the files the
 author committed. Note that this check is <em>not</em> a statement about the
@@ -159,13 +156,11 @@ accuracy of the science; it is a check on the archive’s integrity and nothing 
 <p>Next we will rerun the results locally and see if they pass the unit tests. First, we need to get rid of the old outputs and start clean.
 From the <strong>Run</strong> menu, choose <strong>Clean Outputs</strong>, and confirm. Every automatic step’s data files and figures are deleted and every
 verification mark resets to untested.</p>
-<p>Now we’re ready to rerun the pipeline. From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong> and confirm. Each step runs its data analysis commands, then its plot commands. The cirlce to the right
-pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You’ll also see the terminal output of the command in the left viewing window. You will be prompted about the AI Declaration because it is interactive. Select <strong>Skip</strong> for this step because that is the author’s statement and should not be deleted or modified until you make changes that you plan on publishing.</p>
-<p>Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here about input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange, meaning they have not reached PROOF Level 1. Click on the plot file and you will see the figure appear in the top right viewing window. Compare it to Figure 2 in Barnes (2026), resizing if necessary. It looks the same, but yet the file is colored orange, indicating something is wrong. The issue is that the results have not yet been verified.</p>
-<p>So let’s do that: From the Run
-menu, select <strong>Run All Unit Tests</strong> and you will see a log in the left viewing window that states that they pass. You will also see notifications in the top right that say they passed. Now look at the Step A01 block under verification and you can see that the Unit Tests marker has changed to “Passed”. If you expand the Unit Tests, you can see the three types of unit tests - Qualitative, Quantitative, and Integrity - all pass, too.</p>
-<p>Note, however, that the researcher field still says “Untested”. <em>You</em> have not declared that the results meet your own standard of scientific rigor. When you’re using <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> for your own research, you’ll want to be very careful about marking a step as “Passed” because that means you are declaring the results to be accurate. While the declaration can of course be undone, waiting until you are sure is the best approach because it affects later steps. But for this example, go ahead and click the researcher badge for Step A01 and it will change to “Passed”. After a few seconds, the left-most orange marker in the Step’s banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1 (the delay is due to the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s polling).</p>
-<p>Next, do the same for Step A02. This time, when the dashboard detects the change, not only will the orange marker  in the Step’s banner flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of “AI Greenhouse” along the top bar. The number of checks next to the project name indicates the current PROOF Level of the project, Level 1 in this case.</p>
+<p>Now we’re ready to rerun the pipeline. From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong> and confirm. Each step runs its data analysis commands, plot commands, and test commands. The circle to the right
+pulses orange as it runs and turns to solid orange once it finishes. Orange means some part of the step is verified, but not everything. You’ll also see the terminal output of the command in the left viewing window. You will also see notifications that the Steps’ tests have passed. Finally, you will be prompted about the AI Declaration because it is interactive. Select <strong>Skip</strong> for this step because that is the author’s statement and should not be deleted or modified until you make changes that you plan on publishing. You will be notified that the pipeline has completed.</p>
+<p>Take a closer look at Step A01 by clicking on it, which expands the step to show you everything about it. There are multiple sections here that break down the progress toward <a class="reference internal" href="proofLadder.html"><span class="std std-doc">PROOF Level 3</span></a>, including input data, scripts, plots, connections to remote resources, and verification. Files change colors based on their status and you can hover over them to learn about what issues they may have. In this case, the input and output data as well as the plot file are orange, meaning they have not reached PROOF Level 1. Click on the plot file and you will see the figure appear in the top right viewing window. Compare it to Figure 2 in Barnes (2026), resizing if necessary. It looks the same, the unit tests pass, but yet the file is colored orange, indicating something is wrong. The issue is that <em>you</em> have not yet declared that the results meet your own standard of scientific rigor.</p>
+<p>When you’re using <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> for your own research, you’ll want to be very careful about marking a step as “Passed” because that means you are declaring the results to be accurate. While the declaration can of course be undone, waiting until you are sure is the best approach because it affects later steps. But for this example, go ahead and click the researcher badge for Step A01 and it will change to “Passed”. After a few seconds, the left-most orange marker in the Step’s banner for Step A01 will turn to a blue check, indicating this step has reached PROOF Level 1 (the delay is due to the <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s polling).</p>
+<p>Next, do the same for Step A02. This time, when the dashboard detects the change, not only will the orange marker in the Step’s banner flip to a check, the entire dashboard theme color will change to purple and you will now see a single check to the right of “AI Greenhouse” along the top bar. The number of checks next to the project name indicates the current PROOF Level of the project, Level 1 in this case.</p>
 <section id="doing-the-same-thing-with-an-agent">
 <h3>Doing the same thing with an agent<a class="headerlink" href="#doing-the-same-thing-with-an-agent" title="Link to this heading"></a></h3>
 <p>Using the dashboard to click through tasks is soooo 2025. Now we ask AI agents to perform tasks like “Run all steps and their unit tests.” <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> includes an <a class="reference internal" href="forAgents.html#agent-actions"><span class="std std-ref">agent action catalog</span></a> that provides deterministic commands that agents can pass to the host machine and run in your container. While this functionality might appear to expose your host machine to the container’s agents, the commands are tightly monitored to only direct <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> to perform operations inside a container. In this example, you are in host mode, though, so these operations would be performed on your local machine. For this guide, <em>don’t type anything to an agent</em>, just know that you can use either the dashboard or a command-line agent to perform <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> tasks.</p>
@@ -180,14 +175,14 @@ menu, select <strong>Run All Unit Tests</strong> and you will see a log in the l
 is a sequence of floating-point operations, and different environments’
 build orders and vectorization schemes are not always the same. The science is identical
 to twelve significant figures (the quantitative unit tests pass), which is close enough for most scientific reproducibility expectations. The bytes, however, are not identical.</p></li>
-<li><p><strong>The figures differ significantly.</strong> Matplotlib stamps its own version into
+<li><p><strong>The figures’ bytes differ.</strong> Matplotlib stamps its own version into
 every PNG it writes, so a different matplotlib version guarantees
 different bytes before the figure is ever generated, which also
 differs by platform.</p></li>
 </ul>
 <p>Your run passed every <em>scientific test</em> (the unit tests) the project defines, but did
 not reproduce byte-for-byte because your computing environment is slightly different from the one the author used. These differences arise because the rules that govern computing standards (defined by the IEEE) allow changes in the last digits of some functions, like transcendentals. Thus, progress from here requires rerunning the work in the <em>exact same environment</em> that the author used.</p>
-<p>This next section, which describes how to generate byte-identical results, is technically optional, but discouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
+<p>This next section, which describes how to generate byte-identical results, is technically optional, but encouraged. While <code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s behavior is the same in both “host mode” and “container mode”, the agents in host mode have access to all of your computer (including secrets, environment variables, keychains, etc.) and byte-reproducibility cannot be guaranteed without a static environment. But at this point you can just use <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> on your machine and trust the agents. Plenty of great science can be done on a project reaching PROOF Level 1 in host mode!</p>
 </section>
 <section id="containerize-the-same-project">
 <h2>7. Containerize the same project<a class="headerlink" href="#containerize-the-same-project" title="Link to this heading"></a></h2>
@@ -219,11 +214,11 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tr>
 <tr class="row-odd"><td><p>2</p></td>
 <td><p><strong>Environment</strong></p></td>
-<td><p>Leave <strong>Use the author’s pinned image</strong> selected. The table beneath it names the image, the kind of processor it was built for (<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>), and the archived copy on Zenodo. If your computer has a different processor (“This daemon”), such as <code class="docutils literal notranslate"><span class="pre">arm64</span></code>, check the <strong>Allow emulation</strong> box. Below that, under “How the author’s image may run on this machine”, choose <strong>Run it as its author built it</strong>, so the environment remains exactly as the author saved it. Click “Next”.</p></td>
+<td><p>Leave <strong>Use the author’s pinned image</strong> selected. The table beneath it names the image, the kind of processor it was built for (<code class="docutils literal notranslate"><span class="pre">linux/amd64</span></code>), and the archived copy on Zenodo. If your computer has a different processor (“This daemon”), such as <code class="docutils literal notranslate"><span class="pre">arm64</span></code>, check the <strong>Allow emulation</strong> box. (About 0.2% of emulation runs fail. If you see a “killed by signal 11” message while running with an emulator, just run again and it will very likely work.) Below that, under “How the author’s image may run on this machine”, choose <strong>Run it as its author built it</strong>, so the environment remains exactly as the author saved it. Click “Next”.</p></td>
 </tr>
 <tr class="row-even"><td><p>3</p></td>
 <td><p><strong>Features &amp; Authentication</strong></p></td>
-<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, Leave <em>CPU cores</em> at <strong>all cores -1</strong>, which leaves 1 reserved for the host (you can still use all of them outside the container); and <em>Memory (GB)</em> at<strong>5</strong>. (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
+<td><p>Select one of the available coding agents. LaTeX and the other base features are grayed out because the author’s image fixes them. For the remaining boxes, leave as their defaults unless you are sure. Under <em>Resource limits</em>, leave <em>CPU cores</em> at <strong>all cores -1</strong>, which leaves 1 reserved for the host (you can still use all of them outside the container); and <em>Memory (GB)</em> at <strong>5</strong>. (You can adjust this later if you choose to keep the container.) Click “Next”.</p></td>
 </tr>
 <tr class="row-odd"><td><p>4</p></td>
 <td><p><strong>Files to Copy</strong></p></td>
@@ -235,7 +230,7 @@ and build again (try working with an AI agent or pressing <strong>Run a diagnosi
 </tr>
 </tbody>
 </table>
-<p>You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, <em>this download may take an hour or more.</em> In some cases, the connection can be severd</p>
+<p>You will then see a dialog box that shows the log of the download of the 733 MB image from Zenodo. Depending on your connection, <em>this download may take an hour or more.</em> If the connection drops, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> resumes the download. If it keeps failing, <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> pauses with the partial download kept and presents a “Try again” button. Note that if you cancel a download, the partial file is deleted.</p>
 <p>When the conversion finishes, you return to the Environments Hub and the ai-greenhouse environment will look the same except the <code class="docutils literal notranslate"><span class="pre">host-mode</span></code> badges become <code class="docutils literal notranslate"><span class="pre">contained</span></code>. The steps still do the
 same things, but now they do them in the pinned environment, and the
 PROOF tab’s Level 3 row stops saying the project has no image and instead reports on whether the reproducibility rules have been answered, and
@@ -251,12 +246,9 @@ environment.</p>
 <li><p>From the <strong>Run</strong> menu, choose <strong>Check Files Against Manifest</strong>. The
 data files and figures still differ, because they are still the
 bytes your own computer produced.</p></li>
-<li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>, then <strong>Run All Unit
-Tests</strong>. This time every step runs inside the author’s environment,
+<li><p>From the <strong>Run</strong> menu, choose <strong>Run All Steps</strong>. This time every step runs inside the author’s environment,
 and the run log notes that it used the date the author recorded, so
-any figure with a date inside it comes out the same. If any step’s
-Researcher marker no longer reads “Passed”, mark it again as you
-did in section 5; the project returns to Level 1.</p></li>
+any figure with a date inside it comes out the same. Each step’s Researcher marker now reads stale because the plot’s bytes changed. Click it once and the badge reads “Passed”.</p></li>
 <li><p>Choose <strong>Check Files Against Manifest</strong> again. Every file now
 matches: in the author’s environment, your run produced the
 author’s bytes.</p></li>
@@ -280,62 +272,39 @@ and compare the bytes.</p>
 </section>
 <section id="when-something-is-wrong">
 <h2>8. When something is wrong<a class="headerlink" href="#when-something-is-wrong" title="Link to this heading"></a></h2>
-<p>There is no diagnosis button to look for while things are working.
-A diagnosis is offered where a problem is reported: an error message
+<p>A diagnosis is offered where a problem is reported: an error message
 in the dashboard ends with <strong>Click to run a diagnosis</strong>, and the window
-that reports a failed build or a failed download has a <strong>Run a
-diagnosis</strong> button. Click either and a report opens. It checks this
-machine, and every finding that needs action names the exact command
-to run, correct for the Docker runtime you are actually using.</p>
-<p>When nothing is reporting an error but the dashboard is saying
-something you did not expect, run the same checks from a terminal:</p>
+that reports a failed build or a failed download has a <strong>Run a diagnosis</strong> button. Click either and a report opens. It checks this
+machine and gives you the exact command
+to run to fix the issue.</p>
+<p>When nothing is reporting an error but the dashboard reports
+something you did not expect, you can run the same checks from a terminal on the host machine:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>vaibify<span class="w"> </span>doctor
 </pre></div>
 </div>
-<p>That report covers everything the dashboard’s does, plus the inside of
-the running container and vaibify’s own record of the project; see the
+<p>That report covers everything the dashboard reports, plus additional information about the container and vaibify’s own record of the project; see the
 <a class="reference internal" href="cli.html"><span class="std std-doc">CLI Reference</span></a>.</p>
 <p>Three things about the report are worth knowing before you read one.</p>
 <p><strong>The diagnosis changes nothing.</strong> It never starts, stops, removes or restarts
 anything. You can run it against a container that has just died without
-destroying the evidence of why.</p>
-<p><strong>“Not checked” is not “ok”.</strong> A check that could not run says so, with
-the reason, in its own group, and it is counted in its own column. A
-diagnostic that quietly reports success for having run nothing is worse
-than no diagnostic.</p>
-<p><strong>A finding you can act on names its own command.</strong> Where vaibify can
+destroying the evidence of what happened.</p>
+<p><strong>“Not checked” is not “ok”.</strong> A check that could not run is not labeled as working correctly. Instead, the doctor explains the reason for the issue.</p>
+<p><strong>The doctor tells you the command to fix an issue.</strong> Where vaibify can
 apply the fix itself, that command is <code class="docutils literal notranslate"><span class="pre">vaibify</span> <span class="pre">repair</span></code>. Where it
 cannot — a network that is down, a daemon that needs more memory — the
 finding says so plainly rather than sending you to a tab.</p>
-<p><strong>Emulation can occasionally crash.</strong> About 0.2% of emulation runs fail. If you see a “killed by signal 11” message while running with an emulator, just run again and it will very likely work.</p>
-<section id="outputs-that-were-re-run-outside-the-container">
-<h3>Outputs that were re-run outside the container<a class="headerlink" href="#outputs-that-were-re-run-outside-the-container" title="Link to this heading"></a></h3>
-<p>If you run a step’s script yourself — in a terminal, in your editor, on
-a cluster — the outputs it writes are not the outputs vaibify recorded,
-and the dashboard will turn those files red. Nothing is broken and
-nothing was lost: the badge is telling you the truth, which is that the
-file on disk is no longer the one the recorded run produced.</p>
-<p>The way forward is to run the step through vaibify (<strong>Run Step</strong>), so the run that produced the file is the run vaibify
-recorded. Vaibify deliberately does not offer a way to mark a file
-“fine as it is”: a green badge over a file whose provenance nobody
-knows is exactly the claim this tool exists not to make.</p>
-</section>
 </section>
 <section id="where-to-next">
 <h2>9. Where to next<a class="headerlink" href="#where-to-next" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong><a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">The three templates: sandbox, toolkit, workflow</span></a></strong> —
-starting your own project rather than driving someone else’s.</p></li>
-<li><p><strong><a class="reference internal" href="environmentsAndProjects.html"><span class="std std-doc">Environments and Projects</span></a></strong> — every
-panel of the dashboard, the status colors, and how steps are verified.</p></li>
-<li><p><strong><a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a></strong> — what Levels 1 through 3 each
-certify, and what none of them do.</p></li>
-<li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — what a container protects against
-and what host mode does not. Worth reading before you let an agent
+<li><p><strong><a class="reference internal" href="environmentsAndProjects.html#templates"><span class="std std-ref">The three templates: sandbox, toolkit, workflow</span></a></strong> —
+Start your own project rather than reproduce someone else’s work.</p></li>
+<li><p><strong><a class="reference internal" href="environmentsAndProjects.html#the-dashboard"><span class="std std-ref">Environments and Projects</span></a></strong> — Learn more about the dashboard: status colors, symbols, and how steps are verified.</p></li>
+<li><p><strong><a class="reference internal" href="proofLadder.html"><span class="std std-doc">The PROOF Ladder</span></a></strong> — Get familiar with what Levels 1 through 3
+certify, what they don’t do, and how to go beyond Level 3 (<code class="docutils literal notranslate"><span class="pre">vaibify</span></code>’s ceiling).</p></li>
+<li><p><strong><a class="reference internal" href="security.html"><span class="std std-doc">Security model</span></a></strong> — Explore how <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> protects your data and secrets, as well as how to ensure you don’t dismantle the safeguards. Worth reading before you let an agent
 write code anywhere.</p></li>
-<li><p><strong><a class="reference internal" href="install.html"><span class="std std-doc">Advanced Installation</span></a></strong> — Docker and Colima,
-platform-specific troubleshooting, the configuration reference, and
-the command line that makes everything above scriptable.</p></li>
+<li><p><strong><a class="reference internal" href="systemPrompt.html"><span class="std std-doc">The System Prompt</span></a></strong> — Read the instructions that agents launched in <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> are given so you know what to expect, what you don’t need to repeat, and how to tailor your own prompt to cover what you think is missing.</p></li>
 </ul>
 </section>
 </section>

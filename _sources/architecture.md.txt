@@ -184,11 +184,30 @@ Every 5 seconds (VaibifyPolling):
      coalesce)
 ```
 
-When a file changes, the affected step's unit-test state resets to
-`untested`. When a plot changes, the user-verification state resets.
-When an upstream step is modified, downstream steps are flagged as
-upstream-modified. The researcher sees verification badges dim
-automatically; no one has to remember to invalidate anything by hand.
+A step runs its data commands, then its plots, then its tests, so the
+tests judge the plots the step has just drawn. When a step's data or
+plot file changes, its unit-test state resets to `untested`. When a
+plot changes, the researcher's sign-off becomes `stale`: a sign-off
+records the SHA-256 of every declared plot, server-side, at the moment
+it is given (`dictUserVerifiedHashes`), and the poll holds it to those
+bytes. Change is judged by content, not by clock: a byte-identical
+file with a newer mtime changes neither the tests nor the sign-off.
+Only the server decides whether a sign-off survives a run, whoever
+dispatched the run, and every poll ships each step's stored sign-off
+(`dictSignOffByStep`), which the page renders rather than re-deriving
+it from timestamps. The same content rule decides the modified-file
+report and the Level 1 pencil (`script-stale`): a data, input or plot
+file whose bytes the newest test run, or the sign-off, recorded and
+the poll measured unchanged is not stale; scripts, which nothing
+hashes, keep the timestamp rule. A step is flagged upstream-modified
+only by the upstream files it names by `{step:…}` token, and only when
+their bytes differ from the ones it recorded consuming while it was
+current (`dictConsumedUpstreamDigests`): redrawing a plot no step reads,
+or re-running a step that reproduces its data byte for byte, leaves the
+steps below it at their level. When an upstream step is modified, downstream steps
+are flagged as upstream-modified. The researcher sees verification
+badges dim automatically; no one has to remember to invalidate
+anything by hand.
 
 Declared input data (`saInputDataFiles` — raw files a step consumes
 that no step produces) rides the same poll: input paths join the
@@ -449,7 +468,13 @@ never hides another test's failure and passes from separate runs
 accumulate. A result counts as current only while the files its run
 was obtained against still match (judged per run, from the same
 snapshot the poll uses to judge every other file) and while its own
-test file is no newer than the run.
+test file is no newer than the run. A declared data or plot file newer
+than the run leaves it current only when the run recorded that file's
+digest and the poll measured the same bytes; otherwise the result is
+not current, and says `outputs-newer-than-run`. The plugin hashes
+templated plot paths (`{sPlotDirectory}/fig.{sFigureType}`) with the
+same variables the host fills, and a parity test holds its resolution
+to `fileStatusManager.fsStepFileRepoRelative`.
 
 `vaibify/gui/testMarkerContract.py` is the one definition of that
 shape. Its writer half is transcribed verbatim into the generated
