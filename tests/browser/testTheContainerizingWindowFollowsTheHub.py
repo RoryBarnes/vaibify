@@ -31,7 +31,7 @@ T_BANNED_WORDS = (
 )
 
 
-def _fnListTheHostTileAsContainerizing(page, sState, iBytes=507000000):
+def _fnListTheHostTileAsContainerizing(page, sState):
     """Make the seeded host tile carry a pending conversion in ``sState``."""
     def fnListing(route):
         response = route.fetch()
@@ -41,7 +41,6 @@ def _fnListTheHostTileAsContainerizing(page, sState, iBytes=507000000):
                 dictProject["dictPendingConversion"] = {
                     "sState": sState, "sNewName": S_NEW_NAME,
                     "bLive": sState == "obtaining",
-                    "iBytes": iBytes, "iTotalBytes": 733000000,
                 }
         route.fulfill(
             status=200, content_type="application/json",
@@ -92,7 +91,8 @@ def testTheTileCarriesTheHubsStateAndReopensTheWindowAfterAReload(
     _flistAnswerTheConversion(pageDashboard, fdictConversionView())
     _fnWaitForPicker(pageDashboard, serverHub)
     pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
-    assert "507 of 733 MB" in pageDashboard.text_content(_fsChipSelector())
+    # The chip names the state; the bytes live in the window it opens.
+    assert pageDashboard.text_content(_fsChipSelector()).strip() == "Containerizing…"
     pageDashboard.reload(wait_until="networkidle")
     pageDashboard.listPageErrors.clear()
     pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
@@ -312,4 +312,207 @@ def testAStagedImageOffersFinishAndShowsWhyItWaits(pageDashboard, serverHub):
     pageDashboard.click('#modalAcquisition [data-acquisition-action="commit"]')
     pageDashboard.wait_for_selector('#modalAcquisition [data-commit-refusal]', timeout=5000)
     assert "Close the project to finish" in pageDashboard.text_content("#modalAcquisition")
+    assert pageDashboard.listPageErrors == []
+
+
+def _fdictLocatingView():
+    """The hub's view while it asks Zenodo where the deposit is, between tries."""
+    return fdictConversionView(dictDownloadOverrides={
+        "sStage": "locating", "iBytes": 0, "iTotalBytes": 0,
+        "fBytesPerSecond": 0.0, "fSecondsRemaining": None,
+        "fSecondsSinceLastByte": None, "iAttempt": 2,
+        "fSecondsInStage": 95.0, "fSecondsUntilRetry": 37.0,
+        "fSecondsUntilGiveUp": 1585.0,
+        "sLastFailure": "zenodo.org did not accept a connection within 120 s",
+        "sAcquisitionId": "acquisition-0123abcd",
+    })
+
+
+def _fsOpenTheWindow(pageDashboard, serverHub, dictView):
+    """Open the containerizing window over ``dictView``; return its text."""
+    _fnListTheHostTileAsContainerizing(pageDashboard, "obtaining")
+    _flistAnswerTheConversion(pageDashboard, dictView)
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
+    pageDashboard.click(_fsChipSelector())
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition [data-acquisition-action="cancel"]', timeout=5000,
+    )
+    return pageDashboard.text_content("#modalAcquisition")
+
+
+@pytest.mark.falsification
+def testTheWindowNamesTheLookupAndCountsItsTimers(pageDashboard, serverHub):
+    """Kills: a window that infers its stage from the byte counts.
+
+    Before the first byte the counts are zero, which the window once
+    read as "the download finished" -- over a lookup that had not yet
+    reached Zenodo. The hub's stamped stage is the authority, and the
+    three timers it computes (how long, until the next try, until it
+    gives up) are shown as the hub computed them.
+    """
+    sWindow = _fsOpenTheWindow(pageDashboard, serverHub, _fdictLocatingView())
+    assert "Finding the author’s environment on Zenodo" in sWindow
+    assert "finished" not in sWindow, sWindow
+    assert "Trying for 1 min 35 s (try 2)." in sWindow
+    assert "Zenodo.org did not accept a connection within 120 s. Next try in 37 s." in sWindow
+    assert "stops trying in 26 min 25 s" in sWindow
+    assert pageDashboard.get_attribute(
+        "#modalAcquisition", "data-acquisition-stage") == "locating"
+    assert pageDashboard.query_selector(
+        '#modalAcquisition [data-acquisition-action="check-connection"]') is not None
+    _fnAssertNoBannedWords(sWindow)
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.parametrize("sStage,sTitle", [
+    ("", "Starting to containerize"),
+    ("registry", "Checking public image registries"),
+    ("local", "Looking for a copy on this machine"),
+])
+def testNoStageBeforeTheDownloadSaysTheDownloadFinished(
+    pageDashboard, serverHub, sStage, sTitle,
+):
+    dictView = fdictConversionView(dictDownloadOverrides={
+        "sStage": sStage, "iBytes": 0, "iTotalBytes": 0, "fSecondsInStage": 4.0,
+    })
+    sWindow = _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    assert sTitle in sWindow
+    assert "finished" not in sWindow, sWindow
+    assert pageDashboard.listPageErrors == []
+
+
+def testTheLoadingStageSaysTheHashMatched(pageDashboard, serverHub):
+    dictView = fdictConversionView(dictDownloadOverrides={
+        "sStage": "loading", "iBytes": 733000000, "fSecondsInStage": 41.0,
+    })
+    sWindow = _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    assert "Loading the author’s environment into Docker" in sWindow
+    assert "matched the hash the project records" in sWindow
+    assert "This step has run for 41 s." in sWindow
+    assert pageDashboard.listPageErrors == []
+
+
+def testADownloadBetweenTriesCountsDownAndSaysWhenItStops(pageDashboard, serverHub):
+    dictView = fdictConversionView(dictDownloadOverrides={
+        "iAttempt": 3, "fSecondsUntilRetry": 12.0, "iRetriesLeft": 4,
+        "sLastFailure": "Zenodo stopped sending: no data for 120 s at 507 MB",
+        "sAttemptState": "Zenodo stopped sending. Reconnecting in 12 s (attempt 4)",
+    })
+    sWindow = _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    assert "Zenodo stopped sending: no data for 120 s at 507 MB. Next try in 12 s." in sWindow
+    assert "If the next 4 tries make no progress" in sWindow
+    assert pageDashboard.query_selector(
+        '#modalAcquisition [data-acquisition-action="check-connection"]') is not None
+    assert pageDashboard.listPageErrors == []
+
+
+def testTheHeadingNamesTheDepositTheProjectPins(pageDashboard, serverHub):
+    dictView = fdictConversionView(dictDownloadOverrides={"dictDeposit": {
+        "sDoi": "10.5281/zenodo.5150", "sFileName": "environment-image.tar.zst",
+        "sTitle": "Example environment image",
+    }})
+    sWindow = _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    assert pageDashboard.text_content("#modalAcquisition .acquisition-title") == (
+        "Downloading “Example environment image” from Zenodo"
+    )
+    assert ("Zenodo deposit 10.5281/zenodo.5150, file environment-image.tar.zst"
+            in sWindow)
+    assert pageDashboard.listPageErrors == []
+
+
+def testBeforeTheRecordIsReadTheHeadingNamesTheDoi(pageDashboard, serverHub):
+    dictView = _fdictLocatingView()
+    dictView["dictDownload"]["dictDeposit"] = {
+        "sDoi": "10.5281/zenodo.5150", "sFileName": "environment-image.tar.zst",
+        "sTitle": "",
+    }
+    _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    assert pageDashboard.text_content("#modalAcquisition .acquisition-title") == (
+        "Finding deposit 10.5281/zenodo.5150 on Zenodo"
+    )
+    assert pageDashboard.listPageErrors == []
+
+
+def _fiReadTailScroll(pageDashboard, sProperty):
+    return pageDashboard.evaluate(
+        "(sProperty) => document.querySelector('#modalAcquisition "
+        ".acquisition-tail')[sProperty]", sProperty,
+    )
+
+
+@pytest.mark.falsification
+def testTheLogFollowsNewLinesAndStaysWhereTheReaderScrolled(pageDashboard, serverHub):
+    """Kills: setting the log's scroll before the render attaches it.
+
+    Every poll rebuilds the window. A scroll set on the detached log is
+    ignored, so the log snapped back to its first line once a second
+    and nobody could follow the newest one. At the bottom it must
+    follow new lines; scrolled back, it must stay where the reader is.
+    """
+    dictView = fdictConversionView()
+    dictView["saTailLines"] = [f"line {iLine}" for iLine in range(80)]
+    _fsOpenTheWindow(pageDashboard, serverHub, dictView)
+    pageDashboard.wait_for_timeout(2000)
+    iBottom = _fiReadTailScroll(pageDashboard, "scrollHeight") - _fiReadTailScroll(
+        pageDashboard, "clientHeight")
+    assert iBottom > 0
+    assert _fiReadTailScroll(pageDashboard, "scrollTop") >= iBottom - 8
+    dictView["saTailLines"] = dictView["saTailLines"] + ["line 80", "line 81"]
+    pageDashboard.wait_for_timeout(2000)
+    iNewBottom = _fiReadTailScroll(pageDashboard, "scrollHeight") - _fiReadTailScroll(
+        pageDashboard, "clientHeight")
+    assert iNewBottom > iBottom
+    assert _fiReadTailScroll(pageDashboard, "scrollTop") >= iNewBottom - 8
+    pageDashboard.evaluate(
+        "() => { document.querySelector('#modalAcquisition .acquisition-tail')"
+        ".scrollTop = 40; }"
+    )
+    dictView["saTailLines"] = dictView["saTailLines"] + ["line 82"]
+    pageDashboard.wait_for_timeout(2000)
+    assert _fiReadTailScroll(pageDashboard, "scrollTop") == 40
+    assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld(
+    pageDashboard, serverHub,
+):
+    """Kills: starting the converted container on the researcher's behalf.
+
+    A start claims the container for the starting tab, so the automatic
+    start left the new tile "held by this tab" before the researcher had
+    opened it. The window now finishes, says how to start, and starts
+    nothing.
+    """
+    _fnListTheHostTileAsContainerizing(pageDashboard, "ready")
+    dictView = fdictConversionView("ready", False)
+    listStarts = []
+
+    def fnAnswer(route):
+        if route.request.method == "POST":
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"bCommitted": True}))
+            return
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(dictView))
+    pageDashboard.route("**/api/conversions/**", fnAnswer)
+    pageDashboard.route(
+        "**/api/containers/**/start",
+        lambda route: (listStarts.append(route.request.url), route.abort()),
+    )
+    _fnWaitForPicker(pageDashboard, serverHub)
+    pageDashboard.wait_for_selector(_fsChipSelector(), timeout=10000)
+    pageDashboard.click(_fsChipSelector())
+    pageDashboard.wait_for_selector(
+        '#modalAcquisition [data-acquisition-action="commit"]', timeout=5000,
+    )
+    pageDashboard.click('#modalAcquisition [data-acquisition-action="commit"]')
+    pageDashboard.wait_for_function(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".some(el => el.textContent.includes('Click its tile to start'))",
+        timeout=5000,
+    )
+    pageDashboard.wait_for_timeout(1500)
+    assert listStarts == []
     assert pageDashboard.listPageErrors == []

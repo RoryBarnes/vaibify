@@ -285,7 +285,6 @@ var VaibifyContainerManager = (function () {
             _fsRenderContainmentChip(dictContainer, bHost) +
             _fsRenderContainerizingChip(dictContainer, bHost) +
             _fsRenderHeldChip(dictContainer) +
-            _fsRenderImageTrustChip(dictContainer, bHost) +
             _fsRenderHostTileNote(dictContainer, bHost) +
             "</div>" +
             '<button class="btn-icon container-tile-actions" ' +
@@ -342,24 +341,6 @@ var VaibifyContainerManager = (function () {
             "held by this tab</span>";
     }
 
-    function _fsRenderImageTrustChip(dictContainer, bHost) {
-        /* An image the project obtained, or one the researcher has
-           answered for, wears the answer. "Not confirmed" is shown
-           rather than hidden: the start will ask. */
-        var dictAnswer = dictContainer.dictImageTrust;
-        if (bHost || !(dictAnswer || _fbImageObtained(dictContainer))) {
-            return "";
-        }
-        return '<span class="containment-chip containment-chip--imagetrust" ' +
-            'data-image-trust="' +
-            VaibifyUtilities.fnEscapeHtml(
-                (dictAnswer && dictAnswer.sChoice) || "") + '" title="' +
-            VaibifyUtilities.fnEscapeHtml(
-                (dictAnswer && dictAnswer.sImageDigest) || "") + '">' +
-            VaibifyUtilities.fnEscapeHtml(
-                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";
-    }
-
     function _fsRenderReleaseMenuItem(dictContainer) {
         if (dictContainer.bOwnedByThisSession !== true) return "";
         return '<div class="container-menu-item" data-action="release">' +
@@ -393,12 +374,9 @@ var VaibifyContainerManager = (function () {
         var dictPending = dictContainer.dictPendingConversion;
         if (!bHost || !dictPending) return "";
         var sState = dictPending.sState || "obtaining";
+        /* The progress itself lives in the window the chip opens; the
+           chip only names the state, so the two never disagree. */
         var sLabel = _DICT_CONTAINERIZING_LABELS[sState] || "Containerizing…";
-        if (sState === "obtaining" && dictPending.iTotalBytes > 0) {
-            sLabel = "Containerizing… " +
-                Math.round(dictPending.iBytes / 1e6) + " of " +
-                Math.round(dictPending.iTotalBytes / 1e6) + " MB";
-        }
         return (
             '<button type="button" class="containment-chip ' +
             'containment-chip--containerizing" data-pending-conversion-state="' +

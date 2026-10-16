@@ -229,8 +229,8 @@ digest with the time it was given, never against a name or tag, so an
 image that changes under the same tag asks again. The launch path
 refuses an unanswered digest, so skipping the dashboard skips nothing.
 The answer is set only through a route the in-container agent cannot
-reach, and a badge on the project tile and in the project's settings
-shows it. Changing it asks for confirmation because the container is
+reach, and the project's settings show it, beside the button that
+changes it. Changing it asks for confirmation because the container is
 recreated.
 
 | Choice | What runs |

@@ -230,3 +230,51 @@ def test_a_failure_with_no_prior_step_started_still_records():
     ])
     assert dictSeen["sStepLabel"] == "A01"
     assert dictSeen["listOutputTail"] == []
+
+
+@pytest.mark.falsification
+def test_a_synchronous_forward_receives_every_event():
+    """Kills: awaiting whatever the forward returned.
+
+    The lanes that run in a worker thread hand the collector a plain,
+    SYNCHRONOUS callback on purpose. Awaiting its ``None`` raised a
+    TypeError on the pipeline's first event, ending the rerun before
+    any step ran -- the reproduce-a-published-project lane did exactly
+    that.
+    """
+    listSeen = []
+    listEvents = [
+        {"sType": "started"},
+        {"sType": "stepStarted", "iStepNumber": 1},
+        {"sType": "outputBatch", "listLines": ["one", "two"]},
+    ]
+    _fnDrive(listEvents, fnForwardTo=listSeen.append)
+    assert listSeen == listEvents
+
+
+def test_an_async_forward_is_still_awaited():
+    listSeen = []
+
+    async def fnForward(dictEvent):
+        listSeen.append(dictEvent)
+    _fnDrive([{"sType": "started"}], fnForwardTo=fnForward)
+    assert listSeen == [{"sType": "started"}]
+
+
+@pytest.mark.falsification
+def test_the_published_tail_carries_no_credential():
+    """Kills: keeping the failing step's output as printed.
+
+    The tail is written into ``l3_attestation.json``, which is committed
+    and published; a token a step echoed must not travel with it.
+    """
+    sToken = "ghp_" + "a" * 36
+    dictDiagnostics = _fnDrive([
+        {"sType": "stepStarted", "iStepNumber": 1},
+        {"sType": "outputBatch", "listLines": [f"git push https://{sToken}@host/r"]},
+        {"sType": "output", "sLine": f"token={sToken}"},
+        {"sType": "stepFail", "iStepNumber": 1, "iExitCode": 1},
+    ])
+    sTail = "\n".join(dictDiagnostics["listOutputTail"])
+    assert sToken not in sTail
+    assert len(dictDiagnostics["listOutputTail"]) == 2

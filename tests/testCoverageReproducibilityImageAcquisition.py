@@ -407,10 +407,38 @@ def testTheDoiFollowFallbackStillRefusesAWrongHash(transportDouble):
     assert len(transportDouble.serverFiles.listFileRequests) == 2
 
 
-def testAnUnresolvableDoiIsRefusedByName(transportDouble):
-    """A network failure at the resolver names the DOI it could not follow."""
+def testAnUnreachableResolverIsRetriedThenRefusedByName(transportDouble, monkeypatch):
+    """A resolver that never answers is asked again, then refused naming the DOI.
+
+    A connection failure is the transient kind: one try of it used to
+    refuse the deposit before the download began. Now it is retried
+    within the budget, and the refusal that follows keeps the partial,
+    so Try again resumes rather than starting over.
+    """
+    monkeypatch.setattr(imageAcquisition, "_F_LOCATE_BUDGET_SECONDS", 0.5)
+    monkeypatch.setattr(imageAcquisition, "_F_LOCATE_BACKOFF_BASE_SECONDS", 0.01)
+    monkeypatch.setattr(imageAcquisition, "_F_LOCATE_BACKOFF_CAP_SECONDS", 0.02)
     transportDouble.dictAnswers["https://doi.org/" + S_DOI] = (
         requests.ConnectionError("name resolution failed")
+    )
+    with pytest.raises(
+        ImageAcquisitionRefusedError, match=r"10\.5281/zenodo\.5150",
+    ) as infoError:
+        imageAcquisition.fsDownloadVerifiedTarball(
+            fdictRecord(), fdictOpenAcquisitionFor(fdictRecord()),
+            lambda dictEvent: None,
+        )
+    dictFailure = infoError.value.dictFailure
+    assert dictFailure["sFailureClass"] == imageAcquisition.S_FAILURE_ZENODO_UNREACHABLE
+    assert dictFailure["bPartialKept"] is True
+    assert "doi.org" in dictFailure["sSentence"]
+    assert transportDouble.listUrls.count("https://doi.org/" + S_DOI) >= 2
+
+
+def testANonTransientResolverFailureIsRefusedAtOnce(transportDouble):
+    """A resolver failure no retry can cure still names the DOI, on the first try."""
+    transportDouble.dictAnswers["https://doi.org/" + S_DOI] = (
+        requests.TooManyRedirects("redirect loop")
     )
     with pytest.raises(
         ImageAcquisitionRefusedError,
@@ -420,6 +448,7 @@ def testAnUnresolvableDoiIsRefusedByName(transportDouble):
             fdictRecord(), fdictOpenAcquisitionFor(fdictRecord()),
             lambda dictEvent: None,
         )
+    assert transportDouble.listUrls.count("https://doi.org/" + S_DOI) == 1
 
 
 @pytest.mark.falsification

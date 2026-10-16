@@ -263,10 +263,15 @@ def fnForgetTheStoredChoice():
 
 
 @pytest.mark.falsification
-def testTheBadgeAndTheSettingsReflectTheStoredChoice(
+def testTheSettingsReflectTheStoredChoiceAndTheTileCarriesNoBadge(
     pageDashboard, serverHub,
 ):
-    """Kills: a badge that does not read the stored record."""
+    """Kills: a settings label that does not read the stored record.
+
+    The answer lives in the project's settings, beside the button that
+    changes it; the tile no longer repeats it (removed at the
+    researcher's request, 2026-10-15).
+    """
     sConfigPath = registryManager.fdictGetProject(
         S_CONTAINER_NAME)["sConfigPath"]
     os.makedirs(os.path.dirname(sConfigPath), exist_ok=True)
@@ -278,9 +283,7 @@ def testTheBadgeAndTheSettingsReflectTheStoredChoice(
     try:
         pageDashboard.goto(serverHub.fsBootstrapUrl(), wait_until="load")
         pageDashboard.wait_for_selector(S_TILE, timeout=15000)
-        sBadge = pageDashboard.locator(
-            f"{S_TILE} .containment-chip--imagetrust").inner_text()
-        assert sBadge == "image trust: restricted"
+        assert "image trust" not in pageDashboard.locator(S_TILE).inner_text()
         pageDashboard.click(f"{S_TILE} .container-tile-gear")
         pageDashboard.wait_for_selector("#modalSettings", timeout=10000)
         assert pageDashboard.locator(

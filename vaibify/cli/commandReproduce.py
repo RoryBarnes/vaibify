@@ -1152,8 +1152,13 @@ def _fnPrintAcquisitionEvent(dictEvent):
         iTotal = int(dictEvent.get("iTotalBytes") or 0)
         if iBytes == 0 or iBytes >= iTotal:
             click.echo(f"  downloading the deposit: {iBytes}/{iTotal} bytes")
-    elif sPhase in ("downloadRetrying", "downloadRestarting", "downloadSlow"):
+    elif sPhase in (
+        "downloadRetrying", "downloadRestarting", "downloadSlow",
+        "locatingRetrying",
+    ):
         click.echo(f"  {dictEvent.get('sSentence') or sPhase}")
+    elif sPhase == "locating" and int(dictEvent.get("iAttempt") or 1) == 1:
+        click.echo("  asking Zenodo where the deposit's file is")
     elif sPhase == "resuming":
         click.echo(
             "  resuming a download interrupted earlier: "

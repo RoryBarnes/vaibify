@@ -70,17 +70,30 @@ def _fnFakePinnedEnvironment(page, dictAnswer):
     )
 
 
-def fdictConversionView(sState="obtaining", bLive=True, dictFailure=None):
-    """The view ``GET /api/conversions/<host>`` answers, in one state."""
+def fdictConversionView(
+    sState="obtaining", bLive=True, dictFailure=None, dictDownloadOverrides=None,
+):
+    """The view ``GET /api/conversions/<host>`` answers, in one state.
+
+    The download block carries every field
+    ``resumableDownload.fdictReadDownloadProgress`` returns, the stage
+    the hub stamped included; ``dictDownloadOverrides`` moves it.
+    """
+    dictDownload = {
+        "sStage": "downloading", "fSecondsInStage": 312.0,
+        "fSecondsUntilGiveUp": None, "iRetriesLeft": None,
+        "iBytes": 507000000, "iTotalBytes": 733000000,
+        "fBytesPerSecond": 400000.0, "fSecondsRemaining": 565.0,
+        "fSecondsSinceLastByte": 0.2, "iAttempt": 1,
+        "sAttemptState": "", "fSecondsUntilRetry": 0.0, "bSlow": False,
+        "sLastFailure": "", "sAcquisitionId": "",
+        "bFinished": False,
+    }
+    dictDownload.update(dictDownloadOverrides or {})
     return {
         "sHostName": S_HOST_PROJECT_READY, "sNewName": S_NEW_NAME,
         "sState": sState, "bLive": bLive,
-        "dictDownload": {
-            "iBytes": 507000000, "iTotalBytes": 733000000,
-            "fBytesPerSecond": 400000.0, "fSecondsRemaining": 565.0,
-            "fSecondsSinceLastByte": 0.2, "iAttempt": 1,
-            "sAttemptState": "", "fSecondsUntilRetry": 0.0, "bSlow": False,
-        },
+        "dictDownload": dictDownload,
         "dictFailure": dictFailure, "dictStaged": None,
         "saTailLines": ["downloading the archived image: 507 MB of 733 MB"],
         "bJournalled": False, "sStartedIso": "", "sUpdatedIso": "",

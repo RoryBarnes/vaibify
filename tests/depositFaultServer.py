@@ -26,11 +26,18 @@ server:
   ``(iStatus, dictHeaders, baBody)``);
 * lie about the whole file's size (``iAdvertisedTotal``);
 * name a content type or encoding (``sContentType``,
-  ``sContentEncoding``).
+  ``sContentEncoding``);
+* misbehave on the LOOKUP before the file (``dictPathFaults``, a list
+  of faults per path prefix, one consumed per request): ``"drop"``
+  closes the connection before any header, ``("stall", fSeconds)``
+  holds the request unanswered until ``eventRelease`` or the seconds
+  pass and then drops it, and an integer answers that status.
 
 A tiny ``/api/records/<id>`` record and a ``/records/<id>`` page are
-also answered, so the acquisition chain's record fetch and DOI follow
-can be pointed at this server by injecting the Zenodo service table.
+also answered, and ``/doi/<doi>`` redirects to the record page the way
+doi.org does, so the acquisition chain's record fetch and DOI follow
+can be pointed at this server by injecting the Zenodo service table
+and the resolver.
 """
 
 import http.server
@@ -58,6 +65,14 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
         dictHeaders = {sKey.lower(): sValue for sKey, sValue in self.headers.items()}
         with serverFault.lockRequests:
             serverFault.listRequests.append({"sPath": sPath, "dictHeaders": dictHeaders})
+        if self._fbAppliedAPathFault(sPath):
+            return None
+        if sPath.startswith("/doi/"):
+            self.send_response(302)
+            self.send_header("Location", "/records/5150")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
         if sPath == serverFault.sFilePath:
             return self._fnAnswerFile(dictHeaders)
         if sPath.startswith("/api/records/"):
@@ -67,6 +82,25 @@ class _FaultHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(404)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _fbAppliedAPathFault(self, sPath):
+        """Apply the next fault queued for this path's prefix; True if one was."""
+        serverFault = self.server
+        with serverFault.lockRequests:
+            jsonFault = None
+            for sPrefix, listFaults in serverFault.dictBehavior["dictPathFaults"].items():
+                if sPath.startswith(sPrefix) and listFaults:
+                    jsonFault = listFaults.pop(0)
+                    break
+        if jsonFault is None:
+            return False
+        if isinstance(jsonFault, int):
+            self._fnAnswerBytes(jsonFault, b"", {"Content-Type": "text/plain"})
+            return True
+        if isinstance(jsonFault, tuple) and jsonFault[0] == "stall":
+            serverFault.eventRelease.wait(jsonFault[1])
+        self._fnDropTheConnection()
+        return True
 
     def _fnAnswerJson(self, dictPayload):
         self._fnAnswerBytes(
@@ -206,6 +240,7 @@ class FaultInjectingDepositServer:
             "bIgnoreRange": False, "iShortPartBytes": 0,
             "listCannedAnswers": [], "iAdvertisedTotal": None,
             "sContentType": "application/octet-stream", "sContentEncoding": "",
+            "dictPathFaults": {},
         }
         self._server.fdictRecordJson = self._fdictRecordJson
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -259,6 +294,7 @@ class FaultInjectingDepositServer:
         sName = self._server.sFilePath.rsplit("/", 1)[-1]
         return {
             "id": 5150, "status": "published",
+            "metadata": {"title": "Loopback fixture environment image"},
             "files": [{"key": sName, "links": {"self": self.sBase + self._server.sFilePath}}],
         }
 

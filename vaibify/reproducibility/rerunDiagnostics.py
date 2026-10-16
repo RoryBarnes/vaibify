@@ -39,6 +39,10 @@ carries ``sKind`` so a reader can tell "a step ran and failed" from
 problems with different fixes.
 """
 
+import inspect
+
+from vaibify.reproducibility.credentialRedactor import fsRedactCredentials
+
 __all__ = [
     "I_MAX_OUTPUT_TAIL_LINES",
     "S_FAILURE_KIND_PREFLIGHT",
@@ -71,8 +75,8 @@ def ftBuildRerunDiagnosticsCollector(dictWorkflow, fnForwardTo=None):
 
     The callback is what the pipeline runner is given. It records into
     ``dictDiagnostics`` and then forwards every event to ``fnForwardTo``
-    when one is supplied, so a caller that wants live progress -- the
-    CLI prints it -- keeps getting it. Forwarding is unconditional and
+    when one is supplied -- synchronous or ``async``, either is
+    honored -- so a caller that wants live progress keeps getting it. Forwarding is unconditional and
     happens even for events this collector reads, because an observer
     that swallowed the events it understood would silently break the
     caller it was added beside.
@@ -87,8 +91,16 @@ def ftBuildRerunDiagnosticsCollector(dictWorkflow, fnForwardTo=None):
     async def fnCollectStatusEvent(dictEvent):
         _fnRecordEvent(dictWorkflow, dictEvent, dictProgress,
                        dictDiagnostics)
-        if fnForwardTo is not None:
+        # Either kind of callback is honored. The lanes that run in a
+        # worker thread pass a SYNCHRONOUS one on purpose, and awaiting
+        # what it returned -- None -- raised on the pipeline's first
+        # event, ending the rerun before any step ran.
+        if fnForwardTo is None:
+            return
+        if inspect.iscoroutinefunction(fnForwardTo):
             await fnForwardTo(dictEvent)
+        else:
+            fnForwardTo(dictEvent)
 
     return fnCollectStatusEvent, dictDiagnostics
 
@@ -122,7 +134,9 @@ def _fnAppendOutputLines(dictEvent, dictProgress):
         sLine = dictEvent.get("sLine")
         listLines = [sLine] if sLine is not None else []
     listRecent = dictProgress["listRecentLines"]
-    listRecent.extend(str(sLine) for sLine in listLines)
+    # Redacted as it is kept: the tail is written into an attestation
+    # that is committed and published.
+    listRecent.extend(fsRedactCredentials(str(sLine)) for sLine in listLines)
     if len(listRecent) > I_MAX_OUTPUT_TAIL_LINES:
         dictProgress["listRecentLines"] = listRecent[
             -I_MAX_OUTPUT_TAIL_LINES:

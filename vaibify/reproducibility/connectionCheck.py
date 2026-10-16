@@ -7,13 +7,19 @@ explain them, never with a verdict the probes cannot establish. Three
 probes, in order, over the download's own transport
 (:mod:`rangedHttpTransport`), with no credentials offered:
 
-1. connect to the recorded service and request the file from the
-   download's current offset, timing the connection and the first byte;
-2. read at most :data:`I_PROBE_BYTES_CAP` of the body for at most
+1. reach ``doi.org``, to tell "offline" from "Zenodo is unreachable".
+   It runs FIRST, under its own short bound: the Zenodo probe waits as
+   long as the download does for a slow handshake, and run second the
+   resolver was the probe the budget ran out on -- exactly when its
+   answer was the one that told the two apart;
+2. connect to the recorded service and request the file from the
+   download's current offset, timing the connection and the first byte
+   (before the deposit's file has been located, the service's front
+   page);
+3. read at most :data:`I_PROBE_BYTES_CAP` of the body for at most
    :data:`F_THROUGHPUT_PROBE_SECONDS`, measuring the rate -- the cap is
    on the bytes READ, so a server that ignores ``Range`` cannot stream
-   the whole file into a check;
-3. reach ``doi.org``, to tell "offline" from "Zenodo is unreachable".
+   the whole file into a check.
 
 The whole check is bounded by :data:`F_CHECK_BUDGET_SECONDS` through
 the download's own Cancel path: a timer requests cancel at the deadline,
@@ -63,19 +69,19 @@ def fdictProbeArchiveConnection(dictSidecar):
     unreachable host is an observation, not an error.
     """
     fStarted = time.monotonic()
-    dictControl = resumableDownload.fdictCreateDownloadControl(
-        {"sKind": "connection-check"},
-    )
-    threadDeadline = threading.Timer(
-        F_CHECK_BUDGET_SECONDS, resumableDownload.fnRequestCancel,
-        args=(dictControl,),
-    )
-    threadDeadline.daemon = True
     dictMeasured = _fdictEmptyMeasurement(dictSidecar)
-    threadDeadline.start()
+    dictResolverControl, threadResolverDeadline = _ftStartBoundedControl(
+        _F_RESOLVER_PROBE_SECONDS,
+    )
+    try:
+        _fnProbeTheResolver(dictResolverControl, dictMeasured)
+    finally:
+        threadResolverDeadline.cancel()
+    dictControl, threadDeadline = _ftStartBoundedControl(
+        F_CHECK_BUDGET_SECONDS - (time.monotonic() - fStarted),
+    )
     try:
         _fnProbeTheFile(dictSidecar, dictControl, dictMeasured)
-        _fnProbeTheResolver(dictControl, dictMeasured)
     finally:
         threadDeadline.cancel()
     dictMeasured["fSecondsTaken"] = time.monotonic() - fStarted
@@ -86,6 +92,24 @@ def fdictProbeArchiveConnection(dictSidecar):
         "listExplanations": _flistExplanations(dictMeasured),
         "dictMeasured": dictMeasured,
     }
+
+
+def _ftStartBoundedControl(fSeconds):
+    """Return a fresh control and the started timer that cancels it.
+
+    Each probe group gets its own: the resolver's short bound must end
+    the resolver probe without cancelling the Zenodo probe after it.
+    """
+    dictControl = resumableDownload.fdictCreateDownloadControl(
+        {"sKind": "connection-check"},
+    )
+    threadDeadline = threading.Timer(
+        max(0.0, fSeconds), resumableDownload.fnRequestCancel,
+        args=(dictControl,),
+    )
+    threadDeadline.daemon = True
+    threadDeadline.start()
+    return dictControl, threadDeadline
 
 
 def _fdictEmptyMeasurement(dictSidecar):
@@ -124,7 +148,7 @@ def _fsServiceBaseUrl(dictSidecar):
 
 
 # ---------------------------------------------------------------------
-# Probe 1 and 2: the service and the file.
+# Probes 2 and 3: the service and the file.
 # ---------------------------------------------------------------------
 
 
@@ -217,7 +241,7 @@ def _fnMeasureTheBody(dictAnswer, dictControl, dictMeasured, fRequested):
 
 
 # ---------------------------------------------------------------------
-# Probe 3: the DOI resolver.
+# Probe 1: the DOI resolver.
 # ---------------------------------------------------------------------
 
 
@@ -375,7 +399,9 @@ def _fsResolverSentence(dictMeasured):
     if sOutcome == S_OUTCOME_NOT_CHECKED:
         return ""
     if sOutcome == S_OUTCOME_OUT_OF_TIME:
-        return "doi.org was not checked: the check had run out of time."
+        return (
+            f"doi.org did not answer within {_F_RESOLVER_PROBE_SECONDS:.0f} s."
+        )
     return "Could not reach doi.org."
 
 

@@ -25862,10 +25862,10 @@ LIST_FALSIFICATIONS = [
         new='            "<td>" + sValue + "</td></tr>";',
     ),
     Falsification(
-        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheBadgeAndTheSettingsReflectTheStoredChoice',
+        nodeid='tests/browser/testTheImageTrustModalAsksBeforeAnUnbuiltImageRuns.py::testTheSettingsReflectTheStoredChoiceAndTheTileCarriesNoBadge',
         source='vaibify/gui/static/scriptContainerManager.js',
-        old='                VaibifyImageTrust.fsBadgeText(dictAnswer)) + "</span>";',
-        new='                VaibifyImageTrust.fsBadgeText(null)) + "</span>";',
+        old='                VaibifyImageTrust.fsBadgeText(dictSettings.dictImageTrust)) +',
+        new='                VaibifyImageTrust.fsBadgeText(null)) +',
     ),
     Falsification(
         nodeid='tests/testImageTrustLive.py::testARestrictedLaunchOfAnImageThatNeedsRootFailsToStartAndIsNeverRunning',
@@ -33639,5 +33639,181 @@ LIST_FALSIFICATIONS = [
             '        _fnUpdateModTimeBaseline(\n'
             '            dictCtx, sContainerId, dictModTimes, dictWorkflow)\n'
         ),
+    ),
+    # --- 2026-10-15: finding the deposit on Zenodo is patient,
+    # cancellable and honest (a 10 s handshake bound refused a slow
+    # Zenodo before the download began)
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_lookup_that_gets_no_answer_is_tried_again_and_the_image_loads'
+        ),
+        # the first unanswered try spends the whole budget
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '        if time.monotonic() + fWaitSeconds - fStarted >= '
+            '_F_LOCATE_BUDGET_SECONDS:\n'
+        ),
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_zenodo_that_answers_503_is_asked_again_not_followed_to_a_dead_url'
+        ),
+        # a DOI hop that lands on a 5xx is read as the record's address
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    if iStatus == 429 or iStatus >= 500:\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_cancel_ends_a_try_blocked_on_a_silent_zenodo_within_a_second'
+        ),
+        # the try runs on the caller's thread, so Cancel waits it out
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='    threadLookup.start()\n    while threadLookup.is_alive():\n',
+        new='    fnRunLookup()\n    while False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_a_spent_lookup_budget_keeps_the_bytes_an_earlier_attempt_downloaded'
+        ),
+        # the unreachable refusal says nothing is worth keeping
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '            "sFailureClass": S_FAILURE_ZENODO_UNREACHABLE,\n'
+            '            "bPartialKept": True,'
+        ),
+        new=(
+            '            "sFailureClass": S_FAILURE_ZENODO_UNREACHABLE,\n'
+            '            "bPartialKept": False,'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_the_poll_reads_the_lookup_stage_and_counts_down_to_the_next_try'
+        ),
+        # the lookup stamps no stage and no deadline on the control
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old=(
+            '    resumableDownload.fnEnterStage(\n'
+            '        dictControl, S_STAGE_LOCATING, _F_LOCATE_BUDGET_SECONDS,\n'
+        ),
+        new=(
+            '    (lambda *aArgs, **kwargs: None)(\n'
+            '        dictControl, S_STAGE_LOCATING, _F_LOCATE_BUDGET_SECONDS,\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testTheWindowNamesTheLookupAndCountsItsTimers'
+        ),
+        # the window infers its stage from the byte counts again
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old=(
+            '        var dictDownload = dictView.dictDownload || {};\n'
+            '        var sStage = dictDownload.sStage || "";\n'
+            '        var dictScroll = _fdictReadTailScroll();\n'
+        ),
+        new=(
+            '        var dictDownload = dictView.dictDownload || {};\n'
+            '        dictDownload.sStage = (dictDownload.iTotalBytes || 0) > 0\n'
+            '            ? "downloading" : "preparing";\n'
+            '        var sStage = dictDownload.sStage || "";\n'
+            '        var dictScroll = _fdictReadTailScroll();\n'
+        ),
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testZenodoLookupPatience.py::'
+            'test_the_poll_names_the_deposit_by_doi_file_and_record_title'
+        ),
+        # the record's title is never passed on to the window's heading
+        source='vaibify/reproducibility/imageAcquisition.py',
+        old='        fnNoteTitle(_fsReadDepositTitle(dictPublished))\n',
+        new='        fnNoteTitle("")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testTheLogFollowsNewLinesAndStaysWhereTheReaderScrolled'
+        ),
+        # the log's scroll is never put back after a poll rebuilds it
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='        _fnRestoreTailScroll(dictScroll);\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld'
+        ),
+        # the window starts (and so claims) the converted container itself
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='        await VaibifyContainerManager.fnLoadContainers();\n',
+        new=(
+            '        await VaibifyContainerManager.fnLoadContainers();\n'
+            '        await VaibifyContainerManager.fnStartContainer(sNewName);\n'
+        ),
+    ),
+    # --- 2026-10-15: a running L3 rerun streams its output to the PROOF
+    # tab; the collector honors the synchronous callbacks lanes pass
+    Falsification(
+        nodeid=(
+            'tests/testRerunDiagnostics.py::'
+            'test_a_synchronous_forward_receives_every_event'
+        ),
+        # the collector awaits whatever the forward returned
+        source='vaibify/reproducibility/rerunDiagnostics.py',
+        old=(
+            '        if inspect.iscoroutinefunction(fnForwardTo):\n'
+            '            await fnForwardTo(dictEvent)\n'
+            '        else:\n'
+            '            fnForwardTo(dictEvent)\n'
+        ),
+        new='        await fnForwardTo(dictEvent)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunDiagnostics.py::'
+            'test_the_published_tail_carries_no_credential'
+        ),
+        # the failing step's output is kept as printed
+        source='vaibify/reproducibility/rerunDiagnostics.py',
+        old=(
+            '    listRecent.extend(fsRedactCredentials(str(sLine)) '
+            'for sLine in listLines)\n'
+        ),
+        new='    listRecent.extend(str(sLine) for sLine in listLines)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testVerificationLiveOutput.py::'
+            'test_the_route_gives_the_rerun_a_recorder_that_fills_the_record'
+        ),
+        # the shadow rerun is run with no status callback
+        source='vaibify/gui/routes/reproducibilityRoutes.py',
+        old=(
+            '        filesRepo, fnStatusCallback=verificationProgress.'
+            'ffnBuildRerunRecorder(\n'
+            '            sContainerId, fsRepoRootOf(filesRepo), dictWorkflow,\n'
+            '        ),\n'
+        ),
+        new='        filesRepo,\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheVerificationShowsItsOutput.py::'
+            'testTheCardShowsTheStepAndTheNewestLines'
+        ),
+        # the progress card renders none of the hub's output record
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='            _fsRenderVerifyOutput(dictInFlight) +\n',
+        new='',
     ),
 ]

@@ -60,6 +60,8 @@ from urllib.request import getproxies, proxy_bypass
 
 import certifi
 
+from vaibify.reproducibility import zenodoClient
+
 
 S_FAILURE_REFUSED_HOST = "refused-host"
 S_FAILURE_TLS = "tls"
@@ -67,7 +69,9 @@ S_FAILURE_COULD_NOT_CONNECT = "could-not-connect"
 
 _I_MAX_REDIRECT_HOPS = 5
 _I_MAX_CONNECT_WORKERS = 4
-_F_CONNECT_TIMEOUT_SECONDS = 10.0
+# Bounds the lookup, the connect AND the TLS handshake: the socket's
+# timeout is still set when ``wrap_socket`` handshakes on it.
+_F_CONNECT_TIMEOUT_SECONDS = zenodoClient.F_CONNECT_TIMEOUT_SECONDS
 _F_WORKER_POLL_SECONDS = 0.05
 _S_USER_AGENT = "vaibify"
 

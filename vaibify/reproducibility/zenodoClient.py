@@ -62,6 +62,10 @@ class ZenodoRateLimitError(ZenodoError):
     """Rate limit exceeded (429)."""
 
 
+class ZenodoServerError(ZenodoError):
+    """Zenodo answered with a 5xx: its side failed, and may not next time."""
+
+
 class ZenodoRedirectRefusedError(ZenodoError):
     """A fetch would have left the allowed hosts, and was not sent.
 
@@ -123,8 +127,17 @@ _HASH_CHUNK_SIZE = 64 * 1024
 # a deposit key is caller-supplied, so an unbounded read would
 # let one pull a dataset into the hub's address space.
 _I_JSON_FETCH_BYTE_CAP = 4 * 1024 * 1024
-_TUPLE_REQUEST_TIMEOUT_SECONDS = (10, 60)
-_TUPLE_UPLOAD_TIMEOUT_SECONDS = (10, 600)
+# How long any connection to Zenodo is given to open, and to answer
+# once open. Zenodo is routinely slow to complete a TLS handshake --
+# tens of seconds is ordinary -- and in ``requests`` the connect timeout
+# bounds the handshake too, so a short one reads a slow Zenodo as an
+# unreachable one and gives up on a server that would have answered.
+# The one authority: the ranged download transport and the image
+# acquisition chain read these same values.
+F_CONNECT_TIMEOUT_SECONDS = 120.0
+F_READ_TIMEOUT_SECONDS = 120.0
+_TUPLE_REQUEST_TIMEOUT_SECONDS = (F_CONNECT_TIMEOUT_SECONDS, F_READ_TIMEOUT_SECONDS)
+_TUPLE_UPLOAD_TIMEOUT_SECONDS = (F_CONNECT_TIMEOUT_SECONDS, 600)
 
 
 class _NoStoredCredentials(requests.auth.AuthBase):
@@ -906,7 +919,7 @@ def _fnStreamDownload(clientZenodo, sFileUrl, sDestination, sFileName):
     responseHttp = fresponseGetWithinAllowlist(
         sFileUrl, clientZenodo.flistAllowedOrigins(),
         dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
-        bStream=True, tTimeout=(10, 60),
+        bStream=True, tTimeout=_TUPLE_REQUEST_TIMEOUT_SECONDS,
     )
     _fnCheckResponse(responseHttp)
     iTotal = int(responseHttp.headers.get("content-length", 0))
@@ -950,6 +963,10 @@ def _fnCheckResponse(responseHttp):
     if iStatus == 429:
         raise ZenodoRateLimitError(
             f"Zenodo rate limit exceeded ({iStatus}): {sBody}"
+        )
+    if iStatus >= 500:
+        raise ZenodoServerError(
+            f"Zenodo server error ({iStatus}): {sBody}"
         )
     raise ZenodoError(
         f"Zenodo API error ({iStatus}): {sBody}"
@@ -1038,7 +1055,7 @@ def _fbaFetchBoundedContent(clientZenodo, sFileUrl):
         responseHttp = fresponseGetWithinAllowlist(
             sFileUrl, clientZenodo.flistAllowedOrigins(),
             dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
-            bStream=True, tTimeout=(10, 60),
+            bStream=True, tTimeout=_TUPLE_REQUEST_TIMEOUT_SECONDS,
         )
         _fnCheckResponse(responseHttp)
     except (requests.RequestException, ZenodoError):
@@ -1079,7 +1096,7 @@ def _fsHashRemoteFile(clientZenodo, dictFile):
         responseHttp = fresponseGetWithinAllowlist(
             sFileUrl, clientZenodo.flistAllowedOrigins(),
             dictHeaders=_fdictBuildAuthHeader(clientZenodo._fsGetToken()),
-            bStream=True, tTimeout=(10, 60),
+            bStream=True, tTimeout=_TUPLE_REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException as errorCaught:
         raise ZenodoError(

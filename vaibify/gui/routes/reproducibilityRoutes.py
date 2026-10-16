@@ -642,17 +642,8 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
             listReproductions[0] if listReproductions else None
         ),
         "listReproductionHistory": listReproductions,
-        "dictInFlight": verificationProgress.fdictReadStatus(
+        **verificationProgress.fdictReadVerificationRecords(
             sContainerId, fsRepoRootOf(filesRepo),
-        ),
-        "dictLastNoVerdict": verificationProgress.fdictReadNoVerdict(
-            sContainerId, fsRepoRootOf(filesRepo),
-        ),
-        "dictLastSettled": verificationProgress.fdictReadLastSettled(
-            sContainerId, fsRepoRootOf(filesRepo),
-        ),
-        "dictUnsettledTeardown": (
-            verificationProgress.fdictReadUnsettledTeardown(sContainerId)
         ),
         "sLiveManifestDigest": (
             fsCurrentManifestDigest(filesRepo)
@@ -1445,7 +1436,10 @@ def _fdictRunReproductionSync(
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictOutcome = fdictRerunAndVerifyThroughShadow(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
-        filesRepo, dictImageOrigin=dictImageOrigin,
+        filesRepo, fnStatusCallback=verificationProgress.ffnBuildRerunRecorder(
+            sContainerId, fsRepoRootOf(filesRepo), dictWorkflow,
+        ),
+        dictImageOrigin=dictImageOrigin,
     )
     # The outcome's own sImageDigest is the pin the shadow was built
     # from; re-reading environment.json here would name whatever it
