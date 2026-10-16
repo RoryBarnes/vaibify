@@ -33930,4 +33930,15 @@ LIST_FALSIFICATIONS = [
         old='        if (sId !== _sReadinessBannersContainerId) {\n            _fnSurfaceReadinessOutcome(null, "");\n        }\n',
         new='',
     ),
+    # --- 2026-10-16: a finished conversion is announced once ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testTheContainerizingWindowFollowsTheHub.py::'
+            'testAFinishedConversionIsAnnouncedOnceHoweverManyPollsWereWaiting'
+        ),
+        # every poll in flight when the record vanishes announces it
+        source='vaibify/gui/static/scriptAcquisitionWindow.js',
+        old='            if (_sWatchedHost !== sHostName) return;\n            if (error && error.iStatus === 404) {\n',
+        new="            if (error && error.iStatus === 404) {\n",
+    ),
 ]

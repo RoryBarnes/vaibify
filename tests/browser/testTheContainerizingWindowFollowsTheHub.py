@@ -516,3 +516,41 @@ def testAFinishedConversionLeavesTheNewContainerUnstartedAndUnheld(
     pageDashboard.wait_for_timeout(1500)
     assert listStarts == []
     assert pageDashboard.listPageErrors == []
+
+
+@pytest.mark.falsification
+def testAFinishedConversionIsAnnouncedOnceHoweverManyPollsWereWaiting(
+    pageDashboard, serverHub,
+):
+    """Kills: every poll in flight when the record vanishes announcing it.
+
+    The poll fires every 1.5 s whether or not the last answer has come
+    back, and the hub is slow to answer while it commits, so several
+    polls can be waiting when the record disappears. Each one that met
+    the 404 showed "Converted ...", and the researcher saw three
+    identical toasts (researcher-reported, 2026-10-16).
+    """
+    _fsOpenTheWindow(pageDashboard, serverHub, fdictConversionView())
+    listHeld = []
+    pageDashboard.route(
+        "**/api/conversions/**",
+        lambda route: listHeld.append(route) if route.request.method == "GET"
+        else route.continue_(),
+    )
+    pageDashboard.wait_for_timeout(5000)
+    assert len(listHeld) >= 3, "the poll must have several checks waiting"
+    for routeHeld in listHeld:
+        routeHeld.fulfill(status=404, content_type="application/json",
+                          body=json.dumps({"detail": "no conversion"}))
+    pageDashboard.wait_for_function(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".some(el => el.textContent.includes('Click its tile to start'))",
+        timeout=5000,
+    )
+    pageDashboard.wait_for_timeout(1000)
+    iAnnouncements = pageDashboard.evaluate(
+        "() => Array.from(document.querySelectorAll('.toast'))"
+        ".filter(el => el.textContent.includes('Click its tile to start'))"
+        ".length")
+    assert iAnnouncements == 1
+    assert pageDashboard.listPageErrors == []

@@ -557,6 +557,11 @@ var VaibifyAcquisitionWindow = (function () {
         try {
             dictView = await VaibifyApi.fdictGet(_fsConversionUrl(sHostName));
         } catch (error) {
+            /* The poll does not wait for its last answer, and the hub is
+               slow while it commits, so several polls can meet the 404;
+               the first one announces, and the rest find nothing being
+               watched. Three identical toasts otherwise (2026-10-16). */
+            if (_sWatchedHost !== sHostName) return;
             if (error && error.iStatus === 404) {
                 /* The record is gone: the hub finished the switch. */
                 _fnStopPolling();
