@@ -10377,6 +10377,20 @@ LIST_FALSIFICATIONS = [
     Falsification(
         nodeid=(
             'tests/browser/testHostProjectPicker.py::'
+            'testTheDirectoryIsNotChosenUntilTheOpenedFolderHasArrived'
+        ),
+        source='vaibify/gui/static/scriptDirectoryBrowser.js',
+        # The confirm stays enabled while a browse is in flight, so it
+        # chooses the directory being left -- the opened folder's parent.
+        old=(
+            '        document.getElementById("btnAddContainerConfirm")'
+            '.disabled = true;\n'
+        ),
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testHostProjectPicker.py::'
             'testAHostTileOffersNoContainerLifecycleAction'
         ),
         source='vaibify/gui/static/scriptContainerManager.js',
