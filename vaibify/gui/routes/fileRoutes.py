@@ -526,15 +526,17 @@ def _fnRegisterWorkspaceSeed(app, dictCtx, sWorkspaceRoot):
         listHostPaths = _flistResolveSeedPaths(
             sHostDirectory, listCopiedEntries,
         )
+        from vaibify.config.registryManager import (
+            fnSetPendingSeed, fsWorkspaceDirectoryNameOf,
+        )
         sDestination = posixpath.join(
-            sWorkspaceRoot, os.path.basename(sHostDirectory),
+            sWorkspaceRoot, fsWorkspaceDirectoryNameOf(sHostDirectory),
         )
         dictRestore = _fdictCommitWorkspaceSeed(
             dictCtx, sContainerId, sDestination, listHostPaths,
             dictLaneTuple, requestHttp, sWorkspaceRoot,
             listCopiedEntries if bRestoreCommittedFiles else None,
         )
-        from vaibify.config.registryManager import fnSetPendingSeed
         fnSetPendingSeed(sContainerName, None)
         return {
             "bSuccess": True, "sDestination": sDestination,

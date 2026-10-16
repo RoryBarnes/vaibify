@@ -258,6 +258,10 @@ def fnIsolateVaibifyStateDirectories(monkeypatch, tmp_path_factory):
     )
     from vaibify.reproducibility import downloadPartial
     fnRedirectDirectory(downloadPartial, "_S_DOWNLOAD_ROOT", "imageArchive")
+    from vaibify.config import containerConfig
+    fnRedirectDirectory(
+        containerConfig, "_S_REPOSITORY_LISTS_DIRECTORY", "repositoryLists",
+    )
     # Origin records resolve their directory per call, not as a constant;
     # a live test that obtains an image once left one in the real home.
     sOriginsDirectory = os.path.join(sHome, "imageOrigins")

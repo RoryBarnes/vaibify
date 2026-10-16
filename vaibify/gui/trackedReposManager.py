@@ -77,6 +77,7 @@ import json
 import posixpath
 import threading
 
+from vaibify.config import containerConfig
 from vaibify.docker.pathContainment import fbIsPlainDirectoryName
 
 from .pipelineUtils import fsShellQuote
@@ -92,9 +93,11 @@ S_TRACKED_REPOS_PATH = "/workspace/.vaibify/tracked_repos.json"
 _S_SIDECAR_RELATIVE = ".vaibify/tracked_repos.json"
 
 # The build-time repository list, baked into the image by the build
-# stage. Immutable for a container's lifetime, so a successful read is
-# cached per resource id below.
-S_CONTAINER_CONF_PATH = "/etc/vaibify/container.conf"
+# stage (or, for a project copied in from the researcher's directory,
+# the copy of it the start mounted in its place). Immutable for a
+# container's lifetime, so a successful read is cached per resource id
+# below.
+S_CONTAINER_CONF_PATH = containerConfig.S_IMAGE_REPOSITORY_LIST_PATH
 _dictConfiguredNamesCache = {}
 
 

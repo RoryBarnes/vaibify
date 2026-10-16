@@ -1,7 +1,19 @@
 """Pipe-delimited container.conf I/O for backwards compatibility."""
 
+import os
+import re
+import tempfile
 from pathlib import Path
 
+
+# Where the build bakes the list into the image, and where the
+# entrypoint reads it on every start.
+S_IMAGE_REPOSITORY_LIST_PATH = "/etc/vaibify/container.conf"
+
+_S_REPOSITORY_LISTS_DIRECTORY = os.path.join(
+    os.path.expanduser("~"), ".vaibify", "repositoryLists",
+)
+_REGEX_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 _CONTAINER_CONF_HEADER = (
     "# Vaibify Repository Configuration\n"
@@ -193,3 +205,68 @@ def fnGenerateContainerConf(config, sOutputPath):
     """
     listRepos = flistConvertFromProjectConfig(config)
     fnWriteContainerConf(listRepos, sOutputPath)
+
+
+def fsRemoveReferenceClonesOfDirectory(sConfText, sDirectoryName):
+    """Return the list without the reference entries that land in one directory.
+
+    For a project whose folder was copied in from the researcher's own
+    directory: the build added the project's own repository as a
+    ``reference`` entry, so the entrypoint cloned it into that folder
+    while the copy was still arriving, and pulled the author's branch
+    onto the copy at every later start. Each line is read the way the
+    entrypoint reads it (``IFS='|' read -r``, nothing trimmed), and an
+    entry lands in the directory when it is cloned there (its name) or
+    moved there (its destination). Every other line, comments included,
+    is kept byte for byte, so the image still does everything else it
+    was built to do. Only ``reference`` entries are removed: any other
+    method also installs the package, and removing one of those would
+    remove the install without a word.
+    """
+    if not sDirectoryName:
+        return sConfText
+    return "\n".join(
+        sLine for sLine in sConfText.split("\n")
+        if not _fbReferenceEntryLandsIn(sLine, sDirectoryName)
+    )
+
+
+def _fbReferenceEntryLandsIn(sLine, sDirectoryName):
+    """True iff one list line is a reference entry cloned or moved into the directory."""
+    listFields = sLine.split("|", 4)
+    sName = listFields[0]
+    if not sName or sName.startswith("#") or len(listFields) < 4:
+        return False
+    sDestination = listFields[4] if len(listFields) == 5 else ""
+    return listFields[3] == "reference" and sDirectoryName in (
+        sName, sDestination)
+
+
+def fsWriteRepositoryListForProject(sProjectName, sConfText):
+    """Write the repository list one project's container starts with; return its path.
+
+    Kept under ``~/.vaibify``, which Colima shares with its VM as it
+    does the secret files, and replaced atomically, so a container that
+    is already running keeps the file it started with. Readable by
+    everyone because the container user reads it as well as root; it
+    holds only what the image already carries.
+    """
+    if not _REGEX_PROJECT_NAME.match(str(sProjectName or "")):
+        raise ValueError(
+            f"{sProjectName!r} is not a registry-safe project name"
+        )
+    os.makedirs(_S_REPOSITORY_LISTS_DIRECTORY, mode=0o700, exist_ok=True)
+    sPath = os.path.join(_S_REPOSITORY_LISTS_DIRECTORY, f"{sProjectName}.conf")
+    iDescriptor, sTemporaryPath = tempfile.mkstemp(
+        dir=_S_REPOSITORY_LISTS_DIRECTORY, suffix=".tmp",
+    )
+    try:
+        with os.fdopen(iDescriptor, "w", encoding="utf-8") as fileHandle:
+            fileHandle.write(sConfText)
+        os.chmod(sTemporaryPath, 0o644)
+        os.replace(sTemporaryPath, sPath)
+    except BaseException:
+        if os.path.exists(sTemporaryPath):
+            os.unlink(sTemporaryPath)
+        raise
+    return sPath

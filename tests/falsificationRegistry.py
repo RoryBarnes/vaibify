@@ -33816,4 +33816,106 @@ LIST_FALSIFICATIONS = [
         old='            _fsRenderVerifyOutput(dictInFlight) +\n',
         new='',
     ),
+    # --- 2026-10-16: a project copied in from the researcher's directory
+    # starts with the image's repository list, less its own entry ---
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_seeded_project_starts_with_its_own_reference_entry_removed'
+        ),
+        # the start leaves the baked list in place for a copied-in folder
+        source='vaibify/docker/containerManager.py',
+        old='    _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture)\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_the_list_is_read_from_a_container_that_never_runs_and_is_removed'
+        ),
+        # the reader container is left on the daemon
+        source='vaibify/docker/containerManager.py',
+        old='        _ftRunProbeCommand(["docker", "rm", "-f", sReaderId])\n',
+        new='        pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_list_that_cannot_be_read_refuses_the_start_by_name'
+        ),
+        # a failed read starts anyway, with an empty list
+        source='vaibify/docker/containerManager.py',
+        old='    if not sReaderId:\n        raise RuntimeError(_fsDescribeUnreadRepositoryList(\n',
+        new='    if not sReaderId:\n        return ""\n        raise RuntimeError(_fsDescribeUnreadRepositoryList(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_image_whose_list_is_a_symlink_is_refused'
+        ),
+        # a link member is accepted as the list
+        source='vaibify/docker/containerManager.py',
+        old='        if len(listMembers) != 1 or not listMembers[0].isreg():\n',
+        new='        if len(listMembers) != 1:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_project_the_image_clones_keeps_the_baked_list'
+        ),
+        # every container project is treated as copied in
+        source='vaibify/config/registryManager.py',
+        old='    if not (dictEntry.get(S_WORKSPACE_SEEDED_KEY)\n            or dictEntry.get(S_PENDING_SEED_KEY)):\n',
+        new='    if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_only_the_reference_entry_landing_in_the_folder_is_removed'
+        ),
+        # an installed entry is dropped by name, losing its install
+        source='vaibify/config/containerConfig.py',
+        old='    return listFields[3] == "reference" and sDirectoryName in (\n',
+        new='    return sDirectoryName in (\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_entry_moved_into_the_folder_is_removed'
+        ),
+        # the destination is ignored, so the move deletes the copied folder
+        source='vaibify/config/containerConfig.py',
+        old='        sName, sDestination)\n',
+        new='        sName,)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_conversion_that_copies_files_records_the_folder'
+        ),
+        # the conversion records nothing once the pending copy is cleared
+        source='vaibify/config/registryManager.py',
+        old='            dictEntry[S_WORKSPACE_SEEDED_KEY] = True\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_an_image_that_carries_no_list_starts_with_nothing_mounted'
+        ),
+        # an image without a list is refused for a list it never had
+        source='vaibify/docker/containerManager.py',
+        old='    if bListAbsent:\n        return ""\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testSeededFolderRepositoryList.py::'
+            'test_a_copy_the_daemon_fails_for_another_reason_refuses_the_start'
+        ),
+        # every failed copy reads as an image without a list
+        source='vaibify/docker/containerManager.py',
+        old='    return (None, sStderr.startswith(_S_DAEMON_FILE_ABSENT_PREFIX))\n',
+        new='    return (None, True)\n',
+    ),
 ]

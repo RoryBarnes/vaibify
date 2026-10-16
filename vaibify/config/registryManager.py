@@ -331,7 +331,10 @@ def fnConvertProjectToContainer(
     mutation so a converted project never exists without it.
     ``dictPendingSeed`` names the files the first start still has to
     copy in; it rides the same write so the SWITCH from host to
-    container is one atomic registry write and nothing else.
+    container is one atomic registry write and nothing else. A
+    conversion that copies files in also records that the project's
+    folder comes from the researcher's directory, for every start after
+    the copy (see :func:`fsSeededWorkspaceDirectoryName`).
 
     Parameters
     ----------
@@ -368,10 +371,34 @@ def fnConvertProjectToContainer(
         dictEntry.pop(S_IMAGE_TRUST_KEY, None)
         if dictImageTrust:
             dictEntry[S_IMAGE_TRUST_KEY] = dict(dictImageTrust)
+        dictEntry.pop(S_WORKSPACE_SEEDED_KEY, None)
         if dictPendingSeed:
             dictEntry[S_PENDING_SEED_KEY] = dict(dictPendingSeed)
+            dictEntry[S_WORKSPACE_SEEDED_KEY] = True
 
     _fnMutateRegistryLocked(fnRewriteEntry)
+
+
+def fsWorkspaceDirectoryNameOf(sHostDirectory):
+    """Return the workspace folder a project directory is copied into."""
+    return os.path.basename(
+        os.path.realpath(sHostDirectory).rstrip(os.sep))
+
+
+def fsSeededWorkspaceDirectoryName(dictEntry):
+    """Return the workspace folder copied from the researcher's directory, or "".
+
+    Non-empty for a project converted with files copied in, from the
+    conversion itself onward: the first start races the copy, which is
+    the reason the answer cannot wait for the copy to land. Empty for a
+    project whose folder the image clones, which is every other one.
+    """
+    dictEntry = dictEntry or {}
+    if not (dictEntry.get(S_WORKSPACE_SEEDED_KEY)
+            or dictEntry.get(S_PENDING_SEED_KEY)):
+        return ""
+    sDirectory = dictEntry.get("sDirectory") or ""
+    return fsWorkspaceDirectoryNameOf(sDirectory) if sDirectory else ""
 
 
 def fsReturnProjectToHost(sName):
@@ -399,7 +426,8 @@ def fsReturnProjectToHost(sName):
         dictEntry["sMode"] = "host"
         dictEntry["sName"] = sHostName
         dictEntry["sContainerName"] = sHostName
-        for sKey in (S_IMAGE_SOURCE_KEY, S_IMAGE_TRUST_KEY, S_PENDING_SEED_KEY):
+        for sKey in (S_IMAGE_SOURCE_KEY, S_IMAGE_TRUST_KEY, S_PENDING_SEED_KEY,
+                     S_WORKSPACE_SEEDED_KEY):
             dictEntry.pop(sKey, None)
         fnRemoveOriginRecord(sName)
         dictOutcome["sHostName"] = sHostName
@@ -489,6 +517,7 @@ def fdictGetPushedGithubRemotes(sName):
 
 
 S_PENDING_SEED_KEY = "dictPendingSeed"
+S_WORKSPACE_SEEDED_KEY = "bWorkspaceSeeded"
 
 
 def fnSetPendingSeed(sName, dictPendingSeed):

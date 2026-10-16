@@ -13,12 +13,14 @@ a worker thread cannot be terminated, which made "abort the start"
 unachievable as written.
 """
 
+import io
 import json
 import logging
 import os
 import re
 import shlex
 import subprocess
+import tarfile
 import time
 
 from . import fnRunDockerCommand
@@ -35,6 +37,10 @@ S_RESERVATION_LABEL_KEY = "vaibify.reservation"
 # crafted value from smuggling an extra Docker flag.
 _RE_RESERVATION_ID = re.compile(r"^[0-9a-f]{32}$")
 
+# The label on the never-started container that reads an image's
+# repository list before a start.
+S_REPOSITORY_LIST_READER_LABEL = "vaibify.repositoryListReader"
+
 # TERM, then this long, then KILL, then wait for the REAL exit.
 _F_TERMINATE_GRACE_SECONDS = 5.0
 # How long a killed create is watched for a container the daemon may
@@ -45,6 +51,13 @@ _F_SETTLEMENT_POLL_SECONDS = 0.25
 # Every probe/removal call is bounded, so a wedged daemon cannot pin a
 # worker thread forever; an expired probe reads as "did not answer".
 _F_DOCKER_PROBE_TIMEOUT_SECONDS = 10.0
+# Reading the repository list out of an image creates a container, which
+# a loaded daemon can take far longer than a probe to do.
+_F_IMAGE_FILE_READ_TIMEOUT_SECONDS = 60.0
+_I_REPOSITORY_LIST_MAX_BYTES = 1024 * 1024
+# How the daemon answers ``docker cp`` for a path the container lacks
+# (measured on Docker 28.4.0, distinct from "No such container").
+_S_DAEMON_FILE_ABSENT_PREFIX = "Error response from daemon: Could not find the file"
 
 logger = logging.getLogger("vaibify")
 
@@ -568,7 +581,149 @@ def flistBuildRunArgs(
     _fnAddNetworkIsolation(config, saRunArgs)
     _fnAddX11Forwarding(config, saRunArgs)
     _fnAdmitObtainedImageOrRefuse(config, saRunArgs)
+    _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture)
     return saRunArgs
+
+
+def _fnMountRepositoryListWithoutSeededFolder(config, saRunArgs, dictPosture):
+    """Keep the image from cloning or pulling over the folder copied in.
+
+    A project converted with files copied in has its folder written by
+    the hub's seed just after the start, while the image's entrypoint
+    is cloning the repositories its baked list names -- the project's
+    own among them, into the same folder. The copy writes ``.git``
+    last, so the clone could start on a half-copied folder (the
+    ``clone-unknown`` warning), and every later start pulled the
+    author's branch onto the researcher's copy. A pinned image cannot
+    be changed, so the start mounts the image's own list, less that one
+    entry, over the baked one; it works for any entrypoint, since every
+    one reads that path. A restricted launch replaces the entrypoint,
+    so nothing reads the list and nothing is mounted; neither is it for
+    an image that carries no list, which has nothing to clone.
+    """
+    from vaibify.config.containerConfig import (
+        S_IMAGE_REPOSITORY_LIST_PATH,
+        fsRemoveReferenceClonesOfDirectory,
+        fsWriteRepositoryListForProject,
+    )
+    from vaibify.config.registryManager import (
+        fdictGetProject,
+        fsSeededWorkspaceDirectoryName,
+    )
+    if not dictPosture or dictPosture["sMode"] == "restricted":
+        return
+    sSeededFolder = fsSeededWorkspaceDirectoryName(
+        fdictGetProject(config.sProjectName))
+    if not sSeededFolder:
+        return
+    sImageList = _fsReadRepositoryListOfImage(
+        config.sProjectName, dictPosture["sImageDigest"])
+    if not sImageList:
+        return
+    sHostPath = fsWriteRepositoryListForProject(
+        config.sProjectName,
+        fsRemoveReferenceClonesOfDirectory(sImageList, sSeededFolder),
+    )
+    saRunArgs.extend(["--mount", _fsBuildBindMountSpec({
+        "host": sHostPath, "container": S_IMAGE_REPOSITORY_LIST_PATH,
+        "readOnly": True,
+    })])
+
+
+def _fsReadRepositoryListOfImage(sProjectName, sImageId):
+    """Return the repository list baked into an image, or refuse the start.
+
+    Read from a container that is created and never started, so nothing
+    in the image runs (labelled, so one a killed hub leaves behind can
+    be told from the researcher's own), and taken from ``docker cp``'s
+    tar stream rather
+    than copied to a host path: an image may make that file a symlink,
+    and a copied link would be followed on the HOST. Only one regular
+    file is accepted. An image the daemon says has no list answers "".
+    Every failure refuses: starting anyway would let the image clone
+    over the researcher's folder, which is the one thing this read
+    exists to prevent.
+    """
+    sReaderId = _fsCreateRepositoryListReader(sImageId)
+    if not sReaderId:
+        raise RuntimeError(_fsDescribeUnreadRepositoryList(
+            sProjectName, "the Docker daemon did not create the container "
+            "that reads it"))
+    try:
+        baArchive, bListAbsent = _ftCopyRepositoryListOutOf(sReaderId)
+    finally:
+        _ftRunProbeCommand(["docker", "rm", "-f", sReaderId])
+    if bListAbsent:
+        return ""
+    try:
+        return _fsReadSingleRegularFile(baArchive)
+    except (ValueError, tarfile.TarError, UnicodeDecodeError) as error:
+        raise RuntimeError(_fsDescribeUnreadRepositoryList(
+            sProjectName, str(error))) from error
+
+
+def _fsCreateRepositoryListReader(sImageId):
+    """Create, never start, a networkless container of the image; return its id or ""."""
+    try:
+        processResult = subprocess.run(
+            ["docker", "create", "--network", "none",
+             "--label", f"{S_REPOSITORY_LIST_READER_LABEL}=1", sImageId],
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=_F_IMAGE_FILE_READ_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return processResult.stdout.strip() if processResult.returncode == 0 else ""
+
+
+def _ftCopyRepositoryListOutOf(sReaderId):
+    """Return ``(baArchive, bListAbsent)`` for the reader's list.
+
+    ``baArchive`` is ``docker cp``'s tar stream, or ``None`` when the
+    copy failed. ``bListAbsent`` is True only when the daemon answered
+    that the image has no such file -- an image not built by vaibify,
+    whose entrypoint clones nothing from it. The daemon's sentence is the
+    only evidence the CLI gives; any other failure, or a reworded one,
+    reads as a failed copy, which refuses the start rather than skipping
+    the guard.
+    """
+    from vaibify.config.containerConfig import S_IMAGE_REPOSITORY_LIST_PATH
+    try:
+        processResult = subprocess.run(
+            ["docker", "cp", f"{sReaderId}:{S_IMAGE_REPOSITORY_LIST_PATH}", "-"],
+            capture_output=True, timeout=_F_IMAGE_FILE_READ_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return (None, False)
+    if processResult.returncode == 0:
+        return (processResult.stdout, False)
+    sStderr = processResult.stderr.decode("utf-8", "replace")
+    return (None, sStderr.startswith(_S_DAEMON_FILE_ABSENT_PREFIX))
+
+
+def _fsReadSingleRegularFile(baArchive):
+    """Return the text of the one regular file a ``docker cp`` stream carries."""
+    if not baArchive:
+        raise ValueError("the Docker daemon did not copy the list out")
+    with tarfile.open(fileobj=io.BytesIO(baArchive), mode="r") as fileTar:
+        listMembers = fileTar.getmembers()
+        if len(listMembers) != 1 or not listMembers[0].isreg():
+            raise ValueError("the image's list is not a single regular file")
+        if listMembers[0].size > _I_REPOSITORY_LIST_MAX_BYTES:
+            raise ValueError("the image's list is larger than any list vaibify writes")
+        return fileTar.extractfile(listMembers[0]).read().decode("utf-8")
+
+
+def _fsDescribeUnreadRepositoryList(sProjectName, sReason):
+    """Return the refusal for a start whose image list could not be read."""
+    return (
+        f"'{sProjectName}' was not started. Its project folder was copied "
+        "in from your directory, so before every start vaibify reads the "
+        "list of repositories the image clones and removes the project's "
+        "own, which would otherwise be cloned and pulled over your copy. "
+        f"That read failed: {sReason}. Start the project again; if this "
+        "repeats, run a diagnosis."
+    )
 
 
 def _fnAdmitObtainedImageOrRefuse(config, saRunArgs):

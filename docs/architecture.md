@@ -3256,6 +3256,53 @@ crash injected after each write, lock-holding child processes and the
 name race; `tests/browser/testTheContainerizingWindowFollowsTheHub.py`
 drives the window.
 
+### A folder copied in from the researcher's directory is never cloned over
+
+A conversion that copies files in writes the project's folder from the
+hub's seed, just after the container starts. The image's entrypoint
+clones, at the same moment, every repository its baked
+`/etc/vaibify/container.conf` names, and the build put the project's
+own repository there as a `reference` entry -- into the same folder.
+The seed writes `.git` last, so on the first start the clone met a
+half-copied folder (`clone-unknown: destination path ... already
+exists`), and on every later start the entrypoint pulled the author's
+branch onto the researcher's copy. A pinned image cannot be changed, so
+the start changes what the entrypoint reads: the conversion records
+`bWorkspaceSeeded` in the same registry write as the seed, and
+`containerManager.flistBuildRunArgs` reads the image's own list out of
+a container that is created and never started, removes the `reference`
+entries cloned or moved into that folder
+(`containerConfig.fsRemoveReferenceClonesOfDirectory`, which reads each
+line the way the entrypoint's `read -r` does), and mounts the result
+read-only over the baked file. Every entrypoint version reads that
+path, so it works for images built before this existed. Four things
+not to undo:
+
+- **The list is the IMAGE's, not one regenerated from `vaibify.yml`.**
+  The author may have edited the file after building; the image's
+  list is what its environment was made with, and every other line is
+  kept byte for byte.
+- **Only `reference` entries are removed.** Any other method also
+  installs the package, and removing one would remove the install
+  without a word; such an entry keeps today's behavior.
+- **The read refuses a link.** It takes `docker cp`'s tar stream and
+  accepts one regular file, because an image may make the path a
+  symlink and a copy to a host path would be followed on the host
+  (`tests/testSeededFolderRepositoryListLive.py` shows the daemon
+  sends the link as a link).
+- **A failed read refuses the start.** Starting anyway would let the
+  clone race the copy, which is the one thing the read prevents. The
+  one exception is the daemon's own answer that the image has no such
+  file: an author's image need not be built by vaibify, and one without
+  a list clones nothing, so it starts with nothing mounted. Any other
+  failure, or a reworded answer, refuses (found by
+  `tests/testQuickStartJourneyThroughRoutesLive.py`, whose author image
+  is a plain Python image).
+
+A restricted launch replaces the entrypoint, so nothing reads the list
+and nothing is mounted. A project converted before the marker existed
+carries none, and keeps the baked list until it is converted again.
+
 ### A stopped download is a decision, and an interrupted one is an asset
 
 Three surfaces answer the same three questions about a download that
