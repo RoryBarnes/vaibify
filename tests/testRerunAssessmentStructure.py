@@ -178,9 +178,41 @@ def testTheLeafModulesHaveNoFutureImportAndNoEntryPoint(moduleLeaf):
 def testTheLeafModulesParseAsPythonThreeEight(moduleLeaf):
     """The interpreter that runs the file is the one in the author's image.
 
-    Kills: a ``match`` statement in the procedure.
+    Parsed at Python 3.8's grammar, and inspected for the constructs a
+    newer interpreter's parser accepts at that version without saying so:
+    on Python 3.9, nothing 3.9 added is refused by the 3.8 parse, so the
+    parse alone guards nothing there.
+
+    Kills: a generic decorator expression (Python 3.9) in the procedure.
     """
-    ast.parse(_fsReadSource(moduleLeaf), feature_version=(3, 8))
+    sSource = _fsReadSource(moduleLeaf)
+    treeModule = ast.parse(sSource, feature_version=(3, 8))
+    assert _flistConstructsNewerThanPython38(treeModule) == []
+
+
+def _fbIsDottedName(nodeExpression):
+    """Return True iff the expression is ``a`` or ``a.b.c``."""
+    while isinstance(nodeExpression, ast.Attribute):
+        nodeExpression = nodeExpression.value
+    return isinstance(nodeExpression, ast.Name)
+
+
+def _flistConstructsNewerThanPython38(treeModule):
+    """Return a description of every construct Python 3.8 cannot run."""
+    listFound = []
+    for nodeAny in ast.walk(treeModule):
+        sKind = type(nodeAny).__name__
+        if sKind in ("Match", "TryStar", "TypeAlias"):
+            listFound.append(f"{sKind} at line {nodeAny.lineno}")
+        if getattr(nodeAny, "type_params", None):
+            listFound.append(f"type parameters at line {nodeAny.lineno}")
+        for nodeDecorator in getattr(nodeAny, "decorator_list", []):
+            nodeCallee = (nodeDecorator.func if isinstance(
+                nodeDecorator, ast.Call) else nodeDecorator)
+            if not _fbIsDottedName(nodeCallee):
+                listFound.append(
+                    f"a generic decorator at line {nodeDecorator.lineno}")
+    return listFound
 
 
 @pytest.mark.falsification

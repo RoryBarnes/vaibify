@@ -34006,13 +34006,12 @@ LIST_FALSIFICATIONS = [
             'tests/testRerunAssessmentStructure.py::'
             'testTheLeafModulesParseAsPythonThreeEight'
         ),
-        # syntax the author's older interpreter cannot parse
+        # syntax the author's older interpreter cannot run: a generic
+        # decorator, which every supported interpreter compiles (a match
+        # statement would not compile on the Python 3.9 shards)
         source='vaibify/reproducibility/rerunProcedure.py',
-        old='    sLevel = ""\n    for sCandidate, tFlags in TUPLE_X86_64_LEVEL_FLAGS:\n',
-        new=(
-            '    match setFlags:\n        case _:\n            pass\n'
-            '    sLevel = ""\n    for sCandidate, tFlags in TUPLE_X86_64_LEVEL_FLAGS:\n'
-        ),
+        old='def fsReadX86Level(setFlags):\n',
+        new='@(lambda fnWrapped: fnWrapped)\ndef fsReadX86Level(setFlags):\n',
     ),
     Falsification(
         nodeid=(
