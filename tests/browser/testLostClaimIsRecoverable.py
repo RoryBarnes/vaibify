@@ -200,10 +200,21 @@ def testAnInUseRefusalDoesNotBounceYouBackToTheTile(
     researcher CANNOT fix by re-clicking the tile. Sending them there
     to be refused a second time is the failure.
 
+    The claim request is the deterministic witness. A recovery sends
+    its claim BEFORE it says anything, so by the time the toast is up
+    a wrongful recovery has always been sent; the bounce back to the
+    tile comes a round trip later still, so asserting only that the
+    picker is on screen raced it, and the mutant survived a CI run.
+
     Kills: recovering on any error instead of on the refusal code.
     """
     _fnReachTheWorkflowPicker(pageDashboard, serverHub)
     _fnHandTheClaimToAnotherSession(serverHub)
+    listClaimUrls = []
+    pageDashboard.on("request", lambda request: (
+        listClaimUrls.append(request.url)
+        if request.url.endswith("/claim") else None
+    ))
     pageDashboard.click(f'text={S_HOST_WORKFLOW_NAME}')
     pageDashboard.wait_for_selector("#toastContainer", timeout=20000)
     pageDashboard.wait_for_function(
@@ -213,6 +224,10 @@ def testAnInUseRefusalDoesNotBounceYouBackToTheTile(
     )
     sToastText = pageDashboard.text_content("#toastContainer")
     assert "in use" in sToastText.lower(), sToastText
+    assert listClaimUrls == [], (
+        "an in-use refusal was answered with a reclaim: " +
+        str(listClaimUrls)
+    )
     assert pageDashboard.is_visible("#btnNoWorkflow"), (
         "an unfixable refusal sent the researcher back to the project "
         "list, where re-selecting the project refuses them again"
