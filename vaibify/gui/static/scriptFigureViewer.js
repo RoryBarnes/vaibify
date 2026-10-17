@@ -678,6 +678,47 @@ const VaibifyFigureViewer = (function () {
         dictViewerB.iNavIndex = -1;
     }
 
+    /* --- Project ownership ---
+
+       The viewers hold one project's files, and a path is resolved
+       against the CURRENT container only when it is displayed, so a
+       viewer carried into another project shows the old project's file
+       while Back and Refresh fetch the new project's file of that name.
+       Leaving for a hub and returning to the SAME project keeps both
+       viewers exactly as they were. */
+
+    var sViewerProjectKey = null;
+    var DICT_EMPTY_VIEWPORT_TEXT = {
+        A: "Drop a file here or select a step",
+        B: "Drop a file here to compare",
+    };
+
+    function fnBindViewersToProject(sContainerId, sWorkflowPath) {
+        var sProjectKey = JSON.stringify(
+            [sContainerId, sWorkflowPath || ""]);
+        if (sProjectKey === sViewerProjectKey) return;
+        sViewerProjectKey = sProjectKey;
+        fnReleaseAllResources();
+        [dictViewerA, dictViewerB].forEach(fnEmptyViewer);
+        sNextViewer = "A";
+        fnRefreshHistoryDropdowns();
+    }
+
+    function fnEmptyViewer(dictViewer) {
+        var elViewport = fnGetViewport(dictViewer);
+        if (!elViewport) return;
+        _fnClearEditingState(dictViewer);
+        fiClaimViewport(elViewport);
+        fnCancelPendingImage(elViewport);
+        elViewport.classList.remove("viewport-test-failed");
+        elViewport.innerHTML = "";
+        var elPlaceholder = document.createElement("span");
+        elPlaceholder.className = "placeholder";
+        elPlaceholder.textContent = DICT_EMPTY_VIEWPORT_TEXT[dictViewer.sId];
+        elViewport.appendChild(elPlaceholder);
+        fnUpdateNavButtons(dictViewer);
+    }
+
     function fnRenderPdfDocument(sUrl, elViewport) {
         fnDestroyActivePdf(elViewport);
         if (typeof pdfjsLib === "undefined") {
@@ -1913,7 +1954,7 @@ const VaibifyFigureViewer = (function () {
         fnDisplayGeneratedTest: fnDisplayGeneratedTest,
         fnDisplayTestOutput: fnDisplayTestOutput,
         fnCreateZoomToolbar: fnCreateZoomToolbar,
-        fnReleaseResources: fnReleaseAllResources,
+        fnBindViewersToProject: fnBindViewersToProject,
         fbAnyViewerDirty: fbAnyViewerDirty,
         fbViewerIsDirty: fbViewerIsDirty,
         fbViewerHasOpenEditor: fbViewerHasOpenEditor,
