@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickStart &mdash; Vaibify 0.1.2.dev20 documentation</title>
+  <title>QuickStart &mdash; Vaibify 0.1.3.dev13 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/custom.css?v=2e918de1" />
@@ -14,7 +14,7 @@
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b464f649"></script>
+      <script src="_static/documentation_options.js?v=3e893421"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/js/theme.js"></script>
@@ -237,6 +237,7 @@ PROOF tab’s Level 3 row stops saying the project has no image and instead repo
 whether a rebuild from that image reproduces the outputs.</p>
 <p>This process does not create a second project. Your clone stays on your host machine — the same directory, the same git history, the same outputs you
 just produced; only the runtime settings in its <code class="docutils literal notranslate"><span class="pre">vaibify.yml</span></code> change. The difference is that there is now an exact duplicate in a new Docker container whose environment is identical to the one the author used. Furthermore, your <code class="docutils literal notranslate"><span class="pre">vaibify</span></code> interactions will now take place inside this container leaving your own computer safe.</p>
+<p>At this point, the environment is downloaded, but its container has not yet been started. You will be asked if you want to <strong>Start container</strong> and you should press that button. If at a later time you want to start a stopped container, you can click the kebab menu (<strong>⋮</strong>) and select <strong>Start</strong>. A dark red circle next to the environment’s name means the container is stopped (not using host machine resources);  a blue check means the container is active. Once it starts, you will see a notice that confirms your files were copied into the container. Now go ahead and select the <code class="docutils literal notranslate"><span class="pre">ai-greenhouse</span></code> environment and then the <code class="docutils literal notranslate"><span class="pre">AI</span> <span class="pre">Greenhouse</span></code> Project to return to its dashboard.</p>
 <section id="confirm-the-reproduction">
 <h3>Confirm the reproduction<a class="headerlink" href="#confirm-the-reproduction" title="Link to this heading"></a></h3>
 <p>The container now holds the files your own computer made in

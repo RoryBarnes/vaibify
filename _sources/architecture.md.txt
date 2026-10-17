@@ -807,6 +807,21 @@ finished task evicts its own entry at once, and one verification holds a
 container at a time. The status it carries names its project, and
 readers compare that name before showing it.
 
+What the rerun PRINTS is kept beside it, keyed by (container, project)
+in `verificationProgress.DICT_LIVE_OUTPUT`: the step under way and the
+last 200 lines of the throwaway container's output, each redacted and
+capped, behind a threading lock because the rerun writes from its own
+worker thread while the poll reads on the hub's loop. It is kept OUT of
+the status dict, which is serialized raw and copied at settle. The
+attestation poll returns it as `dictLiveOutput`, and the PROOF tab shows
+it only under the run whose attempt id it carries. The rerun's
+diagnostics collector forwards to a synchronous OR an `async` callback:
+it used to await whatever it forwarded to, and the lanes that call from
+a worker thread pass a synchronous one on purpose, so the
+reproduce-a-published-project lane raised on the pipeline's first
+event. The failing step's tail it keeps for the attestation is redacted
+too, because that record is published.
+
 ### Starting a container is a server-owned reservation
 
 Starting a container is not a request-scoped action. A pull can outlast
@@ -3119,6 +3134,30 @@ seams that change for different reasons:
   the bytes (with `F_FULLFSYNC` on macOS), renames, and syncs the
   directory; the registry writer uses the same helper.
 
+**Every connection to Zenodo is given the same, long patience, and
+finding the file is retried like fetching it.** Zenodo is routinely
+slow to complete a TLS handshake, and in both `requests` and the ranged
+transport the connect timeout bounds the handshake too, so the ten
+seconds the chain once allowed read a slow Zenodo as an unreachable one
+and refused a deposit before its download had begun. One pair of
+constants in `zenodoClient` (`F_CONNECT_TIMEOUT_SECONDS`,
+`F_READ_TIMEOUT_SECONDS`) is read by the client, the transport, the
+download's stall detector and the chain. Asking Zenodo where the
+deposit's file is -- the record fetch, then the DOI-follow -- is now a
+STAGE of its own with its own budget: a try that got no answer (the
+connection never opened, stalled or dropped, a 429, a 5xx, or a DOI hop
+that landed on one) is repeated after a jittered wait until the budget
+is spent, and any other answer is final at once. Each try runs on a
+worker the caller abandons on Cancel, because `requests` cannot be
+interrupted inside a handshake and a try may now take minutes. A spent
+budget refuses with its own failure class (`zenodo-unreachable`) and
+KEEPS the partial, so a resumed download no longer loses its bytes to a
+server that was merely slow. The chain stamps each stage on the
+download control as it begins (`resumableDownload.fnEnterStage`:
+registry, locating, downloading, loading, local, preparing), with the
+attempt, the last failure, the next try and the stage's deadline, and
+the poll derives the timers when it reads them.
+
 The chain's final sha256 check against the envelope is unchanged and
 remains the only authority on the bytes, so resume can cost time, never
 correctness; a resumed file that hashes wrong is thrown away and
@@ -3206,11 +3245,63 @@ researcher-only. The failure every lane shows comes from one table
 each button does to it, whether trying again can help, and the
 technical text collapsed; the registry's expected miss on an archived
 image is stated last, without Docker's words. The frontend's
-`scriptAcquisitionWindow.js` renders exactly that record on every poll.
+`scriptAcquisitionWindow.js` renders exactly that record on every poll,
+and while the work is live its title and sentence come from the stage
+the chain stamped, never from the byte counts: those read zero both
+before a download starts and after a registry served the image without
+one, and a window that inferred from them once said "the download
+finished" over a lookup that had not yet reached Zenodo.
 `tests/testConversionLifecycle.py` drives the worker, the commit, a
 crash injected after each write, lock-holding child processes and the
 name race; `tests/browser/testTheContainerizingWindowFollowsTheHub.py`
 drives the window.
+
+### A folder copied in from the researcher's directory is never cloned over
+
+A conversion that copies files in writes the project's folder from the
+hub's seed, just after the container starts. The image's entrypoint
+clones, at the same moment, every repository its baked
+`/etc/vaibify/container.conf` names, and the build put the project's
+own repository there as a `reference` entry -- into the same folder.
+The seed writes `.git` last, so on the first start the clone met a
+half-copied folder (`clone-unknown: destination path ... already
+exists`), and on every later start the entrypoint pulled the author's
+branch onto the researcher's copy. A pinned image cannot be changed, so
+the start changes what the entrypoint reads: the conversion records
+`bWorkspaceSeeded` in the same registry write as the seed, and
+`containerManager.flistBuildRunArgs` reads the image's own list out of
+a container that is created and never started, removes the `reference`
+entries cloned or moved into that folder
+(`containerConfig.fsRemoveReferenceClonesOfDirectory`, which reads each
+line the way the entrypoint's `read -r` does), and mounts the result
+read-only over the baked file. Every entrypoint version reads that
+path, so it works for images built before this existed. Four things
+not to undo:
+
+- **The list is the IMAGE's, not one regenerated from `vaibify.yml`.**
+  The author may have edited the file after building; the image's
+  list is what its environment was made with, and every other line is
+  kept byte for byte.
+- **Only `reference` entries are removed.** Any other method also
+  installs the package, and removing one would remove the install
+  without a word; such an entry keeps today's behavior.
+- **The read refuses a link.** It takes `docker cp`'s tar stream and
+  accepts one regular file, because an image may make the path a
+  symlink and a copy to a host path would be followed on the host
+  (`tests/testSeededFolderRepositoryListLive.py` shows the daemon
+  sends the link as a link).
+- **A failed read refuses the start.** Starting anyway would let the
+  clone race the copy, which is the one thing the read prevents. The
+  one exception is the daemon's own answer that the image has no such
+  file: an author's image need not be built by vaibify, and one without
+  a list clones nothing, so it starts with nothing mounted. Any other
+  failure, or a reworded answer, refuses (found by
+  `tests/testQuickStartJourneyThroughRoutesLive.py`, whose author image
+  is a plain Python image).
+
+A restricted launch replaces the entrypoint, so nothing reads the list
+and nothing is mounted. A project converted before the marker existed
+carries none, and keeps the baked list until it is converted again.
 
 ### A stopped download is a decision, and an interrupted one is an asset
 
@@ -3220,10 +3311,15 @@ the same records, and none of them deletes bytes on its own.
 
 **Check connection reports observations, never verdicts.**
 `reproducibility/connectionCheck.py` runs three probes over the
-download's own transport: connect to the recorded service and request
-the file from the current offset, read at most 1 MiB for at most 15 s,
-and reach the DOI resolver. The whole check is bounded by 45 s through
-the download's own Cancel path -- a timer requests cancel at the
+download's own transport: reach the DOI resolver, under a short bound
+of its own; connect to the recorded service and request the file from
+the current offset (the service's front page before the file has been
+located); and read at most 1 MiB for at most 15 s. The resolver goes
+FIRST because the service probe waits as long as the download does for
+a slow handshake, and run second the resolver -- the probe that tells
+"offline" from "Zenodo is unreachable" -- was the one the budget ran
+out on. The whole check is bounded by 45 s through the download's own
+Cancel path -- a timer requests cancel at the
 deadline, which shuts the live socket -- so a hanging connection or a
 stalled read returns at once rather than at the socket timeout. The cap
 is on the bytes READ, so a server that ignores `Range` cannot stream
