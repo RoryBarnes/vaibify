@@ -10,6 +10,7 @@ import threading
 import time
 
 from vaibify.config.registryManager import fbIsHostProject
+from . import outputProvenance
 from . import pipelineState
 from . import stateManager
 from . import workflowManager
@@ -804,6 +805,10 @@ async def ftRunStepCommands(
         )
         if iExitCode != 0:
             return (iExitCode, fCpuTime)
+        if not dictStep.get("bPlotOnly") or sRunMode == S_RUN_MODE_RERUN:
+            await outputProvenance.fnRecordSectionProvenance(
+                connectionDocker, sContainerId, dictStep, dictVariables,
+                "data")
     if sRunMode != "dataOnly":
         iExitCode, fPlotCpu = await _ftRunCommandList(
             connectionDocker, sContainerId,
@@ -812,6 +817,10 @@ async def ftRunStepCommands(
             sInvocationScope=f"{sStepLabel}.plot" if sStepLabel else "",
         )
         fCpuTime = _ffTotalCpuTime(fCpuTime, fPlotCpu)
+        if iExitCode == 0:
+            await outputProvenance.fnRecordSectionProvenance(
+                connectionDocker, sContainerId, dictStep, dictVariables,
+                "plot")
     if sRunMode == "plotsOnly":
         return (iExitCode, fCpuTime)
     if iExitCode != 0:
@@ -1776,6 +1785,8 @@ async def _ftPrepareLogAndVariables(
         dictExecutionProfile=(dictRerunEvidence or {}).get(
             "dictExecutionProfile"),
     )
+    outputProvenance.fnPrepareRunProvenance(
+        sContainerId, dictWorkflow, dictVariables)
     if dictRerunEvidence is not None:
         dictRerunEvidence["dictRunContext"] = fdictDescribeRunContext(
             dictVariables)

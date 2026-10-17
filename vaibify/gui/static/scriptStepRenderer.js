@@ -623,6 +623,7 @@ var VaibifyStepRenderer = (function () {
             step.sDirectory || "", dictVars);
         sHtml += _fsRenderStepDescriptionBlock(
             step, iIndex, dictContext);
+        sHtml += fsRenderOutputContextNote(dictContext, iIndex);
 
         for (var iLevel = 1; iLevel <= 3; iLevel++) {
             sHtml += _fsRenderStepLevelSection(
@@ -633,6 +634,26 @@ var VaibifyStepRenderer = (function () {
         sHtml += "</div>";
         sHtml += "</div>";
         return sHtml;
+    }
+
+    function fsRenderOutputContextNote(dictContext, iIndex) {
+        /* Recorded facts, said neutrally: these outputs were produced
+           under different execution settings or hardware, and these
+           facts differ. Never "a different computer", and never styled
+           as a failure -- the server decided every word of it. */
+        var dictNote =
+            (dictContext.dictOutputContextNotes || {})[String(iIndex)];
+        if (!dictNote) return "";
+        var listParts = (dictNote.listDifferences || []).map(
+            function (dictDifference) {
+                return dictDifference.sFact + ": was " +
+                    dictDifference.sThere + ", now " +
+                    dictDifference.sHere;
+            });
+        return '<div class="output-context-note">' +
+            fnEscapeHtml(dictNote.sMessage +
+                (listParts.length ? " (" + listParts.join("; ") + ")"
+                    : "") + ".") + '</div>';
     }
 
     function _fsRenderStepLevelSection(
@@ -2051,6 +2072,7 @@ var VaibifyStepRenderer = (function () {
 
     return {
         fsRenderStepItem: fsRenderStepItem,
+        fsRenderOutputContextNote: fsRenderOutputContextNote,
         fsBuildLevelStrip: fsBuildLevelStrip,
         fsRenderStepColumnHeader: fsRenderStepColumnHeader,
         fsRenderEmptyStepListNotice: fsRenderEmptyStepListNotice,

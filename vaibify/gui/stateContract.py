@@ -103,6 +103,12 @@ TUPLE_ROOT_CONFIG_FILES = (
     # sCapturedAtUtc changes on every capture and a compared file
     # that always changes is a treadmill.
     ".vaibify/ai_provenance.json",
+    # How each output was produced (design I7). Tracked so it travels
+    # with the outputs it describes -- the two-computer workflow needs
+    # the other computer's records -- and never pinned or compared: the
+    # shadow's own runner rewrites it, and the envelope copies a
+    # digest-bound subset instead.
+    ".vaibify/outputProvenance.json",
     ".gitignore",
 )
 

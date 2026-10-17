@@ -35169,4 +35169,95 @@ LIST_FALSIFICATIONS = [
         old='    del dictWorkflow, sProjectRepoPath\n',
         new='    dictWorkflow.setdefault("dictDeterminism", {})["sRepeatabilityAnswer"] = "speed"\n    dictWorkflow["dictDeterminism"]["sExecutionProfile"] = "speed-v1"\n    del sProjectRepoPath\n',
     ),
+    # --- 2026-10-17: production-time provenance (Phase 7) ---
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAPlotsOnlyRunRelabelsOnlyThePlots'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # every declared output is recorded after any section
+        old='    listPaths = _flistSectionOutputPaths(dictStep, dictTemplateValues, sSection)\n',
+        new='    listPaths = (_flistSectionOutputPaths(dictStep, dictTemplateValues, "data")\n                 + _flistSectionOutputPaths(dictStep, dictTemplateValues, "plot"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testADataOnlyRunRelabelsOnlyTheData'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # every declared output is recorded after any section
+        old='    listPaths = _flistSectionOutputPaths(dictStep, dictTemplateValues, sSection)\n',
+        new='    listPaths = (_flistSectionOutputPaths(dictStep, dictTemplateValues, "data")\n                 + _flistSectionOutputPaths(dictStep, dictTemplateValues, "plot"))\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAPlotOnlyStepsFullRunRelabelsOnlyThePlots'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # a skipped data section is recorded
+        old='        if not dictStep.get("bPlotOnly") or sRunMode == S_RUN_MODE_RERUN:\n',
+        new='        if True:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAFailedPlotSectionRelabelsOnlyTheData'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # the plot section is recorded whatever its exit status
+        old='        if iExitCode == 0:\n            await outputProvenance.fnRecordSectionProvenance(\n',
+        new='        if True:\n            await outputProvenance.fnRecordSectionProvenance(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testChangedBytesAreProductionContextUnknown'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # a record is believed whatever the file's digest
+        old='    if not sSha256 or dictOutput.get("sSha256") != sSha256:\n',
+        new='    if not dictOutput:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testNoIdentifyingFieldIsRecorded'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # the host name is recorded with the capabilities
+        old='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n    }\n',
+        new='        "iVisibleCores": fiCountVisibleCores(), "bReadable": False,\n        "sHostName": os.uname().nodename,\n    }\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testTheRerunReportsTheProductionContextBesideItsOwn'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # a byte difference is graded without its production context
+        old='        if dictFile.get("sRole") != "output" or (\n                dictFile.get("sObserved") == dictFile.get("sExpected")):\n            continue\n',
+        new='        if True:\n            continue\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAStepProducedUnderAnotherContextIsNamedNeutrally'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # the note compares no facts
+        old='        if jsonThere != jsonHere:\n            listDifferences.append(\n',
+        new='        if False:\n            listDifferences.append(\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testOutputProvenance.py::'
+            'testAManifestMismatchExplainedByContextOffersAnOption'
+        ),
+        source='vaibify/gui/outputProvenance.py',
+        # the option is offered when only some mismatches are explained
+        old='    bOnly = bool(listMismatches) and len(listExplained) == len(listMismatches)\n',
+        new='    bOnly = bool(listExplained)\n',
+    ),
 ]

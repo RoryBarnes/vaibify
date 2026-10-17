@@ -230,7 +230,9 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
     this payload is compared with the file on disk before it is
     rewritten, and a run-specific value would rewrite a pinned file on
     every regeneration. The comparison policy is recorded in the
-    rendered assessor, not here (I9).
+    rendered assessor, not here (I9). ``dictOutputProvenance`` copies
+    each pinned output's recorded production context, bound to its
+    digest (I7).
 
     A HOST project records ``sMode`` and no image digest. There is no
     container to inspect -- its resource id is a registry name Docker
@@ -242,6 +244,9 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
     """
     from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import environmentSnapshot
+    from vaibify.gui.outputProvenance import (
+        fdictBuildEnvelopeOutputProvenance,
+    )
     from vaibify.reproducibility.executionProfiles import (
         fdictWorkflowExecutionProfile,
     )
@@ -251,6 +256,8 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
         "iSourceDateEpoch": environmentSnapshot.
             fiCaptureSourceDateEpoch(filesRepo),
         "dictExecutionProfile": fdictWorkflowExecutionProfile(dictWorkflow),
+        "dictOutputProvenance": fdictBuildEnvelopeOutputProvenance(
+            filesRepo, dictWorkflow),
     }
     if fbIsHostProject(sContainerName):
         dictPayload["sMode"] = "host"

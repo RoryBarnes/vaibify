@@ -5270,7 +5270,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # currency check and the label are handed the workflow.
     # 4325 -> 4326 (2026-10-17): the determinism question ships its
     # choices, its reason and its consequence in the gate's words.
-    "routes/pipelineRoutes.py": 4326,
+    # 4326 -> 4339 (2026-10-17): the poll names steps whose outputs
+    # another context produced, and the manifest verify says which
+    # mismatches a recorded context difference explains (F5).
+    "routes/pipelineRoutes.py": 4339,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -6791,7 +6794,11 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # from the rerun evidence, the run context handed back, the
     # profile's run-start warning and its pre-flight refusal. The
     # stages themselves live in determinismEnvironment.
-    "pipelineRunner.py": 1944,
+    # 1944 -> 1955 (2026-10-17): the two section hooks that record how
+    # each output was produced (design I7), and the run-context set-up
+    # beside the execution settings. The record lives in
+    # outputProvenance; the runner says only WHEN a section completed.
+    "pipelineRunner.py": 1955,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

@@ -25,6 +25,7 @@ from ...reproducibility.reproductionLabel import (
 
 from .. import archiveProgress
 from .. import containerOwnership
+from .. import outputProvenance
 from .. import verificationProgress
 from ..actionCatalog import ffnAgentAction
 from ..pipelineRunner import fsShellQuote
@@ -1530,6 +1531,12 @@ async def _fdictFetchOutputStatus(
             ),
         ),
     )
+    # Which steps' outputs another context produced, against the newest
+    # context THIS hub observed -- the poll makes no exec of its own.
+    dictRest["dictOutputContextNotes"] = (
+        outputProvenance.fdictBuildOutputContextNotes(
+            dictWorkflow, filesPoll,
+            outputProvenance.fdictCurrentContext(sContainerId)))
     _fnSaveIfLevelHighWaterChanged(
         dictCtx, sContainerId, dictWorkflow, dictRest,
     )
@@ -4235,6 +4242,12 @@ def _fdictBuildManifestVerifyResult(
         "saIncomplete": list(listIncomplete),
         "sManifestOwnership": dictProvenance["sManifestOwnership"],
         "bManifestDiffersFromHead": dictProvenance["bManifestDiffersFromHead"],
+        # Mismatches a recorded difference of hardware or settings
+        # explains, and the option that follows when it explains them
+        # all (design F5): offered, never required.
+        "dictContextExplanation": (
+            outputProvenance.fdictExplainManifestMismatches(
+                filesRepo, listMismatches)),
     }
 
 

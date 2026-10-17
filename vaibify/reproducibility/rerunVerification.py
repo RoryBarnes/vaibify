@@ -200,6 +200,7 @@ def fdictRerunAndVerifyWorkflow(
     iSourceDateEpoch = fiRecordedSourceDateEpoch(filesRepo)
     sRerunStartedIso = datetime.now(timezone.utc).isoformat()
     dictReplayed, sProfileRefusal = ftReadReplayedExecutionProfile(filesRepo)
+    dictProductionProvenance = _fdictSnapshotProductionProvenance(filesRepo)
 
     def fdictStampRunFacts(dictOutcome):
         """Name the manifest graded, the moment the run began, and its profile."""
@@ -262,13 +263,16 @@ def fdictRerunAndVerifyWorkflow(
     dictAssessment = fdictRunAssessorAssess(
         filesRepo, dictLane, dictRun["listLedger"],
         dictRun.get("dictRunContext"))
-    return fdictStampRunFacts(fdictVerifyRerunOutputs(
+    dictOutcome = fdictVerifyRerunOutputs(
         filesRepo, dictRun["bRerunSucceeded"], dictExpectedManifest,
         listCarriedPaths, dictDiagnostics,
         setProducedPaths=dictClassification["setProduced"],
         dictPreRerunClearing=dictRun["dictPreRerunClearing"],
         dictAssessment=dictAssessment,
-    ))
+    )
+    fnAttachProductionContexts(
+        dictOutcome, dictProductionProvenance, dictRun.get("dictRunContext"))
+    return fdictStampRunFacts(dictOutcome)
 
 
 def _fdictClearThenRunSteps(
@@ -309,6 +313,37 @@ def _fdictClearThenRunSteps(
             "dictPreRerunClearing": dictPreRerunClearing,
             "listLedger": dictRerunEvidence["listLedger"],
             "dictRunContext": dictRerunEvidence.get("dictRunContext")}
+
+
+def _fdictSnapshotProductionProvenance(filesRepo):
+    """Return the output records as published, before the rerun rewrites them.
+
+    The shadow's own runner records its outputs as it reruns, so the
+    production contexts must be read first or they would describe the
+    rerun instead of the run that made the published bytes.
+    """
+    from vaibify.gui.outputProvenance import fdictReadOutputProvenance
+    return fdictReadOutputProvenance(filesRepo)
+
+
+def fnAttachProductionContexts(dictOutcome, dictProductionProvenance,
+                               dictRerunContext):
+    """Put each byte-differing output's production context beside the rerun's.
+
+    A difference is then explained from what was recorded -- the
+    computer and settings that made the published bytes, and the ones
+    the rerun ran under -- never predicted. An output whose record does
+    not name its published digest is "production context unknown".
+    """
+    from vaibify.gui.outputProvenance import fdictProductionContextFor
+    dictOutcome["dictRerunContext"] = dictRerunContext
+    for dictFile in dictOutcome.get("listFileOutcomes") or []:
+        if dictFile.get("sRole") != "output" or (
+                dictFile.get("sObserved") == dictFile.get("sExpected")):
+            continue
+        dictFile["dictProductionContext"] = fdictProductionContextFor(
+            dictProductionProvenance, dictFile.get("sPath", ""),
+            dictFile.get("sExpected", ""))
 
 
 def ftReadReplayedExecutionProfile(filesRepo):

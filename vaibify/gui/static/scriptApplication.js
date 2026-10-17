@@ -62,6 +62,7 @@ const VaibifyApp = (function () {
             dictBlockersByStep: {},
             dictBlockersByStepLevel2: {},
             dictAiDeclarationFreshness: null,
+            dictOutputContextNotes: {},
             dictBlockersByStepLevel3: {},
             dictStepLevels: {},
             dictStepLevelHighWater: {},
@@ -1085,6 +1086,7 @@ const VaibifyApp = (function () {
         _dictWorkflowState.dictBlockersByStepLevel2 = {};
         _dictWorkflowState.dictBlockersByStepLevel3 = {};
         _dictWorkflowState.dictAiDeclarationFreshness = null;
+        _dictWorkflowState.dictOutputContextNotes = {};
         _dictWorkflowState.dictStepLevels = {};
         _dictWorkflowState.dictStepLevelHighWater = {};
         _dictWorkflowState.dictStepLevelWarnings = {};
@@ -2275,6 +2277,8 @@ const VaibifyApp = (function () {
                 .sProjectRepoPath || "",
             dictAiDeclarationFreshness:
                 _dictWorkflowState.dictAiDeclarationFreshness || null,
+            dictOutputContextNotes:
+                _dictWorkflowState.dictOutputContextNotes || {},
             setExpandedUnitTests: VaibifyTestManager.fsetGetExpandedUnitTests(),
             fdictGetFalsificationState:
                 VaibifyTestManager.fdictGetFalsificationState,
@@ -2475,6 +2479,7 @@ const VaibifyApp = (function () {
             (dictContext.dictMaxInputMtimeByStep || {})[sIdx] || "",
             dictContext.dictMaxPlotMtimeByStep[sIdx] || "",
             dictContext.dictTestCategoryMtimes[sIdx] || null,
+            (dictContext.dictOutputContextNotes || {})[sIdx] || null,
             dictContext.fdictGetFalsificationState ?
                 dictContext.fdictGetFalsificationState(iIndex) : null,
         ].concat(_flistBlockerAndLevelSlice(iIndex, dictContext)));
@@ -4289,10 +4294,21 @@ const VaibifyApp = (function () {
                         "files match their pinned hashes.",
                         sType: "info"};
                 }
+                /* A difference the server explains by recorded
+                   hardware or settings is said in its words, with the
+                   option it offers -- never as an alarm (design F5). */
+                var dictExplain =
+                    (dictResult || {}).dictContextExplanation || {};
+                if (dictExplain.bOnlyContextDifferences) {
+                    return {sMessage: dictExplain.sSummary + " " +
+                        dictExplain.sOption, sType: "info"};
+                }
                 return {sMessage: listBad.length + " of " + iTotal +
                     " files differ from the manifest (first: " +
                     (listBad[0].sPath || listBad[0]) + "). Re-run " +
-                    "the project or regenerate the envelope.",
+                    "the project or regenerate the envelope." +
+                    (dictExplain.sSummary ? " " + dictExplain.sSummary
+                        : ""),
                     sType: "warning"};
             },
         },
@@ -6999,6 +7015,7 @@ const VaibifyApp = (function () {
         _fnApplyBlockerAndLevelState(dictStatus);
         _fnApplyAiDeclarationFreshness(
             dictStatus.dictAiDeclarationFreshness);
+        _fnApplyOutputContextNotes(dictStatus.dictOutputContextNotes);
         var dictInv = dictStatus.dictInvalidatedSteps;
         if (dictInv && Object.keys(dictInv).length > 0) {
             fnApplyInvalidatedSteps(dictInv);
@@ -7014,6 +7031,18 @@ const VaibifyApp = (function () {
         if (dictStatus.dictTestFileChanges) {
             VaibifyTestManager.fnNotifyTestFileChanges(
                 dictStatus.dictTestFileChanges);
+        }
+    }
+
+    function _fnApplyOutputContextNotes(dictNotes) {
+        /* The server's per-step notes on outputs another context
+           produced; mirrored, never derived, and re-rendered when they
+           move so a card never shows an old note. */
+        var sPrior = JSON.stringify(
+            _dictWorkflowState.dictOutputContextNotes || {});
+        _dictWorkflowState.dictOutputContextNotes = dictNotes || {};
+        if (JSON.stringify(dictNotes || {}) !== sPrior) {
+            fnRenderStepList();
         }
     }
 
