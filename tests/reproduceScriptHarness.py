@@ -45,12 +45,18 @@ def fnPublishForTheScript(sRoot, dictWorkflow):
 
 
 def fsKeepRunDirectories(sBody, sKeep):
-    """Return the body with its exit trap copying the run directories out."""
+    """Return the body with its exit trap copying the run directories out.
+
+    The copies are opened to every user, because ``mktemp -d`` makes the
+    originals private to the uid that ran the script, and a test reading
+    them from the host may be another uid (a container's user is 1000;
+    a CI runner's is not).
+    """
     if sBody.count(_S_EXIT_TRAP_OPENING) != 1:
         raise AssertionError("the container half has no single exit trap")
     return sBody.replace(_S_EXIT_TRAP_OPENING, (
         "trap 'cp -R \"$sVaibifyScratch\" \"$sVaibifyEvidence\" "
-        f"\"{sKeep}\"/; rm -rf "), 1)
+        f"\"{sKeep}\"/; chmod -R a+rwX \"{sKeep}\"; rm -rf "), 1)
 
 
 def fnInstallFakePip(sBin, iExitCode):

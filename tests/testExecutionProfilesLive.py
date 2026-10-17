@@ -209,6 +209,42 @@ def _ftReproduce(tmp_path, sName, dictImage, dictRecordedProfile,
     return completed, sDigest, _fdictReadKeptProbe(sRoot)
 
 
+# Run in one container when the fixture's digest is wrong: the fixture
+# under every setting, without each one in turn, and under none, so a
+# failure on a machine nobody here can reach names the setting at fault.
+_S_DIAGNOSIS_PROGRAM = """import json, os, subprocess, sys
+dictRequested = json.loads(sys.argv[1])
+os.makedirs("/tmp/fixture", exist_ok=True)
+open("/tmp/fixture/fixture.py", "w").write(sys.argv[2])
+listVariants = [("every setting", dictRequested)] + [
+    ("without " + sKey, {k: v for k, v in dictRequested.items() if k != sKey})
+    for sKey in dictRequested] + [("no setting", {})]
+for sName, dictSettings in listVariants:
+    dictEnvironment = {k: v for k, v in os.environ.items()
+                       if k not in dictRequested}
+    dictEnvironment.update(dictSettings)
+    completed = subprocess.run(
+        [sys.executable, "fixture.py"], env=dictEnvironment,
+        cwd="/tmp/fixture", capture_output=True, text=True)
+    sDigest = ""
+    if completed.returncode == 0:
+        sDigest = open("/tmp/fixture/digest.txt").read().strip()
+    print(f"{sName}: exit {completed.returncode} {sDigest}")
+"""
+
+
+def _fsDiagnoseEachSetting(dictImage, dictRequested):
+    """Return the fixture's exit code and digest under each variant."""
+    dockerDisposable = disposableContainer.fdockerCreateDisposableClient()
+    baOutput = dockerDisposable.containers.run(
+        dictImage["sImageId"],
+        ["python3", "-c", _S_DIAGNOSIS_PROGRAM, json.dumps(dictRequested),
+         _S_FIXTURE_PROGRAM],
+        network_disabled=True, labels=fdictLabels(), remove=True,
+        stdout=True, stderr=True)
+    return baOutput.decode("utf-8", "replace")
+
+
 def _fsDescribeThisMachine(dictImage):
     """Return the processor facts the record keeps: vendor, level, cores."""
     dictCapabilities = rerunProcedure.fdictReadProcessorCapabilities()
@@ -237,11 +273,15 @@ def testTheAcrossProfileReproducesTheCommittedFixture(
     completed, sDigest, dictProbe = _ftReproduce(
         tmp_path, "across", dictProfileImage, dictProfile)
     sOutput = completed.stdout + completed.stderr
+    if sDigest != S_ACROSS_FIXTURE_DIGEST:
+        sOutput += "\nEach setting in turn:\n" + _fsDiagnoseEachSetting(
+            dictProfileImage, dictProfile["dictRequested"])
     assert dictProbe.get("dictSettingsSeen") == dictProfile["dictRequested"], (
         sMachine, dictProbe, sOutput)
     assert {sName: dictJudged["sStatus"] for sName, dictJudged in
             dictProbe["dictNumpyDisabledFeatures"].items()} == {
-        "AVX512_ICL": "applied", "X86_V4": "applied"}, (sMachine, dictProbe)
+        "AVX512_ICL": "applied", "X86_V4": "applied"}, (sMachine, dictProbe,
+                                                        sOutput)
     assert sDigest == S_ACROSS_FIXTURE_DIGEST, (
         sMachine, sDigest, completed.stdout + completed.stderr)
     assert completed.returncode == 0, completed.stdout + completed.stderr
