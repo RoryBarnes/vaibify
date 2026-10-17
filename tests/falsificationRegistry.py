@@ -34926,4 +34926,18 @@ LIST_FALSIFICATIONS = [
         old='            [sContainerId, sWorkflowPath || ""]);\n',
         new='            [sWorkflowPath || ""]);\n',
     ),
+    # --- 2026-10-17: a reader's assessed reproduction reaches the label ---
+    Falsification(
+        nodeid=(
+            'tests/testReproductionLabelInPollResponse.py::'
+            'test_an_assessed_reproduction_decides_the_label'
+        ),
+        source='vaibify/docker/dockerConnection.py',
+        # the snapshot keeps only the two byte-only verdicts again
+        old=(
+            '        if (dictRecord.get("sVerdict") in dictArgs.get(\n'
+            '                "listDecisiveVerdicts", [])\n'
+        ),
+        new='        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")\n',
+    ),
 ]

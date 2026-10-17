@@ -60,6 +60,7 @@ __all__ = [
     "S_VERDICT_REPRODUCED",
     "fdictBuildReproductionReport",
     "fiExitCodeOfOutcome",
+    "flistDecisiveVerdicts",
     "fsVerdictOfOutcome",
     "fdictReadReproductionReport",
     "flistSweepExpiredReports",
@@ -203,6 +204,19 @@ def fdictBuildReproductionReport(
         "sShadowTeardown": str(dictOutcome.get("sShadowTeardown") or ""),
         "fDurationSeconds": float(fDurationSeconds),
     }
+
+
+def flistDecisiveVerdicts():
+    """Return every verdict a reader's label may be decided by, sorted.
+
+    The poll's snapshot program keeps the newest record per workflow
+    whose verdict is one of these, so it is handed this list rather than
+    spelling verdicts of its own: a copy there kept only the two
+    byte-only verdicts, and a reader's assessed reproduction was dropped
+    before the label could read it.
+    """
+    return sorted(SET_VERDICTS_THAT_REPRODUCE
+                  | SET_VERDICTS_THAT_DO_NOT_REPRODUCE)
 
 
 def fsVerdictOfOutcome(dictOutcome):

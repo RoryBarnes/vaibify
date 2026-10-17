@@ -158,6 +158,34 @@ def _fdictPollLabel(sRepo, connection=None, dictCtxExtra=None,
 
 
 @pytest.mark.falsification
+def test_an_assessed_reproduction_decides_the_label(tmp_path):
+    """The assessed verdicts reach the label through the real snapshot.
+
+    A reader's reproduction graded by the comparison policy records
+    ``byte-identical``, ``comparisons-passed`` or ``not-reproduced``,
+    never the byte-only ``reproduced``. Each must decide the label as
+    its meaning does: the first two show it, the third reads diverged.
+
+    Kills: the snapshot program keeping only records whose verdict is
+    one of the two byte-only words, which drops every assessed
+    reproduction and shows "absent" after a successful one.
+    """
+    for sVerdict, sState, bShow in (
+        ("byte-identical", "reproduced", True),
+        ("comparisons-passed", "reproduced", True),
+        ("not-reproduced", "diverged", False),
+    ):
+        sRepo = _fsBuildReaderClone(tmp_path / sVerdict)
+        dictOutcome = _fdictOutcomeFor(sRepo, sVerdict != "not-reproduced")
+        dictOutcome.update({"sVerdict": sVerdict,
+                            "sVerdictRendered": "the policy's own words"})
+        _fnWriteRecord(sRepo, dictOutcome)
+        dictLabel, _connection, _ctx = _fdictPollLabel(sRepo)
+        assert dictLabel["sState"] == sState, (sVerdict, dictLabel)
+        assert dictLabel["bShow"] is bShow, (sVerdict, dictLabel)
+
+
+@pytest.mark.falsification
 def test_a_reproduced_record_shows_the_label(tmp_path):
     """Kills: accepting any verdict, or never showing the label."""
     sRepo = _fsBuildReaderClone(tmp_path)

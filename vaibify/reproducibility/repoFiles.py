@@ -938,6 +938,9 @@ def _fsBuildSnapshotScriptCommand(
     from vaibify.docker.dockerConnection import (
         S_REPO_SNAPSHOT_PROGRAM_CORE,
     )
+    from vaibify.reproducibility.reproductionReport import (
+        flistDecisiveVerdicts,
+    )
     listHashPaths = _flistSnapshotHashPaths(
         listScriptRelPaths, listHashRelPaths,
     )
@@ -951,6 +954,7 @@ def _fsBuildSnapshotScriptCommand(
             "dictCachedKeys": dict(dictCachedKeys or {}),
             "bHashManifestEntries": bool(bHashManifestEntries),
             "bReadReproductions": bool(bReadReproductions),
+            "listDecisiveVerdicts": flistDecisiveVerdicts(),
         },
     )
 
