@@ -13,6 +13,7 @@ whose bytes moved after it was frozen. The gui-only leaf test
 
 import ast
 import hashlib
+import os
 import sys
 
 import pytest
@@ -80,16 +81,38 @@ def _fdictWorkflowWithOneStep():
     }]}
 
 
+def _fbIsStandardLibrary(sRoot):
+    """Return True iff a top-level module name belongs to the standard library.
+
+    ``sys.stdlib_module_names`` arrived in Python 3.10. On 3.9 the
+    answer is read from where the module lives: built in, or inside the
+    interpreter's own library directory and outside site-packages.
+    """
+    if hasattr(sys, "stdlib_module_names"):
+        return sRoot in sys.stdlib_module_names
+    import importlib.util
+    import sysconfig
+    if sRoot in sys.builtin_module_names:
+        return True
+    specModule = importlib.util.find_spec(sRoot)
+    if specModule is None or not specModule.origin:
+        return False
+    sOrigin = os.path.realpath(specModule.origin)
+    sLibrary = os.path.realpath(sysconfig.get_paths()["stdlib"])
+    return (sOrigin.startswith(sLibrary + os.sep)
+            and "site-packages" not in sOrigin)
+
+
 def _fnAssertOnlyStandardLibraryImports(moduleLeaf):
     """Assert a leaf imports the standard library, plus its lazy exceptions."""
     sSource = _fsReadSource(moduleLeaf)
     listForeignAtTop = [
         sRoot for sRoot in _flistImportedRoots(sSource, True)
-        if sRoot not in sys.stdlib_module_names
+        if not _fbIsStandardLibrary(sRoot)
     ]
     listForeignAnywhere = [
         sRoot for sRoot in _flistImportedRoots(sSource, False)
-        if sRoot not in sys.stdlib_module_names
+        if not _fbIsStandardLibrary(sRoot)
         and sRoot not in SET_LAZY_IMPORT_EXCEPTIONS
     ]
     assert listForeignAtTop == []

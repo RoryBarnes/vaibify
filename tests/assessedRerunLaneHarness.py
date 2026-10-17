@@ -14,7 +14,9 @@ and its live legs.
 """
 
 import os
+import re
 import subprocess
+import sys
 
 from vaibify.docker.dockerConnection import DockerConnection, ExecResult
 from vaibify.reproducibility import rerunVerification
@@ -23,6 +25,22 @@ from tests.testRerunVerifiesWhatItRan import LocalShellContainer
 
 
 S_LANE_CONTAINER_ID = "assessedRerunLane"
+_RE_GNU_TIME_INVOCATION = re.compile(r"/usr/bin/time -f '[^']*' ")
+
+
+def fsWithoutGnuTimeOffLinux(sCommand):
+    """Drop the runner's GNU ``time`` invocation where this host's is BSD.
+
+    The runner wraps a container command in ``/usr/bin/time -f``, which
+    a Linux image answers with GNU time or with none. This stand-in runs
+    the command on the developer's machine instead, and macOS ships a
+    BSD ``/usr/bin/time`` with no ``-f``, so every wrapped command would
+    exit 1 before it ran. The wrapped ``bash -c`` is what the container
+    runs; only the CPU reading is lost, and no test here reads it.
+    """
+    if sys.platform != "darwin":
+        return sCommand
+    return _RE_GNU_TIME_INVOCATION.sub("", sCommand)
 
 
 class LocalRunnerContainer(LocalShellContainer):
@@ -43,7 +61,8 @@ class LocalRunnerContainer(LocalShellContainer):
         dictEnvironment = dict(os.environ)
         dictEnvironment.pop("PYTEST_ADDOPTS", None)
         completed = subprocess.run(
-            ["bash", "-c", sCommand], cwd=sWorkdir or None,
+            ["bash", "-c", fsWithoutGnuTimeOffLinux(sCommand)],
+            cwd=sWorkdir or None,
             capture_output=True, text=True, env=dictEnvironment,
             timeout=600)
         for sLine in completed.stdout.splitlines():
