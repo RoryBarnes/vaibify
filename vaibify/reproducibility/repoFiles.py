@@ -872,6 +872,7 @@ TUPLE_SNAPSHOT_CONTENT_PATHS = (
     "pyproject.toml",
     "Dockerfile",
     "reproduce.sh",
+    ".vaibify/rerunAssessment.py",
     ".vaibify/environment.json",
     ".vaibify/l3_attestation.json",
     ".vaibify/syncStatus.json",

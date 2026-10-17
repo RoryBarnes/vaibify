@@ -3420,9 +3420,9 @@ const VaibifyApp = (function () {
         },
         "reproduce-script-missing": {
             sIcon: "⚠",
-            sLabel: "reproduce.sh missing or not pinned in the " +
-                "manifest — generate it from the Artifacts section " +
-                "of the Project block",
+            sLabel: "reproduce.sh or its rerun assessor missing or " +
+                "not pinned in the manifest — generate it from the " +
+                "Artifacts section of the Project block",
             sClass: "step-blocker-glyph-l3-workflow-reproduce",
         },
         /* The Level 3 half of the published-copy question. Its Level 2
@@ -3485,11 +3485,10 @@ const VaibifyApp = (function () {
            a project that already has one. */
         "reproduce-script-stale": {
             sIcon: "⚠",
-            sLabel: "reproduce.sh predates the machinery it needs — " +
-                "it pulls the image and has no way to fall back to " +
-                "your archived copy, so a stranger's reproduction " +
-                "fails on its first line; regenerate it, then commit " +
-                "and publish",
+            sLabel: "reproduce.sh or its rerun assessor is not what " +
+                "vaibify would generate now, so a stranger's " +
+                "reproduction does not run the checks this dashboard " +
+                "runs; regenerate it, then commit and publish both",
             sClass: "step-blocker-glyph-l3-workflow-reproduce-stale",
         },
         "an-archive-is-a-sandbox-deposit": {

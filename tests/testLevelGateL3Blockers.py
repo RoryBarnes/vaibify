@@ -18,6 +18,11 @@ import posixpath
 
 import pytest
 
+from tests.levelGateStubs import (
+    S_RERUN_ASSESSOR_PATH,
+    fsWriteRerunAssessor,
+)
+
 from vaibify.reproducibility.dockerfileLint import S_DOCKERFILE_FILENAME
 from vaibify.reproducibility.levelGates import (
     fbL3ReadinessOK,
@@ -62,6 +67,7 @@ def _fnWriteReproduceScript(pathDir):
     pathScript = pathDir / S_REPRODUCE_SCRIPT_FILENAME
     pathScript.write_text("#!/usr/bin/env bash\nset -e\n")
     pathScript.chmod(0o755)
+    fsWriteRerunAssessor(pathDir, {"listSteps": []})
 
 
 def _fnWriteManifestCoveringPaths(pathDir, listRelativePaths):
@@ -91,7 +97,8 @@ def fixtureL3Repo(tmp_path):
     # reads it for completeness.
     _fnWriteManifestCoveringPaths(
         tmp_path,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
+        [S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+         S_DOCKERFILE_FILENAME,
          "requirements.lock", ".vaibify/environment.json"],
     )
     return tmp_path
@@ -190,7 +197,8 @@ def testBinaryNotDeclaredFiresOnVplanetInvocation(fixtureL3Repo):
     (fixtureL3Repo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
         fixtureL3Repo,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME, sRel],
+        [S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+         S_DOCKERFILE_FILENAME, sRel],
     )
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["bNoStandaloneBinaries"] = False
@@ -221,7 +229,8 @@ def _fnSeedStepDataFile(pathRepo, sRel):
     (pathRepo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
         pathRepo,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME, sRel],
+        [S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+         S_DOCKERFILE_FILENAME, sRel],
     )
 
 
@@ -290,7 +299,8 @@ def testBinaryNotCapturedFiresWhenDeclaredButMissingFromEnv(
     (fixtureL3Repo / sRel).write_text("x\n")
     _fnWriteManifestCoveringPaths(
         fixtureL3Repo,
-        [S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME, sRel],
+        [S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+         S_DOCKERFILE_FILENAME, sRel],
     )
     dictWorkflow = _fdictWaivedWorkflow()
     dictWorkflow["bNoStandaloneBinaries"] = False

@@ -78,6 +78,9 @@ TUPLE_ROOT_CONFIG_FILES = (
     "MANIFEST.sha256",
     "requirements.lock",
     "reproduce.sh",
+    # The assessor reproduce.sh runs, written beside it and pinned with
+    # it; committed like the script, because a reader's clone needs it.
+    ".vaibify/rerunAssessment.py",
     ".vaibify/environment.json",
     # The rebuild attestation. It is in the set the remote verifies
     # COMPARE, so its absence was counted -- "24 of 25 files matching"

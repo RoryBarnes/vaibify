@@ -373,8 +373,8 @@ LIST_FALSIFICATIONS = [
             'test_a_version_two_cache_is_no_longer_scope_current'
         ),
         source='vaibify/reproducibility/publicationScope.py',
-        old='I_PUBLICATION_SCOPE_VERSION = 6',
-        new='I_PUBLICATION_SCOPE_VERSION = 5',
+        old='I_PUBLICATION_SCOPE_VERSION = 7',
+        new='I_PUBLICATION_SCOPE_VERSION = 6',
     ),
     # --- 2026-08-26: guards added with the publication-scope work ---
     Falsification(
@@ -14600,11 +14600,10 @@ LIST_FALSIFICATIONS = [
         # cross-step path, while the L3 row stays green.
         source='vaibify/reproducibility/reproduceScriptGenerator.py',
         old=(
-            '                listOut.append(\n'
-            '                    fsResolveCommand(sStripped, dictVariables),\n'
-            '                )\n'
+            '        fsResolveCommand((sCommand or "").strip(), '
+            'dictVariables)\n'
         ),
-        new='                listOut.append(sStripped)\n',
+        new='        (sCommand or "").strip()\n',
     ),
     Falsification(
         nodeid=(
@@ -20999,8 +20998,18 @@ LIST_FALSIFICATIONS = [
         source='vaibify/reproducibility/levelGates.py',
         # The comparison weakened to "there is some text in the file",
         # which the 29-line stale script satisfies.
-        old='    return sOnDisk == sCurrent\n',
-        new='    return bool(sOnDisk)\n',
+        old='        if sOnDisk != sCurrent:\n',
+        new='        if not sOnDisk:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testStaleReproduceScriptIsNotRunnable.py::'
+            'test_a_hand_edited_assessor_is_caught'
+        ),
+        source='vaibify/reproducibility/levelGates.py',
+        # Only the script is compared; an edited assessor passes.
+        old='    for sRelativePath, sCurrent in tRendered:\n',
+        new='    for sRelativePath, sCurrent in tRendered[:1]:\n',
     ),
     Falsification(
         nodeid=(
@@ -27714,8 +27723,8 @@ LIST_FALSIFICATIONS = [
             'tests/testMatplotlibSaltIsolation.py::testTheExitTrapNeverDeletesADirectoryAStepExportedItself'
         ),
         source='vaibify/reproducibility/reproduceScriptGenerator.py',
-        old='        "    trap \'rm -rf " + sDirectory + "\' EXIT",\n',
-        new='        "    trap \'rm -rf \\"$MPLCONFIGDIR\\"\' EXIT",\n',
+        old='        "trap \'rm -rf " + sDirectory + \' "$sVaibifyScratch" \'\n',
+        new='        "trap \'rm -rf \\"$MPLCONFIGDIR\\"" + \' "$sVaibifyScratch" \'\n',
     ),
     Falsification(
         nodeid=(
@@ -34742,5 +34751,118 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/static/scriptProofTab.js',
         old='        if (dictRecord.bHistorical === true) {\n            return \'<div class="proof-attestation-verdict \' +',
         new='        if (false) {\n            return \'<div class="proof-attestation-verdict \' +',
+    ),
+    # --- 2026-10-17: reproduce.sh runs the assessed rerun (Phase 4) ---
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testADataCommandThatWritesNothingIsNotReproduced'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the steps run over the published outputs, nothing cleared first
+        old='        \'if python3 -I "$sVaibifyAssessor" clear --repo /work; then\',\n',
+        new="        'if true; then',\n",
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailedFirstStepStillRunsTheSecond'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the first failed command ends the whole run
+        old='        f"{sGuard}=0",\n',
+        new='        "exit 1",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailingTestIsNotReproducedWithATally'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # a failed command's record is a bare statement under set -e, so the
+        # ERR trap ends the script before the assessment
+        old='        f\'    fnVaibifyRecord {_fsShellQuote(sId)} "$iVaibifyStatus" || \'\n        f"{sGuard}=0",\n',
+        new='        f\'    fnVaibifyRecord {_fsShellQuote(sId)} "$iVaibifyStatus"\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailedInstallIsCouldNotRun'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # a failed install carries on to the steps
+        old='        \'    echo "Could not run: requirements.lock could not be installed" >&2\',\n        "    exit 4",\n',
+        new='        \'    echo "Could not run: requirements.lock could not be installed" >&2\',\n        "    true",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testAFailureInThePreambleIsCouldNotRun'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the container half has no ERR trap, so a failed preamble command
+        # exits 1, which reads as "not reproduced"
+        old='        "set -euo pipefail",\n        "trap \'echo \\"Could not run: reproduce.sh failed at line "\n        "$LINENO\\" >&2; exit 4\' ERR",\n',
+        new='        "set -euo pipefail",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testTheLedgerNamesThePlansCommandsInOrder'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script numbers a section's commands against the plan's order
+        old='    listIds = flistNumberInvocations(sStepLabel, sSection, listCommands)\n',
+        new='    listIds = flistNumberInvocations(sStepLabel, sSection, listCommands)[::-1]\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testACarriedOutputAndThePinnedFilesSurviveTheClearing'
+        ),
+        source='vaibify/reproducibility/rerunAssessment.py',
+        # the clearing job names the protected paths as regenerated
+        old='        "listProduced": sorted(dictClassification["setProduced"]),\n',
+        new='        "listProduced": sorted(dictClassification["setProduced"]\n                               | dictClassification["setProtected"]),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptContainerHalf.py::'
+            'testEachCommandRunsUnderBashDefaults'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # step commands run under the script's own set -euo pipefail
+        old='        f"    if ( {sCd}{sExport}set +e +u +o pipefail && {sCommand}",\n',
+        new='        f"    if ( {sCd}{sExport}{sCommand}",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptDeterminism.py::'
+            'test_an_image_no_lane_can_obtain_is_could_not_run'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the unobtainable-image exit is 2 again, outside the shared table
+        old='            echo "  could be loaded, and no local copy exists" >&2\n            exit 4\n',
+        new='            echo "  could be loaded, and no local copy exists" >&2\n            exit 2\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptDeterminism.py::'
+            'test_a_docker_run_that_fails_itself_is_could_not_run'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # every docker run status passes through, 125 included
+        old='    0|1|3|4|5) exit "$iVaibifyExit" ;;\n',
+        new='    *) exit "$iVaibifyExit" ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testReproduceScriptParity.py::'
+            'testTheLaneAndTheScriptRunTheSameAssessor'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the generator writes the assessor in a form of its own
+        old='        (S_RERUN_ASSESSMENT_REPO_PATH, sAssessor),\n',
+        new='        (S_RERUN_ASSESSMENT_REPO_PATH, sAssessor + "\\n"),\n',
     ),
 ]

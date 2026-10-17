@@ -22,6 +22,7 @@ grades under the recorded policy, while the Level 3 rebuild requirement
 accepts only an attestation made under :data:`S_CURRENT_COMPARISON_POLICY`.
 """
 
+import functools
 import json
 import posixpath
 import re
@@ -310,8 +311,18 @@ def fdictBuildAssessmentPlan(
 
 
 def fsReadModuleSource(moduleSource):
-    """Return a module's source text, read from its own file."""
-    with open(moduleSource.__file__, encoding="utf-8") as fileSource:
+    """Return a module's source text, read from its own file.
+
+    Cached by path: the render runs on every poll's currency check, and
+    a module's source does not change under a running process.
+    """
+    return _fsReadSourceFile(moduleSource.__file__)
+
+
+@functools.lru_cache(maxsize=16)
+def _fsReadSourceFile(sPath):
+    """Return one source file's text."""
+    with open(sPath, encoding="utf-8") as fileSource:
         return fileSource.read()
 
 

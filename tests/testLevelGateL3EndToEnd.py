@@ -14,6 +14,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tests.levelGateStubs import (
+    S_RERUN_ASSESSOR_PATH,
+    fsWriteRerunAssessor,
+)
+
 from vaibify.reproducibility.rerunAssessment import (
     S_CURRENT_COMPARISON_POLICY,
 )
@@ -56,6 +61,7 @@ _LIST_COMPARED = [
     "MANIFEST.sha256",
     "requirements.lock",
     S_REPRODUCE_SCRIPT_FILENAME,
+    ".vaibify/rerunAssessment.py",
     ".vaibify/environment.json",
     S_DOCKERFILE_FILENAME,
 ]
@@ -138,6 +144,7 @@ def _fnWriteL3EnvelopeFiles(tmp_path):
         fsRenderReproduceScript(_fdictBuildLevel3Workflow()),
     )
     pathScript.chmod(0o755)
+    fsWriteRerunAssessor(tmp_path, _fdictBuildLevel3Workflow())
     (tmp_path / "requirements.lock").write_text(
         "click==8.1.7 \\\n    --hash=sha256:" + "b" * 64 + "\n"
     )
@@ -256,8 +263,9 @@ def fixtureLevel3Repo(tmp_path):
     # environment let a reproducer verify everything except what
     # produced it.
     _fnWriteManifest(tmp_path, [
-        S_REPRODUCE_SCRIPT_FILENAME, S_DOCKERFILE_FILENAME,
-        "requirements.lock", ".vaibify/environment.json",
+        S_REPRODUCE_SCRIPT_FILENAME, S_RERUN_ASSESSOR_PATH,
+        S_DOCKERFILE_FILENAME, "requirements.lock",
+        ".vaibify/environment.json",
     ])
     _fnWriteSyncStatus(tmp_path)
     return tmp_path

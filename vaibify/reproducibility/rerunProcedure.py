@@ -82,6 +82,7 @@ S_INVOCATION_LEDGER_FILENAME = "invocations.tsv"
 S_PREPARE_RECORD_FILENAME = "prepare.json"
 S_CAPABILITIES_RECORD_FILENAME = "capabilities.json"
 S_PROBE_RECORD_FILENAME = "probe.json"
+S_ASSESSMENT_RECORD_FILENAME = "assessment.json"
 S_REFERENCE_DIRECTORY_NAME = "references"
 S_POLICY_ENTRY_POINT = "fdictAssessRerunEvidence"
 
@@ -826,6 +827,8 @@ def fiRunAssess(namespaceArguments, dictPlan, fdictAssessEvidence):
         "current; none recorded" if namespaceArguments.no_recorded_policy
         else "recorded")
     dictReport = fdictAssessEvidence(dictPlan, dictObservations)
+    fnWriteJsonRecord(os.path.join(
+        namespaceArguments.scratch, S_ASSESSMENT_RECORD_FILENAME), dictReport)
     print(dictReport["sVerdictRendered"])
     print(dictReport["sTallyRendered"])
     if namespaceArguments.machine:

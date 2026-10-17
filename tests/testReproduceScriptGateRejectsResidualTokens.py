@@ -38,6 +38,7 @@ from vaibify.reproducibility.repoFiles import (
 from vaibify.reproducibility.reproduceScriptGenerator import (
     S_REPRODUCE_SCRIPT_FILENAME,
 )
+from tests.levelGateStubs import fsWriteRerunAssessor
 
 
 S_RUNNABLE_SCRIPT = (
@@ -69,12 +70,15 @@ class HostShellExecConnection:
 
 
 def _fnSeedRepo(pathRoot, sScriptBody):
-    """Write a repo whose manifest pins reproduce.sh."""
+    """Write a repo whose manifest pins reproduce.sh and its assessor."""
     (pathRoot / ".vaibify").mkdir(exist_ok=True)
     (pathRoot / S_REPRODUCE_SCRIPT_FILENAME).write_text(sScriptBody)
+    sAssessor = fsWriteRerunAssessor(pathRoot, {"listSteps": []})
+    sZeros = "0" * 64
     (pathRoot / "MANIFEST.sha256").write_text(
         "# vaibify manifest v1\n"
-        f"0000000000000000000000000000000000000000000000000000000000000000  {S_REPRODUCE_SCRIPT_FILENAME}\n"
+        f"{sZeros}  {S_REPRODUCE_SCRIPT_FILENAME}\n"
+        f"{sZeros}  {sAssessor}\n"
     )
     (pathRoot / ".vaibify" / "environment.json").write_text(
         json.dumps({"sImageDigest": "img@sha256:def"}),

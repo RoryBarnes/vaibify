@@ -8,6 +8,8 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
+
+from tests.levelGateStubs import fsWriteRerunAssessor
 from click.testing import CliRunner
 
 from vaibify.cli.commandReproduce import fnReproduceCommand
@@ -86,6 +88,8 @@ def _fnWriteL3EnvelopeExtras(pathRepo):
     pathReproduce.write_text(sReproduceBody)
     pathReproduce.chmod(0o755)
     sReproduceHash = _fsHashFile(pathReproduce)
+    # The assessor the script runs, pinned beside it (2026-10-17).
+    sAssessor = fsWriteRerunAssessor(pathRepo, {"listSteps": []})
     sFixtureHash = _fsHashFile(pathRepo / _S_FIXTURE_FILE_NAME)
     sDockerfileHash = _fsHashFile(pathRepo / "Dockerfile")
     # The lock and the envelope too, since the manifest's scope
@@ -95,6 +99,7 @@ def _fnWriteL3EnvelopeExtras(pathRepo):
     _fnWriteManifest(pathRepo, {
         _S_FIXTURE_FILE_NAME: sFixtureHash,
         "reproduce.sh": sReproduceHash,
+        sAssessor: _fsHashFile(pathRepo / sAssessor),
         "Dockerfile": sDockerfileHash,
         "requirements.lock": _fsHashFile(pathRepo / "requirements.lock"),
         ".vaibify/environment.json": _fsHashFile(

@@ -62,6 +62,7 @@ from click.testing import CliRunner
 
 from vaibify.cli import commandReproduce
 from vaibify.docker.dockerConnection import DockerConnection
+from tests.levelGateStubs import fsWriteRerunAssessor
 
 
 S_OUTPUT_FILENAME = "result.txt"
@@ -285,6 +286,7 @@ def _fnSeedEnvelope(pathRepo):
     pathReproduce = pathRepo / "reproduce.sh"
     pathReproduce.write_text("#!/usr/bin/env bash\nset -e\n")
     pathReproduce.chmod(0o755)
+    sAssessor = fsWriteRerunAssessor(pathRepo, {"listSteps": []})
     # Pinned to a package the LOCAL python3 actually has, at the
     # version it actually has, read through the same enumeration the
     # lock-satisfaction gate runs. This harness executes real commands
@@ -308,7 +310,7 @@ def _fnSeedEnvelope(pathRepo):
     # them, so tier 4 reported an incomplete manifest on a fixture
     # meant to pass every tier.
     _fnWriteManifestFor(pathRepo, (
-        pathOutput, pathReproduce, pathDocker,
+        pathOutput, pathReproduce, pathRepo / sAssessor, pathDocker,
         pathRepo / "requirements.lock",
         pathVaibify / "environment.json",
     ))
@@ -722,14 +724,14 @@ def test_faithful_container_rerun_still_attests_a_pass(fixtureTwoRoots):
 
     assert resultClick.exit_code == 0, resultClick.output
     assert dictAttestation["sStatus"] == "passed"
-    # One declared output was regenerated; the other four pinned files
-    # (the reproduce script, Dockerfile, dependency lock and environment
-    # snapshot, which pin what PRODUCED the results) are checked
-    # unchanged and counted apart.
+    # One declared output was regenerated; the other five pinned files
+    # (the reproduce script and its assessor, Dockerfile, dependency
+    # lock and environment snapshot, which pin what PRODUCED the
+    # results) are checked unchanged and counted apart.
     assert dictAttestation["iOutputHashesMatched"] == 1
     assert dictAttestation["iOutputHashesTotal"] == 1
-    assert dictAttestation["iPinnedInputsUnchanged"] == 4
-    assert dictAttestation["iPinnedInputsTotal"] == 4
+    assert dictAttestation["iPinnedInputsUnchanged"] == 5
+    assert dictAttestation["iPinnedInputsTotal"] == 5
     assert dictAttestation["dictPreRerunClearing"][
         "listDeletedOutputs"] == [S_OUTPUT_FILENAME]
 

@@ -80,7 +80,9 @@ def test_empty_workflow_renders_preamble_and_epilogue():
     sScript = fsRenderReproduceScript(_fdictBuildWorkflow([]))
     assert "#!/usr/bin/env bash" in sScript
     assert "docker pull" in sScript
-    assert "sha256sum -c MANIFEST.sha256" in sScript
+    # The assessment closes the script and its exit is the script's.
+    assert sScript.rstrip().splitlines()[-1] != "sha256sum -c MANIFEST.sha256"
+    assert "\nfnVaibifyAssess\nVAIBIFY_REPRODUCE_EOF\n" in sScript
 
 
 def test_step_commands_appear_in_render():
@@ -314,12 +316,31 @@ def test_step_name_control_characters_are_stripped():
 def test_delimiter_forgery_in_command_is_rejected():
     """A command occupying a line equal to the heredoc terminator
     would close the heredoc early and inject onto the host; emitting
-    such a script must fail loud instead."""
+    such a script must fail loud instead.
+
+    A one-line command is rendered after the guard prefix on its own
+    line, so only a multi-line command can put the terminator on a
+    line by itself.
+    """
     with pytest.raises(ValueError):
         fsRenderReproduceScript(_fdictBuildWorkflow([
             {"sName": "S", "sDirectory": ".",
-             "saDataCommands": [_S_HEREDOC_DELIMITER]},
+             "saDataCommands": [
+                 "echo first\n" + _S_HEREDOC_DELIMITER + "\necho host"]},
         ]))
+
+
+def test_a_one_line_command_equal_to_the_terminator_stays_inside():
+    """Rendered after the guard prefix, it can never close the heredoc."""
+    sScript = fsRenderReproduceScript(_fdictBuildWorkflow([
+        {"sName": "S", "sDirectory": ".",
+         "saDataCommands": [_S_HEREDOC_DELIMITER]},
+    ]))
+    iTerminators = sum(
+        1 for sLine in sScript.splitlines()
+        if sLine == _S_HEREDOC_DELIMITER
+    )
+    assert iTerminators == 1
 
 
 def test_ordinary_script_has_exactly_one_terminator_line():

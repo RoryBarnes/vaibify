@@ -430,18 +430,20 @@ _T_INTERACTIVE_FALSE_TOKENS = (
 
 
 # The command lists a RUN actually executes, in the order the runner
-# runs them. Named here, in the leaf, because pre-flight validated a
-# different set than the runner executed: it checked
-# ``saTestCommands`` too, so a project whose test tool was absent from
-# the container had every run refused over a command no run path would
-# ever invoke. That blocked a researcher's Level 3 verification for a
-# missing ``pytest`` that ``reproduce.sh`` neither installs into the
-# step environment nor calls (2026-09-01).
+# runs them -- the lists pre-flight checks before a run starts. Named
+# here, in the leaf, because pre-flight validated a different set than
+# the runner executed: it checked ``saTestCommands`` too, so a project
+# whose test tool was absent from the container had every run refused
+# over a command no run path would ever invoke (2026-09-01).
 #
-# Tests are a SEPARATE action with its own lane, and validating them
-# here is not "failing early" -- it is refusing one operation because
-# a different operation could not run. Adding a key to this tuple must
-# mean the runner executes it.
+# Since 2026-10-17 the Level 3 rerun and ``reproduce.sh`` DO run each
+# step's test groups, because the assessment grades their evidence
+# (superseding the 2026-09-01 record that the script neither installs
+# pytest nor calls it). They are still not pre-flight's to refuse: a
+# test command that cannot run writes no JUnit report, so the outputs
+# its checks cover are graded "not enough evidence" (exit 5), and the
+# data and plot commands a researcher asked for still run. Adding a key
+# to this tuple must mean a missing tool should stop the whole run.
 T_EXECUTED_COMMAND_KEYS = (
     "saSetupCommands", "saDataCommands", "saPlotCommands", "saCommands",
 )
