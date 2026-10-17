@@ -2803,6 +2803,9 @@ def _fdictSummarizeAttestation(filesRepo):
         # no longer current -- says so, and is never shown as current.
         "sVerdict": dictAttestation.get("sVerdict"),
         "sVerdictRendered": dictAttestation.get("sVerdictRendered"),
+        "sTallyRendered": (
+            dictAttestation.get("dictAssessmentReport") or {}).get(
+                "sTallyRendered"),
         "dictTally": dictAttestation.get("dictTally"),
         "sComparisonPolicy": dictAttestation.get("sComparisonPolicy"),
         "bHistorical": fbAttestationIsHistorical(dictAttestation),

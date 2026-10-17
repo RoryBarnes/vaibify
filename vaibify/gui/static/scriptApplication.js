@@ -5922,8 +5922,14 @@ const VaibifyApp = (function () {
                 "</div>";
         };
         var listCarried = dictCurrent.listCarriedPaths || [];
+        /* The verdict, its tally and its policy -- or that this is a
+           previous check -- rendered by the PROOF tab's one renderer,
+           so the document and the card never word it differently. */
         var sHtml = '<div class="attestation-summary">' +
-            fnRow("Status", dictCurrent.sStatus || "unknown") +
+            VaibifyProofTab.fsRenderAssessmentVerdict(dictCurrent) +
+            fnRow("Status", dictCurrent.bHistorical === true ?
+                "previous check (" + (dictCurrent.sStatus || "unknown") +
+                ")" : (dictCurrent.sStatus || "unknown")) +
             fnRow("Attested", dictCurrent.sAttestedAtUtc || "?") +
             fnRow("Manifest digest",
                 dictCurrent.sManifestDigestAtAttestation || "?") +

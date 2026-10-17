@@ -90,6 +90,7 @@ def _fdictLabel(sState, sReason="", **dictFields):
         "bShow": False, "sState": sState, "sReason": sReason,
         "bEmulated": False, "sPlatform": "", "sRecordedIso": "",
         "sLatestAttemptIso": "", "sLatestAttemptVerdict": "",
+        "sVerdictRendered": "",
     }
     dictLabel.update(dictFields)
     return dictLabel
@@ -195,6 +196,9 @@ def _fdictLabelForReproduced(dictRecord, dictLastNoVerdict):
         S_STATE_REPRODUCED, bShow=True, sRecordedIso=sRecordedIso,
         bEmulated=bool(dictPlatform.get("bEmulated")),
         sPlatform=str(dictPlatform.get("sObtainedPlatform") or ""),
+        sVerdictRendered=(
+            reproductionReport.fsRenderVerdict(dictRecord)
+            if dictRecord.get("sVerdictRendered") else ""),
     )
     _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)
     return dictLabel
@@ -213,6 +217,7 @@ def _fdictLabelForAuthor(filesPoll, dictLastNoVerdict):
         S_STATE_REPRODUCED, bShow=True, sRecordedIso=sRecordedIso,
         bEmulated=bool(dictProvenance.get("bEmulated")),
         sPlatform=str(dictProvenance.get("sPlatform") or ""),
+        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),
     )
     _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)
     return dictLabel
@@ -231,6 +236,12 @@ def _ftAuthorLabelAbsence(filesPoll):
         return (
             S_STATE_DIVERGED,
             "the latest Level 3 verification did not reproduce the manifest",
+        )
+    if l3Attestation.fbAttestationIsHistorical(dictAttestation):
+        return (
+            S_STATE_STALE,
+            "the Level 3 attestation is from the previous check, which "
+            "the current Level 3 requirement does not accept",
         )
     return (
         S_STATE_STALE,

@@ -4668,6 +4668,11 @@ body.proof-level-3 .toolbar-label {
 .reproduce-verdict-reproduced { color: var(--color-green, #4caf50); }
 .reproduce-verdict-diverged { color: var(--color-orange, #ff9a3c); }
 .reproduce-verdict-none { color: var(--text-secondary); }
+/* Not enough evidence is neither a pass nor a failure. */
+.reproduce-verdict-insufficient {
+    color: var(--color-orange, #ff9a3c);
+    font-style: italic;
+}
 
 /* The per-file outcomes table, shared by the "+" result, the Level 3
    attestation card and the "Your reproduction" card
@@ -4697,7 +4702,10 @@ body.proof-level-3 .toolbar-label {
 }
 
 .file-outcome-word {
-    white-space: nowrap;
+    /* An assessed outcome carries its reason, which can be a sentence,
+       so the word wraps rather than overflowing a narrow card. */
+    white-space: normal;
+    text-align: right;
 }
 
 .file-outcome-hashes {
@@ -4714,6 +4722,14 @@ body.proof-level-3 .toolbar-label {
 .file-outcomes .file-outcome-carried {
     color: var(--text-secondary);
     font-style: italic;
+}
+
+/* A file vaibify could not assess is neither a pass nor a failure: its
+   own colour, never the red of a divergence. A file whose bytes
+   differ while its published comparisons passed keeps the ordinary
+   text colour -- it passed. */
+.file-outcomes .file-outcome-not-assessed {
+    color: var(--color-orange);
 }
 
 /* Manifest comparison in the file viewers: one span per line, classed

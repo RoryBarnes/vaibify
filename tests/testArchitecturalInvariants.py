@@ -5258,7 +5258,8 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # 4301 -> 4313 (2026-10-17): the attestation summary carries the
     # assessed rerun's verdict, its tally, its comparison policy and
     # whether the record is historical, so the row can say which.
-    "routes/pipelineRoutes.py": 4313,
+    # -> 4316: and the tally line, which always rides with the verdict.
+    "routes/pipelineRoutes.py": 4316,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -7704,7 +7705,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # before any poll saw it running, and never an earlier one's.
     # -> 2388 (2026-10-13): the worker puts the record kind it settles
     # before any step runs on the live status, for the same row.
-    "routes/reproducibilityRoutes.py": 2388,
+    # 2388 -> 2390 (2026-10-17): the attestation payload carries the
+    # server's judgement of which records are previous checks, so the
+    # PROOF tab labels them without deciding what counts as one.
+    "routes/reproducibilityRoutes.py": 2390,
     # NEW at 946 (2026-08-03): routeScope.py crossed the cap when the
     # carrier-mode declaration joined it (migration plan phase 1c). 130
     # of the ~145 added lines are ONE data record,

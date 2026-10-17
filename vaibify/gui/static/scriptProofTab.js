@@ -788,6 +788,7 @@ var VaibifyProofTab = (function () {
             _fsRenderUnsettledTeardownCard() +
             _fsRenderL3AttestationCard(dictL3) +
             _fsRenderLatestReproductionCard() +
+            _fsRenderReproductionHistory() +
             _fsRenderL3HistoryTable();
     }
 
@@ -1146,14 +1147,20 @@ var VaibifyProofTab = (function () {
         }
         var sStatus = dictCurrent.sStatus || "unknown";
         var sStale = _fsRenderStalenessNotice(dictCurrent);
+        /* A record the server marks historical -- the byte-only
+           verifier's, or one graded under a comparison policy that is
+           no longer current -- is true about the check that made it
+           and never shown as current (design F11, D7). */
+        var bHistorical = dictCurrent.bHistorical === true;
+        var sSummary = bHistorical ? "previous check" : sStatus;
         // sStatus comes from an agent-writable JSON file; it must be
         // escaped in the attribute context too, not just as text.
         return '<div class="proof-card proof-attestation-card status-' +
-            fnEscapeHtml(sStatus) + '">' +
+            fnEscapeHtml(bHistorical ? "historical" : sStatus) + '">' +
             '<div class="proof-card-header">' +
             '<span class="proof-card-title">Level 3 Attestation</span>' +
             '<span class="proof-card-summary">' +
-            fnEscapeHtml(sStatus) + '</span>' +
+            fnEscapeHtml(sSummary) + '</span>' +
             '</div><div class="proof-card-body">' +
             _fsRenderAttestationDetails(dictCurrent) +
             sStale +
@@ -1170,6 +1177,7 @@ var VaibifyProofTab = (function () {
         var iTotal = dictCurrent.iOutputHashesTotal || 0;
         var fDuration = dictCurrent.fDurationSeconds || 0;
         return '<div class="proof-attestation-details">' +
+            fsRenderAssessmentVerdict(dictCurrent) +
             '<div>Timestamp: <code>' +
             fnEscapeHtml(sTimestamp) + '</code></div>' +
             '<div>Manifest digest: <code>' +
@@ -1183,6 +1191,51 @@ var VaibifyProofTab = (function () {
             ' s</div>' +
             _fsRenderFileOutcomesOrCarried(dictCurrent) +
             '</div>';
+    }
+
+    function fsDescribeHistoricalRecord(dictRecord) {
+        /* What a previous check said, in the words of the check that
+           said it. The byte-only verifier compared hashes alone and
+           could pass with failing tests, so its pass is "byte-identical
+           under the previous check", never a current reproduction. */
+        var sDay = String(dictRecord.sAttestedAtUtc || "").slice(0, 10);
+        if (dictRecord.sVerdictRendered) {
+            return dictRecord.sVerdictRendered + " (graded under " +
+                (dictRecord.sComparisonPolicy || "an earlier policy") +
+                ", a previous check, on " + sDay + ")";
+        }
+        if (dictRecord.sStatus === "passed") {
+            return "Byte-identical under the previous check (before " +
+                sDay + ")";
+        }
+        return "Did not reproduce under the previous check (before " +
+            sDay + ")";
+    }
+
+    function fsRenderAssessmentVerdict(dictRecord) {
+        /* The verdict is the comparison policy's own sentence, always
+           with its tally: a comparison verdict shown without the count
+           of files that differ reads as byte identity. Nothing here
+           decides a verdict; it renders the record's. */
+        if (dictRecord.bHistorical === true) {
+            return '<div class="proof-attestation-verdict ' +
+                'proof-attestation-historical">' +
+                fnEscapeHtml(fsDescribeHistoricalRecord(dictRecord)) +
+                '. The current Level 3 requirement does not accept a ' +
+                'previous check; verify again to assess this project.' +
+                '</div>';
+        }
+        if (!dictRecord.sVerdictRendered) return "";
+        var sTally = (dictRecord.dictAssessmentReport || {})
+            .sTallyRendered || dictRecord.sTallyRendered || "";
+        return '<div class="proof-attestation-verdict">' +
+            fnEscapeHtml(dictRecord.sVerdictRendered) + '</div>' +
+            (sTally ? '<div class="proof-attestation-tally">' +
+                fnEscapeHtml(sTally) + '</div>' : "") +
+            (dictRecord.sComparisonPolicy ?
+                '<div>Comparison policy: <code>' +
+                fnEscapeHtml(dictRecord.sComparisonPolicy) +
+                '</code></div>' : "");
     }
 
     function _fsRenderPinnedInputCounts(dictRecord) {
@@ -1245,6 +1298,7 @@ var VaibifyProofTab = (function () {
             fnEscapeHtml(sVerdict) + '</span>' +
             '</div><div class="proof-card-body">' +
             '<div class="proof-attestation-details">' +
+            fsRenderAssessmentVerdict(dictReproduction) +
             '<div>Recorded: <code>' +
             fnEscapeHtml(dictReproduction.sCreatedAtIso || "?") +
             '</code></div>' +
@@ -1260,6 +1314,30 @@ var VaibifyProofTab = (function () {
             '</div>' +
             _fsRenderCompareButton(dictReproduction, "reproduction") +
             '</div></div>';
+    }
+
+    function _fsRenderReproductionHistory() {
+        /* Every reproduction this clone recorded, newest first; the
+           latest one already has its own card above. Shown only when
+           there is an earlier one to add. */
+        var listRecords = (_dictLastL3Attestation &&
+            _dictLastL3Attestation.listReproductionHistory) || [];
+        if (listRecords.length < 2) return "";
+        var sRows = listRecords.slice(0, 20).map(function (dictRecord) {
+            return '<tr><td><code>' +
+                fnEscapeHtml(dictRecord.sCreatedAtIso || "?") +
+                '</code></td><td>' + fnEscapeHtml(
+                    dictRecord.sVerdictRendered ||
+                    dictRecord.sVerdict || "?") + '</td></tr>';
+        }).join("");
+        return '<div class="proof-card proof-reproduction-history-card">' +
+            '<div class="proof-card-header">' +
+            '<span class="proof-card-title">Your reproductions</span>' +
+            '<span class="proof-card-summary">' + listRecords.length +
+            ' recorded</span></div><div class="proof-card-body">' +
+            '<table class="proof-history-table"><thead><tr>' +
+            '<th>Recorded</th><th>Verdict</th></tr></thead><tbody>' +
+            sRows + '</tbody></table></div></div>';
     }
 
     function _fnBindCompareButtons() {
@@ -1330,6 +1408,11 @@ var VaibifyProofTab = (function () {
     function _fsRenderHistoryRow(dictEntry) {
         var sStatus = dictEntry.sStatus || "?";
         var sIconHtml = _fsBuildHistoryStatusIconHtml(sStatus);
+        /* A previous check is labelled as one; an assessed attempt
+           shows its verdict, the server's word for it. */
+        var sLabel = dictEntry.bHistorical === true ?
+            "previous check (" + sStatus + ")" :
+            (dictEntry.sVerdict || sStatus);
         var sManifest = (dictEntry.sManifestDigestAtAttestation ||
             "").slice(0, 19);
         var fDuration = dictEntry.fDurationSeconds || 0;
@@ -1337,7 +1420,7 @@ var VaibifyProofTab = (function () {
             '<td><code>' + fnEscapeHtml(
                 dictEntry.sAttestedAtUtc || "?") +
             '</code></td>' +
-            '<td>' + sIconHtml + ' ' + fnEscapeHtml(sStatus) +
+            '<td>' + sIconHtml + ' ' + fnEscapeHtml(sLabel) +
             '</td>' +
             '<td><code>' + fnEscapeHtml(sManifest) +
             '…</code></td>' +
@@ -1413,5 +1496,7 @@ var VaibifyProofTab = (function () {
         fnRender: fnRender,
         fdictGenerateTemplate: _fnHandleGenerateTemplate,
         fdictGetL3Snapshot: fdictGetL3Snapshot,
+        fsRenderAssessmentVerdict: fsRenderAssessmentVerdict,
+        fsDescribeHistoricalRecord: fsDescribeHistoricalRecord,
     };
 })();

@@ -2868,22 +2868,41 @@ var VaibifyWorkflowRequirements = (function () {
                 "itself; the Level 3 lights will pulse until the " +
                 "pipeline run is complete.";
         }
+        var dictLast = dictDetail.dictRebuildAttestation || null;
         if (dictDetail.bRebuildAttestationCurrent === true) {
-            return "A current rebuild attestation is on file.";
+            return "A current rebuild attestation is on file" +
+                _fsDescribeAssessedVerdict(dictLast, ": ") +
+                (dictLast && dictLast.sVerdictRendered ? "" : ".");
+        }
+        /* A previous check is history, never a current claim: the
+           byte-only verifier could pass with failing tests, so its
+           record does not satisfy the current requirement however its
+           manifest digest reads (design F11, D7). The phrasing is the
+           PROOF tab's, so the two never say it differently. */
+        if (dictLast && dictLast.bHistorical === true) {
+            return "The attestation on file is from a previous check: " +
+                VaibifyProofTab.fsDescribeHistoricalRecord(dictLast) +
+                ". The current Level 3 requirement does not accept it; " +
+                "run the verification again.";
         }
         // "Ran and failed" is not "never run", and saying the second
         // over the first told a researcher whose rerun had just
         // reported a failing step to go and run it. The attestation's
         // own status is what separates them.
-        var dictLast = dictDetail.dictRebuildAttestation || null;
         if (dictLast && dictLast.sStatus === "failed") {
+            if (dictLast.sVerdictRendered) {
+                return "The last rebuild did NOT pass" +
+                    _fsDescribeAssessedVerdict(dictLast, ": ");
+            }
             return "The last rebuild ran and did NOT reproduce. " +
                 _fsSummarizeHashCounts(dictLast);
         }
         if (dictLast && dictLast.sStatus) {
-            return "The last rebuild passed, but the envelope has " +
-                "changed since — run it again to attest the current " +
-                "manifest.";
+            return "The last rebuild passed" +
+                _fsDescribeAssessedVerdict(dictLast, " (") +
+                (dictLast.sVerdictRendered ? ")" : "") +
+                ", but the envelope has changed since — run it again " +
+                "to attest the current manifest.";
         }
         /* "Once every other check passes" was the old sentence, and it
            over-claimed: it read as including the Published-envelope
@@ -2901,6 +2920,15 @@ var VaibifyWorkflowRequirements = (function () {
             "passes — publishing changes nothing locally, so the " +
             "attestation survives, and the archive receives an " +
             "envelope already proven to reproduce.";
+    }
+
+    function _fsDescribeAssessedVerdict(dictLast, sLead) {
+        /* The assessed rerun's verdict and its tally, exactly as the
+           comparison policy worded them; empty for a record without
+           one. The tally always rides with the verdict. */
+        if (!dictLast || !dictLast.sVerdictRendered) return "";
+        return sLead + dictLast.sVerdictRendered +
+            (dictLast.sTallyRendered ? ". " + dictLast.sTallyRendered : "");
     }
 
     function _fsSummarizePinnedInputs(dictLast) {
@@ -3783,9 +3811,13 @@ var VaibifyWorkflowRequirements = (function () {
            day of the record, and an emulated success still reads
            "Reproduced" with the emulation named here. */
         var sDay = String(dictLabel.sRecordedIso || "").slice(0, 10);
+        /* The verdict's own wording when the record carries one, so a
+           pass with byte differences never hovers as byte identity. */
         return "Reproduced on " + sDay +
             (dictLabel.sPlatform ? " (" + dictLabel.sPlatform + ")" : "") +
-            (dictLabel.bEmulated ? " under emulation" : "") + ".";
+            (dictLabel.bEmulated ? " under emulation" : "") +
+            (dictLabel.sVerdictRendered ?
+                ": " + dictLabel.sVerdictRendered : "") + ".";
     }
 
     function _fsRenderInconclusiveAttemptGlyph(dictLabel) {

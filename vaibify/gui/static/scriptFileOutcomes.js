@@ -34,17 +34,59 @@ var VaibifyFileOutcomes = (function () {
         matched: 2,
     };
 
+    /* The assessed rerun's per-file outcome (schema 7), in the
+       comparison policy's own words, and the class each wears. A file
+       whose bytes differ but whose published comparisons passed is a
+       PASS and must never be coloured as a divergence; one vaibify
+       could not assess is neither a pass nor a failure. */
+    var _DICT_OUTCOME_WORDS = {
+        "byte-identical": "re-derived, byte-identical",
+        "comparisons passed": "bytes differ; published comparisons passed",
+        "failed": "failed",
+        "insufficient evidence": "not assessed",
+        "carried": "carried in unchanged",
+        "unchanged": "pinned input, unchanged",
+        "changed": "pinned input, changed",
+        "missing": "pinned input, missing",
+        "not graded": "not graded (published inputs changed)",
+    };
+    var _DICT_OUTCOME_CLASSES = {
+        "byte-identical": "matched",
+        "comparisons passed": "comparisons-passed",
+        "failed": "diverged",
+        "insufficient evidence": "not-assessed",
+        "carried": "carried",
+        "unchanged": "matched",
+        "changed": "diverged",
+        "missing": "missing",
+        "not graded": "not-assessed",
+    };
+    var _DICT_OUTCOME_RANK = {
+        "failed": 0, "changed": 0, "missing": 0,
+        "insufficient evidence": 1, "not graded": 1,
+        "comparisons passed": 2, "carried": 3,
+        "byte-identical": 4, "unchanged": 4,
+    };
+
     function _fiStatusRank(sStatus) {
         var iRank = _DICT_STATUS_RANK[sStatus];
         return typeof iRank === "number" ? iRank : 3;
+    }
+
+    function _fiOutcomeRank(dictOutcome) {
+        if (dictOutcome.sOutcome) {
+            var iRank = _DICT_OUTCOME_RANK[dictOutcome.sOutcome];
+            return typeof iRank === "number" ? iRank : 5;
+        }
+        return _fiStatusRank(dictOutcome.sStatus);
     }
 
     function flistSortOutcomes(listFileOutcomes) {
         return (listFileOutcomes || []).map(function (dictOutcome, iIndex) {
             return {dictOutcome: dictOutcome, iIndex: iIndex};
         }).sort(function (dictLeft, dictRight) {
-            var iDelta = _fiStatusRank(dictLeft.dictOutcome.sStatus) -
-                _fiStatusRank(dictRight.dictOutcome.sStatus);
+            var iDelta = _fiOutcomeRank(dictLeft.dictOutcome) -
+                _fiOutcomeRank(dictRight.dictOutcome);
             return iDelta !== 0 ? iDelta : dictLeft.iIndex - dictRight.iIndex;
         }).map(function (dictRanked) {
             return dictRanked.dictOutcome;
@@ -59,9 +101,19 @@ var VaibifyFileOutcomes = (function () {
     }
 
     function _fsOutcomeWord(dictOutcome) {
-        /* A pinned input (script, input data, environment file) was
-           never regenerated, only checked unchanged, so it must not
-           wear the word an output earns by being re-derived. */
+        /* The assessed outcome when the record carries one, with the
+           policy's reason -- "within vaibify's image-difference
+           threshold (policy v1)", or why a figure cannot be assessed.
+           Otherwise the byte-only verifier's word. A pinned input
+           (script, input data, environment file) was never
+           regenerated, only checked unchanged, so it must not wear the
+           word an output earns by being re-derived. */
+        if (dictOutcome.sOutcome) {
+            var sWord = _DICT_OUTCOME_WORDS[dictOutcome.sOutcome] ||
+                dictOutcome.sOutcome;
+            return dictOutcome.sOutcomeReason ?
+                sWord + ": " + dictOutcome.sOutcomeReason : sWord;
+        }
         var sStatus = dictOutcome.sStatus || "";
         if (dictOutcome.sRole === "pinned-input") {
             if (sStatus === "matched") return "pinned input, unchanged";
@@ -76,7 +128,9 @@ var VaibifyFileOutcomes = (function () {
            and squeezed the path and the verdict to a character or two
            (researcher-reported, 2026-09-27). The full hash stays one
            hover away. */
-        var sStatus = dictOutcome.sStatus || "";
+        var sStatus = dictOutcome.sOutcome ?
+            (_DICT_OUTCOME_CLASSES[dictOutcome.sOutcome] || "not-assessed") :
+            (dictOutcome.sStatus || "");
         var sWord = _fsOutcomeWord(dictOutcome);
         return '<li class="file-outcome file-outcome-' +
             fnEscapeHtml(sStatus) + '"><div class="file-outcome-head">' +

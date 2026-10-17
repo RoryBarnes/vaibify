@@ -28499,7 +28499,8 @@ LIST_FALSIFICATIONS = [
         ),
         source='vaibify/gui/static/styleMain.css',
         # the verdict is squeezed into a sliver, as the table did
-        old='.file-outcome-word {\n    white-space: nowrap;\n}\n',
+        # (re-pointed 2026-10-17: the word now wraps to carry its reason)
+        old='.file-outcome-word {\n    /* An assessed outcome carries its reason, which can be a sentence,\n       so the word wraps rather than overflowing a narrow card. */\n    white-space: normal;\n    text-align: right;\n}\n',
         new=(
             '.file-outcome-word {\n    display: inline-block;\n'
             '    width: 2ch;\n    word-break: break-all;\n}\n'
@@ -29122,8 +29123,8 @@ LIST_FALSIFICATIONS = [
         ),
         # The author's label never names a later attempt that reached no verdict.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
-        new='        sPlatform=str(dictProvenance.get("sPlatform") or ""),\n    )\n',
+        old='        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),\n    )\n    _fnNameLaterNoVerdict(dictLabel, dictLastNoVerdict, sRecordedIso)\n',
+        new='        sVerdictRendered=str(dictAttestation.get("sVerdictRendered") or ""),\n    )\n',
     ),
     Falsification(
         nodeid=(
@@ -34639,5 +34640,107 @@ LIST_FALSIFICATIONS = [
         source='vaibify/gui/pipelineRunner.py',
         old='        if (dictRerunEvidence is not None and sInvocationScope\n',
         new='        if (sInvocationScope\n',
+    ),
+    # --- 2026-10-17: the assessed rerun's guards are anchored ---
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testClearingRefusesATargetThatContainsAProtectedFile'
+        ),
+        # containment answers only for identical paths
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    return sInner == sOuter or sInner.startswith(sOuter + os.sep)\n',
+        new='    return sInner == sOuter\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testHashingNeverFollowsASymlinkOutOfTheRepository'
+        ),
+        # a symlink out of the repository is hashed
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='    if sReal == sRootReal or not sReal.startswith(sRootReal + os.sep):\n        return ""\n',
+        new='    if sReal == sRootReal:\n        return ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testCapabilitiesRefuseAFloorKeyOutsideTheAllowlist'
+        ),
+        # any floor key a profile names is accepted
+        source='vaibify/reproducibility/rerunProcedure.py',
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n',
+        new='        if False:\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testThePlanRefusesWhatTheShadowWouldRefuse'
+        ),
+        # the plan is built without the shadow's refusals
+        source='vaibify/reproducibility/rerunPreparation.py',
+        old='    _fnRefuseAmbiguousOverlap(dictClassification)\n    _fnRefuseUnsafeProducedPaths(dictClassification["setProduced"])\n',
+        new='    pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testRerunProcedureGuards.py::'
+            'testTheAdapterWritesOutsideItsRepositoryOnlyIntoARunDirectory'
+        ),
+        # a run directory anywhere is accepted
+        source='vaibify/reproducibility/repoFiles.py',
+        old='            or posixpath.dirname(sDirectory) != posixpath.dirname(sRoot)\n',
+        new='',
+    ),
+    # --- 2026-10-17: the assessed rerun's verdicts on screen (Phase 3) ---
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_comparison_verdict_always_carries_its_tally'
+        ),
+        # the row's verdict loses its tally
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            (dictLast.sTallyRendered ? ". " + dictLast.sTallyRendered : "");\n',
+        new='            "";\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_pass_with_byte_differences_is_worded_and_coloured_as_a_pass'
+        ),
+        # a file outcome is worded from its bytes alone
+        source='vaibify/gui/static/scriptFileOutcomes.js',
+        old='        if (dictOutcome.sOutcome) {\n            var sWord',
+        new='        if (false) {\n            var sWord',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_failed_rebuild_names_the_failed_command'
+        ),
+        # an assessed failure is described by hash counts alone
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='            if (dictLast.sVerdictRendered) {\n                return "The last rebuild did NOT pass" +',
+        new='            if (false) {\n                return "The last rebuild did NOT pass" +',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_a_byte_only_attestation_reads_as_a_previous_check'
+        ),
+        # a historical attestation is described as current
+        source='vaibify/gui/static/scriptWorkflowRequirements.js',
+        old='        if (dictLast && dictLast.bHistorical === true) {\n',
+        new='        if (false) {\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/browser/testAssessedVerdictsOnScreen.py::'
+            'test_an_attestation_under_an_older_policy_reads_as_a_previous_check'
+        ),
+        # the PROOF card shows a historical verdict as current
+        source='vaibify/gui/static/scriptProofTab.js',
+        old='        if (dictRecord.bHistorical === true) {\n            return \'<div class="proof-attestation-verdict \' +',
+        new='        if (false) {\n            return \'<div class="proof-attestation-verdict \' +',
     ),
 ]

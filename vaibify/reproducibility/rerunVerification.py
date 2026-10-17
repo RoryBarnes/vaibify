@@ -916,16 +916,21 @@ def _flistAttachOutputOutcomes(listFileOutcomes, dictReport):
     A regenerated or carried output takes the assessment's outcome; a
     pinned input reads ``unchanged``, ``changed`` or ``missing``.
     """
-    dictGraded = {dictOutput["sPath"]: dictOutput["sOutcome"]
+    dictGraded = {dictOutput["sPath"]: dictOutput
                   for dictOutput in dictReport["listOutputs"]}
     dictInputWords = {S_FILE_MATCHED: "unchanged", S_FILE_DIVERGED: "changed",
                       S_FILE_MISSING: "missing"}
     listAttached = []
     for dictFile in listFileOutcomes:
         dictWithOutcome = dict(dictFile)
-        dictWithOutcome["sOutcome"] = dictGraded.get(
-            dictFile["sPath"],
-            dictInputWords.get(dictFile["sStatus"], dictFile["sStatus"]))
+        dictOutput = dictGraded.get(dictFile["sPath"])
+        if dictOutput is not None:
+            dictWithOutcome["sOutcome"] = dictOutput["sOutcome"]
+            dictWithOutcome["sOutcomeReason"] = dictOutput.get("sReason", "")
+        else:
+            dictWithOutcome["sOutcome"] = dictInputWords.get(
+                dictFile["sStatus"], dictFile["sStatus"])
+            dictWithOutcome["sOutcomeReason"] = ""
         listAttached.append(dictWithOutcome)
     return listAttached
 

@@ -80,6 +80,7 @@ from ...reproducibility.l3Attestation import (
     S_ATTESTATION_FILENAME,
     S_STATUS_FAILED,
     S_STATUS_PASSED,
+    fbAttestationIsHistorical,
     fdictAssessmentFieldsFromOutcome,
     fdictBuildAttestation,
     fdictReadAttestation,
@@ -636,6 +637,11 @@ def _fdictBuildAttestationResponse(sContainerId, filesRepo):
         reproductionRecord.flistReadReproductionRecords(filesRepo)
         if bHasRepo else []
     )
+    # Whether each record predates the current assessment contract is
+    # the SERVER's judgement, shipped beside the record, so the page
+    # labels a previous check without deciding what counts as one.
+    for dictRecord in ([dictCurrent] if dictCurrent else []) + listHistory:
+        dictRecord["bHistorical"] = fbAttestationIsHistorical(dictRecord)
     return {
         "dictCurrentAttestation": dictCurrent,
         "listHistory": listHistory,
