@@ -21823,7 +21823,7 @@ LIST_FALSIFICATIONS = [
         old=(
             '    dictLock = _fdictWriteLockTier(filesRepo, sContainerName)\n'
             '    dictEnvironment = _fdictWriteEnvironmentTier(\n'
-            '        filesRepo, sContainerName, listHostBinaries,\n'
+            '        filesRepo, sContainerName, listHostBinaries, dictWorkflow,\n'
             '    )\n'
             '    return {\n'
             '        "MANIFEST.sha256": _fdictWriteManifestTier(\n'
@@ -21843,7 +21843,8 @@ LIST_FALSIFICATIONS = [
             '        ),\n'
             '        ".vaibify/environment.json": '
             '_fdictWriteEnvironmentTier(\n'
-            '            filesRepo, sContainerName, listHostBinaries,\n'
+            '            filesRepo, sContainerName, listHostBinaries, '
+            'dictWorkflow,\n'
             '        ),\n'
             '    }\n'
         ),
@@ -25952,13 +25953,13 @@ LIST_FALSIFICATIONS = [
             '        _flistCollectPreflightWarnings,\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
             '        dictVariables.get("sRepoRoot", ""),\n'
-            '    )\n'
+            '    ) + flistDescribeExecutionWarnings(dictVariables)\n'
         ),
         new=(
             '    listPreflightWarnings = _flistCollectPreflightWarnings(\n'
             '        connectionDocker, sContainerId, dictWorkflow,\n'
             '        dictVariables.get("sRepoRoot", ""),\n'
-            '    )\n'
+            '    ) + flistDescribeExecutionWarnings(dictVariables)\n'
         ),
     ),
     Falsification(
@@ -29090,8 +29091,8 @@ LIST_FALSIFICATIONS = [
         # records are read, so dropping that routing is what lets a
         # reader's record speak for the author.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
-        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
+        new='    ) == "never":\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
     ),
     # --- 2026-10-12: the author sees "Reproduced" for their own
     # CURRENT Level 3 attestation ---
@@ -29112,7 +29113,7 @@ LIST_FALSIFICATIONS = [
         ),
         # A passed attestation is read as current whatever the manifest now says.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):\n',
         new='    if (l3Attestation.fdictReadAttestation(filesPoll) or {}).get("sStatus") != "passed":\n',
     ),
     Falsification(
@@ -29122,7 +29123,7 @@ LIST_FALSIFICATIONS = [
         ),
         # Any attestation on file shows the label, failed or not.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll):\n',
+        old='    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):\n',
         new='    if l3Attestation.fdictReadAttestation(filesPoll) is None:\n',
     ),
     Falsification(
@@ -29152,8 +29153,8 @@ LIST_FALSIFICATIONS = [
         ),
         # A reader's clone is judged by the author's attestation it carries.
         source='vaibify/reproducibility/reproductionLabel.py',
-        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
-        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)\n',
+        old='    ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
+        new='    ) != gitEvidence.S_MANIFEST_OWNERSHIP_UNDETERMINED:\n        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)\n',
     ),
     Falsification(
         nodeid=(
@@ -34939,5 +34940,216 @@ LIST_FALSIFICATIONS = [
             '                "listDecisiveVerdicts", [])\n'
         ),
         new='        if (dictRecord.get("sVerdict") in ("reproduced", "diverged")\n',
+    ),
+    # --- 2026-10-17: execution profiles (Phase 5) ---
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testEachStageSeesWhatTheOrderPromises'
+        ),
+        source='vaibify/gui/determinismEnvironment.py',
+        # Stage A reads the processor with the image's settings still set
+        old='    return ["env"] + listUnset + [\n',
+        new='    return ["env"] + [\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAProcessorBelowTheLevelGetsThePinsAndNotTheFloor'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # a dropped floor key is no longer unset, so the image's value stands
+        old='            listParts.append(f"unset {sKey} && ")\n',
+        new='            pass\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheDecisionKeepsThePinsWhenTheFloorIsDropped'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # every requested setting is dropped with the floor
+        old='            if sKey not in listDropped},\n',
+        new='            if not listDropped},\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheAuthorIsWarnedBeforeARunWithoutTheFloor'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # the run-start warnings leave the profile's out
+        old='    ) + flistDescribeExecutionWarnings(dictVariables)\n',
+        new='    )\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAProfileThisVaibifyLacksStopsTheRunBeforeAnyStep'
+        ),
+        source='vaibify/gui/pipelineRunner.py',
+        # a profile that cannot be looked up runs the steps anyway
+        old='    if dictVariables.get(S_EXECUTION_PROFILE_ERROR_KEY):\n        return [dictVariables[S_EXECUTION_PROFILE_ERROR_KEY]]\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testAnImageWithoutNumpyIsSaid'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # an absent NumPy is recorded as installed
+        old='        dictProbe["sNumpyState"] = "NumPy not installed"\n',
+        new='        dictProbe["sNumpyState"] = "installed"\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testANumpyWithoutBundledOpenblasIsSaid'
+        ),
+        source='vaibify/reproducibility/rerunProcedure.py',
+        # a bundled OpenBLAS is assumed to be there
+        old='    if not listLibraries:\n        return {"sState": "OpenBLAS not detected",\n',
+        new='    if False:\n        return {"sState": "OpenBLAS not detected",\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheShadowReplaysTheRecordedProfileNotTheTable'
+        ),
+        source='vaibify/reproducibility/rerunVerification.py',
+        # the recorded profile is looked up in the current table again
+        old='        return executionProfiles.fdictRequireValidProfile(dictRecorded), ""\n',
+        new='        return executionProfiles.fdictProfileFromTable(\n            dictRecorded["sProfileId"]), ""\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheEnvelopeRecordsTheProfileTheAnswerNames'
+        ),
+        source='vaibify/reproducibility/dataArchiver.py',
+        # the envelope records the default profile whatever the answer
+        old='        "dictExecutionProfile": fdictWorkflowExecutionProfile(dictWorkflow),\n',
+        new='        "dictExecutionProfile": fdictWorkflowExecutionProfile({}),\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testChangingTheAnswerRetiresTheAttestationAndKeepsIt'
+        ),
+        source='vaibify/reproducibility/l3Attestation.py',
+        # the currency check ignores the record's profile
+        old='    if fsDescribeProfileMismatch(dictPayload, dictWorkflow):\n        return False\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesASettingOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # any setting a recorded profile names is admitted
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n            listProblems.append(f"setting {sKey!r} is not allowed")\n',
+        new='        if False:\n            listProblems.append(f"setting {sKey!r} is not allowed")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesAValueOutsideThePattern'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # a value's type is checked and its characters are not
+        old='        elif not isinstance(sValue, str) or not _RE_SETTING_VALUE.match(sValue):\n',
+        new='        elif not isinstance(sValue, str):\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheHostRefusesAFloorKeyOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # any floor key a recorded profile names is admitted
+        old='        if sKey not in TUPLE_EXECUTION_SETTING_KEYS:\n            listProblems.append(f"floor key {sKey!r} is not allowed")\n',
+        new='        if False:\n            listProblems.append(f"floor key {sKey!r} is not allowed")\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesASettingOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes any recorded setting through
+        old='        *) fnRefuseTheProfile "names $sVaibifyKey, which is not allowed" ;;\n',
+        new='        *) ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesAValueOutsideThePattern'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes a recorded value unchecked
+        old='    if ! [[ "$sVaibifyValue" =~ $sVaibifyValuePattern ]]; then\n',
+        new='    if false; then\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptRefusesAFloorKeyOutsideTheAllowlist'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script passes any recorded floor key through
+        old='        *) fnRefuseTheProfile "names floor key $sVaibifyKey, which is not allowed" ;;\n',
+        new='        *) ;;\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testTheScriptUnsetsOnlyAllowlistedKeysStageANames'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the script unsets whatever the capability reading prints
+        old='        \'        *) echo "Could not run: the capability reading named \'\n        \'$sVaibifyKey" >&2; exit 4 ;;\',\n',
+        new='        \'        *) unset "$sVaibifyKey" ;;\',\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testADashboardTestRunGetsTheProfilesSettings'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # a dashboard test command is built without the Stage A decision
+        old='    sFullCmd = fsBuildTestExecutionPrefix(\n        connectionDocker, sContainerId, dictWorkflow,\n    ) + _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)\n',
+        new='    sFullCmd = _fsBuildCategoryCommand(dictStep, dictWorkflow, listCmds, sCategory)\n',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testTheAcrossProfileReproducesTheCommittedFixture'
+        ),
+        source='vaibify/reproducibility/reproduceScriptGenerator.py',
+        # the validated profile never reaches the container
+        old='    ${{saProfileOptions[@]+"${{saProfileOptions[@]}}"}} \\\\\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfilesLive.py::'
+            'testTheAcrossProfileGivesTheSameBytesOnTwoCores'
+        ),
+        source='vaibify/reproducibility/executionProfiles.py',
+        # across-v1 requests no OpenBLAS thread pin
+        old='            "OPENBLAS_NUM_THREADS": "1",\n',
+        new='',
+    ),
+    Falsification(
+        nodeid=(
+            'tests/testExecutionProfiles.py::'
+            'testADashboardTestRunOfAProfileNotKnownHereIsRefused'
+        ),
+        source='vaibify/gui/routes/testRoutes.py',
+        # a profile this vaibify lacks is let through to the test run
+        old='        raise HTTPException(409, str(error)) from error\n',
+        new='        return\n',
     ),
 ]

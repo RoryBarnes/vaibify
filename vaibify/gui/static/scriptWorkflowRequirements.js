@@ -2898,11 +2898,15 @@ var VaibifyWorkflowRequirements = (function () {
                 _fsSummarizeHashCounts(dictLast);
         }
         if (dictLast && dictLast.sStatus) {
+            /* The server names a changed execution profile; the
+               envelope-changed sentence would be false for it. */
             return "The last rebuild passed" +
                 _fsDescribeAssessedVerdict(dictLast, " (") +
                 (dictLast.sVerdictRendered ? ")" : "") +
-                ", but the envelope has changed since — run it again " +
-                "to attest the current manifest.";
+                (dictLast.sProfileMismatch
+                    ? ", but " + dictLast.sProfileMismatch + "."
+                    : ", but the envelope has changed since — run it " +
+                      "again to attest the current manifest.");
         }
         /* "Once every other check passes" was the old sentence, and it
            over-claimed: it read as including the Published-envelope

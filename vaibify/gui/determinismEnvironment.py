@@ -13,6 +13,15 @@ recording when it did **not** hold. A reproduction that later fails on
 differing bytes must be explainable, and an unrecorded skip makes it a
 mystery. Unknown is never graded as clean.
 
+The run's execution profile is applied here too (design I10), because
+it is the same kind of guarantee: Stage A reads the processor in a
+process that loads no numerical library and decides which of the
+profile's settings this processor can honor; the applied settings join
+the prefix (or, on the host, the overlay); and Stage B loads NumPy under
+exactly that prefix and records what it chose. Neither stage ever
+blocks a run: an unreadable processor drops the floor and says why, and
+a probe that could not run says so.
+
 Split out of ``pipelineRunner`` because it changes for reproducibility
 reasons on a different cadence than step execution does; the runner
 re-exports every name so existing imports and patch targets still
@@ -20,6 +29,7 @@ resolve.
 """
 
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -31,6 +41,9 @@ __all__ = [
     "S_ENV_OVERLAY_KEY",
     "S_DETERMINISM_APPLIED_KEY",
     "S_DETERMINISM_EPOCH_SOURCE_KEY",
+    "S_EXECUTION_SETTINGS_KEY",
+    "S_EXECUTION_PROBE_KEY",
+    "S_EXECUTION_PROFILE_ERROR_KEY",
     "S_MATPLOTLIB_CONFIG_ROOT",
     "S_MATPLOTLIB_DIRECTORY_PREFIX",
     "fsBuildMatplotlibSaltShell",
@@ -41,6 +54,10 @@ S_ENV_PREFIX_KEY = "__sEnvPrefix"
 S_ENV_OVERLAY_KEY = "__dictEnvOverlay"
 S_DETERMINISM_APPLIED_KEY = "__bDeterminismApplied"
 S_DETERMINISM_EPOCH_SOURCE_KEY = "__sDeterminismEpochSource"
+S_EXECUTION_SETTINGS_KEY = "__dictExecutionSettings"
+S_EXECUTION_PROBE_KEY = "__dictExecutionProbe"
+S_EXECUTION_PROFILE_ERROR_KEY = "__sExecutionProfileError"
+_F_EXECUTION_STAGE_TIMEOUT_SECONDS = 120
 
 # matplotlib reads ``matplotlibrc`` from ``MPLCONFIGDIR`` only after a
 # working-directory ``matplotlibrc`` and after ``MATPLOTLIBRC``
@@ -333,9 +350,192 @@ async def _fsWriteHostMatplotlibSalt(connectionDocker, sContainerId, iEpoch):
     return sConfigDirectory
 
 
+def _fdictReadPrefixedRecord(sOutput, sPrefix):
+    """Return the JSON object on the last line carrying ``sPrefix``, or None."""
+    for sLine in reversed((sOutput or "").splitlines()):
+        if sLine.startswith(sPrefix):
+            try:
+                jsonRecord = json.loads(sLine[len(sPrefix):])
+            except ValueError:
+                return None
+            return jsonRecord if isinstance(jsonRecord, dict) else None
+    return None
+
+
+def flistBuildCapabilitiesCommand(dictProfile):
+    """Return Stage A's argv: the procedure, with every allowlisted key unset.
+
+    ``python3 -I`` with ``env -u`` for each setting a profile may name,
+    so nothing the image or a step exported can reach the reading.
+    """
+    from vaibify.reproducibility.rerunAssessment import fsBuildProcedureProgram
+    from vaibify.reproducibility.rerunProcedure import (
+        TUPLE_EXECUTION_SETTING_KEYS,
+    )
+    listUnset = []
+    for sKey in TUPLE_EXECUTION_SETTING_KEYS:
+        listUnset += ["-u", sKey]
+    return ["env"] + listUnset + [
+        "python3", "-I", "-c", fsBuildProcedureProgram(), "capabilities",
+        "--required-level", dictProfile["sRequiredLevel"],
+        "--floor-keys", ",".join(dictProfile["listFloorKeys"]), "--machine",
+    ]
+
+
+def _fdictRunProcedureStage(
+    connectionDocker, sContainerId, sProjectRepoPath, listCommand, sPrefix,
+):
+    """Run one procedure stage in the container; return its record or why not."""
+    from vaibify.config.mutationAdmission import fnReRaiseControlPlaneRefusal
+    try:
+        iExitCode, sStdout, _sStderr = _ffilesOpenProjectRepoFiles(
+            connectionDocker, sContainerId, sProjectRepoPath,
+        ).ftRunCommand(listCommand, _F_EXECUTION_STAGE_TIMEOUT_SECONDS)
+    except Exception as error:  # noqa: BLE001 -- a stage never blocks a run
+        fnReRaiseControlPlaneRefusal(error)
+        return {"sFailure": f"it could not run: {type(error).__name__}"}
+    dictRecord = _fdictReadPrefixedRecord(sStdout, sPrefix)
+    if iExitCode != 0 or dictRecord is None:
+        return {"sFailure": f"it exited {iExitCode} with no record"}
+    return dictRecord
+
+
+def fdictDecideRunExecutionSettings(
+    connectionDocker, sContainerId, sProjectRepoPath, dictProfile,
+):
+    """Stage A: read this processor before any library loads, then decide.
+
+    A host project is read in this process, from this machine's own
+    ``/proc/cpuinfo`` where one exists; elsewhere the capabilities are
+    unreadable, and the floor is not applied.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility import executionProfiles, rerunProcedure
+    if fbIsHostProject(sContainerId):
+        dictCapabilities = dict(
+            rerunProcedure.fdictReadProcessorCapabilities(),
+            listSettingsPresent=sorted(
+                sKey for sKey in rerunProcedure.TUPLE_EXECUTION_SETTING_KEYS
+                if sKey in os.environ))
+    else:
+        dictRecord = _fdictRunProcedureStage(
+            connectionDocker, sContainerId, sProjectRepoPath,
+            flistBuildCapabilitiesCommand(dictProfile),
+            rerunProcedure.S_CAPABILITIES_RESULT_PREFIX)
+        dictCapabilities = dictRecord.get("dictCapabilities")
+        if not isinstance(dictCapabilities, dict):
+            dictCapabilities = {
+                "bReadable": False, "sVendor": "", "sLevel": "",
+                "iVisibleCores": 0, "sArchitecture": "",
+                "sUnreadableReason": "the capability reading failed: "
+                + dictRecord.get("sFailure", "no capabilities recorded"),
+            }
+        # What the reading's own process saw of the allowlisted
+        # settings: none, because each was unset for it (I10).
+        dictCapabilities = dict(
+            dictCapabilities, listSettingsPresent=list(
+                dictRecord.get("listSettingsPresent") or []))
+    return executionProfiles.fdictDecideExecutionSettings(
+        dictProfile, dictCapabilities)
+
+
+def fdictProbeUnderPrefix(
+    connectionDocker, sContainerId, sProjectRepoPath, sEnvPrefix,
+):
+    """Stage B: load NumPy under exactly the steps' prefix; report what it chose.
+
+    Not run for a host project: the helper interpreter there is
+    vaibify's own, and would describe the wrong NumPy.
+    """
+    from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility.rerunAssessment import fsBuildProcedureProgram
+    from vaibify.reproducibility.rerunProcedure import S_PROBE_RESULT_PREFIX
+    if fbIsHostProject(sContainerId):
+        return {"sProbeState": "probe not run in host mode"}
+    dictProbe = _fdictRunProcedureStage(
+        connectionDocker, sContainerId, sProjectRepoPath,
+        ["bash", "-c", sEnvPrefix + 'exec python3 -c "$1" probe --machine',
+         "vaibifyProbe", fsBuildProcedureProgram()],
+        S_PROBE_RESULT_PREFIX)
+    if "sFailure" in dictProbe:
+        return {"sProbeState": "the probe did not run: " + dictProbe["sFailure"]}
+    dictProbe["sProbeState"] = "ran"
+    return dictProbe
+
+
+async def _fdictApplyStageA(
+    connectionDocker, sContainerId, dictWorkflow, dictVariables,
+    dictExecutionProfile,
+):
+    """Decide the run's execution settings, or record a profile not known here.
+
+    ``dictExecutionProfile`` is a profile to REPLAY (the rerun lanes pass
+    the envelope's, already validated); otherwise the workflow's answer
+    is looked up in the table.
+    """
+    from vaibify.reproducibility import executionProfiles
+    try:
+        dictProfile = dictExecutionProfile or (
+            executionProfiles.fdictWorkflowExecutionProfile(dictWorkflow))
+    except executionProfiles.ExecutionProfileError as error:
+        dictVariables[S_EXECUTION_PROFILE_ERROR_KEY] = str(error)
+        return None
+    dictSettings = await asyncio.to_thread(
+        fdictDecideRunExecutionSettings, connectionDocker, sContainerId,
+        dictWorkflow.get("sProjectRepoPath", ""), dictProfile,
+    )
+    dictVariables[S_EXECUTION_SETTINGS_KEY] = dictSettings
+    return dictSettings
+
+
+def fsBuildTestExecutionPrefix(connectionDocker, sContainerId, dictWorkflow):
+    """Return the settings a dashboard test run gets: Stage A's, as a run's.
+
+    "Run tests" builds its own commands, so without this it would run
+    under different settings from a pipeline run of the same step. A
+    profile that requests nothing needs no reading of the processor; a
+    profile this vaibify lacks is refused before the test run starts
+    (``testRoutes``), so it is answered here with no settings.
+    """
+    from vaibify.reproducibility import executionProfiles
+    try:
+        dictProfile = executionProfiles.fdictWorkflowExecutionProfile(
+            dictWorkflow)
+    except executionProfiles.ExecutionProfileError:
+        return ""
+    if not dictProfile["dictRequested"]:
+        return ""
+    return executionProfiles.fsBuildExecutionSettingsPrefix(
+        fdictDecideRunExecutionSettings(
+            connectionDocker, sContainerId,
+            (dictWorkflow or {}).get("sProjectRepoPath", ""), dictProfile))
+
+
+def fdictDescribeRunContext(dictVariables):
+    """Return the run's Stage A decision and Stage B observations, kept apart."""
+    return {
+        "dictSettings": dictVariables.get(S_EXECUTION_SETTINGS_KEY),
+        "dictProbe": dictVariables.get(S_EXECUTION_PROBE_KEY),
+    }
+
+
+def flistDescribeExecutionWarnings(dictVariables):
+    """Return the run-start warning a floor this processor cannot honor earns."""
+    dictSettings = dictVariables.get(S_EXECUTION_SETTINGS_KEY) or {}
+    dictDecision = dictSettings.get("dictDecision") or {}
+    if dictDecision.get("sFloorState") != "not applied":
+        return []
+    return [
+        dictDecision.get("sReason", "floor not applied")
+        + f". The {dictSettings.get('sProfileId', '')} profile's other "
+        "settings still apply, but outputs that depend on the processor's "
+        "instructions may differ from a computer that honors the floor."
+    ]
+
+
 async def _fnInjectDeterminismEnvPrefix(
     connectionDocker, sContainerId, dictWorkflow, dictVariables,
-    iSourceDateEpochOverride=0,
+    iSourceDateEpochOverride=0, dictExecutionProfile=None,
 ):
     """Compute the determinism guarantees once and stash them.
 
@@ -353,10 +553,22 @@ async def _fnInjectDeterminismEnvPrefix(
     The slug travels unconditionally, so a non-empty prefix or overlay
     is NOT evidence the epoch was exported — callers must read the
     boolean, never sniff the carrier.
+
+    The execution profile goes in the same order every lane follows
+    (I10): Stage A decides before any prefix exists, the applied
+    settings join the prefix, and Stage B observes under that exact
+    prefix -- the one every step then receives.
     """
     from .fileStatusManager import fsWorkflowSlugFromPath
     from .workflowManager import fsWorkflowLoadedFromPath
     from vaibify.config.registryManager import fbIsHostProject
+    from vaibify.reproducibility.executionProfiles import (
+        fsBuildExecutionSettingsPrefix,
+    )
+    dictSettings = await _fdictApplyStageA(
+        connectionDocker, sContainerId, dictWorkflow, dictVariables,
+        dictExecutionProfile,
+    ) or {}
     sProjectRepoPath = dictWorkflow.get("sProjectRepoPath", "")
     sWorkflowSlug = fsWorkflowSlugFromPath(
         fsWorkflowLoadedFromPath(dictWorkflow),
@@ -377,22 +589,33 @@ async def _fnInjectDeterminismEnvPrefix(
         dictVariables[S_DETERMINISM_APPLIED_KEY] = (
             "SOURCE_DATE_EPOCH" in dictOverlay
         )
+        dictOverlay.update(dictSettings.get("dictApplied") or {})
         if sWorkflowSlug:
             dictOverlay["VAIBIFY_ACTIVE_WORKFLOW_SLUG"] = sWorkflowSlug
         dictVariables[S_ENV_OVERLAY_KEY] = dictOverlay
         dictVariables[S_ENV_PREFIX_KEY] = ""
+        dictVariables[S_EXECUTION_PROBE_KEY] = await asyncio.to_thread(
+            fdictProbeUnderPrefix, connectionDocker, sContainerId,
+            sProjectRepoPath, "",
+        )
         return
     sEnvPrefix = await _fsBuildDeterminismEnvPrefix(
         connectionDocker, sContainerId, sProjectRepoPath,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
     )
     dictVariables[S_DETERMINISM_APPLIED_KEY] = bool(sEnvPrefix)
+    sEnvPrefix += fsBuildExecutionSettingsPrefix(dictSettings)
     if sWorkflowSlug:
         sEnvPrefix += (
             "export VAIBIFY_ACTIVE_WORKFLOW_SLUG="
             + fsShellQuote(sWorkflowSlug) + " && "
         )
     dictVariables[S_ENV_PREFIX_KEY] = sEnvPrefix
+    if dictSettings:
+        dictVariables[S_EXECUTION_PROBE_KEY] = await asyncio.to_thread(
+            fdictProbeUnderPrefix, connectionDocker, sContainerId,
+            sProjectRepoPath, sEnvPrefix,
+        )
 
 
 async def _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables):
@@ -400,6 +623,22 @@ async def _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables):
     sSource = dictVariables.get(S_DETERMINISM_EPOCH_SOURCE_KEY)
     if sSource:
         await fnLogging({"sType": "output", "sLine": sSource})
+
+
+async def _fnAnnounceExecutionSettings(fnLogging, dictVariables):
+    """Write the profile, and the settings this run requested and applied."""
+    dictSettings = dictVariables.get(S_EXECUTION_SETTINGS_KEY)
+    if not dictSettings:
+        return
+    dictApplied = dictSettings.get("dictApplied") or {}
+    sApplied = ", ".join(
+        f"{sKey}={sValue}" for sKey, sValue in sorted(dictApplied.items()))
+    sLine = (f"Execution profile {dictSettings.get('sProfileId', '')}: "
+             + (f"applied {sApplied}" if sApplied else "no settings requested"))
+    sReason = (dictSettings.get("dictDecision") or {}).get("sReason")
+    if sReason:
+        sLine += f"; {sReason}"
+    await fnLogging({"sType": "output", "sLine": sLine})
 
 
 async def _fnAnnounceDegradedDeterminism(fnLogging, dictVariables):

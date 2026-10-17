@@ -21,7 +21,7 @@ import pytest
 
 from vaibify.gui import pipelineRunner
 from tests.rerunAssessmentHarness import fnRecordPlannedCommandsAsRun
-from vaibify.reproducibility import rerunPreparation
+from vaibify.reproducibility import rerunAssessment, rerunPreparation
 from vaibify.reproducibility.l3Attestation import fdictBuildAttestation
 from vaibify.reproducibility.rerunPreparation import (
     fdictClassifyRerunPaths,
@@ -418,7 +418,7 @@ def testAnOutputOutsideTheRepositoryIsRefused(pathPinnedRepo):
 def testAnUnrunnablePreparationIsRefusedNotSkipped(pathPinnedRepo):
     dictWorkflow = {"listSteps": [_fdictStep("Compute", ["result.txt"])]}
     with patch.object(
-        rerunPreparation, "_fsBuildClearingProgram",
+        rerunAssessment, "fsBuildProcedureProgram",
         return_value="raise SystemExit(7)",
     ):
         dictOutcome = _fdictRerun(

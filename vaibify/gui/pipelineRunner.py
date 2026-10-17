@@ -132,12 +132,16 @@ from .determinismEnvironment import (  # noqa: F401
     S_ENV_OVERLAY_KEY,
     S_DETERMINISM_APPLIED_KEY,
     S_MATPLOTLIB_CONFIG_ROOT,
+    S_EXECUTION_PROFILE_ERROR_KEY,
     _fiQueryHeadCommitEpoch,
     fsBuildMatplotlibSaltShell,
     _fsBuildDeterminismEnvPrefix,
     _fnInjectDeterminismEnvPrefix,
     _fnAnnounceDegradedDeterminism,
     _fnAnnounceDeterminismEpochSource,
+    _fnAnnounceExecutionSettings,
+    fdictDescribeRunContext,
+    flistDescribeExecutionWarnings,
 )
 
 # ---------------------------------------------------------------------------
@@ -174,6 +178,8 @@ def _flistValidateStepsBlocking(
         # completion merge attaches results to, and running with a
         # duplicate would attribute one step's results to another.
         return [sIdConflict]
+    if dictVariables.get(S_EXECUTION_PROFILE_ERROR_KEY):
+        return [dictVariables[S_EXECUTION_PROFILE_ERROR_KEY]]
     for iIndex, dictStep in enumerate(dictWorkflow["listSteps"]):
         iStepNumber = iIndex + 1
         if not _fbStepIncludedInRun(
@@ -1767,8 +1773,14 @@ async def _ftPrepareLogAndVariables(
     await _fnInjectDeterminismEnvPrefix(
         connectionDocker, sContainerId, dictWorkflow, dictVariables,
         iSourceDateEpochOverride=iSourceDateEpochOverride,
+        dictExecutionProfile=(dictRerunEvidence or {}).get(
+            "dictExecutionProfile"),
     )
+    if dictRerunEvidence is not None:
+        dictRerunEvidence["dictRunContext"] = fdictDescribeRunContext(
+            dictVariables)
     await _fnAnnounceDeterminismEpochSource(fnLogging, dictVariables)
+    await _fnAnnounceExecutionSettings(fnLogging, dictVariables)
     await _fnAnnounceDegradedDeterminism(fnLogging, dictVariables)
     fnClearOutputModifiedFlags(dictWorkflow)
     return sLogPath, listLogLines, fnLogging, dictVariables
@@ -1805,7 +1817,7 @@ async def _fiRunWithLogging(
         _flistCollectPreflightWarnings,
         connectionDocker, sContainerId, dictWorkflow,
         dictVariables.get("sRepoRoot", ""),
-    )
+    ) + flistDescribeExecutionWarnings(dictVariables)
     for sWarning in listPreflightWarnings:
         await fnStatusCallback({
             "sType": "preflightWarning", "sMessage": sWarning,

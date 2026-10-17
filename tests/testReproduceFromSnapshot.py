@@ -348,7 +348,7 @@ def test_a_rerun_writes_a_report_and_never_an_attestation(sSourceRepo):
     Kills: writing the attestation file into the staged clone.
     """
     dictBefore = _fdictHashTree(sSourceRepo)
-    assert fbL3AttestationCurrent(sSourceRepo) is False
+    assert fbL3AttestationCurrent(sSourceRepo, {}) is False
     dictRun = _fdictInvokeRerun(sSourceRepo, _fnRegenerateTheShadowOutputFaithfully)
     result = dictRun["result"]
     assert result.exit_code == 0, result.output
@@ -357,7 +357,7 @@ def test_a_rerun_writes_a_report_and_never_an_attestation(sSourceRepo):
         "not the author's attestation", "",
     )
     assert _fdictHashTree(sSourceRepo) == dictBefore
-    assert fbL3AttestationCurrent(sSourceRepo) is False
+    assert fbL3AttestationCurrent(sSourceRepo, {}) is False
     assert not os.path.exists(
         os.path.join(sSourceRepo, ".vaibify", "l3_attestation.json"),
     )

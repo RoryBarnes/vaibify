@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 
@@ -154,8 +155,12 @@ def _fdictPublishTheProject(sRepoPath, flistBuildSteps, dictArchive):
     return dictWorkflow
 
 
-def _fnInstallImageStandIns(sBin, sImageId):
-    """Map the pinned reference to the loaded image; refuse every fetch."""
+def _fnInstallImageStandIns(sBin, sImageId, listRunArguments=()):
+    """Map the pinned reference to the loaded image; refuse every fetch.
+
+    ``listRunArguments`` are added to ``docker run``, for a test that
+    restricts the container (``--cpuset-cpus``, say).
+    """
     os.makedirs(sBin)
     sRealDocker = shutil.which("docker")
     with open(os.path.join(sBin, "docker"), "w") as fileOut:
@@ -171,6 +176,10 @@ def _fnInstallImageStandIns(sBin, sImageId):
             "        fi\n"
             "    done\n"
             '    set -- "${aArguments[@]}"\n'
+            "fi\n"
+            'if [ "$1" = run ]; then\n'
+            "    shift\n"
+            f'    set -- run {shlex.join(listRunArguments)} "$@"\n'
             "fi\n"
             f'exec "{sRealDocker}" "$@"\n')
     with open(os.path.join(sBin, "curl"), "w") as fileOut:

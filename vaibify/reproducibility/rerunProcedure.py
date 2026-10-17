@@ -77,6 +77,8 @@ __all__ = [
 
 S_CLEARING_RESULT_PREFIX = "VAIBIFY_RERUN_PREPARATION "
 S_ASSESSMENT_RESULT_PREFIX = "VAIBIFY_RERUN_ASSESSMENT "
+S_CAPABILITIES_RESULT_PREFIX = "VAIBIFY_RERUN_CAPABILITIES "
+S_PROBE_RESULT_PREFIX = "VAIBIFY_RERUN_PROBE "
 S_PROCEDURE_MANIFEST_FILENAME = "MANIFEST.sha256"
 S_INVOCATION_LEDGER_FILENAME = "invocations.tsv"
 S_PREPARE_RECORD_FILENAME = "prepare.json"
@@ -603,8 +605,12 @@ def flistValidateFloorRequest(sRequiredLevel, listFloorKeys):
     return listProblems
 
 
-def fiRunCapabilities(sScratch, sRequiredLevel, sFloorKeys):
-    """Record Stage A and print one key to unset per line."""
+def fiRunCapabilities(sScratch, sRequiredLevel, sFloorKeys, bMachine=False):
+    """Record Stage A and print one key to unset per line.
+
+    With ``bMachine`` the record follows on one prefixed line, for a lane
+    that reads it from the output rather than from a scratch directory.
+    """
     listFloorKeys = [sKey for sKey in (sFloorKeys or "").split(",") if sKey]
     listProblems = flistValidateFloorRequest(sRequiredLevel, listFloorKeys)
     if listProblems:
@@ -624,8 +630,13 @@ def fiRunCapabilities(sScratch, sRequiredLevel, sFloorKeys):
     if sScratch:
         fnWriteJsonRecord(
             os.path.join(sScratch, S_CAPABILITIES_RECORD_FILENAME), dictRecord)
+    if dictDecision["sReason"]:
+        print("vaibify: " + dictDecision["sReason"], file=sys.stderr)
     for sKey in dictDecision["listDroppedKeys"]:
         print(sKey)
+    if bMachine:
+        print(S_CAPABILITIES_RESULT_PREFIX
+              + json.dumps(dictRecord, sort_keys=True))
     return I_PROCEDURE_EXIT_PASSED
 
 
@@ -733,13 +744,14 @@ def fdictProbeNumericalLibraries():
     return dictProbe
 
 
-def fiRunProbe(sScratch):
-    """Record Stage B's observations."""
+def fiRunProbe(sScratch, bMachine=False):
+    """Record Stage B's observations; with ``bMachine``, print them too."""
     dictProbe = fdictProbeNumericalLibraries()
     if sScratch:
         fnWriteJsonRecord(
             os.path.join(sScratch, S_PROBE_RECORD_FILENAME), dictProbe)
-    print(json.dumps(dictProbe, sort_keys=True))
+    if bMachine:
+        print(S_PROBE_RESULT_PREFIX + json.dumps(dictProbe, sort_keys=True))
     return I_PROCEDURE_EXIT_PASSED
 
 
@@ -860,8 +872,10 @@ def fparserBuildProcedureArguments():
         default=os.environ.get("VAIBIFY_REQUIRED_LEVEL", ""))
     parserCapabilities.add_argument(
         "--floor-keys", default=os.environ.get("VAIBIFY_FLOOR_KEYS", ""))
+    parserCapabilities.add_argument("--machine", action="store_true")
     parserProbe = parserSubcommands.add_parser("probe")
     parserProbe.add_argument("--scratch", default="")
+    parserProbe.add_argument("--machine", action="store_true")
     parserAssess = parserSubcommands.add_parser("assess")
     parserAssess.add_argument("--repo", required=True)
     parserAssess.add_argument("--scratch", required=True)
@@ -884,9 +898,10 @@ def fiDispatchProcedureCommand(namespaceArguments, dictPlan,
     if sCommand == "capabilities":
         return fiRunCapabilities(
             namespaceArguments.scratch, namespaceArguments.required_level,
-            namespaceArguments.floor_keys)
+            namespaceArguments.floor_keys, namespaceArguments.machine)
     if sCommand == "probe":
-        return fiRunProbe(namespaceArguments.scratch)
+        return fiRunProbe(
+            namespaceArguments.scratch, namespaceArguments.machine)
     if fdictAssessEvidence is None:
         print("Could not run: no comparison policy is attached to this "
               "procedure", file=sys.stderr)

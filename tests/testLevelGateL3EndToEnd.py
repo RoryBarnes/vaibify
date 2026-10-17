@@ -16,11 +16,8 @@ import pytest
 
 from tests.levelGateStubs import (
     S_RERUN_ASSESSOR_PATH,
+    fdictCurrentAssessmentFields,
     fsWriteRerunAssessor,
-)
-
-from vaibify.reproducibility.rerunAssessment import (
-    S_CURRENT_COMPARISON_POLICY,
 )
 
 from vaibify.reproducibility.aiDeclarationStep import (
@@ -281,7 +278,7 @@ def test_end_to_end_l3_with_attestation(fixtureLevel3Repo):
     fnWriteAttestation(sRepo, fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:" + "c" * 64,
         12.0, 2, 2, [], "",
-        dictAssessmentFields={"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     ))
     assert fbAtLeastLevel3(dictWorkflow, sRepo, False)
     assert fiProofLevel(dictWorkflow, sRepo, bHostProject=False) == 3

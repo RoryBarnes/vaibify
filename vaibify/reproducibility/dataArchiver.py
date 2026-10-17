@@ -116,7 +116,7 @@ def fdictGenerateReproducibilityEnvelope(filesRepo, dictWorkflow,
     # unfixable by any button, because regenerating recreated the skew.
     dictLock = _fdictWriteLockTier(filesRepo, sContainerName)
     dictEnvironment = _fdictWriteEnvironmentTier(
-        filesRepo, sContainerName, listHostBinaries,
+        filesRepo, sContainerName, listHostBinaries, dictWorkflow,
     )
     return {
         "MANIFEST.sha256": _fdictWriteManifestTier(
@@ -188,8 +188,13 @@ def _fdictWriteLockTier(filesRepo, sContainerName):
 
 
 def _fdictWriteEnvironmentTier(filesRepo, sContainerName,
-                               listHostBinaries):
-    """Write .vaibify/environment.json (Tier 3); skip when container absent."""
+                               listHostBinaries, dictWorkflow=None):
+    """Write .vaibify/environment.json (Tier 3); skip when container absent.
+
+    A workflow naming an execution profile this vaibify does not
+    include is a failed tier with the reason, never an envelope that
+    silently records some other profile.
+    """
     if not sContainerName:
         return _fdictTierOutcome(
             "no container supplied; environment.json needs a running "
@@ -198,12 +203,12 @@ def _fdictWriteEnvironmentTier(filesRepo, sContainerName,
     from vaibify.reproducibility import environmentSnapshot
     try:
         dictEnvironment = _fdictBuildEnvironmentPayload(
-            filesRepo, sContainerName, listHostBinaries,
+            filesRepo, sContainerName, listHostBinaries, dictWorkflow,
         )
         environmentSnapshot.fnWriteEnvironmentJson(
             filesRepo, dictEnvironment,
         )
-    except (FileNotFoundError, OSError,
+    except (FileNotFoundError, OSError, ValueError,
             subprocess.CalledProcessError) as error:
         sReason = (
             f"environment.json failed for "
@@ -215,8 +220,17 @@ def _fdictWriteEnvironmentTier(filesRepo, sContainerName,
 
 
 def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
-                                  listHostBinaries):
+                                  listHostBinaries, dictWorkflow=None):
     """Assemble the environment.json payload from snapshot helpers.
+
+    ``dictExecutionProfile`` records the concrete profile the workflow
+    asks for -- its ID, requested settings, required level and floor
+    keys -- so every lane replays these values and never looks the
+    answer up again (I6, F9). Only non-volatile values belong here:
+    this payload is compared with the file on disk before it is
+    rewritten, and a run-specific value would rewrite a pinned file on
+    every regeneration. The comparison policy is recorded in the
+    rendered assessor, not here (I9).
 
     A HOST project records ``sMode`` and no image digest. There is no
     container to inspect -- its resource id is a registry name Docker
@@ -228,11 +242,15 @@ def _fdictBuildEnvironmentPayload(filesRepo, sContainerName,
     """
     from vaibify.config.registryManager import fbIsHostProject
     from vaibify.reproducibility import environmentSnapshot
+    from vaibify.reproducibility.executionProfiles import (
+        fdictWorkflowExecutionProfile,
+    )
     dictPayload = {
         "dictSystemTools": environmentSnapshot.
             fdictCaptureSystemTools(filesRepo),
         "iSourceDateEpoch": environmentSnapshot.
             fiCaptureSourceDateEpoch(filesRepo),
+        "dictExecutionProfile": fdictWorkflowExecutionProfile(dictWorkflow),
     }
     if fbIsHostProject(sContainerName):
         dictPayload["sMode"] = "host"

@@ -59,6 +59,7 @@ __all__ = [
     "S_STATUS_PASSED",
     "S_STATUS_FAILED",
     "fbL3AttestationCurrent",
+    "fsDescribeProfileMismatch",
     "fbAttestationIsHistorical",
     "fdictAssessmentFieldsFromOutcome",
     "fdictBuildAttestation",
@@ -88,8 +89,8 @@ _S_MANIFEST_FILENAME = "MANIFEST.sha256"
 
 # The assessed rerun's fields (schema 7): the assessment report, its
 # verdict and tally, the comparison policy it was graded under, and the
-# execution profile the rerun requested (reserved until profiles land;
-# ``None`` until then).
+# execution profile the rerun replayed -- its ID and the settings it
+# requested (F8), ``None`` for a record made before profiles.
 _T_ASSESSMENT_FIELDS = (
     "dictAssessmentReport", "dictTally", "sComparisonPolicy", "sVerdict",
     "sVerdictRendered", "sProfileId", "dictRequested",
@@ -345,7 +346,34 @@ def fdictAssessmentFieldsFromOutcome(dictOutcome):
     return {sKey: dictOutcome.get(sKey) for sKey in _T_ASSESSMENT_FIELDS}
 
 
-def fbL3AttestationCurrent(filesRepo):
+def fsDescribeProfileMismatch(dictPayload, dictWorkflow):
+    """Return why a record's execution profile is not the workflow's, or "".
+
+    The record's profile ID and requested settings must both equal what
+    the workflow asks for now: changing the answer retires the
+    attestation (F8), and the history keeps it. The shadow replays the
+    ENVELOPE's profile, so the remedy names regenerating the envelope
+    first; rerunning against an envelope still recording the old
+    profile would retire nothing.
+    """
+    from vaibify.reproducibility import executionProfiles
+    try:
+        dictProfile = executionProfiles.fdictWorkflowExecutionProfile(
+            dictWorkflow)
+    except executionProfiles.ExecutionProfileError as error:
+        return str(error)
+    if (dictPayload.get("sProfileId") == dictProfile["sProfileId"]
+            and dictPayload.get("dictRequested")
+            == dictProfile["dictRequested"]):
+        return ""
+    return (
+        "the last rebuild ran under the execution profile "
+        f"{dictPayload.get('sProfileId') or '(none recorded)'}, and this "
+        f"project now asks for {dictProfile['sProfileId']}; regenerate "
+        "the reproducibility envelope, then run the verification again")
+
+
+def fbL3AttestationCurrent(filesRepo, dictWorkflow):
     """Return True iff an L3 attestation exists, passed, and is not stale.
 
     Staleness is keyed against ``fsCurrentManifestDigest`` so any
@@ -353,7 +381,9 @@ def fbL3AttestationCurrent(filesRepo):
     attestation without requiring a separate timestamp. A historical
     record -- one made by the byte-only verifier, or under a comparison
     policy that is no longer current -- is never current, whatever
-    digest it names (design F11, D7, I9).
+    digest it names (design F11, D7, I9). Nor is one made under an
+    execution profile the workflow no longer asks for (F8): the
+    workflow is a required argument so no caller can skip that check.
     """
     filesRepo = ffilesEnsureRepoFiles(filesRepo)
     dictPayload = fdictReadAttestation(filesRepo)
@@ -362,6 +392,8 @@ def fbL3AttestationCurrent(filesRepo):
     if dictPayload.get("sStatus") != S_STATUS_PASSED:
         return False
     if fbAttestationIsHistorical(dictPayload):
+        return False
+    if fsDescribeProfileMismatch(dictPayload, dictWorkflow):
         return False
     sRecorded = dictPayload.get("sManifestDigestAtAttestation") or ""
     if not sRecorded:

@@ -2505,8 +2505,8 @@ def _fdictBuildPollResponseRest(
         dictLockSatisfaction=dictLockSatisfaction,
     )
     dictResponse["dictReproductionLabel"] = fdictBuildReproductionLabel(
-        filesPoll, fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot),
-        dictLastNoVerdict,
+        filesPoll, dictWorkflow,
+        fsRelativeWorkflowPath(sWorkflowPath, sRepoRoot), dictLastNoVerdict,
     )
     return dictResponse
 
@@ -2780,7 +2780,7 @@ def _fnSaveIfLevelHighWaterChanged(
 _T_ENVELOPE_SYNC_SERVICES = ("github", "zenodo", "overleaf", "arxiv")
 
 
-def _fdictSummarizeAttestation(filesRepo):
+def _fdictSummarizeAttestation(filesRepo, dictWorkflow):
     """Return the wire summary of the last attestation, or ``None``.
 
     Reads the same snapshot ``fbL3AttestationCurrent`` already reads,
@@ -2792,11 +2792,18 @@ def _fdictSummarizeAttestation(filesRepo):
     from ...reproducibility.l3Attestation import (
         fbAttestationIsHistorical,
         fdictReadAttestation,
+        fsDescribeProfileMismatch,
     )
     dictAttestation = fdictReadAttestation(filesRepo)
     if not dictAttestation:
         return None
     return {
+        # Why a passed record no longer counts when the reason is the
+        # execution profile, in the server's words: the row's default
+        # "the envelope has changed since" would be false here (F8).
+        "sProfileId": dictAttestation.get("sProfileId"),
+        "sProfileMismatch": fsDescribeProfileMismatch(
+            dictAttestation, dictWorkflow),
         # The assessed rerun's verdict, worded by the policy that graded
         # it and always shipped with its tally. A historical record --
         # the byte-only verifier's, or one graded under a policy that is
@@ -3058,7 +3065,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
             if bHasRepo else []
         ),
         "bRebuildAttestationCurrent": (
-            fbL3AttestationCurrent(filesRepo) if bHasRepo else False
+            fbL3AttestationCurrent(filesRepo, dictWorkflow)
+            if bHasRepo else False
         ),
         # Per-remote publication state for the attestation itself,
         # tri-state (see levelGates.fdictAttestationPublicationState).
@@ -3103,7 +3111,8 @@ def _fdictBuildWorkflowEnvelopeDetail(
         # reported a failing step, which reads as vaibify having
         # ignored the click (researcher-reported, 2026-09-01).
         "dictRebuildAttestation": (
-            _fdictSummarizeAttestation(filesRepo) if bHasRepo else None
+            _fdictSummarizeAttestation(filesRepo, dictWorkflow)
+            if bHasRepo else None
         ),
         "bOverleafBound":
             levelGates.fbWorkflowHasOverleafBinding(dictWorkflow),

@@ -12,6 +12,8 @@ import json
 
 import pytest
 
+from tests.levelGateStubs import fdictCurrentAssessmentFields
+
 from vaibify.reproducibility.l3Attestation import (
     S_ATTESTATION_FILENAME,
     S_STATUS_PASSED,
@@ -44,13 +46,16 @@ def test_empty_digest_attestation_not_current_without_manifest(tmp_path):
     Kills: Delete the empty-digest guard `if not sRecorded: return
     False` in fbL3AttestationCurrent (lines 154-155).
     """
+    # Current in every other respect, so the empty digest is the only
+    # thing that can refuse it.
     dictAtt = fdictBuildAttestation(
         S_STATUS_PASSED, "", "img@sha256:def", 1.0, 1, 1, [], "",
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     )
     fnWriteAttestation(str(tmp_path), dictAtt)
     # No MANIFEST.sha256 written -> live digest is also "".
     assert fsCurrentManifestDigest(str(tmp_path)) == ""
-    assert fbL3AttestationCurrent(str(tmp_path)) is False
+    assert fbL3AttestationCurrent(str(tmp_path), {}) is False
 
 
 def test_build_attestation_matched_distinct_from_total():
@@ -78,7 +83,7 @@ def test_non_dict_payload_reads_none_and_not_current(tmp_path):
     """
     _fnWriteRawAttestation(tmp_path, "[]")
     assert fdictReadAttestation(str(tmp_path)) is None
-    assert fbL3AttestationCurrent(str(tmp_path)) is False
+    assert fbL3AttestationCurrent(str(tmp_path), {}) is False
 
 
 def test_invalidate_returns_false_when_no_file(tmp_path):

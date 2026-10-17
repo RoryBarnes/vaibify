@@ -52,6 +52,7 @@ from vaibify.reproducibility.assessmentLane import (
     flistCrossCheckAssessment,
 )
 from vaibify.reproducibility.environmentSnapshot import (
+    fdictReadEnvironmentJson,
     fiRecordedSourceDateEpoch,
 )
 from vaibify.reproducibility.l3Attestation import fsCurrentManifestDigest
@@ -198,13 +199,16 @@ def fdictRerunAndVerifyWorkflow(
     )
     iSourceDateEpoch = fiRecordedSourceDateEpoch(filesRepo)
     sRerunStartedIso = datetime.now(timezone.utc).isoformat()
+    dictReplayed, sProfileRefusal = ftReadReplayedExecutionProfile(filesRepo)
 
     def fdictStampRunFacts(dictOutcome):
-        """Name the manifest graded and the moment the run began."""
+        """Name the manifest graded, the moment the run began, and its profile."""
         dictOutcome.update(dictWorkflowEvidence)
         dictOutcome["sManifestDigest"] = dictExpectedManifest["sDigest"]
         dictOutcome["iSourceDateEpoch"] = iSourceDateEpoch
         dictOutcome["sRerunStartedIso"] = sRerunStartedIso
+        dictOutcome["sProfileId"] = dictReplayed.get("sProfileId")
+        dictOutcome["dictRequested"] = dictReplayed.get("dictRequested")
         return dictOutcome
 
     listBlocking = flistNameStepsThatBlockARerun(dictWorkflow)
@@ -227,6 +231,8 @@ def fdictRerunAndVerifyWorkflow(
     )
     if sRootRefusal:
         return fdictStampRunFacts(fdictUnrunOutcome(sRootRefusal))
+    if sProfileRefusal:
+        return fdictStampRunFacts(fdictUnrunOutcome(sProfileRefusal))
     dictClassification = fdictClassifyRerunPaths(dictWorkflow)
     # The assessor is selected and prepared BEFORE anything is deleted:
     # ``prepare`` sets the published figures aside and checks every
@@ -242,7 +248,7 @@ def fdictRerunAndVerifyWorkflow(
     dictRun = _fdictClearThenRunSteps(
         connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
         filesRepo, dictClassification, dictLane, fnCollect,
-        iSourceDateEpoch,
+        iSourceDateEpoch, dictReplayed,
     )
     if "sUnrunReason" in dictRun:
         return fdictStampRunFacts(fdictUnrunOutcome(dictRun["sUnrunReason"]))
@@ -254,7 +260,8 @@ def fdictRerunAndVerifyWorkflow(
     if fnStatusCallback is not None:
         fnStatusCallback({"sType": "comparingOutputs"})
     dictAssessment = fdictRunAssessorAssess(
-        filesRepo, dictLane, dictRun["listLedger"])
+        filesRepo, dictLane, dictRun["listLedger"],
+        dictRun.get("dictRunContext"))
     return fdictStampRunFacts(fdictVerifyRerunOutputs(
         filesRepo, dictRun["bRerunSucceeded"], dictExpectedManifest,
         listCarriedPaths, dictDiagnostics,
@@ -267,17 +274,21 @@ def fdictRerunAndVerifyWorkflow(
 def _fdictClearThenRunSteps(
     connectionDocker, sContainerId, dictWorkflow, sWorkflowPath,
     filesRepo, dictClassification, dictLane, fnCollect, iSourceDateEpoch,
+    dictExecutionProfile,
 ):
     """Delete what the rerun regenerates, then run every step with evidence.
 
     When ``prepare`` already found a published input changed, nothing is
     deleted and nothing runs: the verdict is "Published inputs changed"
     whatever the steps would do, and ``assess`` says so. Returns
-    ``{bRerunSucceeded, dictPreRerunClearing, listLedger}`` or
-    ``{sUnrunReason}`` for a refused preparation.
+    ``{bRerunSucceeded, dictPreRerunClearing, listLedger,
+    dictRunContext}`` or ``{sUnrunReason}`` for a refused preparation.
+    The run replays ``dictExecutionProfile`` through the runner's own
+    Stage A, and reports the decision and the probe as its run context.
     """
     dictRerunEvidence = {
         "sEvidenceDirectory": dictLane["sEvidence"], "listLedger": [],
+        "dictExecutionProfile": dictExecutionProfile,
     }
     if dictLane["iPrepareExit"] != 0:
         return {"bRerunSucceeded": True, "dictPreRerunClearing": {},
@@ -296,7 +307,31 @@ def _fdictClearThenRunSteps(
     )
     return {"bRerunSucceeded": bRerunSucceeded,
             "dictPreRerunClearing": dictPreRerunClearing,
-            "listLedger": dictRerunEvidence["listLedger"]}
+            "listLedger": dictRerunEvidence["listLedger"],
+            "dictRunContext": dictRerunEvidence.get("dictRunContext")}
+
+
+def ftReadReplayedExecutionProfile(filesRepo):
+    """Return ``(dictProfile, sRefusal)``: the envelope's profile, to replay.
+
+    The rerun replays what the envelope RECORDED, never the table's
+    current answer (F9), so a later vaibify cannot change what a
+    published profile asked for. An envelope written before profiles
+    existed records none, which is today's behavior: no settings. A
+    recorded profile naming a setting outside the allowlist, or a value
+    outside the pattern, refuses the rerun and names it (attack surface
+    item 2): it came from a cloned file.
+    """
+    from vaibify.reproducibility import executionProfiles
+    dictRecorded = (fdictReadEnvironmentJson(filesRepo) or {}).get(
+        "dictExecutionProfile")
+    if dictRecorded is None:
+        return executionProfiles.fdictProfileFromTable(
+            executionProfiles.S_DEFAULT_EXECUTION_PROFILE), ""
+    try:
+        return executionProfiles.fdictRequireValidProfile(dictRecorded), ""
+    except executionProfiles.ExecutionProfileError as error:
+        return {}, str(error)
 
 
 def fsResolveRunnerRepoRoot(dictWorkflow, sWorkflowPath):

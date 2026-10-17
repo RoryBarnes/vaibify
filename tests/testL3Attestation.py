@@ -12,9 +12,7 @@ import time
 
 import pytest
 
-from vaibify.reproducibility.rerunAssessment import (
-    S_CURRENT_COMPARISON_POLICY,
-)
+from tests.levelGateStubs import fdictCurrentAssessmentFields
 
 from vaibify.reproducibility.l3Attestation import (
     I_SCHEMA_VERSION,
@@ -38,7 +36,7 @@ def _fnWriteManifest(tmp_path, sBody="# manifest\n"):
 
 def test_missing_attestation_reads_none(tmp_path):
     assert fdictReadAttestation(str(tmp_path)) is None
-    assert not fbL3AttestationCurrent(str(tmp_path))
+    assert not fbL3AttestationCurrent(str(tmp_path), {})
 
 
 def test_build_attestation_returns_schema_fields():
@@ -73,13 +71,13 @@ def test_attestation_current_requires_matching_manifest(tmp_path):
     dictAtt = fdictBuildAttestation(
         S_STATUS_PASSED, sDigest, "img@sha256:def",
         1.0, 1, 1, [], "",
-        dictAssessmentFields={"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     )
     fnWriteAttestation(str(tmp_path), dictAtt)
-    assert fbL3AttestationCurrent(str(tmp_path))
+    assert fbL3AttestationCurrent(str(tmp_path), {})
     # Mutating the manifest invalidates the attestation
     _fnWriteManifest(tmp_path, "# changed\n")
-    assert not fbL3AttestationCurrent(str(tmp_path))
+    assert not fbL3AttestationCurrent(str(tmp_path), {})
 
 
 def test_failed_attestation_is_never_current(tmp_path):
@@ -90,7 +88,7 @@ def test_failed_attestation_is_never_current(tmp_path):
         1.0, 0, 1, ["A10/out.txt"], "",
     )
     fnWriteAttestation(str(tmp_path), dictAtt)
-    assert not fbL3AttestationCurrent(str(tmp_path))
+    assert not fbL3AttestationCurrent(str(tmp_path), {})
 
 
 def test_history_returns_attempts_newest_first(tmp_path):

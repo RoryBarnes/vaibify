@@ -319,6 +319,20 @@ def fsReadModuleSource(moduleSource):
     return _fsReadSourceFile(moduleSource.__file__)
 
 
+def fsBuildProcedureProgram():
+    """Return the procedure's own source with an entry point, for ``python3 -c``.
+
+    The SAME code ``reproduce.sh`` runs from the rendered assessor:
+    ``rerunProcedure`` verbatim. Every lane that runs a sub-command in
+    a container without the assessor file -- the shadow's clearing, and
+    every run's capability reading and library probe -- ships this
+    text, because a private copy is how two lanes come to differ.
+    """
+    from vaibify.reproducibility import rerunProcedure
+    return (fsReadModuleSource(rerunProcedure)
+            + "\nsys.exit(fiRunMain(sys.argv[1:], {}))\n")
+
+
 @functools.lru_cache(maxsize=16)
 def _fsReadSourceFile(sPath):
     """Return one source file's text."""

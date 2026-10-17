@@ -20,6 +20,8 @@ import json
 import os
 
 import pytest
+
+from tests.levelGateStubs import fdictCurrentAssessmentFields
 from PIL import Image
 
 from vaibify.gui import pipelineRunner
@@ -432,7 +434,7 @@ def testAProjectGradesUnderTheComparisonPolicyItRecorded(
         "passed", fsCurrentManifestDigest(sRoot), "img@sha256:i", 1.0, 1, 1,
         dictAssessmentFields=l3Attestation.fdictAssessmentFieldsFromOutcome(
             dictOutcome)))
-    assert fbL3AttestationCurrent(sRoot) is False
+    assert fbL3AttestationCurrent(sRoot, {}) is False
 
 
 @pytest.mark.falsification
@@ -498,11 +500,11 @@ def testAHistoricalAttestationNeverSatisfiesTheRebuildRequirement(tmp_path):
     }))
     dictRead = l3Attestation.fdictReadAttestation(sRoot)
     assert dictRead["bHistorical"] is True
-    assert fbL3AttestationCurrent(sRoot) is False
+    assert fbL3AttestationCurrent(sRoot, {}) is False
     fnWriteAttestation(sRoot, fdictBuildAttestation(
         "passed", sDigest, "img@sha256:i", 1.0, 1, 1,
-        dictAssessmentFields={"sComparisonPolicy": "comparison-v1"}))
-    assert fbL3AttestationCurrent(sRoot) is True
+        dictAssessmentFields=fdictCurrentAssessmentFields()))
+    assert fbL3AttestationCurrent(sRoot, {}) is True
 
 
 # ----------------------------------------------------------------------

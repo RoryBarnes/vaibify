@@ -110,3 +110,19 @@ def fsWriteRerunAssessor(pathRepo, dictWorkflow):
     pathAssessor.write_text(fsRenderRerunAssessmentScript(
         dictWorkflow, S_CURRENT_COMPARISON_POLICY))
     return S_RERUN_ASSESSOR_PATH
+
+
+def fdictCurrentAssessmentFields():
+    """Return the assessment fields a CURRENT attestation records.
+
+    The current comparison policy, and the execution profile a workflow
+    that has not answered asks for: ``speed-v1``, nothing requested.
+    """
+    from vaibify.reproducibility.executionProfiles import (
+        S_DEFAULT_EXECUTION_PROFILE,
+    )
+    from vaibify.reproducibility.rerunAssessment import (
+        S_CURRENT_COMPARISON_POLICY,
+    )
+    return {"sComparisonPolicy": S_CURRENT_COMPARISON_POLICY,
+            "sProfileId": S_DEFAULT_EXECUTION_PROFILE, "dictRequested": {}}

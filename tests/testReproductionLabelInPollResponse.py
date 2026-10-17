@@ -20,9 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from vaibify.reproducibility.rerunAssessment import (
-    S_CURRENT_COMPARISON_POLICY,
-)
+from tests.levelGateStubs import fdictCurrentAssessmentFields
 
 from tests.reproductionSourceFixtures import (
     S_FIXTURE_OUTPUT,
@@ -152,7 +150,7 @@ def _fdictPollLabel(sRepo, connection=None, dictCtxExtra=None,
         fdictBuildReproductionLabel, fsRelativeWorkflowPath,
     )
     return fdictBuildReproductionLabel(
-        filesPoll, fsRelativeWorkflowPath(
+        filesPoll, _fdictWorkflowFor(sRepo), fsRelativeWorkflowPath(
             _fsWorkflowPath(sRepo), sRepo), dictLastNoVerdict,
     ), connection, dictCtx
 
@@ -465,7 +463,7 @@ def test_a_snapshot_that_did_not_read_the_records_is_unreadable_not_absent(
     )
     from vaibify.reproducibility.repoFiles import ffilesConservativeSnapshot
     dictLabel = fdictBuildReproductionLabel(
-        ffilesConservativeSnapshot(str(tmp_path)), S_FIXTURE_WORKFLOW_PATH)
+        ffilesConservativeSnapshot(str(tmp_path)), {}, S_FIXTURE_WORKFLOW_PATH)
     assert dictLabel["sState"] == "unreadable"
     assert dictLabel["bShow"] is False
 
@@ -563,8 +561,7 @@ def fnWriteAuthorAttestation(
         "sha256:" + "c" * 64, 1.0, 1, 1,
         dictReproductionProvenance=dictProvenance,
         sAttestedAtUtc=sAttestedAtUtc,
-        dictAssessmentFields={
-            "sComparisonPolicy": S_CURRENT_COMPARISON_POLICY},
+        dictAssessmentFields=fdictCurrentAssessmentFields(),
     ))
 
 
@@ -577,7 +574,7 @@ def fdictPollAuthorLabel(sRepo, dictLastNoVerdict=None):
 
 def _fbGateSaysCurrent(sRepo):
     from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
-    return fbL3AttestationCurrent(sRepo)
+    return fbL3AttestationCurrent(sRepo, {})
 
 
 @pytest.mark.falsification

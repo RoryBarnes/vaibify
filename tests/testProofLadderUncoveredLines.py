@@ -315,7 +315,7 @@ def test_fbL3AttestationCurrent_missing_recorded_digest_is_false(tmp_path):
     )
     fnWriteAttestation(str(tmp_path), dictAttestation)
     from vaibify.reproducibility.l3Attestation import fbL3AttestationCurrent
-    assert fbL3AttestationCurrent(str(tmp_path)) is False
+    assert fbL3AttestationCurrent(str(tmp_path), {}) is False
 
 
 def test_fnInvalidateAttestation_returns_false_when_missing(tmp_path):

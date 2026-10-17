@@ -5259,7 +5259,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # assessed rerun's verdict, its tally, its comparison policy and
     # whether the record is historical, so the row can say which.
     # -> 4316: and the tally line, which always rides with the verdict.
-    "routes/pipelineRoutes.py": 4316,
+    # 4316 -> 4325 (2026-10-17): the attestation summary names a
+    # changed execution profile in the server's words (F8), and the
+    # currency check and the label are handed the workflow.
+    "routes/pipelineRoutes.py": 4325,
     # NEW at 870 (2026-09-14): the environment archive gains its
     # PROMOTION lane beside its deposit lane. Not a second concern:
     # both produce and publish this project's image archive and record
@@ -5355,7 +5358,10 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # (a 409 carried out of the worker, so nothing quarantines), since
     # a run nobody can record would show its failure once and the
     # previous pass on every poll after it.
-    "routes/testRoutes.py": 1078,
+    # 1078 -> 1099 (2026-10-17): "Run tests" runs under the Stage A
+    # decision a pipeline run gets (design I10), and refuses a profile
+    # this vaibify lacks before the drain is taken.
+    "routes/testRoutes.py": 1099,
     # +21 (2026-07-09): removing the arXiv connection also clears its
     # cached verify result (_fsClearArxivSyncCache) so the dashboard
     # cannot render a ghost divergence count — cohesive with the
@@ -6772,7 +6778,12 @@ DICT_GRANDFATHERED_MODULE_LINES = {
     # command loop names each command, exports its JUnit path and
     # records its exit status. The helpers that say WHAT is exported
     # live in rerunEvidence; what is left is the runner's own threading.
-    "pipelineRunner.py": 1932,
+    # 1932 -> 1944 (2026-10-17): the execution profile (design I10) is
+    # threaded through the run's preparation -- the replayed profile
+    # from the rerun evidence, the run context handed back, the
+    # profile's run-start warning and its pre-flight refusal. The
+    # stages themselves live in determinismEnvironment.
+    "pipelineRunner.py": 1944,
     # NEW at 876 (2026-08-13, slice 1): pipelineState.py crossed the
     # default cap gaining the acknowledged-write path
     # (fbWriteStateAcknowledged) and the StateWriter's terminal flush

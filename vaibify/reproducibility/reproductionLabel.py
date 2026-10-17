@@ -116,15 +116,19 @@ def _flistParseRecords(dictRecordTexts):
 
 
 def fdictBuildReproductionLabel(
-    filesPoll, sWorkflowRelativePath, dictLastNoVerdict=None,
+    filesPoll, dictWorkflow, sWorkflowRelativePath, dictLastNoVerdict=None,
 ):
-    """Return the label payload for one poll of one workflow."""
+    """Return the label payload for one poll of one workflow.
+
+    ``dictWorkflow`` is what the author's label is judged against: their
+    attestation is current only under the profile the workflow asks for.
+    """
     if not isinstance(filesPoll, SnapshotRepoFiles):
         return _fdictLabel(S_STATE_ABSENT)
     if gitEvidence.fsManifestOwnershipFromSnapshotFacts(
         filesPoll.dictOwnershipFacts,
     ) == gitEvidence.S_MANIFEST_OWNERSHIP_OWN:
-        return _fdictLabelForAuthor(filesPoll, dictLastNoVerdict)
+        return _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict)
     dictRecordTexts = filesPoll.dictReproductionRecords
     if dictRecordTexts is None:
         # A snapshot that did not carry the records did not READ them:
@@ -204,10 +208,10 @@ def _fdictLabelForReproduced(dictRecord, dictLastNoVerdict):
     return dictLabel
 
 
-def _fdictLabelForAuthor(filesPoll, dictLastNoVerdict):
+def _fdictLabelForAuthor(filesPoll, dictWorkflow, dictLastNoVerdict):
     """Return the author's label: their own CURRENT Level 3 attestation."""
-    if not l3Attestation.fbL3AttestationCurrent(filesPoll):
-        return _fdictLabel(*_ftAuthorLabelAbsence(filesPoll))
+    if not l3Attestation.fbL3AttestationCurrent(filesPoll, dictWorkflow):
+        return _fdictLabel(*_ftAuthorLabelAbsence(filesPoll, dictWorkflow))
     dictAttestation = l3Attestation.fdictReadAttestation(filesPoll) or {}
     sRecordedIso = str(dictAttestation.get("sAttestedAtUtc") or "")
     dictProvenance = dictAttestation.get("dictReproductionProvenance")
@@ -223,7 +227,7 @@ def _fdictLabelForAuthor(filesPoll, dictLastNoVerdict):
     return dictLabel
 
 
-def _ftAuthorLabelAbsence(filesPoll):
+def _ftAuthorLabelAbsence(filesPoll, dictWorkflow):
     """Return ``(sState, sReason)`` for an author with no current attestation.
 
     Only the reason is read here; whether the label shows was already
@@ -243,6 +247,10 @@ def _ftAuthorLabelAbsence(filesPoll):
             "the Level 3 attestation is from the previous check, which "
             "the current Level 3 requirement does not accept",
         )
+    sProfileMismatch = l3Attestation.fsDescribeProfileMismatch(
+        dictAttestation, dictWorkflow)
+    if sProfileMismatch:
+        return S_STATE_STALE, sProfileMismatch
     return (
         S_STATE_STALE,
         "the Level 3 attestation does not cover the current manifest",

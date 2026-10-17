@@ -190,10 +190,14 @@ def fdictParseAssessorReport(iExitCode, sStdout, sStderr):
         + fsTailOfOutput(sStdout, sStderr))}
 
 
-def fdictRunAssessorAssess(filesRepo, dictLane, listLedger):
-    """Write the ledger, run ``assess``, and return the parsed report.
+def fdictRunAssessorAssess(filesRepo, dictLane, listLedger,
+                           dictRunContext=None):
+    """Write the ledger and the run context, run ``assess``, parse the report.
 
-    Returns ``{dictReport, dictPlan, listLedger, sComparisonPolicy,
+    The run context is the runner's Stage A decision and Stage B probe,
+    written where ``reproduce.sh``'s own sub-commands write them, so the
+    report carries them in ``dictContexts`` whichever lane ran. Returns
+    ``{dictReport, dictPlan, listLedger, sComparisonPolicy,
     sPolicySource}`` or ``{sUnrunReason}``.
     """
     fnWriteLaneFile(
@@ -201,6 +205,13 @@ def fdictRunAssessorAssess(filesRepo, dictLane, listLedger):
         posixpath.join(dictLane["sEvidence"],
                        rerunProcedure.S_INVOCATION_LEDGER_FILENAME),
         "".join(f"{sId}\t{iStatus}\n" for sId, iStatus in listLedger))
+    for sFilename, sKey in (
+            (rerunProcedure.S_CAPABILITIES_RECORD_FILENAME, "dictSettings"),
+            (rerunProcedure.S_PROBE_RECORD_FILENAME, "dictProbe")):
+        if isinstance((dictRunContext or {}).get(sKey), dict):
+            fnWriteLaneFile(
+                filesRepo, posixpath.join(dictLane["sScratch"], sFilename),
+                json.dumps(dictRunContext[sKey], sort_keys=True))
     listCommand = [
         "python3", "-I", dictLane["sScriptPath"], "assess",
         "--repo", dictLane["sRepoRoot"], "--scratch", dictLane["sScratch"],

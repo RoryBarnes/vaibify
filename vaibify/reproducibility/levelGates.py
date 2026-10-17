@@ -1692,7 +1692,7 @@ def fdictL3ReadinessGaps(dictWorkflow, filesRepo):
     bAllReadiness = all(dictFlags.values())
     dictResult = {sKey: bool(bValue) for sKey, bValue in dictFlags.items()}
     dictResult["bL3AttestationCurrent"] = (
-        fbL3AttestationCurrent(filesRepo) if bRepo else False
+        fbL3AttestationCurrent(filesRepo, dictWorkflow) if bRepo else False
     )
     # Reported, but deliberately OUTSIDE the readiness all(): readiness
     # asks whether the LOCAL envelope is complete and pinned, which is
@@ -3237,7 +3237,9 @@ def _fdictL3WorkflowChecks(dictWorkflow, filesRepo):
         "reproduce-script-missing": fbVerifyReproduceScript(
             filesRepo, dictWorkflow,
         ),
-        "l3-attestation-stale": fbL3AttestationCurrent(filesRepo),
+        "l3-attestation-stale": fbL3AttestationCurrent(
+            filesRepo, dictWorkflow,
+        ),
         "binaries-not-declared-or-waived": fbWorkflowDeclaresBinaries(
             dictWorkflow,
         ),

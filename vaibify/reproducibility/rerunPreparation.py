@@ -229,18 +229,6 @@ def fdictClearShadowBeforeRerun(
     }
 
 
-def _fsBuildClearingProgram():
-    """Return the procedure's own source, run as ``clear``.
-
-    The SAME code ``reproduce.sh`` runs from the rendered assessor:
-    ``rerunProcedure`` verbatim, with an entry point. A private copy here
-    is how the two lanes would come to clear differently.
-    """
-    from vaibify.reproducibility import rerunAssessment, rerunProcedure
-    return (rerunAssessment.fsReadModuleSource(rerunProcedure)
-            + "\nsys.exit(fiRunMain(sys.argv[1:], {}))\n")
-
-
 def _fdictRunPreparationProgram(filesRepo, dictJob):
     """Ship the job into the shadow, run the shared clearing, parse its answer.
 
@@ -248,6 +236,9 @@ def _fdictRunPreparationProgram(filesRepo, dictJob):
     refused target; anything else without the line is an unexplained
     failure, and the rerun is not attempted.
     """
+    from vaibify.reproducibility.rerunAssessment import (
+        fsBuildProcedureProgram,
+    )
     from vaibify.reproducibility.rerunProcedure import (
         S_CLEARING_RESULT_PREFIX,
     )
@@ -255,7 +246,7 @@ def _fdictRunPreparationProgram(filesRepo, dictJob):
     sJobPath = posixpath.join(dictJob["sRepoRoot"], _S_JOB_RELATIVE_PATH)
     iExitCode, sOutput, sErrors = filesRepo.ftRunCommand(
         [
-            "python3", "-I", "-c", _fsBuildClearingProgram(),
+            "python3", "-I", "-c", fsBuildProcedureProgram(),
             "clear", "--repo", dictJob["sRepoRoot"], "--job", sJobPath,
         ],
         _F_PREPARATION_TIMEOUT_SECONDS,
